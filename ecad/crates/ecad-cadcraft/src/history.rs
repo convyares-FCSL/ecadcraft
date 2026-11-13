@@ -397,6 +397,76 @@ fn civil(ms: u64) -> (i64, u32, u32, u32, u32) {
     (i64::from(t.year()), t.month(), t.day(), t.hour(), t.minute())
 }
 
+/// One row of History's list of changes (brief 043, screen f): a **session group**, a run of
+/// consecutive transactions by one agent, or one transaction (a person's, or an agent's alone).
+///
+/// # Semantics
+/// Read only: grouping changes nothing in the ledger. The order is the order given.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionGroup {
+    pub author: ecad_model::Author,
+    /// The transactions' sequence numbers and ids, in the order given.
+    pub seqs: Vec<u64>,
+    pub ids: Vec<ecad_model::TxId>,
+    /// The earliest and latest wall-clock time of its transactions, when known.
+    pub from_ms: Option<u64>,
+    pub to_ms: Option<u64>,
+}
+
+impl SessionGroup {
+    /// Whether it groups more than one agent transaction (it collapses to one row).
+    pub fn is_session(&self) -> bool {
+        matches!(self.author, ecad_model::Author::Agent(_)) && self.seqs.len() > 1
+    }
+
+    /// `claude · 14 changes · 20:31–20:44`, in local time (` UTC` when the zone cannot be read).
+    pub fn text(&self) -> String {
+        self.text_in(self.from_ms.and_then(local_offset))
+    }
+
+    /// [`SessionGroup::text`] with the zone's offset given (`None`: UTC, labelled).
+    pub fn text_in(&self, offset: Option<i64>) -> String {
+        let n = self.seqs.len();
+        let changes = if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
+        let clock = |ms: u64| {
+            let (_, _, _, h, mi) = civil(shifted(ms, offset));
+            format!("{h:02}:{mi:02}")
+        };
+        let span = match (self.from_ms, self.to_ms) {
+            (Some(a), Some(b)) if clock(a) == clock(b) => clock(a),
+            (Some(a), Some(b)) => format!("{}\u{2013}{}", clock(a), clock(b)),
+            _ => String::new(),
+        };
+        let utc = if offset.is_none() && !span.is_empty() { " UTC" } else { "" };
+        let mut parts = vec![author_text(&self.author), changes];
+        if !span.is_empty() {
+            parts.push(format!("{span}{utc}"));
+        }
+        parts.join(" \u{b7} ")
+    }
+}
+
+/// `log` (any order; the Steps list's is newest first) as History's rows: consecutive
+/// transactions by one agent form one [`SessionGroup`]; every other transaction is a group of its
+/// own. Reads only `log`.
+pub fn sessions(log: &[Transaction]) -> Vec<SessionGroup> {
+    let mut out: Vec<SessionGroup> = Vec::new();
+    for t in log {
+        let joins = matches!(t.author, ecad_model::Author::Agent(_)) && out.last().is_some_and(|g| g.author == t.author);
+        if !joins {
+            out.push(SessionGroup { author: t.author.clone(), seqs: Vec::new(), ids: Vec::new(), from_ms: None, to_ms: None });
+        }
+        let Some(group) = out.last_mut() else { continue };
+        group.seqs.push(t.seq);
+        group.ids.push(t.id);
+        if let Some(ms) = t.time_ms {
+            group.from_ms = Some(group.from_ms.map_or(ms, |a| a.min(ms)));
+            group.to_ms = Some(group.to_ms.map_or(ms, |b| b.max(ms)));
+        }
+    }
+    out
+}
+
 /// Options of the graph (design 020 §2.3: both off by default, per session).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Show {

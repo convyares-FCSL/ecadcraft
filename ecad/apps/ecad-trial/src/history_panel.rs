@@ -19,6 +19,12 @@
 //! - The graph reads one page of rows; scrolling to its end reads the next page.
 //! - F2 (or double-click on the Branch list's name) renames the branch shown; a Now row's
 //!   right-click offers switch, merge, update, rename and archive.
+//! - Authors (brief 043, screen f): every row carries its author, "You" for the person or the
+//!   agent's name in the `agent` colour. In the Steps list, consecutive transactions by one agent
+//!   form a **session group** ([`history::sessions`]) that collapses to one row; while that
+//!   agent's bridge session is live the group offers Undo session (the banner's plan and
+//!   confirmation, design 035 §8); after it ended its steps undo one by one as any others. The
+//!   groups are made when the Steps list is read (its update map above), never per frame.
 
 use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::history::{self, Graph, Layout, NodeKind, Show};
@@ -27,7 +33,16 @@ use ecad_model::Op;
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, pos2, vec2};
 use serde_json::{Value, json};
 
+use crate::agent::last_write::LiveSession;
 use crate::project_panel::{Action, ROW_H};
+
+/// Accessible names (brief 043): a session group's row (`history.session: claude · 14 changes ·
+/// 20:31–20:44`), its Undo session button, and an author chip (`history.author: You`).
+pub const SESSION_GROUP: &str = "history.session";
+pub const UNDO_SESSION: &str = "history.undo_session";
+pub const AUTHOR: &str = "history.author";
+/// The person's author chip.
+pub const YOU: &str = "You";
 
 /// Accessible label of the tab.
 pub const HISTORY_TAB: &str = "History";
@@ -119,6 +134,14 @@ pub struct StepRow {
     pub label: String,
     pub author: String,
     pub time: String,
+    /// The agent's name when an agent recorded it.
+    pub agent: Option<String>,
+}
+
+/// The author chip's text: "You" for the person, the agent's name otherwise (owner, Q1 of brief
+/// 043: no name is stored for a person).
+pub fn author_chip(agent: Option<&str>) -> &str {
+    agent.unwrap_or(YOU)
 }
 
 /// The tab's state.
@@ -135,6 +158,14 @@ pub struct HistoryPanel {
     details: Option<(Sel, Value)>,
     pub steps_open: bool,
     steps: Vec<StepRow>,
+    /// The Steps list's rows grouped by session (brief 043), made with the rows.
+    groups: Vec<history::SessionGroup>,
+    /// Session groups shown expanded, by their newest step.
+    pub expanded: std::collections::BTreeSet<u64>,
+    /// The live agent session, kept from the banner ([`crate::Trial::history_agent_sync`]).
+    pub live: Option<LiveSession>,
+    /// Undo session was clicked on a group (run on the next frame).
+    pub undo_session: bool,
     steps_for: Option<(Sel, u64)>,
     steps_more: u64,
     pub dialog: Option<Dialog>,
@@ -287,8 +318,13 @@ impl HistoryPanel {
                 label: t.label.clone(),
                 author: history::author_text(&t.author),
                 time: history::short_time(t.time_ms, today),
+                agent: match &t.author {
+                    ecad_model::Author::Agent(n) => Some(n.clone()),
+                    ecad_model::Author::User => None,
+                },
             })
             .collect();
+        self.groups = history::sessions(&rows);
         self.steps_for = Some(want);
     }
 
@@ -659,7 +695,17 @@ impl HistoryPanel {
         let date =
             history::short_time(n.time_ms, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64));
         let date_w = painter.layout_no_wrap(date.clone(), font.clone(), color).size().x;
-        let room = (rect.right() - 4.0 - date_w - 8.0 - text_x).max(10.0);
+        // The row's author (brief 043): "You", or the agent's name in the `agent` colour.
+        let (who, who_ink) = match n.author.as_str() {
+            "" => (String::new(), ecad_ui::SHELL.text_3),
+            "you" => (YOU.to_string(), ecad_ui::SHELL.text_3),
+            a => (a.to_string(), ecad_ui::SHELL.agent),
+        };
+        let who_font = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::CAPTION);
+        let who_g = painter.layout_no_wrap(who, who_font, ecad_ui::color(who_ink));
+        let who_w = if who_g.size().x > 0.0 { who_g.size().x + 8.0 } else { 0.0 };
+        painter.galley(pos2(rect.right() - 4.0 - date_w - 8.0 - who_g.size().x, cy - who_g.size().y / 2.0), who_g, ecad_ui::color(who_ink));
+        let room = (rect.right() - 4.0 - date_w - 8.0 - who_w - text_x).max(10.0);
         let label = fit(&painter, &n.label, &font, room);
         let galley = if n.kind == NodeKind::Revision {
             painter.layout_no_wrap(label, egui::FontId::monospace(11.0), t.accent)
@@ -736,22 +782,79 @@ impl HistoryPanel {
             });
             if self.steps_open {
                 egui::ScrollArea::vertical().id_salt("ecad.history.stepslist").max_height(150.0).show(ui, |ui| {
-                    for r in self.steps.clone() {
-                        let text = format!("#{:<5} {}  {}  {}", r.seq, r.label, r.author, r.time);
-                        let picked = self.selected.as_ref().is_some_and(|s| s.branch == sel.branch && s.seq == r.seq && s.kind == NodeKind::Fork);
-                        let resp = ui.selectable_label(picked, RichText::new(text).small().monospace());
-                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Step {}: {}", r.seq, r.label)));
-                        if resp.clicked() {
-                            self.selected = Some(Sel { branch: sel.branch, seq: r.seq, kind: NodeKind::Fork, name: None });
-                            self.details = None;
-                        }
-                    }
+                    self.steps_list(ui, &sel);
                     if self.steps.len() as u64 >= history::STEPS_PAGE * (self.steps_more + 1) && ui.small_button("Older steps…").clicked() {
                         self.steps_more += 1;
                     }
                 });
             }
         });
+    }
+
+    /// The Steps list (brief 043): a session group collapses to one row with its author, count and
+    /// time span (and Undo session while it is live); every other step is one row with its author.
+    fn steps_list(&mut self, ui: &mut egui::Ui, sel: &Sel) {
+        let groups = self.groups.clone();
+        let mut i = 0;
+        for g in &groups {
+            let rows: Vec<StepRow> = self.steps.get(i..i + g.seqs.len()).map(<[StepRow]>::to_vec).unwrap_or_default();
+            i += g.seqs.len();
+            let key = g.seqs.first().copied().unwrap_or(0);
+            if g.is_session() {
+                let open = self.expanded.contains(&key);
+                let live = self.group_is_live(g);
+                let (toggle, undo) = group_row(ui, g, open, live);
+                if toggle && !self.expanded.remove(&key) {
+                    self.expanded.insert(key);
+                }
+                if undo {
+                    self.undo_session = true;
+                }
+                if !open {
+                    continue;
+                }
+            }
+            let indent = if g.is_session() { ecad_ui::tokens::space::XL } else { 0.0 };
+            for r in rows {
+                if self.step_row(ui, sel, &r, indent) {
+                    self.selected = Some(Sel { branch: sel.branch, seq: r.seq, kind: NodeKind::Fork, name: None });
+                    self.details = None;
+                }
+            }
+        }
+    }
+
+    /// One step: `#57  Wire W12  [author]  10-12 14:02`. Returns whether it was clicked.
+    fn step_row(&self, ui: &mut egui::Ui, sel: &Sel, r: &StepRow, indent: f32) -> bool {
+        let picked = self.selected.as_ref().is_some_and(|s| s.branch == sel.branch && s.seq == r.seq && s.kind == NodeKind::Fork);
+        let shell = ecad_ui::SHELL;
+        ui.horizontal(|ui| {
+            ui.add_space(indent);
+            let text = format!("#{:<5} {}", r.seq, r.label);
+            let resp = ui.selectable_label(picked, RichText::new(text).small().monospace());
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Step {}: {}", r.seq, r.label)));
+            author_pill(ui, r.agent.as_deref());
+            ui.label(RichText::new(&r.time).small().color(ecad_ui::color(shell.text_3)));
+            resp.clicked()
+        })
+        .inner
+    }
+
+    /// Whether `g` belongs to the live agent session (Undo session is offered on it).
+    pub fn group_is_live(&self, g: &history::SessionGroup) -> bool {
+        self.live
+            .as_ref()
+            .is_some_and(|l| matches!(&g.author, ecad_model::Author::Agent(n) if *n == l.agent) && g.ids.iter().any(|id| l.owned.contains(id)))
+    }
+
+    /// The Steps list's rows as read, grouped (tests).
+    pub fn groups(&self) -> &[history::SessionGroup] {
+        &self.groups
+    }
+
+    /// The step selected in the Steps list, if one is (its change is marked on the page).
+    pub fn selected_step(&self) -> Option<u64> {
+        self.selected.as_ref().filter(|s| s.kind == NodeKind::Fork).map(|s| s.seq)
     }
 
     fn dialogs(&mut self, ui: &mut egui::Ui, unsaved: u64, cur_name: &str, out: &mut Vec<Action>) {
@@ -958,4 +1061,59 @@ fn fit(p: &egui::Painter, text: &str, font: &egui::FontId, width: f32) -> String
         }
     }
     String::new()
+}
+
+/// An author chip: "You", or the agent's name in the `agent` tone. Its accessible name is
+/// `history.author: <name>`.
+fn author_pill(ui: &mut egui::Ui, agent: Option<&str>) {
+    let name = author_chip(agent);
+    let tone = if agent.is_some() { ecad_ui::prim::Tone::Agent } else { ecad_ui::prim::Tone::Neutral };
+    let r = ecad_ui::prim::pill(ui, name, tone);
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{AUTHOR}: {name}")));
+}
+
+/// A session group's row: chevron, the agent's chip, `14 changes · 20:31–20:44`, and Undo session
+/// while `live`. Returns (expand or collapse clicked, Undo session clicked).
+fn group_row(ui: &mut egui::Ui, g: &history::SessionGroup, open: bool, live: bool) -> (bool, bool) {
+    let shell = ecad_ui::SHELL;
+    let text = g.text();
+    let agent = match &g.author {
+        ecad_model::Author::Agent(n) => n.clone(),
+        ecad_model::Author::User => String::new(),
+    };
+    let rest = text.strip_prefix(agent.as_str()).map_or(text.as_str(), |r| r.trim_start_matches(" \u{b7} ")).to_string();
+    let mut undo = false;
+    let row = ui.horizontal(|ui| {
+        let chevron = if open { ecad_ui::Icon::ChevronDown } else { ecad_ui::Icon::ChevronRight };
+        let (icon, _) = ui.allocate_exact_size(vec2(ecad_ui::tokens::size::ICON, ecad_ui::tokens::size::ICON), Sense::hover());
+        ecad_ui::icons::paint(ui.painter(), icon, chevron, ecad_ui::color(shell.text_2));
+        author_pill(ui, Some(&agent));
+        ui.label(RichText::new(rest).small().color(ecad_ui::color(shell.text_2)));
+        let end = ui.min_rect().right();
+        if live {
+            let b = ui.add(ecad_ui::prim::Button::new("Undo session").kind(ecad_ui::prim::Kind::Danger).small());
+            b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, UNDO_SESSION));
+            undo = b.clicked();
+        }
+        end
+    });
+    // The row up to the button expands or collapses the group.
+    let r = row.response.rect;
+    let hit = egui::Rect::from_min_max(r.min, egui::pos2(row.inner.min(r.right()), r.bottom()));
+    let click = ui.interact(hit, egui::Id::unique(("ecad.history.session", g.seqs.first().copied().unwrap_or(0))), Sense::click());
+    click.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SESSION_GROUP}: {text}")));
+    (click.clicked() && !undo, undo)
+}
+
+impl crate::Trial {
+    /// History's side of the agent (brief 043), once per frame: run an Undo session clicked on a
+    /// group (the banner's own plan and confirmation), and keep the live session for the groups
+    /// (copied only when the banner's session, steps or last change moved).
+    pub(crate) fn history_agent_sync(&mut self) {
+        if std::mem::take(&mut self.panel.history.undo_session) {
+            self.agent_action(crate::agent::BannerAction::UndoSession);
+        }
+        let kept = self.panel.history.live.take();
+        self.panel.history.live = crate::agent::last_write::live_session(self, kept);
+    }
 }

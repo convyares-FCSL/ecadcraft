@@ -1,22 +1,26 @@
-//! The agent banner (brief 035, design §7): its data contract, its words and a minimal,
-//! unstyled rendering.
+//! The agent banner (brief 035, design §7; styled by brief 043, U4d): its data contract, its
+//! words, its styled strip in the shell's banner slot ([`show`]) and the plain one-line fallback
+//! ([`show_line`]).
 //!
 //! # Semantics
 //! - [`AgentBanner`] is the one value the trial keeps up to date ([`crate::Trial::agent_banner`]);
-//!   the UI redesign (U2) places and styles it, keeping these fields, the controls
-//!   ([`BannerAction`], through [`crate::Trial::agent_action`]) and the element names ([`ELEMENT`]
-//!   and the `agent.banner.*` names).
+//!   the shell places it in its 32 px banner slot (spec §2) and styles it ([`show`]), keeping these
+//!   fields, the controls ([`BannerAction`], through [`crate::Trial::agent_action`]) and the
+//!   element names ([`ELEMENT`] and the `agent.banner.*` names).
 //! - **Update map** (design §7.5): the banner changes only on `ecad.hello`, an accepted or refused
 //!   agent call, the write flash running out, hold start and end, Pause/Resume, Disconnect,
 //!   `ecad.bye`, the idle mark, access turned off, and Undo session; `steps` is recomputed only on
 //!   those and on an undo, redo or branch switch by anyone. A person's ordinary edit changes
-//!   nothing in it. Drawing it reads the value only.
+//!   nothing in it. Drawing it reads the value only (no project read).
+//! - The top bar's agent pill hides and shows the banner of the session shown ([`hidden`],
+//!   [`toggle_hidden`]); a new session shows it again.
 //!
-//! Excluded: the final look (colours, bar, placement) — the UI shell's (brief 038), which keeps
-//! this data contract and the element names.
+//! Excluded: ask-first mode, a chat, Agent access settings (042), several writing agents.
 
 use std::time::Instant;
 
+use ecad_ui::prim::{self, Kind, Tone};
+use ecad_ui::tokens::{Color, line, space, ui_type};
 use eframe::egui;
 
 /// The banner's element name.
@@ -30,6 +34,10 @@ pub const DISCONNECT: &str = "agent.banner.disconnect";
 pub const DISMISS: &str = "agent.banner.dismiss";
 /// The Undo session button's tooltip when nothing is left to undo.
 pub const NOTHING_TO_UNDO: &str = "Nothing of this session is left to undo";
+/// The Undo session button's reason while the person is in the middle of a command.
+pub const FINISH_FIRST: &str = "Finish the command first";
+/// The banner's ground: its state's colour at this opacity, %, over the panel.
+const GROUND_PERCENT: u8 = 8;
 
 /// The banner's state (design §7.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,8 +199,156 @@ fn named(r: &egui::Response, role: egui::Role, name: &str) {
     r.widget_info(|| egui::WidgetInfo::labeled(role, true, name));
 }
 
-/// Draw the banner as one plain line with existing widgets (in the Developer section, until the
-/// UI shell gives it its slot): the controls first, so they never move when the text changes, then
+/// The colour of a shown state (spec §2, design 035 §7.2): `agent` while it works, `warning`
+/// while a write waits or writes are paused, `text_2` when reading only or finished, `error` when
+/// access stopped.
+pub fn state_color(state: BannerState) -> Color {
+    let s = ecad_ui::SHELL;
+    match state {
+        BannerState::Connected | BannerState::Writing => s.agent,
+        BannerState::Held | BannerState::Paused => s.warning,
+        BannerState::ReadOnly | BannerState::Finished => s.text_2,
+        BannerState::Error => s.error,
+    }
+}
+
+/// The pill's tone for a shown state (the top bar's pill mirrors the banner).
+pub fn state_tone(state: BannerState) -> Tone {
+    match state {
+        BannerState::Connected | BannerState::Writing => Tone::Agent,
+        BannerState::Held | BannerState::Paused => Tone::Warning,
+        BannerState::ReadOnly | BannerState::Finished => Tone::Neutral,
+        BannerState::Error => Tone::Error,
+    }
+}
+
+/// `connected since 14:02` from the wall clock of the hello (ms since the epoch).
+pub fn since_text(since_ms: u64) -> String {
+    let t = clock(since_ms);
+    format!("connected since {}", t.get(..5).unwrap_or(&t))
+}
+
+/// The Undo session button's text: `Undo session (12)`.
+pub fn undo_text(steps: usize) -> String {
+    format!("Undo session ({steps})")
+}
+
+fn hidden_id() -> egui::Id {
+    egui::Id::unique("ecad.agent.banner.hidden")
+}
+
+/// Whether the person hid the banner of `session` with the top bar's agent pill.
+pub fn hidden(ctx: &egui::Context, session: &str) -> bool {
+    ctx.data(|d| d.get_temp::<String>(hidden_id())).is_some_and(|s| s == session)
+}
+
+/// Hide the banner of `session`, or show it again.
+pub fn toggle_hidden(ctx: &egui::Context, session: &str) {
+    let now = hidden(ctx, session);
+    ctx.data_mut(|d| {
+        if now {
+            d.remove::<String>(hidden_id());
+        } else {
+            d.insert_temp(hidden_id(), session.to_string());
+        }
+    });
+}
+
+/// A text in a UI type style and colour.
+fn text(ui: &mut egui::Ui, s: &str, style: ui_type::TypeStyle, c: Color) -> egui::Response {
+    ui.label(egui::RichText::new(s).font(ecad_ui::fonts::font(ui.ctx(), style)).color(ecad_ui::color(c)))
+}
+
+/// Draw the banner styled (spec §2: 32 px under the top bar), filling `ui`'s rect: a bar in the
+/// state's colour, the agent's name pill, "connected since", the state, the last write as a go-to
+/// to History, the last refusal and other readers; on the right Undo session (with its step
+/// count), Pause writes or Resume, Disconnect, and Dismiss once finished, as `ecad-ui` buttons.
+/// `since_ms`: the session's hello, wall clock. Returns the control clicked.
+pub fn show(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool, since_ms: Option<u64>) -> Option<BannerAction> {
+    let now = Instant::now();
+    let state = banner.shown_state(now);
+    let s = ecad_ui::SHELL;
+    let rect = ui.max_rect();
+    let ink = state_color(state);
+    // A soft ground in the state's colour, its bar on the left, a hairline under the strip.
+    let bar = egui::Rect::from_min_size(rect.min, egui::vec2(space::XS, rect.height()));
+    ui.painter().rect_filled(rect, 0.0, ecad_ui::color(s.panel));
+    ui.painter().rect_filled(rect, 0.0, ecad_ui::color(ink.at_percent(GROUND_PERCENT)));
+    ui.painter().rect_filled(bar, 0.0, ecad_ui::color(ink));
+    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    let mut out = None;
+    let inner = rect.shrink2(egui::vec2(space::L, 0.0));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::right_to_left(egui::Align::Center)));
+    let ui = &mut child;
+    let live = !matches!(state, BannerState::Finished | BannerState::Error);
+    // The controls on the right first, so they never move when the text changes.
+    ui.spacing_mut().item_spacing.x = space::S;
+    let (undo, pause, disconnect, dismiss) = banner.controls(now);
+    if dismiss {
+        let b = ui.add(prim::Button::new("Dismiss").kind(Kind::Quiet).small());
+        named(&b, egui::Role::Button, DISMISS);
+        if b.clicked() {
+            out = Some(BannerAction::Dismiss);
+        }
+    }
+    if disconnect {
+        let b = ui.add(prim::Button::new("Disconnect").kind(Kind::Quiet).small());
+        named(&b, egui::Role::Button, DISCONNECT);
+        if b.clicked() {
+            out = Some(BannerAction::Disconnect);
+        }
+    }
+    if pause {
+        let paused = state == BannerState::Paused;
+        let b = ui.add(prim::Button::new(if paused { "Resume" } else { "Pause writes" }).small());
+        named(&b, egui::Role::Button, PAUSE);
+        if b.clicked() {
+            out = Some(if paused { BannerAction::Resume } else { BannerAction::Pause });
+        }
+    }
+    if undo {
+        let label = undo_text(banner.steps);
+        let mut button = prim::Button::new(&label).kind(Kind::Danger).small();
+        if banner.steps == 0 {
+            button = button.disabled(NOTHING_TO_UNDO);
+        } else if busy {
+            button = button.disabled(FINISH_FIRST);
+        }
+        let b = ui.add(button);
+        named(&b, egui::Role::Button, UNDO);
+        if b.clicked() && banner.steps > 0 && !busy {
+            out = Some(BannerAction::UndoSession);
+        }
+    }
+    // The rest, left to right, in what is left.
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = space::M;
+        let who = prim::pill(ui, &banner.agent, state_tone(state));
+        named(&who, egui::Role::Label, ELEMENT);
+        if let Some(ms) = since_ms.filter(|_| live) {
+            text(ui, &since_text(ms), ui_type::SMALL, s.text_3);
+        }
+        let st = text(ui, &banner.state_text(state), ui_type::BODY_EMPHASIS, if live { s.text } else { ink });
+        named(&st, egui::Role::Label, STATE);
+        if let Some(l) = banner.last_text().filter(|_| live) {
+            let last = prim::read_value(ui, &l).on_hover_text("Open History at this change");
+            named(&last, egui::Role::Link, LAST);
+            if last.clicked() {
+                out = Some(BannerAction::OpenLast);
+            }
+        }
+        if let Some(r) = &banner.last_refusal {
+            text(ui, &format!("refused: {r}"), ui_type::SMALL, s.error);
+        }
+        if banner.others > 0 {
+            prim::badge(ui, format!("+{} reading", banner.others), Tone::Neutral);
+        }
+    });
+    out
+}
+
+/// Draw the banner as one plain line with egui's own widgets (035's first rendering, kept as the
+/// fallback; the shell draws [`show`]): the controls first, so they never move when the text changes, then
 /// the agent, its state, the last change (a link to History) and the rest. Returns the control
 /// clicked.
 pub fn show_line(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool) -> Option<BannerAction> {

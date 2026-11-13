@@ -114,7 +114,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
         t.open_release(None);
     }
     if agent {
-        t.toggle_text_panel();
+        // With an agent shown the pill hides or shows its banner (brief 043); without one it opens
+        // the Text panel, where Agent access is set until Settings has it (042).
+        match t.agent.banner.as_ref().map(|b| b.session.clone()) {
+            Some(session) => crate::agent::banner::toggle_hidden(ui.ctx(), &session),
+            None => t.toggle_text_panel(),
+        }
     }
     for a in actions {
         t.panel_action(a);
@@ -129,18 +134,22 @@ fn clickable_pill(ui: &mut egui::Ui, text: &str, tone: Tone, label: &str, hover:
     c.on_hover_text(hover).clicked()
 }
 
-/// The agent pill: the bridge's state (off when agent access is off).
+/// The agent pill: the agent's name in its state's tone while one is shown (brief 043: it mirrors
+/// the banner; a click hides or shows the banner), else the bridge's state (off when agent access
+/// is off).
 fn agent_pill(ui: &mut egui::Ui, t: &Trial) -> Option<bool> {
-    let connected = t.agent.banner.is_some();
     let off = t.agent.pref.mode == ecad_cadcraft::agent_access::Mode::Off && !t.agent.this_run;
-    let (text, tone) = if connected {
-        ("Agent connected".to_string(), Tone::Agent)
+    let (text, tone, hover) = if let Some(b) = &t.agent.banner {
+        let state = b.shown_state(std::time::Instant::now());
+        let hidden = crate::agent::banner::hidden(ui.ctx(), &b.session);
+        let hover = if hidden { "Show the agent banner" } else { "Hide the agent banner" };
+        (format!("Agent {}", b.agent), crate::agent::banner::state_tone(state), hover.to_string())
     } else if off {
-        ("Agent off".to_string(), Tone::Neutral)
+        ("Agent off".to_string(), Tone::Neutral, t.agent.status_text())
     } else {
-        ("Agent ready".to_string(), Tone::Neutral)
+        ("Agent ready".to_string(), Tone::Neutral, t.agent.status_text())
     };
-    Some(clickable_pill(ui, &text, tone, AGENT_PILL, &t.agent.status_text()))
+    Some(clickable_pill(ui, &text, tone, AGENT_PILL, &hover))
 }
 
 impl Trial {
