@@ -425,3 +425,16 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
     assert!(props.contains(&ecad_model::ObjectRef::Component(a)));
     assert!(entry(&h.doc()).symbols[0].update, "update available");
 }
+
+#[test]
+fn makesymbol_refusal_names_the_wire_it_cannot_take() {
+    let mut h = H::new(4816);
+    let page = h.first_page();
+    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(100.0, 100.0), (150.0, 100.0)])})).unwrap(), "conductor");
+    h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-05"})).unwrap();
+    let route = h.route_handle(page, w).hex();
+    let before = h.head();
+    let e = h.run("makesymbol", json!({"handles": [route], "name": "X", "key": "x1"})).unwrap_err();
+    assert_eq!(e, "Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.");
+    assert_eq!(h.head(), before);
+}

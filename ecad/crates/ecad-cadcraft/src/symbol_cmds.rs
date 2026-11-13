@@ -463,8 +463,17 @@ fn mm(d: f64) -> String {
     if r.fract() == 0.0 { format!("{r:.0}") } else { format!("{r}") }
 }
 
+/// A wire as people read it: its net's number (`24V-05`), else its tag, else its short ID.
+fn wire_number(doc: &Document, c: ConductorId) -> String {
+    let conn = doc.connectivity();
+    conn.net_of_conductor(c)
+        .and_then(|n| conn.net(n))
+        .and_then(|n| ecad_model::wiring::net_number(doc, n))
+        .unwrap_or_else(|| crate::slash::wire_name(doc, c))
+}
+
 fn wire_words(doc: &Document, t: TerminalId) -> String {
-    let names: Vec<String> = doc.ends_at(t).iter().take(3).map(|(c, _)| crate::slash::wire_name(doc, *c)).collect();
+    let names: Vec<String> = doc.ends_at(t).iter().take(3).map(|(c, _)| wire_number(doc, *c)).collect();
     match names.len() {
         0 => String::new(),
         1 => format!("wire {}", names.join("")),
@@ -964,6 +973,7 @@ fn run_makesymbol(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             for h in hs {
                 match map.get(h) {
                     Some(Mapped::Item(i)) if doc.representation_of_item(i).is_none() => items.push(i),
+                    Some(Mapped::Item(i)) => return Err(not_plain(doc, i)),
                     Some(_) => return Err("Make symbol takes lines, arcs and text; part of the selection already has a meaning.".into()),
                     None => return Err("The selection holds an object this page does not know.".into()),
                 }
@@ -1014,6 +1024,18 @@ fn run_makesymbol(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             Ok(v)
         }
     })
+}
+
+/// The refusal for item `i` of a selection that has a meaning (design 048 §9.5), naming its
+/// object: `Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.`
+fn not_plain(doc: &Document, i: ItemId) -> String {
+    let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
+        Some(Subject::Conductor(c)) => format!("Wire {}", wire_number(doc, c)),
+        Some(Subject::Component(c)) => crate::devices::tag_words(doc, c),
+        Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
+        None => "Part of the selection".to_string(),
+    };
+    format!("{what} is not plain geometry; Make symbol takes lines, arcs and text.")
 }
 
 /// Promote drawn component `c` (design 048 §4.2, §5.4): its drawn representation becomes a
