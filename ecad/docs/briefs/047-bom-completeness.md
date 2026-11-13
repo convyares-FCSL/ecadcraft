@@ -1,6 +1,6 @@
 # Brief 047: BOM completeness
 
-Status: Draft (designer, 2026-11-13; owner questions in design 047 §15, format proposals in §14)
+Status: Draft (designer, 2026-11-13; FP1–FP6 approved by the overseer 2026-11-13, design §14; owner questions in §15 open)
 Branch: `feature/bom-completeness`, from `origin/dev` `be6f4413`.
 Designer: **yes** (`docs/design/047.md`) · Size: M
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.12**, lane U, after 1.8 (graphical
