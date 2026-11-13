@@ -1,7 +1,7 @@
 # Brief 049: Continuation cross-references
 
-Status: Draft (designer, 2026-11-13). Waits on the owner questions in design §13 and the overseer's
-FP1–FP5 (design §12).
+Status: Draft (designer, 2026-11-13). FP1–FP5 approved by the overseer (2026-11-13, design §12.1).
+Waits on the owner questions in design §13.
 Branch: `feature/continuation-refs`, from `origin/dev` `f26c8f53`.
 Designer: **yes** (`docs/design/049.md`) · Size: M (the roadmap's estimate)
 Roadmap: `docs/discussions/roadmap-review-2026-11.md` M1 item **1.9**, lane **D**, after 1.3 PLC
