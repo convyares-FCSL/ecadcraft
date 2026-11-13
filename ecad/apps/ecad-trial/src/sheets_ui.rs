@@ -365,8 +365,11 @@ impl ProjectProps {
         let max_body = (ctx.content_rect().height() * 0.55).max(200.0);
         egui::Window::new(title).id(egui::Id::unique(id)).collapsible(false).resizable(false).default_width(420.0).open(&mut open).show(ctx, |ui| {
             // Brief 031: the Text section makes the settings taller than a small window; the
-            // fields scroll, OK and Cancel stay in view.
-            egui::ScrollArea::vertical().max_height(max_body).auto_shrink([false, true]).show(ui, |ui| {
+            // fields scroll, OK and Cancel stay in view. The fields take their own height up to
+            // `max_body`, not the height the window had last frame: an auto-sized window offers
+            // its last size as the room left, so the row under the fields would overflow it and
+            // the window would grow by that row every frame (U2 follow-up).
+            egui::ScrollArea::vertical().max_height(max_body).min_scrolled_height(max_body).auto_shrink([false, true]).show(ui, |ui| {
                 if info {
                     egui::Grid::new("ecad.projectprops.grid").num_columns(2).show(ui, |ui| {
                         for (k, label) in FIELDS {
