@@ -820,7 +820,7 @@ impl StripData {
             .links
             .iter()
             .filter(|l| l.span > 0 && l.first <= pi && pi <= l.last && l.runs_on(r.level))
-            .map(|l| (l, l.labels.iter().any(|y| *y == r.label) && l.names_level(r.level)))
+            .map(|l| (l, l.labels.contains(&r.label) && l.names_level(r.level)))
             .collect()
     }
 

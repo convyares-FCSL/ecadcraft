@@ -59,15 +59,19 @@ fn level_text(k: &str) -> Option<(u32, Option<char>)> {
     (1..=MAX_LEVEL).contains(&n).then_some((n, point))
 }
 
+/// An endpoint whose tail looks like a level but is none (`1.0`, `1.999`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BadLevel;
+
 /// An endpoint split into its position and level (brief 036 §5.1): the last `.digits` (+ `i`/`o`)
 /// is the level. `Err` when that tail looks like a level but is not one (`1.0`, `1.999`).
-pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), ()> {
+pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), BadLevel> {
     let Some((pos, tail)) = end.rsplit_once('.') else { return Ok((end, None)) };
     let core = tail.strip_suffix(['i', 'o']).unwrap_or(tail);
     if pos.is_empty() || core.is_empty() || !core.bytes().all(|b| b.is_ascii_digit()) {
         return Ok((end, None));
     }
-    level_text(tail).map(|l| (pos, Some(l))).ok_or(())
+    level_text(tail).map(|l| (pos, Some(l))).ok_or(BadLevel)
 }
 
 /// The natural sort key of a label: digit runs compare as numbers (`2` before `10`).
@@ -169,8 +173,8 @@ pub fn parse(text: &str) -> Result<Positions, String> {
                 if b.contains('-') {
                     return Err(refusal(text));
                 }
-                let (pa, la) = split_level(&a).map_err(|()| level_refusal(&a))?;
-                let (pb, lb) = split_level(&b).map_err(|()| level_refusal(&b))?;
+                let (pa, la) = split_level(&a).map_err(|_| level_refusal(&a))?;
+                let (pb, lb) = split_level(&b).map_err(|_| level_refusal(&b))?;
                 if pa != pb && la.unwrap_or((1, None)).0 != lb.unwrap_or((1, None)).0 {
                     return Err(format!(
                         "\"{a}-{b}\" joins different levels at different positions. Write {pa}.1-{pb}.1, or {pa}.1-{pa}.2 for levels of one position."
@@ -185,7 +189,7 @@ pub fn parse(text: &str) -> Result<Positions, String> {
             }
             None => {
                 let l = label(part, text)?;
-                split_level(&l).map_err(|()| level_refusal(&l))?;
+                split_level(&l).map_err(|_| level_refusal(&l))?;
                 items.push(Item::One(l));
             }
         }

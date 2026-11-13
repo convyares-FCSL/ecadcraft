@@ -131,21 +131,21 @@ fn run_termlabel(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             let to = if m == "next" { chooser.choose(doc, Some(c), ty, Some(n), None)? } else { chooser.choose(doc, Some(c), ty, None, None)? };
             ops.extend(relabel_ops(doc, &who, &to).0);
             message = format!("Moved {tag}:{pos} level {n} to position {to}.");
-        } else if let Some(q) = &position {
-            if q != &pos {
-                position_ok(q)?;
-                if positions.iter().any(|x| &x.label == q) {
-                    return Err(format!("{tag} already has a position {q}. Pick another label, or swap them with Renumber."));
-                }
-                let ts: Vec<TerminalId> = here.terminals().collect();
-                let (rel, _) = relabel_ops(doc, &ts, q);
-                let (follow, fl) = crate::accessories::renumber_ops(doc, &rel);
-                ops.extend(rel);
-                ops.extend(follow);
-                lines.extend(fl);
-                let levels = here.levels.len();
-                message = format!("{tag}:{pos} is now {tag}:{q} ({levels} level{}).", if levels == 1 { "" } else { "s" });
+        } else if let Some(q) = &position
+            && q != &pos
+        {
+            position_ok(q)?;
+            if positions.iter().any(|x| &x.label == q) {
+                return Err(format!("{tag} already has a position {q}. Pick another label, or swap them with Renumber."));
             }
+            let ts: Vec<TerminalId> = here.terminals().collect();
+            let (rel, _) = relabel_ops(doc, &ts, q);
+            let (follow, fl) = crate::accessories::renumber_ops(doc, &rel);
+            ops.extend(rel);
+            ops.extend(follow);
+            lines.extend(fl);
+            let levels = here.levels.len();
+            message = format!("{tag}:{pos} is now {tag}:{q} ({levels} level{}).", if levels == 1 { "" } else { "s" });
         }
         if let Some(t) = &text {
             // After a relabel the level's key is under the new position.
