@@ -1,6 +1,6 @@
 # Brief 051: PLC visuals and the rack overview
 
-Status: Draft
+Status: Approved
 Branch: `feature/plc-visuals`, from `origin/dev` `83300e3b` (045 merged).
 Designer: **yes** (`docs/design/051.md`) · Size: L
 Roadmap: follows M1 item **1.3** (045). Brings forward the visible part of 2.8 that 045 deferred:
@@ -120,3 +120,6 @@ rule on the feature PR; the screenshots are the owner's evidence.
 ## Needs owner check
 
 Design §13 questions 1–17, and the composites of design §10.2.
+
+**Owner (Carl, 2026-11-13):** all 17 questions of design §13 answered "as recommended". FP1–FP5
+(design §11) approved. The composites of design §10.2 remain the owner's check on the PR.
