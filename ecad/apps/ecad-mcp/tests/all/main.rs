@@ -5,6 +5,7 @@
 
 mod accessories_contracts;
 mod cable_command_contracts;
+mod connect_contracts;
 mod demo;
 mod history_contracts;
 mod library_contracts;

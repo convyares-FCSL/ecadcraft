@@ -155,6 +155,8 @@ pub struct Agent {
     seen_log: Option<(String, usize)>,
     /// A warning about the preference file, said once.
     pending_warning: Option<&'static str>,
+    /// How long a write waits while the person is busy ([`AGENT_HOLD`]; tests shorten it).
+    pub hold: Duration,
 }
 
 impl Agent {
@@ -183,10 +185,22 @@ impl Agent {
             undo_confirm: None,
             seen_log: None,
             pending_warning: loaded.warning,
+            hold: AGENT_HOLD,
         }
     }
 
     /// Give `CadApp`'s channel's sender (the allowlisted reads go there).
+    /// Read the preference from `settings` instead (tests keep their own folder).
+    pub fn use_settings(&mut self, settings: Settings) {
+        let loaded = agent_access::load(&settings);
+        self.settings = settings;
+        if !self.this_run {
+            self.pref = loaded.preference;
+            self.port_text = loaded.preference.port.to_string();
+        }
+        self.pending_warning = loaded.warning;
+    }
+
     pub fn set_cad_channel(&mut self, tx: SyncSender<ControlRequest>) {
         self.cad_tx = Some(tx);
     }
@@ -507,7 +521,7 @@ impl Trial {
                 && self.agent.on()
                 && let Some(said) = &busy
             {
-                if w.since.elapsed() < AGENT_HOLD {
+                if w.since.elapsed() < self.agent.hold {
                     if let Some(s) = session {
                         blocked.push(s);
                     }

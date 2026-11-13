@@ -130,3 +130,54 @@ pub fn launch_and_wait(port: u16) -> Result<(), String> {
         "ECAD was started but its port {port} did not answer within 30 s; if ECAD was already open without agent access, turn it on in ECAD Dev."
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_trial_is_found_by_env_then_beside_then_on_path() {
+        let name = trial_file_name();
+        let exe = Path::new("/opt/ecad/bin/ecad-mcp");
+        let beside = Path::new("/opt/ecad/bin").join(name);
+        let on_path = Path::new("/usr/local/bin").join(name);
+        let path = std::env::join_paths([Path::new("/nowhere"), Path::new("/usr/local/bin")]).ok();
+        let all = |p: &Path| p == beside || p == on_path || p == Path::new("/x/trial");
+        assert_eq!(find_trial(Some("/x/trial".into()), Some(exe), path.clone(), all), Some(PathBuf::from("/x/trial")));
+        assert_eq!(find_trial(Some("/missing".into()), Some(exe), path.clone(), all), None, "a wrong ECAD_TRIAL is not second-guessed");
+        assert_eq!(find_trial(None, Some(exe), path.clone(), all), Some(beside.clone()));
+        assert_eq!(find_trial(None, Some(exe), path.clone(), |p| p == on_path), Some(on_path.clone()));
+        assert_eq!(find_trial(None, Some(exe), path, |_| false), None);
+    }
+
+    #[test]
+    fn arguments_and_display() {
+        assert_eq!(trial_args(47823, None), ["--control", "47823"]);
+        assert_eq!(trial_args(47823, Some("a.ecad")), ["--control", "47823", "a.ecad"]);
+        if cfg!(windows) {
+            assert!(has_display(None, None));
+        } else {
+            assert!(!has_display(None, None));
+            assert!(!has_display(Some("".into()), None));
+            assert!(has_display(Some(":0".into()), None));
+            assert!(has_display(None, Some("wayland-0".into())));
+        }
+        // Null stdio: nothing of the window reaches the MCP stream (checked by the command's
+        // own debug form, which names the program and arguments only; the stdio is set in
+        // `command`, covered by the manual spawn test).
+        let c = command(Path::new("ecad-trial"), &trial_args(1, None));
+        assert_eq!(c.get_program(), "ecad-trial");
+    }
+
+    /// The real spawn, by hand: needs a built trial and a display, and `ECAD_TEST_LAUNCH` set, so
+    /// an `--include-ignored` run never opens a window.
+    #[test]
+    #[ignore = "manual: starts the ECAD window (needs a built ecad-trial, a display and ECAD_TEST_LAUNCH)"]
+    fn launch_opens_the_window_by_hand() {
+        if std::env::var_os("ECAD_TEST_LAUNCH").is_none() {
+            return;
+        }
+        let port = 47900;
+        assert!(launch_and_wait(port).is_ok());
+    }
+}

@@ -197,56 +197,61 @@ pub fn show(ctx: &egui::Context, banner: &AgentBanner, at: egui::Pos2, busy: boo
     let mut out = None;
     egui::Area::new(egui::Id::unique(ELEMENT)).fixed_pos(at).order(egui::Order::Foreground).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let state = banner.shown_state(now);
-                let strip = ui.label(format!("Agent {}", banner.agent));
-                named(&strip, egui::Role::Label, ELEMENT);
-                let st = ui.label(banner.state_text(state));
-                named(&st, egui::Role::Label, STATE);
-                if let Some(l) = banner.last_text().filter(|_| !matches!(state, BannerState::Finished | BannerState::Error)) {
-                    let last = ui.link(l);
-                    named(&last, egui::Role::Link, LAST);
-                    if last.clicked() {
-                        out = Some(BannerAction::OpenLast);
+            let state = banner.shown_state(now);
+            // Two rows, the controls on the second, so they never move when the text changes.
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    let strip = ui.label(format!("Agent {}", banner.agent));
+                    named(&strip, egui::Role::Label, ELEMENT);
+                    let st = ui.label(banner.state_text(state));
+                    named(&st, egui::Role::Label, STATE);
+                    if let Some(l) = banner.last_text().filter(|_| !matches!(state, BannerState::Finished | BannerState::Error)) {
+                        let last = ui.link(l);
+                        named(&last, egui::Role::Link, LAST);
+                        if last.clicked() {
+                            out = Some(BannerAction::OpenLast);
+                        }
                     }
-                }
-                let rest = banner.text(now);
-                let tail: Vec<&str> =
-                    rest.split(" · ").filter(|p| p.ends_with(" steps") || p.starts_with("refused: ") || p.ends_with(" reading")).collect();
-                if !tail.is_empty() {
-                    ui.label(tail.join(" · "));
-                }
-                let (undo, pause, disconnect, dismiss) = banner.controls(now);
-                if undo {
-                    let b = ui.add_enabled(banner.steps > 0 && !busy, egui::Button::new("Undo session"));
-                    named(&b, egui::Role::Button, UNDO);
-                    let b = if banner.steps == 0 { b.on_disabled_hover_text(NOTHING_TO_UNDO) } else { b };
-                    if b.clicked() {
-                        out = Some(BannerAction::UndoSession);
+                    let rest = banner.text(now);
+                    let tail: Vec<&str> =
+                        rest.split(" · ").filter(|p| p.ends_with(" steps") || p.starts_with("refused: ") || p.ends_with(" reading")).collect();
+                    if !tail.is_empty() {
+                        ui.label(tail.join(" · "));
                     }
-                }
-                if pause {
-                    let paused = state == BannerState::Paused;
-                    let b = ui.button(if paused { "Resume" } else { "Pause" });
-                    named(&b, egui::Role::Button, PAUSE);
-                    if b.clicked() {
-                        out = Some(if paused { BannerAction::Resume } else { BannerAction::Pause });
+                });
+                ui.horizontal(|ui| {
+                    let (undo, pause, disconnect, dismiss) = banner.controls(now);
+                    if undo {
+                        let b = ui.add_enabled(banner.steps > 0 && !busy, egui::Button::new("Undo session"));
+                        named(&b, egui::Role::Button, UNDO);
+                        let b = if banner.steps == 0 { b.on_disabled_hover_text(NOTHING_TO_UNDO) } else { b };
+                        if b.clicked() {
+                            out = Some(BannerAction::UndoSession);
+                        }
                     }
-                }
-                if disconnect {
-                    let b = ui.button("Disconnect");
-                    named(&b, egui::Role::Button, DISCONNECT);
-                    if b.clicked() {
-                        out = Some(BannerAction::Disconnect);
+                    if pause {
+                        let paused = state == BannerState::Paused;
+                        let b = ui.button(if paused { "Resume" } else { "Pause" });
+                        named(&b, egui::Role::Button, PAUSE);
+                        if b.clicked() {
+                            out = Some(if paused { BannerAction::Resume } else { BannerAction::Pause });
+                        }
                     }
-                }
-                if dismiss {
-                    let b = ui.button("Dismiss");
-                    named(&b, egui::Role::Button, DISMISS);
-                    if b.clicked() {
-                        out = Some(BannerAction::Dismiss);
+                    if disconnect {
+                        let b = ui.button("Disconnect");
+                        named(&b, egui::Role::Button, DISCONNECT);
+                        if b.clicked() {
+                            out = Some(BannerAction::Disconnect);
+                        }
                     }
-                }
+                    if dismiss {
+                        let b = ui.button("Dismiss");
+                        named(&b, egui::Role::Button, DISMISS);
+                        if b.clicked() {
+                            out = Some(BannerAction::Dismiss);
+                        }
+                    }
+                });
             });
         });
     });

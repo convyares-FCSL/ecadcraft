@@ -212,6 +212,9 @@ Nothing was changed. Restart it with --write to let the agent edit and save the 
 
 /// Said when the command is refused in every mode.
 pub fn never(id: &str) -> String {
+    if id == "agentaccess" {
+        return AGENT_ACCESS.into();
+    }
     format!(
         "Refused: {} is not available to agents. Opening, creating, closing and saving projects under another name, \
          and reading or writing other files, stay with the person who started the server; save the project with the \
@@ -245,9 +248,6 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
         && let Some(k) = FILE_KEYS.iter().find(|k| o.get(**k).is_some_and(|v| !v.is_null()))
     {
         return Err(file_key(id, k));
-    }
-    if id == "agentaccess" {
-        return Err(AGENT_ACCESS.into());
     }
     if NEVER_COMMANDS.contains(&id) {
         return Err(never(id));
