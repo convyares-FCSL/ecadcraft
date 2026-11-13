@@ -70,7 +70,7 @@ fn b_a_category_change_patches_and_rebuilds_none() {
 /// button are named.
 #[test]
 fn a09_the_catalogue_strip_and_the_header_are_named() {
-    let mut h = shown_standards();
+    let h = shown_standards();
     let missing: Vec<String> = ["defaults", "text", "location", "frame"]
         .iter()
         .map(|w| format!("ecad.standards.catalogue.{w}"))

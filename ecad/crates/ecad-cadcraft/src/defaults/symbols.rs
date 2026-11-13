@@ -57,7 +57,8 @@ macro_rules! prefixes {
             match key {
                 $($key => Some(&$name),)*
                 // Brief 036: the multi-level terminal starters register theirs as `terminal.<key>.prefix`.
-                _ => super::terminals::prefix_entry(key),
+                // Brief 045: its new starters register theirs as `plc.<key>.prefix`.
+                _ => super::terminals::prefix_entry(key).or_else(|| super::plc::prefix_entry(key)),
             }
         }
     };
@@ -177,16 +178,33 @@ mod tests {
             let e = prefix_entry(s.key);
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
             // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
-            let area = if crate::terminal_types::is_level_starter(s.key) { "terminal" } else { "symbol" };
+            // Brief 045: its new starters' prefixes are in the `plc` area.
+            let plc = super::super::plc::prefix_entry(s.key).is_some();
+            let area = if crate::terminal_types::is_level_starter(s.key) {
+                "terminal"
+            } else if plc {
+                "plc"
+            } else {
+                "symbol"
+            };
             if let Some(e) = e {
                 assert_eq!(e.key, format!("{area}.{}.prefix", s.key));
-                let list = if area == "terminal" { super::super::terminals::ENTRIES } else { ENTRIES };
+                let list = match area {
+                    "terminal" => super::super::terminals::ENTRIES,
+                    "plc" => super::super::plc::ENTRIES,
+                    _ => ENTRIES,
+                };
                 assert!(list.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
             }
         }
         assert_eq!(
             ENTRIES.len(),
-            STARTERS.iter().filter(|s| s.kind != SymbolKind::Tagless && !crate::terminal_types::is_level_starter(s.key)).count()
+            STARTERS
+                .iter()
+                .filter(|s| s.kind != SymbolKind::Tagless
+                    && !crate::terminal_types::is_level_starter(s.key)
+                    && super::super::plc::prefix_entry(s.key).is_none())
+                .count()
         );
     }
 

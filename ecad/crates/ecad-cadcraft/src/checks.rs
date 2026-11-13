@@ -145,6 +145,28 @@ pub enum Kind {
     UnknownColour,
     /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
     DashesLeftOut,
+    /// Brief 045 (design 045 §9): two cards in one slot of a rack.
+    SlotTwice,
+    /// A card naming a rack that is not in the project.
+    RackMissing,
+    /// A card in a slot its rack does not have (or in a rack but no slot).
+    SlotRange,
+    /// PLC cards in no rack (one count row).
+    Unracked,
+    /// Brief 045b: one channel drawn twice.
+    ChannelTwice,
+    /// A channel drawn beyond its card's channel count.
+    ChannelOver,
+    /// A channel drawn by a symbol of another card type.
+    ChannelType,
+    /// Two cards' address blocks overlap.
+    AddressOverlap,
+    /// One address given to two channels (one typed).
+    AddressTwice,
+    /// A block past byte 65 535.
+    AddressOverflow,
+    /// Used channels with no address (one count row).
+    NoAddress,
     /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
     ConnectorPinTwice,
     /// A connector whose whole halves are of two families.
@@ -182,7 +204,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 59] = [
+    pub const ALL: [Kind; 70] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -226,6 +248,17 @@ impl Kind {
         Kind::NoFuseRating,
         Kind::UnknownColour,
         Kind::DashesLeftOut,
+        Kind::SlotTwice,
+        Kind::RackMissing,
+        Kind::SlotRange,
+        Kind::Unracked,
+        Kind::ChannelTwice,
+        Kind::ChannelOver,
+        Kind::ChannelType,
+        Kind::AddressOverlap,
+        Kind::AddressTwice,
+        Kind::AddressOverflow,
+        Kind::NoAddress,
         Kind::ConnectorPinTwice,
         Kind::ConnectorFamily,
         Kind::ConnectorSize,
@@ -290,6 +323,17 @@ impl Kind {
             Kind::NoFuseRating => "no-fuse-rating",
             Kind::UnknownColour => "unknown-colour",
             Kind::DashesLeftOut => "dashes-left-out",
+            Kind::SlotTwice => "slot-twice",
+            Kind::RackMissing => "rack-missing",
+            Kind::SlotRange => "slot-range",
+            Kind::Unracked => "unracked",
+            Kind::ChannelTwice => "channel-twice",
+            Kind::ChannelOver => "channel-over",
+            Kind::ChannelType => "channel-type",
+            Kind::AddressOverlap => "address-overlap",
+            Kind::AddressTwice => "address-twice",
+            Kind::AddressOverflow => "address-overflow",
+            Kind::NoAddress => "no-address",
             Kind::ConnectorPinTwice => "connector-pin-twice",
             Kind::ConnectorFamily => "connector-family",
             Kind::ConnectorSize => "connector-size",
@@ -360,6 +404,17 @@ impl Kind {
             Kind::NoFuseRating => "Fuse positions without a rating",
             Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
             Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
+            Kind::SlotTwice => "Two cards in one slot",
+            Kind::RackMissing => "Card names a rack that is not in the project",
+            Kind::SlotRange => "Card in a slot its rack does not have",
+            Kind::Unracked => "PLC cards in no rack",
+            Kind::ChannelTwice => "Channel drawn twice",
+            Kind::ChannelOver => "Channel beyond the card's count",
+            Kind::ChannelType => "Channel drawn as another card type",
+            Kind::AddressOverlap => "Address blocks overlap",
+            Kind::AddressTwice => "Address given twice",
+            Kind::AddressOverflow => "Address block past byte 65535",
+            Kind::NoAddress => "Used channels with no address",
             Kind::ConnectorPinTwice => "Connector pin drawn twice on one half",
             Kind::ConnectorFamily => "Connector halves of two families",
             Kind::ConnectorSize => "Connector halves of two sizes",
@@ -387,6 +442,8 @@ impl Kind {
             | Kind::DuplicateTag
             | Kind::TerminalTwice
             | Kind::LevelTwice
+            | Kind::SlotTwice
+            | Kind::ChannelTwice
             | Kind::ConnectorPinTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
@@ -412,6 +469,13 @@ impl Kind {
             | Kind::PositionMixed
             | Kind::LevelMissing
             | Kind::DashesLeftOut
+            | Kind::RackMissing
+            | Kind::SlotRange
+            | Kind::ChannelOver
+            | Kind::ChannelType
+            | Kind::AddressOverlap
+            | Kind::AddressTwice
+            | Kind::AddressOverflow
             | Kind::ConnectorFamily
             | Kind::ConnectorSize
             | Kind::ArticleConflict
@@ -484,6 +548,9 @@ pub enum Fix {
     /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).
     FuseDevices,
+    /// Brief 045 (design 045 §9): a PLC row's buttons, from the kept PLC model
+    /// ([`crate::plc::Plc::fix_commands`]).
+    Plc(ComponentId, crate::plc::PlcFix),
     /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
     ConnectorNextPin(TerminalId),
     /// Brief 044: **Set pins to n** (`setprop pins`).

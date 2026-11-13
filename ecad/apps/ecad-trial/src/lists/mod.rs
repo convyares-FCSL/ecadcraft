@@ -6,6 +6,7 @@
 //! - [`devices`]: Devices: tag and description set here, function, location, symbol, pages, part
 //!   and state read.
 //! - [`terminals`]: the terminal manager, mirrored (inside | strip | outside) on 036's row model.
+//! - [`plc`]: Lists ▸ I/O, read only (brief 045c).
 //!
 //! The shell (U2) places each view through [`show`], one call per tab. Until it lands, today's
 //! hosts call the same views: the Project panel's Checks and Devices tabs
@@ -17,6 +18,7 @@
 
 pub mod checks;
 pub mod devices;
+pub mod plc;
 pub mod standards;
 pub mod style_catalogues;
 pub mod terminals;
@@ -29,6 +31,8 @@ pub enum Tab {
     Checks,
     Devices,
     Terminals,
+    /// Brief 045c: Lists ▸ I/O.
+    Io,
 }
 
 /// What a list view asks the trial for.
@@ -48,6 +52,7 @@ pub struct Lists<'a> {
     pub checks: &'a mut crate::checks_panel::ChecksPanel,
     pub devices: &'a mut crate::devices_panel::DevicesPanel,
     pub terminals: &'a mut terminals::TerminalsView,
+    pub io: &'a mut plc::IoView,
 }
 
 /// Draw list view `tab` (one call per view, for U2's slots; design §12 O4). `writable`: the
@@ -57,6 +62,7 @@ pub fn show(ui: &mut eframe::egui::Ui, tab: Tab, lists: Lists<'_>, writable: boo
         Tab::Checks => lists.checks.show(ui, writable).into_iter().map(ListAction::Panel).collect(),
         Tab::Devices => lists.devices.show(ui, writable).into_iter().map(ListAction::Panel).collect(),
         Tab::Terminals => lists.terminals.show(ui, writable),
+        Tab::Io => lists.io.show(ui),
     }
 }
 

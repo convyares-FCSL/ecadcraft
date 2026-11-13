@@ -242,13 +242,20 @@ fn cable_schedule(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
 }
 
 /// The generated lists, in folder order. The book, `checks` and the manifest are always written.
-pub const LISTS: [Slot; 5] = [
+pub const LISTS: [Slot; 6] = [
     Slot { id: "bom", suffix: " BOM.csv", build: bom, missing_why: "" },
     Slot { id: "wires", suffix: " wires.csv", build: wires, missing_why: "" },
     Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
     Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: NO_STRIPS },
     Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
+    // Brief 045c (design 045 §8.3): ` IO list.csv` (a `/` cannot be in a file name).
+    Slot { id: "io-list", suffix: " IO list.csv", build: io_list, missing_why: crate::plc::iolist::NO_CARDS },
 ];
+
+/// Brief 045's I/O list, when the project has a card with channels.
+fn io_list(doc: &Document, o: &Outputs) -> Result<Option<Table>, String> {
+    Ok(crate::plc::iolist::csv_table(doc, &o.plc))
+}
 
 /// Whether `slot` gives a list for `doc` (the check's Writes line, before anything is built):
 /// brief 028's lists only when the project has strips or cables.
@@ -256,6 +263,7 @@ fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
         "terminal-plan" => doc.components.keys().any(|c| crate::strips::is_strip(doc, *c)),
         "cable-schedule" => !doc.cables.is_empty(),
+        "io-list" => doc.components.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
         _ => slot.missing_why.is_empty(),
     }
 }

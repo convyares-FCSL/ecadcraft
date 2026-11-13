@@ -50,7 +50,8 @@ fn embeds(ops: &[Op]) -> usize {
 
 /// Brief 034's symbols, with the tag their first placement in a fresh project gets.
 fn new_keys() -> Vec<&'static symbols::Starter> {
-    STARTERS.iter().filter(|s| s.family != Family::Basic).collect()
+    // Brief 045's channel cells join cards (`lanes::lane_045`).
+    STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_cadcraft::plc::channels::cell_type(s).is_none()).collect()
 }
 
 #[test]
@@ -264,11 +265,12 @@ fn a_card_body_takes_its_channels_as_one_device() {
     let card = place(&mut h, "plcdi", [0.0, 0.0]);
     assert_eq!((card["tag"].as_str(), labels(&card)), (Some("-A01"), vec!["L+".to_string(), "M".into()]));
     let a: ComponentId = id(&card, "component");
-    assert_eq!(labels(&join(&mut h, "di", a, [40.0, 0.0]).unwrap()), ["I0.0"]);
-    assert_eq!(labels(&join(&mut h, "di", a, [50.0, 0.0]).unwrap()), ["I0.1"]);
+    // Brief 045 (FP7): channels are labelled with pins.
+    assert_eq!(labels(&join(&mut h, "di", a, [40.0, 0.0]).unwrap()), ["1"]);
+    assert_eq!(labels(&join(&mut h, "di", a, [50.0, 0.0]).unwrap()), ["2"]);
     let doc = h.doc();
     let all: std::collections::BTreeSet<String> = ecad_cadcraft::devices::labels_of(&doc, a);
-    assert_eq!(all.into_iter().collect::<Vec<_>>(), ["I0.0", "I0.1", "L+", "M"]);
+    assert_eq!(all.into_iter().collect::<Vec<_>>(), ["1", "2", "L+", "M"]);
     // A card's supply points are quiet; a CPU's are not.
     assert!(checks::terminal_checks(&doc, terminal(&card, "L+")).is_empty());
     let cpu = place(&mut h, "plccpu", [100.0, 0.0]);

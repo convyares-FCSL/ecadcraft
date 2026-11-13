@@ -905,6 +905,18 @@ pub fn project_page_shown(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
     hidden_text: bool,
 ) -> Result<(Drawing, HandleMap), String> {
+    project_page_kept(doc, page, base, prev, fan, tol, frame, hidden_text, None)
+}
+
+/// [`project_page_shown`] with the kept PLC model, when built (brief 045).
+///
+/// # Errors
+/// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
+pub fn project_page_kept(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    hidden_text: bool, plc: Option<&crate::plc::Plc>,
+) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
         if d.layer(&l.name).is_none() {
@@ -1027,7 +1039,7 @@ pub fn project_page_shown(
     if hidden_text {
         crate::text_style::add_hidden_layer(&mut d);
     }
-    for t in crate::devices::all_texts_on_page(doc, page) {
+    for t in crate::devices::all_texts_on_page_with(doc, page, plc) {
         if !t.shown && !hidden_text {
             continue;
         }
@@ -1629,7 +1641,13 @@ impl Project {
     /// the frame's update map says it may differ, or for another page).
     fn project(&mut self, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
         let parts = self.frame_parts(page);
-        project_page_shown(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text)
+        // Brief 045 (review of #84, 3): a page with PLC channel cells reads its addresses from the
+        // kept PLC model, built on its first show.
+        if self.outputs.is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
+            self.outputs();
+        }
+        let plc = self.outputs.as_ref().map(|o| &o.plc);
+        project_page_kept(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text, plc)
     }
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
@@ -2218,7 +2236,7 @@ impl Project {
         // 025).
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
-        let pages = pages_touched(self.ledger.document(), &ops);
+        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
@@ -2341,6 +2359,8 @@ impl Project {
             // Brief 046 (design 046 §9): either style, by its own kept change set.
             Some(crate::generated::GenKind::Terminals) => crate::generated::terminals_rewritten(doc, p, &o),
             Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
+            // Brief 045c: the I/O list when a card's rows changed.
+            Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
             _ => false,
         };
         let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
@@ -2796,7 +2816,7 @@ impl Project {
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
-        let pages = pages_touched(self.ledger.document(), &ops);
+        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
@@ -2871,7 +2891,8 @@ impl Project {
 /// pages a conductor whose ends they attach is routed on), worked out on the document before them;
 /// `None` when that could be any page (op kinds other than item, representation, attachment and
 /// new-object ops). Reference texts on other pages are [`crate::references::Snapshot`]'s part.
-pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<PageId>> {
+/// Brief 045: `plc`, the kept PLC model when built, gives a rack's cards without a walk.
+pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::Plc>) -> Option<BTreeSet<PageId>> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {
@@ -2933,8 +2954,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, after, .. } => {
                 out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
+                // card's slot or size moves the addresses of the cards after it.
+                out.extend(crate::plc::pages_touched(doc, plc, *c, key, after.as_deref()));
             }
             // A conductor's label shows its properties (brief 022): its pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
@@ -2970,7 +2994,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 if !hidden {
                     let as_project =
                         Op::SetProperty { object: ecad_model::ObjectRef::Project, key: key.clone(), before: before.clone(), after: after.clone() };
-                    out.extend(pages_touched(doc, std::slice::from_ref(&as_project))?);
+                    out.extend(pages_touched(doc, std::slice::from_ref(&as_project), plc)?);
                 }
             }
             _ => return None,

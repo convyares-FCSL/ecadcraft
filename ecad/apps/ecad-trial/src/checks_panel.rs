@@ -60,6 +60,11 @@ pub const DROP_MISSING_LEVELS: &str = "Drop missing levels";
 /// Brief 047's fix button for two article numbers of one part (design 047 §9).
 pub const USE_FOR_ALL: &str = "Use for all";
 pub const MAKE_STRIP_POSITION: &str = "Make strip position";
+/// Brief 045 (design 045 §9): the PLC rows' buttons.
+pub const MOVE_TO_FREE_SLOT: &str = "Move to free slot";
+pub const PUT_IN_RACK: &str = "Put in rack…";
+pub const TAKE_OUT_OF_RACK: &str = "Take out of rack";
+pub const RAISE_SLOTS: &str = "Raise slots";
 
 /// The two buttons of a brief 030 fix.
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
@@ -68,6 +73,8 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::LinkAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
         Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
+        Fix::Plc(_, ecad_cadcraft::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
+        Fix::Plc(_, ecad_cadcraft::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
     }
 }
@@ -228,6 +235,7 @@ impl ChecksPanel {
                 | Fix::MoveToNextFree(_)
                 | Fix::MoveToNewPosition(_)
                 | Fix::FuseDevices
+                | Fix::Plc(..)
                 | Fix::ConnectorNextPin(_)
                 | Fix::SetPins(..)
                 | Fix::IgnoreConnector(..)

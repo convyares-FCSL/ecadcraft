@@ -127,6 +127,9 @@ pub struct Reports {
     pub stem: String,
     /// Brief 039: the Terminals tab as the one table's terminal manager.
     pub terminals: crate::lists::terminals::TerminalsView,
+    /// Brief 045c: Lists ▸ I/O, kept in step while it is shown.
+    pub io: crate::lists::plc::IoView,
+    pub io_shown: bool,
     /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
     /// them; ticking writes `setdefault`), whether the project can be written (Columns and the
     /// add-item button are greyed when not), each BOM row's item when it lists one item only, and
@@ -154,6 +157,13 @@ impl Reports {
 
     /// Bring the copy up to date with the project's kept models (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
+        // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
+        if self.io_shown {
+            p.outputs();
+            if let Some(o) = p.outputs.as_ref() {
+                self.io.sync(serial, p.ledger.document(), o);
+            }
+        }
         let reference_style = p.ledger.document().settings.reference_style;
         let style = reference_style as u64;
         let o = p.outputs();

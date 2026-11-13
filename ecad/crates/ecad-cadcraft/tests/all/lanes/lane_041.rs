@@ -111,6 +111,13 @@ const ECAD_COMMANDS: &[&str] = &[
     "toposition",
     "setdefault",
     "canvassheet",
+    // Brief 045.
+    "plcslot",
+    "plcracks",
+    "plcchannels",
+    "plcchannel",
+    "plcaddress",
+    "iolist",
     // Brief 047.
     "partline",
     "bomitem",

@@ -112,7 +112,8 @@ fn is_prefix(entry: &Entry) -> bool {
 
 /// The starter symbol key of a prefix entry.
 fn starter_key(entry: &Entry) -> Option<&'static str> {
-    let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal."))?;
+    // Brief 045: its new starters' prefixes are in the `plc` area.
+    let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal.")).or_else(|| entry.key.strip_prefix("plc."))?;
     let key = rest.strip_suffix(".prefix")?;
     defaults::symbols::prefix_entry(key).filter(|e| e.key == entry.key).map(|_| key)
 }

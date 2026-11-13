@@ -195,7 +195,8 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert_eq!(m["issued"]["point"], head);
     assert_eq!(m["checks"]["accepted_errors"], false);
     assert!(m["written"].as_str().unwrap().ends_with('Z'));
-    assert_eq!(m["not_included"].as_array().unwrap().len(), 1, "no strips: no terminal plan (brief 028)");
+    // No strips: no terminal plan (brief 028); no PLC cards: no I/O list (brief 045).
+    assert_eq!(m["not_included"].as_array().unwrap().len(), 2, "no strips, no PLC cards");
     for file in m["files"].as_array().unwrap() {
         let bytes = std::fs::read(out.join(file["name"].as_str().unwrap())).unwrap();
         assert_eq!(file["sha256"], release::sha256_hex(&bytes), "{file}");
@@ -595,7 +596,8 @@ fn a_release_writes_the_terminal_plan_and_cable_schedule() {
     f.h.run("terminals", json!({"from": [70, -2], "to": [70, 12]})).unwrap();
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "cores", "value": "4G"})).unwrap();
     let pre = f.h.run("prerelease", json!({})).unwrap();
-    assert!(pre.get("not_included").is_none_or(|n| n.as_array().is_some_and(Vec::is_empty)), "{pre}");
+    // Only brief 045's I/O list is left out (no PLC cards).
+    assert!(pre.get("not_included").is_none_or(|n| n.as_array().is_some_and(|a| a.iter().all(|x| x["slot"] == "io-list"))), "{pre}");
     let v = f.h.run("release", json!({})).unwrap();
     let out = folder(&f, "B");
     assert!(v["message"].as_str().unwrap().contains("5 lists"), "{v}");
