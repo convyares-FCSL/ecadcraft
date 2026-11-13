@@ -511,6 +511,12 @@ pub struct Outputs {
     /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
     links_off_strip: BTreeSet<ComponentId>,
     link_keys: BTreeMap<ComponentId, Vec<String>>,
+    /// Brief 033 (review of #64, 2): the `continuation-clash` rows, kept. Worked out again only
+    /// when a page is added, removed or renumbered, an issue changes the revision list, or a kept
+    /// generated page's sheet count moves.
+    continuation: Vec<Check>,
+    /// How many times [`Self::continuation`] was worked out (tests: an unrelated edit makes none).
+    pub continuation_builds: u64,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
@@ -539,7 +545,36 @@ impl Outputs {
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        o.refresh_continuation(doc);
         o
+    }
+
+    /// Work out the `continuation-clash` rows (design 033 §5.3).
+    fn refresh_continuation(&mut self, doc: &Document) {
+        let rows = crate::generated::continuation_checks(doc, Some(&*self));
+        self.continuation_builds += 1;
+        if rows != self.continuation {
+            self.continuation = rows;
+            self.checks_changed += 1;
+        }
+    }
+
+    /// The sheet count of each kept generated page (BOM, terminal plan, cable schedule).
+    fn generated_sheets(&self, doc: &Document) -> Vec<(PageId, usize)> {
+        self.generated.iter().map(|p| (*p, crate::generated::sheets(doc, *p, Some(self)))).collect()
+    }
+
+    /// Whether `ops` can move a page number or a contents or revision list sheet count: pages
+    /// added, removed or renumbered, a page's kind, or an issue.
+    fn moves_page_numbers(ops: &[Op]) -> bool {
+        ops.iter().any(|op| match op {
+            Op::AddPage { .. } | Op::RemovePage { .. } => true,
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == ecad_model::book::NUMBER_KEY || key == crate::generated::KEY,
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED)
+            }
+            _ => false,
+        })
     }
 
     /// The pages drawn from these models.
@@ -590,7 +625,17 @@ impl Outputs {
 
     /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
     /// committed transaction) name in this state.
-    pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
+    pub fn update(&mut self, doc: &Document, ops: &[Op], scope: Scope) {
+        let numbers = Self::moves_page_numbers(ops);
+        let before = self.generated_sheets(doc);
+        self.update_rows(doc, ops, scope);
+        if numbers || self.generated_sheets(doc) != before {
+            self.refresh_continuation(doc);
+            self.revision += 1;
+        }
+    }
+
+    fn update_rows(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
@@ -1095,6 +1140,7 @@ impl Outputs {
     /// The location rows of the Checks list (design 024 §8.3).
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.box_checks.values().flatten().cloned().collect();
+        out.extend(self.continuation.iter().cloned());
         for d in self.devices.values() {
             if let Some((_, loc)) = &d.own_box {
                 out.push(Check {

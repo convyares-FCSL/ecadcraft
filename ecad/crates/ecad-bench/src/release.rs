@@ -10,7 +10,7 @@
 //!   over the same edit without it).
 //!
 //! On the 25-page project only ([`measure_print`], owner 2026-11-12):
-//! - **print**: Print Book of every page, to memory.
+//! - **print**: Print Book of every page, to memory, and the book's size in bytes (brief 033).
 //! - **release**: `release` of the pending revision: the whole book and the lists to a staging
 //!   folder, the issue, the save, the manifest and the rename. Target ≤ 5 s.
 //! - **rerelease**: `release {rev}` of that revision again (Keep both), its state and report models
@@ -44,6 +44,8 @@ pub struct MeasuredPrint {
     pub pages: usize,
     pub print_ms: f64,
     pub print_sheets: usize,
+    /// Bytes of the printed book (all its files), brief 033.
+    pub print_bytes: u64,
     pub release_s: f64,
     pub rerelease_s: f64,
     pub sheets: usize,
@@ -147,6 +149,7 @@ pub fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<Measure
             let v = run(&mut s, "printbook", json!({}))?;
             print.push(ms(t));
             out.print_sheets = v["sheets"].as_u64().unwrap_or(0) as usize;
+            out.print_bytes = v["files"].as_array().map_or(0, |f| f.iter().filter_map(|f| f["bytes"].as_u64()).sum());
         }
         out.print_ms = median(&mut print);
         let (mut rel, mut again) = (Vec::new(), Vec::new());

@@ -37,6 +37,10 @@ pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
 pub const REMOVE: &str = "Remove";
+/// Brief 033: start Move Mirror Table for a table over the title block.
+pub const MOVE_TABLE: &str = "Move table…";
+/// Brief 033: open a page's number field (a continuation sheet took its number).
+pub const RENUMBER_PAGE: &str = "Renumber…";
 pub const SPLIT_LINK: &str = "Split link";
 pub const REMOVE_PARTITION: &str = "Remove partition";
 pub const DROP_MISSING: &str = "Drop missing";
@@ -287,6 +291,8 @@ impl ChecksPanel {
                         Fix::SetCores(_) => SET_CORES,
                         Fix::NextFreeCore(_) => NEXT_FREE_CORE,
                         Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => REMOVE,
+                        Fix::MoveTable(_) => MOVE_TABLE,
+                        Fix::RenumberPage(_) => RENUMBER_PAGE,
                     };
                     if ui.put(b, egui::Button::new(RichText::new(name).small())).clicked() {
                         match (f, r.check.page) {
@@ -302,6 +308,8 @@ impl ChecksPanel {
                             (Fix::NextFreeCore(w), _) => out.push(Action::NextFreeCore(w)),
                             (Fix::ShowCables, _) => out.push(Action::ShowCables),
                             (Fix::LinkOnNonStrip(_), _) => out.push(Action::AccessoryFix(f, 0)),
+                            (Fix::MoveTable(_), _) => out.push(Action::MoveTable(Box::new(r.check.clone()))),
+                            (Fix::RenumberPage(page), _) => out.push(Action::RenumberPage(page)),
                             _ => {}
                         }
                         continue;
