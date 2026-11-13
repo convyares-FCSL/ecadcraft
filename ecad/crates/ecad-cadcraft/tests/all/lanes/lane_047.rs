@@ -240,15 +240,21 @@ fn fuse_inserts_count_per_fuse_and_uncovered_fuses_are_checked() {
     assert_eq!(c.len(), 1);
     assert_eq!(c[0]["which"], "8 fuses have no insert");
     same_as_built(&mut f.h);
-    // A strip line for its fuse positions covers them.
-    let labels: Vec<String> = f.h.p(|p| {
-        ecad_cadcraft::terminal_types::positions(p.ledger.document(), f.x05).into_iter().filter(|p| p.ty.code == "fuse").map(|p| p.label).collect()
-    });
-    f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-5T", "description": "Fuse 5A T 5x20", "for": labels.join(",")}}))
-        .unwrap();
-    assert_eq!(checks(&mut f.h, "fuse-no-insert")[0]["which"], "5 fuses have no insert");
-    assert_eq!(row(&bom(&mut f.h, json!({})), "FU-5T")["qty"], 6);
+    // FP5 fallback: a strip line cannot name positions until renumbering keeps them; without
+    // `for` it is a line of the strip as a whole.
+    let head = f.h.head();
+    let e = f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-5T", "for": "1"}})).unwrap_err();
+    assert!(e.contains("-X05: a strip's part line cannot name positions with for yet"), "{e}");
+    assert_eq!(f.h.head(), head);
+    f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "MK-1", "description": "Marker set"}})).unwrap();
+    let r = row(&bom(&mut f.h, json!({})), "MK-1").clone();
+    assert_eq!((r["qty"].clone(), r["tags"].clone()), (json!(1), json!("-X05")));
     same_as_built(&mut f.h);
+    // `article` leaves strip parts alone and says so.
+    f.h.run("setprop", json!({"component": f.x05.hex(), "key": "part_number", "value": "FU-5T"})).unwrap();
+    assert!(bom(&mut f.h, json!({})).iter().any(|r| r["part_number"] == "FU-5T" && r["tags"] == "-X05"), "the strip's terminals use it");
+    let v = f.h.run("article", json!({"part_number": "FU-5T", "article_number": "A-0400"})).unwrap();
+    assert!(v["message"].as_str().unwrap().contains("Strip terminal, accessory and jumper parts with this part number are not changed yet"), "{v}");
 }
 
 /// §12 6 and 7, §4.3: the article column off by default, on by the registry; `article` sets

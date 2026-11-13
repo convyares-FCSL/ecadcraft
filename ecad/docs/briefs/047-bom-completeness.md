@@ -61,6 +61,16 @@ a panel layout: 1.4, 3.1); a part-set editor panel; cables on the BOM (024 Q6); 
 components with `kind: "bom_item"` and no representation (024 FP2's pattern); part lines, article
 numbers and the BOM defaults are properties. Pre-v1: no compatibility work.
 
+## FP5 split out (overseer, 2026-11-13)
+
+047 merges without FP5's lane D edits (article numbers on strip terminal, accessory and jumper
+parts, design §5; the `for` rewrite on terminal renumbering, §2.3), so it does not wait for 045.
+Until a small follow-up PR from 047's worker lands them after 045 merges, the design's fallback
+holds: `article` leaves strip parts alone and its echo says so, and a strip's part line with `for`
+is refused with the reason (a strip line without `for` works). Acceptance 1's strip parts and
+design §12 steps 10 and 14 move to that follow-up. Design step 6 (the BOM-by-location page) is
+built on top of 046, which merges first.
+
 ## Acceptance criteria
 
 The full table is design §12. In short:

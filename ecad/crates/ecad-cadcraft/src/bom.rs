@@ -65,6 +65,12 @@ pub const ITEM_NO_TAG: &str = "An item has no tag. Add a device instead if it is
 pub const ITEM_NO_LINES: &str = "An item has no part lines: it is one part. Set its own part_number, maker and qty.";
 pub const ITEM_NEEDS_DESCRIPTION: &str = "An item needs a description.";
 pub const PARTLINE_FOR_DEVICES: &str = "partline is for devices and strips.";
+/// FP5 fallback: `for` on a strip's line waits for renumbering to keep it.
+pub const STRIP_FOR_LATER: &str = "a strip's part line cannot name positions with for yet (terminal renumbering does not \
+keep them until a later change). Add the line without for and set qty.";
+/// FP5 fallback: `article` does not reach strip parts yet.
+pub const STRIP_ARTICLE_LATER: &str = "Strip terminal, accessory and jumper parts with this part number are not changed yet: \
+they take article numbers in a later change.";
 
 /// One field of a part line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -351,6 +357,12 @@ fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String
         return Ok(None);
     }
     let who = crate::devices::tag_words(doc, c);
+    // FP5 fallback (overseer, 2026-11-13): until terminal renumbering rewrites a strip's `for`
+    // lists (the lane D follow-up after brief 045), a renumber would leave them naming the old
+    // positions, so they are refused rather than left to go stale.
+    if crate::strips::is_strip(doc, c) {
+        return Err(format!("{who}: {STRIP_FOR_LATER}"));
+    }
     let subs = sub_items(doc, c);
     if subs == Subs::None {
         return Err(format!("{who} has nothing to name with for: leave it empty and set qty."));
@@ -979,6 +991,15 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<(Co
 
 fn run_article(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let v = with_project(s, |p, pg, _| {
+        // FP5 fallback: strip parts carrying this part number are left alone, and the echo says so.
+        let pn_low = params.get("part_number").and_then(Value::as_str).map(|t| t.trim().to_lowercase()).unwrap_or_default();
+        let same_pn = |x: &Option<String>| x.as_deref().is_some_and(|x| x.to_lowercase() == pn_low);
+        let strip_parts = !pn_low.is_empty()
+            && p.outputs()
+                .strips
+                .strips
+                .values()
+                .any(|s| s.types.iter().any(|t| same_pn(&t.part_number)) || s.acc.bom.iter().any(|a| same_pn(&a.part_number)));
         let doc = p.ledger.document();
         let pn = params.get("part_number").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty());
         let pn = pn.ok_or("`part_number` is required")?;
@@ -993,6 +1014,9 @@ fn run_article(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         };
         let after = plain(ARTICLE_KEY, value.as_deref(), MAX_ARTICLE_CHARS)?;
         let targets = article_targets(doc, pn, maker);
+        if targets.is_empty() && strip_parts {
+            return Err(format!("{pn} is used only by strip parts. {STRIP_ARTICLE_LATER}"));
+        }
         if targets.is_empty() {
             return Err(format!("No part {pn} in this project."));
         }
@@ -1017,6 +1041,7 @@ fn run_article(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             Some(a) => format!("Set {a} on {n} part{} ({}).", if n == 1 { "" } else { "s" }, parts.join(", ")),
             None => format!("Cleared the article number of {n} part{} ({}).", if n == 1 { "" } else { "s" }, parts.join(", ")),
         };
+        let what = if strip_parts { format!("{what} {STRIP_ARTICLE_LATER}") } else { what };
         if ops.is_empty() {
             return Ok(json!({"changed": false, "parts": n, "message": what}));
         }
