@@ -980,7 +980,8 @@ fn cables(
     }
     let bar0 = fr.yc - g.body / 2.0 - fr.lead - 1.0 - OUT_TARGET_MM - g.bar;
     let used = lane_end.len().max(1);
-    let box_top = bar0 - (used - 1) as f64 * CABLE_LANE_MM - 3.0;
+    // Kept above the area's bottom with the largest registry values (review of 046).
+    let box_top = (bar0 - (used - 1) as f64 * CABLE_LANE_MM - 3.0).max(fr.b + 8.0);
     let box_bot = (box_top - BOX_H_MM).max(fr.b + 4.0);
     // A cable already on an earlier sheet of this strip says `(cont.)`.
     let earlier: BTreeSet<CableId> = cols

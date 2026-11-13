@@ -2313,7 +2313,7 @@ impl Project {
         };
         let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
         let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| rewritten(*p));
-        if sheets(&o) != before || shown_changed {
+        if sheets(&o) != before || shown_changed || o.numbers_moved {
             self.frame_stale = true;
         }
         self.outputs = Some(o);

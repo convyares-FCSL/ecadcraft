@@ -671,6 +671,9 @@ pub struct Outputs {
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
     pub last_work: usize,
+    /// Brief 046 (review): the last update's ops could move a page number or a sheet count that
+    /// the document alone decides (a page's style or sheet): the frame's Total is worked out again.
+    pub numbers_moved: bool,
 }
 
 impl Outputs {
@@ -731,10 +734,19 @@ impl Outputs {
     fn moves_page_numbers(ops: &[Op]) -> bool {
         ops.iter().any(|op| match op {
             Op::AddPage { .. } | Op::RemovePage { .. } => true,
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == ecad_model::book::NUMBER_KEY || key == crate::generated::KEY,
-            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
-                key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED)
+            // Brief 046 (review): a page's style or sheet changes its sheet count on the document
+            // alone, so the count before cannot be compared.
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => {
+                key == ecad_model::book::NUMBER_KEY
+                    || key == crate::generated::KEY
+                    || key == crate::defaults::strip_pages::STYLE.key
+                    || key == ecad_model::sheet::SHEET_KEY
             }
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
+                    || key == crate::defaults::strip_pages::STYLE.key
+            }
+            Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
             _ => false,
         })
     }
@@ -790,6 +802,7 @@ impl Outputs {
     /// committed transaction) name in this state.
     pub fn update(&mut self, doc: &Document, ops: &[Op], scope: Scope) {
         let numbers = Self::moves_page_numbers(ops);
+        self.numbers_moved = numbers;
         let before = self.generated_sheets(doc);
         self.update_rows(doc, ops, scope);
         // Brief 046: right after the strips (design 046 §9), also when no row was in scope.
@@ -950,6 +963,8 @@ impl Outputs {
         let work = self.strips.last_work;
         self.strips = built;
         self.strips.last_work = work;
+        // The page layout follows the rebuilt strips (review of 046, finding 2).
+        self.strip_pages.adopt(crate::strip_page::StripPages::build(doc, &self.strips));
         Some("the terminal strip model was out of step; rebuilt".into())
     }
 

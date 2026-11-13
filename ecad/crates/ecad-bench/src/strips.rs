@@ -102,6 +102,8 @@ pub struct MeasuredStrips {
     pub spageoff_projections: u64,
     pub spagetype_ms: f64,
     pub spagetype_work: usize,
+    /// The `StripPages::build` share of `stripbuild`.
+    pub spbuild_ms: f64,
     /// Strips, terminals and cables in the project.
     pub strips: usize,
     pub terminals: usize,
@@ -277,7 +279,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut out = MeasuredStrips::default();
         // First build of the strips and core counts (the report models built, untimed, first).
         let mut build = Vec::new();
+        let mut spbuild = Vec::new();
         for _ in 0..runs {
+            let sp = &mut spbuild;
             build.push(project.configure(&mut s, |p| {
                 p.outputs();
                 let doc = p.ledger.document();
@@ -286,7 +290,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let cx = ecad_cadcraft::outputs::PageCx::of(doc);
                 let built = ecad_cadcraft::strips::Strips::build(doc, o, &cx);
                 // Brief 046: the graphic pages' kept data, built with the strips.
+                let t2 = Instant::now();
                 std::hint::black_box(ecad_cadcraft::strip_page::StripPages::build(doc, &built));
+                sp.push(ms(t2));
                 for k in doc.cables.keys() {
                     std::hint::black_box(ecad_cadcraft::strips::cable_cores(doc, *k));
                 }
@@ -295,6 +301,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.stripbuild_ms = median(&mut build);
+        out.spbuild_ms = median(&mut spbuild);
         let (page1, first_strip, strips, terminals, cables) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             let o = p.outputs.as_ref();

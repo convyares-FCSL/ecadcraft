@@ -350,7 +350,8 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
 /// style changed and the page has no style of its own. O(strips shown).
 pub fn terminals_rewritten(doc: &Document, page: PageId, o: &Outputs) -> bool {
     let sp = &o.strip_pages;
-    let own_style = doc.pages.get(&page).is_some_and(|p| p.properties.contains_key(crate::defaults::strip_pages::STYLE.key));
+    let style = &crate::defaults::strip_pages::STYLE;
+    let own_style = doc.pages.get(&page).and_then(|p| p.properties.get(style.key)).is_some_and(|v| style.parse(v).is_some());
     if sp.style_changed && !own_style {
         return true;
     }
