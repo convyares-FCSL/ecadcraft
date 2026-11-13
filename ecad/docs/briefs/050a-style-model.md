@@ -1,7 +1,9 @@
 # Brief 050a: the style model (standards and style catalogues)
 
-Status: Draft (designer, 2026-11-13). FP items approved by the overseer (2026-11-13, design §13). Not approved: it needs the owner's answers to design 050 §14
-(questions 1, 6–15).
+Status: Approved (owner, 2026-11-13: design 050 §14 Q1–Q15 answered as recommended, including
+roadmap Q25–29; overseer FP1–FP7 rulings of design §13: FP1–FP3 with full arms, round-trip and
+merge tests; FP4 with one `ignored-old-setting` Checks row per kind of old key, no conversion; FP5's
+`location` area one line in the union-merged `AREAS` list).
 Branch: `feature/style-model`, from `origin/dev` after 049 (1.9 continuation references) has
 merged, because lane D is sequential.
 Designer: **yes** (`docs/design/050.md`) · Size: L
