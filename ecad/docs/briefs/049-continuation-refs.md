@@ -16,9 +16,9 @@ The design calls the arrows **continuation arrows**, and their partners **other 
 
 ## Goal
 
-Every continuation arrow shows where its other ends are (`105-D-1`), worked out live from the
+Every continuation arrow shows where its other ends are (`102-C-2`), worked out live from the
 reference index and never typed, and arrows that go to the same place can be grouped under one
-caption (`TO PSU CIRCUIT`), as in a real drawing pack.
+caption (`TO CONTROL SUPPLY`), as in a real drawing pack.
 
 ## What exists today (`origin/dev` `f26c8f53`)
 
@@ -73,14 +73,14 @@ other-end texts from `wires.rs` (lane W) to lane D's `xref.rs` and a new `contin
 
 The full table is design §10. In short:
 
-1. Three arrows named `24V` on pages 100, 105 and 120: each shows the other two places in book
-   order (`105-D-1 120-A-4`), past its tip and reading along the wire; a fifth arrow of the name
+1. Three arrows named `24V` on pages 101, 102 and 103: each shows the other two places in book
+   order (`102-C-2 103-B-5`), past its tip and reading along the wire; a fifth arrow of the name
    shows `+1` after three.
-2. Moving the arrow on page 105 by JSON while page 100 is on screen redraws page 100's text at once
-   (fails before the fix: F1). Renumbering page 105 does the same.
+2. Moving the arrow on page 102 by JSON while page 101 is on screen redraws page 101's text at once
+   (fails before the fix: F1). Renumbering page 102 does the same.
 3. Renaming an arrow, creating one or deleting one redraws only the pages of the old and new name
    groups; `pages_touched` no longer returns "any page" for these ops.
-4. `contcaption {continuations: [a, b, c], caption: "TO PSU CIRCUIT"}` on three adjacent arrows
+4. `contcaption {continuations: [a, b, c], caption: "TO CONTROL SUPPLY"}` on three adjacent arrows
    draws one bracket and the caption; moving one 40 mm away splits it into two brackets with the
    same caption; `caption: null` removes it. One transaction each, one `u`.
 5. `refgoto` from an arrow or its text goes to its first other end, then the next on repeat; hover
@@ -103,5 +103,4 @@ once on the feature PR. The owner may ask for one (question Q11).
 ## Needs owner check
 
 The owner questions in design §13, and a click-only trial (quick start `049-continuation-refs.md`):
-draw a 24 V supply on one page with two arrows to two other pages, group them under `TO PSU
-CIRCUIT`, then move an arrow and renumber a page and watch the other ends follow.
+draw a 24 V supply on one page with two arrows to two other pages, group them under `TO CONTROL SUPPLY`, then move an arrow and renumber a page and watch the other ends follow.
