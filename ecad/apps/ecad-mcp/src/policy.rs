@@ -74,6 +74,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "hiddentext",
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
+    "iolist",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and

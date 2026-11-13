@@ -12,6 +12,8 @@
 //!   and updated. Target < 16 ms.
 //! - **chfence**: Place Channels across 16 wires (a new DI card), committed and updated. < 16 ms.
 //! - **plcstyle**: one rack's address style changed (`plcaddress`), committed and updated. < 16 ms.
+//! - **iolist**: every I/O row made (the models built). < 50 ms. **iolistupd**: one channel's
+//!   text set (`plcchannel`), committed, updated and its card's rows made again. < 5 ms.
 //! - **work**: how many racks and cards a slot move recomputed (never all of them).
 //!
 //! Each edit is undone after it is measured.
@@ -45,6 +47,11 @@ pub struct MeasuredPlc {
     pub chfence_ms: f64,
     /// One rack's address style changed, committed and updated.
     pub plcstyle_ms: f64,
+    /// Brief 045c: every I/O row made from scratch, and one channel text edited (committed,
+    /// updated, its card's rows made again).
+    pub iolist_ms: f64,
+    pub iolistupd_ms: f64,
+    pub rows: usize,
 }
 
 fn ms(t: Instant) -> f64 {
@@ -185,6 +192,42 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.plcstyle_ms = median(&mut styles);
+        let mut lists = Vec::new();
+        for _ in 0..runs {
+            lists.push(project.configure(&mut s, |p| {
+                p.outputs();
+                let doc = p.ledger.document();
+                let Some(o) = p.outputs.as_ref() else { return (0.0, 0) };
+                let t = Instant::now();
+                let n: usize = ecad_cadcraft::plc::iolist::cards_in_order(&o.plc)
+                    .into_iter()
+                    .map(|c| ecad_cadcraft::plc::iolist::rows_of(doc, &o.plc, c).len())
+                    .sum();
+                (ms(t), n)
+            })?);
+        }
+        out.rows = lists.first().map_or(0, |x| x.1);
+        let mut times: Vec<f64> = lists.into_iter().map(|x| x.0).collect();
+        out.iolist_ms = median(&mut times);
+        let mut upd = Vec::new();
+        for k in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcchannel", json!({"card": card.hex(), "channel": 0, "text": format!("Bench {k}")}))?;
+            project.configure(&mut s, |p| {
+                p.outputs();
+                let doc = p.ledger.document();
+                if let Some(o) = p.outputs.as_ref() {
+                    for c in &o.plc.rows_changed {
+                        if let Some(cd) = o.plc.cards.get(c) {
+                            std::hint::black_box(ecad_cadcraft::plc::iolist::rows_of(doc, &o.plc, cd));
+                        }
+                    }
+                }
+            })?;
+            upd.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.iolistupd_ms = median(&mut upd);
         Ok(out)
     })();
     crate::measure::release_lock_file(&copy);

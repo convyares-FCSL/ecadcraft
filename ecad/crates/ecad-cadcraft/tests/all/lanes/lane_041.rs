@@ -114,6 +114,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "plcchannels",
     "plcchannel",
     "plcaddress",
+    "iolist",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

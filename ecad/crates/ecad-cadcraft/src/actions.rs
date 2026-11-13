@@ -802,6 +802,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("defaults", "Settings ▸ Standards (U4c)"),
     ("xrefs", "a read for agents"),
     ("plcracks", "a read; the PLC manager (2.8) draws it"),
+    ("iolist", "a read; Lists ▸ I/O shows it"),
 ];
 
 /// The action with this id.

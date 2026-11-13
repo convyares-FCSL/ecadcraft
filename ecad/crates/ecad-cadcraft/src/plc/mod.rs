@@ -12,6 +12,7 @@
 
 pub mod address;
 pub mod channels;
+pub mod iolist;
 pub mod rack;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -46,6 +47,12 @@ as cells in a row, no wires)",
             .params(
                 "{card: id or tag, channel: number as shown, text?: description (null clears), address?: typed address (null clears), \
 pins?: {role: pin}, move_to?: channel number (with terminal?: id; a drawn copy takes that channel)}",
+            )
+            .noundo(),
+        CommandSpec::new("iolist", "I/O List", iolist::run_iolist)
+            .params(
+                "{rack?: id or tag, card?: id or tag, state?: used|reserved|spare, limit?: rows (200, max 2000), after?: row index} \
+(one row per channel of every card, drawn or not; read only)",
             )
             .noundo(),
         CommandSpec::new("plcaddress", "PLC Addresses", address::run_plcaddress)
@@ -218,6 +225,11 @@ pub struct Plc {
     no_address: BTreeMap<Group, usize>,
     /// The racks and cards the last update recomputed.
     pub last_changed: BTreeSet<ComponentId>,
+    /// Brief 045c: the cards whose I/O rows the last update may have changed (their own data, a
+    /// moved block, a target renamed, a wire renumbered): the I/O page and list patch these only.
+    pub rows_changed: BTreeSet<ComponentId>,
+    /// How many updates the model has had: a view that missed one rebuilds instead of patching.
+    pub updates: u64,
     /// How many racks and cards the last update recomputed (tests and bench).
     pub last_work: usize,
     /// How many racks and cards were recomputed in all (tests: an unrelated edit adds none).
@@ -404,8 +416,24 @@ impl Plc {
     /// whether anything changed.
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
         self.last_changed.clear();
+        self.rows_changed.clear();
+        self.updates += 1;
         self.last_work = 0;
-        let touched = self.touched(doc, ops);
+        let mut touched = self.touched(doc, ops);
+        // Brief 045c (design 045 §11.1): a renamed target or a renumbered wire changes the rows of
+        // the cards on its nets.
+        for op in ops {
+            match op {
+                Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == ecad_model::tag::TAG_KEY && !self.cards.contains_key(c) => {
+                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
+                }
+                Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
+                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
+                }
+                _ => {}
+            }
+        }
+        touched.extend(self.rows_changed.iter().copied());
         if touched.is_empty() {
             return false;
         }
@@ -425,7 +453,9 @@ impl Plc {
         for g in groups {
             changed |= self.set_checks(doc, g);
         }
-        changed
+        let cards: Vec<ComponentId> = touched.iter().chain(self.last_changed.iter()).filter(|c| self.cards.contains_key(c)).copied().collect();
+        self.rows_changed.extend(cards);
+        changed || !self.rows_changed.is_empty()
     }
 
     /// Work out group `g`'s Checks rows; returns whether they changed.

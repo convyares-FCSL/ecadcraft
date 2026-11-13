@@ -87,3 +87,12 @@ fn b7_channel_and_address_writes_by_the_agent_and_refused_with_writes_off() {
     refused_with_writes_off("plcaddress", json!({"rack": "-A01", "fix": true}));
     refused_with_writes_off("place", json!({"symbol": "chdi", "at": [0, 0], "device": "-A02", "channel": 3}));
 }
+
+#[test]
+fn c5_iolist_works_with_writes_off() {
+    let mut r = crate::mcp_contracts::reader();
+    let log = r.log();
+    let v = r.exec("iolist", json!({}));
+    assert!(v["rows"].as_array().is_some_and(Vec::is_empty), "{v}");
+    assert_eq!(r.log(), log, "a read records nothing");
+}
