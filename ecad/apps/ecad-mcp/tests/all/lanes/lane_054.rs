@@ -48,6 +48,7 @@ fn page_type_commands_record_one_transaction_by_the_agent() {
     one_by_agent(&mut c, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A2"}}), &["SetStyle"]);
     one_by_agent(&mut c, "setdefault", json!({"key": "page.type", "level": "page", "page": net, "value": "singleline"}), &["SetProperty"]);
     one_by_agent(&mut c, "projectprops", json!({"props": {"cover.notes": "a\nb"}}), &["SetProperty"]);
+    one_by_agent(&mut c, "setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "off"}), &["SetProperty"]);
     let f = hex(&c.exec("newfolder", json!({"name": "Schematic"})), "folder");
     one_by_agent(&mut c, "folderprops", json!({"folder": f, "start": "100"}), &["SetProperty"]);
     c.exec("movepage", json!({"page": first, "folder": f}));
@@ -71,6 +72,7 @@ fn with_writes_off_page_type_writes_are_refused() {
         ("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"zones": "off"}})),
         ("setdefault", json!({"key": "page.type", "level": "page", "page": page, "value": "network"})),
         ("projectprops", json!({"props": {"cover.notes": "a"}})),
+        ("setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "off"})),
         ("folderprops", json!({"folder": "0000000000000000000000000000000a", "start": "100"})),
         ("renumberpages", json!({})),
         ("deletepage", json!({"page": page})),

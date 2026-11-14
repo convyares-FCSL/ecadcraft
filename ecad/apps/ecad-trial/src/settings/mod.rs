@@ -140,6 +140,8 @@ pub struct Settings {
     pub standards: standards::StandardsView,
     /// Brief 054: Pages and sheets' page type table.
     pub pages: pages::PagesView,
+    /// Brief 054b: the right panel's Page tab on a generated page.
+    pub page_tab: crate::shell::right::page::PageTab,
     pub inspector: crate::shell::right::Inspector,
     /// The workspace Settings was opened over: choosing another in the top bar closes it.
     pub over: Option<Workspace>,
