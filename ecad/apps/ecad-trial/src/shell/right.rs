@@ -34,6 +34,8 @@ mod details;
 mod device;
 mod fields;
 mod layout_tab;
+/// Brief 054b: the Page tab on a generated page.
+pub mod page;
 mod placing_view;
 mod widgets;
 
@@ -199,6 +201,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         }
         None => String::new(),
     };
+    // Brief 054b (design 054 §8): on a generated page with nothing selected, the Page tab.
+    let generated = if placing.is_none() && t.shell.state.right_tab != RightTab::Checks && t.settings.inspector.device.is_none() {
+        page::current(t)
+    } else {
+        None
+    };
     let props = t.props.clone();
     let Ok(mut sh) = props.lock() else { return };
     sh.frames += 1;
@@ -209,7 +217,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
             let (title, sub) = p.head();
             (title, sub, None)
         }
-        None => head_words(&t.settings.inspector, &sh),
+        None => match &generated {
+            Some(v) => {
+                let (a, b) = page::head_words(v);
+                (a, b, None)
+            }
+            None => head_words(&t.settings.inspector, &sh),
+        },
     };
     let accent = placing.is_some();
     let (collapse, row) =
@@ -220,6 +234,16 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     let mut acts = Vec::new();
     let mut panel_acts = Vec::new();
     match t.shell.state.right_tab {
+        _ if generated.is_some() => {
+            if let Some(v) = &generated {
+                super::in_rect(ui, body, "ecad.shell.right.page", |ui| {
+                    egui::ScrollArea::vertical().id_salt("ecad.shell.right.page.scroll").auto_shrink([false, false]).show(ui, |ui| {
+                        page::show(t, ui, v, writable, full);
+                        ui.add_space(space::XL);
+                    });
+                });
+            }
+        }
         RightTab::Checks => {
             if t.project_open() && t.lists_shows_checks() {
                 // Project ▸ Check list shows the same rows: one place at a time.

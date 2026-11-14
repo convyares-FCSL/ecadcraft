@@ -53,6 +53,7 @@ pub mod device_list;
 pub mod devices;
 pub mod file;
 pub mod frame;
+pub mod front;
 pub mod generated;
 pub mod history;
 pub mod interact;

@@ -320,3 +320,79 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
     assert!(e.contains("40 notes of 400 characters"), "{e}");
     assert_eq!(h.head(), head + 1, "nothing written");
 }
+
+// ---------------------------------------------------------------- 054b: the cover
+
+fn cover_texts(h: &mut H, cover: PageId) -> Vec<String> {
+    let d = h.doc();
+    ecad_cadcraft::generated::parts_of(&d, cover, None)
+        .into_iter()
+        .filter_map(|p| match p.kind {
+            cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_cover_draws_its_blocks_and_notes() {
+    let mut h = H::new(5420);
+    h.run("projectprops", json!({"title": "Pump station", "customer": "Northfield", "props": {"site": "Pump house 2", "cover.notes": "a\nb"}}))
+        .unwrap();
+    let cover = page(&mut h, json!({"generated": "cover"}));
+    let t = cover_texts(&mut h, cover);
+    for want in [
+        "Pump station · Electrical documentation",
+        "Northfield · Pump house 2",
+        "Notes",
+        "1. a",
+        "2. b",
+        "Wire colours",
+        "Symbol legend",
+        "Revisions",
+    ] {
+        assert!(t.iter().any(|x| x == want), "{want}: {t:?}");
+    }
+    assert!(t.iter().any(|x| x == "No symbols yet."), "{t:?}");
+    assert!(!t.iter().any(|x| x == "Structure codes"), "off by default");
+    // Toggles: one step each.
+    let head = h.head();
+    h.run("setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "off"})).unwrap();
+    h.run("setdefault", json!({"key": "front.cover.structure_codes", "level": "project", "value": "on"})).unwrap();
+    assert_eq!(h.head(), head + 2);
+    let t = cover_texts(&mut h, cover);
+    assert!(!t.iter().any(|x| x == "Notes") && t.iter().any(|x| x == "Structure codes"), "{t:?}");
+    h.run("setdefault", json!({"key": "front.cover.heading", "level": "project", "value": "Wiring"})).unwrap();
+    assert!(cover_texts(&mut h, cover).iter().any(|x| x == "Pump station · Wiring"));
+}
+
+#[test]
+fn the_symbol_legend_shows_symbols_used_and_redraws_only_at_zero() {
+    let mut h = H::new(5421);
+    let cover = page(&mut h, json!({"generated": "cover"}));
+    let first = h.first_page();
+    h.activate(first);
+    h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
+    let d = h.doc();
+    let tx = d.clone();
+    let _ = tx;
+    let cells = ecad_cadcraft::front::legend_cells(&d);
+    assert_eq!(cells.len(), 1, "{cells:?}");
+    // The first copy of a definition changes the cover; a second does not.
+    let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
+    let ops = last(&mut h);
+    assert!(ecad_cadcraft::front::touches(&h.doc(), &ops));
+    h.run("place", json!({"symbol": "coil", "at": [150, 100]})).unwrap();
+    let ops = last(&mut h);
+    assert!(!ecad_cadcraft::front::touches(&h.doc(), &ops), "a second coil leaves the cover");
+    let name = cells.first().map(|c| c.name().to_string()).unwrap_or_default();
+    assert!(cover_texts(&mut h, cover).contains(&name));
+}
+
+#[test]
+fn wire_colour_lines_merge_equal_categories() {
+    let l = ecad_cadcraft::front::WireLine { names: vec!["L1".into(), "L2".into(), "L3".into()], cross_section: "2.5".into(), colour: "BK".into() };
+    assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
+    assert_eq!(ecad_cadcraft::front::colour_words("GNYE"), "green / yellow");
+    assert_eq!(ecad_cadcraft::front::colour_words("orange"), "orange");
+}

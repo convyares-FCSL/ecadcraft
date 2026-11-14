@@ -276,7 +276,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
         t.settings.pages.selected =
             snap.rows.iter().find(|r| r.id == StyleRef::Builtin(ptype::PANEL.into())).or(snap.rows.first()).map(|r| r.id.clone());
     }
-    let full = ui.max_rect();
+    // Below the tabs.
+    let full = Rect::from_min_max(pos2(ui.max_rect().left(), ui.cursor().top()), ui.max_rect().max);
     let right = Rect::from_min_max(pos2(full.right() - PANEL_W, full.top()), full.max);
     let left = Rect::from_min_max(full.min, pos2(right.left() - space::XL, full.bottom()));
     let mut todo = Vec::new();
@@ -398,7 +399,7 @@ const COLS: [(&str, f32); 7] =
     [("Type", 0.0), ("Sheet", 0.33), ("Frame", 0.46), ("Title block", 0.56), ("Zones", 0.69), ("Position", 0.76), ("Pages", 0.94)];
 
 fn col(r: Rect, i: usize) -> f32 {
-    let x0 = r.left() + THUMB.x + space::XL;
+    let x0 = r.left() + THUMB.x + 2.0 * space::XL;
     x0 + (r.right() - x0) * COLS.get(i).map_or(0.0, |c| c.1)
 }
 
@@ -507,7 +508,7 @@ fn table(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo
     }
     ui.add_space(space::L);
     ui.horizontal(|ui| {
-        ui.add_space(THUMB.x + space::XL);
+        ui.add_space(THUMB.x + 2.0 * space::XL);
         let b = ui.add_enabled(writable, ecad_ui::prim::Button::new("+ Page type").small());
         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, ADD));
         if b.clicked()

@@ -2207,15 +2207,26 @@ impl Project {
     /// ([`Project::update_outputs`]), and the cover, contents and revision pages
     /// ([`crate::generated::touches`] on the transaction's ops). The page list is read only when
     /// the ops can change such a page.
-    fn generated_touched(&self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
+    fn generated_touched(&mut self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
         use crate::generated::GenKind;
         let mut out = outputs;
         let doc = self.ledger.document();
         let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let kinds: Vec<GenKind> =
-            [GenKind::Cover, GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
+        let mut kinds: Vec<GenKind> = [GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
+        // Brief 054b (design 054 §10.2): the cover's map reads the document after the commit
+        // (a definition's or the cables' count crossing zero).
+        let cover = crate::front::touches(doc, ops);
+        if cover {
+            kinds.push(GenKind::Cover);
+        }
         if !kinds.is_empty() {
             out.extend(doc.page_order.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some_and(|k| kinds.contains(&k))));
+        }
+        if cover
+            && let Some((p, _, _)) = &self.frame
+            && crate::generated::kind_of(doc, *p) == Some(GenKind::Cover)
+        {
+            self.frame_stale = true;
         }
         out
     }

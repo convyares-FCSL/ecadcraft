@@ -77,3 +77,66 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     let d = doc(&mut h);
     assert!(d.pages.values().any(|p| p.properties.get("generated").map(String::as_str) == Some("cover")));
 }
+
+/// Brief 054b: the board 1.16 project (a pump station's cover) and the screenshots of design 054
+/// §12.2 when `$ECAD_TESTER_SHOTS` is set: `054-cover.png` beside board 1.16 and
+/// `054-pages-and-sheets.png` (Panel layout selected) beside board 5.02.
+#[test]
+fn the_cover_and_its_page_tab_with_the_board_screenshots() {
+    use crate::project_panel::{Deltas, take};
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = build(trial(), Some(deltas.clone()));
+    h.set_size(eframe::egui::vec2(1920.0, 1080.0));
+    h.state_mut().cad.session.viewport_px = (1920.0, 1080.0);
+    ok(
+        &mut h,
+        r#"projectprops {"title":"Pump station PS-04","drawing_number":"PS04-E-001","customer":"Northfield Water","props":{"site":"Northfield treatment works, pump house 2","cover.notes":"All control wires are tri-rated unless stated.\nLine colours on the drawing are not the wire colours.\nA line through terminals means they are linked.\nCable core colours do not follow the wire colours."}}"#,
+    );
+    for (i, s) in ["coil", "no", "nc", "lamp", "motor3", "fuse", "terminal"].iter().enumerate() {
+        ok(&mut h, &format!(r#"place {{"symbol":"{s}","at":[{},150]}}"#, 60 + 40 * i));
+    }
+    let mut wires = Vec::new();
+    for (i, cat) in ["l1", "l2", "l3", "n", "dc24", "dc0", "pe"].iter().enumerate() {
+        let y = 60 + 8 * i;
+        ok(&mut h, &format!(r#"wire {{"points":[[40,{y}],[340,{y}]]}}"#));
+        let d = doc(&mut h);
+        let c = d.conductors.keys().copied().find(|c| !wires.contains(c)).unwrap();
+        wires.push(c);
+        ok(&mut h, &format!(r#"category {{"conductor":"{}","value":"{cat}"}}"#, c.hex()));
+    }
+    ok(&mut h, r#"cableslash {"from":[200,55],"to":[205,70],"tag":"W1"}"#);
+    for (rev, what) in [("A", "First issue"), ("B", "Customer comments"), ("C", "Released for build")] {
+        ok(&mut h, &format!(r#"issuerevision {{"rev":"{rev}","description":"{what}","drawn":"CvA","provisional":"issue"}}"#));
+    }
+    let first = doc(&mut h).page_order[0];
+    ok(&mut h, &format!(r#"newpage {{"type":"front","generated":"cover","after":"{}"}}"#, first.hex()));
+    let cover = active(&mut h).unwrap();
+    ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, cover.hex()));
+    ok(&mut h, &format!(r#"newpage {{"type":"front","generated":"revisions","after":"{}"}}"#, cover.hex()));
+    ok(&mut h, "renumberpages {}");
+    ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, cover.hex()));
+    ok(&mut h, "zoom e");
+    h.run_steps(6);
+    // The Page tab: the block toggles, the front pages and the sheet from the type.
+    assert!(h.query_by_label("ecad.page.block.notes").is_some(), "the Page tab on the cover");
+    assert!(h.query_by_label("ecad.page.front.contents").is_some());
+    assert!(h.query_by_label(ecad_trial::shell::right::page::NOTES).is_some());
+    take(&h, &deltas, "054-cover.png");
+    // Contents on: one transaction, after the last front page; off again: one.
+    let before = head(&mut h);
+    click(&mut h, "ecad.page.front.contents");
+    assert_eq!(head(&mut h), before + 1);
+    assert!(doc(&mut h).pages.values().any(|p| p.properties.get("generated").map(String::as_str) == Some("contents")));
+    h.run_steps(3);
+    click(&mut h, "ecad.page.front.contents");
+    assert_eq!(head(&mut h), before + 2);
+    assert!(!doc(&mut h).pages.values().any(|p| p.properties.get("generated").map(String::as_str) == Some("contents")));
+    // A block toggle: one setdefault.
+    click(&mut h, "ecad.page.block.structure_codes");
+    assert_eq!(head(&mut h), before + 3);
+    ok(&mut h, "u");
+    // Settings ▸ Pages and sheets with Panel layout selected (board 5.02).
+    h.state_mut().open_settings(Section::Pages);
+    h.run_steps(6);
+    take(&h, &deltas, "054-pages-and-sheets.png");
+}
