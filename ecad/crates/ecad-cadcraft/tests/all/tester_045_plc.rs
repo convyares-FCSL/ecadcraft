@@ -3,7 +3,7 @@
 //! the implementation existed. They drive the JSON forms the design names (`place` with `rack` and
 //! `slot`, `plcslot`, `plcracks`, `plcchannels`, `plcchannel`, `plcaddress`, `setdefault`,
 //! `setprop`, `checks`, `pagetexts`) and the ledger; every test that needs the build is ignored
-//! until phase 2. The worker's own tests are `lane_045`; these are the tester's, kept apart.
+//! until phase 2. The worker's own tests are `plc_contracts`; these are the tester's, kept apart.
 //!
 //! Fixture P is simplified (as tester 036 did): plain vertical drops stand in for the contacts,
 //! sensors and lamps of design §13; a terminal strip across the input drops gives each fenced

@@ -94,10 +94,10 @@ hand stays. A version no copy uses any more after an update is removed in the sa
 
 ## Checked by the worker (automated, not owner-tried)
 
-- `cargo test -p ecad-model lane_048`, `-p ecad-file lane_048`, `-p ecad-cadcraft lane_048`,
-  `-p ecad-mcp lane_048`: the op `SetComponentDefinition` (apply, undo, diff, merge), the
+- `cargo test -p ecad-model symbol_definition_contracts`, `-p ecad-file symbol_definition_contracts`, `-p ecad-cadcraft symbol_builder_contracts`,
+  `-p ecad-mcp symbol_builder_contracts`: the op `SetComponentDefinition` (apply, undo, diff, merge), the
   definition's new fields and their content hash, design 048 §12 rows 1–9 and 11–14, and the MCP
   contract.
-- `cargo test -p ecad-trial lane_048`: the builder, the review with a clash, Make symbol from
+- `cargo test -p ecad-trial symbol_builder_ui`: the builder, the review with a clash, Make symbol from
   lines and from a drawn device, the wheel slots, Compare and Update; screenshots with
   `ECAD_TESTER_SHOTS`.

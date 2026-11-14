@@ -156,7 +156,7 @@ fn nothing_is_painted_while_lists_library_or_publish_hide_the_page() {
 #[test]
 fn a_new_page_first_opens_with_its_sheet_fitted() {
     // UI rev 3 replaced 040's readable first zoom (a tag `TAG_PX` tall) with the sheet fitted at
-    // a 24 px margin; `lane_uiv3` measures the margin.
+    // a 24 px margin; `uiv3_frame` measures the margin.
     let mut h = harness();
     exec(&mut h, "newpage", json!({"title": "Fresh"}));
     h.run_steps(5);

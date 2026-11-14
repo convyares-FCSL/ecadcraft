@@ -67,5 +67,5 @@ styles {"catalogue": "location", "users": true}
 
 ## Checked here
 
-Automated: `cargo test -p ecad-model lane_050`, `-p ecad-file lane_050`, `-p ecad-cadcraft
-lane_050`, `-p ecad-mcp lane_050`, `-p ecad-trial lane_050`. Not owner-tried yet.
+Automated: `cargo test -p ecad-model style_contracts`, `-p ecad-file style_contracts`, `-p ecad-cadcraft
+style_contracts`, `-p ecad-mcp style_contracts`, `-p ecad-trial style_ui`. Not owner-tried yet.

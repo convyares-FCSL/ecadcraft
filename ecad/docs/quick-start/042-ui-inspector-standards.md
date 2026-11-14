@@ -1,7 +1,7 @@
 # 042: the inspector, Settings and Standards (U4c)
 
-What brief 042 changed, and how to try it by clicking. Folded into `docs/quick-start.md` at the
-phase-end tidy-up.
+What brief 042 changed, and how to try it by clicking. Listed in the index of
+`docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## What changed
 
@@ -59,7 +59,7 @@ phase-end tidy-up.
 
 ## Checks run (worker, not owner-tried)
 
-`cargo test -p ecad-cadcraft lane_042` (setdefault over the whole registry, refusals, chain,
-users), `cargo test -p ecad-mcp lane_042` (MCP author and writes off), `cargo test -p ecad-trial
-lane_042` (Settings opening and Esc, Standards, inspector, update map), and the fast tests of the
+`cargo test -p ecad-cadcraft defaults_contracts` (setdefault over the whole registry, refusals, chain,
+users), `cargo test -p ecad-mcp defaults_contracts` (MCP author and writes off), `cargo test -p ecad-trial
+standards_ui` (Settings opening and Esc, Standards, inspector, update map), and the fast tests of the
 three crates.

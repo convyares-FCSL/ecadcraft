@@ -41,8 +41,8 @@ worker" ran as automated tests only.
 
 ## Checked by the worker (automated)
 
-`cargo test -p ecad-cadcraft lane_044`, `cargo test -p ecad-mcp lane_044`,
-`cargo test -p ecad-model lane_044`: rows, pins across wires, mating across pages, refusals,
+`cargo test -p ecad-cadcraft connector`, `cargo test -p ecad-mcp connector`,
+`cargo test -p ecad-model connector_invariant_contracts`: rows, pins across wires, mating across pages, refusals,
 Checks rows, registry naming, BOM half rows, references, `pinlabel`, hostile input, the version-2
 starters and the bridge-key check.
 

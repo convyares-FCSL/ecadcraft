@@ -1,7 +1,7 @@
 # 041: the wheel, the intent line and the seven tool groups (U4b)
 
-What brief 041 changed, and how to try it by clicking. Folded into `docs/quick-start.md` at the
-phase-end tidy-up.
+What brief 041 changed, and how to try it by clicking. Listed in the index of
+`docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## What changed
 
@@ -49,8 +49,8 @@ phase-end tidy-up.
 6. Ctrl+K, type `fix number`, click the action row with the wire selected: Fix number starts on
    that wire.
 
-Checked by the automated tests (`cargo test -p ecad-trial lane_041`, `-p ecad-ui lane_041`,
-`-p ecad-cadcraft lane_041`); the steps above have not been tried by the owner yet.
+Checked by the automated tests (`cargo test -p ecad-trial wheel_ui`, `-p ecad-ui wheel`,
+`-p ecad-cadcraft actions_contracts`); the steps above have not been tried by the owner yet.
 
 ## Not in this brief
 

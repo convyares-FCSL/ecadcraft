@@ -20,37 +20,83 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 ## Which revision this describes, and what has been tried
 
 What each brief added, what was tried and how to try it by clicking is in its own file in
-[`quick-start/`](quick-start/), one per brief (`<NNN>-<name>.md`, the brief's own file name).
-A lane writes only its own file; this list is brought up to date at the phase-end tidy-up
-(`ecad/CLAUDE.md`, "Branches and testing"), so it can lag behind the folder.
+[`quick-start/`](quick-start/), one per brief (`<NNN>-<name>.md`, the brief's own file name). The
+list below is the whole folder, by phase, as of the phase-end tidy-up after M1 and UI rev 3
+(2026-11-14). During a phase a lane writes only its own file, and this list is brought up to date
+at the next tidy-up (`ecad/CLAUDE.md`, "Branches and testing"), so it can lag behind the folder.
+UI rev 3 redrew the frame, panels, inspector, tools and canvas that UI rev 2 introduced: where the
+two disagree on what you see, the UI rev 3 files describe the app as it is.
+
+**Foundations: the trial, files, agents and speed**
+
+- [003: windows trial and docs](quick-start/003-windows-trial-and-docs.md)
+- [008: usability mouse tools](quick-start/008-usability-mouse-tools.md)
+- [011: agent access mcp](quick-start/011-agent-access-mcp.md)
+- [012: load benchmark](quick-start/012-load-benchmark.md)
+- [015: startup timing](quick-start/015-startup-timing.md)
+- [016: project tab](quick-start/016-project-tab.md)
+- [017: fast tests](quick-start/017-fast-tests.md)
+- [021: container v2 redb](quick-start/021-container-v2-redb.md)
+
+**Cables**
+
+- [004: cable slash](quick-start/004-cable-slash.md)
+- [005: cable views](quick-start/005-cable-views.md)
+- [009: cable look and cores](quick-start/009-cable-look-and-cores.md)
+- [010: cable references](quick-start/010-cable-references.md)
+
+**Devices, pages, numbering and outputs**
+
+- [018: components and tags](quick-start/018-components-and-tags.md)
+- [019: sheets and properties](quick-start/019-sheets-and-properties.md)
+- [020: history and branches](quick-start/020-history-and-branches.md)
+- [022: connectivity and wire numbers](quick-start/022-connectivity-and-wire-numbers.md)
+- [024: outputs](quick-start/024-outputs.md)
+- [025: device cross references](quick-start/025-device-cross-references.md)
+- [026: numbering](quick-start/026-numbering.md)
+- [028: terminal strips](quick-start/028-terminal-strips.md)
+- [031: text](quick-start/031-text.md)
+- [032: wires nets](quick-start/032-wires-nets.md)
+- [033: print project](quick-start/033-print-project.md)
+- [034: component library](quick-start/034-component-library.md)
+
+**UI rev 2 (U1 to U4d)**
 
 - [037: ui tokens](quick-start/037-ui-tokens.md)
-- [036: multi level terminals](quick-start/036-multi-level-terminals.md)
+- [038: the shell (U2)](quick-start/038-ui-shell.md)
+- [039: the one table (U3)](quick-start/039-ui-table.md)
+- [040: the canvas (U4a)](quick-start/040-ui-canvas.md)
+- [041: the wheel, the intent line and the seven tool groups (U4b)](quick-start/041-ui-wheel-tools.md)
+- [042: the inspector, Settings and Standards (U4c)](quick-start/042-ui-inspector-standards.md)
+- [043: the agent banner and History authors (U4d)](quick-start/043-ui-agent-banner.md)
+
+**M1**
+
 - [035: mcp bridge](quick-start/035-mcp-bridge.md)
-- [034: component library](quick-start/034-component-library.md)
-- [033: print project](quick-start/033-print-project.md)
-- [032: wires nets](quick-start/032-wires-nets.md)
-- [031: text](quick-start/031-text.md)
-- [028: terminal strips](quick-start/028-terminal-strips.md)
-- [026: numbering](quick-start/026-numbering.md)
-- [025: device cross references](quick-start/025-device-cross-references.md)
-- [024: outputs](quick-start/024-outputs.md)
-- [022: connectivity and wire numbers](quick-start/022-connectivity-and-wire-numbers.md)
-- [021: container v2 redb](quick-start/021-container-v2-redb.md)
-- [020: history and branches](quick-start/020-history-and-branches.md)
-- [019: sheets and properties](quick-start/019-sheets-and-properties.md)
-- [018: components and tags](quick-start/018-components-and-tags.md)
-- [017: fast tests](quick-start/017-fast-tests.md)
-- [016: project tab](quick-start/016-project-tab.md)
-- [015: startup timing](quick-start/015-startup-timing.md)
-- [012: load benchmark](quick-start/012-load-benchmark.md)
-- [011: agent access mcp](quick-start/011-agent-access-mcp.md)
-- [010: cable references](quick-start/010-cable-references.md)
-- [009: cable look and cores](quick-start/009-cable-look-and-cores.md)
-- [008: usability mouse tools](quick-start/008-usability-mouse-tools.md)
-- [005: cable views](quick-start/005-cable-views.md)
-- [004: cable slash](quick-start/004-cable-slash.md)
-- [003: windows trial and docs](quick-start/003-windows-trial-and-docs.md)
+- [036: multi level terminals](quick-start/036-multi-level-terminals.md)
+- [044: Connector devices](quick-start/044-connectors.md)
+- [045: PLC racks and cards](quick-start/045-plc.md)
+- [046: graphical terminal-strip pages](quick-start/046-strip-pages.md)
+- [047: BOM completeness](quick-start/047-bom-completeness.md)
+- [048: Symbol builder](quick-start/048-symbol-builder.md)
+- [049: Continuation cross-references](quick-start/049-continuation-refs.md)
+- [050a: the style model (standards and style catalogues)](quick-start/050a-style-model.md)
+- [050b: wire categories](quick-start/050b-wire-categories.md)
+- [051: PLC visuals and the rack overview](quick-start/051-plc-visuals.md)
+
+**Drawing-pack re-run fixes**
+
+- [Pack re-run fixes (2026-11-14)](quick-start/pack-rerun-fixes.md)
+
+**UI rev 3**
+
+- [UI rev 3, board 1.01: the frame](quick-start/uiv3-frame.md)
+- [UI rev 3, section A: the left panels](quick-start/uiv3-panels.md)
+- [UI rev 3, section B: the inspector](quick-start/uiv3-B-inspector.md)
+- [UI rev 3, section C: tools, placing and the wheel](quick-start/uiv3-tools.md)
+- [UI rev 3, section D: the canvas, sheet colour and themes](quick-start/uiv3-canvas.md)
+- [UI rev 3, section E: the Project workspace (boards 2.01–2.06)](quick-start/uiv3-project.md)
+- [UI rev 3, section F: Library, Publish and Settings](quick-start/uiv3-library.md)
 
 Three kinds of evidence exist, and they are kept apart:
 

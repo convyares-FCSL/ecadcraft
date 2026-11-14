@@ -1,7 +1,7 @@
 # 039: the one table (U3)
 
-What brief 039 changed, and how to try it by clicking. Folded into `docs/quick-start.md` at the
-phase-end tidy-up.
+What brief 039 changed, and how to try it by clicking. Listed in the index of
+`docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## What changed
 

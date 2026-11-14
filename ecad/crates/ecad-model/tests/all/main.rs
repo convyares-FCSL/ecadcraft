@@ -7,10 +7,13 @@
 mod lanes;
 
 mod connectivity_contracts;
+mod connector_invariant_contracts;
 mod device_contracts;
 mod incremental_contracts;
 mod ledger_base;
 mod ledger_contracts;
 mod sheet_contracts;
+mod style_contracts;
+mod symbol_definition_contracts;
 mod verify_mode_acceptance;
 mod worked_example;

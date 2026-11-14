@@ -2,7 +2,7 @@
 
 What section D of UI rev 3 changed, and how to try it by clicking. Boards 1.15 to 1.18 of the
 handoff; the build spec is `docs/discussions/ui-2026-11/rev3-build-spec.md` ("Sheet colour and
-full dark"). Folded into `docs/quick-start.md` at the phase-end tidy-up.
+full dark"). Listed in the index of `docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## What changed
 

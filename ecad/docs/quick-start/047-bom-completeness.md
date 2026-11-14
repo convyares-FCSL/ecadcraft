@@ -54,12 +54,12 @@ that `for` as it rewrites links.
 ## Checks
 
 - *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-cadcraft --test all
-  lane_047` (14 tests: the BOM page; items in metres and undo; refusals on items; one line on four devices;
+  bom_contracts` (14 tests: the BOM page; items in metres and undo; refusals on items; one line on four devices;
   fuse inserts per fuse and the uncovered-fuse check; the article column, command and conflict
   with its fix; kits and the nested layout; missing `for` names and unread keys; the update map;
   hostile values; save and reopen; follow-up: renumbering keeps a strip line's `for`, strip part
-  article numbers by level), `cargo test -p ecad-mcp --test all lane_047` (2 tests: every
+  article numbers by level), `cargo test -p ecad-mcp --test all bom_contracts` (2 tests: every
   write by the agent, refused with writes off, `bom` still reads) and `cargo test -p ecad-trial
-  --test all lane_047` (3 tests: the Columns menu, + Item's prompts, the inspector's Parts).
+  --test all bom_ui` (3 tests: the Columns menu, + Item's prompts, the inspector's Parts).
 - *Agent-observed:* screenshots in the pull request, from the headless renderer.
 - *Owner-tried:* not yet.

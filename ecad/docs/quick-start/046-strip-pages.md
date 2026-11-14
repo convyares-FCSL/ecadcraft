@@ -1,7 +1,7 @@
 # 046: graphical terminal-strip pages
 
-What brief 046 changed, and how to try it by clicking. Folded into `docs/quick-start.md` at the
-phase-end tidy-up.
+What brief 046 changed, and how to try it by clicking. Listed in the index of
+`docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## What changed
 
@@ -47,6 +47,6 @@ phase-end tidy-up.
 
 ## Checks run (worker, not owner-tried)
 
-- `cargo test -p ecad-cadcraft lane_046`, `cargo test -p ecad-mcp lane_046`, `cargo test -p
-  ecad-trial lane_046` (screenshots with `ECAD_TESTER_SHOTS`).
+- `cargo test -p ecad-cadcraft strip_page_contracts`, `cargo test -p ecad-mcp strip_page_contracts`, `cargo test -p
+  ecad-trial strip_page_ui` (screenshots with `ECAD_TESTER_SHOTS`).
 - Nobody has clicked through it on a display yet.

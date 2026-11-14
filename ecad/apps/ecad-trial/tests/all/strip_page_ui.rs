@@ -38,7 +38,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
     h.run_steps(4);
 }
 
-/// Fixture G (design 046 §11), as `ecad-cadcraft`'s `lane_046` builds it.
+/// Fixture G (design 046 §11), as `ecad-cadcraft`'s `strip_page_contracts` builds it.
 fn fixture_g(h: &mut H) -> ComponentId {
     exec(h, "locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]}));
     exec(h, "locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]}));

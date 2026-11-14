@@ -6,6 +6,7 @@
 // Lanes in flight add their modules in `lanes/`, not to the list below (see `lanes/mod.rs`).
 mod lanes;
 
+mod continuation_bench;
 mod generator_contracts;
 mod tester_014_move_probe;
 mod tester_014_r3_commit_cost;

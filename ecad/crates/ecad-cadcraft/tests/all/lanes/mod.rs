@@ -5,21 +5,3 @@
 //! `merge=union` (`ecad/.gitattributes`), so two lanes adding their line keep both instead of
 //! conflicting; `cargo fmt` puts them back in order. At the phase-end tidy-up the lanes' modules
 //! move into `main.rs`'s list and this file holds only this comment again.
-mod lane_040;
-mod lane_041;
-mod lane_042;
-mod lane_043;
-mod lane_044;
-mod lane_044_tester;
-mod lane_045;
-mod lane_045_tester;
-mod lane_046;
-mod lane_047;
-mod lane_048;
-mod lane_049;
-mod lane_050;
-mod lane_050a_tester;
-mod lane_050b_tester;
-mod lane_051;
-mod lane_o1;
-mod lane_packfix;
