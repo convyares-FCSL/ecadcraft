@@ -103,6 +103,8 @@ pub struct Cx<'a> {
     pub insp: &'a mut Inspector,
     pub checks: &'a [crate::checks_panel::Row],
     pub writable: bool,
+    /// A check's fix may run (writable, and no old revision shown).
+    pub fixes: bool,
     /// The panel's full width (for the rules between sections).
     pub full: egui::Rangef,
     /// What a check card asked for (the Checks tab's actions).
@@ -167,6 +169,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         sync(t);
     }
     let writable = t.project_open() && !t.header().read_only;
+    // A check's fix writes the live project: never while an old revision is shown read-only
+    // (the guard the drawer's Checks list had, as `shell/mod.rs` and the wheel keep it).
+    let fixes = {
+        let h = t.header();
+        h.name.is_some() && !h.read_only && t.panel.revision.is_none()
+    };
     let props = t.props.clone();
     let Ok(mut sh) = props.lock() else { return };
     sh.frames += 1;
@@ -190,12 +198,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
                 let insp = &mut t.settings.inspector;
                 let panel = &mut t.panel.checks;
                 panel_acts = super::in_rect(ui, body, "ecad.shell.right.checks", |ui| {
-                    checks_tab::show(ui, panel, &mut insp.checks_project, page, writable, body)
+                    checks_tab::show(ui, panel, &mut insp.checks_project, page, fixes, body)
                 });
             }
         }
         tab => {
-            let mut cx = Cx { sh: &mut sh, insp: &mut t.settings.inspector, checks: t.panel.checks.rows(), writable, full, panel_out: Vec::new() };
+            let mut cx =
+                Cx { sh: &mut sh, insp: &mut t.settings.inspector, checks: t.panel.checks.rows(), writable, fixes, full, panel_out: Vec::new() };
             super::in_rect(ui, body, "ecad.shell.right.body", |ui| {
                 egui::ScrollArea::vertical().id_salt(("ecad.shell.right.scroll", tab.label())).auto_shrink([false, false]).show(ui, |ui| {
                     if tab == RightTab::Layout {
