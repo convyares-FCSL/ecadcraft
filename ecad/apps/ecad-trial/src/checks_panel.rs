@@ -31,6 +31,9 @@ pub const USE_BOX_LOCATION: &str = "Use the box's location";
 pub const SHOW: &str = "Show";
 /// Brief 050a: a style row's fix opens Settings ▸ Standards.
 pub const GO_TO_STANDARDS: &str = "Go to Standards";
+/// Brief 055: a title block row's fixes.
+pub const EDIT_BLOCK: &str = "Edit block";
+pub const CLEAR_PAGE_SHEET: &str = "Clear the page's sheet";
 /// Brief 028's fix buttons.
 pub const OFFER: &str = "Offer drawn";
 pub const RENUMBER_STRIP: &str = "Renumber strip";
@@ -250,6 +253,8 @@ impl ChecksPanel {
             (Fix::PlaceMates(c, side), _) => Action::PlaceMates(c, side),
             (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
             (Fix::RenumberPage(page), _) => Action::RenumberPage(page),
+            (Fix::EditTitleBlock(page, item), _) => Action::EditTitleBlock(page, item),
+            (Fix::ClearPageSheet(page), _) => Action::ClearPageSheet(page),
             (Fix::AddJunction(_) | Fix::Join(_), None) => return None,
         })
     }

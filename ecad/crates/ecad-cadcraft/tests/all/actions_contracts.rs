@@ -140,6 +140,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "makesymbol",
     // Brief 049.
     "contcaption",
+    // Brief 055.
+    "titleblocks",
+    "titleblock",
+    "titleblockimport",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

@@ -206,10 +206,16 @@ pub enum Kind {
     /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
     /// has no length.
     WireAllowance,
+    /// Brief 055 (design 055 §8): a bound value is cut in the title block on at least one page.
+    TitleValueCut,
+    /// Brief 055: a frame has fields this build cannot fill, or items past the bounds.
+    TitleBindingUnknown,
+    /// Brief 055: a page's own sheet differs from its frame's; the frame wins.
+    FrameSheetDiffers,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 72] = [
+    pub const ALL: [Kind; 75] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -282,6 +288,9 @@ impl Kind {
         Kind::CategoryUnknown,
         Kind::CategoryPotentialTwice,
         Kind::WireAllowance,
+        Kind::TitleValueCut,
+        Kind::TitleBindingUnknown,
+        Kind::FrameSheetDiffers,
     ];
 
     /// The JSON name.
@@ -359,6 +368,9 @@ impl Kind {
             Kind::CategoryUnknown => "category-unknown",
             Kind::CategoryPotentialTwice => "category-potential-twice",
             Kind::WireAllowance => "wire-allowance",
+            Kind::TitleValueCut => "title-value-cut",
+            Kind::TitleBindingUnknown => "title-binding-unknown",
+            Kind::FrameSheetDiffers => "frame-sheet-differs",
         }
     }
 
@@ -442,6 +454,9 @@ impl Kind {
             Kind::CategoryUnknown => "Wire category not found; drawn without one",
             Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
             Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
+            Kind::TitleValueCut => "A value is cut in the title block",
+            Kind::TitleBindingUnknown => "Title block fields this build cannot fill",
+            Kind::FrameSheetDiffers => "Page sheet differs from its frame's; the frame wins",
         }
     }
 
@@ -492,6 +507,7 @@ impl Kind {
             | Kind::ArticleConflict
             | Kind::PartForMissing
             | Kind::CategoryPotentialTwice
+            | Kind::FrameSheetDiffers
             | Kind::WireThroughCard => Severity::Warning,
             _ => Severity::Info,
         }
@@ -580,6 +596,10 @@ pub enum Fix {
     DropMissingFor(ComponentId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 055: **Edit block** opens Library ▸ Title blocks on the page's frame with item `n` selected.
+    EditTitleBlock(PageId, u16),
+    /// Brief 055: **Clear the page's sheet** (`setprop` page `sheet` null).
+    ClearPageSheet(PageId),
 }
 
 /// One row of the Checks list.
@@ -613,6 +633,9 @@ impl Check {
             | Kind::StyleLimits
             | Kind::CategoryPotentialTwice
             | Kind::WireAllowance
+            | Kind::TitleValueCut
+            | Kind::TitleBindingUnknown
+            | Kind::FrameSheetDiffers
                 if !self.which.is_empty() =>
             {
                 self.which.clone()
@@ -678,6 +701,8 @@ pub enum Key {
     Page(PageId),
     /// Brief 050a: the style rows (unknown styles, old settings, limits).
     Styles,
+    /// Brief 055: the title block rows (cut values, unknown fields, sheets that differ).
+    TitleBlocks,
 }
 
 type Cell = (PageId, i64, i64);
@@ -1244,6 +1269,7 @@ impl Checks {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
+        ch.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1412,6 +1438,9 @@ impl Checks {
         if scope.styles {
             self.set(Key::Styles, crate::styles::checks::rows(doc));
         }
+        if scope.title_blocks {
+            self.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
+        }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
@@ -1438,6 +1467,8 @@ pub struct Scope {
     cables: BTreeSet<ecad_model::CableId>,
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
     styles: bool,
+    /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
+    title_blocks: bool,
 }
 
 impl Scope {
@@ -1456,6 +1487,7 @@ impl Scope {
         };
         for op in ops {
             self.styles |= crate::styles::checks::touches(op);
+            self.title_blocks |= crate::title_block::checks::touches(op);
             match op {
                 Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
                     self.conductors.insert(*id);

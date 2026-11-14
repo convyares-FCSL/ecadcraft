@@ -37,6 +37,7 @@ pub mod op;
 pub mod sheet;
 pub mod style;
 pub mod tag;
+pub mod title_block;
 pub mod wiring;
 
 pub use connectivity::{Connectivity, NetData, NetId, Node};

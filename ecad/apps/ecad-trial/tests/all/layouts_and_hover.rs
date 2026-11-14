@@ -112,7 +112,10 @@ mod hover_and_marks {
         let edge = |x: f64| {
             model
                 .iter()
-                .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x))
+                .find(|e| {
+                    e.common.layer != ecad_cadcraft::frame::LAYER
+                        && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x)
+                })
                 .map(|e| e.handle.hex())
                 .unwrap()
         };
@@ -409,7 +412,10 @@ mod layout_refusals {
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let right = model
             .iter()
-            .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
+            .find(|e| {
+                e.common.layer != ecad_cadcraft::frame::LAYER
+                    && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0)
+            })
             .map(|e| e.handle.hex())
             .unwrap();
         ok(h, &format!("addterminal {}", json!({"handle": right, "at": [40, 10], "label": "1"})));

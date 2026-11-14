@@ -12,6 +12,7 @@ pub mod builder;
 pub mod details;
 pub mod draft;
 pub mod review;
+pub mod title_blocks;
 pub mod view;
 
 use ecad_cadcraft::symbol_cmds::Content;

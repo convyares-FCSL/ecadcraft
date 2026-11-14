@@ -65,6 +65,29 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 055: only the title block rows (design 055 §10.3) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--title-blocks"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-title-blocks-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::title_blocks::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "house {:.2} ms, own300 {:.2} ms, save {:.1} ms ({} frames worked out), unread key {} frames worked out ({} pages)",
+                    t.house_ms, t.own300_ms, t.save_ms, t.save_builds, t.unread_builds, t.pages
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 050: only the style rows (design 050 §11) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--styles"
