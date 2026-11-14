@@ -50,7 +50,7 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let all = ecad_cadcraft::checks::all(&doc, 1e-6);
     let looks: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(looks.len(), 1, "{all:?}");
-    let Some(Fix::AddJunction(at)) = looks[0].fix else { panic!("no fix: {looks:?}") };
+    let Some(Fix::Join(at)) = looks[0].fix else { panic!("no fix: {looks:?}") };
     assert!(at.near(ecad_model::Pt::new(30.0, 0.0), 1e-9));
     // Add junction (the row's fix), then the T is one net with one number.
     let head = h.head();
@@ -260,7 +260,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     let lamp = all.iter().find(|c| c.kind == Kind::Unconnected).unwrap();
     assert_eq!(lamp.page, Some(page));
     // Brief 019: places read page-column-row on the page's sheet.
-    assert_eq!(lamp.locator(&doc), "1-D-4");
+    assert_eq!(lamp.locator(&doc), "1/D4");
     assert_eq!(all.first().map(|c| c.severity()), Some(ecad_cadcraft::checks::Severity::Error));
     // Put the drawn-away end back (written past the commands, it is undone the same way).
     h.cfg(|p| p.ledger.undo(Author::User).unwrap());
@@ -401,7 +401,7 @@ fn add_junction_joins_loose_ends_that_only_meet() {
     assert_ne!(net_of(&doc, a), net_of(&doc, b));
     let looks: Vec<_> = ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(looks.len(), 1, "one row for the pair: {looks:?}");
-    let Some(Fix::AddJunction(at)) = looks[0].fix else { panic!("{looks:?}") };
+    let Some(Fix::Join(at)) = looks[0].fix else { panic!("{looks:?}") };
     let r = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
     assert_eq!(r["attached"], json!(2), "{r}");
     let doc = h.doc();
@@ -422,7 +422,8 @@ fn a_wires_properties_show_and_edit_its_net() {
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
     terminal(&mut h, (60.0, 0.0), "X1");
     let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
-    let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({}));
+    // Brief 032: two wires that meet, joined later by a junction (else they would be one wire).
+    let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({"join": false}));
     let view = |h: &mut H, w: ConductorId| {
         let route = h.route_handle(page, w);
         h.p(|p| props::view(p, Some(page), &[route]))
@@ -436,8 +437,9 @@ fn a_wires_properties_show_and_edit_its_net() {
     let pot = row(&v, "potential");
     assert!(pot.value == "24V (continuation)" && pot.inherited, "{pot:?}");
     let cs = row(&v, "cross_section");
-    assert!(cs.value == "0.5 (24V)" && cs.inherited, "{cs:?}");
-    assert_eq!(row(&v, "colour").value, "BU (24V)");
+    // Brief 050b: the defaults are the 24 V DC category's.
+    assert!(cs.value == "0.5 (24 V DC)" && cs.inherited, "{cs:?}");
+    assert_eq!(row(&v, "colour").value, "BU (24 V DC)");
     assert!(row(&v, "net").value.starts_with("1 wire"), "{v:?}");
     let target = v.sections[0].target.clone().unwrap();
     // Each edit through the line the panel sends.
@@ -461,7 +463,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     let c = row(&view(&mut h, a), "colour");
     assert!(c.value == "RD" && !c.inherited, "{c:?}");
     send(&mut h, "colour", None);
-    assert_eq!(row(&view(&mut h, a), "colour").value, "BU (0V)", "empty returns to the default");
+    assert_eq!(row(&view(&mut h, a), "colour").value, "BU (0 V DC)", "empty returns to the default");
     // Joining b into a's net elsewhere changes a's Net block; the change meets its dependencies.
     let v = view(&mut h, a);
     let n = h.p(|p| p.change_count());

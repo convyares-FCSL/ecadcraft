@@ -242,13 +242,27 @@ fn cable_schedule(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
 }
 
 /// The generated lists, in folder order. The book, `checks` and the manifest are always written.
-pub const LISTS: [Slot; 5] = [
+pub const LISTS: [Slot; 7] = [
     Slot { id: "bom", suffix: " BOM.csv", build: bom, missing_why: "" },
     Slot { id: "wires", suffix: " wires.csv", build: wires, missing_why: "" },
     Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
     Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: NO_STRIPS },
     Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
+    // Brief 045c (design 045 §8.3): ` IO list.csv` (a `/` cannot be in a file name).
+    // Brief 051 (design 051 §4.2): the rack overview, before the I/O list in the book.
+    Slot { id: "plc-racks", suffix: " PLC racks.csv", build: plc_racks, missing_why: crate::plc::sheets::NO_RACKS },
+    Slot { id: "io-list", suffix: " IO list.csv", build: io_list, missing_why: crate::plc::iolist::NO_CARDS },
 ];
+
+/// Brief 051's PLC racks list, when the project has a rack or a card.
+fn plc_racks(doc: &Document, o: &Outputs) -> Result<Option<Table>, String> {
+    Ok(crate::plc::sheets::rack_csv(doc, &o.plc))
+}
+
+/// Brief 045's I/O list, when the project has a card with channels.
+fn io_list(doc: &Document, o: &Outputs) -> Result<Option<Table>, String> {
+    Ok(crate::plc::iolist::csv_table(doc, &o.plc))
+}
 
 /// Whether `slot` gives a list for `doc` (the check's Writes line, before anything is built):
 /// brief 028's lists only when the project has strips or cables.
@@ -256,6 +270,8 @@ fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
         "terminal-plan" => doc.components.keys().any(|c| crate::strips::is_strip(doc, *c)),
         "cable-schedule" => !doc.cables.is_empty(),
+        "io-list" => doc.components.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
+        "plc-racks" => doc.components.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
         _ => slot.missing_why.is_empty(),
     }
 }
@@ -1134,14 +1150,11 @@ fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
 
 // ---------------------------------------------------------------- release
 
-fn options(params: &Value) -> Result<Options, String> {
-    let mono = match params.get("colour").and_then(Value::as_str) {
-        None | Some("mono") => true,
-        Some("screen") => false,
-        Some(_) => return Err("`colour` is \"mono\" (black on white) or \"screen\"".into()),
-    };
+fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String> {
+    // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
+    let mono = crate::defaults::print::mono_param(doc, params)?;
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool)?.unwrap_or(true);
-    Ok(Options { mono, lineweights })
+    Ok(Options { mono, lineweights, pending: false })
 }
 
 /// The tags of the cables shown fan (the manifest's `cable_views`).
@@ -1186,7 +1199,7 @@ pub(crate) fn release_pending(
     // 1. Refusals.
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
-    let o = options(params)?;
+    let o = options(p.ledger.document(), params)?;
     let rows = check_rows(p);
     if let Some(r) = pending_refusal(p, &rows, params) {
         return Err(r);
@@ -1393,7 +1406,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     }
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
-    let o = options(params)?;
+    let o = options(p.ledger.document(), params)?;
     let row = issued_row(p, rev)?;
     let rev = row.rev().to_string();
     let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));

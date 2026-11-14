@@ -31,8 +31,9 @@ use ecad_model::sheet::{MARGIN_MM, TITLE_BLOCK_MM, TOP_MARGIN_MM, unit_scale};
 use ecad_model::{Document, ObjectRef, Op, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT};
+use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextLook};
 use crate::outputs::{Group, Outputs};
+use crate::text_style::{Look, TextKind};
 
 /// The page property that names a generated page's kind.
 pub const KEY: &str = "generated";
@@ -51,6 +52,10 @@ pub const ROW_MM: f64 = 5.0;
 const A3_AREA: f64 = 390.0;
 /// `ecad.flagged` (`ecad.check-warning`, ACI 2): `?` values on screen.
 pub const FLAGGED_ACI: u8 = 2;
+/// `ecad.flagged-print` (ACI 7): a missing value's `?` and box when printed (design 033 §3.1).
+pub const FLAGGED_PRINT_ACI: u8 = 7;
+/// The text of a missing value.
+pub const MISSING: &str = "?";
 /// Refusal of `pageprops` changing the kind.
 pub const KIND_FIXED: &str = "A page's kind is set when it is made; add a new page instead.";
 
@@ -65,14 +70,27 @@ pub enum GenKind {
     Terminals,
     /// Brief 028: the cable schedule.
     Cables,
+    /// Brief 051 (design 051 §4.2, FP2): the rack overview, before the I/O list.
+    PlcRack,
+    /// Brief 045 (design 045 §8.2, FP5): the I/O list.
+    IoList,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 6] = [GenKind::Cover, GenKind::Contents, GenKind::Revisions, GenKind::BomLocation, GenKind::Terminals, GenKind::Cables];
+    pub const ALL: [GenKind; 8] = [
+        GenKind::Cover,
+        GenKind::Contents,
+        GenKind::Revisions,
+        GenKind::BomLocation,
+        GenKind::Terminals,
+        GenKind::Cables,
+        GenKind::PlcRack,
+        GenKind::IoList,
+    ];
 
     /// Whether its content comes from the report models (built for it on first show).
     pub fn needs_outputs(self) -> bool {
-        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables)
+        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList)
     }
 
     /// The stored value.
@@ -84,6 +102,8 @@ impl GenKind {
             GenKind::BomLocation => "bom-location",
             GenKind::Terminals => "terminals",
             GenKind::Cables => "cables",
+            GenKind::PlcRack => "plcrack",
+            GenKind::IoList => "iolist",
         }
     }
 
@@ -101,6 +121,8 @@ impl GenKind {
             GenKind::BomLocation => "BOM by location",
             GenKind::Terminals => "Terminal plan",
             GenKind::Cables => "Cable schedule",
+            GenKind::PlcRack => "PLC racks",
+            GenKind::IoList => "I/O list",
         }
     }
 }
@@ -182,6 +204,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn continuation_sheets_are_numbered_in_sequence() {
+        for (n, i, want) in [
+            ("400", 0, "400"),
+            ("400", 1, "401"),
+            ("400", 2, "402"),
+            ("0090", 1, "0091"),
+            ("B10", 1, "B11"),
+            ("099", 1, "100"),
+            ("BOM", 1, "BOM2"),
+            ("BOM", 2, "BOM3"),
+            ("18446744073709551615", 1, "184467440737095516152"),
+        ] {
+            assert_eq!(sheet_number(n, i), want, "{n} sheet {i}");
+        }
+    }
+
+    #[test]
     fn a_continued_heading_takes_a_row_of_its_sheet() {
         let mut heads = vec![Some("+CP1".to_string())];
         heads.extend(std::iter::repeat_n(None, 88));
@@ -202,10 +241,105 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         Some(GenKind::Contents) => doc.page_order.len(),
         Some(GenKind::Revisions) => crate::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return outputs.map_or(1, bom_sheets),
+        // Brief 046: a graphic page counts its strips' kept graphic sheets.
+        Some(GenKind::Terminals) if crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic => {
+            return outputs.map_or(1, |o| crate::strip_page::sheets(doc, page, o));
+        }
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
+        // Brief 051 (design 051 §4.1): cards packed on sheets, from the kept row counts.
+        Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(ROWS_PER_SHEET)),
+        // Brief 051 (design 051 §4.2): racks packed on sheets, from the kept slot counts.
+        Some(GenKind::PlcRack) => return outputs.map_or(1, |o| crate::plc::sheets::rack_sheets(doc, page, &o.plc)),
     };
     rows.div_ceil(ROWS_PER_SHEET).max(1)
+}
+
+/// The number of sheet `i` (0-based) of a generated page numbered `number` (design 033 §5.1):
+/// its trailing digits plus `i`, keeping their width (`400` → `401`, `0090` → `0091`, `B10` →
+/// `B11`); without trailing digits, `N`, `N2`, `N3`… Sheet 0 is the number itself.
+pub fn sheet_number(number: &str, i: usize) -> String {
+    if i == 0 {
+        return number.to_string();
+    }
+    let head = number.trim_end_matches(|c: char| c.is_ascii_digit());
+    let digits = number.get(head.len()..).unwrap_or_default();
+    if !digits.is_empty()
+        && let Ok(n) = digits.parse::<u64>()
+        && let Some(m) = u64::try_from(i).ok().and_then(|i| n.checked_add(i))
+    {
+        let width = digits.len();
+        return format!("{head}{m:0width$}");
+    }
+    format!("{number}{}", i.saturating_add(1))
+}
+
+/// The numbers of every sheet of `page` (one for an ordinary page), its shown number first.
+pub fn sheet_numbers(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> Vec<String> {
+    let n = book.number(doc, page);
+    (0..sheets(doc, page, outputs)).map(|i| sheet_number(&n, i)).collect()
+}
+
+/// The number column of `page` where pages are listed (contents): `400`, or `400–402` for a
+/// generated page of several sheets.
+pub fn number_range(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> String {
+    let n = book.number(doc, page);
+    match sheets(doc, page, outputs) {
+        0 | 1 => n,
+        k => format!("{n}\u{2013}{}", sheet_number(&n, k - 1)),
+    }
+}
+
+/// The page whose continuation sheet (2nd or later) is numbered `number`, and that sheet's index:
+/// continuation numbers count as taken (design 033 §5.3). O(generated pages × their sheets).
+pub fn continuation_of(doc: &Document, book: &Book, number: &str, outputs: Option<&Outputs>) -> Option<(PageId, usize)> {
+    book.order.iter().filter(|p| kind_of(doc, **p).is_some()).find_map(|p| {
+        let n = book.number(doc, *p);
+        (1..sheets(doc, *p, outputs)).find(|i| sheet_number(&n, *i).eq_ignore_ascii_case(number.trim())).map(|i| (*p, i))
+    })
+}
+
+/// The refusal of typing `number` when it is sheet `i` of `page` (design 033 §5.3).
+pub fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
+    let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
+    let owner = ecad_model::book::page_number(doc, page);
+    format!("Number {number} is sheet {} of page {owner} ({title}).", i.saturating_add(1))
+}
+
+/// The Checks rows of continuation sheets that took another page's number (design 033 §5.3): a
+/// table grew, so the book still prints and the two sheets share the number until the user
+/// renumbers. Each row is on the other page. O(pages + generated pages × their sheets).
+pub fn continuation_checks(doc: &Document, outputs: Option<&Outputs>) -> Vec<crate::checks::Check> {
+    use crate::checks::{Check, Fix, Kind, Object};
+    let book = Book::of(doc);
+    let mut by_number: std::collections::HashMap<String, PageId> = std::collections::HashMap::new();
+    for p in &book.order {
+        by_number.entry(book.number(doc, *p).to_ascii_lowercase()).or_insert(*p);
+    }
+    let mut out = Vec::new();
+    for p in book.order.iter().filter(|p| kind_of(doc, **p).is_some()) {
+        let n = sheets(doc, *p, outputs);
+        if n < 2 {
+            continue;
+        }
+        let number = book.number(doc, *p);
+        let last = sheet_number(&number, n - 1);
+        let title = doc.pages.get(p).map(|x| x.title.as_str()).unwrap_or_default();
+        for i in 1..n {
+            let taken = sheet_number(&number, i);
+            if let Some(other) = by_number.get(&taken.to_ascii_lowercase()).filter(|o| *o != p) {
+                out.push(Check {
+                    kind: Kind::ContinuationClash,
+                    page: Some(*other),
+                    at: None,
+                    object: Object::None,
+                    which: format!("Page {number} ({title}) now runs to {last}, and page {taken} has that number."),
+                    fix: Some(Fix::RenumberPage(*other)),
+                });
+            }
+        }
+    }
+    out
 }
 
 /// How many sheets the whole book has (Total).
@@ -231,6 +365,28 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
     })
 }
 
+/// Whether the content of `terminals` page `page` changed in the last update of `o` (design 046
+/// §9): the table style when a strip it shows changed (028); the graphic style when a strip it
+/// shows was drawn again, or the layout settings changed. Either style redraws when the project's
+/// style changed and the page has no style of its own. O(strips shown).
+pub fn terminals_rewritten(doc: &Document, page: PageId, o: &Outputs) -> bool {
+    let sp = &o.strip_pages;
+    let style = &crate::defaults::strip_pages::STYLE;
+    let own_style = doc.pages.get(&page).and_then(|p| p.properties.get(style.key)).is_some_and(|v| style.parse(v).is_some());
+    if sp.style_changed && !own_style {
+        return true;
+    }
+    let (changed, layout) = match crate::strip_page::style_of(doc, page) {
+        crate::strip_page::Style::Table => (&o.strips.last_changed, false),
+        crate::strip_page::Style::Graphic => (&sp.last_changed, sp.layout_changed),
+    };
+    layout
+        || match strip_of(doc, page) {
+            Some(c) => changed.contains(&c),
+            None => !changed.is_empty(),
+        }
+}
+
 /// The refusal of `ops` when they would draw on a generated page (design 024 §5.3), before
 /// anything is written.
 pub fn refusal(doc: &Document, ops: &[Op]) -> Option<String> {
@@ -250,32 +406,44 @@ pub fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> String {
 }
 
 /// Draws in paper millimetres, sheet origin at `x0`.
-struct Draw {
-    k: f64,
-    x0: f64,
-    out: Vec<Part>,
+pub(crate) struct Draw {
+    pub(crate) k: f64,
+    pub(crate) x0: f64,
+    pub(crate) out: Vec<Part>,
 }
 
 impl Draw {
-    fn p(&self, x: f64, y: f64) -> Pt {
+    pub(crate) fn p(&self, x: f64, y: f64) -> Pt {
         Pt::new((x + self.x0) * self.k, y * self.k)
     }
-    fn line(&mut self, a: (f64, f64), b: (f64, f64)) {
+    pub(crate) fn line(&mut self, a: (f64, f64), b: (f64, f64)) {
         let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
         self.out.push(Part { kind, weight: Some(THIN_WEIGHT), aci: None, layer: LAYER });
     }
+    /// A line of weight `weight` (a heading's rule).
+    pub(crate) fn rule(&mut self, a: (f64, f64), b: (f64, f64), weight: u16) {
+        let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
+        self.out.push(Part { kind, weight: Some(weight), aci: None, layer: LAYER });
+    }
     /// A filled dot of `radius` millimetres (concentric circles, like the junction glyph).
-    fn dot(&mut self, at: (f64, f64), radius: f64) {
+    pub(crate) fn dot(&mut self, at: (f64, f64), radius: f64) {
         let center = self.p(at.0, at.1);
         for k in [1.0, 0.66, 0.33] {
             let kind = kind_for_primitive(&Primitive::Circle { center, radius: radius * k * self.k });
             self.out.push(Part { kind, weight: Some(THIN_WEIGHT), aci: None, layer: LAYER });
         }
     }
-    fn text(&mut self, at: (f64, f64), height: f64, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
+    /// A closed rectangle from `a` to `b` (paper millimetres), weight `weight`, colour `aci`.
+    pub(crate) fn rect(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
+        let v = vec![self.p(a.0, a.1), self.p(b.0, a.1), self.p(b.0, b.1), self.p(a.0, b.1)];
+        let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
+        self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
+    }
+    pub(crate) fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
+        let height = look.mm;
         let (shown, wf) = crate::frame::fit(value, height, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -287,16 +455,33 @@ impl Draw {
             rotation: 0.0,
             width_factor: wf,
             oblique: 0.0,
-            style: "Standard".into(),
+            style: look.style.into(),
             halign: h,
             valign: VAlign::Middle,
         });
-        self.out.push(Part { kind, weight: None, aci, layer: LAYER });
+        self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
     }
 }
 
+/// The missing-data mark (design 033 §3.1, `ecad.missing-box`): `?` in a thin box inset by the
+/// registry's `print.missing_box_inset` into the cell from `lo` to `hi` (model coordinates, `k`
+/// drawing units per millimetre), the text in `look`. Both parts are [`FLAGGED_ACI`] on
+/// [`LAYER`]: yellow on screen; Print Book prints them in [`FLAGGED_PRINT_ACI`].
+pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextLook) -> Vec<Part> {
+    if !(k.is_finite() && k > 0.0) || !lo.is_finite() || !hi.is_finite() {
+        return Vec::new();
+    }
+    let inset_mm = crate::defaults::resolve(doc, &crate::defaults::print::MISSING_BOX_INSET, crate::defaults::Scope::project()).number();
+    let mut d = Draw { k, x0: 0.0, out: Vec::new() };
+    let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
+    let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
+    d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::look::WIRE_WEIGHT, Some(FLAGGED_ACI));
+    d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), look, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
+    d.out
+}
+
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
-fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
+pub(crate) fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
     (MARGIN_MM + 5.0, MARGIN_MM + TITLE_BLOCK_MM + 5.0, w - MARGIN_MM - 5.0, h - TOP_MARGIN_MM - 5.0)
 }
@@ -322,7 +507,46 @@ struct Marks {
 }
 
 /// What a generated page shows: (columns with A3 widths, rows).
-fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
+fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(String, f64)>, Vec<TRow>) {
+    if kind == GenKind::Revisions {
+        return revision_list(doc);
+    }
+    let (cols, rows) = table_static(doc, kind, outputs);
+    (cols.into_iter().map(|(n, w)| (n.to_string(), w)).collect(), rows)
+}
+
+/// The revision list (design 033 §7.3): the project's revision columns, then Version, across
+/// the A3 area (Version keeps 60 mm).
+fn revision_list(doc: &Document) -> (Vec<(String, f64)>, Vec<TRow>) {
+    const VERSION_MM: f64 = 60.0;
+    let row = |cells: Vec<String>| TRow { cells, ..TRow::default() };
+    let columns = crate::revisions::columns(doc);
+    let (widths, _) = crate::revisions::widths(&columns, A3_AREA - VERSION_MM);
+    let mut cols: Vec<(String, f64)> = columns.iter().zip(&widths).map(|(c, w)| (c.header.clone(), *w)).collect();
+    cols.push(("Version".into(), VERSION_MM));
+    let issued = crate::revisions::issued(doc);
+    let rows = if issued.is_empty() {
+        let mut cells = vec![String::new(); columns.len()];
+        if let Some(i) = columns.iter().position(|c| c.field == "description")
+            && let Some(c) = cells.get_mut(i)
+        {
+            *c = "No revisions issued yet.".into();
+        }
+        vec![row(cells)]
+    } else {
+        issued
+            .iter()
+            .map(|r| {
+                let mut c: Vec<String> = columns.iter().map(|col| r.get(&col.field).to_string()).collect();
+                c.push(r.issued.clone().unwrap_or_default());
+                row(c)
+            })
+            .collect()
+    };
+    (cols, rows)
+}
+
+fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
     let row = |cells: Vec<String>| TRow { cells, ..TRow::default() };
     match kind {
         GenKind::Cover => (Vec::new(), Vec::new()),
@@ -334,7 +558,7 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'st
                 .map(|p| {
                     let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
                     let title = doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default();
-                    row(vec![b.number(doc, *p), title, crate::sheet_cmds::folder_path(doc, folder)])
+                    row(vec![number_range(doc, &b, *p, outputs), title, crate::sheet_cmds::folder_path(doc, folder)])
                 })
                 .collect();
             (vec![("Page", 25.0), ("Title", 220.0), ("Folder", 145.0)], rows)
@@ -365,7 +589,16 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'st
             (cols, rows)
         }
         GenKind::BomLocation => {
-            let cols = vec![("Qty", 15.0), ("Tags", 70.0), ("Description", 140.0), ("Maker", 70.0), ("Part number", 95.0)];
+            // Brief 047 (design 047 §6.3): an Article column when `bom.column.article` is on (the
+            // others narrower, still 390 mm), Qty with its unit, nested lines indented.
+            let article = outputs.is_some_and(|o| o.view.article);
+            // UI rev 3 (board 1.15): the tag first, then the description, its quantity (right
+            // aligned, [`BOM_QTY_COLUMN`]), maker and part number.
+            let cols = if article {
+                vec![("Tags", 60.0), ("Description", 120.0), ("Qty", 15.0), ("Maker", 60.0), ("Part number", 85.0), ("Article", 50.0)]
+            } else {
+                vec![("Tags", 70.0), ("Description", 140.0), ("Qty", 15.0), ("Maker", 70.0), ("Part number", 95.0)]
+            };
             let Some(o) = outputs else { return (cols, Vec::new()) };
             let mut rows = Vec::new();
             let mut last: Option<Option<String>> = None;
@@ -375,7 +608,11 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'st
                     rows.push(TRow { cells: vec![q(&r.location)], heading: true, ..TRow::default() });
                     last = Some(r.location.clone());
                 }
-                rows.push(row(vec![r.qty.to_string(), r.tags.join(", "), q(&r.description), q(&r.maker), q(&r.part_number)]));
+                let mut cells = vec![r.tags.join(", "), q(&r.description_text()), r.qty_text(), q(&r.maker), q(&r.part_number)];
+                if article {
+                    cells.push(r.article_number.clone().unwrap_or_default());
+                }
+                rows.push(row(cells));
             }
             if rows.is_empty() {
                 rows.push(row(vec![String::new(), "No devices yet.".into()]));
@@ -384,6 +621,18 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'st
         }
         // Brief 028 (design 028 §5.3), drawn by `terminal_rows`.
         GenKind::Terminals => (TERMINAL_COLUMNS.to_vec(), Vec::new()),
+        // Brief 051: drawn by `crate::plc::sheets`.
+        GenKind::PlcRack => (Vec::new(), Vec::new()),
+        // Brief 045c (design 045 §8.2).
+        GenKind::IoList => {
+            let Some(o) = outputs else { return (crate::plc::iolist::PAGE_COLUMNS.to_vec(), Vec::new()) };
+            let mut rows: Vec<TRow> =
+                crate::plc::iolist::page_lines(doc, &o.plc).into_iter().map(|(heading, cells)| TRow { cells, heading, ..TRow::default() }).collect();
+            if rows.is_empty() {
+                rows.push(row(vec![String::new(), crate::plc::iolist::NO_CARDS.into()]));
+            }
+            (crate::plc::iolist::PAGE_COLUMNS.to_vec(), rows)
+        }
         GenKind::Cables => {
             let cols = vec![
                 ("Tag", 25.0),
@@ -427,6 +676,9 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Vec<(&'st
         }
     }
 }
+
+/// The BOM page's Qty column, drawn right aligned (UI rev 3, board 1.15).
+const BOM_QTY_COLUMN: usize = 2;
 
 /// The terminal plan's columns with their A3 widths (design 028 §5.3).
 const TERMINAL_COLUMNS: [(&str, f64); 9] = [
@@ -495,13 +747,15 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
                 }
                 m.into_iter().collect::<String>().trim_end().to_string()
             };
-            if r.spare() {
+            // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+            let pe_mark = r.pe && !r.ty.multi();
+            if r.terminal.is_none() {
                 let mut cells = vec![String::new(); TERMINAL_COLUMNS.len()];
                 if let Some(c) = cells.get_mut(0) {
-                    *c = "spare".into();
+                    *c = r.state().into();
                 }
                 if let Some(c) = cells.get_mut(2) {
-                    *c = if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) };
+                    *c = if pe_mark { format!("{} PE{marker}", r.shown) } else { format!("{}{marker}", r.shown) };
                 }
                 if let Some(c) = cells.get_mut(3) {
                     *c = links.clone();
@@ -515,8 +769,8 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
                 let inside = r.inside.get(i);
                 let outside = r.outside.get(i);
                 let q = |v: Option<&String>| v.cloned().unwrap_or_else(|| "?".into());
-                let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
-                let label = if r.pe { format!("{label} PE") } else { label };
+                let label = if i == 0 { format!("{}{marker}", r.shown) } else { format!("{}\u{2032}", r.shown) };
+                let label = if pe_mark { format!("{label} PE") } else { label };
                 let cable = outside.and_then(|c| c.cable.as_ref());
                 let starts = cable.is_some_and(|(k, _)| last_cable != Some(*k));
                 last_cable = cable.map(|(k, _)| *k);
@@ -552,24 +806,31 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
     rows
 }
 
-/// The cover's lines: (text, height).
-fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
+/// The cover's lines: (text, height as a share of the Cover kind's height: 10, 7, 5, 5, 5, 3.5
+/// of 10, design 033 §1.2).
+fn cover_lines(doc: &Document, total: usize, pending: bool) -> Vec<(String, f64)> {
     let prop = |k: &str| doc.properties.get(k).cloned().filter(|v| !v.trim().is_empty());
     let mut out = Vec::new();
-    for (k, h) in [(crate::frame::TITLE, 10.0), (crate::frame::DRAWING_NUMBER, 7.0), (crate::frame::CUSTOMER, 5.0), (crate::frame::STATUS, 5.0)] {
+    for (k, h) in [(crate::frame::TITLE, 1.0), (crate::frame::DRAWING_NUMBER, 0.7), (crate::frame::CUSTOMER, 0.5), (crate::frame::STATUS, 0.5)] {
         if let Some(v) = prop(k) {
             out.push((v, h));
         }
     }
+    let style = crate::revisions::PendingStyle::of(doc);
     let rev = match crate::revisions::issued(doc).first() {
+        // Design 033 §6.2: the cover says when the drawing changed since the newest issue.
+        Some(_) if pending && style == crate::revisions::PendingStyle::Draft => {
+            format!("Revision {} (draft)", crate::revisions::pending_rev(doc))
+        }
         Some(r) => {
             let date = r.get("date");
-            if date.is_empty() { format!("Revision {}", r.rev()) } else { format!("Revision {}, {date}", r.rev()) }
+            let shown = if date.is_empty() { format!("Revision {}", r.rev()) } else { format!("Revision {}, {date}", r.rev()) };
+            if pending && style == crate::revisions::PendingStyle::Star { format!("{shown} (changed since)") } else { shown }
         }
         None => "Not issued".into(),
     };
-    out.push((rev, 5.0));
-    out.push((if total == 1 { "1 sheet".into() } else { format!("{total} sheets") }, 3.5));
+    out.push((rev, 0.5));
+    out.push((if total == 1 { "1 sheet".into() } else { format!("{total} sheets") }, 0.35));
     out
 }
 
@@ -579,15 +840,34 @@ fn cover_lines(doc: &Document, total: usize) -> Vec<(String, f64)> {
 fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&Outputs>, total: usize) -> Vec<Part> {
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
+    let looks = Look::new(doc);
+    let look = |kind| TextLook::of(&looks, kind, input.unit);
+    let (header, cell_look, heading) = (look(TextKind::TableHeader), look(TextKind::Table), look(TextKind::TableHeading));
     if kind == GenKind::Cover {
-        let lines = cover_lines(doc, total);
+        let cover = look(TextKind::Cover);
+        let lines: Vec<(String, f64)> = cover_lines(doc, total, input.pending).into_iter().map(|(t, share)| (t, share * cover.mm)).collect();
         let gap = 6.0;
         let height: f64 = lines.iter().map(|(_, h)| h + gap).sum();
         let mut y = (b + t) / 2.0 + height / 2.0;
         for (text, h) in lines {
             y -= h / 2.0 + gap / 2.0;
-            d.text(((l + r) / 2.0, y), h, &text, HAlign::Center, None, Some(r - l));
+            d.text(((l + r) / 2.0, y), TextLook { mm: h, ..cover }, &text, HAlign::Center, None, Some(r - l));
             y -= h / 2.0 + gap / 2.0;
+        }
+        return d.out;
+    }
+    // Brief 046: a graphic terminal plan draws its strip sheet.
+    if kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic {
+        return outputs.map_or_else(Vec::new, |o| crate::strip_page::content(doc, page, input, i, x0, o));
+    }
+    // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
+    if matches!(kind, GenKind::IoList | GenKind::PlcRack) {
+        let a = crate::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
+        let plc = outputs.map(|o| &o.plc);
+        if kind == GenKind::IoList {
+            crate::plc::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+        } else {
+            crate::plc::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
         }
         return d.out;
     }
@@ -600,10 +880,18 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
+    // UI rev 3 (board 1.15): the BOM's Qty column is right aligned, and each location heading is
+    // ruled off with the frame's weight.
+    let bom = kind == GenKind::BomLocation;
+    let right = |c: usize| bom && c == BOM_QTY_COLUMN;
     // Header.
     let mut x = l;
-    for ((name, _), w) in cols.iter().zip(&widths) {
-        d.text((x + 1.0, y - HEADER_MM / 2.0), 2.5, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+    for (c, ((name, _), w)) in cols.iter().zip(&widths).enumerate() {
+        if right(c) {
+            d.text((x + w - 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Right, Some(LABEL_ACI), Some(w - 2.0));
+        } else {
+            d.text((x + 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+        }
         x += w;
     }
     y -= HEADER_MM;
@@ -614,7 +902,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let (start, end, prev_heading) = paginate_with(&heads, kind == GenKind::Terminals).get(i).cloned().unwrap_or((0, 0, None));
     let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
     if let Some(h) = prev_heading {
-        d.text((l + 1.0, y - ROW_MM / 2.0), 3.5, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
+        d.text((l + 1.0, y - ROW_MM / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
         y -= ROW_MM;
         d.line((l, y), (r, y));
     }
@@ -622,22 +910,26 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let mut last_dot: Option<(usize, f64)> = None;
     for row in page_rows {
         if row.heading {
-            d.text((l + 1.0, y - ROW_MM / 2.0), 3.5, row.cells.first().map_or("", String::as_str), HAlign::Left, None, Some(r - l - 2.0));
+            d.text((l + 1.0, y - ROW_MM / 2.0), heading, row.cells.first().map_or("", String::as_str), HAlign::Left, None, Some(r - l - 2.0));
             last_dot = None;
         } else {
             let mut x = l;
             let mid = y - ROW_MM / 2.0;
             for (c, (cell, w)) in row.cells.iter().zip(&widths).enumerate() {
-                let aci = (cell == "?").then_some(FLAGGED_ACI);
-                if row.marks.terminal_box == Some(c) {
+                let aci = (cell == MISSING).then_some(FLAGGED_ACI);
+                if cell == MISSING && row.marks.terminal_box != Some(c) {
+                    d.out.extend(missing_mark(doc, d.p(x, y - ROW_MM), d.p(x + w, y), d.k, cell_look));
+                } else if row.marks.terminal_box == Some(c) {
                     let cx = x + w / 2.0;
                     d.line((cx - 3.0, mid - 2.0), (cx + 3.0, mid - 2.0));
                     d.line((cx + 3.0, mid - 2.0), (cx + 3.0, mid + 2.0));
                     d.line((cx + 3.0, mid + 2.0), (cx - 3.0, mid + 2.0));
                     d.line((cx - 3.0, mid + 2.0), (cx - 3.0, mid - 2.0));
-                    d.text((cx, mid), 2.5, cell, HAlign::Center, aci, Some(*w - 2.0));
+                    d.text((cx, mid), cell_look, cell, HAlign::Center, aci, Some(*w - 2.0));
+                } else if right(c) {
+                    d.text((x + w - 1.0, mid), cell_look, cell, HAlign::Right, aci, Some(w - 2.0));
                 } else {
-                    d.text((x + 1.0, mid), 2.5, cell, HAlign::Left, aci, Some(w - 2.0));
+                    d.text((x + 1.0, mid), cell_look, cell, HAlign::Left, aci, Some(w - 2.0));
                 }
                 x += w;
             }
@@ -661,7 +953,11 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
         if y < b {
             break;
         }
-        d.line((l, y), (r, y));
+        if bom && row.heading {
+            d.rule((l, y), (r, y), input.look.border);
+        } else {
+            d.line((l, y), (r, y));
+        }
     }
     d.out
 }
@@ -673,13 +969,24 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
     let Some(kind) = kind_of(doc, page) else { return crate::frame::parts(input) };
     let n = sheets(doc, page, outputs);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
+    // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
+    let graphic =
+        (kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic).then_some(outputs).flatten();
     let mut out = Vec::new();
     for i in 0..n {
         let mut inp = input.clone();
-        if n > 1 {
+        if let Some(o) = graphic {
+            if let Some(t) = crate::strip_page::sheet_title(doc, page, o, i) {
+                inp.page_title = format!("{}: {t}", input.page_title);
+            }
+        } else if n > 1 {
             inp.page_title = format!("{} ({}/{n})", input.page_title, i + 1);
+        }
+        if n > 1 {
+            // Design 033 §5.2: each sheet its own number; Next is the next sheet's.
+            inp.page = sheet_number(&input.page, i);
             if i + 1 < n {
-                inp.next = input.page.clone();
+                inp.next = sheet_number(&input.page, i + 1);
             }
         }
         let x0 = width * i as f64;
@@ -732,6 +1039,12 @@ pub fn input_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> (Fra
 /// Every frame and content part of `page`, building the report models only when the project has a
 /// BOM page and none are given (debugger, verification, tests).
 pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<Part> {
+    parts_of_pending(doc, page, outputs, false)
+}
+
+/// [`parts_of`] with the project's pending flag (design 033 §6): the Rev box and the cover say
+/// when the drawing has changed since the newest issue.
+pub fn parts_of_pending(doc: &Document, page: PageId, outputs: Option<&Outputs>, pending: bool) -> Vec<Part> {
     let built;
     let outputs = match outputs {
         Some(o) => Some(o),
@@ -742,5 +1055,6 @@ pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<
         None => None,
     };
     let (input, total) = input_of(doc, page, outputs);
+    let input = input.with_pending(doc, pending);
     page_parts(doc, page, &input, outputs, total)
 }

@@ -2,7 +2,6 @@
 //! Zstandard comparison the overseer asked for (`ruzstd` against the `zstd` crate).
 //!
 //! # Semantics
-//! - **convert**: the version 1 file converted to a new version 2 file, verified by replaying both.
 //! - **v2 open**: [`DiskProjectV2::open`] from a warm file cache: the latest snapshot and its tail.
 //! - **v2 save**: one add-wire transaction committed (not timed) and saved: one redb write
 //!   transaction, durable before it returns.
@@ -27,7 +26,6 @@ const EDIT_SEED: u64 = 0xED17_0021;
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeasuredV2 {
     pub bytes: u64,
-    pub convert_ms: f64,
     pub open_ms: f64,
     pub save_ms: f64,
     pub crash_open_ms: f64,
@@ -50,18 +48,34 @@ pub struct MeasuredV2 {
     pub verify_full_checks: usize,
 }
 
-/// Write `tier`'s lean project as a version 2 file at `path` (through the converter, as the bench
-/// does), for timing Verify on it alone: `ecad-bench --write-v2 large <file>`.
+/// Write the generated project `g` straight to a new version 2 file at `path`, replacing any
+/// earlier file there (a stale one from an older build is regenerated, never converted). Its
+/// history is `g`'s whole ledger, one row per transaction with the default snapshot interval, as
+/// the app's first save writes it.
 ///
 /// # Errors
-/// Generating, writing or converting failed.
+/// Creating or writing the file failed; nothing is left at `path` then.
+pub fn write(g: &crate::Generated, path: &Path) -> Result<(), String> {
+    use ecad_file::v2::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
+    crate::measure::remove(path);
+    let written = Store::create(path).map_err(|e| e.to_string()).and_then(|store| {
+        ProjectV2::create(store, g.project, &g.ledger, None, None, None, crate::generate::WRITER, DEFAULT_SNAPSHOT_EVERY)
+            .map(drop)
+            .map_err(|e| e.to_string())
+    });
+    written.map_err(|e| {
+        crate::measure::remove(path);
+        format!("writing the {} {} project to {}: {e}", g.tier.name, g.variant.name(), path.display())
+    })
+}
+
+/// Write `tier`'s lean project as a version 2 file at `path`, for timing Verify on it alone:
+/// `ecad-bench --write-v2 large <file>`.
+///
+/// # Errors
+/// Generating or writing failed.
 pub fn write_lean(tier: crate::Tier, path: &Path) -> Result<(), String> {
-    let g = crate::generate(tier, crate::Variant::Lean)?;
-    let v1 = path.with_extension("v1.ecad");
-    std::fs::write(&v1, g.file_bytes()?).map_err(|e| format!("{}: {e}", v1.display()))?;
-    let r = convert(&v1, path).map(|_| ());
-    crate::measure::remove(&v1);
-    r
+    write(&crate::generate(tier, crate::Variant::Lean)?, path)
 }
 
 /// Verify `path` (brief 029): the chain part alone, then the whole Verify, each timed once.
@@ -90,7 +104,8 @@ fn ms(since: Instant) -> f64 {
     since.elapsed().as_secs_f64() * 1000.0
 }
 
-fn open(path: &Path) -> Result<ecad_file::v2::disk::OpenedDiskV2, String> {
+/// Open `path` as the app's file layer does; refuse a damaged or read-only open.
+pub(crate) fn open(path: &Path) -> Result<ecad_file::v2::disk::OpenedDiskV2, String> {
     let o = DiskProjectV2::open(path, SEED, HOLDER).map_err(|e| e.to_string())?;
     if let Some(d) = &o.report.damage {
         return Err(format!("{} opened damaged: {d:?}", path.display()));
@@ -101,23 +116,12 @@ fn open(path: &Path) -> Result<ecad_file::v2::disk::OpenedDiskV2, String> {
     Ok(o)
 }
 
-/// Convert `v1` to the version 2 file `v2` (timed).
-///
-/// # Errors
-/// The conversion failed.
-pub fn convert(v1: &Path, v2: &Path) -> Result<f64, String> {
-    crate::measure::remove(v2);
-    let t = Instant::now();
-    ecad_file::v2::convert::convert_file(v1, Some(v2), HOLDER)?;
-    Ok(ms(t))
-}
-
 /// Measure the version 2 file at `path`, `runs` times each; `scratch` holds the copies the save,
-/// crash and ×10 timings write. `convert_ms` is passed through.
+/// crash and ×10 timings write.
 ///
 /// # Errors
 /// Opening, saving or the child process failed.
-pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Result<MeasuredV2, String> {
+pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, String> {
     let bytes = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
     let mut open_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
@@ -237,7 +241,6 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path, convert_ms: f64) -> Res
 
     Ok(MeasuredV2 {
         bytes,
-        convert_ms,
         open_ms: median(&mut open_ms),
         save_ms: median(&mut save_ms),
         crash_open_ms: median(&mut crash_ms),

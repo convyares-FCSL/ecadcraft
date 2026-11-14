@@ -13,6 +13,7 @@ use crate::doc::{
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::Delta;
+use crate::style::{Standard, StandardHeader, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -24,6 +25,9 @@ pub enum ObjectRef {
     Page(PageId),
     /// The project's own properties (brief 019, decision FP1).
     Project,
+    /// The standard's registry values (brief 050a, FP3): a value at the Standard level. Refused
+    /// while the project has no standard.
+    Standard,
 }
 
 /// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
@@ -74,6 +78,13 @@ pub enum Op {
     DeleteComponent {
         id: ComponentId,
         component: Component,
+    },
+    /// Change which embedded definition a component's symbols use (brief 048, FP5), keeping
+    /// its properties, terminals and representations.
+    SetComponentDefinition {
+        id: ComponentId,
+        before: Option<DefinitionId>,
+        after: Option<DefinitionId>,
     },
     AddTerminal {
         id: TerminalId,
@@ -178,6 +189,22 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
+    /// write is refused while the project has no standard.
+    SetStyle {
+        layer: StyleLayer,
+        catalogue: String,
+        id: StyleRef,
+        before: Option<StyleRecord>,
+        after: Option<StyleRecord>,
+    },
+    /// Set, change or remove the standard's header (brief 050a, FP3). `None → Some` makes an
+    /// empty standard; `Some → None` removes one, which must hold no values or styles by then
+    /// (the command clears them with ops before it, so undo restores them).
+    SetStandard {
+        before: Option<StandardHeader>,
+        after: Option<StandardHeader>,
+    },
 }
 
 fn pre(msg: String) -> ModelError {
@@ -215,6 +242,7 @@ impl Op {
             Op::ModifyItem { id, before, after } => Op::ModifyItem { id, before: after, after: before },
             Op::CreateComponent { id, component } => Op::DeleteComponent { id, component },
             Op::DeleteComponent { id, component } => Op::CreateComponent { id, component },
+            Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id, before: after, after: before },
             Op::AddTerminal { id, terminal } => Op::RemoveTerminal { id, terminal },
             Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
@@ -236,6 +264,8 @@ impl Op {
             Op::AddFolder { id, folder, index } => Op::RemoveFolder { id, folder, index },
             Op::RemoveFolder { id, folder, index } => Op::AddFolder { id, folder, index },
             Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
+            Op::SetStyle { layer, catalogue, id, before, after } => Op::SetStyle { layer, catalogue, id, before: after, after: before },
+            Op::SetStandard { before, after } => Op::SetStandard { before: after, after: before },
         }
     }
 
@@ -350,6 +380,18 @@ impl Op {
                     doc.index.component(*id, &old, Delta::Remove);
                 }
             }
+            Op::SetComponentDefinition { id, before, after } => {
+                let c = doc.components.get(id).ok_or_else(|| pre(format!("component {id} does not exist")))?;
+                if checked && c.definition != *before {
+                    return Err(pre(format!("component {id}'s definition differs from the recorded value")));
+                }
+                if let Some(old) = doc.components.remove(id) {
+                    doc.index.component(*id, &old, Delta::Remove);
+                    let new = Component { definition: *after, ..old };
+                    doc.index.component(*id, &new, Delta::Add);
+                    doc.components.insert(*id, new);
+                }
+            }
             Op::AddTerminal { id, terminal } => {
                 absent(&doc.terminals, *id, "terminal")?;
                 doc.index.terminal(*id, terminal, Delta::Add);
@@ -437,6 +479,7 @@ impl Op {
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.properties),
                     ObjectRef::Project => Some(&mut doc.properties),
+                    ObjectRef::Standard => doc.standard.as_mut().map(|s| &mut s.values),
                 }
                 .ok_or_else(|| pre(format!("{object:?} does not exist")))?;
                 if checked && props.get(key) != before.as_ref() {
@@ -485,6 +528,18 @@ impl Op {
                     }
                     if let Some(new) = after {
                         doc.index.cable_tag(*id, new, Delta::Add);
+                    }
+                }
+                // A style choice is indexed (brief 050a): the style's explicit users.
+                if crate::style::is_choice_key(key) {
+                    let obj = *object;
+                    if !matches!(obj, ObjectRef::Project | ObjectRef::Standard) {
+                        if let Some(old) = &old {
+                            doc.index.style_choice(obj, key, old, Delta::Remove);
+                        }
+                        if let Some(new) = after {
+                            doc.index.style_choice(obj, key, new, Delta::Add);
+                        }
                     }
                 }
                 // A page's folder is indexed (brief 019).
@@ -551,6 +606,38 @@ impl Op {
                 }
                 doc.index.folder(*id, after, Delta::Add);
             }
+            Op::SetStyle { layer, catalogue, id, before, after } => {
+                let cats = match layer {
+                    StyleLayer::Project => &mut doc.styles,
+                    StyleLayer::Standard => {
+                        &mut doc.standard.as_mut().ok_or_else(|| pre(format!("style {catalogue}/{id}: the project has no standard")))?.styles
+                    }
+                };
+                let current = cats.get(catalogue).and_then(|c| c.get(id));
+                if checked && current != before.as_ref() {
+                    return Err(pre(format!("style {catalogue}/{id} ({}) differs from the recorded value", layer.word())));
+                }
+                crate::style::put(cats, catalogue, id, after.as_ref());
+            }
+            Op::SetStandard { before, after } => {
+                let current = doc.standard.as_ref().map(|s| &s.header);
+                if checked && current != before.as_ref() {
+                    return Err(pre("the standard's header differs from the recorded value".into()));
+                }
+                match (after, doc.standard.as_mut()) {
+                    (Some(h), Some(s)) => s.header = h.clone(),
+                    (Some(h), None) => doc.standard = Some(Standard::new(h.clone())),
+                    (None, Some(s)) => {
+                        // Removing a standard that still holds values or styles could not be
+                        // undone from the op alone: the command clears them first.
+                        if !s.values.is_empty() || !s.styles.is_empty() {
+                            return Err(pre("the standard still holds values or styles".into()));
+                        }
+                        doc.standard = None;
+                    }
+                    (None, None) => {}
+                }
+            }
         }
         Ok(())
     }
@@ -567,6 +654,7 @@ impl Op {
             Op::RemoveItem { .. } => "RemoveItem",
             Op::CreateComponent { .. } => "CreateComponent",
             Op::DeleteComponent { .. } => "DeleteComponent",
+            Op::SetComponentDefinition { .. } => "SetComponentDefinition",
             Op::AddTerminal { .. } => "AddTerminal",
             Op::RemoveTerminal { .. } => "RemoveTerminal",
             Op::LinkRepresentation { .. } => "LinkRepresentation",
@@ -588,6 +676,8 @@ impl Op {
             Op::AddFolder { .. } => "AddFolder",
             Op::RemoveFolder { .. } => "RemoveFolder",
             Op::ModifyFolder { .. } => "ModifyFolder",
+            Op::SetStyle { .. } => "SetStyle",
+            Op::SetStandard { .. } => "SetStandard",
         }
     }
 }

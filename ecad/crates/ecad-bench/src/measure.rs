@@ -20,7 +20,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use ecad_file::{DiskProject, Outcome};
 use ecad_model::{Author, Document, IdAllocator};
 
 /// Runs per measurement unless `--runs` says otherwise.
@@ -39,7 +38,7 @@ pub const HOLDER: &str = "ecad-bench";
 pub struct Measured {
     pub bytes: u64,
     pub transactions: u64,
-    /// Read from disk, verify every record, replay to the document (`ecad-file`, no CADCraft).
+    /// Open the version 2 file to its document (`DiskProjectV2::open`, no CADCraft).
     pub open_ms: f64,
     /// Nets on the opened document (`ecad_model::derive::nets`).
     pub derive_ms: f64,
@@ -49,7 +48,7 @@ pub struct Measured {
     pub first_page_ms: f64,
     /// Commit one add-wire transaction to the loaded project (`Ledger::commit`).
     pub edit_ms: f64,
-    /// Append that transaction to the file and flush (`DiskProject::save`).
+    /// Write that transaction to the file, durable before it returns (`DiskProjectV2::save`).
     pub save_ms: f64,
     /// Move a component with wires attached on page 1, in a headless CADCraft session (brief 014).
     pub draw_move_ms: f64,
@@ -159,16 +158,9 @@ pub(crate) fn path_text(path: &Path) -> Result<&str, String> {
     path.to_str().ok_or_else(|| format!("{} is not valid Unicode", path.display()))
 }
 
-/// Open `path` as the app's file layer does; refuse anything but a clean, writable open.
-fn open(path: &Path) -> Result<ecad_file::OpenedDisk, String> {
-    let o = DiskProject::open(path, OPEN_SEED, HOLDER).map_err(|e| e.to_string())?;
-    if o.report.outcome != Outcome::Clean {
-        return Err(format!("{} did not open cleanly: {}", path.display(), o.report.describe()));
-    }
-    if let Some(r) = o.project.read_only() {
-        return Err(format!("{} opened read-only: {r}", path.display()));
-    }
-    Ok(o)
+/// Open `path` as the app's file layer does; refuse a damaged or read-only open.
+fn open(path: &Path) -> Result<ecad_file::v2::disk::OpenedDiskV2, String> {
+    crate::v2::open(path)
 }
 
 /// The time to derive the cable references of `doc` (brief 010's
@@ -182,26 +174,14 @@ pub fn cable_references_ms(doc: &Document) -> Option<f64> {
     Some(took)
 }
 
-/// Measure the project file at `path`, `runs` times each; `scratch` is a folder for the copy the
-/// edit and save timings write to. Returns the measurements and the document opening replayed to.
+/// Measure the project file at `path` (version 2, the format the app opens), `runs` times each;
+/// `scratch` is a folder for the copies the edit and save timings write to. Returns the
+/// measurements and the document opening replayed to.
 ///
 /// # Errors
 /// The file does not open cleanly, the page cannot be projected, or the edit or save fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Document), String> {
-    let app = scratch.join("measure-app.v2.ecad");
-    crate::v2::convert(path, &app)?;
-    let r = measure_with(path, &app, runs, scratch);
-    release_lock_file(&app);
-    remove(&app);
-    r
-}
-
-/// [`measure`] with the version 2 file the app timings open (since brief 021 the app opens only
-/// version 2): `path` (version 1) for open, edit and save; `app` for every timing through the app.
-///
-/// # Errors
-/// As [`measure`].
-pub fn measure_with(path: &Path, app: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Document), String> {
+    let app = path;
     let runs = runs.clamp(1, MAX_RUNS);
     let bytes = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
 
@@ -735,20 +715,17 @@ struct XrefTimes {
 fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String> {
     use serde_json::json;
 
-    let v1 = copy.with_extension("v1.ecad");
-    remove(&v1);
     remove(copy);
-    std::fs::copy(path, &v1).map_err(|e| format!("copying {} to {}: {e}", path.display(), v1.display()))?;
+    std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
-        // The coils, committed to a version 1 copy and saved (not timed), then converted to the
-        // version 2 file the app opens.
+        // The coils, committed to the copy and saved (not timed).
         let (coils, order) = {
-            let mut o = open(&v1)?;
+            let mut o = open(copy)?;
             let r = add_coils(&mut o.ledger)?;
             o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;
             r
         };
-        crate::v2::convert(&v1, copy)?;
+        release_lock_file(copy);
         ecad_cadcraft::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
@@ -805,7 +782,6 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
     })();
     release_lock_file(copy);
     remove(copy);
-    remove(&v1);
     result
 }
 

@@ -33,8 +33,13 @@
 //!   transactions with before/after values → saved record offsets and bytes, with pending
 //!   changes kept apart from durably saved history.
 //!
+//! - **live agent access** ([`agent`], brief 035): off by default; when the person turns it on
+//!   (ECAD Dev ▸ Agent access, or `--control PORT` for one run), an agent connected through
+//!   `ecad-mcp --connect` changes the open project between frames, recorded as the agent's, while
+//!   the person watches; a minimal banner names it and offers Undo session, Pause and Disconnect.
+//!
 //! Excluded on purpose: native file dialogs, CADCraft file formats (plain drawings cannot be
-//! written), autosave, the control channel, saved window or profile state and ECAD menus
+//! written), autosave, CADCraft's raw control channel, saved window or profile state and ECAD menus
 //! (CADCraft shows no top-level menu supplied by an embedder). The JSON forms of ECAD commands are
 //! typed in the ECAD command field, for example `wire {"points":[[0,0],[40,0]]}` (CADCraft's
 //! own command line takes a space as Enter, so it cannot take a JSON argument with spaces); a bare
@@ -46,20 +51,28 @@
 //! unverified.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod agent;
+pub mod canvas;
 pub mod checks_panel;
 pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
 pub mod history_panel;
+pub mod library;
+pub mod lists;
 pub mod merge_dialog;
 pub mod outputs_ui;
 pub mod preview;
 pub mod project_panel;
+pub mod publish;
 pub mod release_ui;
 pub mod renumber_dialog;
 pub mod search;
+pub mod settings;
 pub mod sheets_ui;
+pub mod shell;
 pub mod startup;
+pub mod text_ui;
 pub mod tools;
 pub mod window;
 
@@ -117,19 +130,23 @@ pub const PROJECT_NAME: &str = "Untitled";
 pub const DEFAULT_FOLDER: &str = default_folder!();
 /// Command-line usage.
 pub const USAGE: &str = concat!(
-    "usage: ecad-trial [--snapshots <dir>] [<project.ecad>]\n\n\
+    "usage: ecad-trial [--snapshots <dir>] [--control <port>] [--cad-ui] [<project.ecad>]\n\n\
 ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
 project. Save and Save As write .ecad project files; keep them in a local folder such as ",
     default_folder!(),
     ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
+--control <port>   agent access on for this run (Read and change, 127.0.0.1:<port>; not remembered)\n\
+--cad-ui           show CADCraft's own interface inside the main view (the developer switch)\n\
 See ecad/docs/quick-start.md."
 );
 
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invocation {
-    /// Start the trial: open `project` if given, allow snapshots into `snapshots` if given.
-    Run { snapshots: Option<PathBuf>, project: Option<String> },
+    /// Start the trial: open `project` if given, allow snapshots into `snapshots` if given, and
+    /// turn agent access on for this run on port `control` if given (brief 035).
+    /// `cad_ui`: the shell's developer switch on from the start (`--cad-ui`, brief 038).
+    Run { snapshots: Option<PathBuf>, project: Option<String>, control: Option<u16>, cad_ui: bool },
     /// Print [`USAGE`].
     Help,
     /// Print the version.
@@ -144,6 +161,8 @@ pub enum Invocation {
 pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, String> {
     let mut snapshots = None;
     let mut project: Option<String> = None;
+    let mut control = None;
+    let mut cad_ui = false;
     let mut args = args.into_iter();
     while let Some(a) = args.next() {
         match a.to_str() {
@@ -151,6 +170,11 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
                 Some(d) => snapshots = Some(PathBuf::from(d)),
                 None => return Err("--snapshots needs a folder".into()),
             },
+            Some("--control") => match args.next().and_then(|p| p.to_str().and_then(ecad_cadcraft::agent_access::parse_port)) {
+                Some(p) => control = Some(p),
+                None => return Err("--control needs a port from 1024 to 65535".into()),
+            },
+            Some("--cad-ui") => cad_ui = true,
             Some("--help" | "-h") => return Ok(Invocation::Help),
             Some("--version" | "-V") => return Ok(Invocation::Version),
             Some(other) if other.starts_with('-') => return Err(format!("unknown argument {other:?}")),
@@ -161,7 +185,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
             }
         }
     }
-    Ok(Invocation::Run { snapshots, project })
+    Ok(Invocation::Run { snapshots, project, control, cad_ui })
 }
 
 /// The project's status line at the top of the Project panel, for example
@@ -285,6 +309,9 @@ pub fn window_title(info: Option<&BranchInfo>) -> String {
     }
 }
 
+/// What ECAD's style depends on: CADCraft re-applies its own fonts and style when one changes.
+type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_ui::Theme);
+
 /// The harness state around CADCraft's [`CadApp`].
 pub struct Trial {
     pub cad: CadApp,
@@ -311,6 +338,11 @@ pub struct Trial {
     /// The Project panel's Developer section: the command field's reply, the inline debugger and
     /// the project summary.
     pub developer: developer::Developer,
+    /// Brief 037: what ECAD's fonts and style were last installed for (CADCraft's interface
+    /// language, theme choice and the system theme), and whether the style is applied once more
+    /// in the next pass, when ECAD's fonts are in.
+    ecad_style: Option<EcadStyleKey>,
+    ecad_style_again: bool,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
     /// The Project panel (brief 016).
@@ -350,11 +382,15 @@ pub struct Trial {
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
     pub search: search::SymbolSearch,
+    /// Brief 048: the Library workspace (the browser, or the symbol builder).
+    pub library: library::Library,
     /// Brief 024: the Reports window and the Print Book dialog, while open.
     pub reports: Option<outputs_ui::Reports>,
     pub print_book: Option<outputs_ui::PrintBook>,
     /// Brief 027: the Release dialog.
     pub release: Option<release_ui::ReleaseDialog>,
+    /// UI rev 3: the Publish workspace (board 4.01).
+    pub publish: publish::Publish,
 
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
     pub props: sheets_ui::Shared,
@@ -364,6 +400,8 @@ pub struct Trial {
     pub props_rebuilds: u64,
     /// The Project Properties and Revisions dialogs, when open.
     pub project_props: Option<sheets_ui::ProjectProps>,
+    /// Brief 042: Settings, a place you visit (its section, the Standards screen, the inspector's rows).
+    pub settings: settings::Settings,
     pub revisions: Option<sheets_ui::Revisions>,
     /// The merge dialog (brief 020b), when open.
     pub merge: Option<merge_dialog::MergeDialog>,
@@ -382,6 +420,10 @@ pub struct Trial {
     revisions_seen: u64,
     /// The selection last checked for frame objects.
     frame_checked: Vec<Handle>,
+    /// Brief 035: live agent access (preference, listener, bridge sessions, banner).
+    pub agent: agent::Agent,
+    /// Brief 038: the shell around the drawing (workspaces, panels, the developer switch).
+    pub shell: shell::Shell,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -467,10 +509,16 @@ impl Trial {
 
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
-        let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested)));
+        // Brief 035: CadApp's own control channel is fed only by the trial's agent drain, with
+        // the allowlisted reads; the port's requests never reach it directly.
+        let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
+        let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
+        let mut agent = agent::Agent::from_settings(ecad_cadcraft::views::Settings::from_env());
+        agent.set_cad_channel(cad_tx);
         cad.extra_tool_tabs = vec![tools::tab()];
         let props: sheets_ui::Shared = Arc::default();
         cad.owner_properties = Some(sheets_ui::section(Arc::clone(&props)));
+        let shell = shell::Shell::new(Arc::clone(&props));
         Trial {
             cad,
             project: None,
@@ -486,6 +534,8 @@ impl Trial {
             command_hint: None,
             focus_command: false,
             developer: developer::Developer::default(),
+            ecad_style: None,
+            ecad_style_again: false,
             debugger: Debugger::default(),
             panel: ProjectPanel::default(),
             preview: None,
@@ -504,14 +554,17 @@ impl Trial {
             home: ecad_cadcraft::home(),
             lwdisplay_set: None,
             search: search::SymbolSearch::default(),
+            library: library::Library::default(),
             reports: None,
             print_book: None,
             release: None,
+            publish: publish::Publish::default(),
 
             props,
             props_seen: None,
             props_rebuilds: 0,
             project_props: None,
+            settings: settings::Settings::default(),
             revisions: None,
             merge: None,
             renumber: None,
@@ -521,6 +574,8 @@ impl Trial {
             panel_revision: None,
             revisions_seen: 0,
             frame_checked: Vec::new(),
+            agent,
+            shell,
         }
     }
 
@@ -1134,6 +1189,8 @@ impl Trial {
             }
         };
         if let Some(choice) = finder.show(ctx, &rows, &choices) {
+            // Placing happens on the page: from Library, back to Draw (brief 038).
+            self.set_workspace(shell::Workspace::Draw);
             let _ = self.start_choice(&choice);
         }
     }
@@ -1170,9 +1227,17 @@ impl Trial {
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
+        // UI rev 3: the picker's chip names the symbol being placed.
+        self.shell.tools.placing.symbol = match &pick {
+            search::Pick::Symbol(k) => ecad_cadcraft::symbols::by_key(k).map(|s| s.key),
+            _ => None,
+        };
         let text = match pick {
             search::Pick::Symbol(k) => k.to_string(),
             search::Pick::Device(tag) => tag,
+            search::Pick::Project(k) => k,
+            // Brief 041: pages and actions are run by the shell, not placed.
+            search::Pick::Page(_) | search::Pick::Action(_) => return Ok(()),
         };
         let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(text))).map_err(|e| e.to_string());
         if let Err(e) = &r {
@@ -1209,6 +1274,8 @@ impl Trial {
 
     /// Per-frame logic (before layout).
     pub fn logic(&mut self, ctx: &egui::Context) {
+        // Brief 035: the author check and the agent's calls, before any input of this frame.
+        self.agent_frame(ctx);
         if ctx.input(|i| i.viewport().close_requested()) {
             self.prepare_quit();
         }
@@ -1358,6 +1425,9 @@ impl Trial {
                 }
             }
             developer::Action::ToggleDebugger => self.toggle_debugger(),
+            developer::Action::AgentMode(m) => self.agent_set_mode(m),
+            developer::Action::AgentPort => self.agent_apply_port(),
+            developer::Action::Banner(a) => self.agent_action(a),
             developer::Action::Inspect => self.inspect_project(),
             developer::Action::Snapshot => {
                 let _ = self.trial_tool("ecad.dev.snapshot");
@@ -1387,9 +1457,12 @@ impl Trial {
         }
     }
 
-    /// Lay out the harness dialogs, the debugger (when open), the Project panel, CADCraft's window
-    /// contents, the ECAD command field and the preview (when open).
+    /// Lay out the harness dialogs, the debugger (when open), the shell (brief 038) with
+    /// CADCraft's drawing in its main view, the floating windows and the hover tooltip.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        // ECAD's fonts and style first: on the first frame nothing is laid out yet, so egui takes
+        // the fonts at once (CADCraft no longer installs its own; `Embedding::style` is off).
+        self.ecad_style(ui.ctx());
         self.sync_branch();
         self.dialogs(ui.ctx());
         self.sync_title(&ui.ctx().clone());
@@ -1397,22 +1470,12 @@ impl Trial {
             // The snapshot is taken (and the project released) before anything is drawn.
             self.refresh_debugger(false);
         }
-        self.project_panel(ui);
-        self.sync_props();
-        // Read before CADCraft's window takes the keys: Esc, or a click on the drawing area.
-        let ring_input = ui.ctx().input(|i| {
-            let esc = i.key_pressed(egui::Key::Escape);
-            let click = i.pointer.primary_clicked()
-                && self.cad.canvas.hover.is_none()
-                && i.pointer.interact_pos().is_some_and(|at| self.cad.canvas.rect.is_some_and(|r| r.contains(at)));
-            (esc, click)
-        });
-        self.cad.ui(ui);
-        self.clear_goto_ring(ring_input);
-        self.take_props();
+        self.shell_ui(ui);
+        self.agent_banner_ui(ui.ctx());
         self.drop_frame_selection();
         self.handle_tools();
         self.sheet_windows(ui.ctx());
+        self.host_windows();
         self.output_windows(ui.ctx());
         self.merge_windows(ui.ctx());
         self.renumber_window(ui.ctx());
@@ -1428,6 +1491,28 @@ impl Trial {
             });
         }
         self.hover_tooltip(ui.ctx());
+    }
+
+    /// Brief 037: ECAD's fonts (IBM Plex Sans for the interface, Barlow Semi Condensed for the
+    /// sheet) on top of CADCraft's font set for the language (upstream seam US2), and ECAD's style
+    /// from the tokens. Runs after CADCraft's frame start, which installs its own fonts and style
+    /// when the language or theme changes; ECAD's then replace them, in the same pass. The style
+    /// is applied again in the next pass, once ECAD's font families exist.
+    fn ecad_style(&mut self, ctx: &egui::Context) {
+        // UI rev 3 (boards 1.17, 1.18): the person's light or dark interface, read by every
+        // `ecad_ui::SHELL` colour drawn on this thread from here on.
+        let theme = self.shell.state.theme.ui();
+        ecad_ui::set_theme(theme);
+        let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme(), theme);
+        if self.ecad_style != Some(key) {
+            ecad_ui::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
+            ecad_ui::style::apply(ctx);
+            self.ecad_style = Some(key);
+            self.ecad_style_again = true;
+            ctx.request_repaint();
+        } else if std::mem::take(&mut self.ecad_style_again) {
+            ecad_ui::style::apply(ctx);
+        }
     }
 
     /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the
@@ -1477,6 +1562,8 @@ impl Trial {
     /// pointer leaves the object, a button is pressed or a command starts. Only reads.
     fn hover_tooltip(&mut self, ctx: &egui::Context) {
         let (now, pointer, pressed) = ctx.input(|i| (i.time, i.pointer.hover_pos(), i.pointer.any_down()));
+        // Brief 038: only over the page shown, not over a hosted view laid over the hidden page.
+        let pointer = pointer.filter(|at| self.over_shown_page(ctx, *at));
         let idle = self.cad.session.running.is_none() && !pressed;
         // A terminal under the pointer wins over the wire ending on it or the symbol around it.
         let terminal = match pointer.filter(|_| idle) {
@@ -1526,25 +1613,21 @@ impl Trial {
             };
         }
         let Some(lines) = &self.hover else { return };
-        let t = cadcraft_ui_egui::theme::Tokens::get();
+        // Brief 038: the shell's popover style and text colours.
+        let t = shell::left::colours();
         egui::Area::new(egui::Id::unique(HOVER_ID))
             .order(egui::Order::Tooltip)
             .fixed_pos(pointer + egui::vec2(16.0, 16.0))
             .constrain(true)
             .interactable(false)
             .show(ctx, |ui| {
-                egui::Frame::NONE
-                    .fill(t.panel)
-                    .stroke(egui::Stroke::new(1.0, t.border))
-                    .corner_radius(0.0)
-                    .inner_margin(egui::Margin::symmetric(6, 4))
-                    .show(ui, |ui| {
-                        for (i, line) in lines.iter().enumerate() {
-                            let dim = i > 0 && (line.starts_with("id ") || line.contains("not connected"));
-                            let text = RichText::new(line).monospace().small();
-                            ui.label(text.color(if dim { t.text_dim } else { t.text }));
-                        }
-                    });
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    for (i, line) in lines.iter().enumerate() {
+                        let dim = i > 0 && (line.starts_with("id ") || line.contains("not connected"));
+                        let text = RichText::new(line).monospace().small();
+                        ui.label(text.color(if dim { t.text_dim } else { t.text }));
+                    }
+                });
             });
     }
 
@@ -1553,6 +1636,22 @@ impl Trial {
         if self.snapshots.is_some() && self.project_open() {
             let _ = self.export_snapshot("exit");
         }
+        self.agent.shut_down();
+    }
+
+    /// Brief 035: the Undo agent session confirmation, while open (the banner itself is one line
+    /// in the Developer section until the UI shell).
+    fn agent_banner_ui(&mut self, ctx: &egui::Context) {
+        self.agent_undo_window(ctx);
+    }
+
+    /// Open History with `seq` selected (the banner's last change).
+    pub fn open_history_at(&mut self, seq: u64) {
+        let Some(p) = self.project.clone() else { return };
+        let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::history::current(p)) else { return };
+        self.panel.tab = project_panel::Tab::History;
+        self.panel.history.steps_open = true;
+        self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_cadcraft::history::NodeKind::Fork, name: None });
     }
 
     /// Bring the Project panel's copy up to date: one change-count comparison per frame, the rows
@@ -1567,6 +1666,8 @@ impl Trial {
             return;
         };
         let serial = self.project_serial;
+        let devices_shown = self.panel.tab == project_panel::Tab::Devices || self.lists_shows_devices();
+        let selection = if devices_shown { self.cad.session.selection() } else { Vec::new() };
         let panel = &mut self.panel;
         let panel_revision = &mut self.panel_revision;
         let _ = p.read(&mut self.cad.session, |p, _| {
@@ -1596,17 +1697,20 @@ impl Trial {
             panel.sync(serial, p.page_list_version(), || Some(p.tree_rows()));
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
-            if panel.tab == project_panel::Tab::Devices {
+            if devices_shown {
                 panel.devices.sync(serial, p);
+                // Brief 039: symbols selected on the page select their rows.
+                panel.devices.follow(p, &selection);
             }
             // The History tab's copy, only while it is shown (brief 020a; its own update map).
             if panel.tab == project_panel::Tab::History {
                 panel.history.sync(serial, p);
             }
         });
-        // The Checks tab's copy, only while it is shown (brief 022): the project builds its list
-        // on the first show and keeps it from each change; the copy follows its revision.
-        if self.panel.tab == project_panel::Tab::Checks {
+        // The Checks copy (brief 022), for the shell's drawer and Checks pill (brief 038): the
+        // project builds its list on the first show and keeps it from each change; the copy
+        // follows its revision.
+        {
             let checks = &mut self.panel.checks;
             let _ = p.configure(&mut self.cad.session, |p| checks.sync(serial, p));
         }
@@ -1647,57 +1751,6 @@ impl Trial {
         }
     }
 
-    /// The Project panel (or its collapsed strip) at the far left, and what it asks for.
-    fn project_panel(&mut self, ui: &mut egui::Ui) {
-        self.refresh_panel();
-        let header = self.header();
-        let t = cadcraft_ui_egui::theme::Tokens::get();
-        let (actions, dev) = if self.panel.collapsed {
-            egui::Panel::left("ecad_project_strip")
-                .resizable(false)
-                .exact_size(project_panel::STRIP_W)
-                .frame(egui::Frame::NONE.fill(t.chrome))
-                .show(ui, |ui| self.panel.strip(ui));
-            (Vec::new(), Vec::new())
-        } else {
-            let running = self.cad.session.running.is_some();
-            let project = header.name.is_some();
-            egui::Panel::left("ecad_project")
-                .resizable(true)
-                .default_size(220.0)
-                .min_size(160.0)
-                // Wide enough for the debugger when it is shown inline.
-                .max_size(720.0)
-                .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(6, 4)))
-                .show(ui, |ui| {
-                    let dev = developer::show(
-                        ui,
-                        developer::Parts {
-                            dev: &mut self.developer,
-                            command: &mut self.command,
-                            hint: self.command_hint,
-                            focus: &mut self.focus_command,
-                            debugger: &mut self.debugger,
-                            running,
-                            snapshots: header.snapshots,
-                            project,
-                        },
-                    );
-                    (self.panel.show(ui, &header), dev)
-                })
-                .inner
-        };
-        if self.command.trim().is_empty() {
-            self.command_hint = None;
-        }
-        for a in actions {
-            self.panel_action(a);
-        }
-        for a in dev {
-            self.developer_action(a);
-        }
-    }
-
     /// Act on one thing the Project panel asked for. Writes go through the page commands' JSON
     /// forms on the command path, so each is exactly that command's transaction and one undo step.
     pub fn panel_action(&mut self, a: project_panel::Action) {
@@ -1705,6 +1758,8 @@ impl Trial {
         self.panel.note = None;
         match a {
             A::Open(page) => {
+                // Brief 038: a plain page switch gets the page's stored view back.
+                self.shell.restore_view = true;
                 let _ = self.show_page(page);
             }
             A::New => self.open_new_page_box(),
@@ -1742,15 +1797,37 @@ impl Trial {
             A::SaveAs => self.request_save_as(),
             A::CloseProject => self.close_project(),
             A::RenameInBox(page) => self.open_rename_box(Some(page)),
-            A::GotoSymbol(rep) => {
-                let _ = self.goto_symbol(rep);
+            A::GotoSymbols(reps) => {
+                let _ = self.goto_symbols(&reps);
             }
             A::GotoCheck(check) => {
                 let _ = self.goto_check(&check);
             }
+            A::RenumberPage(page) => {
+                if self.show_page(page).is_ok() {
+                    self.panel.tab = project_panel::Tab::Pages;
+                    self.panel.start_number_edit(page);
+                }
+            }
+            A::MoveTable(check) => {
+                if self.goto_check(&check).is_ok() {
+                    if self.cad.session.running.is_some() {
+                        self.cad.session.cancel();
+                    }
+                    if let Err(e) = self.cad.session.start("mirrormove") {
+                        self.cad.session.echo(e.to_string());
+                    }
+                    self.after_logic();
+                }
+            }
             A::AddJunction(page, at) => {
                 if self.show_page(page).is_ok() {
                     let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));
+                }
+            }
+            A::JoinWires(page, at) => {
+                if self.show_page(page).is_ok() {
+                    let _ = self.run_line(&format!("joinwires {}", json!({"at": [at.x, at.y]})));
                 }
             }
             A::NumberThem => {
@@ -1763,7 +1840,7 @@ impl Trial {
                 let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "location", "value": null})));
             }
             A::ShowReports => {
-                self.open_reports();
+                self.reports_view();
                 if let Some(r) = &mut self.reports {
                     r.tab = outputs_ui::Tab::Bom;
                     r.only_flagged = true;
@@ -1774,11 +1851,8 @@ impl Trial {
             A::OfferDrawn(c) => {
                 let value = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
-                        let doc = p.ledger.document();
-                        let drawn = ecad_cadcraft::strips::drawn_terminals(doc, c);
-                        let pe = ecad_cadcraft::strips::offer_of(doc, c).map_or(0, |o| o.pe);
-                        let drawn_pe = drawn.iter().filter(|(_, _, pe)| *pe).count() as u32;
-                        ecad_cadcraft::strips::Offer { positions: drawn.len() as u32, pe: pe.max(drawn_pe).min(drawn.len() as u32) }.text()
+                        // Brief 036: every type at least its drawn positions.
+                        ecad_cadcraft::strips::offer_drawn_value(p.ledger.document(), c)
                     })
                     .ok()
                 });
@@ -1803,6 +1877,23 @@ impl Trial {
                     let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
                 }
             }
+            // Brief 041: the page row's wheel.
+            A::PageWheel(page, at) => self.open_page_wheel(page, at),
+            // Brief 044: the lone pins' mates, through Place ▸ Connector's prompts (connector,
+            // halves, draw), as a person answers them.
+            A::PlaceMates(c, side) => {
+                let tag = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
+                });
+                if let Some(tag) = tag {
+                    let half = if side == ecad_cadcraft::symbols::Side::Socket { "Socket" } else { "Plug" };
+                    for line in ["connector", tag.as_str(), half, "Pins"] {
+                        if self.run_line(line).is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
             A::AccessoryFix(fix, i) => {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {
@@ -1816,8 +1907,9 @@ impl Trial {
                     let _ = self.run_line(&line);
                 }
             }
+            A::OpenStandards(word) => self.open_standards_at(word),
             A::ShowCables => {
-                self.open_reports();
+                self.reports_view();
                 if let Some(r) = &mut self.reports {
                     r.tab = outputs_ui::Tab::Cables;
                     r.cores_of = None;
@@ -1825,11 +1917,29 @@ impl Trial {
                     r.invalidate();
                 }
             }
-            A::Reports => self.open_reports(),
-            A::PrintBook(folder) => self.open_print_book(folder),
-            A::Release => self.open_release(None),
+            A::Reports => self.reports_view(),
+            A::ProjectDevices => {
+                self.shell.lists = shell::ListsView::Devices;
+                self.set_workspace(shell::Workspace::Lists);
+            }
+            A::PrintBook(folder) => {
+                self.open_print_book(folder);
+                self.publish_view(shell::PublishTab::PrintBook);
+            }
+            A::Release => {
+                self.open_release(None);
+                self.publish_view(shell::PublishTab::Release);
+            }
             A::NewGenerated(kind) => {
                 let mut v = json!({"generated": kind.value()});
+                if let Some(f) = self.panel.target_folder() {
+                    v["folder"] = json!(f.hex());
+                }
+                let _ = self.run_line(&format!("newpage {v}"));
+            }
+            // Brief 046: New page ▸ Terminal strips.
+            A::NewStripPage => {
+                let mut v = json!({"generated": "terminals", "style": "graphic"});
                 if let Some(f) = self.panel.target_folder() {
                     v["folder"] = json!(f.hex());
                 }
@@ -2009,6 +2119,7 @@ impl Trial {
     pub fn history_action(&mut self, d: history_panel::Do) {
         use history_panel::Do;
         match d {
+            Do::Agent(a) => self.agent_action(a),
             Do::Run(cmd, params) => {
                 match self.run_click(cmd, params) {
                     Ok(_) => {
@@ -2280,13 +2391,35 @@ impl Trial {
     /// # Errors
     /// No project, an unknown symbol, or a page that cannot be shown (echoed).
     pub fn goto_symbol(&mut self, symbol: ecad_model::RepresentationId) -> Result<(), String> {
+        self.goto_symbols(&[symbol])
+    }
+
+    /// The Devices tab's go to for a device: the first of `symbols` is gone to as
+    /// [`Trial::goto_symbol`] does, and every one of `symbols` on its page is selected (a device's
+    /// symbols on other pages are not). A selection change only: nothing is recorded.
+    ///
+    /// # Errors
+    /// No symbols, no project, an unknown first symbol, or a page that cannot be shown (echoed).
+    pub fn goto_symbols(&mut self, symbols: &[ecad_model::RepresentationId]) -> Result<(), String> {
+        let symbol = *symbols.first().ok_or("that device has no symbols")?;
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = p
             .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol).map(|t| t.0))?
             .ok_or("that symbol no longer exists")?;
         self.show_page(page)?;
-        let (_, at, handles) =
-            p.read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol))?.ok_or("that symbol no longer exists")?;
+        let (_, at, handles) = p
+            .read(&mut self.cad.session, |p, _| {
+                let (pg, at, mut handles) = ecad_cadcraft::device_list::symbol_target(p, symbol)?;
+                for rep in symbols.iter().skip(1) {
+                    if let Some((other, _, more)) = ecad_cadcraft::device_list::symbol_target(p, *rep)
+                        && other == pg
+                    {
+                        handles.extend(more);
+                    }
+                }
+                Some((pg, at, handles))
+            })?
+            .ok_or("that symbol no longer exists")?;
         if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
             // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
             // only while empty may have a tiny or a huge view).
@@ -2413,12 +2546,17 @@ impl Trial {
         r
     }
 
-    /// Open the Project info or Project settings popout, filled from `projectprops {}` (reads only).
+    /// Open the Project info or Project settings popout: since brief 042, Settings ▸ Project at
+    /// that tab, filled from `projectprops {}` (reads only).
     pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
-        let read_only = self.header().read_only;
-        match self.run_value("projectprops", json!({})) {
-            Ok(v) => self.project_props = Some(sheets_ui::ProjectProps::from_json(&v, read_only, popout)),
-            Err(e) => self.cad.session.echo(e),
+        self.fill_project_props(popout);
+        if self.project_props.is_some() {
+            // UI rev 3: Project info, or Pages and sheets for the project's settings.
+            let section = match popout {
+                sheets_ui::Popout::Info => settings::Section::Project,
+                sheets_ui::Popout::Settings => settings::Section::Pages,
+            };
+            self.open_settings(section);
         }
     }
 
@@ -2612,6 +2750,21 @@ impl Trial {
     }
 
     /// Open the Reports window (design 024 §6.2).
+    /// Open Reports and show it: in Lists, or beside the page when Draw's companion is open.
+    pub fn reports_view(&mut self) {
+        self.open_reports();
+        self.shell.lists = shell::ListsView::Reports;
+        if !(self.shell.state.workspace == shell::Workspace::Draw && self.shell.state.companion.is_some()) {
+            self.set_workspace(shell::Workspace::Lists);
+        }
+    }
+
+    /// Show Publish on `tab`.
+    pub fn publish_view(&mut self, tab: shell::PublishTab) {
+        self.shell.publish = tab;
+        self.set_workspace(shell::Workspace::Publish);
+    }
+
     pub fn open_reports(&mut self) {
         if self.reports.is_none() {
             let stem = self.output_stem();
@@ -2650,18 +2803,24 @@ impl Trial {
             && p.is_attached(&self.cad.session)
             && p.configure(&mut self.cad.session, |p| std::mem::take(&mut p.open_reports)).unwrap_or(false)
         {
-            self.open_reports();
+            self.reports_view();
         }
+        let writable = !self.header().read_only;
         if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+            r.writable = writable;
             let _ = p.configure(&mut self.cad.session, |p| r.sync(serial, p));
         }
-        let out = self.reports.as_mut().and_then(|r| r.show(ctx));
+        let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
         match out {
             Some(outputs_ui::Out::Close) => self.reports = None,
             Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
             Some(outputs_ui::Out::Run(line)) => {
-                let _ = self.run_line(&line);
+                let refusal = self.run_line(&line);
+                if let Some(r) = self.reports.as_mut() {
+                    r.ran(refusal);
+                }
             }
+            Some(outputs_ui::Out::GotoAt(page, at)) => self.goto_place(page, at),
             // Brief 028: double-clicking a cable shows its cores.
             Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)
@@ -2704,7 +2863,7 @@ impl Trial {
 
     /// Brief 028: Reports on the Terminals tab for `strip` (Properties' **Show plan**).
     pub fn show_plan(&mut self, strip: Option<ecad_model::ComponentId>) {
-        self.open_reports();
+        self.reports_view();
         if let Some(r) = &mut self.reports {
             r.tab = outputs_ui::Tab::Terminals;
             r.strip = strip;
@@ -2752,7 +2911,7 @@ impl Trial {
 
     /// Brief 028: Reports on the Cables tab with `cable`'s cores (Properties' **Show cores**).
     pub fn show_cores(&mut self, cable: ecad_model::CableId) {
-        self.open_reports();
+        self.reports_view();
         if let Some(r) = &mut self.reports {
             r.tab = outputs_ui::Tab::Cables;
             r.cores_of = Some(cable);
@@ -2793,15 +2952,18 @@ impl Trial {
             Some(To::Symbol(rep)) => {
                 let _ = self.goto_symbol(rep);
             }
-            Some(To::Place(page, at)) => {
-                if self.show_page(page).is_ok()
-                    && let Ok(st) = self.cad.session.state_mut()
-                {
-                    let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-                    let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
-                }
-            }
+            Some(To::Place(page, at)) => self.goto_place(page, at),
             None => {}
+        }
+    }
+
+    /// Show `page`, centred on `at` at the current zoom (kept readable).
+    pub fn goto_place(&mut self, page: PageId, at: ecad_model::Pt) {
+        if self.show_page(page).is_ok()
+            && let Ok(st) = self.cad.session.state_mut()
+        {
+            let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
     }
 
@@ -2885,7 +3047,7 @@ impl Trial {
 
     /// The Release dialog, live while open.
     fn release_window(&mut self, ctx: &egui::Context) {
-        if self.release.is_none() {
+        if self.release.as_ref().is_none_or(|d| d.hidden) {
             return;
         }
         self.refresh_release();
@@ -2904,7 +3066,7 @@ impl Trial {
                 let _ = self.goto_check(&c);
             }
             Some(release_ui::Out::ShowReports) => {
-                self.open_reports();
+                self.reports_view();
                 if let Some(r) = &mut self.reports {
                     r.tab = outputs_ui::Tab::Bom;
                     r.only_flagged = true;
@@ -2914,7 +3076,10 @@ impl Trial {
             Some(release_ui::Out::Finalise) => self.open_renumber(true, false, None),
             Some(release_ui::Out::ShowChecks) => self.panel.tab = project_panel::Tab::Checks,
             Some(release_ui::Out::SaveAs) => self.request_save_as(),
-            Some(release_ui::Out::WriteIssued(rev)) => self.open_release(Some(rev)),
+            Some(release_ui::Out::WriteIssued(rev)) => {
+                self.open_release(Some(rev));
+                self.publish_view(shell::PublishTab::Release);
+            }
             Some(release_ui::Out::Close) => self.release = None,
             None => {}
         }
@@ -2939,7 +3104,7 @@ impl Trial {
 
     /// The Print Book dialog: live counts, then `printbook` on Print.
     fn print_window(&mut self, ctx: &egui::Context) {
-        let Some(d) = &self.print_book else { return };
+        let Some(d) = self.print_book.as_ref().filter(|d| !d.hidden) else { return };
         let scope = match d.scope {
             outputs_ui::ScopeKind::All => ecad_cadcraft::printbook::Scope::All,
             outputs_ui::ScopeKind::Folder => match d.folders.get(d.folder).and_then(|f| ecad_model::FolderId::parse(&f.0)) {
@@ -2956,6 +3121,12 @@ impl Trial {
             d.unknown = unknown;
             d.flagged = flagged;
         }
+        if let Some(p) = self.project.clone()
+            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_cadcraft::printbook::notes(p, &scope))
+            && let Some(d) = &mut self.print_book
+        {
+            d.notes = notes;
+        }
         let answer = self.print_book.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(true) => {
@@ -2966,31 +3137,10 @@ impl Trial {
         }
     }
 
-    /// The Project Properties and Revisions windows and the question a plain undo across an issue
+    /// The Revisions window and the question a plain undo across an issue
     /// stops at.
     fn sheet_windows(&mut self, ctx: &egui::Context) {
-        if let Some(d) = &mut self.project_props {
-            match d.show(ctx) {
-                Some(sheets_ui::Out::Run(line)) => match self.run_line(&line) {
-                    None => self.project_props = None,
-                    Some(e) => {
-                        if let Some(d) = &mut self.project_props {
-                            d.error = Some(e);
-                        }
-                    }
-                },
-                Some(sheets_ui::Out::Close) => self.project_props = None,
-                Some(sheets_ui::Out::OpenRevisions) => self.open_revisions(),
-                Some(
-                    sheets_ui::Out::Open(_)
-                    | sheets_ui::Out::SwitchToMain
-                    | sheets_ui::Out::MergeIntoMain
-                    | sheets_ui::Out::Release(_)
-                    | sheets_ui::Out::OpenFolder(_),
-                )
-                | None => {}
-            }
-        }
+        // Brief 042: the project popouts are Settings sections (`settings::project`).
         self.refresh_revisions();
         if let Some(d) = &mut self.revisions {
             match d.show(ctx) {
@@ -3025,7 +3175,10 @@ impl Trial {
                     let shown = self.branch_info().map(|b| b.name).unwrap_or_default();
                     self.ask_merge(json!({"from": shown, "into": "main"}));
                 }
-                Some(sheets_ui::Out::Release(rev)) => self.open_release(rev),
+                Some(sheets_ui::Out::Release(rev)) => {
+                    self.open_release(rev);
+                    self.publish_view(shell::PublishTab::Release);
+                }
                 Some(sheets_ui::Out::OpenFolder(f)) => {
                     if let Err(e) = release_ui::open_folder(&f)
                         && let Some(d) = &mut self.revisions

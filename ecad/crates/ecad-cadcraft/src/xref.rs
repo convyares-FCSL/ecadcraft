@@ -86,7 +86,10 @@ pub const TABLE_DERIVED: &str = "The contact table is derived; move it with Move
 /// The refusal of an edit of a drawn cross-reference: the contact text's or the table's.
 pub fn refusal(doc: &Document, mapped: Option<crate::project::Mapped>) -> &'static str {
     match mapped {
+        // Brief 051 (review of #89, 2): a PLC card's frame.
+        Some(crate::project::Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => crate::plc::look::FRAME_DERIVED,
         Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Head) => TABLE_DERIVED,
+        Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Arrow) => crate::continuations::TEXT_DERIVED,
         _ => TEXT_DERIVED,
     }
 }
@@ -309,6 +312,9 @@ pub fn placement_of(doc: &Document, c: ComponentId) -> (Placement, bool) {
 pub enum Group {
     Cable(CableId),
     Device(ComponentId),
+    /// Brief 049 (FP4): the continuation arrows of one name, keyed by the lowest component ID
+    /// among them. Its edges are implicit: every member shows every other.
+    Continuation(ComponentId),
 }
 
 /// What a member of a group is.
@@ -320,6 +326,13 @@ pub enum Class {
     Head,
     /// A symbol with contact poles.
     Child,
+    /// Brief 044 (design 044 §7): a connector half's main symbol (a pin pair that is both
+    /// halves' main symbol: `Both`).
+    Half(crate::symbols::Side),
+    /// Brief 044: any other connector symbol, by the side it draws.
+    Pin(crate::symbols::Side),
+    /// Brief 049: a continuation arrow's symbol.
+    Arrow,
     /// Anything else (no edges).
     Other,
 }
@@ -341,6 +354,8 @@ pub fn is_head(s: &Starter) -> bool {
 pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
     match (s.key, s.kind) {
         ("power3", _) => vec![(PoleKind::No, true); 3],
+        // Pack re-run, bug 11: the 4-pole set is a contactor's power contacts too.
+        ("power4", _) => vec![(PoleKind::No, true); 4],
         (_, Kind::Contact { make }) => vec![(if make { PoleKind::No } else { PoleKind::Nc }, false)],
         _ => Vec::new(),
     }
@@ -446,6 +461,16 @@ pub fn device(doc: &Document, c: ComponentId) -> Device {
 /// The class of member `rid` of its group, as the index keeps it.
 pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)> {
     let r = doc.representations.get(&rid)?;
+    // Brief 049: a continuation arrow's symbol.
+    if let Some(g) = crate::continuations::group_of_rep(doc, r) {
+        return Some((g, Class::Arrow));
+    }
+    // Brief 044: a connector's members.
+    if let Subject::Component(c) = r.subject
+        && crate::connectors::is_connector(doc, c)
+    {
+        return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
+    }
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
         Subject::Component(c) => match raw_class(doc, r) {
@@ -503,6 +528,22 @@ impl<'a> Places<'a> {
     /// The page's shown number.
     pub fn number(&mut self, page: PageId) -> String {
         self.page(page).1.clone()
+    }
+
+    /// Brief 049 (design 049 §2.2): where `at` on `page` sorts, by book position, then column,
+    /// then row, and its text; `None` (shown `?`, sorted last) when it cannot be located. The book
+    /// is built at most once per `Places`.
+    pub fn sorted(&mut self, page: PageId, at: Option<Pt>) -> Option<((usize, u32, u32), String)> {
+        let at = at?;
+        let style = self.doc.settings.reference_style;
+        let doc = self.doc;
+        let position = self.book.get_or_insert_with(|| ecad_model::book::Book::of(doc)).position(page)?;
+        let (grid, number, located) = self.page(page);
+        if !*located {
+            return None;
+        }
+        let p = ecad_model::derive::place_on(grid, number, at)?;
+        Some(((position, p.column, p.row), p.text(style)))
     }
 }
 
@@ -674,7 +715,15 @@ pub fn over_line(doc: &Document, c: ComponentId, labels: &[String], make: bool) 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     Line(Pt, Pt),
-    Text { at: Pt, value: String, height: f64, halign: HAlign, valign: VAlign },
+    /// `rotation` in radians (brief 049, FP3): 0 for every text but a continuation's reference.
+    Text {
+        at: Pt,
+        value: String,
+        height: f64,
+        halign: HAlign,
+        valign: VAlign,
+        rotation: f64,
+    },
 }
 
 /// One part of a contact's text or a head's table.
@@ -734,7 +783,7 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     at.is_finite().then_some(Part {
         rep,
         index: 0,
-        shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign, valign: VAlign::Top },
+        shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign, valign: VAlign::Top, rotation: 0.0 },
         aci: None,
         row: None,
         bar: false,
@@ -751,6 +800,105 @@ pub struct Table {
     pub placement: Placement,
     pub rows: Vec<Row>,
     pub parts: Vec<Part>,
+    /// Which step of design 033 §4.1 placed it.
+    pub shown: TableShown,
+    /// The y of its box's bottom (drawing units).
+    pub bottom: f64,
+}
+
+/// Where a contact table went (design 033 §4.1): where its placement puts it, right of its head
+/// (no room below), or lifted above the title block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableShown {
+    AsPlaced,
+    Right,
+    Lifted,
+}
+
+impl TableShown {
+    /// The `contacts` reply's word.
+    pub fn word(self) -> &'static str {
+        match self {
+            TableShown::AsPlaced => "as placed",
+            TableShown::Right => "right",
+            TableShown::Lifted => "lifted",
+        }
+    }
+}
+
+/// The box of a table at `top` with `rows` (design 033 §4.1): from −10 mm to 12 mm plus the widest
+/// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
+pub fn table_box(doc: &Document, top: Pt, rows: &[Row]) -> (Pt, Pt) {
+    let k = unit(doc);
+    // The widest place text in the font and size it is drawn with (drawing units).
+    let widest = rows.iter().map(|r| crate::text_style::text_width(doc, crate::text_style::TextKind::Table, &r.place)).fold(0.0, f64::max);
+    let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
+    let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
+    (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
+}
+
+/// The page's free area for tables (design 033 §4.1): the frame's drawing area above the title
+/// block, the registry's `print.contact_table_clearance` clear of its top line. (lo, hi),
+/// drawing units.
+pub fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
+    let g = ecad_model::sheet::Grid::of(doc, page);
+    let k = unit(doc);
+    let gap = crate::defaults::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, crate::defaults::Scope::project()).length(doc);
+    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * k + gap);
+    let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
+    (lo, hi)
+}
+
+/// Whether the box `b` lies in the free area `free`.
+fn inside(b: (Pt, Pt), free: (Pt, Pt)) -> bool {
+    b.0.x >= free.0.x - 1e-9 && b.0.y >= free.0.y - 1e-9 && b.1.x <= free.1.x + 1e-9 && b.1.y <= free.1.y + 1e-9
+}
+
+/// Whether the box `b` enters the title block of `page` (the user-placed check of design 033 §4.1).
+pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
+    let g = ecad_model::sheet::Grid::of(doc, page);
+    let line = g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * unit(doc);
+    let (left, right) = (g.frame_left(), g.frame_left() + g.area_width());
+    b.0.y < line && b.1.y > g.frame_bottom() && b.1.x > left && b.0.x < right
+}
+
+/// Where an automatic table goes (design 033 §4.1), from where `placement` puts it (`top`): there
+/// when its box lies in the free area; else right of the head (`auto`, `below`) when that fits;
+/// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
+/// the free area starts at its top. A table the user placed (`at`) is never moved.
+pub fn settle(doc: &Document, c: ComponentId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row]) -> (Pt, TableShown) {
+    if matches!(placement, Placement::At(_) | Placement::Off) {
+        return (top, TableShown::AsPlaced);
+    }
+    let Some(page) = doc.representations.get(&head).map(|r| r.page) else { return (top, TableShown::AsPlaced) };
+    let free = free_area(doc, page);
+    if inside(table_box(doc, top, rows), free) {
+        return (top, TableShown::AsPlaced);
+    }
+    if matches!(placement, Placement::Auto | Placement::Below)
+        && let Some(right) = table_top(doc, c, head, Placement::Right)
+        && inside(table_box(doc, right, rows), free)
+    {
+        return (right, TableShown::Right);
+    }
+    let (lo, hi) = table_box(doc, top, rows);
+    let mut at = top;
+    if lo.y < free.0.y {
+        at.y += free.0.y - lo.y;
+    }
+    if at.y > free.1.y {
+        at.y = free.1.y;
+    }
+    if hi.x > free.1.x {
+        at.x -= hi.x - free.1.x;
+    }
+    if at.x - (top.x - lo.x) < free.0.x {
+        at.x = free.0.x + (top.x - lo.x);
+    }
+    if at == top || !at.is_finite() {
+        return (top, TableShown::AsPlaced);
+    }
+    (at, TableShown::Lifted)
 }
 
 /// The straight vertical run of a conductor route leaving `from` (one of its ends): the y of the
@@ -826,8 +974,10 @@ pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Ta
     let top = table_top(doc, dev.component, head, placement)?;
     let page = doc.representations.get(&head)?.page;
     let rows = rows(places, dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+    let (top, shown) = settle(doc, dev.component, head, placement, top, &rows);
     let parts = table_parts(doc, head, top, &rows);
-    Some(Table { head, page, top, placement, rows, parts })
+    let bottom = table_box(doc, top, &rows).0.y;
+    Some(Table { head, page, top, placement, rows, parts, shown, bottom })
 }
 
 /// The lines and texts of a table at `top` (design 025 §4.2's geometry).
@@ -840,7 +990,8 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
         parts.push(Part { rep: head, index, shape, aci, row, bar });
     };
     push(Shape::Line(at(-10.0, 0.0), at(10.0, 0.0)), None, None, true);
-    let h = XREF_TEXT_MM * k;
+    // Design 033 §1.2: contact-table rows are table text.
+    let h = crate::text_style::text_style(doc, crate::text_style::TextKind::Table).height;
     let mut y = -3.0;
     let mut last_power = rows.first().map(|r| r.power);
     for (i, r) in rows.iter().enumerate() {
@@ -853,8 +1004,14 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
             State::Spare => Some(SPARE_ACI),
             State::Over => Some(OVER_ACI),
         };
-        let text =
-            |x: f64, value: &str, halign: HAlign| Shape::Text { at: at(x, y), value: value.to_string(), height: h, halign, valign: VAlign::Middle };
+        let text = |x: f64, value: &str, halign: HAlign| Shape::Text {
+            at: at(x, y),
+            value: value.to_string(),
+            height: h,
+            halign,
+            valign: VAlign::Middle,
+            rotation: 0.0,
+        };
         push(text(-5.0, &r.labels[0], HAlign::Right), aci, Some(i), false);
         let line = |a: (f64, f64), b: (f64, f64)| Shape::Line(at(a.0, y + a.1), at(b.0, y + b.1));
         push(line((-4.0, 0.0), (-1.5, 0.0)), aci, Some(i), false);
@@ -873,6 +1030,56 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
     parts
 }
 
+/// Most places one connector reference lists before `+n` (design 044 §7; hover lists all).
+pub const MAX_CONNECTOR_PLACES: usize = 3;
+
+/// The reference texts of connector `c` (design 044 §7): under each member with targets, their
+/// places (`/102.C4`), at most [`MAX_CONNECTOR_PLACES`] then `+n`. O(the connector's symbols).
+pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> Vec<(PageId, Part)> {
+    let list = crate::connectors::ref_classes(doc, c);
+    let edges = crate::connectors::ref_edges(doc, c, &list);
+    let mut targets: BTreeMap<RepresentationId, Vec<RepresentationId>> = BTreeMap::new();
+    for (s, t) in edges {
+        targets.entry(s).or_default().push(t);
+    }
+    let k = unit(doc);
+    let mut out = Vec::new();
+    for (rid, ts) in targets {
+        let Some(r) = doc.representations.get(&rid) else { continue };
+        let mut texts: Vec<String> = ts.iter().filter_map(|t| doc.representations.get(t)).map(|t| places.text(t.page, anchor(doc, t))).collect();
+        texts.sort();
+        texts.dedup();
+        let more = texts.len().saturating_sub(MAX_CONNECTOR_PLACES);
+        texts.truncate(MAX_CONNECTOR_PLACES);
+        let mut value = texts.join(" ");
+        if more > 0 {
+            value.push_str(&format!(" +{more}"));
+        }
+        let Some((lo, hi)) = (match (r.form, crate::devices::rep_definition(doc, r)) {
+            (Form::Symbol, Some((def, pl))) => crate::devices::placed_box(def, &pl),
+            _ => None,
+        }) else {
+            continue;
+        };
+        let at = Pt::new((lo.x + hi.x) / 2.0, lo.y - 1.5 * k);
+        if !at.is_finite() {
+            continue;
+        }
+        out.push((
+            r.page,
+            Part {
+                rep: rid,
+                index: 0,
+                shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign: HAlign::Center, valign: VAlign::Top, rotation: 0.0 },
+                aci: None,
+                row: None,
+                bar: false,
+            },
+        ));
+    }
+    out
+}
+
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads. O(the page's component representations and their groups).
 pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
@@ -884,7 +1091,13 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
     }
     let mut places = Places::new(doc);
     let mut out = Vec::new();
+    let mut tables: Vec<Table> = Vec::new();
     for (c, here) in by_component {
+        // Brief 044 (design 044 §7): a connector's half and pin references.
+        if crate::connectors::is_connector(doc, c) {
+            out.extend(connector_parts(doc, &mut places, c).into_iter().filter(|(_, p)| here.contains(&p.rep)).map(|(_, p)| p));
+            continue;
+        }
         let dev = device(doc, c);
         if dev.head.is_none() {
             continue;
@@ -897,17 +1110,116 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
         if dev.head.is_some_and(|h| here.contains(&h))
             && let Some(t) = table(doc, &mut places, &dev)
         {
-            out.extend(t.parts);
+            tables.push(t);
         }
     }
+    // Pack re-run, bug 4: tables of heads drawn close together clear each other. This depends
+    // only on the page's tables as each device derives it, and a commit that changes one of them
+    // redraws the page ([`Watch`]), so the update map is unchanged.
+    spread(doc, &mut tables);
+    out.extend(tables.into_iter().flat_map(|t| t.parts));
+    // Brief 049 (design 049 §4): continuation arrows' other ends, brackets and captions.
+    out.extend(crate::continuations::parts_on_page(doc, &mut places, page));
     out
+}
+
+/// The most steps one table takes to clear the tables before it (hostile pages stay bounded).
+const MAX_SPREAD_STEPS: usize = 64;
+/// The gap kept between two tables spread apart, millimetres.
+const SPREAD_GAP_MM: f64 = 2.0;
+
+/// Whether boxes `a` and `b` overlap (touching is not overlapping).
+fn boxes_overlap(a: (Pt, Pt), b: (Pt, Pt)) -> bool {
+    a.0.x < b.1.x - 1e-9 && b.0.x < a.1.x - 1e-9 && a.0.y < b.1.y - 1e-9 && b.0.y < a.1.y - 1e-9
+}
+
+/// Spread one page's `tables` so that no two overlap (pack re-run, bug 4). A table the user placed
+/// (`at`) never moves. The others are taken left to right (then top down): each keeps its place
+/// when it clears the tables before it, else moves right past them; when that leaves the free
+/// area, it goes under them instead, if that stays in the free area, else stays. Deterministic,
+/// and each table moves only for tables before it.
+pub fn spread(doc: &Document, tables: &mut [Table]) {
+    let Some(page) = tables.first().map(|t| t.page) else { return };
+    let free = free_area(doc, page);
+    let gap = SPREAD_GAP_MM * unit(doc);
+    let fixed = |t: &Table| matches!(t.placement, Placement::At(_) | Placement::Off);
+    let mut taken: Vec<(Pt, Pt)> = tables.iter().filter(|t| fixed(t)).map(|t| table_box(doc, t.top, &t.rows)).collect();
+    let mut order: Vec<usize> = (0..tables.len()).filter(|i| tables.get(*i).is_some_and(|t| !fixed(t))).collect();
+    order.sort_by(|a, b| match (tables.get(*a), tables.get(*b)) {
+        (Some(x), Some(y)) => x.top.x.total_cmp(&y.top.x).then(y.top.y.total_cmp(&x.top.y)).then(x.head.cmp(&y.head)),
+        _ => a.cmp(b),
+    });
+    for i in order {
+        let Some(t) = tables.get_mut(i) else { continue };
+        let first = table_box(doc, t.top, &t.rows);
+        let left = t.top.x - first.0.x;
+        let height = t.top.y - first.0.y;
+        // Right past the tables it meets.
+        let mut right = t.top;
+        for _ in 0..MAX_SPREAD_STEPS {
+            let b = table_box(doc, right, &t.rows);
+            let Some(edge) = taken.iter().filter(|o| boxes_overlap(b, **o)).map(|o| o.1.x).reduce(f64::max) else { break };
+            right.x = edge + gap + left;
+        }
+        let mut top = right;
+        if !inside(table_box(doc, right, &t.rows), free) && inside(first, free) {
+            // Under the tables it meets, from its own place; else where it was (never off the
+            // free area it started in).
+            let mut down = t.top;
+            for _ in 0..MAX_SPREAD_STEPS {
+                let b = table_box(doc, down, &t.rows);
+                let Some(edge) = taken.iter().filter(|o| boxes_overlap(b, **o)).map(|o| o.0.y).reduce(f64::min) else { break };
+                down.y = edge - gap;
+            }
+            top = if inside(table_box(doc, down, &t.rows), free) { down } else { t.top };
+        }
+        let b = table_box(doc, top, &t.rows);
+        if top != t.top && top.is_finite() && taken.iter().all(|o| !boxes_overlap(b, *o)) {
+            t.top = top;
+            t.parts = table_parts(doc, t.head, top, &t.rows);
+            t.bottom = top.y - height;
+        }
+        taken.push(table_box(doc, t.top, &t.rows));
+    }
+}
+
+/// Device `dev`'s table where its page draws it: [`table`], then moved by [`spread`] with the other
+/// tables on its page (review of #92, 2). O(devices on that page); for replies, not per commit.
+pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
+    let own = table(doc, places, dev)?;
+    let mut others: BTreeSet<ComponentId> = BTreeSet::new();
+    for (_, r) in doc.representations_on(own.page) {
+        if let Subject::Component(c) = r.subject
+            && c != dev.component
+        {
+            others.insert(c);
+        }
+    }
+    let mut tables: Vec<Table> = others
+        .into_iter()
+        .filter(|c| !crate::connectors::is_connector(doc, *c))
+        .map(|c| device(doc, c))
+        .filter(|d| d.head.is_some_and(|h| doc.representations.get(&h).is_some_and(|r| r.page == own.page)))
+        .filter_map(|d| table(doc, places, &d))
+        .collect();
+    let head = own.head;
+    tables.push(own);
+    spread(doc, &mut tables);
+    tables.into_iter().find(|t| t.head == head)
 }
 
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
 fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> BTreeMap<PageId, Vec<Part>> {
-    let dev = device(doc, c);
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
+    // Brief 044: a connector's references.
+    if crate::connectors::is_connector(doc, c) {
+        for (page, p) in connector_parts(doc, places, c) {
+            out.entry(page).or_default().push(p);
+        }
+        return out;
+    }
+    let dev = device(doc, c);
     if dev.head.is_none() {
         return out;
     }
@@ -957,11 +1269,42 @@ impl RefIndex {
         for (g, list) in groups {
             idx.insert_group(g, list);
         }
+        // Brief 044: connectors' members and edges (design 044 §7).
+        for c in doc.components.keys() {
+            if crate::connectors::is_connector(doc, *c) {
+                idx.insert_connector(doc, *c);
+            }
+        }
+        // Brief 049 (FP4): one group per continuation name, one pass over the name index.
+        let names: BTreeSet<&str> = doc.continuation_names().map(|(k, _)| k).collect();
+        for k in names {
+            if let Some((g, list)) = crate::continuations::group_named(doc, k) {
+                idx.insert_group(g, list.into_iter().map(|r| (r, Class::Arrow)).collect());
+            }
+        }
         idx
     }
 
-    /// Make group `g` again from `doc`: its members, classes and edges. O(group).
-    fn make(&mut self, doc: &Document, g: Group) {
+    /// Add connector `c`'s group (design 044 §7): its halves and pins, and their edges.
+    fn insert_connector(&mut self, doc: &Document, c: ComponentId) {
+        let list = crate::connectors::ref_classes(doc, c);
+        if list.is_empty() {
+            return;
+        }
+        let edges = crate::connectors::ref_edges(doc, c, &list);
+        let g = Group::Device(c);
+        for (r, k) in &list {
+            self.member.insert(*r, (g, *k));
+        }
+        self.members.insert(g, list.iter().map(|(r, _)| *r).collect());
+        for (s, t) in edges {
+            self.targets.entry(s).or_default().insert(t);
+            self.sources.entry(t).or_default().insert(s);
+        }
+    }
+
+    /// Take group `g` out: its members, classes and edges. O(group).
+    fn remove(&mut self, g: Group) {
         if let Some(old) = self.members.remove(&g) {
             for r in old {
                 self.member.remove(&r);
@@ -983,6 +1326,27 @@ impl RefIndex {
                 }
             }
         }
+    }
+
+    /// Put group `g` back from `doc` (after [`RefIndex::remove`]): its members, classes and edges.
+    /// O(group).
+    fn make(&mut self, doc: &Document, g: Group) {
+        // Brief 049: a continuation group is made from its name; its key may have changed (the
+        // lowest arrow deleted or renamed), so it goes in under the key `doc` gives it.
+        if let Group::Continuation(c) = g {
+            let Some(name) = crate::continuations::name_of(doc, c) else { return };
+            if let Some((key, list)) = crate::continuations::group_named(doc, &name) {
+                self.remove(key);
+                self.insert_group(key, list.into_iter().map(|r| (r, Class::Arrow)).collect());
+            }
+            return;
+        }
+        if let Group::Device(c) = g
+            && crate::connectors::is_connector(doc, c)
+        {
+            self.insert_connector(doc, c);
+            return;
+        }
         let list: Vec<(RepresentationId, Class)> = match g {
             Group::Cable(k) => doc
                 .representations_of(Subject::Cable(k))
@@ -1003,6 +1367,7 @@ impl RefIndex {
                     })
                     .collect()
             }
+            Group::Continuation(_) => Vec::new(),
         };
         self.insert_group(g, list);
     }
@@ -1031,6 +1396,8 @@ impl RefIndex {
                     }
                 }
             }
+            // Brief 049 (FP4): implicit, never stored ([`RefIndex::targets`]).
+            Group::Continuation(_) => {}
         }
         for (r, c) in &list {
             self.member.insert(*r, (g, *c));
@@ -1042,8 +1409,12 @@ impl RefIndex {
         }
     }
 
-    /// Make the groups `groups` again from `doc` (after a commit).
+    /// Make the groups `groups` again from `doc` (after a commit): all of them out first, then
+    /// back, so a continuation group whose key changed is never removed after it was remade.
     pub fn refresh(&mut self, doc: &Document, groups: &BTreeSet<Group>) {
+        for g in groups {
+            self.remove(*g);
+        }
         for g in groups {
             self.make(doc, *g);
         }
@@ -1059,6 +1430,8 @@ impl RefIndex {
             }
             Subject::Component(c) => {
                 out.insert(Group::Device(c));
+                // Brief 049: an arrow's name group.
+                out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
             }
             Subject::Conductor(_) => {}
         };
@@ -1075,7 +1448,7 @@ impl RefIndex {
                         of(r, &mut out);
                     }
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     out.insert(Group::Device(*id));
                 }
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
@@ -1086,6 +1459,10 @@ impl RefIndex {
                 }
                 _ => {}
             }
+        }
+        // Brief 049 (design 049 §8.1): the name groups the ops name, as `doc` keys them.
+        for n in crate::continuations::names_named(doc, ops) {
+            out.extend(crate::continuations::group_key(doc, &n));
         }
         out
     }
@@ -1100,14 +1477,28 @@ impl RefIndex {
         self.members.get(&g).into_iter().flatten().copied()
     }
 
+    /// The other members of `r`'s continuation group (brief 049: its implicit edges, both ways).
+    fn implicit(&self, r: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
+        let group = match self.member.get(&r) {
+            Some((g @ Group::Continuation(_), _)) => self.members.get(g),
+            _ => None,
+        };
+        group.into_iter().flatten().copied().filter(move |x| *x != r)
+    }
+
     /// What source `s` shows.
     pub fn targets(&self, s: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
-        self.targets.get(&s).into_iter().flatten().copied()
+        self.targets.get(&s).into_iter().flatten().copied().chain(self.implicit(s))
     }
 
     /// Who shows target `t`.
     pub fn sources(&self, t: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
-        self.sources.get(&t).into_iter().flatten().copied()
+        self.sources.get(&t).into_iter().flatten().copied().chain(self.implicit(t))
+    }
+
+    /// How many members group `g` has (O(1)).
+    pub fn group_len(&self, g: Group) -> usize {
+        self.members.get(&g).map_or(0, BTreeSet::len)
     }
 
     /// Every group.
@@ -1115,9 +1506,26 @@ impl RefIndex {
         self.members.keys().copied()
     }
 
-    /// How many members, groups and edges.
+    /// How many members, groups and edges (a continuation group's m(m−1) implicit edges counted,
+    /// not stored).
     pub fn sizes(&self) -> (usize, usize, usize) {
-        (self.member.len(), self.members.len(), self.targets.values().map(BTreeSet::len).sum())
+        let implicit: usize = self
+            .members
+            .iter()
+            .filter(|(g, _)| matches!(g, Group::Continuation(_)))
+            .map(|(_, m)| m.len().saturating_mul(m.len().saturating_sub(1)))
+            .fold(0, usize::saturating_add);
+        (self.member.len(), self.members.len(), self.targets.values().map(BTreeSet::len).sum::<usize>().saturating_add(implicit))
+    }
+
+    /// The pages that hold a continuation arrow (brief 049: the wide case's pages).
+    pub fn arrow_pages(&self, doc: &Document) -> BTreeSet<PageId> {
+        self.members
+            .iter()
+            .filter(|(g, _)| matches!(g, Group::Continuation(_)))
+            .flat_map(|(_, m)| m.iter())
+            .filter_map(|r| doc.representations.get(r).map(|x| x.page))
+            .collect()
     }
 
     /// The pages that hold a member of a device group (the wide case's pages).
@@ -1170,6 +1578,10 @@ impl RefIndex {
 struct Scope {
     devices: BTreeSet<ComponentId>,
     wide: bool,
+    /// Brief 049 (design 049 §8.1): the continuation names whose arrows' texts and caption runs
+    /// are compared, or every page with an arrow (`arrows_wide`).
+    names: BTreeSet<String>,
+    arrows_wide: bool,
 }
 
 impl Scope {
@@ -1222,7 +1634,7 @@ impl Scope {
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
                     self.devices.insert(terminal.component);
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     self.devices.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
@@ -1242,6 +1654,17 @@ impl Scope {
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     self.devices.extend(doc.components_using(*id));
                 }
+                // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key) => {
+                    self.wide = true;
+                }
+                // Brief 050a: a change of the text style the table text uses (its height, weight).
+                Op::SetStyle { catalogue, id, .. }
+                    if catalogue == "text"
+                        && *id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
+                {
+                    self.wide = true;
+                }
                 Op::SetProjectSettings { before, after }
                     if before.reference_style != after.reference_style
                         || before.sheet != after.sheet
@@ -1252,7 +1675,28 @@ impl Scope {
                 }
                 _ => {}
             }
+            // Brief 049: what continuation arrows the op could change.
+            match op {
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. }
+                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+                {
+                    self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                }
+                Op::SetProjectSettings { before, after }
+                    if before.reference_style != after.reference_style || before.sheet != after.sheet || before.length_unit != after.length_unit =>
+                {
+                    self.arrows_wide = true;
+                }
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key) => {
+                    self.arrows_wide = true;
+                }
+                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, catalogue, id) => {
+                    self.arrows_wide = true;
+                }
+                _ => {}
+            }
         }
+        self.names.extend(crate::continuations::names_named(doc, ops));
     }
 
     fn moved(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op], done: &mut bool) {
@@ -1261,6 +1705,7 @@ impl Scope {
         }
         for p in ecad_model::book::positions_changed(doc, ops) {
             self.devices.extend(idx.devices_on(doc, p));
+            self.names.extend(crate::continuations::names_on(doc, idx, p));
         }
     }
 }
@@ -1276,6 +1721,10 @@ pub struct Watch {
     before: BTreeMap<ComponentId, BTreeMap<PageId, Vec<Part>>>,
     /// The pages with a device member before (only in the wide case).
     wide_pages: BTreeSet<PageId>,
+    /// Brief 049: what the named continuations showed before, by page, and the pages with an
+    /// arrow before (the wide case).
+    before_names: BTreeMap<PageId, Vec<Part>>,
+    arrow_pages: BTreeSet<PageId>,
     groups: BTreeSet<Group>,
     /// What verify mode found wrong (bugs), for the caller to record.
     problems: Vec<String>,
@@ -1332,7 +1781,12 @@ impl Watch {
                 .collect()
         };
         let wide_pages = if scope.wide { idx.device_pages(doc) } else { BTreeSet::new() };
-        Watch { cable_scope, cables, scope, before, wide_pages, groups: RefIndex::groups_named(doc, ops), problems }
+        let (before_names, arrow_pages) = if scope.arrows_wide {
+            (BTreeMap::new(), idx.arrow_pages(doc))
+        } else {
+            (crate::continuations::shown(doc, &mut places, &scope.names), BTreeSet::new())
+        };
+        Watch { cable_scope, cables, scope, before, wide_pages, before_names, arrow_pages, groups: RefIndex::groups_named(doc, ops), problems }
     }
 
     /// After the commit: `doc` is the state after it and `ops` its ops as recorded (with any pass
@@ -1373,6 +1827,20 @@ impl Watch {
         };
         if let Some(p) = &mut pages {
             p.extend(device_pages);
+            // Brief 049 (design 049 §8.1): the pages whose continuation texts or caption runs
+            // changed, or every page with an arrow before and after.
+            if self.scope.arrows_wide {
+                p.extend(std::mem::take(&mut self.arrow_pages));
+                p.extend(idx.arrow_pages(doc));
+            } else if !self.scope.names.is_empty() {
+                let mut places = Places::new(doc);
+                let after = crate::continuations::shown(doc, &mut places, &self.scope.names);
+                for page in self.before_names.keys().chain(after.keys()) {
+                    if self.before_names.get(page) != after.get(page) {
+                        p.insert(*page);
+                    }
+                }
+            }
         }
         Outcome { pages, orphaned, shown: shown_after, problems: self.problems }
     }
@@ -1387,7 +1855,8 @@ pub struct Reference {
     pub source_page: PageId,
     pub target: RepresentationId,
     pub target_page: PageId,
-    /// `cable`, `contact` (a contact shows its coil) or `mirror` (a table row shows a contact).
+    /// `cable`, `contact` (a contact shows its coil), `mirror` (a table row shows a contact) or
+    /// `continuation` (an arrow shows another arrow of its name, brief 049).
     pub kind: &'static str,
     /// The contact pole it is about (`13/14`), for device references: one per pole.
     pub labels: Option<String>,
@@ -1407,7 +1876,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
         }
         let dev = match g {
             Group::Device(c) => Some(device(doc, *c)),
-            Group::Cable(_) => None,
+            Group::Cable(_) | Group::Continuation(_) => None,
         };
         for s in idx.members(*g) {
             for t in idx.targets(s) {
@@ -1420,6 +1889,15 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
                 };
                 match (g, idx.member(s).map(|(_, c)| c)) {
                     (Group::Cable(_), _) => out.push(r("cable", None, cable_texts.get(&s).cloned().unwrap_or_default())),
+                    // Brief 049 (design 049 §5.5): an arrow shows each other end's place.
+                    (Group::Continuation(_), _) => out.push(r("continuation", None, places.text(tr.page, anchor(doc, tr)))),
+                    // Brief 044 (tester D2): a connector half shows its mate half's place, a pin its
+                    // mate pin's (labelled with the pin name).
+                    (Group::Device(_), Some(Class::Half(_))) => out.push(r("half", None, places.text(tr.page, anchor(doc, tr)))),
+                    (Group::Device(_), Some(Class::Pin(_))) => {
+                        let name = sr.connection_points.keys().find_map(|t| doc.terminals.get(t).and_then(|x| x.label.clone()));
+                        out.push(r("pin", name, places.text(tr.page, anchor(doc, tr))));
+                    }
                     (Group::Device(_), Some(Class::Head)) => {
                         let place = places.text(tr.page, anchor(doc, tr));
                         out.extend(poles(t).into_iter().map(|l| r("mirror", Some(l), place.clone())));
@@ -1437,6 +1915,11 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 
 /// `xrefs {component?, cable?, page?, limit?, after?}`'s result (design 025 §5.4).
 ///
+/// Continuation rows (brief 049) come after the others, one per (arrow, other end), made only for
+/// the window asked for: with `component`, that arrow's; with `page`, those of the arrows on the
+/// page (a row whose source is elsewhere is listed from its source). O(arrows listed + rows
+/// returned), never O(m²) for a name of m arrows.
+///
 /// # Errors
 /// Unknown component, cable or page.
 pub fn xrefs_json(
@@ -1447,7 +1930,11 @@ pub fn xrefs_json(
             if !doc.components.contains_key(&c) {
                 return Err("no such component".into());
             }
-            BTreeSet::from([Group::Device(c)])
+            // Brief 049 (design 049 §5.5): an arrow lists its other ends.
+            match crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)) {
+                Some(g) => BTreeSet::from([g]),
+                None => BTreeSet::from([Group::Device(c)]),
+            }
         }
         (None, Some(k)) => {
             if !doc.cables.contains_key(&k) {
@@ -1465,23 +1952,67 @@ pub fn xrefs_json(
             None => idx.groups().collect(),
         },
     };
+    // Brief 049 (review of #85, 2): continuation rows are made per source and only for the
+    // window asked for, never all m(m−1) of a name; the other groups' rows as before.
+    let (cont, other): (BTreeSet<Group>, BTreeSet<Group>) = groups.into_iter().partition(|g| matches!(g, Group::Continuation(_)));
     let all: Vec<Reference> =
-        references(doc, idx, &groups).into_iter().filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p)).collect();
-    let list: Vec<Value> = all
-        .iter()
-        .skip(after)
-        .take(limit)
-        .map(|r| {
-            json!({
-                "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
-                "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
-                "kind": r.kind, "labels": r.labels, "text": r.text,
-            })
+        references(doc, idx, &other).into_iter().filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p)).collect();
+    // The arrows whose rows are listed: the given arrow's, the arrows on `page`, or every arrow.
+    let sources: Vec<(RepresentationId, usize)> = match (component, page) {
+        (Some(c), _) => doc.representations_of(Subject::Component(c)).map(|(r, _)| r).collect::<Vec<_>>(),
+        (None, Some(p)) => doc.representations_on(p).map(|(r, _)| r).collect(),
+        (None, None) => cont.iter().flat_map(|g| idx.members(*g)).collect(),
+    }
+    .into_iter()
+    .filter_map(|r| match idx.member(r) {
+        Some((g @ Group::Continuation(_), _)) if cont.contains(&g) => Some((r, idx.group_len(g).saturating_sub(1))),
+        _ => None,
+    })
+    .collect();
+    let total = sources.iter().fold(all.len(), |n, (_, k)| n.saturating_add(*k));
+    let row = |r: &Reference| {
+        json!({
+            "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
+            "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
+            "kind": r.kind, "labels": r.labels, "text": r.text,
         })
-        .collect();
+    };
+    let end = after.saturating_add(limit);
+    let mut list: Vec<Value> = all.iter().skip(after).take(limit).map(row).collect();
+    // Walk the sources, making rows only for those that overlap [after, end).
+    let mut at = all.len();
+    let mut places = Places::new(doc);
+    let mut ends: BTreeMap<String, Vec<crate::continuations::End>> = BTreeMap::new();
+    for (s, k) in &sources {
+        if at >= end {
+            break;
+        }
+        let next = at.saturating_add(*k);
+        if next > after
+            && let Some(sr) = doc.representations.get(s)
+            && let Subject::Component(c) = sr.subject
+            && let Some(name) = crate::continuations::name_of(doc, c)
+        {
+            let sorted = ends.entry(name.clone()).or_insert_with(|| crate::continuations::ends_named(doc, &mut places, &name));
+            let skip = after.saturating_sub(at);
+            let take = end.saturating_sub(at.max(after));
+            for e in sorted.iter().filter(|e| e.rep != *s).skip(skip).take(take) {
+                list.push(row(&Reference {
+                    source: *s,
+                    source_page: sr.page,
+                    target: e.rep,
+                    target_page: e.page,
+                    kind: "continuation",
+                    labels: None,
+                    text: e.text.clone(),
+                }));
+            }
+        }
+        at = next;
+    }
     let mut v = json!({ "references": list });
-    if after + limit < all.len() {
-        v["next"] = json!(after + limit);
+    if end < total {
+        v["next"] = json!(end);
     }
     Ok(v)
 }
@@ -1514,7 +2045,20 @@ pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
             "representation": r.rep.map(|x| x.hex()), "place": (r.state != State::Spare).then(|| r.place.clone()),
         })).collect::<Vec<_>>(),
         "over": over,
+        "table": table_json(doc, &mut places, &dev),
     }))
+}
+
+/// The `contacts` reply's `table` (design 033 §4.2): `{top, bottom, placement, shown}`, or null.
+fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Value {
+    let Some(t) = drawn_table(doc, places, dev) else { return Value::Null };
+    let k = unit(doc);
+    json!({
+        "top": [t.top.x / k, t.top.y / k],
+        "bottom": t.bottom / k,
+        "placement": t.placement.word(),
+        "shown": t.shown.word(),
+    })
 }
 
 /// The target `refgoto` goes to from `source` (design 025 §5.3): a cable end's partner, a
@@ -1636,9 +2180,56 @@ pub fn count_checks(doc: &Document, c: ComponentId) -> Vec<(String, Option<PageI
         .collect()
 }
 
+/// Whether a project key sizes every contact table's text, so every table is placed again (the
+/// xref map's wide case, design 033 §9.3): the table text's style choice (brief 050a; its height
+/// and weight are the style's) and the font.
+pub fn table_text_key(key: &str) -> bool {
+    use crate::defaults::text::FONT;
+    [crate::defaults::styles::TABLE.key, FONT.key].contains(&key)
+}
+
+/// The devices whose table the user placed (`at dx,dy`): the ones a sheet change can move onto
+/// or off the title block. O(components), on a project sheet change only.
+pub fn placed_tables(doc: &Document) -> Vec<ComponentId> {
+    doc.components
+        .iter()
+        .filter(|(_, c)| c.properties.get(MIRROR_KEY).is_some_and(|v| matches!(parse_mirror(v), Ok(Placement::At(_)))))
+        .map(|(id, _)| *id)
+        .collect()
+}
+
+/// The Checks row of a table the user placed over the title block (design 033 §4.1): its words,
+/// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
+pub fn title_check(doc: &Document, c: ComponentId) -> Option<(String, PageId, Pt)> {
+    let (placement, _) = placement_of(doc, c);
+    if !matches!(placement, Placement::At(_)) {
+        return None;
+    }
+    let dev = device(doc, c);
+    let mut places = Places::new(doc);
+    let t = table(doc, &mut places, &dev)?;
+    if !enters_title_block(doc, t.page, table_box(doc, t.top, &t.rows)) {
+        return None;
+    }
+    let which = format!(
+        "The contact table of {} overlaps the title block on {}.",
+        crate::devices::tag_words(doc, c),
+        crate::references::page_number_words(doc, t.page)
+    );
+    Some((which, t.page, t.top))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_table_text_keys_are_the_wide_case() {
+        for k in ["text.table.style", "text.font"] {
+            assert!(table_text_key(k), "{k}");
+        }
+        assert!(!table_text_key("text.tag.style"));
+    }
 
     #[test]
     fn the_offer_grammar() {

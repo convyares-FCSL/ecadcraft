@@ -42,7 +42,7 @@ fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
-    let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0));
+    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
     if let Some(d) = deltas {
         b = b.renderer(Collect(d));
     }
@@ -53,6 +53,9 @@ fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }
@@ -255,7 +258,8 @@ fn painted_near(img: &egui::ColorImage, at: Pos2, r: f32, want: egui::Color32) -
     (-ri..=ri).any(|dx| (-ri..=ri).any(|dy| close(pixel(img, at + egui::vec2(dx as f32, dy as f32)))))
 }
 
-const MAGENTA: egui::Color32 = egui::Color32::from_rgb(255, 0, 255);
+// Brief 040: the cable meaning's token colour (was magenta).
+const MAGENTA: egui::Color32 = egui::Color32::from_rgb(0x7a, 0x3f, 0xe0);
 const GREEN: egui::Color32 = egui::Color32::from_rgb(0, 255, 0);
 const RED: egui::Color32 = egui::Color32::from_rgb(255, 0, 0);
 

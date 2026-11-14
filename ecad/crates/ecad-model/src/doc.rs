@@ -96,12 +96,18 @@ pub enum Primitive {
         center: Pt,
         radius: f64,
     },
-    /// Single-line text, left-baseline aligned, standard style.
+    /// Single-line text in the standard style. `at` is its alignment point: the left end of the
+    /// baseline unless `halign`/`valign` say otherwise (brief 031, FP4; both are left out of the
+    /// file at left/baseline, so older files read and save the same).
     Text {
         at: Pt,
         height: f64,
         rotation: f64,
         value: String,
+        #[serde(default, skip_serializing_if = "is_default")]
+        halign: TextHAlign,
+        #[serde(default, skip_serializing_if = "is_default")]
+        valign: TextVAlign,
     },
     Point {
         at: Pt,
@@ -142,6 +148,31 @@ impl Primitive {
             Primitive::Point { at } => at.is_finite(),
         }
     }
+}
+
+/// A text's horizontal alignment (brief 031, FP4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextHAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// A text's vertical alignment (brief 031, FP4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextVAlign {
+    #[default]
+    Baseline,
+    Bottom,
+    Middle,
+    Top,
+}
+
+fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    *t == T::default()
 }
 
 /// A placed instance of an embedded definition (symbol form, proposal §4.1).
@@ -393,15 +424,19 @@ impl ContactMirror {
     }
 }
 
-/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08). Other
-/// styles (US) come later.
+/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08; UI round 2
+/// and rev 3: `2/B5`). The zone's letter comes first whichever axis is lettered
+/// ([`crate::derive::place_text`]). Other styles (US) come later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ReferenceStyle {
-    /// `105-C-4`: page number, column, row.
-    #[default]
+    /// `105-B-3`: page number, then the zone, letter first.
     PageColumnRow,
-    /// `/105.C`: page number and column.
+    /// `/105.3`: page number and column.
     PageColumn,
+    /// `105/B3`: page number, then the zone, letter first (UI round 2 and rev 3; the default of a
+    /// new project).
+    #[default]
+    PageZone,
 }
 
 /// The page number step of a project that sets none.
@@ -433,8 +468,38 @@ pub struct TerminalDef {
     pub at: Pt,
 }
 
-/// A project-local copy of a library definition (§4.2).
+/// Where a device text of a placed copy goes, in the symbol's frame (brief 048, FP1; proposal
+/// §4.2's text slots). An anchor only: size and style come from the text styles.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextSlot {
+    /// The device text it places: one of [`TextSlot::TEXTS`], or `rating.<label>`.
+    pub text: String,
+    pub at: Pt,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub h: TextHAlign,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub v: TextVAlign,
+    /// Radians, counter-clockwise.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub rotation: f64,
+}
+
+impl TextSlot {
+    /// The device texts a slot may place (design 048 §2.3), besides `rating.<label>`.
+    pub const TEXTS: [&'static str; 8] = ["tag", "description", "rating", "part_number", "maker", "article_number", "function", "location"];
+
+    /// Whether `text` names a device text a slot may place.
+    pub fn is_known_text(text: &str) -> bool {
+        Self::TEXTS.contains(&text)
+            || text.strip_prefix("rating.").is_some_and(|l| !l.is_empty() && l.len() <= 64 && !l.chars().any(char::is_control))
+    }
+}
+
+/// The keys a definition's [`Definition::defaults`] may hold (brief 048, FP2; design §2.4).
+pub const DEFINITION_DEFAULT_KEYS: [&str; 7] = ["key", "prefix", "description", "rating", "join", "aliases", "family"];
+
+/// A project-local copy of a library definition (§4.2).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
@@ -442,9 +507,23 @@ pub struct Definition {
     pub terminals: Vec<TerminalDef>,
     /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
     /// group is on one net. Empty for almost every definition, and then left out of the file so
-    /// existing content hashes do not change.
+    /// existing content hashes do not change. A bridge may name a key the placement writes rather
+    /// than one of the definition's own (brief 044, FP2: a connector half bridges the side keys
+    /// `.s` and `.p`; [`crate::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<String>>,
+    /// Where the device texts of a placed copy go (brief 048, FP1). Empty for the starters, whose
+    /// anchors are catalogue code; left out of the file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<TextSlot>,
+    /// The symbol's own default values (brief 048, FP2), keyed by [`DEFINITION_DEFAULT_KEYS`].
+    /// Empty for the starters; left out of the file when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub defaults: BTreeMap<String, String>,
+    /// The origin of the definition an edited copy came from (brief 048, FP4). Never followed by
+    /// the reader, so a cycle cannot loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<Origin>,
 }
 
 impl Definition {
@@ -492,6 +571,12 @@ pub struct Document {
     /// Every folder once; siblings are ordered as they appear here.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub folder_order: Vec<FolderId>,
+    /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub standard: Option<crate::style::Standard>,
+    /// The project layer of style records (brief 050a, FP2).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub styles: crate::style::StyleCatalogues,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
@@ -521,6 +606,10 @@ struct DocumentData {
     folders: BTreeMap<FolderId, Folder>,
     #[serde(default)]
     folder_order: Vec<FolderId>,
+    #[serde(default)]
+    standard: Option<crate::style::Standard>,
+    #[serde(default)]
+    styles: crate::style::StyleCatalogues,
 }
 
 impl From<DocumentData> for Document {
@@ -541,6 +630,8 @@ impl From<DocumentData> for Document {
             properties,
             folders,
             folder_order,
+            standard,
+            styles,
         } = d;
         let mut doc = Document {
             pages,
@@ -558,6 +649,8 @@ impl From<DocumentData> for Document {
             properties,
             folders,
             folder_order,
+            standard,
+            styles,
             index: Index::default(),
             conn: crate::connectivity::Connectivity::default(),
         };
@@ -585,6 +678,8 @@ impl PartialEq for Document {
             properties,
             folders,
             folder_order,
+            standard,
+            styles,
             index: _,
             conn: _,
         } = self;
@@ -603,6 +698,8 @@ impl PartialEq for Document {
             && *properties == other.properties
             && *folders == other.folders
             && *folder_order == other.folder_order
+            && *standard == other.standard
+            && *styles == other.styles
     }
 }
 
@@ -660,6 +757,11 @@ impl Document {
         referrers(&self.index.definition_components, &definition).collect()
     }
 
+    /// Symbol items placing `definition`, in ID order (brief 048: a definition's placed copies).
+    pub fn items_using(&self, definition: DefinitionId) -> Vec<ItemId> {
+        referrers(&self.index.definition_items, &definition).collect()
+    }
+
     /// The representation an item belongs to, if any (DOC-05 allows at most one).
     pub fn representation_of_item(&self, item: ItemId) -> Option<(RepresentationId, &Representation)> {
         referrers(&self.index.item_reps, &item).find_map(|id| self.representations.get(&id).map(|r| (id, r)))
@@ -674,6 +776,20 @@ impl Document {
     /// whole document).
     pub fn representations_on(&self, page: PageId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
         referrers(&self.index.page_reps, &page).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    }
+
+    /// Representations that show `terminal` through an explicit connection point, in ID order
+    /// (brief 036: a level terminal is always shown that way).
+    pub fn representations_showing(&self, terminal: TerminalId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
+        referrers(&self.index.terminal_reps, &terminal).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    }
+
+    /// The definition a symbol representation places (its one symbol instance), if any.
+    pub fn rep_definition(&self, r: &Representation) -> Option<&Definition> {
+        r.items.iter().find_map(|i| match &self.items.get(i)?.kind {
+            ItemKind::Symbol(s) => self.definitions.get(&s.definition),
+            ItemKind::Primitive(_) => None,
+        })
     }
 
     /// Terminals of `component`, in ID order.
@@ -738,6 +854,29 @@ impl Document {
     /// Folders whose parent is `folder`, in ID order (through the folder index).
     pub fn subfolders(&self, folder: FolderId) -> Vec<FolderId> {
         referrers(&self.index.folder_children, &folder).collect()
+    }
+
+    /// Objects whose own style choice `key` names the stored style ID `value` (brief 050a, the
+    /// style's explicit users), in order, through the index: no scan of the project.
+    pub fn style_users(&self, key: &str, value: &str) -> impl Iterator<Item = crate::op::ObjectRef> + '_ {
+        referrers(&self.index.style_users, &(value.trim().to_string(), key.to_string()))
+    }
+
+    /// Every style choice an object holds, through the index (brief 050a): (stored style ID,
+    /// choice key, object), by ID then key.
+    pub fn style_choices(&self) -> impl Iterator<Item = (&str, &str, crate::op::ObjectRef)> + '_ {
+        self.index.style_users.iter().flat_map(|((v, k), objs)| objs.keys().map(move |o| (v.as_str(), k.as_str(), *o)))
+    }
+
+    /// Every (stored style ID, choice key) with at least one explicit user, and its users, from
+    /// `value` on (brief 050a), through the index.
+    pub fn style_users_of(&self, value: &str) -> impl Iterator<Item = (&str, crate::op::ObjectRef)> + '_ {
+        let v = value.trim().to_string();
+        self.index
+            .style_users
+            .range((v.clone(), String::new())..)
+            .take_while(move |((sv, _), _)| *sv == v)
+            .flat_map(|((_, k), objs)| objs.keys().map(move |o| (k.as_str(), *o)))
     }
 
     /// Cables `conductor` is a member of, in ID order.

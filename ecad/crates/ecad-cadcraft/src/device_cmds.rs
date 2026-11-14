@@ -45,7 +45,11 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
         .get("symbol")
         .and_then(Value::as_str)
         .ok_or_else(|| err("`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"))?;
-    let starter = devices::starter(key).map_err(err)?;
+    // Brief 048: a project symbol's key places its newest version.
+    let starter = match devices::starter(key) {
+        Ok(st) => st,
+        Err(e) => return crate::symbol_cmds::place_project_key(s, params, key)?.ok_or_else(|| err(e)),
+    };
     let at = params.get("at").ok_or_else(|| err("`at` [x,y] is required"))?;
     let at = at.as_array().and_then(|a| Some(Pt::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?))).ok_or_else(|| err("`at` [x,y] is required"))?;
     if !(at.is_finite() && at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
@@ -62,6 +66,18 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     // Brief 022: a junction or continuation is a tagless component of its own.
     if starter.kind == crate::symbols::Kind::Tagless {
         return crate::wire_cmds::place_tagless(s, params, starter, at, degrees, mirror);
+    }
+    // Brief 036: a level, a whole terminal, a disconnect or fuse terminal joins a strip as a position.
+    if crate::terminal_types::is_level_starter(starter.key) {
+        return crate::terminal_cmds::run_place_level(s, params, starter, at, degrees, mirror);
+    }
+    // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
+    if crate::plc::channels::cell_type(starter).is_some() {
+        return crate::plc::channels::run_place_channel(s, params, starter, at, degrees, mirror);
+    }
+    // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
+    if let crate::symbols::Kind::ConnectorHalf { .. } = starter.kind {
+        return crate::connector_cmds::run_place_half(s, params, starter, at, degrees, mirror);
     }
     let device: Option<ComponentId> = hex_id(params, "device").map_err(err)?;
     let tag = match params.get("tag") {
@@ -81,7 +97,13 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
                 }
                 Target::Join(c)
             }
-            (None, Some(t)) => Target::New(Some(ecad_model::tag::normalise(&t, devices::padding(doc))?)),
+            (None, Some(t)) => {
+                // Brief 044 (tester D5): a connector half's tag is not free for a new device.
+                if let Some(Ok((c, Some(side), _))) = crate::connectors::resolve(doc, &t) {
+                    return Err(format!("{} is the {} half of {}. Pick another tag.", t.trim(), side.word(), devices::tag_words(doc, c)));
+                }
+                Target::New(Some(ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?))
+            }
             (None, None) => Target::New(None),
         };
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
@@ -102,6 +124,18 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
                 let land = crate::terminal_cmds::plan_land(p.ledger.document(), &mut p.ids, page, on, *t)?;
                 plan.ops.extend(land.ops.clone());
                 Some((*t, land))
+            }
+            _ => None,
+        };
+        // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
+        let card_slot = match crate::plc::rack::CardType::of_body(starter.key) {
+            Some(t) if !t.is_rack() && !plan.joined => {
+                let last = p.last_placed.as_ref().map(|(_, c)| *c);
+                let at = crate::plc::rack::place_target(p.ledger.document(), params, last)?;
+                if let Some((r, s)) = at {
+                    plan.ops.extend(crate::plc::rack::new_card_ops(plan.component, r, s));
+                }
+                at.map(|x| (t, x))
             }
             _ => None,
         };
@@ -128,6 +162,13 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         });
+        if let Some((t, (r, slot))) = card_slot {
+            let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), devices::tag_words(doc, r));
+            v["rack"] = json!(r.hex());
+            v["slot"] = json!(slot);
+            v["message"] = json!(message);
+            pg.echo(message);
+        }
         if let Some((fields, message)) = landed {
             if let (Some(o), Some(f)) = (v.as_object_mut(), fields.as_object()) {
                 o.extend(f.clone());
@@ -288,7 +329,7 @@ pub(crate) fn apply_tag_settings(after: &mut ecad_model::ProjectSettings, paddin
     }
     for (k, v) in changes {
         match v {
-            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix == px) => after.tag_prefixes.remove(&k),
+            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix() == px) => after.tag_prefixes.remove(&k),
             Some(px) => after.tag_prefixes.insert(k, px),
             None => after.tag_prefixes.remove(&k),
         };

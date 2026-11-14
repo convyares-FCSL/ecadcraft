@@ -67,11 +67,28 @@ pub const READ_COMMANDS: &[&str] = &[
     "cablecores",
     // Brief 027: the pre-release check reads the project and records nothing.
     "prerelease",
+    // Brief 031: the defaults registry's list and a page's derived texts read the project; Show
+    // Hidden Text is a display state (like a cable view) and records nothing.
+    "defaults",
+    "pagetexts",
+    "hiddentext",
+    // Brief 050a: the style catalogues' list reads the project.
+    "styles",
+    // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
+    "symbolimpact",
+    // Brief 045: the racks with their slots, and the I/O list, read the project.
+    "plcracks",
+    "iolist",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
-/// `projectprops {}`; brief 026: `numbering {}`.
-const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[])];
+/// `projectprops {}`; brief 026: `numbering {}`; brief 031: `textstyle {}`.
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] =
+    &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[]), ("textstyle", &[]), ("standard", &[])];
+
+/// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
+/// project file, which stays with the person who started the server).
+const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("standard", "from")];
 
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
 /// the Renumber and Finalise previews).
@@ -152,7 +169,12 @@ pub const NEVER_COMMANDS: &[&str] = &[
     "share",
     // AUDIT rewrites the drawing outside ECAD's commands; its log setting writes a file.
     "audit",
+    // Brief 035: an agent never turns its own access on, widens it or moves the port.
+    "agentaccess",
 ];
+
+/// Said when an agent asks for `agentaccess` (brief 035, design §3.3).
+pub const AGENT_ACCESS: &str = "Refused: Agent access is set by the person in the ECAD window. Nothing was changed.";
 
 /// Parameter names that name a file on disk.
 pub const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
@@ -202,6 +224,9 @@ Nothing was changed. Restart it with --write to let the agent edit and save the 
 
 /// Said when the command is refused in every mode.
 pub fn never(id: &str) -> String {
+    if id == "agentaccess" {
+        return AGENT_ACCESS.into();
+    }
     format!(
         "Refused: {} is not available to agents. Opening, creating, closing and saving projects under another name, \
          and reading or writing other files, stay with the person who started the server; save the project with the \
@@ -234,6 +259,9 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
         && !PATH_IS_NOT_A_FILE.contains(&id)
         && let Some(k) = FILE_KEYS.iter().find(|k| o.get(**k).is_some_and(|v| !v.is_null()))
     {
+        return Err(file_key(id, k));
+    }
+    if let Some((_, k)) = COMMAND_FILE_KEYS.iter().find(|(c, k)| *c == id && params.get(*k).is_some_and(|v| !v.is_null())) {
         return Err(file_key(id, k));
     }
     if NEVER_COMMANDS.contains(&id) {
@@ -293,6 +321,7 @@ mod tests {
         assert!(check("wire", &none, true, None).is_ok());
         assert!(check("wire", &none, true, Some("locked")).is_err());
         assert!(check("saveas", &none, true, None).is_err());
+        assert_eq!(check("agentaccess", &json!({"mode": "write"}), true, None), Err(AGENT_ACCESS.into()));
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
         assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());

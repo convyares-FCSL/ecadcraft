@@ -25,7 +25,13 @@ are.
 | **component** | The model object a device is. A component without a tag (an outline converted with **Convert to Component**) is listed under "No tag". |
 | **symbol** | The drawing of a device, or part of one, on a page: a coil, a contact, a terminal. One device can be drawn by several symbols on several pages (`-K01`'s coil on page 2, its contacts on pages 2 and 3). |
 | **representation** | The model's link between a subject (a device, a conductor, a cable) and what draws it on one page: a symbol, a drawn outline, a wire's route, a cable's slash or reference. |
-| **definition** | A symbol's shape and its connection points, embedded in the project (the 18 starter symbols come built in). |
+| **definition** | A symbol's shape and its connection points, embedded in the project (81 symbols come built in). |
+| **change-over contact** | A contact with a common, a normally-closed and a normally-open point: `-K01:11`/`12`/`14`. |
+| **fuse bank** | One device holding several fuses fed from one supply point, with a connection point and a rating per fuse: `-F01:L+`, `-F01:3`. |
+| **fuse terminal** | A terminal-sized fuse holder; for now a device of its own, not a strip position: `-F02`. |
+| **connector half** | The plug or the socket side of a connector, drawn as a body with one connection point per pin. Mating two halves is not built yet: `-X03:1`. |
+| **bulkhead** | A connector through a panel wall; each pin is one connection point that wires reach from both sides: `-X04:1`. |
+| **card body** | The outline of a PLC card or CPU, with its supply points; its channels join it as PLC input and output symbols: `-A01:L+`. |
 
 ## Connections
 
@@ -101,3 +107,66 @@ are.
 | **jumper** | A plug-in or screw bridge between terminals of one strip: a part, not a wire. |
 | **link** | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
 | **bar** | One jumper bar as bought (10-way unless the strip or project says otherwise); a link needs span ÷ bar size, rounded up. |
+
+## Multi-level terminals (brief 036)
+
+| Word | Means |
+| --- | --- |
+| **position** | One terminal block on the rail: the strip terminals that share one position label (`1`, `2.1`). |
+| **level** | One deck of a position: one connection point, or two for a fuse or disconnect level (in and out). Numbered 1… from the top deck. |
+| **terminal type** | What a position is: feed-through, PE, two-level, two-level bridged, three-level, L/N/PE, sensor, disconnect, fuse. |
+| **level name** | A level's short name in its label: `L`, `N`, `PE`; `S`, `+`, `-`; `1`, `2`, `3`. A default a project or strip can change. |
+| **terminal label** | What the page and the plan show for one level: the position, the separator and the level name (`1.L`), or the level's own label. |
+| **internal bridge** | Levels of one position joined inside the block by its type (a bridged two-level terminal). |
+| **free level** | A level of a drawn position that no symbol draws yet. |
+
+## PLC racks and cards (brief 045)
+
+| Word | Means |
+| --- | --- |
+| **rack** | A CPU or a head (interface) module and the cards in its slots. The rack **is** the head device: no new object. |
+| **slot** | A numbered place in a rack. A card is in at most one slot. |
+| **card** | A device in a slot (or in none yet): an input, output, analogue, RTD, IO-Link, power or communication module. Its type comes from its card body. |
+| **card type** | DI, DQ, AI, AO, RTD, IOL, PS, PM, CM. |
+| **channel** | One input or output of a card: one or more **channel points**, one per **role**. |
+| **role** | What a channel point is: `in`, `out`, `+`, `-`, `I+`, `S+`, `S-`, `I-`, `L+`, `C/Q`, `L-`. |
+| **pin** | The label printed at a channel point and typed after the tag (`-A02:4`): the point's connection point label. |
+| **channel number** | The channel's index shown from the card's first number (0 or 1): `channel 3`. |
+| **address** | What the PLC program calls the channel: automatic by slot and channel (`I2.3`, `%IX2.3`, `I:3/03`), or typed. |
+| **spare** | A channel with no wire and no description. **Reserved**: no wire, but a description. |
+| **I/O list** | One row per channel of every card: rack, slot, card, channel, address, pins, description, what it is wired to, wire number, place. |
+
+## Connectors (brief 044)
+
+| Word | Means |
+| --- | --- |
+| **connector** | One device (`-X10`) with up to two halves that mate. |
+| **half** | The socket side or the plug side of a connector, shown and typed as `-X10.S` / `-X10.P`. A half is a BOM row and has its own location, not a tag of its own. |
+| **side** | Which half a pin belongs to: socket (female contacts) or plug (male contacts). |
+| **pin** | One contact position of a connector (`1`, `A`, `PE`); one connection point on each half that draws it. |
+| **mate** | The pin of the same name on the other half; mated pins are one net. |
+| **family** | Plain, D-sub, M12, RJ45 bulkhead, USB-A or USB-B bulkhead; both halves of a connector have one. |
+| **pin pair** | A symbol showing one pin on both halves at once (socket cup over plug pin), as drawn in wire runs. |
+| **bulkhead** | A one-piece through-panel connector: one point per pin that wires reach from both sides; it has no halves. |
+
+## Symbols (brief 048)
+
+| Word | Means |
+| --- | --- |
+| **symbol** | An embedded definition people can place: built-in (a starter), project (made here) or, later, from a library. |
+| **project symbol** | A symbol made or edited in this project. Its source reads "Project". |
+| **version** | One saved content of a symbol. Versions of one symbol share a **lineage**; the newest is what Place uses. |
+| **placed copy** | One symbol representation showing a version of a symbol. |
+| **text slot** | Where a device text (tag, description, rating…) of a placed copy goes, in the symbol's frame. |
+| **origin** (tool) | The symbol's base point, (0, 0) of its frame: the point the cursor holds when placing. Where provenance is shown it is called **source**, never origin. |
+| **update available** | A placed copy whose symbol has a newer version in the project. |
+| **clash** | A change an update cannot make to a placed copy without losing a connection. |
+
+## Continuation references (brief 049)
+
+| Word | Means |
+| --- | --- |
+| **continuation arrow** | The tagless arrow (`kind = continuation`) that joins its net to every arrow with the same name, on any page. Not a *continuation sheet* (a generated report's next page). |
+| **other end** | Another arrow with the same name. An arrow shows its other ends' places past its tip (`102-C-2 103-B-5`), derived, never typed. |
+| **caption** | A short text on an arrow (`TO CONTROL SUPPLY`) saying where it goes. Display only: it joins nothing. |
+| **caption run** | The arrows on one page with the same caption and direction, next to each other, drawn under one bracket with the caption. |

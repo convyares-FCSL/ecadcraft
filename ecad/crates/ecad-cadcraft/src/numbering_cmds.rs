@@ -143,7 +143,9 @@ fn request(doc: &Document, params: &Value) -> Result<Request, String> {
         Some(v) => Some(v.as_u64().and_then(|d| u8::try_from(d).ok()).ok_or(numbering::BAD_DIGITS)?),
     };
     let strips = if kinds.contains(&Kind::Terminals) { strips_param(doc, params, &scope)? } else { BTreeSet::new() };
-    Ok(Request { kinds, scope, start, digits, strips })
+    // Brief 036 (FP8c): each strip's positions, numbered as groups.
+    let positions = strips.iter().map(|c| (*c, crate::terminal_types::position_groups(doc, *c))).collect();
+    Ok(Request { kinds, scope, start, digits, strips, positions })
 }
 
 /// Brief 028 (design 028 §9.5): the strips a terminal renumber covers, from the scope: every
@@ -310,6 +312,7 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
                 start: None,
                 digits: None,
                 strips: BTreeSet::new(),
+                positions: Default::default(),
             }
         } else {
             request(doc, params)?
@@ -317,7 +320,11 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
         let plan = plan_for(p, &req)?;
         let count = p.change_count();
         // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
-        let (acc_ops, acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
+        let (mut acc_ops, mut acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
+        // Brief 047 (design 047 §2.3): a strip's part lines keep naming the positions they serve.
+        let (for_ops, for_lines) = crate::bom::renumber_for_ops(p.ledger.document(), &plan.ops);
+        acc_ops.extend(for_ops);
+        acc_lines.extend(for_lines);
         if preview {
             let mut v = preview_json(p.ledger.document(), &plan, count);
             v["accessories"] = json!(acc_lines);
@@ -552,6 +559,7 @@ pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue,
                 start: None,
                 digits: None,
                 strips: BTreeSet::new(),
+                positions: Default::default(),
             };
             let plan = plan_for(p, &req)?;
             Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
@@ -677,7 +685,7 @@ pub(crate) fn run_set_tag(s: &mut Session, params: &Value, o: ObjectRef) -> cadc
         let value = match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
             None => None,
             Some(v) => {
-                let t = tag::normalise(v, devices::padding(doc))?;
+                let t = tag::normalise(v, crate::defaults::print::tag_style(doc))?;
                 match tag::provisional(&t) {
                     Some((px, 0)) => Some(p.tag_high.next_provisional_in(doc, &px)),
                     _ => Some(t),
@@ -694,6 +702,12 @@ pub(crate) fn run_set_tag(s: &mut Session, params: &Value, o: ObjectRef) -> cadc
             return Ok(json!({"changed": true, "value": Value::Null}));
         };
         let typed_fixed = !tag::is_provisional(&t);
+        // Brief 044 (design 044 §5.1): a connector's half tag is not free for another device.
+        if let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &t)
+            && ObjectRef::Component(c) != o
+        {
+            return Err(format!("{t} is the {} half of {}. Pick another tag.", side.word(), devices::tag_words(doc, c)));
+        }
         let Some(holder) = devices::tag_holder(doc, &t, Some(o)) else {
             let ops = tag_ops(doc, o, Some(t.clone()), typed_fixed);
             if ops.is_empty() {

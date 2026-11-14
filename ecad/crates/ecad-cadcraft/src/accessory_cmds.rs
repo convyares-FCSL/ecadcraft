@@ -48,7 +48,7 @@ fn strip_of(doc: &Document, strip: Option<ComponentId>, terminal: Option<Termina
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
             let term = doc.terminals.get(&t).ok_or("No such terminal.")?;
-            (term.component, Some(crate::interact::terminal_name(doc, t)))
+            (term.component, Some(crate::interact::position_label(doc, t)))
         }
         (None, None) => return Err("`strip` or `terminal` (hex id) is required".into()),
     };
@@ -259,23 +259,28 @@ fn link_labels(p: &Positions, order: &[String]) -> Vec<String> {
     v
 }
 
-fn canonical_of(labels: &[String], order: &[String]) -> String {
+/// Canonical link text on `level` (brief 036: `1.2-8.2`; level 1 as 030 wrote it).
+fn canonical_of(labels: &[String], order: &[String], level: u32, point: Option<char>) -> String {
     let mut sorted: Vec<&String> = labels.iter().collect();
     sorted.sort_by_key(|l| (order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
     sorted.dedup();
-    links::canonical(&sorted, order)
+    crate::terminal_types::link_text(&sorted, order, level, point)
 }
 
-/// Labels from a text (`5,6` or `5-8`) or a list.
-fn labels_param(v: &Value, order: &[String]) -> Result<Vec<String>, String> {
-    let text = match v {
+/// The text of a `positions` value (`5,6`, `5-8`, or a list).
+fn positions_text(v: &Value) -> Result<String, String> {
+    Ok(match v {
         Value::String(t) => t.clone(),
         Value::Array(a) => {
             a.iter().map(|x| x.as_str().map(str::to_string).ok_or("positions must be labels")).collect::<Result<Vec<_>, _>>()?.join(",")
         }
         _ => return Err("positions must be text like \"5,6\" or a list of labels".into()),
-    };
-    Ok(link_labels(&links::parse(&text)?, order))
+    })
+}
+
+/// Labels from a text (`5,6` or `5-8`) or a list.
+fn labels_param(v: &Value, order: &[String]) -> Result<Vec<String>, String> {
+    Ok(link_labels(&links::parse(&positions_text(v)?)?, order))
 }
 
 /// The next free link number on a strip.
@@ -321,6 +326,10 @@ fn range_between(order: &[String], a: &str, b: &str) -> Vec<String> {
 fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let v = with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
+        // Brief 036 (design 036 §5.3): the level the link runs on, or a cross-level link's text.
+        let mut level: u32 = 1;
+        let mut point: Option<char> = None;
+        let mut cross: Option<String> = None;
         let (c, n, before_text, labels, label, extra) = if let Some(l) = params.get("link") {
             let c: ComponentId = crate::commands::id(l, "strip")?;
             let (c, _) = strip_of(doc, Some(c), None)?;
@@ -330,8 +339,14 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
             let cur_text = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
             let cur_text = cur_text.ok_or_else(|| format!("{} has no link {n}.", strip_words(doc, c)))?;
             let order = acc::positions(doc, c);
-            let cur = link_labels(&links::parse(&cur_text).unwrap_or_default(), &order);
+            let parsed = links::parse(&cur_text).unwrap_or_default();
+            level = parsed.level().unwrap_or(1);
+            point = parsed.point().flatten();
+            let cur = link_labels(&parsed, &order);
             let tag = strip_words(doc, c);
+            if parsed.crosses_levels() && params.get("delete").and_then(Value::as_bool) != Some(true) {
+                return Err(format!("Link {tag} {cur_text} joins levels of one position; delete it and draw it again, or set link.{n}."));
+            }
             if params.get("delete").and_then(Value::as_bool) == Some(true) {
                 let ops = delete_ops(doc, c, n);
                 return finish(p, pg, c, n, ops, format!("Delete link {tag} {cur_text}"), format!("Deleted link {tag} {cur_text}."), None);
@@ -400,7 +415,35 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
             let skip = params.get("skip").and_then(Value::as_bool).unwrap_or(false);
             let mut labels: Vec<String> = Vec::new();
             let mut prev: Option<String> = None;
+            // The first pick fixes the level; another level of the same position makes a
+            // cross-level link; another level elsewhere is refused.
+            if let Some(t) = picks.first() {
+                level = crate::terminal_types::level_of(doc, *t).0;
+            }
+            let mut cross_levels: Vec<u32> = Vec::new();
             for t in &picks {
+                let (lv, _) = crate::terminal_types::level_of(doc, *t);
+                let pos = crate::interact::position_label(doc, *t);
+                if lv != level {
+                    if prev.as_deref() == Some(pos.as_str()) && labels.len() == 1 {
+                        if cross_levels.is_empty() {
+                            cross_levels.push(level);
+                        }
+                        cross_levels.push(lv);
+                        continue;
+                    }
+                    let ty = crate::terminal_types::type_of_terminal(doc, *t);
+                    return Err(format!(
+                        "{} is on level {}; this link is on level {}. Pick level {} terminals, or Enter to finish.",
+                        crate::terminal_cmds::terminal_words(doc, *t),
+                        crate::terminal_types::level_name(doc, c, ty, lv),
+                        crate::terminal_types::level_name(doc, c, ty, level),
+                        crate::terminal_types::level_name(doc, c, ty, level)
+                    ));
+                }
+                if !cross_levels.is_empty() {
+                    return Err("A link between levels of one position ends there; Enter to finish.".into());
+                }
                 let term = doc.terminals.get(t).ok_or("No such terminal.")?;
                 if term.component != c {
                     return Err(format!(
@@ -409,7 +452,7 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                         strip_words(doc, c)
                     ));
                 }
-                let l = crate::interact::terminal_name(doc, *t);
+                let l = crate::interact::position_label(doc, *t);
                 let add = match (&prev, skip) {
                     (Some(a), false) => range_between(&order, a, &l),
                     _ => vec![l.clone()],
@@ -422,11 +465,27 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                 prev = Some(l);
             }
             if let Some(v) = params.get("positions") {
+                // Tester 036 (c): typed positions keep their level and point (`1.3-4.3`); a typed
+                // cross-level link is kept as written.
+                let typed = links::parse(&positions_text(v)?)?;
+                if picks.is_empty() {
+                    if typed.crosses_levels() {
+                        cross = Some(typed.text());
+                    }
+                    level = typed.level().unwrap_or(1);
+                    point = typed.point().flatten();
+                } else if typed.level().unwrap_or(1) != level {
+                    return Err("The typed positions are on another level than the picked terminals; type them on that level, or pick only.".into());
+                }
                 for l in labels_param(v, &order)? {
                     if !labels.contains(&l) {
                         labels.push(l);
                     }
                 }
+            }
+            if let (Some(lo), Some(hi), Some(pos)) = (cross_levels.iter().min(), cross_levels.iter().max(), labels.first()) {
+                // A cross-level link names both levels (`1.1-1.3`).
+                cross = Some(format!("{pos}.{lo}-{pos}.{hi}"));
             }
             let n = next_link(doc, c).ok_or("This strip has 999 links; delete one first.")?;
             (c, n, None, labels, format!("Link {}", strip_words(doc, c)), None)
@@ -434,14 +493,17 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
         let order = acc::positions(doc, c);
         let tag = strip_words(doc, c);
         let mut ops = Vec::new();
-        let text = if labels.len() < 2 {
+        let text = if let Some(t) = cross.clone() {
+            ops.extend(set_op(doc, c, links::key(n), Some(t.clone())));
+            Some(t)
+        } else if labels.len() < 2 {
             if before_text.is_none() {
                 return Err("A link joins at least 2 positions. Pick another terminal, or type positions like 1-4.".into());
             }
             ops.extend(delete_ops(doc, c, n));
             None
         } else {
-            let t = canonical_of(&labels, &order);
+            let t = canonical_of(&labels, &order, level, point);
             ops.extend(set_op(doc, c, links::key(n), Some(t.clone())));
             Some(t)
         };
@@ -449,7 +511,7 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
         if let Some((m, rest)) = &extra
             && rest.len() >= 2
         {
-            let t = canonical_of(rest, &order);
+            let t = canonical_of(rest, &order, level, point);
             ops.extend(set_op(doc, c, links::key(*m), Some(t.clone())));
             // Both halves keep the link's own part (review of PR #57, 3).
             for f in acc::FIELDS {

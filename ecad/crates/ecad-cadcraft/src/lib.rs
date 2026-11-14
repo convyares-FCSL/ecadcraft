@@ -33,10 +33,21 @@
 mod access;
 pub mod accessories;
 pub mod accessory_cmds;
+pub mod actions;
+// Brief 035: a per-user settings file and a window's port; nothing of it on the web build.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod agent_access;
+pub mod bom;
 pub mod checks;
 pub mod commands;
+pub mod connector_cmds;
+pub mod connectors;
+pub mod continuation_cmds;
+pub mod continuations;
 pub mod convert;
 pub mod debug;
+pub mod default_cmds;
+pub mod defaults;
 mod device_cmds;
 pub mod device_list;
 pub mod devices;
@@ -45,6 +56,8 @@ pub mod frame;
 pub mod generated;
 pub mod history;
 pub mod interact;
+mod lanes;
+pub mod level_cmds;
 pub mod link_lines;
 pub mod locations;
 pub mod look;
@@ -53,6 +66,7 @@ pub mod numbering_cmds;
 pub mod oops;
 pub mod output_cmds;
 pub mod outputs;
+pub mod plc;
 pub mod preview;
 pub mod printbook;
 pub mod project;
@@ -62,9 +76,16 @@ pub mod release;
 pub mod revisions;
 pub mod sheet_cmds;
 pub mod slash;
+pub mod strip_page;
 pub mod strips;
+pub mod style_cmds;
+pub mod styles;
+pub mod symbol_cmds;
 pub mod symbols;
 pub mod terminal_cmds;
+pub mod terminal_types;
+pub mod text_cmds;
+pub mod text_style;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]
@@ -89,6 +110,8 @@ pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 /// Install the ECAD commands into the engine's registry. Call once, before the engine's command
 /// list is first used. Returns `false` if it was too late or already done.
 pub fn install() -> bool {
+    // Brief 040: the sheet font for every page drawn or printed, in the window or headless.
+    text_style::register_sheet_font();
     cadcraft_engine::cmd::set_extension_commands(commands::specs)
 }
 

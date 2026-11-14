@@ -119,10 +119,10 @@ fn the_demo_nets_and_wire_numbers() {
     assert_eq!(
         checks,
         [
-            "LonelyContinuation 2-C-4 L1",
-            "LonelyContinuation 2-C-4 L2",
-            "LonelyContinuation 2-C-4 L3",
-            "Unconnected 3-C-5 -M01:PE",
+            "LonelyContinuation 2/D3 L1",
+            "LonelyContinuation 2/D3 L2",
+            "LonelyContinuation 2/D3 L3",
+            "Unconnected 3/E3 -M01:PE",
             "NoPartNumber  7 devices have no part number"
         ],
         "{checks:#?}"
@@ -153,7 +153,11 @@ fn the_demo_locations_reports_and_generated_pages() {
     let bom = o.bom(ecad_cadcraft::outputs::Group::Location);
     // Brief 028 (Q13): a strip counts its terminals, so -X01 and -X02 add their other terminals.
     let terminals: usize = o.strips.strips.values().map(|s| s.drawn).sum();
-    assert_eq!(bom.iter().map(|r| r.qty).sum::<usize>(), 11 - o.strips.len() + terminals, "the devices and terminals, nothing else");
+    assert_eq!(
+        bom.iter().map(|r| usize::try_from(r.qty.0 / 1000).unwrap()).sum::<usize>(),
+        11 - o.strips.len() + terminals,
+        "the devices and terminals, nothing else"
+    );
     let cables = o.cable_table();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
     // Brief 028: Cores is the offer read from the type (4G), Used the three members.

@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 
 use ecad_model as m;
-use ecad_model::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, TxId};
+use ecad_model::{
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId,
+};
 use serde::{Deserialize, Serialize};
 
 /// A point `[x, y]`.
@@ -63,6 +65,8 @@ pub struct SheetSpec {
 pub enum ReferenceStyle {
     PageColumnRow,
     PageColumn,
+    /// UI rev 3: `2/B5`, the default ([`default_style`]): left out of the file, never written.
+    PageZone,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -92,12 +96,45 @@ pub struct Style {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Primitive {
-    Line { a: Pt, b: Pt },
-    Polyline { vertices: Vec<Pt>, closed: bool },
-    Arc { center: Pt, radius: f64, start: f64, end: f64 },
-    Circle { center: Pt, radius: f64 },
-    Text { at: Pt, height: f64, rotation: f64, value: String },
-    Point { at: Pt },
+    Line {
+        a: Pt,
+        b: Pt,
+    },
+    Polyline {
+        vertices: Vec<Pt>,
+        closed: bool,
+    },
+    Arc {
+        center: Pt,
+        radius: f64,
+        start: f64,
+        end: f64,
+    },
+    Circle {
+        center: Pt,
+        radius: f64,
+    },
+    Text {
+        at: Pt,
+        height: f64,
+        rotation: f64,
+        value: String,
+        #[serde(default, skip_serializing_if = "is_left")]
+        halign: m::TextHAlign,
+        #[serde(default, skip_serializing_if = "is_baseline")]
+        valign: m::TextVAlign,
+    },
+    Point {
+        at: Pt,
+    },
+}
+
+fn is_left(h: &m::TextHAlign) -> bool {
+    *h == m::TextHAlign::Left
+}
+
+fn is_baseline(v: &m::TextVAlign) -> bool {
+    *v == m::TextVAlign::Baseline
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -236,6 +273,43 @@ pub struct Definition {
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<String>>,
+    /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<TextSlot>,
+    /// The symbol's own defaults (brief 048, FP2). Left out when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub defaults: BTreeMap<String, String>,
+    /// The origin an edited copy came from (brief 048, FP4). Left out when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<Origin>,
+}
+
+/// A text slot of a definition (brief 048, FP1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TextSlot {
+    pub text: String,
+    pub at: Pt,
+    #[serde(default, skip_serializing_if = "is_left")]
+    pub h: m::TextHAlign,
+    #[serde(default, skip_serializing_if = "is_baseline")]
+    pub v: m::TextVAlign,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rotation: f64,
+}
+
+fn is_zero(x: &f64) -> bool {
+    // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
+    // that the read-back value (0.0, left out) does not match.
+    *x == 0.0
+}
+
+fn origin(o: &m::Origin) -> Origin {
+    Origin { library: o.library, definition: o.definition, library_seq: o.library_seq, content_hash: o.content_hash }
+}
+
+fn morigin(o: Origin) -> m::Origin {
+    m::Origin { library: o.library, definition: o.definition, library_seq: o.library_seq, content_hash: o.content_hash }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -266,7 +340,10 @@ pub struct ProjectSettings {
     /// Brief 019 (decision FP2): left out at the default step 1.
     #[serde(default = "default_step", skip_serializing_if = "is_default_step")]
     pub page_number_step: u32,
-    /// Brief 019 (owner answer Q1): left out at the default `page_column_row`.
+    /// Brief 019 (owner answer Q1): left out at the default. UI rev 3: the default is
+    /// `page_zone` (`2/B5`), so a new project writes nothing and a reader that knows only the
+    /// older styles reads it back as `page_column_row`; an absent field reads as `page_zone`.
+    /// `page_zone` itself is never written.
     #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
     pub reference_style: ReferenceStyle,
     /// Brief 025 (FP3): left out at the default `auto`.
@@ -313,8 +390,12 @@ pub struct PotentialDef {
     pub name: String,
     pub prefix: String,
     pub numbered: bool,
-    pub colour: String,
-    pub cross_section: String,
+    /// Brief 050b (FP6): read from an older file and kept, never written by this build unless
+    /// the project still holds it. Empty counts as absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_section: Option<String>,
 }
 
 /// How label colours are written (brief 022 fix round).
@@ -338,6 +419,22 @@ fn default_label_height() -> f64 {
     m::wiring::DEFAULT_LABEL_HEIGHT
 }
 
+fn default_label_rule() -> String {
+    m::wiring::DEFAULT_LABEL_RULE.to_string()
+}
+
+fn default_label_min_length() -> f64 {
+    m::wiring::DEFAULT_LABEL_MIN_LENGTH
+}
+
+fn is_default_label_rule(r: &str) -> bool {
+    r == m::wiring::DEFAULT_LABEL_RULE
+}
+
+fn is_default_label_min_length(v: &f64) -> bool {
+    *v == m::wiring::DEFAULT_LABEL_MIN_LENGTH
+}
+
 fn is_default_label_height(h: &f64) -> bool {
     *h == m::wiring::DEFAULT_LABEL_HEIGHT
 }
@@ -355,6 +452,12 @@ pub struct WiringSettings {
     pub colour_style: ColourStyle,
     #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
     pub label_height: f64,
+    /// Brief 032 (FP-W1); left out at its default, like its neighbours.
+    #[serde(default = "default_label_rule", skip_serializing_if = "is_default_label_rule")]
+    pub label_rule: String,
+    /// Brief 032 (FP-W1); left out at its default, like its neighbours.
+    #[serde(default = "default_label_min_length", skip_serializing_if = "is_default_label_min_length")]
+    pub label_min_length: f64,
 }
 
 impl Default for WiringSettings {
@@ -380,8 +483,8 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     name: p.name.clone(),
                     prefix: p.prefix.clone(),
                     numbered: p.numbered,
-                    colour: p.colour.clone(),
-                    cross_section: p.cross_section.clone(),
+                    colour: p.legacy_colour.clone(),
+                    cross_section: p.legacy_cross_section.clone(),
                 })
                 .collect(),
             colour_style: match w.colour_style {
@@ -389,6 +492,8 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                 m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
             },
             label_height: w.label_height,
+            label_rule: w.label_rule.clone(),
+            label_min_length: w.label_min_length,
         }
     }
 }
@@ -410,11 +515,11 @@ fn is_default_step(s: &u32) -> bool {
 }
 
 fn default_style() -> ReferenceStyle {
-    ReferenceStyle::PageColumnRow
+    ReferenceStyle::PageZone
 }
 
 fn is_default_style(s: &ReferenceStyle) -> bool {
-    *s == ReferenceStyle::PageColumnRow
+    *s == ReferenceStyle::PageZone
 }
 
 fn labels(l: m::GridLabels) -> GridLabels {
@@ -461,8 +566,8 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     name: p.name,
                     prefix: p.prefix,
                     numbered: p.numbered,
-                    colour: p.colour,
-                    cross_section: p.cross_section,
+                    legacy_colour: p.colour.filter(|v| !v.trim().is_empty()),
+                    legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
                 })
                 .collect(),
             colour_style: match w.colour_style {
@@ -470,6 +575,8 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                 ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
             },
             label_height: w.label_height,
+            label_rule: w.label_rule,
+            label_min_length: w.label_min_length,
         }
     }
 }
@@ -505,6 +612,8 @@ pub enum ObjectRef {
     Page(PageId),
     /// Brief 019 (decision FP1).
     Project,
+    /// Brief 050a (FP3): the standard's registry values.
+    Standard,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -620,6 +729,12 @@ pub enum Op {
         id: ComponentId,
         component: Component,
     },
+    /// Brief 048, FP5.
+    SetComponentDefinition {
+        id: ComponentId,
+        before: Option<DefinitionId>,
+        after: Option<DefinitionId>,
+    },
     AddTerminal {
         id: TerminalId,
         terminal: Terminal,
@@ -721,6 +836,99 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Brief 050a (FP3): one whole style record; `null` is no record.
+    SetStyle {
+        layer: StyleLayer,
+        catalogue: String,
+        id: m::StyleRef,
+        before: Option<StyleRecord>,
+        after: Option<StyleRecord>,
+    },
+    /// Brief 050a (FP3): the standard's header; `null` is no standard (IEC built in).
+    SetStandard {
+        before: Option<StandardHeader>,
+        after: Option<StandardHeader>,
+    },
+}
+
+/// Where a style record lives (brief 050a).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum StyleLayer {
+    Standard,
+    Project,
+}
+
+/// A style record (brief 050a, FP2): its name (left out while empty, as for an override of a
+/// built-in style) and the fields it sets (left out while empty).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StyleRecord {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, String>,
+}
+
+/// A standard's header (brief 050a, FP1). `origin` is reserved for 2.1 and left out while absent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StandardHeader {
+    pub id: StandardId,
+    pub name: String,
+    pub based_on: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<StandardOrigin>,
+}
+
+/// Where a standard came from (reserved for 2.1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StandardOrigin {
+    pub library: LibraryId,
+}
+
+fn layer(l: m::StyleLayer) -> StyleLayer {
+    match l {
+        m::StyleLayer::Standard => StyleLayer::Standard,
+        m::StyleLayer::Project => StyleLayer::Project,
+    }
+}
+
+fn mlayer(l: StyleLayer) -> m::StyleLayer {
+    match l {
+        StyleLayer::Standard => m::StyleLayer::Standard,
+        StyleLayer::Project => m::StyleLayer::Project,
+    }
+}
+
+impl From<&m::StyleRecord> for StyleRecord {
+    fn from(r: &m::StyleRecord) -> Self {
+        StyleRecord { name: r.name.clone(), fields: r.fields.clone() }
+    }
+}
+
+impl From<StyleRecord> for m::StyleRecord {
+    fn from(r: StyleRecord) -> Self {
+        m::StyleRecord { name: r.name, fields: r.fields }
+    }
+}
+
+impl From<&m::StandardHeader> for StandardHeader {
+    fn from(h: &m::StandardHeader) -> Self {
+        StandardHeader {
+            id: h.id,
+            name: h.name.clone(),
+            based_on: h.based_on.clone(),
+            origin: h.origin.as_ref().map(|o| StandardOrigin { library: o.library }),
+        }
+    }
+}
+
+impl From<StandardHeader> for m::StandardHeader {
+    fn from(h: StandardHeader) -> Self {
+        m::StandardHeader { id: h.id, name: h.name, based_on: h.based_on, origin: h.origin.map(|o| m::style::StandardOrigin { library: o.library }) }
+    }
 }
 
 /// The current version of every op in schema version 1.
@@ -755,8 +963,8 @@ impl From<&m::Primitive> for Primitive {
             }
             m::Primitive::Arc { center, radius, start, end } => Primitive::Arc { center: pt(*center), radius: *radius, start: *start, end: *end },
             m::Primitive::Circle { center, radius } => Primitive::Circle { center: pt(*center), radius: *radius },
-            m::Primitive::Text { at, height, rotation, value } => {
-                Primitive::Text { at: pt(*at), height: *height, rotation: *rotation, value: value.clone() }
+            m::Primitive::Text { at, height, rotation, value, halign, valign } => {
+                Primitive::Text { at: pt(*at), height: *height, rotation: *rotation, value: value.clone(), halign: *halign, valign: *valign }
             }
             m::Primitive::Point { at } => Primitive::Point { at: pt(*at) },
         }
@@ -842,15 +1050,13 @@ impl From<&m::Definition> for Definition {
     fn from(d: &m::Definition) -> Self {
         Definition {
             name: d.name.clone(),
-            origin: d.origin.as_ref().map(|o| Origin {
-                library: o.library,
-                definition: o.definition,
-                library_seq: o.library_seq,
-                content_hash: o.content_hash,
-            }),
+            origin: d.origin.as_ref().map(origin),
             graphics: d.graphics.iter().map(Into::into).collect(),
             terminals: d.terminals.iter().map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) }).collect(),
             bridges: d.bridges.clone(),
+            texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
+            defaults: d.defaults.clone(),
+            derived_from: d.derived_from.as_ref().map(origin),
         }
     }
 }
@@ -894,6 +1100,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             reference_style: match s.reference_style {
                 m::ReferenceStyle::PageColumnRow => ReferenceStyle::PageColumnRow,
                 m::ReferenceStyle::PageColumn => ReferenceStyle::PageColumn,
+                m::ReferenceStyle::PageZone => ReferenceStyle::PageZone,
             },
             contact_mirror: match s.contact_mirror {
                 m::ContactMirror::Auto => ContactMirror::Auto,
@@ -912,6 +1119,7 @@ fn object(o: m::ObjectRef) -> ObjectRef {
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
         m::ObjectRef::Page(p) => ObjectRef::Page(p),
         m::ObjectRef::Project => ObjectRef::Project,
+        m::ObjectRef::Standard => ObjectRef::Standard,
     }
 }
 
@@ -928,6 +1136,7 @@ impl From<&m::Op> for Op {
             m::Op::RemoveItem { id, item } => Op::RemoveItem { id: *id, item: item.into() },
             m::Op::CreateComponent { id, component } => Op::CreateComponent { id: *id, component: component.into() },
             m::Op::DeleteComponent { id, component } => Op::DeleteComponent { id: *id, component: component.into() },
+            m::Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id: *id, before: *before, after: *after },
             m::Op::AddTerminal { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
             m::Op::RemoveTerminal { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
@@ -953,6 +1162,16 @@ impl From<&m::Op> for Op {
             m::Op::AddFolder { id, folder, index } => Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::RemoveFolder { id, folder, index } => Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
+            m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
+                layer: layer(*l),
+                catalogue: catalogue.clone(),
+                id: id.clone(),
+                before: before.as_ref().map(Into::into),
+                after: after.as_ref().map(Into::into),
+            },
+            m::Op::SetStandard { before, after } => {
+                Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
+            }
         }
     }
 }
@@ -1009,7 +1228,9 @@ impl From<Primitive> for m::Primitive {
             Primitive::Polyline { vertices, closed } => m::Primitive::Polyline { vertices: vertices.into_iter().map(mpt).collect(), closed },
             Primitive::Arc { center, radius, start, end } => m::Primitive::Arc { center: mpt(center), radius, start, end },
             Primitive::Circle { center, radius } => m::Primitive::Circle { center: mpt(center), radius },
-            Primitive::Text { at, height, rotation, value } => m::Primitive::Text { at: mpt(at), height, rotation, value },
+            Primitive::Text { at, height, rotation, value, halign, valign } => {
+                m::Primitive::Text { at: mpt(at), height, rotation, value, halign, valign }
+            }
             Primitive::Point { at } => m::Primitive::Point { at: mpt(at) },
         }
     }
@@ -1098,15 +1319,13 @@ impl From<Definition> for m::Definition {
     fn from(d: Definition) -> Self {
         m::Definition {
             name: d.name,
-            origin: d.origin.map(|o| m::Origin {
-                library: o.library,
-                definition: o.definition,
-                library_seq: o.library_seq,
-                content_hash: o.content_hash,
-            }),
+            origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
             terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) }).collect(),
             bridges: d.bridges,
+            texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
+            defaults: d.defaults,
+            derived_from: d.derived_from.map(morigin),
         }
     }
 }
@@ -1126,6 +1345,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
             reference_style: match s.reference_style {
                 ReferenceStyle::PageColumnRow => m::ReferenceStyle::PageColumnRow,
                 ReferenceStyle::PageColumn => m::ReferenceStyle::PageColumn,
+                ReferenceStyle::PageZone => m::ReferenceStyle::PageZone,
             },
             contact_mirror: match s.contact_mirror {
                 ContactMirror::Auto => m::ContactMirror::Auto,
@@ -1144,6 +1364,7 @@ fn mobject(o: ObjectRef) -> m::ObjectRef {
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
         ObjectRef::Page(p) => m::ObjectRef::Page(p),
         ObjectRef::Project => m::ObjectRef::Project,
+        ObjectRef::Standard => m::ObjectRef::Standard,
     }
 }
 
@@ -1160,6 +1381,7 @@ impl TryFrom<Op> for m::Op {
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
             Op::CreateComponent { id, component } => m::Op::CreateComponent { id, component: component.into() },
             Op::DeleteComponent { id, component } => m::Op::DeleteComponent { id, component: component.into() },
+            Op::SetComponentDefinition { id, before, after } => m::Op::SetComponentDefinition { id, before, after },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
@@ -1181,6 +1403,10 @@ impl TryFrom<Op> for m::Op {
             Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
             Op::RemoveFolder { id, folder, index: i } => m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? },
             Op::ModifyFolder { id, before, after } => m::Op::ModifyFolder { id, before: before.into(), after: after.into() },
+            Op::SetStyle { layer: l, catalogue, id, before, after } => {
+                m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
+            }
+            Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
         })
     }
 }

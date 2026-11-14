@@ -20,17 +20,25 @@
 //! transaction kinds, nothing stored. It contains no UI toolkit code.
 
 mod accessories;
+mod connectors;
+mod continuations;
+// Brief 047: Reports ▸ BOM ▸ + Item.
+mod bom_item;
 mod devices;
+// Brief 041: what is under the cursor (the wheel) and the running tool's intent.
 mod forms;
+pub mod intent;
+pub mod kind;
 mod location_form;
 mod refs;
 mod terminals;
+pub(crate) mod text_tools;
 mod wiring_forms;
 mod xrefs;
 
 use std::collections::BTreeSet;
 
-use cadcraft_engine::doc::color::{Color as CColor, Rgb};
+use cadcraft_engine::doc::color::Color as CColor;
 use cadcraft_engine::doc::{Circle, Entity, EntityKind, Handle, Line, Text};
 use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
@@ -44,12 +52,15 @@ use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
 pub(crate) use accessories::{accessory, jumper};
+pub(crate) use bom_item::bomitem;
+pub(crate) use connectors::connector;
+pub(crate) use continuations::contcaption;
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use location_form::locationbox;
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 pub(crate) use terminals::{bridge, terminals};
-pub(crate) use wiring_forms::{junction, renumberwires, wirenumber};
+pub(crate) use wiring_forms::{joinwires, junction, renumberwires, wirenumber};
 pub(crate) use xrefs::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
@@ -72,20 +83,11 @@ pub(crate) const TERMINAL_ACI: u8 = 4;
 pub(crate) const ATTACHED_ACI: u8 = 3;
 /// The owner chose a neutral colour for loose ends, not red (brief 008 answer Q3): light grey.
 pub(crate) const LOOSE_ACI: u8 = 9;
-const TERMINAL_RGB: Rgb = Rgb(0x00, 0xff, 0xff);
-const ATTACHED_RGB: Rgb = Rgb(0x00, 0xff, 0x00);
-const LOOSE_RGB: Rgb = Rgb(0xc0, 0xc0, 0xc0);
-/// Cables (`ecad.cable`, ACI 6, magenta); also `ecad.reference`.
-const CABLE_RGB: Rgb = Rgb(0xff, 0x00, 0xff);
-/// `ecad.orphan` (ACI 1, red).
-const ORPHAN_RGB: Rgb = Rgb(0xff, 0x00, 0x00);
 /// "Will be refused" (`ecad.refuse-preview`, ACI 1, red).
 pub(crate) const REFUSE_ACI: u8 = 1;
 
 /// Glyph sizes in screen pixels (design tokens).
 pub(crate) const TERMINAL_PX: f64 = 8.0;
-const DOT_PX: f32 = 4.0;
-const LOOSE_PX: f32 = 6.0;
 pub(crate) const RING_PX: f64 = 16.0;
 const PREVIEW_TEXT_PX: f64 = 12.0;
 /// Crossing dot of a cable slash on a member wire (`ecad.crossing-size`).
@@ -217,6 +219,16 @@ fn short(hex: &str) -> &str {
 
 /// A terminal's name: its label, or `terminal <first 8 hex digits>`.
 pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
+    // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
+    match crate::terminal_types::shown_label(doc, t) {
+        Some(l) => l,
+        None => format!("connection point {}", short(&t.hex())),
+    }
+}
+
+/// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
+/// accessories and renumbering name. [`terminal_name`] is what a person sees.
+pub fn position_label(doc: &Document, t: TerminalId) -> String {
     match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
@@ -368,15 +380,22 @@ fn route_ends(doc: &Document, page: PageId) -> Vec<(ConductorId, Pt, Pt)> {
 /// every cable reference point, magenta when linked and red for an orphan, with no end mark on a
 /// wire end that leaves toward a reference. Display only.
 pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
+    // Brief 040: colours and sizes from `ecad-tokens` by meaning, on the sheet in use. An orphan
+    // reference (error) and an end that looks connected (warning) are painted by the app in
+    // shapes these marks lack (`look::painted_marks`); none of them is an entity, so none prints.
+    use ecad_tokens::marker::{CONNECTION_POINT_PX, LOOSE_END_PX, WIRE_END_ATTACHED_PX};
     let Some(page) = p.page_of(uid) else { return Vec::new() };
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
         return Vec::new();
     }
+    let sheet = crate::look::sheet();
+    let colour = |m: ecad_tokens::Meaning| crate::look::rgb(sheet.color(m));
     let doc = p.ledger.document();
     let positions = terminal_positions(doc, page);
+    let ring = colour(ecad_tokens::Meaning::ConnectionPoint);
     let mut out: Vec<Mark> = positions
         .iter()
-        .map(|(_, _, at)| Mark { at: v2(*at), shape: MarkShape::Ring, size: TERMINAL_PX as f32, stroke: 1.0, color: TERMINAL_RGB })
+        .map(|(_, _, at)| Mark { at: v2(*at), shape: MarkShape::Ring, size: CONNECTION_POINT_PX, stroke: 1.0, color: ring })
         .collect();
     // Rings at the reference ends (brief 010); loose-end squares are left out where a cable stops
     // at a reference or a wire leaves for another page (brief 009 `quiet`, with brief 010 §6.4
@@ -395,13 +414,18 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
                 // mark here: its connection is not on this page.
                 Some(t) => {
                     if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t) {
-                        out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: DOT_PX, stroke: 0.0, color: ATTACHED_RGB });
+                        let color = colour(ecad_tokens::Meaning::WireEndAttached);
+                        out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }
                 }
-                None => out.push(Mark { at: v2(at), shape: MarkShape::Square, size: LOOSE_PX, stroke: 1.0, color: LOOSE_RGB }),
+                None => {
+                    let color = colour(ecad_tokens::Meaning::LooseEnd);
+                    out.push(Mark { at: v2(at), shape: MarkShape::Square, size: LOOSE_END_PX, stroke: 1.0, color });
+                }
             }
         }
     }
+    let cable = colour(ecad_tokens::Meaning::Cable);
     let map = p.pages.get(&page).map(|v| &v.map);
     let shown = |i| map.is_some_and(|m| m.item(i).is_some());
     out.extend(crate::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
@@ -409,23 +433,22 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
         shape: MarkShape::Dot,
         size: CROSSING_PX,
         stroke: 0.0,
-        color: CABLE_RGB,
+        color: cable,
     }));
-    out.extend(markers.into_iter().map(|m| Mark {
+    out.extend(markers.into_iter().filter(|m| !m.orphan).map(|m| Mark {
         at: v2(m.at),
         shape: MarkShape::Ring,
         size: crate::references::RING_PX,
         stroke: crate::references::BOLD_PX,
-        color: if m.orphan { ORPHAN_RGB } else { CABLE_RGB },
+        color: cable,
     }));
     // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
-    if let Some((pg, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
-        let _ = pg;
-        let color = match sev {
-            crate::checks::Severity::Error => Rgb(0xFF, 0x00, 0x00),
-            crate::checks::Severity::Warning => Rgb(0xFF, 0xFF, 0x00),
-            crate::checks::Severity::Info => Rgb(0xA0, 0xA0, 0xA0),
-        };
+    if let Some((_, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
+        let color = colour(match sev {
+            crate::checks::Severity::Error => ecad_tokens::Meaning::Error,
+            crate::checks::Severity::Warning => ecad_tokens::Meaning::Warning,
+            crate::checks::Severity::Info => ecad_tokens::Meaning::Ink2,
+        });
         out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
     }
     out
@@ -461,6 +484,11 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // contact's lens with its coil.
         Mapped::Xref(r) => {
             let Subject::Component(c) = doc.representations.get(&r)?.subject else { return None };
+            // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
+            if crate::continuations::is_continuation(doc, c) {
+                let rep = if crate::continuations::arrow(doc, r).is_some() { r } else { return None };
+                return Some(crate::continuations::hover_lines(doc, c, rep));
+            }
             let row = view.map.xref_part(h).and_then(|(_, i)| {
                 let dev = crate::xref::device(doc, c);
                 let mut places = crate::xref::Places::new(doc);
@@ -484,6 +512,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => {
                     with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid))
                 }
+                // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
+                Subject::Component(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
                 Subject::Component(c) => component_lines(doc, c),
                 Subject::Conductor(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
@@ -614,7 +644,11 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
         })
         .unwrap_or_default();
     let mut lines = vec![
-        format!("Connection point {}", term.and_then(|x| x.label.clone()).unwrap_or_else(|| "(no label)".into())),
+        // Brief 044 (tester D3): a connector pin by its half (`-X10.S:3`).
+        format!(
+            "Connection point {}",
+            crate::connectors::pin_name(doc, t).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| "(no label)".into())
+        ),
         format!("of component {of}"),
         format!("id {}", t.hex()),
     ];
@@ -707,6 +741,23 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
             }
             None => format!("End {end:?}: not connected"),
         });
+    }
+    // Brief 032 §2.6: an open end lying on another wire says so, and how to join them.
+    if let (Some(cond), Some((a, b))) = (conductor, ecad_model::derive::route_ends_on(doc, w, page)) {
+        for (end, at) in [(End::A, a), (End::B, b)] {
+            if cond.end(end).is_some() {
+                continue;
+            }
+            if let Some(on) = crate::wires::wire_at(doc, page, at, crate::wires::ON_WIRE, Some(w)) {
+                let conn = doc.connectivity();
+                let number = conn
+                    .net_of_conductor(on.conductor)
+                    .and_then(|n| conn.net(n))
+                    .and_then(|n| ecad_model::wiring::net_number(doc, n))
+                    .unwrap_or_else(|| "?".into());
+                lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
+            }
+        }
     }
     // Brief 010: a wire continued on other pages says where.
     let others: Vec<String> =

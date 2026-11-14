@@ -20,7 +20,10 @@ pub fn specs() -> Vec<CommandSpec> {
             .interactive(crate::interact::locationbox)
             .noundo(),
         CommandSpec::new("bom", "Bill of Materials", run_bom)
-            .params("{group?: \"location\"|\"part\", path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
+            .params(
+                "{group?: \"location\"|\"part\", columns?: [\"article\"], lines?: \"flat\"|\"nested\", path?: csv file, excel_safe?: bool (true), \
+limit?: n (500, max 5000), after?: n} (columns and lines override the project's report settings for this call; nothing written)",
+            )
             .noundo(),
         CommandSpec::new("wirelist", "Wire Report", run_wirelist)
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
@@ -29,7 +32,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
             .noundo(),
         CommandSpec::new("printbook", "Print Book", run_printbook)
-            .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"screen\", lineweights?: bool}")
+            .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"colour\", lineweights?: bool}")
             .noundo(),
         CommandSpec::new("reports", "Reports", run_reports).params("{} (opens the Reports window)").noundo(),
     ]
@@ -144,12 +147,35 @@ fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
         None => Group::Location,
         Some(t) => Group::parse(t).ok_or_else(|| err("`group` is \"location\" or \"part\""))?,
     };
+    // Brief 047 (design 047 §7.4): the report settings for this call only.
+    let columns = match params.get("columns") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(a)) => {
+            let mut article = false;
+            for c in a {
+                match c.as_str() {
+                    Some("article") => article = true,
+                    _ => return Err(err("`columns` lists optional columns: [\"article\"]")),
+                }
+            }
+            Some(article)
+        }
+        Some(_) => return Err(err("`columns` lists optional columns: [\"article\"]")),
+    };
+    let lines = match params.get("lines").and_then(Value::as_str) {
+        None => None,
+        Some("flat") => Some(false),
+        Some("nested") => Some(true),
+        Some(_) => return Err(err("`lines` is \"flat\" or \"nested\"")),
+    };
     let pg = paging(params).map_err(err)?;
     with_any_page(s, |p, _| {
         let o = p.outputs();
-        let t = o.bom_table(group);
+        let view = outputs::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
+        let nested = view.nested && group == Group::Location;
+        let t = o.bom_table_with(group, view, true);
         let ids: Vec<Value> = o
-            .bom(group)
+            .bom_with(group, nested)
             .iter()
             .map(|r| {
                 let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
@@ -158,10 +184,38 @@ fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
                     v["accessory"] = json!(a);
                     v["strip"] = json!(c.hex());
                 }
+                // Brief 047: what the row counts.
+                let entries: Vec<Value> = r
+                    .entries
+                    .iter()
+                    .filter_map(|(c, n)| o.entry(*c, *n))
+                    .map(|e| {
+                        let mut x = json!({"component": e.component.hex(), "line": e.line});
+                        if e.item {
+                            x["item"] = json!(true);
+                        }
+                        if !e.subs.is_empty() || !e.missing.is_empty() {
+                            x["sub"] = json!(e.subs);
+                        }
+                        x
+                    })
+                    .collect();
+                v["entries"] = json!(entries);
+                if nested && let Some(k) = &r.kit {
+                    v["kit"] = json!(k);
+                }
                 v
             })
             .collect();
-        report_result(&t, &["location", "qty", "tags", "description", "maker", "part_number"], &ids, &pg, "BOM")
+        let mut keys = vec!["location", "qty", "unit", "tags"];
+        if nested {
+            keys.push("line");
+        }
+        keys.extend(["description", "maker", "part_number"]);
+        if view.article {
+            keys.push("article_number");
+        }
+        report_result(&t, &keys, &ids, &pg, "BOM")
     })
 }
 
@@ -173,7 +227,7 @@ fn run_wirelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         let ids: Vec<Value> = o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect();
         report_result(
             &t,
-            &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "cable", "page"],
+            &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"],
             &ids,
             &pg,
             "wire",
@@ -243,8 +297,11 @@ pub fn print_project(
     if crate::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
+    // Brief 033: the book shows the pending marker as the screen does.
+    p.refresh_pending();
+    let o = Options { pending: p.pending, ..o };
     let doc = p.ledger.document();
-    let resolved = printbook::resolve(doc, scope)?;
+    let resolved = printbook::resolve_with(doc, scope, p.outputs.as_ref())?;
     let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.outputs.as_ref(), o, path, progress)?;
     let files: Vec<Value> = done
         .files
@@ -270,20 +327,19 @@ pub fn print_project(
     };
     Ok(json!({
         "files": files, "sheets": done.sheets, "generated": done.generated, "flagged": done.flagged,
-        "unknown": resolved.unknown, "notes": done.notes, "message": message,
+        "unknown": resolved.unknown, "notes": resolved.notes.iter().chain(done.notes.iter()).collect::<Vec<_>>(), "message": message,
     }))
 }
 
 fn run_printbook(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let scope = scope_param(params).map_err(err)?;
-    let mono = match params.get("colour").and_then(Value::as_str) {
-        None | Some("mono") => true,
-        Some("screen") => false,
-        Some(_) => return Err(err("`colour` is \"mono\" (black on white) or \"screen\"")),
-    };
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
     let path = opt_typed(params, "path", "a file path", |v| v.as_str().map(str::to_string)).map_err(err)?;
-    let v = with_any_page(s, |p, _| print_project(p, &scope, Options { mono, lineweights }, path.as_deref(), &mut |_, _| true))?;
+    // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
+    let v = with_any_page(s, |p, _| {
+        let mono = crate::defaults::print::mono_param(p.ledger.document(), params)?;
+        print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)
+    })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {
         s.echo(m.to_string());
     }

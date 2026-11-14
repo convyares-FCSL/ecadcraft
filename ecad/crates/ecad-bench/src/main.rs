@@ -41,6 +41,108 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 044: only the connector rows (connplace, connpins, connside, pinlabel) on one version 2
+    // file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--connectors"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-connectors-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::connectors::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "connplace {:.2} ms, connpins {:.2} ms, connside {:.2} ms, pinlabel {:.2} ms ({} connectors on {} pages)",
+                    t.connplace_ms, t.connpins_ms, t.connside_ms, t.pinlabel_ms, t.connectors, t.pages
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // Brief 050: only the style rows (design 050 §11) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--styles"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-styles-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::styles::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "style_tag {:.1} ms, textstyle {:.1} ms, propredraw {:.1} ms, standard_remove {:.1} ms, open {:.0} ms, open_styled {:.0} ms, wire_category {:.1} ms, category_net {:.1} ms, potential_net {:.1} ms",
+                    t.style_tag_ms,
+                    t.textstyle_ms,
+                    t.propredraw_ms,
+                    t.standard_remove_ms,
+                    t.open_ms,
+                    t.open_styled_ms,
+                    t.wire_category_ms,
+                    t.category_net_ms,
+                    t.potential_net_ms
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // Brief 048: only the symbol rows (symbolnew, symbolimpact, symboledit, wiredraw) on one
+    // version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--symbols"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-symbols-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::symbols::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "symbolnew {:.2} ms, symbolimpact {:.2} ms, symboledit {:.1} ms, wiredraw {:.2} ms (baseline {:.2} ms) ({} copies on {} pages, 50 lineages)",
+                    t.symbolnew_ms, t.symbolimpact_ms, t.symboledit_ms, t.wiredraw_ms, t.wiredraw_base_ms, t.copies, t.pages
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // Brief 031: only the text rows (textplace, textstyle, propredraw) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--text"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-text-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::text::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "textplace {:.2} ms, textstyle {:.1} ms, propredraw {:.1} ms (densest page: {} symbols, {} texts)",
+                    t.textplace_ms, t.textstyle_ms, t.propredraw_ms, t.symbols, t.texts
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 029: time Verify on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--verify"

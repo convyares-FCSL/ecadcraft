@@ -42,8 +42,8 @@ pub const MAX_BAR: u32 = 50;
 pub const DEFAULT_BAR: usize = 10;
 /// The items with part data (FP2, FP6).
 pub const PART_ITEMS: [&str; 7] = ["end_stop", "end_plate", "end_plate_pe", "partition", "marker", "strip_label", "jumper"];
-/// A part's fields.
-pub const FIELDS: [&str; 3] = ["part_number", "maker", "description"];
+/// A part's fields (brief 047, design 047 §5: and its article number).
+pub const FIELDS: [&str; 4] = ["part_number", "maker", "description", crate::bom::ARTICLE_KEY];
 
 /// An accessory placed on a strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -246,6 +246,12 @@ pub fn is_part_key(key: &str) -> bool {
     key.split_once('.').is_some_and(|(i, f)| PART_ITEMS.contains(&i) && FIELDS.contains(&f))
 }
 
+/// Whether a strip part key is an article number (`end_stop.article_number`,
+/// `link.3.article_number`): checked as 047's article numbers are.
+fn is_article_key(key: &str) -> bool {
+    key.rsplit_once('.').is_some_and(|(_, f)| f == crate::bom::ARTICLE_KEY)
+}
+
 /// `link.<n>.<field>`: the link and the field.
 pub fn link_part_key(key: &str) -> Option<(u32, &str)> {
     let rest = key.strip_prefix(links::PREFIX)?;
@@ -272,6 +278,9 @@ fn whole(key: &str, value: &str, lo: u32, hi: u32, what: &str) -> Result<String,
 /// A card size outside 1…100, a bar size outside 2…50, or text that is too long.
 pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
+    if is_article_key(strip_key) {
+        return crate::bom::article_value(Some(v));
+    }
     match strip_key {
         PER_CARD_KEY => whole(strip_key, v, 1, MAX_PER_CARD, "a card size").map(Some),
         BAR_KEY => whole(strip_key, v, MIN_BAR, MAX_BAR, "a bar size").map(Some),
@@ -281,14 +290,31 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
 
 /// The rule for a project property `strip_*` (FP3, FP6): `None` when `key` is not one.
 pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+    // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
+    if is_type_article_project_key(key) {
+        return Some(crate::bom::article_value(value));
+    }
     let sk = strip_key_of_project(key)?;
     Some(part_value(doc, &sk, value))
+}
+
+/// Whether `key` is a strip's own terminal type article number, `article_number.<code>` (design
+/// 047 §5; feed-through's `article_number` is 047's own key, checked by [`crate::bom::setprop_rule`]).
+fn is_type_article_key(key: &str) -> bool {
+    key.strip_prefix(crate::bom::ARTICLE_KEY).and_then(|r| r.strip_prefix('.')).is_some_and(|code| crate::terminal_types::by_code(code).is_some())
+}
+
+/// Whether `key` is a project terminal type article number, `strip_<code>_article_number`.
+fn is_type_article_project_key(key: &str) -> bool {
+    key.strip_prefix("strip_")
+        .and_then(|r| r.strip_suffix(&format!("_{}", crate::bom::ARTICLE_KEY)))
+        .is_some_and(|code| crate::terminal_types::by_code(code).is_some())
 }
 
 /// Every position label of strip `c` in plan order: drawn labels and the offer's positions.
 pub fn positions(doc: &Document, c: ComponentId) -> Vec<String> {
     let mut labels: BTreeSet<String> =
-        crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::terminal_name(doc, t)).collect();
+        crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::position_label(doc, t)).collect();
     if let Some(o) = crate::strips::offer_of(doc, c) {
         labels.extend((1..=o.positions).map(|n| n.to_string()));
     }
@@ -312,12 +338,36 @@ pub fn link_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result
 /// # Errors
 /// Fewer than 2 positions.
 pub fn link_text(p: &Positions, order: &[String]) -> Result<String, String> {
+    // Brief 036: a cross-level link joins levels of one position (`1.1-1.3`).
+    if p.crosses_levels() {
+        return Ok(p.text());
+    }
     let sel = p.select(order);
     let missing = p.missing(order);
     if sel.len() + missing.len() < 2 {
         return Err("A link joins at least 2 positions. Write positions like 1-4 or 7, 9, 11.".into());
     }
-    Ok(if missing.is_empty() { links::canonical(&sel, order) } else { p.text() })
+    // Brief 036: a link on one level keeps its level (`1.2-8.2`); a cross-level link, or one
+    // whose items name different levels, stays as written.
+    Ok(match (missing.is_empty(), p.crosses_levels(), p.level(), p.point()) {
+        (true, false, Some(n), Some(pt)) => crate::terminal_types::link_text(&sel, order, n, pt),
+        _ => p.text(),
+    })
+}
+
+/// A link value without the items written as `drop` (brief 036: **Drop missing levels**); empty
+/// when nothing is left.
+pub fn drop_items(text: &str, drop: &[String]) -> String {
+    let Ok(p) = links::parse(text) else { return text.to_string() };
+    let kept: Vec<String> =
+        p.0.iter()
+            .map(|i| match i {
+                links::Item::One(x) => x.clone(),
+                links::Item::Range(a, b) => format!("{a}-{b}"),
+            })
+            .filter(|x| !drop.contains(x))
+            .collect();
+    kept.join(", ")
 }
 
 /// The `setprop` rule for strip keys (FP1, FP2, FP5, FP6): `Ok(None)` when `key` is not one of
@@ -343,7 +393,9 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         if !strip {
             return Err(not_strip());
         }
-        return link_value(doc, c, value).map(Some);
+        // Brief 036 (§5.1): level names typed (`1.N-3.N`) are stored as numbers.
+        let named = value.map(|v| crate::terminal_types::link_names_to_numbers(doc, c, v));
+        return link_value(doc, c, named.as_deref()).map(Some);
     }
     if key.starts_with(links::PREFIX) {
         if !strip {
@@ -352,10 +404,16 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         if link_part_key(key).is_none() {
             return Err(format!("\"{}\" is not a link key. Write link.<n> (1 to 999) or link.<n>.part_number.", shown(key)));
         }
+        if is_article_key(key) {
+            return crate::bom::article_value(value).map(Some);
+        }
         return crate::devices::property_value(doc, "part_number", value).map(Some);
     }
     if strip && is_part_key(key) {
         return part_value(doc, key, value).map(Some);
+    }
+    if strip && is_type_article_key(key) {
+        return crate::bom::article_value(value).map(Some);
     }
     Ok(None)
 }
@@ -379,10 +437,33 @@ pub struct LinkInfo {
     pub part_number: Option<String>,
     pub maker: Option<String>,
     pub description: Option<String>,
+    /// Brief 047 (design 047 §5): from the level its part number came from.
+    pub article_number: Option<String>,
     /// Labels it names that the strip does not have (`link-orphan`).
     pub missing: Vec<String>,
     /// Partitions inside its span, by the label they follow (`link-across-partition`).
     pub crosses: Vec<String>,
+    /// Brief 036: the level it runs on (`None` for a cross-level link).
+    pub level: Option<u32>,
+    /// Brief 036: a cross-level link's levels (one position, `1.1-1.3`).
+    pub cross: Option<(u32, u32)>,
+}
+
+impl LinkInfo {
+    /// Whether the link runs through rows of level `n` (its level; a cross-level link through its
+    /// levels).
+    pub fn runs_on(&self, n: u32) -> bool {
+        match (self.level, self.cross) {
+            (Some(l), _) => l == n,
+            (None, Some((lo, hi))) => lo <= n && n <= hi,
+            (None, None) => true,
+        }
+    }
+
+    /// Whether the link names level `n` of the positions it names.
+    pub fn names_level(&self, n: u32) -> bool {
+        self.runs_on(n)
+    }
 }
 
 /// One accessory BOM row of a strip.
@@ -393,6 +474,8 @@ pub struct AccBom {
     pub description: String,
     pub part_number: Option<String>,
     pub maker: Option<String>,
+    /// Brief 047 (design 047 §5).
+    pub article_number: Option<String>,
     pub qty: usize,
 }
 
@@ -486,26 +569,53 @@ struct Parts<'a> {
     inherits: BTreeSet<String>,
 }
 
+/// One accessory part as read: part number, maker, description, article number.
+type Part = (Option<String>, Option<String>, Option<String>, Option<String>);
+
 impl Parts<'_> {
+    /// The strip's own value of `key`.
+    fn own(&self, key: &str) -> Option<String> {
+        self.strip.get(key).map(|v| v.trim()).filter(|v| !v.is_empty()).map(str::to_string)
+    }
+
     fn get(&mut self, key: &str) -> Option<String> {
-        if let Some(v) = self.strip.get(key).map(|v| v.trim()).filter(|v| !v.is_empty()) {
-            return Some(v.to_string());
+        if let Some(v) = self.own(key) {
+            return Some(v);
         }
         let pk = project_key(key);
         self.inherits.insert(pk.clone());
         self.project.get(&pk).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
     }
 
-    fn part(&mut self, item: &str) -> (Option<String>, Option<String>, Option<String>) {
-        (self.get(&format!("{item}.part_number")), self.get(&format!("{item}.maker")), self.get(&format!("{item}.description")))
+    fn part(&mut self, item: &str) -> Part {
+        let own_part = self.own(&format!("{item}.part_number")).is_some();
+        let pn = self.get(&format!("{item}.part_number"));
+        let article_key = format!("{item}.{}", crate::bom::ARTICLE_KEY);
+        // Brief 047 (design 047 §5): the article number comes from the level the part number came
+        // from, so a strip's own part never shows the project's article number.
+        let article = if own_part || pn.is_none() { self.own(&article_key) } else { self.get(&article_key) };
+        (pn, self.get(&format!("{item}.maker")), self.get(&format!("{item}.description")), article)
     }
 }
 
 /// A strip's accessories on `doc`, from its properties and its plan rows (label order).
 pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripAcc {
     let mut a = StripAcc::default();
-    let order: Vec<String> = rows.iter().map(|r| r.label.clone()).collect();
+    // Brief 036: one entry per position (rows are levels; plan order).
+    let mut order: Vec<String> = Vec::with_capacity(rows.len());
+    for r in rows {
+        if order.last() != Some(&r.label) {
+            order.push(r.label.clone());
+        }
+    }
     let index: BTreeMap<&str, usize> = order.iter().enumerate().map(|(i, l)| (l.as_str(), i)).collect();
+    // A position's last row (its PE-ness for end plates) and its levels.
+    let mut last_row: BTreeMap<&str, &TermRow> = BTreeMap::new();
+    let mut levels_at: BTreeMap<&str, BTreeSet<u32>> = BTreeMap::new();
+    for r in rows {
+        last_row.insert(r.label.as_str(), r);
+        levels_at.entry(r.label.as_str()).or_default().insert(r.level);
+    }
     // Places.
     for (k, v) in props.range(ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(ACC_PREFIX)) {
         let Some(spot) = spot_of(k) else { continue };
@@ -557,16 +667,38 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     let mut infos: Vec<LinkInfo> = Vec::new();
     let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| links::natural_key(l)).collect() };
     for (n, p, text) in found {
-        let labels: Vec<String> = p.select_keyed(&order, &keys).into_iter().cloned().collect();
+        // Brief 036: a link runs on one level (positions without it are skipped); a cross-level
+        // link joins levels of one position and is one bridge.
+        let cross = p.spans().into_iter().find_map(|sp| match sp {
+            links::Span::Levels { lo, hi, .. } => Some((lo, hi)),
+            links::Span::Positions { .. } => None,
+        });
+        let level = if cross.is_some() { None } else { Some(p.level().unwrap_or(1)) };
+        let labels: Vec<String> = p
+            .select_keyed(&order, &keys)
+            .into_iter()
+            .filter(|l| match level {
+                Some(n) => levels_at.get(l.as_str()).is_some_and(|v| v.contains(&n)),
+                None => true,
+            })
+            .cloned()
+            .collect();
         let missing = p.missing(&order);
         let idx: Vec<usize> = labels.iter().filter_map(|l| index.get(l.as_str()).copied()).collect();
         let (first, last) = (idx.first().copied().unwrap_or(0), idx.last().copied().unwrap_or(0));
-        let span = if idx.is_empty() { 0 } else { last - first + 1 };
+        let span = match (idx.is_empty(), level) {
+            (true, _) => 0,
+            (false, None) => 1,
+            // Positions on that level from the first to the last.
+            (false, Some(n)) => {
+                order.get(first..=last).map_or(0, |run| run.iter().filter(|l| levels_at.get(l.as_str()).is_some_and(|v| v.contains(&n))).count())
+            }
+        };
         let crosses = partitions.iter().filter(|i| **i >= first && **i < last).filter_map(|i| order.get(*i).cloned()).collect();
         let own = |f: &str| props.get(&format!("{}.{f}", links::key(n))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
-        let (pn, mk, ds) = (own("part_number"), own("maker"), own("description"));
-        let (part_number, maker, description) = match pn {
-            Some(pn) => (Some(pn), mk, ds),
+        let (pn, mk, ds, ar) = (own("part_number"), own("maker"), own("description"), own(crate::bom::ARTICLE_KEY));
+        let (part_number, maker, description, article_number) = match pn {
+            Some(pn) => (Some(pn), mk, ds, ar),
             None => parts.part("jumper"),
         };
         infos.push(LinkInfo {
@@ -577,21 +709,30 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             last,
             span,
             lane: 0,
-            bars: span.div_ceil(a.bar),
+            bars: if cross.is_some() { usize::from(span > 0) } else { span.div_ceil(a.bar) },
             part_number,
             maker,
             description,
+            article_number,
             missing,
             crosses,
+            level,
+            cross,
         });
     }
-    // Lanes: greedy by first position, then link number (stable).
+    // Lanes: greedy by first position, then link number (stable); per level (brief 036: links on
+    // different levels run through different symbols), cross-level links in lane 0.
     let mut by_first: Vec<usize> = (0..infos.len()).collect();
-    by_first.sort_by_key(|i| infos.get(*i).map(|l| (l.first, l.n)));
+    by_first.sort_by_key(|i| infos.get(*i).map(|l| (l.level, l.first, l.n)));
+    let mut lane_level: Option<Option<u32>> = None;
     for i in by_first {
         let Some(l) = infos.get_mut(i) else { continue };
-        if l.span == 0 {
+        if l.span == 0 || l.cross.is_some() {
             continue;
+        }
+        if lane_level != Some(l.level) {
+            lanes.clear();
+            lane_level = Some(l.level);
         }
         match lanes.iter().position(|end| *end < l.first) {
             Some(k) => {
@@ -608,7 +749,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     }
     a.links = infos;
     // BOM rows: per accessory part, only what is placed (§7.4).
-    let pe_at = |label: Option<&str>| label.and_then(|l| index.get(l)).and_then(|i| rows.get(*i)).is_some_and(|r| r.pe);
+    let pe_at = |label: Option<&str>| label.and_then(|l| last_row.get(l)).is_some_and(|r| r.pe);
     let mut plates: [usize; 2] = [0, 0];
     let mut count_plates = |items: &[Acc], pe: bool| {
         let n = items.iter().filter(|x| **x == Acc::EndPlate).count();
@@ -623,19 +764,21 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     count_plates(&a.end, rows.last().is_some_and(|r| r.pe));
     let mut bom: Vec<AccBom> = Vec::new();
     let mut no_part = 0usize;
-    let push = |bom: &mut Vec<AccBom>,
-                no_part: &mut usize,
-                accessory: &'static str,
-                qty: usize,
-                part: (Option<String>, Option<String>, Option<String>),
-                words: &str| {
+    let push = |bom: &mut Vec<AccBom>, no_part: &mut usize, accessory: &'static str, qty: usize, part: Part, words: &str| {
         if qty == 0 {
             return;
         }
         if part.0.is_none() {
             *no_part += qty;
         }
-        bom.push(AccBom { accessory, description: part.2.unwrap_or_else(|| words.to_string()), part_number: part.0, maker: part.1, qty });
+        bom.push(AccBom {
+            accessory,
+            description: part.2.unwrap_or_else(|| words.to_string()),
+            part_number: part.0,
+            maker: part.1,
+            article_number: part.3,
+            qty,
+        });
     };
     for acc in [Acc::EndStop, Acc::EndPlate, Acc::Partition, Acc::StripLabel] {
         if acc == Acc::EndPlate {
@@ -656,7 +799,8 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             push(&mut bom, &mut no_part, acc.key(), n, p, acc.description());
         }
     }
-    let markers = a.markers.len();
+    // Brief 036 (Q10): one marker per level of a marked position.
+    let markers: usize = a.markers.iter().map(|l| levels_at.get(l.as_str()).map_or(1, BTreeSet::len)).sum();
     if markers > 0 {
         let p = parts.part("marker");
         match p.0 {
@@ -689,6 +833,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
                 description: l.description.clone().unwrap_or_else(|| format!("Jumper bar \u{d7}{}", a.bar)),
                 part_number: l.part_number.clone(),
                 maker: l.maker.clone(),
+                article_number: l.article_number.clone(),
                 qty: l.bars,
             }),
         }
@@ -707,6 +852,18 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
 /// (`-X01: partition after 4 → after 6`, `-X01: link 1-4 → 3-6`). Moves are worked out on the end
 /// state, so `4 ↔ 5` swaps cleanly; keys on labels no terminal had stay.
 pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
+    let maps = relabels(ops);
+    let mut out = Vec::new();
+    let mut lines = Vec::new();
+    for (c, map) in maps {
+        renumber_strip(doc, c, &map, &mut out, &mut lines);
+    }
+    (out, lines)
+}
+
+/// The labels a renumber plan `ops` (`RemoveTerminal` + `AddTerminal` of one ID) changes, per
+/// component: old label → new label.
+pub fn relabels(ops: &[Op]) -> BTreeMap<ComponentId, BTreeMap<String, String>> {
     let mut removed: BTreeMap<ecad_model::TerminalId, (ComponentId, Option<String>)> = BTreeMap::new();
     let mut maps: BTreeMap<ComponentId, BTreeMap<String, String>> = BTreeMap::new();
     for op in ops {
@@ -726,104 +883,156 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
             _ => {}
         }
     }
-    let mut out = Vec::new();
-    let mut lines = Vec::new();
-    for (c, map) in maps {
-        if !crate::strips::is_strip(doc, c) {
-            continue;
+    maps
+}
+
+/// One strip's part of [`renumber_ops`]: `map` is its relabels (old → new).
+fn renumber_strip(doc: &Document, c: ComponentId, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>) {
+    if !crate::strips::is_strip(doc, c) {
+        return;
+    }
+    let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { return };
+    let tag = crate::devices::tag_words(doc, c);
+    let moved = |l: &str| map.get(l).cloned().unwrap_or_else(|| l.to_string());
+    // Placement keys: the end state, then the difference.
+    let mut now: BTreeMap<String, String> = BTreeMap::new();
+    let mut was: BTreeMap<String, String> = BTreeMap::new();
+    for (k, v) in props.range(ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(ACC_PREFIX)) {
+        was.insert(k.clone(), v.clone());
+        let nk = match spot_of(k) {
+            Some(Spot::After(l)) => Spot::After(moved(&l)).key(),
+            Some(Spot::On(l)) => Spot::On(moved(&l)).key(),
+            _ => k.clone(),
+        };
+        if nk != *k {
+            let how = if k.starts_with(ON_PREFIX) { "on" } else { "after" };
+            let (a, b) = (spot_of(k).and_then(|x| x.label().map(str::to_string)), spot_of(&nk).and_then(|x| x.label().map(str::to_string)));
+            lines.push(format!(
+                "{tag}: {} {how} {} \u{2192} {how} {}",
+                v.replace(',', ", ").replace('_', " "),
+                a.unwrap_or_default(),
+                b.unwrap_or_default()
+            ));
         }
-        let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { continue };
-        let tag = crate::devices::tag_words(doc, c);
-        let moved = |l: &str| map.get(l).cloned().unwrap_or_else(|| l.to_string());
-        // Placement keys: the end state, then the difference.
-        let mut now: BTreeMap<String, String> = BTreeMap::new();
-        let mut was: BTreeMap<String, String> = BTreeMap::new();
-        for (k, v) in props.range(ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(ACC_PREFIX)) {
-            was.insert(k.clone(), v.clone());
-            let nk = match spot_of(k) {
-                Some(Spot::After(l)) => Spot::After(moved(&l)).key(),
-                Some(Spot::On(l)) => Spot::On(moved(&l)).key(),
-                _ => k.clone(),
+        // Two places landing on one key (a terminal moved onto a spare position that already
+        // had items) merge, never lose items (review of PR #57, 1).
+        match now.get(&nk).cloned() {
+            Some(prev) => {
+                let on = nk.starts_with(ON_PREFIX);
+                let mut items = parse_items(&prev, on).unwrap_or_default();
+                for a in parse_items(v, on).unwrap_or_default() {
+                    if !(on && items.contains(&a)) {
+                        items.push(a);
+                    }
+                }
+                items.truncate(MAX_ITEMS);
+                let merged = items_text(&items);
+                lines.push(format!("{tag}: {} joined into {merged}", nk.replace("acc.", "")));
+                now.insert(nk, merged);
+            }
+            None => {
+                now.insert(nk, v.clone());
+            }
+        }
+    }
+    // Brief 036 (FP7): a level's own label and a fuse position's rating move with their position.
+    // The rest of the position-keyed list (`acc.*` above, with its merge rule).
+    for prefix in crate::terminal_types::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
+        for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
+            let Some(rest) = k.strip_prefix(prefix) else { continue };
+            // `term_label.<p>.<n>`: the position is all but the last part; `rating.<p>`: all of it.
+            let (pos, tail) = if prefix == crate::terminal_types::LABEL_PREFIX {
+                match rest.rsplit_once('.') {
+                    Some((pos, n)) => (pos, format!(".{n}")),
+                    None => continue,
+                }
+            } else {
+                (rest, String::new())
             };
+            was.insert(k.clone(), v.clone());
+            let nk = format!("{prefix}{}{tail}", moved(pos));
             if nk != *k {
-                let how = if k.starts_with(ON_PREFIX) { "on" } else { "after" };
-                let (a, b) = (spot_of(k).and_then(|x| x.label().map(str::to_string)), spot_of(&nk).and_then(|x| x.label().map(str::to_string)));
-                lines.push(format!(
-                    "{tag}: {} {how} {} \u{2192} {how} {}",
-                    v.replace(',', ", ").replace('_', " "),
-                    a.unwrap_or_default(),
-                    b.unwrap_or_default()
-                ));
+                lines.push(format!("{tag}: {} {} \u{2192} {}", if tail.is_empty() { "rating" } else { "label" }, k, nk));
             }
-            // Two places landing on one key (a terminal moved onto a spare position that already
-            // had items) merge, never lose items (review of PR #57, 1).
-            match now.get(&nk).cloned() {
-                Some(prev) => {
-                    let on = nk.starts_with(ON_PREFIX);
-                    let mut items = parse_items(&prev, on).unwrap_or_default();
-                    for a in parse_items(v, on).unwrap_or_default() {
-                        if !(on && items.contains(&a)) {
-                            items.push(a);
-                        }
-                    }
-                    items.truncate(MAX_ITEMS);
-                    let merged = items_text(&items);
-                    lines.push(format!("{tag}: {} joined into {merged}", nk.replace("acc.", "")));
-                    now.insert(nk, merged);
-                }
-                None => {
-                    now.insert(nk, v.clone());
-                }
-            }
+            now.insert(nk, v.clone());
         }
-        for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {
-            let (b, a) = (was.get(k).cloned(), now.get(k).cloned());
-            if b != a {
-                out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k.clone(), before: b, after: a });
-            }
+    }
+    for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {
+        let (b, a) = (was.get(k).cloned(), now.get(k).cloned());
+        if b != a {
+            out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k.clone(), before: b, after: a });
         }
-        // Links: labels rewritten, re-collapsed in the new plan order.
-        let old_order = positions(doc, c);
-        let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
-        new_order.sort_by_key(|l| links::natural_key(l));
-        new_order.dedup();
-        // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
-        // one would silently join that terminal's net, so the position leaves the link.
-        let drawn_before: BTreeSet<String> =
-            crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::terminal_name(doc, t)).collect();
-        let taken: BTreeSet<&String> = map.values().filter(|l| !drawn_before.contains(*l)).collect();
-        for (n, p) in links::of(props) {
-            let key = links::key(n);
-            let Some(before) = props.get(&key).cloned() else { continue };
-            let selected: Vec<&String> = p.select(&old_order);
-            let dropped: Vec<&String> = selected.iter().copied().filter(|l| taken.contains(l)).collect();
-            let mut labels: Vec<String> = selected.iter().filter(|l| !taken.contains(*l)).map(|l| moved(l)).collect();
-            labels.extend(p.missing(&old_order));
-            if !dropped.is_empty() {
-                let names: Vec<&str> = dropped.iter().map(|l| l.as_str()).collect();
-                let why = format!("{} now drawn by a renumbered terminal", names.join(", "));
-                if labels.len() < 2 {
-                    lines.push(format!("{tag}: link {before} removed ({why})"));
-                    for k in std::iter::once(key.clone()).chain(FIELDS.iter().map(|f| format!("{key}.{f}"))) {
-                        if let Some(b) = props.get(&k).cloned() {
-                            out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k, before: Some(b), after: None });
-                        }
+    }
+    // Links: labels rewritten, re-collapsed in the new plan order.
+    let old_order = positions(doc, c);
+    let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
+    new_order.sort_by_key(|l| links::natural_key(l));
+    new_order.dedup();
+    // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
+    // one would silently join that terminal's net, so the position leaves the link.
+    let drawn_before: BTreeSet<String> =
+        crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::interact::position_label(doc, t)).collect();
+    let taken: BTreeSet<&String> = map.values().filter(|l| !drawn_before.contains(*l)).collect();
+    for (n, p) in links::of(props) {
+        let key = links::key(n);
+        let Some(before) = props.get(&key).cloned() else { continue };
+        // Brief 036 (review 036, 1): a link that is not on one level and one point (a
+        // cross-level link, items on different levels or points) is rewritten span by span,
+        // each on its own level and point, both ends of each range kept.
+        let (Some(level), Some(point), false) = (p.level(), p.point(), p.crosses_levels()) else {
+            let mut parts: Vec<String> = Vec::new();
+            for (item, sp) in p.0.iter().zip(p.spans()) {
+                match sp {
+                    links::Span::Levels { position, lo, hi } => {
+                        let q = moved(&position);
+                        // A cross-level link names both levels (`1.1-1.3`).
+                        parts.push(format!("{q}.{lo}-{q}.{hi}"));
                     }
-                    continue;
+                    links::Span::Positions { level, point, .. } => {
+                        let one = links::Positions(vec![item.clone()]);
+                        let mut sel: Vec<String> = one.select(&old_order).into_iter().map(|l| moved(l)).collect();
+                        sel.extend(one.missing(&old_order));
+                        let mut refs: Vec<&String> = sel.iter().collect();
+                        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+                        refs.dedup();
+                        parts.push(crate::terminal_types::link_text(&refs, &new_order, level, point));
+                    }
                 }
-                lines.push(format!("{tag}: link {before} leaves {why}"));
             }
-            let mut refs: Vec<&String> = labels.iter().collect();
-            refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
-            refs.dedup();
-            let after = links::canonical(&refs, &new_order);
+            let after = parts.join(", ");
             if after != before {
                 lines.push(format!("{tag}: link {before} \u{2192} {after}"));
                 out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
             }
+            continue;
+        };
+        let selected: Vec<&String> = p.select(&old_order);
+        let dropped: Vec<&String> = selected.iter().copied().filter(|l| taken.contains(l)).collect();
+        let mut labels: Vec<String> = selected.iter().filter(|l| !taken.contains(*l)).map(|l| moved(l)).collect();
+        labels.extend(p.missing(&old_order));
+        if !dropped.is_empty() {
+            let names: Vec<&str> = dropped.iter().map(|l| l.as_str()).collect();
+            let why = format!("{} now drawn by a renumbered terminal", names.join(", "));
+            if labels.len() < 2 {
+                lines.push(format!("{tag}: link {before} removed ({why})"));
+                for k in std::iter::once(key.clone()).chain(FIELDS.iter().map(|f| format!("{key}.{f}"))) {
+                    if let Some(b) = props.get(&k).cloned() {
+                        out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k, before: Some(b), after: None });
+                    }
+                }
+                continue;
+            }
+            lines.push(format!("{tag}: link {before} leaves {why}"));
+        }
+        let mut refs: Vec<&String> = labels.iter().collect();
+        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+        refs.dedup();
+        let after = crate::terminal_types::link_text(&refs, &new_order, level, point);
+        if after != before {
+            lines.push(format!("{tag}: link {before} \u{2192} {after}"));
+            out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
         }
     }
-    (out, lines)
 }
 
 #[cfg(test)]

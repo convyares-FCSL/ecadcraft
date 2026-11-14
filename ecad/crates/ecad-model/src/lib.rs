@@ -35,25 +35,27 @@ pub mod merge;
 pub mod numbering;
 pub mod op;
 pub mod sheet;
+pub mod style;
 pub mod tag;
 pub mod wiring;
 
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
-    Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING, Definition, Document,
-    End, Folder, Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation,
-    Style, Subject, SymbolInstance, Terminal, TerminalDef,
+    Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING,
+    DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings,
+    Properties, ReferenceStyle, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign,
 };
 pub use error::{ModelError, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
     CableId, ComponentId, ConductorId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId,
-    TerminalId, TxId,
+    StandardId, TerminalId, TxId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use sheet::{GridLabels, SheetSpec};
+pub use style::{Standard, StandardHeader, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 
 /// Version of the op and document schema. Independent of the product version (proposal §8.1):
 /// it changes only when the meaning or shape of recorded ops changes.

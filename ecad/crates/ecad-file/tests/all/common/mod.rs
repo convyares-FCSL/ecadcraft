@@ -42,6 +42,7 @@ pub fn coil(graphics_scale: f64) -> Definition {
             TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
         ],
+        ..Default::default()
     }
 }
 
@@ -147,6 +148,8 @@ pub fn fixture() -> Fixture {
                     height: 2.5,
                     rotation: std::f64::consts::FRAC_PI_2,
                     value: "K1 \"quoted\" \\ tab\t ünï 😀".into(),
+                    halign: Default::default(),
+                    valign: Default::default(),
                 }),
             },
         }],

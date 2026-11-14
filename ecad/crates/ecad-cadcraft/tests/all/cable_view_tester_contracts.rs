@@ -223,7 +223,7 @@ fn marks(h: &mut H, page: PageId) -> Vec<(String, i64, i64)> {
     let mut v: Vec<(String, i64, i64)> = h
         .p(|p| overlay_marks(p, uid))
         .into_iter()
-        .filter(|m| (m.color.0, m.color.1, m.color.2) != (0xff, 0x00, 0xff))
+        .filter(|m| (m.color.0, m.color.1, m.color.2) != (0x7a, 0x3f, 0xe0))
         .map(|m| (format!("{:?}", m.shape), (m.at.x * 1e6).round() as i64, (m.at.y * 1e6).round() as i64))
         .collect();
     v.sort();
@@ -232,7 +232,7 @@ fn marks(h: &mut H, page: PageId) -> Vec<(String, i64, i64)> {
 
 fn magenta_marks(h: &mut H, page: PageId) -> usize {
     let uid = h.p(|p| p.pages[&page].uid).unwrap();
-    h.p(|p| overlay_marks(p, uid)).iter().filter(|m| (m.color.0, m.color.1, m.color.2) == (0xff, 0x00, 0xff)).count()
+    h.p(|p| overlay_marks(p, uid)).iter().filter(|m| (m.color.0, m.color.1, m.color.2) == (0x7a, 0x3f, 0xe0)).count()
 }
 
 // --------------------------------------------------------------------------------------- AC1

@@ -21,7 +21,7 @@ use ecad_trial::window::{self, STENCIL_BITS};
 use ecad_trial::{Invocation, TITLE, Trial, USAGE, parse_args};
 use eframe::egui;
 
-struct App(Trial, Option<Timing>);
+struct App(Trial, Option<Timing>, window::FirstFit);
 
 /// Start-up timing still running (only with `ECAD_STARTUP_TIMING` on).
 struct Timing {
@@ -34,6 +34,12 @@ struct Timing {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The first launch grows to fit its monitor, once (a restored window keeps its size).
+        if self.2.pending() {
+            for c in self.2.commands(&ctx.input(|i| i.viewport().clone())) {
+                ctx.send_viewport_cmd(c);
+            }
+        }
         self.0.logic(ctx);
     }
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -59,6 +65,25 @@ impl eframe::App for App {
             t.marks.mark(Step::FirstUpdate);
         }
     }
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        // Brief 038: the shell state and page views, only when they changed (eframe calls this
+        // every `auto_save_interval` and on exit).
+        let (shell, views) = self.0.shell.to_save();
+        if let Some(s) = shell {
+            storage.set_string(ecad_trial::shell::state::SHELL_KEY, s);
+        }
+        if let Some(v) = views {
+            storage.set_string(ecad_trial::shell::state::VIEWS_KEY, v);
+        }
+        // Brief 048 (design 048 §3.2): the symbol builder's drafts.
+        if let Some(d) = self.0.library.to_save() {
+            storage.set_string(ecad_trial::library::draft::DRAFTS_KEY, d);
+        }
+    }
+    fn auto_save_interval(&self) -> std::time::Duration {
+        // Saved on change, debounced to once a second (design 038 §5.4).
+        std::time::Duration::from_secs(1)
+    }
     fn on_exit(&mut self) {
         // Closed before the first present: keep the marks reached so far.
         if let Some(t) = self.1.take() {
@@ -73,8 +98,8 @@ impl eframe::App for App {
 
 fn main() -> eframe::Result {
     let mut timing = StartupTiming::from_env();
-    let (snapshots, project) = match parse_args(std::env::args_os().skip(1)) {
-        Ok(Invocation::Run { snapshots, project }) => (snapshots, project),
+    let (snapshots, project, control, cad_ui) = match parse_args(std::env::args_os().skip(1)) {
+        Ok(Invocation::Run { snapshots, project, control, cad_ui }) => (snapshots, project, control, cad_ui),
         Ok(Invocation::Help) => {
             println!("{USAGE}");
             return Ok(());
@@ -90,6 +115,8 @@ fn main() -> eframe::Result {
     };
     // Before the engine's command list is first built.
     ecad_cadcraft::install();
+    // Brief 040: the sheet font for the page (US3), before any text is drawn.
+    ecad_trial::canvas::register_sheet_faces();
     // Brief 024: Print Book plots through CADCraft's PDF plotter.
     ecad_cadcraft::printbook::install_io();
     if let Some(t) = &mut timing {
@@ -100,7 +127,8 @@ fn main() -> eframe::Result {
         cfg!(all(unix, not(target_os = "macos"))),
     );
     // The window's size and position are remembered between sessions (brief 023).
-    let mut options = window::options(window::restores_window());
+    let restoring = window::restores_window();
+    let mut options = window::options(restoring);
     options.wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface);
     // As in CADCraft's desktop app: large command previews outgrow wgpu's default buffer cap.
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup {
@@ -132,6 +160,16 @@ fn main() -> eframe::Result {
                 }
             }
             let mut trial = Trial::start(snapshots, project.as_deref(), timing.as_mut())?;
+            // Brief 038: the shell's remembered state and page views; `--cad-ui` turns the
+            // developer switch on.
+            trial.shell.state.cad_chrome = cad_ui;
+            let stored = |k: &str| cc.storage.and_then(|s| s.get_string(k));
+            trial.shell.load(stored(ecad_trial::shell::state::SHELL_KEY).as_deref(), stored(ecad_trial::shell::state::VIEWS_KEY).as_deref());
+            trial.library.load(stored(ecad_trial::library::draft::DRAFTS_KEY).as_deref());
+            // Brief 035: agent access on for this run (not remembered).
+            if let Some(port) = control {
+                trial.agent.control_flag(port);
+            }
             if let Some(rs) = &cc.wgpu_render_state {
                 trial.cad.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
             }
@@ -140,7 +178,7 @@ fn main() -> eframe::Result {
             }
             let timing =
                 timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), trial.home.as_deref()), built: false });
-            Ok(Box::new(App(trial, timing)))
+            Ok(Box::new(App(trial, timing, window::FirstFit::new(restoring))))
         }),
     )
 }

@@ -29,6 +29,24 @@
 //!   its transaction, the page redrawn); **linkpage**: the link lines of page 1 worked out. Each
 //!   committed and updated, then undone.
 //!
+//! - Brief 036 (design 036 §11.3), on page 1's 20 bench wires: **lvlfence**: Place Terminals
+//!   `LNPE` level `L` across them (a new strip); **lvlplace**: a `termlnpe.2` level placed on a wire
+//!   with that strip (the free-level search, the split); **lvlsep**: the project's
+//!   `terminal.level.separator` changed (only strips with multi-level positions inherit it);
+//!   **toposition**: a fuse terminal device turned into a fuse position; **lvltrenum**: the L/N
+//!   strip (20 positions, links on levels 1 and 2) renumbered. Each undone (the strip kept).
+//!   The design's large-tier population (50 L/N/PE strips, 50 sensor strips, 25 fuse strips) is
+//!   not added, so 028's and 030's rows stay comparable with their baselines.
+//!
+//! - Brief 046 (design 046 §10): **spage**: the first sheet of a one-strip graphic page drawn (the
+//!   bench strip: 20 positions, 10 two-core cables, links and accessories); **spageupd**: with
+//!   that page shown, a wire number set on a wire of that strip (the strip's drawing changes; a
+//!   draw command cannot run on a generated page), committed, updated, redrawn; **spageoff**: the
+//!   same on another strip (no projection, counted in `spageoff_projections`); **spagetype**: one
+//!   of the strip's cables gets another type with the page shown (`spagetype_work` strips marked).
+//!   **stripbuild** now includes the graphic pages' kept data (`StripPages::build`), as first show
+//!   does.
+//!
 //! Each edit is undone after it is measured.
 
 use std::path::Path;
@@ -70,6 +88,22 @@ pub struct MeasuredStrips {
     pub accproj_work: usize,
     pub linkset_ms: f64,
     pub linkpage_ms: f64,
+    /// Brief 036.
+    pub lvlfence_ms: f64,
+    pub lvlplace_ms: f64,
+    pub lvlsep_ms: f64,
+    pub lvlsep_work: usize,
+    pub toposition_ms: f64,
+    pub lvltrenum_ms: f64,
+    /// Brief 046.
+    pub spage_ms: f64,
+    pub spageupd_ms: f64,
+    pub spageoff_ms: f64,
+    pub spageoff_projections: u64,
+    pub spagetype_ms: f64,
+    pub spagetype_work: usize,
+    /// The `StripPages::build` share of `stripbuild`.
+    pub spbuild_ms: f64,
     /// Strips, terminals and cables in the project.
     pub strips: usize,
     pub terminals: usize,
@@ -245,7 +279,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut out = MeasuredStrips::default();
         // First build of the strips and core counts (the report models built, untimed, first).
         let mut build = Vec::new();
+        let mut spbuild = Vec::new();
         for _ in 0..runs {
+            let sp = &mut spbuild;
             build.push(project.configure(&mut s, |p| {
                 p.outputs();
                 let doc = p.ledger.document();
@@ -253,6 +289,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let t = Instant::now();
                 let cx = ecad_cadcraft::outputs::PageCx::of(doc);
                 let built = ecad_cadcraft::strips::Strips::build(doc, o, &cx);
+                // Brief 046: the graphic pages' kept data, built with the strips.
+                let t2 = Instant::now();
+                std::hint::black_box(ecad_cadcraft::strip_page::StripPages::build(doc, &built));
+                sp.push(ms(t2));
                 for k in doc.cables.keys() {
                     std::hint::black_box(ecad_cadcraft::strips::cable_cores(doc, *k));
                 }
@@ -261,6 +301,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.stripbuild_ms = median(&mut build);
+        out.spbuild_ms = median(&mut spbuild);
         let (page1, first_strip, strips, terminals, cables) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             let o = p.outputs.as_ref();
@@ -298,7 +339,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut upd = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
-            run(&mut s, "wire", json!({"points": [[last + 30.0, 130.0], [last + 5.0, 100.0], [last, 100.0]]}))?;
+            // Brief 032: no joining at the free end, in both rows (the baseline's free end lies on
+            // a cable core, where a join is refused), so the two stay comparable.
+            run(&mut s, "wire", json!({"points": [[last + 30.0, 130.0], [last + 5.0, 100.0], [last, 100.0]], "join": false}))?;
             upd.push(ms(t));
             out.work = out.work.max(work(&project, &mut s));
             run(&mut s, "undo", json!({}))?;
@@ -320,7 +363,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             let mut base = Vec::new();
             for _ in 0..runs {
                 let t = Instant::now();
-                run(&mut s, "wire", json!({"points": [[at.x + 30.0, at.y + 30.0], [at.x + 5.0, at.y], [at.x, at.y]]}))?;
+                run(&mut s, "wire", json!({"points": [[at.x + 30.0, at.y + 30.0], [at.x + 5.0, at.y], [at.x, at.y]], "join": false}))?;
                 base.push(ms(t));
                 run(&mut s, "undo", json!({}))?;
             }
@@ -368,6 +411,47 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.linkpage_ms = median(&mut lp);
+        // Brief 036 (design 036 §11.3).
+        let lv_line = |y: f64| json!({"type": "LNPE", "level": "L", "from": [X0 - 5.0, y], "to": [X0 + PITCH * TERMINALS as f64, y]});
+        out.lvlfence_ms = timed(&mut s, "terminals", lv_line(120.0))?;
+        let lv = run(&mut s, "terminals", lv_line(120.0))?;
+        let lv: ComponentId = hex(&lv, "strip")?;
+        out.lvlplace_ms = timed(&mut s, "place", json!({"symbol": "termlnpe.2", "at": [X0 + PITCH, 80.0], "device": lv.hex()}))?;
+        let mut sep = Vec::new();
+        for i in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "projectprops", json!({"props": {"terminal.level.separator": if i % 2 == 0 { "" } else { "-" }}}))?;
+            sep.push(ms(t));
+            out.lvlsep_work = out.lvlsep_work.max(work(&project, &mut s));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.lvlsep_ms = median(&mut sep);
+        let mut topo = Vec::new();
+        for _ in 0..runs {
+            let f = run(&mut s, "place", json!({"symbol": "fuseterm", "at": [X0 - 40.0, 150.0]}))?;
+            let f: ComponentId = hex(&f, "component")?;
+            let t = Instant::now();
+            run(&mut s, "toposition", json!({"device": f.hex(), "strip": lv.hex()}))?;
+            topo.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.toposition_ms = median(&mut topo);
+        run(
+            &mut s,
+            "terminals",
+            json!({"strip": lv.hex(), "type": "LNPE", "level": "N", "from": [X0 - 5.0, 60.0], "to": [X0 + PITCH * TERMINALS as f64, 60.0]}),
+        )?;
+        run(&mut s, "setprop", json!({"component": lv.hex(), "key": "link.1", "value": "1-10"}))?;
+        run(&mut s, "setprop", json!({"component": lv.hex(), "key": "link.2", "value": "1.2-10.2"}))?;
+        let mut lt = Vec::new();
+        for i in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "renumber", json!({"kind": "terminals", "scope": "selection", "strips": [lv.hex()], "start": 201 + i}))?;
+            lt.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.lvltrenum_ms = median(&mut lt);
         // A far device: a lamp at the top end of the first wire, connected, in +FIELD; the strip
         // in +CP1. Its location then flips to +CP1 and back.
         run(&mut s, "setprop", json!({"component": strip.hex(), "key": "location", "value": "+CP1"}))?;
@@ -411,6 +495,67 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.tplan_ms = median(&mut tplan);
+        // Brief 046 (design 046 §10): a graphic page of the same strip.
+        let sp = run(&mut s, "newpage", json!({"generated": "terminals", "style": "graphic", "strip": strip.hex()}))?;
+        let sp_page: PageId = hex(&sp, "page")?;
+        let mut spage = Vec::new();
+        for _ in 0..runs {
+            spage.push(project.configure(&mut s, |p| {
+                p.outputs();
+                let doc = p.ledger.document();
+                let t = Instant::now();
+                let (input, total) = ecad_cadcraft::generated::input_of(doc, sp_page, p.outputs.as_ref());
+                std::hint::black_box(ecad_cadcraft::generated::page_parts(doc, sp_page, &input, p.outputs.as_ref(), total));
+                ms(t)
+            })?);
+        }
+        out.spage_ms = median(&mut spage);
+        // A wire of this strip and one of another strip; a cable of this strip.
+        let (mine, other, cable) = project.read(&mut s, |p, _| {
+            let doc = p.ledger.document();
+            let wire_of = |c: ComponentId| doc.terminals_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
+            let other = p.outputs.as_ref().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
+            let cable = wire_of(strip)
+                .and_then(|_| doc.terminals_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next()));
+            (wire_of(strip), other.and_then(wire_of), cable)
+        })?;
+        run(&mut s, "openpage", json!({"page": sp_page.hex()}))?;
+        let projections = |s: &mut Session| project.read(s, |p, _| p.projections).unwrap_or(0);
+        if let Some(w) = mine {
+            let mut v = Vec::new();
+            for i in 0..runs {
+                let t = Instant::now();
+                run(&mut s, "wirenumber", json!({"conductor": w.hex(), "value": format!("SP-{i}")}))?;
+                v.push(ms(t));
+                run(&mut s, "undo", json!({}))?;
+            }
+            out.spageupd_ms = median(&mut v);
+        }
+        if let Some(w) = other {
+            let mut v = Vec::new();
+            for i in 0..runs {
+                let before = projections(&mut s);
+                let t = Instant::now();
+                run(&mut s, "wirenumber", json!({"conductor": w.hex(), "value": format!("SO-{i}")}))?;
+                v.push(ms(t));
+                out.spageoff_projections = out.spageoff_projections.max(projections(&mut s).saturating_sub(before));
+                run(&mut s, "undo", json!({}))?;
+            }
+            out.spageoff_ms = median(&mut v);
+        }
+        if let Some(k) = cable {
+            let mut v = Vec::new();
+            for i in 0..runs {
+                let t = Instant::now();
+                run(&mut s, "setprop", json!({"cable": k.hex(), "key": "type", "value": format!("{}G1.5", 3 + i % 5)}))?;
+                v.push(ms(t));
+                out.spagetype_work = out
+                    .spagetype_work
+                    .max(project.read(&mut s, |p, _| p.outputs.as_ref().map_or(0, |o| o.strip_pages.last_changed.len())).unwrap_or(0));
+                run(&mut s, "undo", json!({}))?;
+            }
+            out.spagetype_ms = median(&mut v);
+        }
         drop(project);
         drop(s);
         Ok(out)

@@ -47,8 +47,10 @@ fn last_label(h: &mut Harness<'static, Trial>) -> String {
 
 /// The Properties palette is shown with the ECAD section on top of it.
 fn show_properties(h: &mut Harness<'static, Trial>) {
+    // Brief 038: the section is the shell's right panel, which a 1280 px window shows as its
+    // rail (design §5.2), so the window is widened.
     if h.state().props.lock().unwrap().frames == 0 {
-        ok(h, "properties");
+        h.set_size(eframe::egui::vec2(1920.0, 800.0));
         h.run_steps(3);
     }
 }
@@ -71,13 +73,13 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let titles: Vec<&str> = view.sections.iter().map(|s| s.title.as_str()).collect();
     // Project-level things are popouts of the Project panel, not part of Properties.
     assert_eq!(titles, ["ECAD · PAGE 1"]);
-    // Number 100 by the panel's field: one transaction; the other end reads 100-B-6.
+    // Number 100 by the panel's field: one transaction; the other end reads 100/F2.
     let before = head(&mut h);
     type_into(&mut h, "ecad.props.page.number", "100");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(last_label(&mut h), "Page properties");
     let refs = ecad_cadcraft::references::markers_on_page(&doc(&mut h), field);
-    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("100-B-6"));
+    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("100/F2"));
     // A refusal keeps the field and says why; nothing recorded.
     let before = head(&mut h);
     type_into(&mut h, "ecad.props.page.number", "2");
@@ -97,7 +99,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(h.state().panel.rebuilds, tree_builds, "a line does not rebuild the tree");
 
     // Project Properties: one transaction; Cancel writes nothing.
-    click(&mut h, project_panel::PROJECT_INFO);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     assert!(h.state().project_props.is_some());
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
@@ -113,12 +115,12 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
     assert!(h.state().project_props.is_none());
     assert_eq!(doc(&mut h).properties.get("customer").map(String::as_str), Some("ACME"));
-    click(&mut h, project_panel::PROJECT_INFO);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before + 1, "Cancel writes nothing");
 
     // Project settings: the reference style and the tag digits in one transaction; `u` undoes both.
-    click(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         assert_eq!(d.popout, sheets_ui::Popout::Settings);
@@ -133,9 +135,9 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let d = doc(&mut h);
     assert_eq!((d.settings.reference_style, d.settings.tag_padding), (ecad_model::ReferenceStyle::PageColumn, 3));
     let refs = ecad_cadcraft::references::markers_on_page(&d, field);
-    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("/100.B"));
+    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("/100.2"), "the column");
     ok(&mut h, "u");
-    assert_eq!(doc(&mut h).settings.reference_style, ecad_model::ReferenceStyle::PageColumnRow);
+    assert_eq!(doc(&mut h).settings.reference_style, ecad_model::ReferenceStyle::PageZone, "undo: back to the default, 2/B5");
 
     // Folders: New folder (renamed in place), a page into it, fold; one transaction each.
     let before = head(&mut h);
@@ -198,7 +200,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     // Revisions (the panel's Revisions popout): the pending row, Issue Rev A (asks first), the
     // title block, Reopen Rev A.
     let p = h.state().project().unwrap().clone();
-    click(&mut h, project_panel::REVISIONS);
+    crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     {
         let r = h.state_mut().revisions.as_mut().unwrap();
         assert_eq!(r.pending[0], "A");
@@ -277,7 +279,7 @@ fn the_demo_on_its_sheets() {
 fn the_revisions_dialog_follows_undo_and_redo() {
     let mut h = build(trial(), None);
     let _ = fixture_p(&mut h);
-    click(&mut h, project_panel::REVISIONS);
+    crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
     ok(&mut h, "issuerevision {}");
     h.run_steps(2);
@@ -291,4 +293,35 @@ fn the_revisions_dialog_follows_undo_and_redo() {
     ok(&mut h, "redo");
     h.run_steps(2);
     assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "redo brings it back");
+}
+
+/// The Project info and Project settings popouts size to their content: they reach their size in
+/// a few frames and keep it (they used to grow a row a frame down to the window's bottom, which a
+/// tall window shows). Since brief 042 they are Settings ▸ Project's tabs: their OK row stays put.
+#[test]
+fn the_project_popouts_keep_their_size() {
+    let mut h = build(trial(), None);
+    let tall = 2000.0;
+    h.set_size(egui::vec2(1920.0, tall));
+    h.run_steps(3);
+    for label in [project_panel::PROJECT_INFO, project_panel::PROJECT_SETTINGS] {
+        click(&mut h, ecad_trial::shell::top_bar::PROJECT_MENU);
+        click(&mut h, label);
+        assert!(h.state().shell.settings_open, "{label} opens Settings");
+        let rect = |h: &Harness<'static, Trial>| h.query_by_label("ecad.projectprops.ok").map(|n| n.rect());
+        h.run_steps(4);
+        let settled = rect(&h).unwrap_or_else(|| panic!("{label} is open"));
+        let mut rects = Vec::new();
+        for _ in 0..30 {
+            h.run_steps(1);
+            rects.push(rect(&h));
+        }
+        assert!(rects.iter().all(|x| *x == Some(settled)), "{label}: {settled:?} then {rects:?}");
+        // UI rev 3 (board 5.01): Project info's Save sits at the foot of Settings, inside the
+        // window; the settings' OK row stays under their fields.
+        assert!(settled.bottom() < tall - 32.0, "{label} ends above the bottom bar: {settled:?}");
+        click(&mut h, "ecad.projectprops.cancel");
+        assert!(h.state().project_props.is_none(), "{label} closed");
+        assert!(!h.state().shell.settings_open, "Cancel closes Settings");
+    }
 }

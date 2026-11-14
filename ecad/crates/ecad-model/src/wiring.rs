@@ -84,9 +84,22 @@ pub struct PotentialDef {
     /// `false`: every net of this potential is numbered with the prefix alone, shared and exempt
     /// from the duplicate check (`PE`).
     pub numbered: bool,
-    pub colour: String,
-    pub cross_section: String,
+    /// Brief 050b (FP6): a colour an older build stored on the row. Never read for drawing or
+    /// labels (wire categories give colours now); kept so Checks can say it is ignored, and
+    /// cleared when the table is written again.
+    ///
+    /// Stored under its pre-050b name `colour`: a version 2 project chunk serialises this struct,
+    /// so an older chunk's value is read here and an unchanged table keeps its bytes.
+    #[serde(rename = "colour", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_colour: Option<String>,
+    /// Brief 050b (FP6): as [`PotentialDef::legacy_colour`], for a cross-section (stored as
+    /// `cross_section`).
+    #[serde(rename = "cross_section", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_cross_section: Option<String>,
 }
+
+/// The conductor property naming its wire category (brief 050b, FP5).
+pub const WIRE_CATEGORY: &str = "wire.category";
 
 /// How colours are written on labels (owner, 2026-11-09).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -163,10 +176,30 @@ pub struct WiringSettings {
     /// Text height of conductor labels, millimetres ([`DEFAULT_LABEL_HEIGHT`]; read through
     /// [`WiringSettings::label_height`], which keeps it in range).
     pub label_height: f64,
+    /// Brief 032 (FP-W1): which wires get a label, [`LABEL_RULE_NET`] (one per net per page) or
+    /// [`LABEL_RULE_EACH`] ([`DEFAULT_LABEL_RULE`]; registered as `wiring.label_rule`).
+    pub label_rule: String,
+    /// Brief 032 (FP-W1): with `each`, the shortest labelled wire (its longest segment),
+    /// millimetres, in [`LABEL_MIN_LENGTHS`] ([`DEFAULT_LABEL_MIN_LENGTH`]; registered as
+    /// `wiring.label_min_length`).
+    pub label_min_length: f64,
 }
 
-/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags).
-pub const DEFAULT_LABEL_HEIGHT: f64 = 1.8;
+/// Brief 032: one label per net per page.
+pub const LABEL_RULE_NET: &str = "net";
+/// Brief 032: a label on every wire long enough.
+pub const LABEL_RULE_EACH: &str = "each";
+/// Brief 032 (owner Q6): the label rule of every project that does not set one.
+pub const DEFAULT_LABEL_RULE: &str = LABEL_RULE_NET;
+/// Brief 032: the default shortest labelled wire, millimetres.
+pub const DEFAULT_LABEL_MIN_LENGTH: f64 = 0.0;
+/// Brief 032: the shortest labelled wire lengths a project may set, millimetres.
+pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
+
+/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags; 1.8
+/// until brief 031, FP6: 1.6, the dense-schematic size). Lane T's registry entry
+/// `text.wire_label.height` names it as its built-in.
+pub const DEFAULT_LABEL_HEIGHT: f64 = 1.6;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
@@ -175,21 +208,22 @@ pub const DEFAULT_DIGITS: u8 = 2;
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
-fn row(name: &str, prefix: &str, numbered: bool, colour: &str, cross_section: &str) -> PotentialDef {
-    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, colour: colour.into(), cross_section: cross_section.into() }
+fn row(name: &str, prefix: &str, numbered: bool) -> PotentialDef {
+    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, legacy_colour: None, legacy_cross_section: None }
 }
 
-/// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10).
+/// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10). Brief 050b
+/// (FP6): their colours and cross-sections are the built-in wire categories' now.
 pub fn default_potentials() -> Vec<PotentialDef> {
     vec![
-        row("L", "L-", true, "BN", "2.5"),
-        row("L1", "L1-", true, "BN", "2.5"),
-        row("L2", "L2-", true, "BK", "2.5"),
-        row("L3", "L3-", true, "GY", "2.5"),
-        row("N", "N-", true, "BU", "2.5"),
-        row("PE", "PE", false, "GNYE", "2.5"),
-        row("24V", "24V-", true, "BU", "0.5"),
-        row("0V", "0V-", true, "BU", "0.5"),
+        row("L", "L-", true),
+        row("L1", "L1-", true),
+        row("L2", "L2-", true),
+        row("L3", "L3-", true),
+        row("N", "N-", true),
+        row("PE", "PE", false),
+        row("24V", "24V-", true),
+        row("0V", "0V-", true),
     ]
 }
 
@@ -202,6 +236,8 @@ impl Default for WiringSettings {
             potentials: default_potentials(),
             colour_style: ColourStyle::default(),
             label_height: DEFAULT_LABEL_HEIGHT,
+            label_rule: DEFAULT_LABEL_RULE.to_string(),
+            label_min_length: DEFAULT_LABEL_MIN_LENGTH,
         }
     }
 }
@@ -243,8 +279,6 @@ pub struct NetPotential {
     pub prefix: String,
     /// `false` for an unnumbered potential (`PE`).
     pub numbered: bool,
-    pub colour: Option<String>,
-    pub cross_section: Option<String>,
 }
 
 /// The potential of `net` (design 022 §6), first match wins: the potential its conductors carry
@@ -267,15 +301,7 @@ pub fn net_potential(doc: &Document, net: &NetData) -> NetPotential {
         (Some(n), None) => format!("{n}-"),
         (None, None) => w.unclassified_prefix.clone(),
     };
-    NetPotential {
-        numbered: row.is_none_or(|r| r.numbered),
-        colour: row.map(|r| r.colour.clone()).filter(|c| !c.is_empty()),
-        cross_section: row.map(|r| r.cross_section.clone()).filter(|c| !c.is_empty()),
-        name,
-        from_continuation,
-        mixed,
-        prefix,
-    }
+    NetPotential { numbered: row.is_none_or(|r| r.numbered), name, from_continuation, mixed, prefix }
 }
 
 /// The number a net shows (design 022 §5.2, §7): its one fixed number; with two different fixed
@@ -321,9 +347,14 @@ pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate:
 }
 
 /// Where a net is, for the page schemes: the shown page number and the frame column label of its
-/// lowest-ID conductor's route start on its first page in page order (`1`, `A` when it has none).
+/// lowest-ID conductor's route start on its first page in page order (`1` and the first column's
+/// label when it has none).
 pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
-    let fallback = || ("1".to_string(), "A".to_string());
+    let first_column = |page: Option<PageId>| match page {
+        Some(p) => crate::sheet::Grid::of(doc, p).column_label(1),
+        None => doc.settings.sheet.column_labels.label(1),
+    };
+    let fallback = || ("1".to_string(), first_column(None));
     let Some(first) = net.first_conductor() else { return fallback() };
     let order: Option<(usize, PageId)> = doc
         .representations_of(Subject::Conductor(first))
@@ -332,7 +363,7 @@ pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     let Some((_, page)) = order else { return fallback() };
     match crate::derive::route_ends_on(doc, first, page).and_then(|(a, _)| place(doc, page, a)) {
         Some(p) => (p.page, p.column_label),
-        None => (crate::book::page_number(doc, page), "A".to_string()),
+        None => (crate::book::page_number(doc, page), first_column(Some(page))),
     }
 }
 
@@ -342,8 +373,15 @@ fn scope(doc: &Document, prefix: &str, page: &str, col: &str) -> String {
     match doc.settings.wiring.scheme {
         Scheme::Potential => prefix.to_string(),
         Scheme::Page => format!("{prefix}{page}."),
-        Scheme::PageColumn => format!("{prefix}{page}{col}."),
+        Scheme::PageColumn => page_column_scope(prefix, page, col),
     }
+}
+
+/// The page-column scheme's scope: `1A.` on a grid lettered across the top; `1.12.` when the
+/// columns are numbered (UI rev 3's default grid), so that page 1 column 12 and page 11 column 2
+/// never share a scope.
+fn page_column_scope(prefix: &str, page: &str, col: &str) -> String {
+    if col.chars().next().is_some_and(|c| c.is_ascii_digit()) { format!("{prefix}{page}.{col}.") } else { format!("{prefix}{page}{col}.") }
 }
 
 fn format_in(doc: &Document, scope: &str, n: u64) -> String {
@@ -456,6 +494,12 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     add(Node::Conductor(*c), &mut nets);
                 }
             }
+            // Brief 048: another definition may bridge other points.
+            Op::SetComponentDefinition { id, .. } => {
+                for (t, _) in doc.terminals_of(*id) {
+                    add(Node::Terminal(t), &mut nets);
+                }
+            }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 add(Node::Terminal(*id), &mut nets);
                 for (t, _) in doc.terminals_of(terminal.component) {
@@ -496,6 +540,12 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     for t in crate::links::terminals_named(doc, *c, v.as_deref()) {
                         add(Node::Terminal(t), &mut nets);
                     }
+                }
+            }
+            // Brief 036 (FP8a): a bridged level symbol joins or parts its position's levels.
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                for t in crate::connectivity::Connectivity::bridged_shown(doc, rep) {
+                    add(Node::Terminal(t), &mut nets);
                 }
             }
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
@@ -594,6 +644,7 @@ pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
         start: None,
         digits: None,
         strips: Default::default(),
+        positions: Default::default(),
     };
     crate::numbering::plan(doc, &req, &crate::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
 }
@@ -655,9 +706,17 @@ pub struct Label {
     pub provisional: bool,
 }
 
-/// The label of conductor `c`: its net's number, then its own cross-section and colour or its
-/// potential's defaults. A cable core shows its number only.
+/// The label of conductor `c`: its net's number, then its own cross-section and colour. A cable
+/// core shows its number only. Brief 050b: the app labels with [`label_with`] and the wire's
+/// category (its colour and cross-section when the conductor has none of its own).
 pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
+    let own = |k: &str| doc.conductors.get(&c).and_then(|x| x.properties.get(k)).cloned();
+    label_with(doc, c, own(CROSS_SECTION), own(COLOUR))
+}
+
+/// [`label`] with the cross-section and colour (a colour code, written in the project's colour
+/// style) given by the caller, which resolves them (brief 050b: the wire category's).
+pub fn label_with(doc: &Document, c: ConductorId, cross_section: Option<String>, colour: Option<String>) -> Option<Label> {
     let cond = doc.conductors.get(&c)?;
     let conn = doc.connectivity();
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id).map(|n| (id, n)));
@@ -673,12 +732,9 @@ pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
     };
     let mut words = vec![number.clone().unwrap_or(unnumbered)];
     if doc.cables_of(c).is_empty() {
-        let pot = net.map(|(_, n)| net_potential(doc, n));
-        let cs = cond.properties.get(CROSS_SECTION).cloned().or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour =
-            cond.properties.get(COLOUR).cloned().or_else(|| pot.as_ref().and_then(|p| p.colour.clone())).map(|c| doc.settings.wiring.colour(&c));
-        words.extend(cs);
-        words.extend(colour);
+        let _ = cond;
+        words.extend(cross_section.filter(|v| !v.trim().is_empty()));
+        words.extend(colour.filter(|v| !v.trim().is_empty()).map(|c| doc.settings.wiring.colour(&c)));
     }
     let error = match (net, number.as_deref()) {
         (Some((id, n)), Some(num)) => number_error(doc, id, n, num),
@@ -725,4 +781,18 @@ pub fn joined_potentials(doc: &Document, net: &NetData) -> Vec<String> {
 /// For tests and debugging: [`connectivity::split_number`] re-exported.
 pub fn sequence_of(number: &str) -> Option<(&str, u64)> {
     connectivity::split_number(number)
+}
+
+#[cfg(test)]
+mod uiv3_tests {
+    use super::page_column_scope;
+
+    /// Review of PR #96, finding 1: numbered columns are separated from the page number.
+    #[test]
+    fn numbered_columns_get_a_scope_of_their_own() {
+        assert_ne!(page_column_scope("", "1", "12"), page_column_scope("", "11", "2"));
+        assert_eq!(page_column_scope("", "1", "12"), "1.12.");
+        assert_eq!(page_column_scope("L", "2", "3"), "L2.3.");
+        assert_eq!(page_column_scope("", "1", "A"), "1A.", "a lettered column keeps the old scope");
+    }
 }

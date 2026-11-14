@@ -321,6 +321,16 @@ pub fn mono() -> FontId {
 /// ([`korean_font`]).
 pub fn install_fonts(ctx: &egui::Context, language: &str) {
     crate::mtext_editor::install_diameter_glyph(ctx);
+    // ECAD-SEAM(owner): font definitions builder. `install_fonts` sets exactly what
+    // `font_definitions` builds, so an embedder can extend the set and install it itself.
+    ctx.set_fonts(font_definitions(language));
+}
+
+/// The interface font set [`install_fonts`] installs for `language`, as a value: an embedder may
+/// add its own faces (for example its interface font first in `Proportional`) and install the
+/// result with `ctx.set_fonts`, keeping every script fallback described on [`install_fonts`].
+// ECAD-SEAM(owner): font definitions builder.
+pub fn font_definitions(language: &str) -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
     let mut added: Vec<(String, std::sync::Arc<egui::FontData>)> = Vec::new();
     #[cfg(not(target_arch = "wasm32"))]
@@ -399,7 +409,7 @@ pub fn install_fonts(ctx: &egui::Context, language: &str) {
     {
         f.push("Hack".into());
     }
-    ctx.set_fonts(fonts);
+    fonts
 }
 
 /// The system interface fonts [`install_fonts`] looks for, in order; it loads the first installed

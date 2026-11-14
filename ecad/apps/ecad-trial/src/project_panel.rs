@@ -15,13 +15,39 @@
 use std::collections::BTreeSet;
 
 use cadcraft_ui_egui::icons::{self, Icon};
-use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::{PageRow, TreeRow};
 use ecad_model::{FolderId, PageId};
 use eframe::egui::{self, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke, pos2, vec2};
 
 /// Row height (design 016 §2.2).
 pub const ROW_H: f32 = 20.0;
+/// Book's row height (UI rev 3, board 1.02): with thumbnails, and as a plain list.
+pub const THUMB_ROW_H: f32 = 36.0;
+pub const LIST_ROW_H: f32 = 26.0;
+/// Book's search field, its multi-select footer and its buttons (board 1.02).
+pub const FIND: &str = "Find a page";
+pub const CLEAR_PICKED: &str = "Clear";
+pub const MOVE_TO_GROUP: &str = "Move to group";
+pub const DUPLICATE: &str = "Duplicate";
+pub const DELETE_PAGES: &str = "Delete the selected pages";
+/// The placeholders' reason (no command yet duplicates or deletes a page).
+pub const NOT_YET: &str = "Not available yet";
+/// The accessible label of a page row's checkbox: `Select page 04`.
+pub fn pick_label(number: &str) -> String {
+    format!("Select page {number}")
+}
+/// A page number as Book shows it: a plain number padded to two digits (`2` → `02`).
+pub fn padded(number: &str) -> String {
+    if !number.is_empty() && number.len() < 2 && number.chars().all(|c| c.is_ascii_digit()) { format!("{number:0>2}") } else { number.to_string() }
+}
+/// `text` cut with `…` to `width` in `font` (the panels' rows).
+pub fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
+    cut(ui, text, font, width)
+}
+/// The accessible label of a group row's +: `New page in Power`.
+pub fn add_in_label(name: &str) -> String {
+    format!("New page in {name}")
+}
 /// Width of the collapsed strip.
 pub const STRIP_W: f32 = 22.0;
 /// Accessible labels of the header buttons (design 016 §8 names them `ecad.project.*`).
@@ -90,8 +116,9 @@ pub enum Action {
     Save,
     SaveAs,
     CloseProject,
-    /// Devices tab: show this symbol's page and select it.
-    GotoSymbol(ecad_model::RepresentationId),
+    /// Devices tab: show the first symbol's page and select every one of these symbols on it (a
+    /// device's symbols, in the list's order).
+    GotoSymbols(Vec<ecad_model::RepresentationId>),
     /// Devices tab: `setprop` of a device property (brief 018's rules; `merge` takes another
     /// device's tag by making this device part of it).
     SetDeviceProperty {
@@ -107,10 +134,17 @@ pub enum Action {
     GotoCheck(Box<ecad_cadcraft::checks::Check>),
     /// Checks tab: `junction {at}` on this page.
     AddJunction(PageId, ecad_model::Pt),
+    /// Checks tab (brief 032): `joinwires {at}` on this page.
+    JoinWires(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.
     NumberThem,
     /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).
     Finalise,
+    /// Checks tab (brief 033): show this row (a table over the title block), then start Move
+    /// Mirror Table.
+    MoveTable(Box<ecad_cadcraft::checks::Check>),
+    /// Checks tab (brief 033): open this page's number field in the Pages list.
+    RenumberPage(PageId),
     /// Devices tab (brief 026): open the Renumber dialog.
     Renumber,
     /// Brief 019: `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`
@@ -159,6 +193,8 @@ pub enum Action {
     Release,
     /// Brief 024: `newpage {generated}`.
     NewGenerated(ecad_cadcraft::generated::GenKind),
+    /// Brief 046: `newpage {generated: "terminals", style: "graphic"}`.
+    NewStripPage,
     /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
     /// **Show** (Reports ▸ Cables, Only ?).
     OfferDrawn(ecad_model::ComponentId),
@@ -166,9 +202,17 @@ pub enum Action {
     SetCores(ecad_model::CableId),
     NextFreeCore(ecad_model::ConductorId),
     ShowCables,
+    /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
+    OpenStandards(&'static str),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
+    PlaceMates(ecad_model::ComponentId, ecad_cadcraft::symbols::Side),
+    /// Brief 041: a page row's right-click opens its wheel here (screen point).
+    PageWheel(PageId, egui::Pos2),
+    /// UI rev 3 (board 1.03): the Devices panel's Project →, Project ▸ Device list.
+    ProjectDevices,
 }
 
 /// A field typed in place over a row: a page number or a folder name.
@@ -260,7 +304,6 @@ pub struct Header {
 /// The panel's state.
 #[derive(Debug, Default)]
 pub struct ProjectPanel {
-    pub collapsed: bool,
     /// Pages or Devices.
     pub tab: Tab,
     /// The Devices tab.
@@ -293,6 +336,9 @@ pub struct ProjectPanel {
     pub note: Option<String>,
     /// Brief 019: the Pages tree (folders and pages in book order).
     tree: Vec<TreeRow>,
+    /// Pages changed by a commit while another page was shown: their rows show a dot until the
+    /// page is shown (brief 038). Kept by the shell from the change feed.
+    pub changed: BTreeSet<PageId>,
     /// Folders folded in this session.
     pub folded: BTreeSet<FolderId>,
     /// The rows drawn now (folds applied), rebuilt only after a change or a fold.
@@ -304,9 +350,20 @@ pub struct ProjectPanel {
     pub revision: Option<String>,
     /// Whether the tree has a folder (worked out on each new tree, not per row).
     folders_present: bool,
+    /// UI rev 3 (board 1.02): Book shows thumbnails (else a plain list), set by the shell.
+    pub thumbnails: bool,
+    /// Pages ticked for moving (never the same look as the open page).
+    pub picked: BTreeSet<PageId>,
+    /// The search text; while set, only the pages it finds are shown, without their folders.
+    pub find: String,
 }
 
 impl ProjectPanel {
+    /// The height of Book's rows (thumbnails or list).
+    pub fn row_h(&self) -> f32 {
+        if self.thumbnails { THUMB_ROW_H } else { LIST_ROW_H }
+    }
+
     /// The rows of the copy.
     pub fn rows(&self) -> &[PageRow] {
         &self.rows
@@ -363,6 +420,18 @@ impl ProjectPanel {
     /// The rows to draw: folded folders hide what is inside them; an open empty folder shows
     /// `(empty)`. O(tree rows).
     fn relayout(&mut self) {
+        self.folders_present = self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }));
+        let find = self.find.trim().to_lowercase();
+        if !find.is_empty() {
+            self.visible = self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.title.to_lowercase().contains(&find) || r.number.to_lowercase().contains(&find))
+                .map(|(i, _)| Vis::Page(i))
+                .collect();
+            return;
+        }
         let mut out = Vec::with_capacity(self.tree.len());
         let mut hide_below: Option<usize> = None;
         let mut page_i = 0usize;
@@ -427,7 +496,7 @@ impl ProjectPanel {
 
     /// Forget the project (it was closed).
     pub fn clear(&mut self) {
-        *self = ProjectPanel { collapsed: self.collapsed, tab: self.tab, folded: std::mem::take(&mut self.folded), ..ProjectPanel::default() };
+        *self = ProjectPanel { tab: self.tab, folded: std::mem::take(&mut self.folded), ..ProjectPanel::default() };
     }
 
     /// The row being dragged and the gap it would land in (0 = before the first row), if any.
@@ -441,6 +510,16 @@ impl ProjectPanel {
     }
 
     /// Open the rename field on `page` with its title selected.
+    /// Open `page`'s number field in place (brief 033: a Checks row's **Renumber…**).
+    pub fn start_number_edit(&mut self, page: PageId) {
+        if let Some(i) = self.index_of(page) {
+            let number = self.rows.get(i).map(|r| r.number.clone()).unwrap_or_default();
+            self.number_edit = Some(InPlace { of: page, text: number.clone(), error: None, old: number });
+            self.cursor = Some(i);
+            self.reveal = Some(i);
+        }
+    }
+
     pub fn start_rename(&mut self, page: PageId) {
         if let Some(i) = self.index_of(page) {
             let title = self.rows.get(i).map(|r| r.title.clone()).unwrap_or_default();
@@ -460,132 +539,20 @@ impl ProjectPanel {
         self.cursor.or_else(|| self.active.and_then(|a| self.index_of(a)))
     }
 
-    /// The collapsed strip: one click expands the panel.
-    pub fn strip(&mut self, ui: &mut egui::Ui) {
-        let t = Tokens::get();
-        let rect = ui.max_rect();
-        let resp = ui.interact(rect, egui::Id::unique("ecad.project.expand"), Sense::click());
-        ui.painter().rect_filled(rect, 0.0, t.chrome);
-        let icon = Rect::from_min_size(pos2(rect.left() + 2.0, rect.top() + 4.0), vec2(18.0, 18.0));
-        icons::paint(ui.painter(), icon, Icon::ChevronRight, false);
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EXPAND));
-        if resp.on_hover_text(EXPAND).clicked() {
-            self.collapsed = false;
-        }
-    }
-
-    /// The panel's contents. Returns the actions asked for this frame.
+    /// The body of the tab shown ([`ProjectPanel::tab`]) in the shell's left panel (Pages,
+    /// Devices, History) or drawer (Checks). Returns the actions asked for this frame.
     pub fn show(&mut self, ui: &mut egui::Ui, header: &Header) -> Vec<Action> {
         let mut out = Vec::new();
-        let t = Tokens::get();
+        let t = crate::shell::left::colours();
         let panel_rect = ui.max_rect();
         let writable = header.name.is_some() && !header.read_only;
-        self.keyboard(ui, writable, &mut out);
-
-        // Header: PROJECT and the icon buttons.
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("PROJECT").small().strong().color(t.text_dim));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, "ecad.project.collapse", Icon::ChevronLeft, COLLAPSE, true).clicked() {
-                    self.collapsed = true;
-                }
-                if header.name.is_none() {
-                    return;
-                }
-                let target = self.target();
-                let preview_tip = if target.is_some() { PREVIEW } else { PICK_FIRST };
-                if icon_button(ui, "ecad.project.preview", Icon::Preview, preview_tip, target.is_some()).clicked()
-                    && let Some(r) = target.and_then(|i| self.rows.get(i))
-                {
-                    self.armed = true;
-                    out.push(Action::Preview(r.id));
-                }
-                let last = self.rows.len().saturating_sub(1);
-                let down_ok = writable && target.is_some_and(|i| i < last);
-                let tip = |ok_tip: &'static str| if writable { ok_tip } else { READ_ONLY };
-                if icon_button(ui, "ecad.project.down", Icon::ChevronDown, tip(MOVE_DOWN), down_ok).clicked()
-                    && let Some(i) = target
-                {
-                    self.move_row(i, i + 1, &mut out);
-                }
-                let up_ok = writable && target.is_some_and(|i| i > 0);
-                if icon_button(ui, "ecad.project.up", Icon::ChevronUp, tip(MOVE_UP), up_ok).clicked()
-                    && let Some(i) = target
-                {
-                    self.move_row(i, i - 1, &mut out);
-                }
-                // Brief 024: the kind of a new page (design 024 §5.1).
-                ui.add_enabled_ui(writable, |ui| {
-                    ui.menu_button(RichText::new("v").small(), |ui| {
-                        if ui.button("Page").clicked() {
-                            out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
-                            ui.close();
-                        }
-                        for k in ecad_cadcraft::generated::GenKind::ALL {
-                            let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", k.value()));
-                            if b.clicked() {
-                                out.push(Action::NewGenerated(k));
-                                ui.close();
-                            }
-                        }
-                    })
-                    .response
-                    .on_hover_text("New page of a kind: page, cover, contents, revision list, BOM by location")
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.project.newpage.kind"));
-                });
-                if icon_button(ui, "ecad.project.new", Icon::Plus, tip(NEW_PAGE), writable).clicked() {
-                    self.armed = true;
-                    if self.has_folders() {
-                        out.push(Action::NewPageIn(self.target_folder()));
-                    } else {
-                        out.push(Action::New);
-                    }
-                }
-                // Brief 024: Reports and Print Book (design 024 §4.1, §6.2).
-                if icon_button(ui, "ecad.project.reports", Icon::Table, REPORTS, true).clicked() {
-                    out.push(Action::Reports);
-                }
-                if icon_button(ui, "ecad.project.print", Icon::Plot, PRINT_BOOK, true).clicked() {
-                    out.push(Action::PrintBook(None));
-                }
-            });
-        });
-        // The project popouts: info, settings, revisions.
-        if header.name.is_some() {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if ui.small_button(PROJECT_INFO).on_hover_text("Title, drawing number, customer, status").clicked() {
-                    out.push(Action::ProjectInfo);
-                }
-                if ui.small_button(PROJECT_SETTINGS).on_hover_text("Sheet and grid, reference style, page numbers, tags").clicked() {
-                    out.push(Action::ProjectSettings);
-                }
-                if ui.small_button(REVISIONS).on_hover_text("Issue a revision, reopen an issued one").clicked() {
-                    out.push(Action::Revisions);
-                }
-                // Brief 027 (design 027 §3): Release, with a badge counting errors, else warnings.
-                if let Some((rev, counts)) = &header.release {
-                    let (text, hover) = match counts {
-                        Some((e, _)) if *e > 0 => (
-                            RichText::new(format!("Release \u{25cf}{e}")).small().color(Color32::from_rgb(0xFF, 0x00, 0x00)),
-                            format!("Release Rev {rev}: {e} error{} open.", if *e == 1 { "" } else { "s" }),
-                        ),
-                        Some((_, w)) if *w > 0 => (
-                            RichText::new(format!("Release \u{25b2}{w}")).small().color(Color32::from_rgb(0xFF, 0xFF, 0x00)),
-                            format!("Release Rev {rev}: {w} warning{} listed.", if *w == 1 { "" } else { "s" }),
-                        ),
-                        _ => (RichText::new("Release").small(), format!("Release Rev {rev}: check, issue and write its folder.")),
-                    };
-                    if ui.add(egui::Button::new(text).small()).on_hover_text(hover).accessible_name("ecad.project.release").clicked() {
-                        out.push(Action::Release);
-                    }
-                }
-            });
+        if header.name.is_none() {
+            ecad_ui::prim::read_value(ui, "No project open.");
+            self.rows_drawn = 0;
+            return out;
         }
-        self.status(ui, header, &mut out);
         // Brief 020a: the branch bar on a branch other than main (design 020 §3.6).
         if let Some(bar) = &header.branch_bar {
-            let t = Tokens::get();
             let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::Label::new(RichText::new(bar).small().strong()).wrap())
@@ -613,9 +580,7 @@ impl ProjectPanel {
             ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
         }
         // The revision opened read-only (design 019 §7.3): its bar and Back to current.
-        let writable = writable && self.revision.is_none();
         if let Some(bar) = self.revision.clone() {
-            let t = Tokens::get();
             let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::Label::new(RichText::new(&bar).small().strong()).wrap())
@@ -629,106 +594,84 @@ impl ProjectPanel {
             let r = shown.response.rect;
             ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
         }
-        ui.separator();
-
-        if header.name.is_none() {
-            ui.label(RichText::new("No project open.").color(t.text_dim));
-            self.rows_drawn = 0;
-            return out;
-        }
-
-        // Pages | Devices, and on Pages the New folder button (owner: folders must be found).
-        ui.horizontal(|ui| {
-            let checks = self.checks.title();
-            for (tab, name) in [
-                (Tab::Pages, PAGES_TAB),
-                (Tab::Devices, DEVICES_TAB),
-                (Tab::Checks, checks.as_str()),
-                (Tab::History, crate::history_panel::HISTORY_TAB),
-            ] {
-                let resp = ui.selectable_label(self.tab == tab, RichText::new(name).small());
-                let resp = if tab == Tab::Checks {
-                    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, self.tab == tab, crate::checks_panel::CHECKS_TAB));
-                    resp
-                } else {
-                    resp
-                };
-                if resp.clicked() {
-                    if tab == Tab::Devices && self.tab != Tab::Devices {
-                        // Shown again after being hidden: rebuilt once, then kept up to date.
-                        self.devices.invalidate();
-                    }
-                    if tab == Tab::Checks && self.tab != Tab::Checks {
-                        self.checks.invalidate();
-                    }
-                    if tab == Tab::History && self.tab != Tab::History {
-                        self.history.invalidate();
-                    }
-                    self.tab = tab;
-                    self.armed = false;
-                }
+        // Writes are off while an issued revision is open read-only.
+        let writable = writable && self.revision.is_none();
+        match self.tab {
+            Tab::Devices => {
+                out.extend(self.devices.show_panel(ui, writable));
+                self.rows_drawn = 0;
+                return out;
             }
-            if self.tab == Tab::Pages {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let tip = if writable { NEW_FOLDER } else { READ_ONLY };
-                    if icon_button(ui, "ecad.project.newfolder", Icon::Open, tip, writable).clicked() {
-                        self.armed = true;
-                        out.push(Action::NewFolder(self.target_folder()));
-                    }
-                });
+            Tab::Checks => {
+                out.extend(self.checks.show(ui, writable));
+                self.rows_drawn = 0;
+                return out;
             }
-        });
-        if self.tab == Tab::Devices {
-            out.extend(self.devices.show(ui, writable));
-            self.rows_drawn = 0;
-            return out;
+            Tab::History => {
+                // Writes are off while a point is shown read-only, as for the revision view.
+                out.extend(self.history.show(ui, writable, header.read_only, header));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::Pages => {}
         }
-        if self.tab == Tab::Checks {
-            out.extend(self.checks.show(ui, writable));
-            self.rows_drawn = 0;
-            return out;
+        self.keyboard(ui, writable, &mut out);
+
+        // Find a page (board 1.02).
+        let before = self.find.clone();
+        ecad_ui::prim::Field::new(&mut self.find, ecad_ui::prim::FieldKind::Search, FIND).placeholder(FIND).show(ui);
+        if self.find != before {
+            self.relayout();
         }
-        if self.tab == Tab::History {
-            // Writes are off while a point is shown read-only, as for the revision view.
-            out.extend(self.history.show(ui, writable, header.read_only));
-            self.rows_drawn = 0;
-            return out;
+        ui.add_space(4.0);
+        for w in &header.warnings {
+            ui.add(egui::Label::new(RichText::new(w).small().color(t.warn)).wrap());
         }
+        if let Some(n) = &self.note {
+            ui.label(RichText::new(n).small().color(t.text_dim));
+        }
+        let rh = self.row_h();
+        // The footer under the rows: the multi-select actions while pages are ticked, else New
+        // page and New group.
+        let footer_h = if self.picked.is_empty() { 36.0 } else { 70.0 };
+        let list_h = (ui.available_height() - footer_h).max(rh);
 
         // The rows, virtualised: only the visible ones are laid out.
         let n = self.visible.len();
         let reveal = self.reveal.take().and_then(|pi| self.visible.iter().position(|v| *v == Vis::Page(pi)));
-        let mut area = egui::ScrollArea::vertical().id_salt("ecad.project.list").auto_shrink([false, false]);
+        let mut area = egui::ScrollArea::vertical().id_salt("ecad.project.list").max_height(list_h).auto_shrink([false, false]);
         if let Some(i) = reveal {
             // Keep the revealed row inside the visible band (show_rows scrolls by offset).
-            let h = ui.available_height().max(ROW_H);
-            let top = i as f32 * ROW_H;
+            let h = ui.available_height().max(rh);
+            let top = i as f32 * rh;
             let state = egui::scroll_area::State::load(ui.ctx(), ui.make_persistent_id("ecad.project.list"));
             let now = state.map_or(0.0, |s| s.clamped_offset().y);
             let want = if top < now {
                 top
-            } else if top + ROW_H > now + h {
-                top + ROW_H - h
+            } else if top + rh > now + h {
+                top + rh - h
             } else {
                 now
             };
             area = area.vertical_scroll_offset(want.max(0.0));
         }
-        // Rows are exactly ROW_H apart (the reveal and drag maths count on it).
+        // Rows are exactly rh apart (the reveal and drag maths count on it).
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut drawn = 0;
         let drag_before = self.drag;
-        let list = area.show_rows(ui, ROW_H, n, |ui, range| {
+        let list = area.show_rows(ui, rh, n, |ui, range| {
+            // Rows are as wide as the panel (the content never widens it).
+            ui.set_max_width(panel_rect.width());
             let mut first_top: Option<f32> = None;
             for vi in range.clone() {
                 let Some(vis) = self.visible.get(vi).copied() else { continue };
                 drawn += 1;
-                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
-                first_top.get_or_insert(rect.top() - (vi - range.start) as f32 * ROW_H);
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), rh), Sense::click_and_drag());
+                first_top.get_or_insert(rect.top() - (vi - range.start) as f32 * rh);
                 match vis {
                     Vis::Page(i) => {
                         let Some(row) = self.rows.get(i).cloned() else { continue };
-                        let indent = if self.has_folders() { row.depth as f32 * INDENT + INDENT } else { 0.0 };
+                        let indent = if self.has_folders() && self.find.trim().is_empty() { row.depth as f32 * INDENT } else { 0.0 };
                         let inner = Rect::from_min_max(pos2(rect.left() + indent, rect.top()), rect.max);
                         self.row(ui, inner, resp, i, &row, writable, &mut out);
                     }
@@ -743,7 +686,7 @@ impl ProjectPanel {
                             pos2(x, rect.center().y),
                             egui::Align2::LEFT_CENTER,
                             "(empty)",
-                            egui::FontId::monospace(12.0),
+                            egui::TextStyle::Monospace.resolve(ui.style()),
                             t.text_faint,
                         );
                     }
@@ -753,7 +696,7 @@ impl ProjectPanel {
             if let (Some(d), Some(top)) = (self.drag, first_top)
                 && let Some(g) = d.gap
             {
-                let y = top + g as f32 * ROW_H;
+                let y = top + g as f32 * rh;
                 let r = ui.max_rect();
                 ui.painter().hline(r.x_range(), y, Stroke::new(2.0, t.accent));
             }
@@ -763,7 +706,7 @@ impl ProjectPanel {
         // The empty space under the rows: right-click for a new page or folder at the top level.
         if let Some(top) = list.inner {
             let r = list.inner_rect;
-            let below = Rect::from_min_max(pos2(r.left(), (top + n as f32 * ROW_H).max(r.top())), r.max);
+            let below = Rect::from_min_max(pos2(r.left(), (top + n as f32 * rh).max(r.top())), r.max);
             if below.height() > 4.0 {
                 let resp = ui.interact(below, egui::Id::unique("ecad.project.empty"), Sense::click());
                 resp.context_menu(|ui| {
@@ -784,13 +727,13 @@ impl ProjectPanel {
             let pointer = ui.ctx().pointer_latest_pos();
             let inside = pointer.filter(|p| list.inner_rect.contains(*p));
             d.gap = match (inside, list.inner) {
-                (Some(p), Some(top)) => Some((((p.y - top) / ROW_H).round().max(0.0) as usize).min(n)),
+                (Some(p), Some(top)) => Some((((p.y - top) / rh).round().max(0.0) as usize).min(n)),
                 _ => None,
             };
             // Over the middle of a folder row: into that folder.
             d.onto = match (inside, list.inner) {
                 (Some(p), Some(top)) => {
-                    let f = (p.y - top) / ROW_H;
+                    let f = (p.y - top) / rh;
                     let (row, frac) = (f.floor().max(0.0) as usize, f - f.floor());
                     match self.visible.get(row) {
                         Some(Vis::Folder(ti)) if (0.25..0.75).contains(&frac) => match self.tree.get(*ti) {
@@ -805,9 +748,9 @@ impl ProjectPanel {
             if let Some(p) = inside {
                 let edge = 24.0;
                 if p.y < list.inner_rect.top() + edge {
-                    ui.scroll_with_delta(vec2(0.0, ROW_H));
+                    ui.scroll_with_delta(vec2(0.0, rh));
                 } else if p.y > list.inner_rect.bottom() - edge {
-                    ui.scroll_with_delta(vec2(0.0, -ROW_H));
+                    ui.scroll_with_delta(vec2(0.0, -rh));
                 }
                 ui.ctx().request_repaint();
             }
@@ -840,6 +783,8 @@ impl ProjectPanel {
                 self.drag = Some(d);
             }
         }
+
+        self.footer(ui, panel_rect, writable, list.inner_rect.bottom(), &mut out);
 
         // A click elsewhere (the drawing) disarms the panel.
         if ui.input(|i| i.pointer.any_pressed()) && ui.ctx().pointer_interact_pos().is_some_and(|p| !panel_rect.contains(p)) {
@@ -890,7 +835,7 @@ impl ProjectPanel {
         &mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, (id, name, depth, pages): (FolderId, &str, usize, usize), writable: bool,
         out: &mut Vec<Action>,
     ) {
-        let t = Tokens::get();
+        let t = crate::shell::left::colours();
         let label = folder_label(name, pages);
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
         let p = ui.painter_at(rect);
@@ -901,17 +846,38 @@ impl ProjectPanel {
             p.rect_filled(rect, 0.0, t.chrome);
         }
         let x = rect.left() + (depth.saturating_sub(1)) as f32 * INDENT + 2.0;
-        let chev = Rect::from_min_size(pos2(x, rect.center().y - 6.0), vec2(12.0, 12.0));
+        let y = rect.center().y;
+        let ink = |c| ecad_ui::color(c);
+        let s = ecad_ui::SHELL;
+        let chev = Rect::from_min_size(pos2(x, y - 5.0), vec2(10.0, 10.0));
         let folded = self.folded.contains(&id);
-        icons::paint(&p, chev, if folded { Icon::ChevronRight } else { Icon::ChevronDown }, false);
-        let font = egui::FontId::monospace(12.0);
+        ecad_ui::icons::paint(&p, chev, if folded { ecad_ui::tokens::Icon::ChevronRight } else { ecad_ui::tokens::Icon::ChevronDown }, ink(s.text_3));
+        // UI rev 3 (board 1.02): a group is a folder icon, its name, its page count and a +.
+        let folder = Rect::from_min_size(pos2(chev.right() + 6.0, y - 7.0), vec2(14.0, 14.0));
+        ecad_ui::icons::paint(&p, folder, ecad_ui::tokens::Icon::Folder, ink(s.text_3));
+        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY_EMPHASIS);
         if self.folder_rename.as_ref().is_some_and(|r| r.of == id) {
-            let field = Rect::from_min_max(pos2(chev.right() + 4.0, rect.top() + 1.0), pos2(rect.right() - 4.0, rect.bottom() - 1.0));
+            let field = Rect::from_min_max(pos2(folder.right() + 6.0, rect.top() + 4.0), pos2(rect.right() - 4.0, rect.bottom() - 4.0));
             self.folder_field(ui, field, out);
             return;
         }
-        let named = p.text(pos2(chev.right() + 4.0, rect.center().y), egui::Align2::LEFT_CENTER, name, font.clone(), t.text);
-        p.text(pos2(named.right() + 6.0, rect.center().y), egui::Align2::LEFT_CENTER, format!("({pages})"), font, t.text_dim);
+        let add = Rect::from_center_size(pos2(rect.right() - 10.0, y), vec2(20.0, 20.0));
+        let count = p.text(
+            pos2(add.left() - 8.0, y),
+            egui::Align2::RIGHT_CENTER,
+            pages.to_string(),
+            crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+            ink(s.text_3),
+        );
+        let room = (count.left() - folder.right() - 14.0).max(0.0);
+        let shown = cut(ui, name, &font, room);
+        p.text(pos2(folder.right() + 6.0, y), egui::Align2::LEFT_CENTER, shown, font, ink(s.text_2));
+        // The +: a new page in this group (added after the row, so it takes the click first).
+        let add_label = add_in_label(name);
+        if crate::shell::bar::icon_button(ui, add, ecad_ui::tokens::Icon::Plus, &add_label, 12.0, writable).clicked() {
+            out.push(Action::NewPageIn(Some(id)));
+            return;
+        }
         if resp.drag_started() && writable {
             self.drag = Some(Drag { page: PageId(0), from: usize::MAX, gap: None, folder: Some(id), onto: None });
         }
@@ -974,88 +940,82 @@ impl ProjectPanel {
         }
     }
 
-    /// The status, file actions and experiment note moved from the banner.
-    fn status(&mut self, ui: &mut egui::Ui, header: &Header, out: &mut Vec<Action>) {
-        let t = Tokens::get();
-        let warn = ui.visuals().warn_fg_color;
-        match &header.name {
-            Some(_) => {
-                ui.add(egui::Label::new(RichText::new(&header.status).small()).wrap());
-                for w in &header.warnings {
-                    ui.add(egui::Label::new(RichText::new(w).small().color(warn)).wrap());
-                }
-            }
-            None => {
-                ui.label(RichText::new("No ECAD project is open.").small());
-            }
-        }
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            if ui.small_button("New").on_hover_text("New project").clicked() {
-                out.push(Action::NewProject);
-            }
-            if ui.small_button("Open…").on_hover_text("Open project…").clicked() {
-                out.push(Action::OpenProject);
-            }
-            if header.name.is_some() {
-                if ui.small_button("Save").clicked() {
-                    out.push(Action::Save);
-                }
-                if ui.small_button("Save As…").clicked() {
-                    out.push(Action::SaveAs);
-                }
-                if ui.small_button("Close").on_hover_text("Close the project (asks to save changes)").clicked() {
-                    out.push(Action::CloseProject);
-                }
-            }
-        });
-        if let Some(n) = &self.note {
-            ui.label(RichText::new(n).small().color(t.text_dim));
-        }
-        ui.add(egui::Label::new(RichText::new(header.note).small().color(warn)).truncate()).on_hover_text(crate::BANNER);
-    }
-
-    /// One row: number, title, states and its clicks.
+    /// One row (UI rev 3, board 1.02): checkbox, thumbnail (in thumbnail view), number, title and
+    /// states, and its clicks. The open page has a 3 px blue bar, a blue outline on its thumbnail
+    /// and a blue number; a ticked page a ticked checkbox and a plain grey ground, so the two never
+    /// look alike.
     #[allow(clippy::too_many_arguments)]
     fn row(&mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, i: usize, row: &PageRow, writable: bool, out: &mut Vec<Action>) {
-        let t = Tokens::get();
+        let t = crate::shell::left::colours();
+        let s = ecad_ui::SHELL;
         let active = self.active == Some(row.id);
+        let picked = self.picked.contains(&row.id);
         let label = row_label(&row.number, &row.title);
         let resp = if row.duplicate { resp.on_hover_text(format!("Two pages are numbered {}.", row.number)) } else { resp };
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, &label));
-        let p = ui.painter_at(rect);
+        // The row's ground runs under the indent too.
+        let full = Rect::from_min_max(pos2(ui.max_rect().left(), rect.top()), rect.max);
+        let p = ui.painter_at(full);
         let dragging = self.drag.is_some_and(|d| d.page == row.id);
         if active {
-            p.rect_filled(rect, 0.0, t.tab_active);
-            p.rect_filled(Rect::from_min_size(rect.min, vec2(3.0, rect.height())), 0.0, t.accent);
+            p.rect_filled(full, 0.0, ecad_ui::color(s.accent_soft));
+            p.rect_filled(Rect::from_min_size(full.min, vec2(3.0, full.height())), 0.0, t.accent);
+        } else if picked {
+            p.rect_filled(full, 0.0, ecad_ui::color(if resp.hovered() { s.hover } else { s.raised }));
         } else if resp.hovered() {
-            p.rect_filled(rect, 0.0, t.chrome);
+            p.rect_filled(full, 0.0, t.chrome);
         }
         if self.armed && self.cursor == Some(i) {
-            p.rect_stroke(rect.shrink(0.5), 0.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+            p.rect_stroke(full.shrink(0.5), 0.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
         }
         let fade = |c: Color32| if dragging { c.gamma_multiply(0.5) } else { c };
-        let colour = fade(if active { t.text } else { t.text_dim });
+        let y = rect.center().y;
+        // The checkbox: ticks the page for the footer's actions.
+        let check = Rect::from_center_size(pos2(rect.left() + 10.0, y), vec2(14.0, 14.0));
+        crate::shell::glyphs::checkbox(&p, check, picked, t.accent, ecad_ui::color(s.line_strong), ecad_ui::color(s.text_3).gamma_multiply(0.6));
+        let mut x = check.right() + 8.0;
+        if self.thumbnails {
+            let thumb = Rect::from_min_size(pos2(x, y - 13.0), vec2(38.0, 26.0));
+            let outline = active.then_some(t.accent);
+            crate::shell::glyphs::thumbnail(
+                &p,
+                thumb,
+                ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_PAPER),
+                ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_INK),
+                outline,
+            );
+            x = thumb.right() + 8.0;
+        }
+        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
         // Two pages shown with one number (only from old data): the number in `ecad.orphan`.
-        let number_colour = if row.duplicate { ORPHAN_RED } else { colour };
-        let font = egui::FontId::monospace(12.0);
-        let number = format!("{:>4}  ", row.number);
-        let x0 = rect.left() + 4.0;
-        let num = p.text(pos2(x0, rect.center().y), egui::Align2::LEFT_CENTER, &number, font.clone(), number_colour);
+        let number_colour = if row.duplicate {
+            t.error
+        } else if active {
+            t.accent_text
+        } else {
+            t.text_dim
+        };
+        let num = p.text(pos2(x, y), egui::Align2::LEFT_CENTER, padded(&row.number), font.clone(), fade(number_colour));
         let previewed = self.previewed == Some(row.id);
-        let right = rect.right() - if previewed { 18.0 } else { 4.0 };
+        let changed = self.changed.contains(&row.id);
+        let right = rect.right() - if previewed { 18.0 } else { 4.0 } - if changed { 12.0 } else { 0.0 };
+        if changed {
+            // Changed while elsewhere: a dot in the change tint (`accent_text`).
+            p.circle_filled(pos2(right + 6.0, y), 3.0, t.accent_text);
+        }
         if previewed {
-            let r = Rect::from_center_size(pos2(rect.right() - 10.0, rect.center().y), vec2(12.0, 12.0));
+            let r = Rect::from_center_size(pos2(rect.right() - 10.0, y), vec2(12.0, 12.0));
             icons::paint(&p, r, Icon::Preview, true);
         }
 
         if self.number_edit.as_ref().is_some_and(|r| r.of == row.id) {
-            let field = Rect::from_min_max(pos2(x0, rect.top() + 1.0), pos2(num.right(), rect.bottom() - 1.0));
+            let field = Rect::from_min_max(pos2(x, rect.top() + 4.0), pos2(num.right() + 6.0, rect.bottom() - 4.0));
             self.number_field(ui, field, out);
         }
+        let title_x = num.right() + 8.0;
         let renaming = self.rename.as_ref().is_some_and(|r| r.page == row.id);
         if renaming {
-            let field = Rect::from_min_max(pos2(num.right(), rect.top() + 1.0), pos2(right, rect.bottom() - 1.0));
+            let field = Rect::from_min_max(pos2(title_x, rect.top() + 4.0), pos2(right, rect.bottom() - 4.0));
             self.rename_field(ui, field, out);
             return;
         }
@@ -1063,11 +1023,19 @@ impl ProjectPanel {
         if row.unavailable {
             title.push_str(" (unavailable)");
         }
-        let width = (right - num.right()).max(0.0);
+        let width = (right - title_x).max(0.0);
         let shown = cut(ui, &title, &font, width);
         let was_cut = shown != title;
-        p.text(pos2(num.right(), rect.center().y), egui::Align2::LEFT_CENTER, shown, font, colour);
+        p.text(pos2(title_x, y), egui::Align2::LEFT_CENTER, shown, font, fade(t.text));
 
+        // The checkbox's own click (added after the row, so it takes the click first).
+        let pick = ui.interact(check.expand(3.0), ui.scope_id().with(("ecad.book.pick", row.id)), Sense::click());
+        let pick_label = pick_label(&row.number);
+        pick.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, picked, &pick_label));
+        if pick.clicked() {
+            self.toggle_pick(row.id);
+            return;
+        }
         // A title cut with `…` shows in full on hover.
         let resp = if was_cut { resp.on_hover_text(format!("Page {}: {}", row.number, row.title)) } else { resp };
         if self.revision.is_some() {
@@ -1089,6 +1057,9 @@ impl ProjectPanel {
             } else if writable {
                 self.start_rename(row.id);
             }
+        } else if resp.clicked() && ui.input(|i| i.modifiers.command) {
+            // Ctrl+click ticks the page, as its checkbox does.
+            self.toggle_pick(row.id);
         } else if resp.clicked() {
             self.armed = true;
             self.cursor = Some(i);
@@ -1096,40 +1067,131 @@ impl ProjectPanel {
                 out.push(Action::Open(row.id));
             }
         }
+        // Brief 041: the page row's wheel (Open, Rename, Page properties, Preview, New page, New
+        // folder); moving stays Alt+Up/Down and drag.
         if resp.secondary_clicked() {
             self.armed = true;
             self.cursor = Some(i);
+            out.push(Action::PageWheel(row.id, resp.interact_pointer_pos().unwrap_or(resp.rect.center())));
         }
-        resp.context_menu(|ui| {
-            if ui.add_enabled(writable, egui::Button::new("New page…")).clicked() {
-                out.push(if row.folder.is_some() { Action::NewPageIn(row.folder) } else { Action::New });
-                ui.close();
+    }
+
+    /// Tick or untick `page`.
+    pub fn toggle_pick(&mut self, page: PageId) {
+        if !self.picked.remove(&page) {
+            self.picked.insert(page);
+        }
+    }
+
+    /// The footer under the rows (board 1.02): while pages are ticked, how many with Clear, then
+    /// Move to group, Duplicate and Delete; otherwise New page (and its kinds) and New group.
+    fn footer(&mut self, ui: &mut egui::Ui, r: Rect, writable: bool, top: f32, out: &mut Vec<Action>) {
+        let t = crate::shell::left::colours();
+        let s = ecad_ui::SHELL;
+        let area = Rect::from_min_max(pos2(r.left() - 8.0, top.max(r.top())), pos2(r.right() + 8.0, r.bottom()));
+        ui.painter().hline(area.x_range(), area.top() + 0.5, Stroke::new(1.0, ecad_ui::color(s.line)));
+        let inner = area.shrink2(vec2(8.0, 6.0));
+        // Pages no longer in the book drop out of the ticks.
+        if !self.picked.is_empty() {
+            let rows = &self.rows;
+            self.picked.retain(|p| rows.iter().any(|r| r.id == *p));
+        }
+        let read_only = if writable { None } else { Some(READ_ONLY) };
+        crate::shell::in_rect(ui, inner, "ecad.book.footer", |ui| {
+            ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+            if self.picked.is_empty() {
+                ui.horizontal(|ui| {
+                    let new_page = ecad_ui::prim::Button::new(NEW_PAGE).small();
+                    let new_page = match read_only {
+                        Some(why) => new_page.disabled(why),
+                        None => new_page,
+                    };
+                    if ui.add(new_page).clicked() {
+                        self.armed = true;
+                        out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
+                    }
+                    self.kinds_menu(ui, writable, out);
+                    let new_group = ecad_ui::prim::Button::new(NEW_FOLDER).kind(ecad_ui::prim::Kind::Quiet).small();
+                    let new_group = match read_only {
+                        Some(why) => new_group.disabled(why),
+                        None => new_group,
+                    };
+                    if ui.add(new_group).clicked() {
+                        self.armed = true;
+                        out.push(Action::NewFolder(self.target_folder()));
+                    }
+                });
+                return;
             }
-            if ui.add_enabled(writable, egui::Button::new(NEW_FOLDER)).clicked() {
-                out.push(Action::NewFolder(row.folder));
-                ui.close();
-            }
-            if ui.button("Open").clicked() {
-                out.push(Action::Open(row.id));
-                ui.close();
-            }
-            if ui.button("Preview").clicked() {
-                out.push(Action::Preview(row.id));
-                ui.close();
-            }
-            if ui.add_enabled(writable, egui::Button::new("Rename…")).clicked() {
-                out.push(Action::RenameInBox(row.id));
-                ui.close();
-            }
-            let n = self.rows.len();
-            if ui.add_enabled(writable && i > 0, egui::Button::new("Move up").shortcut_text("Alt+Up")).clicked() {
-                self.move_row(i, i - 1, out);
-                ui.close();
-            }
-            if ui.add_enabled(writable && i + 1 < n, egui::Button::new("Move down").shortcut_text("Alt+Down")).clicked() {
-                self.move_row(i, i + 1, out);
-                ui.close();
-            }
+            let n = self.picked.len();
+            ui.horizontal(|ui| {
+                let words = format!("{n} page{} selected", if n == 1 { "" } else { "s" });
+                ui.label(RichText::new(words).color(t.text));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(ecad_ui::prim::Button::new(CLEAR_PICKED).kind(ecad_ui::prim::Kind::Quiet).small()).clicked() {
+                        self.picked.clear();
+                    }
+                });
+            });
+            ui.horizontal(|ui| {
+                let picked: Vec<PageId> = self.rows.iter().filter(|r| self.picked.contains(&r.id)).map(|r| r.id).collect();
+                let folders: Vec<(FolderId, String)> = self
+                    .tree
+                    .iter()
+                    .filter_map(|r| match r {
+                        TreeRow::Folder { id, name, .. } => Some((*id, name.clone())),
+                        TreeRow::Page(_) => None,
+                    })
+                    .collect();
+                ui.add_enabled_ui(writable, |ui| {
+                    ui.menu_button(format!("{MOVE_TO_GROUP} \u{25be}"), |ui| {
+                        for (f, name) in folders {
+                            if ui.button(&name).clicked() {
+                                out.extend(picked.iter().map(|p| Action::MoveInto { page: *p, folder: Some(f), index: None }));
+                                ui.close();
+                            }
+                        }
+                        if ui.button("No group").clicked() {
+                            out.extend(picked.iter().map(|p| Action::MoveInto { page: *p, folder: None, index: None }));
+                            ui.close();
+                        }
+                    })
+                    .response
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, MOVE_TO_GROUP));
+                });
+                ui.add(ecad_ui::prim::Button::new(DUPLICATE).small().disabled(NOT_YET));
+                ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, DELETE_PAGES).disabled(NOT_YET));
+            });
+        });
+    }
+
+    /// New page of a kind (brief 024, design 024 §5.1): page, the generated kinds, terminal strips.
+    fn kinds_menu(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
+        ui.add_enabled_ui(writable, |ui| {
+            ui.menu_button(RichText::new("\u{25be}").small(), |ui| {
+                if ui.button("Page").clicked() {
+                    out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
+                    ui.close();
+                }
+                for k in ecad_cadcraft::generated::GenKind::ALL {
+                    let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", k.value()));
+                    if b.clicked() {
+                        out.push(Action::NewGenerated(k));
+                        ui.close();
+                    }
+                    // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
+                    if k == ecad_cadcraft::generated::GenKind::Terminals {
+                        let b = ui.button(ecad_cadcraft::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
+                        if b.clicked() {
+                            out.push(Action::NewStripPage);
+                            ui.close();
+                        }
+                    }
+                }
+            })
+            .response
+            .on_hover_text("New page of a kind: page, cover, contents, revision list, BOM by location")
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.project.newpage.kind"));
         });
     }
 
@@ -1154,9 +1216,12 @@ impl ProjectPanel {
         let error = r.error.is_some();
         let edit = egui::TextEdit::singleline(&mut r.text)
             .id(id)
-            .font(egui::FontId::monospace(12.0))
+            .font(egui::TextStyle::Monospace.resolve(ui.style()))
             .margin(egui::Margin::symmetric(2, 0))
-            .frame(egui::Frame::NONE.stroke(Stroke::new(1.0, if error { ORPHAN_RED } else { Tokens::get().accent })));
+            .frame(
+                egui::Frame::NONE
+                    .stroke(Stroke::new(1.0, if error { crate::shell::left::colours().error } else { crate::shell::left::colours().accent })),
+            );
         let resp = ui.put(rect, edit).accessible_name(RENAME);
         if opening {
             resp.request_focus();
@@ -1168,7 +1233,7 @@ impl ProjectPanel {
         }
         if let Some(e) = &r.error {
             egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
-                .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
+                .show(|ui| ui.label(RichText::new(e).small().color(crate::shell::left::colours().error)));
         }
         if resp.lost_focus() {
             let esc = ui.input(|i| i.key_pressed(Key::Escape));
@@ -1200,7 +1265,7 @@ impl ProjectPanel {
             return;
         }
         let n = self.rows.len();
-        let page_rows = ((ui.available_height() / ROW_H).floor() as usize).max(1);
+        let page_rows = ((ui.available_height() / self.row_h()).floor() as usize).max(1);
         let cur = self.target().unwrap_or(0).min(n - 1);
         let take = |k: Key, m: Modifiers| ui.ctx().input_mut(|i| i.consume_key(m, k));
         let mut moved = None;
@@ -1259,10 +1324,10 @@ impl ProjectPanel {
 fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut InPlace<T>) -> Option<(String, bool)> {
     let id = egui::Id::unique(id);
     let opening = egui::TextEdit::load_state(ui.ctx(), id).is_none();
-    let colour = if edit.error.is_some() { ORPHAN_RED } else { Tokens::get().accent };
+    let colour = if edit.error.is_some() { crate::shell::left::colours().error } else { crate::shell::left::colours().accent };
     let field = egui::TextEdit::singleline(&mut edit.text)
         .id(id)
-        .font(egui::FontId::monospace(12.0))
+        .font(egui::TextStyle::Monospace.resolve(ui.style()))
         .margin(egui::Margin::symmetric(2, 0))
         .frame(egui::Frame::NONE.stroke(Stroke::new(1.0, colour)));
     let resp = ui.put(rect, field).accessible_name(label);
@@ -1276,7 +1341,7 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
     }
     if let Some(e) = &edit.error {
         egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
-            .show(|ui| ui.label(RichText::new(e).small().color(ORPHAN_RED)));
+            .show(|ui| ui.label(RichText::new(e).small().color(crate::shell::left::colours().error)));
     }
     if !resp.lost_focus() {
         return None;
@@ -1292,22 +1357,6 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
         return Some((text, false));
     }
     Some((text, true))
-}
-
-/// `ecad.orphan` red (design tokens).
-const ORPHAN_RED: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
-
-/// An 18 × 18 icon button, as CADCraft's file tabs draw them, with an accessible label.
-fn icon_button(ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, enabled: bool) -> egui::Response {
-    let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let resp = ui.interact(rect, egui::Id::unique(id), sense);
-    if enabled && resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, Tokens::get().control_hover);
-    }
-    icons::paint(ui.painter(), rect.shrink(1.0), icon, !enabled);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
-    resp.on_hover_text(label)
 }
 
 /// `text` cut with `…` to fit `width` in `font`.

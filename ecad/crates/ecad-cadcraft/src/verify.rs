@@ -94,23 +94,55 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 /// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
 pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64) -> Verification {
+    verify_page_shown(doc, page, drawing, map, fan, tol, false)
+}
+
+/// [`verify_page_with`] for a page drawn with Show Hidden Text on or off (brief 031, design §5.7):
+/// with it on, the hidden derived texts are expected too, dimmed.
+pub fn verify_page_shown(
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+) -> Verification {
+    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false)
+}
+
+/// [`verify_page_shown`] for a project whose title block marks a pending revision (brief 033,
+/// overseer ruling 4): the frame is expected with the project's pending flag.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_page_pending(
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
+) -> Verification {
     let mut v = Verification::default();
     let fans = crate::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
+    let look = crate::text_style::Look::new(doc);
     for f in fans.values() {
         for part in &f.parts {
-            let e = part_entity(part, Handle(0));
+            let e = part_entity(&look, part, Handle(0));
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
     // Device tags and terminal labels (brief 018), derived like the cable parts.
-    for t in crate::devices::texts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::devices::text_entity(&t, Handle(0)))).or_default() += 1;
+    for t in crate::devices::all_texts_on_page(doc, page) {
+        if !t.shown && !hidden_text {
+            continue;
+        }
+        let mut e = crate::devices::text_entity(&look, &t.text, Handle(0));
+        if !t.shown {
+            crate::text_style::dim_hidden(&mut e);
+        }
+        *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // Device cross-references (brief 025), derived the same way.
     for part in crate::xref::parts_on_page(doc, page) {
+        let mut e = crate::project::xref_entity(&part, Handle(0));
+        // Brief 049: a continuation's other-end text in Ink 2, as the page draws it.
+        crate::continuations::colour(doc, &part, &mut e);
+        *fan_expected.entry(computed_key(&e)).or_default() += 1;
+    }
+    // PLC card frames (brief 051), derived the same way.
+    for part in crate::plc::look::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
     }
     // Link lines (brief 030), derived the same way.
@@ -118,20 +150,55 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
         *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;
     }
     // Location box labels (brief 024), derived the same way.
-    for (_, value, at) in crate::locations::labels_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::locations::label_entity(&value, at, Handle(0)))).or_default() += 1;
+    for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::locations::styled_label_entity(doc, &look, rep, &value, at, Handle(0)))).or_default() += 1;
     }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
-        *fan_expected.entry(computed_key(&crate::wires::label_entity(&l, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::wires::label_entity(&look, &l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.
-    for part in crate::generated::parts_of(doc, page, None) {
-        *fan_expected.entry(computed_key(&crate::frame::entity(&part, Handle(0)))).or_default() += 1;
+    let frame_rgb = crate::frame::line_colour(doc, page);
+    for part in crate::generated::parts_of_pending(doc, page, None, pending) {
+        *fan_expected.entry(computed_key(&crate::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
+    // Brief 040: a two-colour wire's dashes, derived from its route like the labels.
+    let budget = crate::look::dash_budget(doc, page);
+    for r in crate::look::coloured_routes(doc, page, Some(map), crate::look::projection_sheet()) {
+        if !budget.dashed.contains(&r.rep) {
+            continue;
+        }
+        let Some(route) = r.handle.and_then(|h| entities.get(&h)) else { continue };
+        for e in crate::wires::route_dashes(&r, &route.common) {
+            *fan_expected.entry(computed_key(&e)).or_default() += 1;
+        }
+    }
+    // Brief 040: a route drawn in its wire colour reads back as its item in the item's own colour.
+    let plain = |e: &Entity| -> Entity {
+        let mut e = e.clone();
+        if map.is_coloured(e.handle)
+            && let Some(Mapped::Item(id)) = map.get(e.handle)
+            && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
+        {
+            e.common.color = own.common.color;
+        }
+        // Brief 050a: a location box outline drawn in its location style reads back as its item;
+        // brief 050b: a wire route drawn in its category's line type and weight likewise.
+        if let Some(Mapped::Item(id)) = map.get(e.handle)
+            && doc
+                .representation_of_item(id)
+                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Conductor(_)))
+            && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
+        {
+            e.common.color = own.common.color;
+            e.common.linetype = own.common.linetype;
+            e.common.lineweight = own.common.lineweight;
+        }
+        e
+    };
 
     // 1. Content: the drawing's entities, decoded, are exactly the page's items (as a multiset).
     let mut shown: BTreeMap<String, usize> = BTreeMap::new();
@@ -182,7 +249,7 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
-        match item_from(doc, page, e) {
+        match item_from(doc, page, &plain(e)) {
             Ok(item) => *shown.entry(serde_json::to_string(&item).unwrap_or_default()).or_default() += 1,
             Err(m) => problems.push(format!("an entity cannot be read back as an item: {m}")),
         }
@@ -210,7 +277,7 @@ pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &H
     }
     for (id, item) in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
         match map.item(*id).and_then(|h| entities.get(&h)) {
-            Some(e) if item_from(doc, page, e).is_ok_and(|x| x == *item) => {}
+            Some(e) if item_from(doc, page, &plain(e)).is_ok_and(|x| x == *item) => {}
             Some(_) => problems.push(format!("item {id} is mapped to an entity that shows something else")),
             None => problems.push(format!("item {id} is not drawn")),
         }

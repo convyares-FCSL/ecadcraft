@@ -1362,6 +1362,7 @@ dependencies = [
  "ecad-inspect",
  "ecad-model",
  "ecad-store",
+ "ecad-tokens",
  "serde",
  "serde_json",
 ]
@@ -1444,21 +1445,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecad-tokens"
+version = "0.1.0-dev"
+
+[[package]]
 name = "ecad-trial"
 version = "0.1.0-dev"
 dependencies = [
  "cadcraft-engine",
+ "cadcraft-mcp",
  "cadcraft-ui-egui",
+ "chrono",
  "ecad-cadcraft",
  "ecad-file",
  "ecad-inspect",
  "ecad-mcp",
  "ecad-model",
  "ecad-store",
+ "ecad-ui",
  "eframe",
+ "egui",
  "egui_kittest",
+ "log",
  "ron",
+ "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ecad-ui"
+version = "0.1.0-dev"
+dependencies = [
+ "ecad-tokens",
+ "egui",
+ "egui_extras",
+ "egui_kittest",
+ "sha2",
 ]
 
 [[package]]

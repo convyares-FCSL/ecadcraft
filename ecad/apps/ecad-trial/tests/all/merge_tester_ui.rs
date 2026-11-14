@@ -18,8 +18,8 @@ use crate::mouse_tester::{doc, harness_with, ok};
 type H = Harness<'static, ecad_trial::Trial>;
 
 fn click(h: &mut H, label: &str) {
-    h.get_by_label(label).click();
-    h.run_steps(3);
+    // UI rev 3: the panels' tabs are reached through the strip and the inspector.
+    crate::project_panel::click(h, label);
 }
 
 fn exists(h: &H, label: &str) -> bool {
@@ -193,14 +193,14 @@ fn now_row_right_click_f2_rename_and_graph_paging() {
     assert!(dlg.starts_with("Some(Rename"), "{dlg}");
     h.state_mut().panel.history.dialog = None;
     h.run_steps(2);
-    // Right-click on main's Now row: Switch to "main"; on the branch's own Now row: Merge into
-    // main…, Update from main…, Rename, Archive.
-    h.get_by_label("Now on main").click_secondary();
+    // Right-click on main's row in Branches (UI rev 3): Switch to "main"; on the branch's own
+    // row: Merge into main…, Update from main…, Rename, Archive.
+    h.get_by_label("Branch main").click_secondary();
     h.run_steps(3);
     assert!(exists(&h, "Switch to \"main\""), "main's Now row menu");
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
-    h.get_by_label_contains("Now on Option B").click_secondary();
+    h.get_by_label("Branch Option B").click_secondary();
     h.run_steps(3);
     for item in ["Merge into main…", "Update from main…", "Rename branch…", "Archive branch…"] {
         assert!(exists(&h, item), "{item} in the Now row menu");
@@ -221,8 +221,11 @@ fn now_row_right_click_f2_rename_and_graph_paging() {
     eprintln!("paging: {} rows, more = {}", g.nodes.len(), g.more);
     assert!(g.more && g.nodes.len() <= 210, "the first page: {} rows, more {}", g.nodes.len(), g.more);
     let first = g.nodes.len();
-    // Scroll the graph to its end: the next page is read.
-    let row = h.get_by_label_contains("Now on main").rect().center();
+    // UI rev 3: scroll History to its end, where Versions' "Show older versions" reads the next
+    // page.
+    h.state_mut().panel.history.folded.insert("changes");
+    h.run_steps(2);
+    let row = h.get_by_label("Section Branches").rect().center();
     for _ in 0..80 {
         h.event(egui::Event::PointerMoved(row));
         h.event(egui::Event::MouseWheel {
@@ -234,6 +237,7 @@ fn now_row_right_click_f2_rename_and_graph_paging() {
         });
         h.run_steps(1);
     }
+    h.get_by_label(ecad_trial::history_panel::OLDER).click();
     h.run_steps(4);
     let g = h.state().panel.history.graph().clone();
     eprintln!("paging after scroll: {} rows, more = {}", g.nodes.len(), g.more);

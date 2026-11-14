@@ -15,6 +15,8 @@ ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
 ecad-inspect = { workspace = true }
 ecad-model = { workspace = true }
 ecad-file = { workspace = true }
+# Brief 037: the style, fonts and primitives of ECAD's interface.
+ecad-ui = { path = "../../crates/ecad-ui" }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
@@ -24,14 +26,23 @@ eframe = { version = "0.37", default-features = false, features = ["clipboard", 
 # version eframe uses, so nothing is built twice.
 ron = "0.12"
 serde_json = { workspace = true }
+# Brief 038: the shell state and page views in eframe storage.
+serde = { workspace = true }
+# Brief 035: the shared write gate and tools (the bridge's app side), and upstream's control
+# token; the included upstream control server names `egui` and `log` directly (eframe's versions).
+ecad-mcp = { path = "../ecad-mcp" }
+cadcraft-mcp = { path = "../../../crates/mcp" }
+egui = { version = "0.37", default-features = false }
+log = "0.4"
+# The banner's clock (house rule: time goes through chrono).
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
 ecad-store = { workspace = true }
-# The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature).
-ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops"] }
+# The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature);
+# brief 035's bridge tests make an ECAD command panic (fault injection).
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops", "fault-injection"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
-# Brief 022: the UI test of the Checks tab opens the demo project, built as `cargo xtask demo` builds it.
-ecad-mcp = { path = "../ecad-mcp" }

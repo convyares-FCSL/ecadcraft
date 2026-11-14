@@ -238,6 +238,35 @@ pub struct Services {
     pub pick_pgp: Option<Box<dyn Fn(Option<&str>) -> Option<String>>>,
 }
 
+// ECAD-SEAM(owner): embedded drawing view.
+/// How an embedding application uses the window ([`CadApp::embedding`]). The default is
+/// CADCraft's own interface, unchanged; an application that draws its own window around the
+/// drawing turns switches off and calls [`CadApp::ui_embedded`] with the rect it gives the drawing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Embedding {
+    /// Draw CADCraft's title bar, toolbar, menu bar, status bar, file tabs, Tool Sets strip,
+    /// docking area and start page. Off: only the drawing area (and CADCraft's dialogs and
+    /// protective prompts) is drawn.
+    pub chrome: bool,
+    /// Typing while no command runs starts commands through the hidden command line. Off: keys
+    /// reach the command line only while a command is prompting (values, keywords, Enter, Esc);
+    /// idle typing is left to the embedder.
+    pub idle_typing: bool,
+    /// Right-click on the drawing while no command runs opens CADCraft's shortcut, grip or snap
+    /// menu. Off: the click is reported through [`CadApp::take_secondary_click`] and no menu opens.
+    /// Right-click while a command runs is unchanged.
+    pub canvas_menus: bool,
+    /// CADCraft applies its egui visuals and spacing and installs its interface fonts. Off: the
+    /// embedder owns egui's style and fonts; CADCraft still sets its canvas colours.
+    pub style: bool,
+}
+
+impl Default for Embedding {
+    fn default() -> Self {
+        Embedding { chrome: true, idle_typing: true, canvas_menus: true, style: true }
+    }
+}
+
 pub struct CadApp {
     pub system_languages: Vec<String>,
     /// Whether the operating system shows animations, as the host reads it; `None` when the OS
@@ -343,6 +372,11 @@ pub struct CadApp {
     /// Draws the embedding application's own section at the top of the Properties palette, under
     /// its header. `None` by default: the palette is unchanged.
     pub owner_properties: Option<Box<dyn FnMut(&mut egui::Ui)>>,
+    // ECAD-SEAM(owner): embedded drawing view.
+    /// How an embedding application uses the window ([`Embedding`]); the default changes nothing.
+    pub embedding: Embedding,
+    /// A right-click on the drawing while idle with `embedding.canvas_menus` off, not yet taken.
+    pub(crate) secondary_click: Option<egui::Pos2>,
 }
 
 impl CadApp {
@@ -403,6 +437,8 @@ impl CadApp {
             extra_tool_tabs: Vec::new(),
             tool_requests: Vec::new(),
             owner_properties: None,
+            embedding: Embedding::default(),
+            secondary_click: None,
         }
     }
 
@@ -864,12 +900,28 @@ impl CadApp {
         }
     }
 
+    // ECAD-SEAM(owner): embedded drawing view.
+    /// Everything [`Self::ui`] does (frame start, input, the drawing area, CADCraft's dialogs and
+    /// protective prompts, screenshots), with the drawing filling `ui`'s rect; CADCraft's chrome is
+    /// drawn around it only when [`Embedding::chrome`] is on.
+    pub fn ui_embedded(&mut self, ui: &mut egui::Ui) {
+        self.ui(ui);
+    }
+
+    // ECAD-SEAM(owner): embedded drawing view.
+    /// The screen position of a right-click on the drawing while no command ran, when
+    /// [`Embedding::canvas_menus`] is off; each click is returned once.
+    pub fn take_secondary_click(&mut self) -> Option<egui::Pos2> {
+        self.secondary_click.take()
+    }
+
     /// Frame-only work, run from the first real UI pass (never from a hidden logic tick).
     fn ui_frame_begin(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let ctx = &ctx;
         let language = self.language();
-        if self.fonts_language != Some(language) {
+        // ECAD-SEAM(owner): embedded drawing view. Off, the embedder owns fonts and style.
+        if self.embedding.style && self.fonts_language != Some(language) {
             theme::install_fonts(ctx, language);
             self.fonts_language = Some(language);
         }
@@ -885,7 +937,7 @@ impl CadApp {
         theme::set_active(shown);
         theme::set_canvas(self.options.canvas());
         let follows_system = self.ui.theme == theme::ThemePref::System;
-        if self.shown_theme != Some(shown) || self.shown_follows_system != follows_system {
+        if self.embedding.style && (self.shown_theme != Some(shown) || self.shown_follows_system != follows_system) {
             theme::apply(ctx, shown, follows_system);
             self.shown_theme = Some(shown);
             self.shown_follows_system = follows_system;
@@ -938,6 +990,16 @@ impl CadApp {
         let t0 = now_ms();
         control::begin_frame(ui.ctx());
         let t = theme::Tokens::get();
+        // ECAD-SEAM(owner): embedded drawing view. Without chrome, only the drawing area.
+        if !self.embedding.chrome {
+            ui.painter().rect_filled(ui.max_rect(), 0.0, t.canvas);
+            if !self.session.docs.is_empty() {
+                canvas::show(self, ui);
+            }
+            self.draw_overlays(ui);
+            self.frame_ms = now_ms() - t0;
+            return;
+        }
         chrome::title_and_toolbar(self, ui);
         if self.ui.in_window_menu {
             menus::menu_bar(self, ui);
@@ -959,6 +1021,12 @@ impl CadApp {
                 chrome::start_page(self, ui);
             }
         });
+        self.draw_overlays(ui);
+        self.frame_ms = now_ms() - t0;
+    }
+
+    /// CADCraft's dialogs, notices and protective prompts, drawn over the window.
+    fn draw_overlays(&mut self, ui: &mut egui::Ui) {
         self.opening.show(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
         updates_ui::show(self, ui.ctx());
@@ -969,7 +1037,6 @@ impl CadApp {
         autosave::show(self, ui.ctx());
         autosave::gpu_notice(self, ui.ctx());
         autosave::failure_notice(self, ui.ctx());
-        self.frame_ms = now_ms() - t0;
     }
 
     /// Drain each queued control request at most once (timed-out requests are skipped), dispatch it to `control::handle` or `capture::admit`, note the resulting capture identity and request a repaint.

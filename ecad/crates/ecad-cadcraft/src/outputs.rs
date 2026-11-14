@@ -21,9 +21,14 @@
 //! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
+//! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
+//! | Brief 047: `SetProperty(Component c, part.<n>.* / article_number)`, c a device or strip | c's entries (its main part and part lines) move between rows; the article index of their part keys; c's uncovered fuses |
+//! | Brief 047: `CreateComponent` / `DeleteComponent` / `SetProperty` of an item | that item's entry |
+//! | Brief 047: `SetProperty(Project, location)` | also the items whose location is the project's |
+//! | Brief 047: `SetProperty(Project, bom.*)` | no row: the tables and page re-read the view (`BomView`); the sheet count switches to the other kept count |
 //! | anything else | nothing |
 //!
 //! This module reads the document; it changes nothing.
@@ -34,6 +39,7 @@ use ecad_model::book::{LOCATION_KEY, NUMBER_KEY};
 use ecad_model::{CableId, ComponentId, ConductorId, Document, End, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, TerminalId};
 use serde_json::{Value, json};
 
+use crate::bom::{self, Qty};
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::locations::{self, BoxCache, Located, Source};
 
@@ -99,6 +105,8 @@ pub struct DeviceRow {
     pub description: Option<String>,
     pub maker: Option<String>,
     pub part_number: Option<String>,
+    /// Brief 047: its main part's article number.
+    pub article_number: Option<String>,
     pub location: Located,
     /// The page of its main symbol and where that symbol is.
     pub main: Option<(RepresentationId, PageId, Option<Pt>)>,
@@ -112,21 +120,83 @@ fn tag_key(t: &str) -> (String, u64, String) {
     (p, n, t.to_string())
 }
 
-/// The key a device is grouped by on the BOM (part): maker, part number, description, compared
-/// case-insensitively; a device with no part number is a group of its own.
+/// The key an entry is grouped by on the BOM (part): maker, part number, description, compared
+/// case-insensitively, and the unit (brief 047: pieces and metres never add up); an entry with no
+/// part number is a group of its own.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PartKey(String, String, String, Option<ComponentId>);
+pub struct PartKey(String, String, String, Option<(ComponentId, u8)>, bool);
 
-impl DeviceRow {
+impl PartKey {
+    /// The same part, but a row of its own for entry `own` (the nested layout's device rows).
+    fn alone(&self, own: (ComponentId, u8)) -> PartKey {
+        PartKey(self.0.clone(), self.1.clone(), self.2.clone(), Some(own), self.4)
+    }
+}
+
+/// Brief 047 (design 047 §4.1): one BOM entry, a line of a part set or an item.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    pub component: ComponentId,
+    /// 0 for a device's main part or an item, else the part line.
+    pub line: u8,
+    pub item: bool,
+    /// The device's tag (empty for an item).
+    pub tag: String,
+    pub location: Option<String>,
+    pub description: Option<String>,
+    pub maker: Option<String>,
+    pub part_number: Option<String>,
+    pub article_number: Option<String>,
+    /// Per device, or per sub-item when `for` names some.
+    pub qty: Qty,
+    pub metres: bool,
+    pub kit: Option<String>,
+    /// The sub-items `for` names that the device has, in `for` order.
+    pub subs: Vec<String>,
+    /// The sub-items `for` names that the device does not have (counted 0).
+    pub missing: Vec<String>,
+}
+
+/// An entry's place in its row: tagged entries by tag, then items by description and part number.
+type EntrySort = (bool, (String, u64, String), ComponentId, u8);
+
+impl Entry {
     fn part_key(&self) -> PartKey {
         let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
         match &self.part_number {
-            Some(_) => PartKey(low(&self.maker), low(&self.part_number), low(&self.description), None),
-            None => PartKey(String::new(), String::new(), low(&self.description), Some(self.component)),
+            Some(_) => PartKey(low(&self.maker), low(&self.part_number), low(&self.description), None, self.metres),
+            None => PartKey(String::new(), String::new(), low(&self.description), Some((self.component, self.line)), self.metres),
         }
     }
     fn loc_key(&self) -> LocKey {
-        loc_key(self.location.value.as_deref())
+        loc_key(self.location.as_deref())
+    }
+    fn sort(&self) -> EntrySort {
+        if self.item {
+            let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
+            (true, (low(&self.description), 0, low(&self.part_number)), self.component, self.line)
+        } else {
+            (false, tag_key(&self.tag), self.component, self.line)
+        }
+    }
+    /// Whether its `for` names sub-items (its quantity is per sub-item).
+    fn per_sub(&self) -> bool {
+        !self.subs.is_empty() || !self.missing.is_empty()
+    }
+    /// The quantity it adds to its row: per sub-item named (only those the device has), or once;
+    /// `None` on overflow.
+    pub fn total(&self) -> Option<Qty> {
+        if self.per_sub() { self.qty.checked_mul(self.subs.len()) } else { Some(self.qty) }
+    }
+    /// The tags it shows: `-K03`, or `-F01:1, -F01:2` for a `for` line; none for an item.
+    pub fn tags(&self) -> Vec<String> {
+        if self.item {
+            return Vec::new();
+        }
+        if !self.per_sub() {
+            return vec![self.tag.clone()];
+        }
+        self.subs.iter().map(|s| format!("{}:{s}", self.tag)).collect()
     }
 }
 
@@ -153,6 +223,8 @@ pub struct EndCell {
     pub device: Option<ComponentId>,
     /// (page position, column, row) of the end, for the From/To order.
     pub order: (usize, u32, u32),
+    /// Brief 032: the end is a continuation (a core chain's inner end, design 032 §3.2).
+    pub continuation: bool,
 }
 
 impl EndCell {
@@ -176,6 +248,14 @@ pub struct WireRow {
     /// The colour as stored (IEC code or free text); the table writes it in the colour style.
     pub colour: Option<String>,
     pub potential: Option<String>,
+    /// Brief 050b: its wire category (ID and name), and whether its colour and cross-section are
+    /// its own (overriding the category's).
+    pub category: Option<(ecad_model::StyleRef, String)>,
+    pub colour_own: bool,
+    pub cross_section_own: bool,
+    /// Brief 050b (design 050 §5.6): the category's BOM part (part number, maker, description,
+    /// allowance in metres per wire), when the category has a part number.
+    pub part: Option<(String, Option<String>, Option<String>, f64)>,
     pub cable: String,
     /// Where its first route's midpoint is; the table writes it in the reference style.
     pub page: Option<ecad_model::derive::Place>,
@@ -200,10 +280,13 @@ pub struct CableRow {
     pub go: Option<(PageId, Pt)>,
     /// Brief 028: how its members meet its core offer (design 028 §6.2).
     pub count: crate::strips::CoreCount,
-    /// The members (in member order), for the over and twice go-tos.
+    /// The first member of each core chain (design 032 §3.2; one member per chain without
+    /// continuations), in member order, for the over and twice go-tos.
     pub members: Vec<ConductorId>,
     /// Their stored core labels, in member order.
     pub member_cores: Vec<Option<String>>,
+    /// Brief 032: the last member of each core chain (its To), aligned with `members`.
+    pub tails: Vec<ConductorId>,
     /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
     pub from_devices: Vec<String>,
     pub to_devices: Vec<String>,
@@ -235,19 +318,78 @@ impl Group {
 }
 
 /// One BOM row.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct BomRow {
     /// By location: the location (`None`: `?`). By part: `+CP1 ×2, +FIELD ×1`.
     pub location: Option<String>,
-    pub qty: usize,
+    /// Brief 047: a count, or metres when `metres`.
+    pub qty: Qty,
+    pub metres: bool,
+    /// The sum overflowed (never a panic): `qty` is its last good value, flagged.
+    pub overflow: bool,
     pub tags: Vec<String>,
     pub devices: Vec<ComponentId>,
     pub description: Option<String>,
     pub maker: Option<String>,
     pub part_number: Option<String>,
+    /// Brief 047: the article number its entries share (the most common one when they differ,
+    /// with `article_flag` saying which differ).
+    pub article_number: Option<String>,
+    pub article_flag: Option<String>,
+    /// Brief 047: the entries counted, `(component, line)`; empty for strip terminal and
+    /// accessory rows.
+    pub entries: Vec<(ComponentId, u8)>,
+    /// Brief 047: the row lists items only.
+    pub item: bool,
+    /// Brief 047, nested layout: the part line this row lists under its device, and its kit.
+    pub line: Option<u8>,
+    pub kit: Option<String>,
     /// Brief 030: the accessory a strip's row counts (`end_stop`, `jumper`…); `None` for devices
     /// and terminals.
     pub accessory: Option<&'static str>,
+}
+
+impl BomRow {
+    /// The Qty cell as the window and the BOM page show it: `4`, `5.6 m`.
+    pub fn qty_text(&self) -> String {
+        if self.no_qty() {
+            String::new()
+        } else if self.metres {
+            format!("{} m", self.qty)
+        } else {
+            self.qty.to_string()
+        }
+    }
+
+    /// Brief 050b (design 050 §5.6): a wire row whose category has no allowance has no Qty (an
+    /// empty cell, never "0 m"); its note gives the count of wires.
+    pub fn no_qty(&self) -> bool {
+        self.metres && self.qty.0 == 0 && self.tags.is_empty() && self.devices.is_empty()
+    }
+
+    /// The Description as shown: a nested line indented with `\u{21b3}` and its kit.
+    pub fn description_text(&self) -> Option<String> {
+        let d = self.description.clone()?;
+        Some(match (self.line, &self.kit) {
+            (Some(_), Some(k)) => format!("  \u{21b3} {d} (kit: {k})"),
+            (Some(_), None) => format!("  \u{21b3} {d}"),
+            _ => d,
+        })
+    }
+}
+
+/// Brief 047: the BOM's report settings (`bom.column.article`, `bom.lines`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BomView {
+    pub article: bool,
+    pub nested: bool,
+}
+
+impl BomView {
+    /// The project's settings.
+    pub fn of(doc: &Document) -> BomView {
+        BomView { article: bom::article_column(doc), nested: bom::lines_nested(doc) }
+    }
 }
 
 /// The rows of a report, as text cells for tables, CSV and generated pages.
@@ -300,6 +442,13 @@ pub struct Scope {
     styles: bool,
     /// Brief 030: project `strip_*` keys that changed (the strips inheriting them).
     strip_keys: BTreeSet<String>,
+    /// Brief 044: project `connector.*` keys that changed (the connectors inheriting them).
+    connector_keys: BTreeSet<String>,
+    /// Brief 047: a `bom.*` report setting changed (no row work: the view is re-read).
+    bom_view: bool,
+    /// Brief 050b: the project's or standard's wire category choice, or a category it resolves
+    /// to, changed: every wire row.
+    all_wires: bool,
 }
 
 impl Scope {
@@ -315,6 +464,9 @@ impl Scope {
             && !self.sheet
             && !self.styles
             && self.strip_keys.is_empty()
+            && self.connector_keys.is_empty()
+            && !self.bom_view
+            && !self.all_wires
     }
 
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
@@ -345,11 +497,21 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), .. } => {
+                Op::SetComponentDefinition { id, .. } => {
+                    if locations::is_box(doc, *id) {
+                        self.pages.extend(doc.representations_of(Subject::Component(*id)).map(|(_, r)| r.page));
+                    } else {
+                        self.devices.insert(*id);
+                    }
+                }
+                Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*c);
+                    }
+                    if key == ecad_model::connectivity::NAME {
+                        self.cables.extend(continuation_group_cables(doc, *c));
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
@@ -366,14 +528,51 @@ impl Scope {
                         self.route_pages.insert(*p);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                // Brief 050a: a standard's value of a registry key reaches the same views.
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                    // Brief 050b: the project's or standard's wire category reaches every wire row.
+                    if key == ecad_model::wiring::WIRE_CATEGORY {
+                        self.all_wires = true;
+                    }
                     if key == LOCATION_KEY {
                         self.project_location = true;
                     }
-                    if key.starts_with("strip_") {
+                    // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
+                    if key.starts_with("strip_") || key.starts_with("terminal.") {
                         self.strip_keys.insert(key.clone());
                     }
+                    // Brief 044: the registry's `connector.*` defaults reach connectors.
+                    if key.starts_with("connector.") {
+                        self.connector_keys.insert(key.clone());
+                    }
+                    // Brief 047 (design 047 §10): the BOM's report settings.
+                    if key.starts_with("bom.") {
+                        self.bom_view = true;
+                    }
                 }
+                // Brief 050b (design 050 §10): a wire category reaches the rows of the conductors
+                // resolving to it: its explicit users, the wires of the potentials it names (before
+                // and after), and every wire when it is the project's or standard's choice.
+                Op::SetStyle { catalogue, id, before, after, .. } if catalogue == "wire" => {
+                    for (_, o) in crate::styles::explicit_users(doc, "wire", id) {
+                        if let ObjectRef::Conductor(c) = o {
+                            self.conductors.insert(c);
+                        }
+                    }
+                    for r in [before, after].into_iter().flatten() {
+                        if let Some(pot) = r.fields.get("potential") {
+                            self.potentials.insert(pot.trim().to_lowercase());
+                        }
+                    }
+                    if let Some(r) = crate::styles::field_of(doc, "wire", id, "potential", None) {
+                        self.potentials.insert(r.text().trim().to_lowercase());
+                    }
+                    if crate::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, crate::defaults::Scope::project()) == *id {
+                        self.all_wires = true;
+                    }
+                }
+                // Other style records and the standard header change no report row.
+                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.devices.insert(terminal.component);
                     // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
@@ -462,8 +661,32 @@ pub struct Outputs {
     from_project: BTreeSet<ComponentId>,
     /// Devices with no location at all: a project location set reaches them (tester 024, bug 1).
     from_none: BTreeSet<ComponentId>,
-    by_location: BTreeMap<(LocKey, PartKey), BTreeSet<((String, u64, String), ComponentId)>>,
-    by_part: BTreeMap<PartKey, BTreeSet<((String, u64, String), ComponentId)>>,
+    /// Brief 047 (design 047 §4, §10): the BOM entries (main parts, part lines, items) and the
+    /// rows they make, kept by key.
+    entries: BTreeMap<(ComponentId, u8), Entry>,
+    by_location: BTreeMap<(LocKey, PartKey), BTreeSet<EntrySort>>,
+    by_part: BTreeMap<PartKey, BTreeSet<EntrySort>>,
+    /// The nested layout's rows: main parts and items only (a device with part lines a row of its
+    /// own), and the part lines per location, so its sheet count is O(locations) too.
+    nested: BTreeMap<(LocKey, PartKey), BTreeSet<EntrySort>>,
+    loc_nested_rows: BTreeMap<LocKey, usize>,
+    loc_lines: BTreeMap<LocKey, usize>,
+    /// Part key → its article numbers with how many entries carry each (§4.3).
+    articles: BTreeMap<PartKey, BTreeMap<String, usize>>,
+    /// Part keys with two or more article numbers.
+    article_conflicts: BTreeSet<PartKey>,
+    /// Lines whose `for` names sub-items the device lacks.
+    for_missing: BTreeSet<(ComponentId, u8)>,
+    /// `part.` keys ECAD does not read, per component.
+    bad_part_keys: BTreeMap<ComponentId, Vec<String>>,
+    /// Uncovered fuses per device or strip, and lines that are fuse inserts (any `for`, or a line
+    /// on a fuse terminal device), per component.
+    fuse_gaps: BTreeMap<ComponentId, usize>,
+    inserts: BTreeMap<ComponentId, usize>,
+    lines_no_part: usize,
+    items_no_part: usize,
+    /// The report settings the tables use (`bom.column.article`, `bom.lines`).
+    pub view: BomView,
     wires: BTreeMap<ConductorId, WireRow>,
     /// Conductors by their net's potential (lower case; `""`: none), for wiring-table changes.
     by_potential: BTreeMap<String, BTreeSet<ConductorId>>,
@@ -479,6 +702,10 @@ pub struct Outputs {
     no_location: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
     pub strips: crate::strips::Strips,
+    /// Brief 045: the PLC racks and cards (design 045 §11.1).
+    pub plc: crate::plc::Plc,
+    /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
+    pub strip_pages: crate::strip_page::StripPages,
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
@@ -499,22 +726,54 @@ pub struct Outputs {
     /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
     /// cables with no core count (one info row when any).
     cable_checks: [usize; 3],
+    /// Brief 044 (design 044 §8): each connector's BOM rows, one per drawn half.
+    connectors: BTreeMap<ComponentId, Vec<BomRow>>,
+    /// Brief 044 (review of #81, 1): the pages of each connector's halves' main symbols (also in
+    /// `by_page`), so a box or page location there reaches the half.
+    connector_pages: BTreeMap<ComponentId, BTreeSet<PageId>>,
+    /// Brief 044 (review of #81, 2): the half rows' groups, kept beside `loc_rows` / `by_part`:
+    /// (location, group) and group → how many halves; location → how many groups.
+    half_loc: BTreeMap<(LocKey, HalfKey), usize>,
+    half_part: BTreeMap<HalfKey, usize>,
+    half_loc_rows: BTreeMap<LocKey, usize>,
+    /// How many times the half rows were grouped (tests: an unrelated edit groups none).
+    pub half_groupings: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
     links_off_strip: BTreeSet<ComponentId>,
     link_keys: BTreeMap<ComponentId, Vec<String>>,
+    /// Brief 033 (review of #64, 2): the `continuation-clash` rows, kept. Worked out again only
+    /// when a page is added, removed or renumbered, an issue changes the revision list, or a kept
+    /// generated page's sheet count moves.
+    continuation: Vec<Check>,
+    /// How many times [`Self::continuation`] was worked out (tests: an unrelated edit makes none).
+    pub continuation_builds: u64,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
     pub last_work: usize,
+    /// Brief 046 (review): the last update's ops could move a page number or a sheet count that
+    /// the document alone decides (a page's style or sheet): the frame's Total is worked out again.
+    pub numbers_moved: bool,
 }
 
 impl Outputs {
     /// Every model, from scratch (open, reload, first show).
     pub fn build(doc: &Document) -> Outputs {
-        let mut o = Outputs { style: doc.settings.reference_style, colour_style: doc.settings.wiring.colour_style, ..Outputs::default() };
+        let mut o = Outputs {
+            style: doc.settings.reference_style,
+            colour_style: doc.settings.wiring.colour_style,
+            view: BomView::of(doc),
+            ..Outputs::default()
+        };
         let mut cache = BoxCache::default();
         for (_, c) in doc.tagged() {
             o.set_device(doc, c, &mut cache);
+        }
+        // Brief 047: items (tagless, on no page).
+        for (c, comp) in &doc.components {
+            if bom::is_item_component(comp) {
+                o.set_device(doc, *c, &mut cache);
+            }
         }
         let cx = PageCx::of(doc);
         for w in doc.conductors.keys() {
@@ -527,10 +786,51 @@ impl Outputs {
             o.set_box_checks(doc, *p);
         }
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
+        o.plc = crate::plc::Plc::build(doc);
+        o.strip_pages = crate::strip_page::StripPages::build(doc, &o.strips);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        o.refresh_continuation(doc);
         o
+    }
+
+    /// Work out the `continuation-clash` rows (design 033 §5.3).
+    fn refresh_continuation(&mut self, doc: &Document) {
+        let rows = crate::generated::continuation_checks(doc, Some(&*self));
+        self.continuation_builds += 1;
+        if rows != self.continuation {
+            self.continuation = rows;
+            self.checks_changed += 1;
+        }
+    }
+
+    /// The sheet count of each kept generated page (BOM, terminal plan, cable schedule).
+    fn generated_sheets(&self, doc: &Document) -> Vec<(PageId, usize)> {
+        self.generated.iter().map(|p| (*p, crate::generated::sheets(doc, *p, Some(self)))).collect()
+    }
+
+    /// Whether `ops` can move a page number or a contents or revision list sheet count: pages
+    /// added, removed or renumbered, a page's kind, or an issue.
+    fn moves_page_numbers(ops: &[Op]) -> bool {
+        ops.iter().any(|op| match op {
+            Op::AddPage { .. } | Op::RemovePage { .. } => true,
+            // Brief 046 (review): a page's style or sheet changes its sheet count on the document
+            // alone, so the count before cannot be compared.
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => {
+                key == ecad_model::book::NUMBER_KEY
+                    || key == crate::generated::KEY
+                    || key == crate::defaults::strip_pages::STYLE.key
+                    || key == ecad_model::sheet::SHEET_KEY
+            }
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
+                    || key == crate::defaults::strip_pages::STYLE.key
+            }
+            Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
+            Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
+            _ => false,
+        })
     }
 
     /// The pages drawn from these models.
@@ -541,9 +841,15 @@ impl Outputs {
     /// How many BOM rows `group` lists, from kept counts (no rows made).
     pub fn bom_count(&self, group: Group) -> usize {
         let strips: usize = self.strips.bom_rows.values().sum();
+        // Brief 044: grouped as `bom` groups them (O(connectors)).
+        let halves = match group {
+            Group::Location => self.half_loc.len(),
+            Group::Part => self.half_part.len(),
+        };
         match group {
-            Group::Location => self.by_location.len() + strips,
-            Group::Part => self.by_part.len() + strips,
+            Group::Location if self.view.nested => self.nested.len() + self.loc_lines.values().sum::<usize>() + strips + halves,
+            Group::Location => self.by_location.len() + strips + halves,
+            Group::Part => self.by_part.len() + strips + halves,
         }
     }
 
@@ -581,10 +887,28 @@ impl Outputs {
 
     /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
     /// committed transaction) name in this state.
-    pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
+    pub fn update(&mut self, doc: &Document, ops: &[Op], scope: Scope) {
+        let numbers = Self::moves_page_numbers(ops);
+        self.numbers_moved = numbers;
+        let before = self.generated_sheets(doc);
+        self.update_rows(doc, ops, scope);
+        // Brief 046: right after the strips (design 046 §9), also when no row was in scope.
+        self.strip_pages.update(doc, ops, &self.strips);
+        if numbers || self.generated_sheets(doc) != before {
+            self.refresh_continuation(doc);
+            self.revision += 1;
+        }
+    }
+
+    fn update_rows(&mut self, doc: &Document, ops: &[Op], mut scope: Scope) {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
+        // Brief 045: the PLC model follows its own update map (design 045 §11.1).
+        if self.plc.update(doc, ops) {
+            self.checks_changed += 1;
+            self.revision += 1;
+        }
         for op in ops {
             let p = match op {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
@@ -604,8 +928,14 @@ impl Outputs {
         let mut work = 0;
         self.style = doc.settings.reference_style;
         self.colour_style = doc.settings.wiring.colour_style;
+        if scope.bom_view {
+            self.view = BomView::of(doc);
+        }
         for k in &scope.potentials {
             scope.conductors.extend(self.by_potential.get(k).into_iter().flatten().copied());
+        }
+        if scope.all_wires {
+            scope.conductors.extend(self.wires.keys().copied());
         }
         if scope.sheet {
             let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.properties.contains_key(ecad_model::sheet::SHEET_KEY));
@@ -614,6 +944,51 @@ impl Outputs {
         if scope.project_location {
             scope.devices.extend(self.from_project.iter().copied());
             scope.devices.extend(self.from_none.iter().copied());
+        }
+        // Brief 036 (tester 036 j, o): a level's label, or a separator or level names a strip
+        // reads, change the wire rows ending on that strip's terminals (only the position named by
+        // a `term_label.<p>.<n>` key).
+        for op in ops {
+            let Op::SetProperty { object: ObjectRef::Component(c), key, .. } = op else { continue };
+            let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
+            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || !crate::strips::is_strip(doc, *c) {
+                continue;
+            }
+            for (t, x) in doc.terminals_of(*c) {
+                if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
+                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
+        }
+        // Brief 044 (design 044 §11.1): a connector naming or description default reaches the
+        // connectors inheriting it (their half rows); a naming key also their pins' wire rows.
+        for k in &scope.connector_keys {
+            let naming = crate::defaults::connectors::is_naming_key(k);
+            let own = |c: &ComponentId| naming && doc.components.get(c).is_some_and(|x| x.properties.contains_key(k.as_str()));
+            let inheriting: Vec<ComponentId> = self.connectors.keys().filter(|c| !own(c)).copied().collect();
+            for c in inheriting {
+                scope.devices.insert(c);
+                if crate::defaults::connectors::is_naming_key(k) {
+                    for (t, _) in doc.terminals_of(c) {
+                        scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+            }
+        }
+        for op in ops {
+            let Op::SetProperty { object: ObjectRef::Component(c), key, .. } = op else { continue };
+            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::is_connector(doc, *c) {
+                for (t, _) in doc.terminals_of(*c) {
+                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
+        }
+        for k in scope.strip_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
+            for c in self.strips.inheriting(k) {
+                for (t, _) in doc.terminals_of(c) {
+                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
         }
         let mut cache = BoxCache::default();
         for c in &scope.devices {
@@ -664,6 +1039,9 @@ impl Outputs {
                 project_keys: &scope.strip_keys,
             },
         );
+        if strips.note_devices(doc, &scope.devices) {
+            self.checks_changed += 1;
+        }
         let acc_only = strips.touched_acc(&scope.strip_keys, &which);
         if which.is_empty() {
             strips.last_work = 0;
@@ -690,17 +1068,40 @@ impl Outputs {
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips(&mut self, doc: &Document) -> Option<String> {
+        // Brief 045 (design 045 §11.2): the kept PLC model too.
+        let plc = crate::plc::Plc::build(doc);
+        let plc_line = (!self.plc.same_as(&plc)).then(|| {
+            let (work, n) = (self.plc.last_work, self.plc.recomputed);
+            self.plc = plc;
+            self.plc.last_work = work;
+            self.plc.recomputed = n;
+            "the PLC model was out of step; rebuilt".to_string()
+        });
         let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
+        // Brief 046: the graphic pages' kept data against a rebuild from the kept strips.
+        let pages = crate::strip_page::StripPages::build(doc, &self.strips);
+        let pages_ok = self.strip_pages.same_as(&pages);
+        if !pages_ok {
+            self.strip_pages.adopt(pages);
+        }
         if self.strips.same_as(&built) {
-            return None;
+            let pages_line = (!pages_ok).then(|| "the terminal strip page layout was out of step; rebuilt".to_string());
+            return match (plc_line, pages_line) {
+                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
+                (a, b) => a.or(b),
+            };
         }
         let work = self.strips.last_work;
         self.strips = built;
         self.strips.last_work = work;
-        Some("the terminal strip model was out of step; rebuilt".into())
+        // The page layout follows the rebuilt strips (review of 046, finding 2).
+        self.strip_pages.adopt(crate::strip_page::StripPages::build(doc, &self.strips));
+        let line = "the terminal strip model was out of step; rebuilt".to_string();
+        Some(plc_line.map_or_else(|| line.clone(), |l| format!("{line}; {l}")))
     }
 
     fn remove_device(&mut self, c: ComponentId) {
+        self.remove_connector(c);
         let Some(old) = self.devices.remove(&c) else { return };
         if let Some((_, p, _)) = old.main
             && let Some(set) = self.by_page.get_mut(&p)
@@ -712,27 +1113,6 @@ impl Outputs {
         }
         self.from_project.remove(&c);
         self.from_none.remove(&c);
-        let tk = (tag_key(&old.tag), c);
-        let lk = (old.loc_key(), old.part_key());
-        if let Some(set) = self.by_location.get_mut(&lk) {
-            set.remove(&tk);
-            if set.is_empty() {
-                self.by_location.remove(&lk);
-                if let Some(n) = self.loc_rows.get_mut(&lk.0) {
-                    *n -= 1;
-                    if *n == 0 {
-                        self.loc_rows.remove(&lk.0);
-                    }
-                }
-            }
-        }
-        let pk = old.part_key();
-        if let Some(set) = self.by_part.get_mut(&pk) {
-            set.remove(&tk);
-            if set.is_empty() {
-                self.by_part.remove(&pk);
-            }
-        }
         self.no_part_number -= usize::from(old.part_number.is_none());
         self.no_location -= usize::from(old.location.value.is_none());
         self.own_box -= usize::from(old.own_box.is_some());
@@ -741,8 +1121,229 @@ impl Outputs {
         }
     }
 
+    /// Brief 047: take every entry of `c` out of the rows and counts.
+    fn remove_entries(&mut self, c: ComponentId) {
+        // An item's location source (a device's is taken out by `remove_device`).
+        self.from_project.remove(&c);
+        self.from_none.remove(&c);
+        let keys: Vec<(ComponentId, u8)> = self.entries.range((c, 0)..=(c, u8::MAX)).map(|(k, _)| *k).collect();
+        for k in keys {
+            let Some(e) = self.entries.remove(&k) else { continue };
+            let (sort, pk, lk) = (e.sort(), e.part_key(), e.loc_key());
+            if remove_from(&mut self.by_location, &(lk.clone(), pk.clone()), &sort) {
+                count_down(&mut self.loc_rows, &lk);
+            }
+            remove_from(&mut self.by_part, &pk, &sort);
+            if e.line == 0 {
+                let nk = (lk.clone(), self.nested_key(&e, &pk));
+                if remove_from(&mut self.nested, &nk, &sort) {
+                    count_down(&mut self.loc_nested_rows, &lk);
+                }
+            } else {
+                count_down(&mut self.loc_lines, &lk);
+                self.lines_no_part -= usize::from(e.part_number.is_none());
+            }
+            if e.item {
+                self.items_no_part -= usize::from(e.part_number.is_none());
+            }
+            if e.item || e.line > 0 {
+                self.checks_changed += 1;
+            }
+            if let Some(a) = &e.article_number
+                && e.part_number.is_some()
+            {
+                let set = self.articles.entry(pk.clone()).or_default();
+                if let Some(n) = set.get_mut(a) {
+                    *n -= 1;
+                    if *n == 0 {
+                        set.remove(a);
+                    }
+                }
+                if set.is_empty() {
+                    self.articles.remove(&pk);
+                }
+                if self.articles.get(&pk).is_none_or(|s| s.len() < 2) && self.article_conflicts.remove(&pk) {
+                    self.checks_changed += 1;
+                }
+            }
+            if self.for_missing.remove(&k) {
+                self.checks_changed += 1;
+            }
+        }
+        if self.bad_part_keys.remove(&c).is_some() {
+            self.checks_changed += 1;
+        }
+        if self.fuse_gaps.remove(&c).is_some() | self.inserts.remove(&c).is_some() {
+            self.checks_changed += 1;
+        }
+    }
+
+    /// The nested layout's row key of main part or item `e`: a device with part lines is a row of
+    /// its own (its lines follow it).
+    fn nested_key(&self, e: &Entry, pk: &PartKey) -> PartKey {
+        let has_lines = self.entries.range((e.component, 1)..=(e.component, u8::MAX)).next().is_some();
+        if has_lines { pk.alone((e.component, 0)) } else { pk.clone() }
+    }
+
+    /// Brief 047: put entry `e` into the rows and counts.
+    fn add_entry(&mut self, e: Entry) {
+        let (sort, pk, lk) = (e.sort(), e.part_key(), e.loc_key());
+        let group = self.by_location.entry((lk.clone(), pk.clone())).or_default();
+        if group.is_empty() {
+            *self.loc_rows.entry(lk.clone()).or_default() += 1;
+        }
+        group.insert(sort.clone());
+        self.by_part.entry(pk.clone()).or_default().insert(sort.clone());
+        if e.line == 0 {
+            let nk = (lk.clone(), self.nested_key(&e, &pk));
+            let group = self.nested.entry(nk).or_default();
+            if group.is_empty() {
+                *self.loc_nested_rows.entry(lk).or_default() += 1;
+            }
+            group.insert(sort);
+        } else {
+            *self.loc_lines.entry(lk).or_default() += 1;
+            self.lines_no_part += usize::from(e.part_number.is_none());
+        }
+        if e.item {
+            self.items_no_part += usize::from(e.part_number.is_none());
+        }
+        if e.item || e.line > 0 {
+            self.checks_changed += 1;
+        }
+        if let Some(a) = &e.article_number
+            && e.part_number.is_some()
+        {
+            let set = self.articles.entry(pk.clone()).or_default();
+            *set.entry(a.clone()).or_default() += 1;
+            if set.len() > 1 && self.article_conflicts.insert(pk) {
+                self.checks_changed += 1;
+            }
+        }
+        if !e.missing.is_empty() {
+            self.for_missing.insert((e.component, e.line));
+            self.checks_changed += 1;
+        }
+        self.entries.insert((e.component, e.line), e);
+    }
+
+    /// Brief 047: the entries of `c` (its main part and part lines, or the item it is), and its
+    /// fuse coverage.
+    fn set_entries(&mut self, doc: &Document, c: ComponentId, main: Option<Entry>) {
+        let Some(comp) = doc.components.get(&c) else { return };
+        let item = main.as_ref().is_some_and(|e| e.item);
+        // Review of #83, 1: an item's `qty` or `unit` that does not parse is listed, not silently 1.
+        let (lines, bad) = if item { (Vec::new(), bom::item_bad_keys(&comp.properties)) } else { bom::lines(&comp.properties) };
+        if !bad.is_empty() {
+            self.bad_part_keys.insert(c, bad);
+            self.checks_changed += 1;
+        }
+        let (tag, location) = match self.devices.get(&c) {
+            Some(d) => (d.tag.clone(), d.location.value.clone()),
+            None => (String::new(), None),
+        };
+        // Brief 044 (design 044 §8.3): a connector's lines go under a half (`part.<n>.half`, else
+        // its first drawn half), with that half's tag and location.
+        let halves = if item { Vec::new() } else { crate::connectors::half_rows(doc, c, &mut BoxCache::default()) };
+        // Sub-items only where `for` can name some or fuses can be uncovered.
+        let fuseterm = !item && bom::is_fuse_terminal(doc, c);
+        let subs = if item || fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
+        let mut covered: BTreeSet<&str> = BTreeSet::new();
+        let mut inserts = 0;
+        let mut entries = Vec::new();
+        for l in &lines {
+            let (have, missing): (Vec<String>, Vec<String>) = l.subs.iter().cloned().partition(|s| subs_has(&subs, s));
+            covered.extend(l.subs.iter().map(String::as_str));
+            inserts += usize::from(l.for_text.is_some() || fuseterm);
+            let half = halves.iter().find(|h| Some(h.side) == l.half).or(halves.first());
+            entries.push(Entry {
+                component: c,
+                line: l.n,
+                item: false,
+                tag: half.map_or_else(|| tag.clone(), |h| h.tag.clone()),
+                location: half.map_or_else(|| location.clone(), |h| h.location.value.clone()),
+                description: l.description.clone(),
+                maker: l.maker.clone(),
+                part_number: l.part_number.clone(),
+                article_number: l.article_number.clone(),
+                qty: l.qty,
+                metres: l.metres,
+                kit: l.kit.clone(),
+                subs: have,
+                missing,
+            });
+        }
+        let gaps = if fuseterm {
+            usize::from(!lines.iter().any(|l| l.for_text.is_none()))
+        } else {
+            subs.fuses().iter().filter(|f| !covered.contains(f.as_str())).count()
+        };
+        // Lines first, so a main part knows (nested layout) that its device has some.
+        for e in entries {
+            self.add_entry(e);
+        }
+        if let Some(m) = main {
+            self.add_entry(m);
+        }
+        if gaps > 0 {
+            self.fuse_gaps.insert(c, gaps);
+            self.checks_changed += 1;
+        }
+        if inserts > 0 {
+            self.inserts.insert(c, inserts);
+            self.checks_changed += 1;
+        }
+    }
+
+    /// Brief 047: an item's entry and location (its own, else the project's; design 047 §3).
+    fn set_item(&mut self, doc: &Document, c: ComponentId) {
+        let Some(comp) = doc.components.get(&c) else { return };
+        let props = &comp.properties;
+        let own = clean(props.get(LOCATION_KEY));
+        let location = match own {
+            Some(v) => Located { value: Some(v), source: Source::Device },
+            None => match clean(doc.properties.get(LOCATION_KEY)) {
+                Some(v) => Located { value: Some(v), source: Source::Project },
+                None => Located { value: None, source: Source::None },
+            },
+        };
+        match location.source {
+            Source::Project => {
+                self.from_project.insert(c);
+            }
+            Source::None => {
+                self.from_none.insert(c);
+            }
+            _ => {}
+        }
+        let metres = props.get(bom::UNIT_KEY).is_some_and(|u| bom::parse_unit(u).unwrap_or(false));
+        let qty = props.get(bom::QTY_KEY).and_then(|q| bom::parse_qty(q, metres).ok()).unwrap_or(Qty::ONE);
+        let e = Entry {
+            component: c,
+            line: 0,
+            item: true,
+            tag: String::new(),
+            location: location.value,
+            description: clean(props.get("description")),
+            maker: clean(props.get("maker")),
+            part_number: clean(props.get("part_number")),
+            article_number: clean(props.get(bom::ARTICLE_KEY)),
+            qty,
+            metres,
+            kit: None,
+            subs: Vec::new(),
+            missing: Vec::new(),
+        };
+        self.set_entries(doc, c, Some(e));
+    }
+
     fn set_device(&mut self, doc: &Document, c: ComponentId, cache: &mut BoxCache) {
         self.remove_device(c);
+        self.remove_entries(c);
+        if bom::is_item(doc, c) {
+            self.set_item(doc, c);
+            return;
+        }
         // Review of PR #57, 4: a link key on a device that is not a strip.
         let misplaced = !crate::strips::is_strip(doc, c)
             && doc.components.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::link_number(k).is_some()));
@@ -775,6 +1376,7 @@ impl Outputs {
             description: clean(props.get("description")),
             maker: clean(props.get("maker")),
             part_number: clean(props.get("part_number")),
+            article_number: clean(props.get(bom::ARTICLE_KEY)),
             location,
             main,
             own_box,
@@ -791,16 +1393,31 @@ impl Outputs {
             }
             _ => {}
         }
-        let tk = (tag_key(&row.tag), c);
-        // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model.
-        if !crate::strips::is_strip(doc, c) {
-            let group = self.by_location.entry((row.loc_key(), row.part_key())).or_default();
-            if group.is_empty() {
-                *self.loc_rows.entry(row.loc_key()).or_default() += 1;
-            }
-            group.insert(tk.clone());
-            self.by_part.entry(row.part_key()).or_default().insert(tk);
+        // Brief 044 (design 044 §8.1): a connector has one BOM row per drawn half, kept apart;
+        // its part lines are entries (brief 047), each under its half (`part.<n>.half`).
+        let connector = crate::connectors::is_connector(doc, c);
+        if connector {
+            let (rows, pages) = connector_rows(doc, c, cache);
+            self.set_connector(c, rows, pages);
         }
+        // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
+        // part lines are entries like a device's (brief 047).
+        let main = (!crate::strips::is_strip(doc, c) && !connector).then(|| Entry {
+            component: c,
+            line: 0,
+            item: false,
+            tag: row.tag.clone(),
+            location: row.location.value.clone(),
+            description: row.description.clone(),
+            maker: row.maker.clone(),
+            part_number: row.part_number.clone(),
+            article_number: row.article_number.clone(),
+            qty: Qty::ONE,
+            metres: false,
+            kit: None,
+            subs: Vec::new(),
+            missing: Vec::new(),
+        });
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
         self.own_box += usize::from(row.own_box.is_some());
@@ -808,6 +1425,7 @@ impl Outputs {
             self.checks_changed += 1;
         }
         self.devices.insert(c, row);
+        self.set_entries(doc, c, main);
     }
 
     fn end_cell(&self, doc: &Document, t: Option<TerminalId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
@@ -825,17 +1443,19 @@ impl Outputs {
             }
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
-                EndCell { name: Some(format!("{name} >")), order, ..EndCell::default() }
+                EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
             }
             _ => {
                 let label = crate::interact::terminal_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
+                // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
+                let name = crate::connectors::pin_name(doc, t).unwrap_or_else(|| format!("{tag}:{label}"));
                 let location = match device {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(format!("{tag}:{label}")), location, device: Some(c), order, junction: None }
+                EndCell { name: Some(name), location, device: Some(c), order, junction: None, continuation: false }
             }
         }
     }
@@ -884,9 +1504,22 @@ impl Outputs {
         let conn = doc.connectivity();
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::wiring::net_potential(doc, n));
-        let stored = |k: &str| clean(cond.properties.get(k));
-        let cross_section = stored(ecad_model::wiring::CROSS_SECTION).or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour = stored(ecad_model::wiring::COLOUR).or_else(|| pot.as_ref().and_then(|p| p.colour.clone()));
+        // Brief 050b: the wire's category gives what the wire has none of its own.
+        let look = crate::styles::wire::wire_look(doc, w);
+        let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
+        let colour = look.colour.as_ref().map(|v| v.0.clone());
+        let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let category = look.category.clone().map(|id| {
+            let n = crate::styles::name(doc, "wire", &id);
+            (id, n)
+        });
+        let part = look.category.as_ref().and_then(|id| {
+            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).and_then(|r| crate::styles::wire::filled(&r));
+            let pn = f("part_number")?;
+            let allowance = crate::styles::field_of(doc, "wire", id, "allowance", None).map_or(0.0, |r| r.number());
+            Some((pn, f("maker"), f("description"), allowance))
+        });
         let cable = doc
             .cables_of(w)
             .into_iter()
@@ -917,6 +1550,10 @@ impl Outputs {
                 cross_section,
                 colour,
                 potential,
+                category,
+                colour_own,
+                cross_section_own,
+                part,
                 cable,
                 page,
                 go: mid,
@@ -951,6 +1588,9 @@ impl Outputs {
             return;
         };
         let p = |key: &str| clean(cab.properties.get(key));
+        // Brief 032 §3.5: cores are counted by chain; each chain is shown by its first member,
+        // with the first stored label along it.
+        let (heads, tails) = chain_heads(doc, k, cab);
         let mut locs: BTreeSet<(LocKey, String)> = BTreeSet::new();
         let mut missing = false;
         // Brief 028: the devices at the cores' ends, per location.
@@ -1006,7 +1646,7 @@ impl Outputs {
                 cable: k,
                 tag: p("tag"),
                 kind: p("type"),
-                cores: cab.members.len(),
+                cores: heads.len(),
                 from_location: from,
                 to_location: to,
                 location_reason: reason,
@@ -1014,9 +1654,10 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
-                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &cab.members),
-                members: cab.members.iter().map(|m| m.conductor).collect(),
-                member_cores: cab.members.iter().map(|m| m.core.clone()).collect(),
+                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads),
+                members: heads.iter().map(|m| m.conductor).collect(),
+                member_cores: heads.iter().map(|m| m.core.clone()).collect(),
+                tails,
                 from_devices,
                 to_devices,
             },
@@ -1082,6 +1723,7 @@ impl Outputs {
     /// The location rows of the Checks list (design 024 §8.3).
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.box_checks.values().flatten().cloned().collect();
+        out.extend(self.continuation.iter().cloned());
         for d in self.devices.values() {
             if let Some((_, loc)) = &d.own_box {
                 out.push(Check {
@@ -1094,17 +1736,25 @@ impl Outputs {
                 });
             }
         }
-        let n = self.no_part_number;
-        if n > 0 {
-            let which = if n == 1 { "1 device has no part number".to_string() } else { format!("{n} devices have no part number") };
+        let (n, l) = (self.no_part_number, self.lines_no_part);
+        if n > 0 || l > 0 {
+            let devices = if n == 1 { "1 device".to_string() } else { format!("{n} devices") };
+            let lines = if l == 1 { "1 part line".to_string() } else { format!("{l} part lines") };
+            let which = match (n, l) {
+                (_, 0) => format!("{devices} {} no part number", if n == 1 { "has" } else { "have" }),
+                (0, _) => format!("{lines} {} no part number", if l == 1 { "has" } else { "have" }),
+                _ => format!("{devices} and {lines} have no part number"),
+            };
             out.push(Check { kind: Kind::NoPartNumber, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
+        out.extend(self.bom_checks());
         let n = self.no_location;
         if n > 0 && n < self.devices.len() {
             let which = if n == 1 { "1 device has no location".to_string() } else { format!("{n} devices have no location") };
             out.push(Check { kind: Kind::NoLocation, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         out.extend(self.strip_checks());
+        out.extend(self.plc.checks());
         out
     }
 
@@ -1112,31 +1762,89 @@ impl Outputs {
     pub fn strip_checks(&self) -> Vec<Check> {
         let mut out = Vec::new();
         for s in self.strips.strips.values() {
-            if let Some(off) = s.offer
-                && s.drawn > off.positions as usize
-            {
-                let hi = s.highest();
+            // Brief 036 (§7.1): per type; with no type codes, 028's row for the whole strip.
+            for (tc, offered) in s.over_offer() {
+                let legacy = s.offer.is_some_and(|o| o.counts.iter().skip(2).all(|n| *n == 0)) && s.types.iter().all(|t| t.ty.legacy());
+                let hi = if legacy { s.highest() } else { s.highest_of(tc.ty) };
+                let which = if legacy {
+                    format!("{}: {} terminals drawn, strip offers {offered}", s.tag, s.drawn)
+                } else {
+                    format!("{}: {} {} terminals drawn, strip offers {offered}", s.tag, tc.drawn, tc.ty.word)
+                };
                 out.push(Check {
                     kind: Kind::TooManyTerminals,
                     page: hi.and_then(|r| r.go).map(|(p, _)| p),
                     at: hi.and_then(|r| r.go).map(|(_, a)| a),
                     object: hi.and_then(|r| r.terminal).map_or(Object::Component(s.component), Object::Terminal),
-                    which: format!("{}: {} terminals drawn, strip offers {}", s.tag, s.drawn, off.positions),
+                    which,
                     fix: Some(Fix::OfferDrawn(s.component)),
                 });
             }
             for (label, t) in &s.twice {
-                let go = s.row_of(*t).and_then(|r| r.go);
+                let row = s.row_of(*t);
+                let go = row.and_then(|r| r.go);
+                // Brief 036: a level of a multi-level position drawn twice goes to the next free one.
+                let multi = row.is_some_and(|r| r.ty.multi() || r.ty.breaks);
                 out.push(Check {
-                    kind: Kind::TerminalTwice,
+                    kind: if multi { Kind::LevelTwice } else { Kind::TerminalTwice },
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
                     object: Object::Terminal(*t),
                     which: format!("{}:{label} is drawn twice", s.tag),
-                    fix: Some(Fix::RenumberStrip(s.component)),
+                    fix: Some(if multi { Fix::MoveToNextFree(*t) } else { Fix::RenumberStrip(s.component) }),
+                });
+            }
+            for (pos, t) in &s.mixed {
+                let row = s.row_of(*t);
+                let go = row.and_then(|r| r.go);
+                let first = s.rows.iter().find(|r| r.label == *pos).map_or("?", |r| r.ty.word);
+                let other = s.other_type_word(*t);
+                out.push(Check {
+                    kind: Kind::PositionMixed,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Terminal(*t),
+                    which: format!("{}:{pos} mixes {first} and {other} symbols", s.tag),
+                    fix: Some(Fix::MoveToNewPosition(*t)),
+                });
+            }
+            for (n, items) in &s.level_missing {
+                let go = s.rows.iter().find(|r| r.go.is_some()).and_then(|r| r.go);
+                let first = items.first().cloned().unwrap_or_default();
+                let pos = ecad_model::links::split_level(&first).map(|(p, _)| p.to_string()).unwrap_or_default();
+                let levels = s.rows.iter().filter(|r| r.label == pos).count();
+                out.push(Check {
+                    kind: Kind::LevelMissing,
+                    page: go.map(|(p, _)| p),
+                    at: go.map(|(_, a)| a),
+                    object: Object::Component(s.component),
+                    which: format!(
+                        "{}: link {n} names {}, but {}:{pos} has {levels} level{}",
+                        s.tag,
+                        items.join(", "),
+                        s.tag,
+                        if levels == 1 { "" } else { "s" }
+                    ),
+                    fix: Some(Fix::LevelMissing(s.component, u16::try_from(*n).unwrap_or(u16::MAX))),
                 });
             }
             out.extend(accessory_checks(s));
+        }
+        // Brief 036 (§8): fuse terminals that are devices of their own, and fuse positions with no
+        // rating: one Info row each.
+        let fuses = self.strips.fuse_devices.len();
+        if fuses > 0 {
+            let which = if fuses == 1 {
+                "1 fuse terminal is a device of its own".to_string()
+            } else {
+                format!("{fuses} fuse terminals are devices of their own")
+            };
+            out.push(Check { kind: Kind::FuseDevice, page: None, at: None, object: Object::None, which, fix: Some(Fix::FuseDevices) });
+        }
+        let unrated: usize = self.strips.strips.values().map(|s| s.no_rating).sum();
+        if unrated > 0 {
+            let which = if unrated == 1 { "1 fuse position has no rating".to_string() } else { format!("{unrated} fuse positions have no rating") };
+            out.push(Check { kind: Kind::NoFuseRating, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         for c in &self.links_off_strip {
             let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
@@ -1207,17 +1915,101 @@ impl Outputs {
         }
     }
 
+    /// Brief 047 (design 047 §9): the BOM rows of the Checks list, from the kept counts and sets.
+    pub fn bom_checks(&self) -> Vec<Check> {
+        let mut out = Vec::new();
+        let n = self.items_no_part;
+        if n > 0 {
+            let which = if n == 1 { "1 item has no part number".to_string() } else { format!("{n} items have no part number") };
+            out.push(Check { kind: Kind::ItemNoPartNumber, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
+        }
+        let gaps = self.fuse_gap_count();
+        if gaps > 0 {
+            let which = if gaps == 1 { "1 fuse has no insert".to_string() } else { format!("{gaps} fuses have no insert") };
+            out.push(Check { kind: Kind::FuseNoInsert, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
+        }
+        for pk in &self.article_conflicts {
+            let Some(set) = self.articles.get(pk) else { continue };
+            let Some(first) = self.by_part.get(pk).and_then(|s| s.iter().next()).and_then(|(_, _, c, n)| self.entries.get(&(*c, *n))) else {
+                continue;
+            };
+            let mut values: Vec<(&String, &usize)> = set.iter().collect();
+            values.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+            let words: Vec<String> = values.iter().map(|(a, n)| format!("{a} ({n})")).collect();
+            let pn = first.part_number.clone().unwrap_or_default();
+            let count = if values.len() == 2 { "two".to_string() } else { values.len().to_string() };
+            out.push(Check {
+                kind: Kind::ArticleConflict,
+                page: None,
+                at: None,
+                object: Object::Component(first.component),
+                which: format!("{pn} has {count} article numbers: {}", words.join(", ")),
+                fix: Some(Fix::UseArticle(first.component, first.line)),
+            });
+        }
+        for (c, n) in &self.for_missing {
+            let Some(e) = self.entries.get(&(*c, *n)) else { continue };
+            let main = self.devices.get(c).and_then(|d| d.main);
+            let what = if self.strips.get(*c).is_some() { "position" } else { "fuse" };
+            let names = e.missing.join(", ");
+            let plural = if e.missing.len() == 1 { "" } else { "s" };
+            out.push(Check {
+                kind: Kind::PartForMissing,
+                page: main.map(|(_, p, _)| p),
+                at: main.and_then(|(_, _, a)| a),
+                object: Object::Component(*c),
+                which: format!("{} line {n} names {what}{plural} {names}, which {} does not have", e.tag, e.tag),
+                fix: Some(Fix::DropMissingFor(*c, *n)),
+            });
+        }
+        for (c, keys) in &self.bad_part_keys {
+            let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
+            let main = self.devices.get(c).and_then(|d| d.main);
+            let first = keys.first().cloned().unwrap_or_default();
+            let more = if keys.len() > 1 { format!(" (and {} more)", keys.len() - 1) } else { String::new() };
+            let which = match self.entries.get(&(*c, 0)).filter(|e| e.item) {
+                Some(e) => {
+                    format!("The item {} has {first}{more}, which ECAD does not read; it counts as 1 piece", e.description.as_deref().unwrap_or("?"))
+                }
+                None => format!("{tag} has {first}{more}, which ECAD does not read"),
+            };
+            out.push(Check {
+                kind: Kind::BadPartKey,
+                page: main.map(|(_, p, _)| p),
+                at: main.and_then(|(_, _, a)| a),
+                object: Object::Component(*c),
+                which,
+                fix: None,
+            });
+        }
+        out
+    }
+
+    /// Uncovered fuses, counted only once the project lists any fuse insert (design 047 §9, Q11).
+    fn fuse_gap_count(&self) -> usize {
+        if self.inserts.is_empty() { 0 } else { self.fuse_gaps.values().sum() }
+    }
+
     /// The check rows by severity: (errors, warnings, info), as [`Outputs::checks`] would give
     /// them. O(1): kept by every change (brief 027's badge).
     pub fn check_counts(&self) -> (usize, usize, usize) {
         let info = self.box_counts[1]
             + usize::from(self.strips.acc_no_part > 0)
-            + usize::from(self.no_part_number > 0)
+            + usize::from(self.no_part_number > 0 || self.lines_no_part > 0)
+            + usize::from(self.items_no_part > 0)
+            + usize::from(self.fuse_gap_count() > 0)
+            + self.bad_part_keys.len()
             + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
             + usize::from(self.cable_checks[2] > 0);
         // Brief 028: the strips' and cables' rows, kept with them.
-        let warnings =
-            self.own_box + self.box_counts[0] + self.strips.check_warnings + self.cable_checks[0] + self.cable_checks[1] + self.links_off_strip.len();
+        let warnings = self.own_box
+            + self.box_counts[0]
+            + self.strips.check_warnings
+            + self.cable_checks[0]
+            + self.cable_checks[1]
+            + self.links_off_strip.len()
+            + self.article_conflicts.len()
+            + self.for_missing.len();
         (self.strips.check_errors, warnings, info)
     }
 
@@ -1232,9 +2024,22 @@ impl Outputs {
         let per = crate::generated::ROWS_PER_SHEET;
         let (mut sheets, mut used) = (1, 0);
         // Brief 028: the strips' rows per location, kept with them (O(locations), never the rows).
-        let mut rows = self.loc_rows.clone();
+        // Brief 047: the nested layout's counts are kept too (main rows, then each part line).
+        let mut rows = if self.view.nested {
+            let mut r = self.loc_nested_rows.clone();
+            for (k, n) in &self.loc_lines {
+                *r.entry(k.clone()).or_default() += n;
+            }
+            r
+        } else {
+            self.loc_rows.clone()
+        };
         for (loc, n) in &self.strips.bom_rows {
             *rows.entry(loc_key(loc.as_deref())).or_default() += n;
+        }
+        // Brief 044: the connectors' half-row groups per location, kept.
+        for (k, n) in &self.half_loc_rows {
+            *rows.entry(k.clone()).or_default() += n;
         }
         for n in rows.values() {
             if used == per {
@@ -1274,112 +2079,287 @@ impl Outputs {
         self.devices.len()
     }
 
-    /// A strip's BOM rows (design 028 §9.1, Q13): feed-through, then PE, each with its quantity.
+    /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
+    /// in positions (a three-level terminal is one part), in catalogue order.
     fn strip_bom(&self, s: &crate::strips::StripData, location: Option<String>) -> Vec<BomRow> {
-        let (ft, pe) = s.quantities();
         let mut out = Vec::new();
-        if ft > 0 {
+        for t in &s.types {
+            if t.qty() == 0 {
+                continue;
+            }
             out.push(BomRow {
                 location: location.clone(),
-                qty: ft,
+                qty: Qty::count(t.qty()),
                 tags: vec![s.tag.clone()],
                 devices: vec![s.component],
-                description: s.description.clone(),
-                maker: s.maker.clone(),
-                part_number: s.part_number.clone(),
-                accessory: None,
-            });
-        }
-        if pe > 0 {
-            out.push(BomRow {
-                location: location.clone(),
-                qty: pe,
-                tags: vec![s.tag.clone()],
-                devices: vec![s.component],
-                description: Some("PE terminal".into()),
-                maker: s.maker_pe.clone(),
-                part_number: s.part_number_pe.clone(),
-                accessory: None,
+                description: Some(t.description.clone()),
+                maker: t.maker.clone(),
+                part_number: t.part_number.clone(),
+                article_number: t.article_number.clone(),
+                ..BomRow::default()
             });
         }
         // Brief 030 (design 030 §7.4): one row per accessory part, only for what is placed.
         for a in &s.acc.bom {
             out.push(BomRow {
                 location: location.clone(),
-                qty: a.qty,
+                qty: Qty::count(a.qty),
                 tags: vec![s.tag.clone()],
                 devices: vec![s.component],
                 description: Some(a.description.clone()),
                 maker: a.maker.clone(),
                 part_number: a.part_number.clone(),
+                article_number: a.article_number.clone(),
                 accessory: Some(a.accessory),
+                ..BomRow::default()
             });
         }
         out
     }
 
-    /// The BOM rows (design 024 §6.1): devices, and each strip per terminal type (brief 028).
-    pub fn bom(&self, group: Group) -> Vec<BomRow> {
-        let row = |set: &BTreeSet<((String, u64, String), ComponentId)>, location: Option<String>| {
-            let devices: Vec<ComponentId> = set.iter().map(|(_, c)| *c).collect();
-            let first = devices.first().and_then(|c| self.devices.get(c));
-            BomRow {
-                location,
-                qty: devices.len(),
-                tags: set.iter().map(|((_, _, t), _)| t.clone()).collect(),
-                description: first.and_then(|d| d.description.clone()),
-                maker: first.and_then(|d| d.maker.clone()),
-                part_number: first.and_then(|d| d.part_number.clone()),
-                devices,
-                accessory: None,
+    /// Brief 047: the row a set of entries makes (design 047 §4.2, §4.3).
+    fn entry_row(&self, set: &BTreeSet<EntrySort>, location: Option<String>) -> BomRow {
+        let es: Vec<&Entry> = set.iter().filter_map(|(_, _, c, n)| self.entries.get(&(*c, *n))).collect();
+        let Some(first) = es.first() else { return BomRow { location, ..BomRow::default() } };
+        let (mut qty, mut overflow) = (Qty(0), false);
+        for e in &es {
+            match e.total().and_then(|t| qty.checked_add(t)) {
+                Some(q) => qty = q,
+                None => overflow = true,
             }
+        }
+        let mut tags: Vec<String> = es.iter().flat_map(|e| e.tags()).collect();
+        if es.iter().any(|e| e.per_sub()) {
+            tags.sort_by(|a, b| locations::natural_key(a).cmp(&locations::natural_key(b)).then(a.cmp(b)));
+        }
+        tags.dedup();
+        let mut devices: Vec<ComponentId> = Vec::new();
+        for e in &es {
+            if !devices.contains(&e.component) {
+                devices.push(e.component);
+            }
+        }
+        // The most common article number (ties: the first in tag order); flagged when two differ.
+        let mut counts: Vec<(&str, usize, &Entry)> = Vec::new();
+        for e in &es {
+            let Some(a) = e.article_number.as_deref() else { continue };
+            match counts.iter_mut().find(|(x, _, _)| *x == a) {
+                Some(c) => c.1 += 1,
+                None => counts.push((a, 1, e)),
+            }
+        }
+        let best = counts.iter().enumerate().max_by(|(i, a), (j, b)| a.1.cmp(&b.1).then(j.cmp(i))).map(|(_, x)| *x);
+        let article_flag = match (best, counts.iter().find(|x| Some(x.0) != best.map(|b| b.0))) {
+            (Some((a, _, ea)), Some((b, _, eb))) => {
+                let who = |e: &Entry| if e.item { e.description.clone().unwrap_or_else(|| "An item".into()) } else { e.tag.clone() };
+                Some(format!("{} and {} have different article numbers ({a}, {b}).", who(ea), who(eb)))
+            }
+            _ => None,
         };
+        BomRow {
+            location,
+            qty,
+            metres: first.metres,
+            overflow,
+            tags,
+            description: first.description.clone(),
+            maker: first.maker.clone(),
+            part_number: first.part_number.clone(),
+            article_number: best.map(|b| b.0.to_string()),
+            article_flag,
+            entries: es.iter().map(|e| (e.component, e.line)).collect(),
+            item: es.iter().all(|e| e.item),
+            devices,
+            ..BomRow::default()
+        }
+    }
+
+    /// Brief 047, nested layout: the rows of `c`'s part lines, unmerged, in line order.
+    /// Brief 044: the part lines of connector `c` under its half tagged `tag` (nested layout).
+    fn line_rows_of_half(&self, c: ComponentId, tag: &str, location: &Option<String>) -> Vec<BomRow> {
+        let mine: BTreeSet<u8> = self.entries.range((c, 1)..=(c, u8::MAX)).filter(|(_, e)| e.tag == tag).map(|(k, _)| k.1).collect();
+        self.line_rows(c, location).into_iter().filter(|r| r.line.is_some_and(|n| mine.contains(&n))).collect()
+    }
+
+    fn line_rows(&self, c: ComponentId, location: &Option<String>) -> Vec<BomRow> {
+        self.entries
+            .range((c, 1)..=(c, u8::MAX))
+            .map(|(_, e)| {
+                let (qty, overflow) = e.total().map_or((e.qty, true), |q| (q, false));
+                BomRow {
+                    location: location.clone(),
+                    qty,
+                    metres: e.metres,
+                    overflow,
+                    tags: if e.per_sub() { e.tags() } else { Vec::new() },
+                    devices: vec![c],
+                    description: e.description.clone(),
+                    maker: e.maker.clone(),
+                    part_number: e.part_number.clone(),
+                    article_number: e.article_number.clone(),
+                    entries: vec![(c, e.line)],
+                    line: Some(e.line),
+                    kit: e.kit.clone(),
+                    ..BomRow::default()
+                }
+            })
+            .collect()
+    }
+
+    /// The BOM rows (design 024 §6.1): devices, and each strip per terminal type (brief 028);
+    /// brief 047: part lines and items, in the project's layout (`bom.lines`).
+    pub fn bom(&self, group: Group) -> Vec<BomRow> {
+        self.bom_with(group, self.view.nested)
+    }
+
+    /// Brief 050b (design 050 §5.6): one wire row per distinct (part number, colour,
+    /// cross-section) among wires whose category has a part number; Qty in metres, the wires ×
+    /// the category's allowance rounded up to 0.5 m (an estimate); with no allowance, no Qty.
+    pub fn wire_bom(&self) -> Vec<BomRow> {
+        let mut groups: BTreeMap<(String, String, String), (usize, f64, Option<String>, Option<String>)> = BTreeMap::new();
+        for w in self.wires.values() {
+            let Some((pn, maker, description, allowance)) = &w.part else { continue };
+            let key = (pn.clone(), w.colour.clone().unwrap_or_default(), w.cross_section.clone().unwrap_or_default());
+            let g = groups.entry(key).or_insert((0, *allowance, maker.clone(), description.clone()));
+            g.0 += 1;
+        }
+        groups
+            .into_iter()
+            .map(|((pn, colour, cs), (n, allowance, maker, description))| {
+                let metres = (n as f64 * allowance * 2.0).ceil() / 2.0;
+                let qty = if metres.is_finite() && metres > 0.0 { Qty((metres * 1000.0).round().min(u64::MAX as f64 / 2.0) as u64) } else { Qty(0) };
+                let what = [
+                    Some(description.unwrap_or_else(|| "Wire".into())),
+                    (!cs.is_empty()).then_some(cs),
+                    (!colour.is_empty()).then(|| ecad_model::wiring::colour_text(self.colour_style, &colour)),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" ");
+                let note = if qty.0 == 0 { format!("{n} wires, no allowance") } else { format!("{n} wires, estimate") };
+                BomRow {
+                    location: None,
+                    qty,
+                    metres: true,
+                    overflow: false,
+                    tags: Vec::new(),
+                    devices: Vec::new(),
+                    description: Some(format!("{what} ({note})")),
+                    maker,
+                    part_number: Some(pn),
+                    article_number: None,
+                    article_flag: None,
+                    entries: Vec::new(),
+                    item: true,
+                    line: None,
+                    kit: None,
+                    accessory: None,
+                }
+            })
+            .collect()
+    }
+
+    /// The BOM rows in the flat or nested layout (nested is By location only).
+    pub fn bom_with(&self, group: Group, nested: bool) -> Vec<BomRow> {
+        let mut rows = self.bom_rows_with(group, nested);
+        rows.extend(self.wire_bom());
+        rows
+    }
+
+    fn bom_rows_with(&self, group: Group, nested: bool) -> Vec<BomRow> {
         match group {
             Group::Location => {
-                let mut v: Vec<(LocKey, (String, u64, String), BomRow)> = self
-                    .by_location
+                let index = if nested { &self.nested } else { &self.by_location };
+                let mut v: Vec<(LocKey, EntrySort, Vec<BomRow>)> = index
                     .iter()
-                    .filter_map(|((lk, _), set)| {
-                        let first = set.iter().next()?.0.clone();
+                    .filter_map(|((lk, pk), set)| {
+                        let first = set.iter().next()?.clone();
                         let loc = (!lk.0).then(|| lk.2.clone());
-                        Some((lk.clone(), first, row(set, loc)))
+                        let mut rows = vec![self.entry_row(set, loc.clone())];
+                        // A device row of its own is followed by its lines.
+                        if nested && let Some((c, 0)) = pk.3 {
+                            rows.extend(self.line_rows(c, &loc));
+                        }
+                        Some((lk.clone(), first, rows))
                     })
                     .collect();
                 for s in self.strips.strips.values() {
-                    for r in self.strip_bom(s, s.location.clone()) {
-                        v.push((loc_key(s.location.as_deref()), tag_key(&s.tag), r));
+                    let mut rows = self.strip_bom(s, s.location.clone());
+                    if nested {
+                        rows.extend(self.line_rows(s.component, &s.location));
                     }
+                    v.push((loc_key(s.location.as_deref()), (false, tag_key(&s.tag), s.component, 0), rows));
+                }
+                // Brief 044 (design 044 §8.1): one row per drawn half, grouped like devices; nested,
+                // each half's row is followed by its part lines (`part.<n>.half`, §8.3).
+                self.half_groupings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                for r in group_halves(self.connectors.values().flatten(), Group::Location) {
+                    let first = r.tags.first().map_or_else(|| tag_key(""), |t| tag_key(t));
+                    let sort = (false, first, r.devices.first().copied().unwrap_or(ComponentId(0)), 0);
+                    let mut rows = Vec::new();
+                    if nested && r.part_number.is_none() {
+                        for (c, tag) in r.devices.iter().zip(&r.tags) {
+                            rows.extend(self.line_rows_of_half(*c, tag, &r.location));
+                        }
+                    }
+                    rows.insert(0, r.clone());
+                    v.push((loc_key(r.location.as_deref()), sort, rows));
                 }
                 v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-                v.into_iter().map(|(_, _, r)| r).collect()
+                v.into_iter().flat_map(|(_, _, r)| r).collect()
             }
             Group::Part => {
-                let mut v: Vec<((String, u64, String), BomRow)> = self
+                let mut v: Vec<(EntrySort, BomRow)> = self
                     .by_part
                     .values()
                     .filter_map(|set| {
-                        let first = set.iter().next()?.0.clone();
+                        let first = set.iter().next()?.clone();
                         let mut counts: BTreeMap<LocKey, usize> = BTreeMap::new();
-                        for (_, c) in set {
-                            if let Some(d) = self.devices.get(c) {
-                                *counts.entry(d.loc_key()).or_default() += 1;
+                        for (_, _, c, n) in set {
+                            if let Some(e) = self.entries.get(&(*c, *n)) {
+                                *counts.entry(e.loc_key()).or_default() += 1;
                             }
                         }
                         let locs: Vec<String> =
                             counts.iter().map(|(k, n)| format!("{} \u{d7}{n}", if k.0 { "?".to_string() } else { k.2.clone() })).collect();
-                        Some((first, row(set, Some(locs.join(", ")))))
+                        Some((first, self.entry_row(set, Some(locs.join(", ")))))
                     })
                     .collect();
                 for s in self.strips.strips.values() {
                     let loc = s.location.clone().unwrap_or_else(|| "?".into());
                     for r in self.strip_bom(s, Some(format!("{loc} \u{d7}1"))) {
-                        v.push((tag_key(&s.tag), r));
+                        v.push(((false, tag_key(&s.tag), s.component, 0), r));
                     }
+                }
+                // Brief 044: half rows grouped by part, their locations counted.
+                self.half_groupings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                for r in group_halves(self.connectors.values().flatten(), Group::Part) {
+                    let first = r.tags.first().map_or_else(|| tag_key(""), |t| tag_key(t));
+                    v.push(((false, first, r.devices.first().copied().unwrap_or(ComponentId(0)), 0), r));
                 }
                 v.sort_by(|a, b| a.0.cmp(&b.0));
                 v.into_iter().map(|(_, r)| r).collect()
             }
         }
+    }
+
+    /// Brief 047: one BOM entry.
+    pub fn entry(&self, c: ComponentId, line: u8) -> Option<&Entry> {
+        self.entries.get(&(c, line))
+    }
+
+    /// Brief 047: the entries of `c` (main part or item first, then its part lines).
+    pub fn entries_of(&self, c: ComponentId) -> impl Iterator<Item = &Entry> {
+        self.entries.range((c, 0)..=(c, u8::MAX)).map(|(_, e)| e)
+    }
+
+    /// Brief 047: the article numbers of part key of entry `(c, line)`, most common first.
+    pub fn article_values(&self, c: ComponentId, line: u8) -> Vec<(String, usize)> {
+        let Some(pk) = self.entries.get(&(c, line)).map(Entry::part_key) else { return Vec::new() };
+        let mut v: Vec<(String, usize)> = self.articles.get(&pk).map(|m| m.iter().map(|(a, n)| (a.clone(), *n)).collect()).unwrap_or_default();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v
     }
 
     /// The wire rows, sorted by wire number naturally, then conductor ID.
@@ -1406,28 +2386,99 @@ impl Outputs {
         self.wires.get(&w)
     }
 
-    /// The BOM as a table (`Location` or `Locations` first).
+    /// The BOM as a table (`Location` or `Locations` first), as the window shows it, in the
+    /// project's report settings.
     pub fn bom_table(&self, group: Group) -> Table {
+        self.bom_table_with(group, self.view, false)
+    }
+
+    /// The BOM as a table in `view`. `csv` (design 047 §6.4): `Qty` a plain number and a `Unit`
+    /// column, a `Line` column in the nested layout; otherwise `Qty` reads `5.6 m`.
+    pub fn bom_table_with(&self, group: Group, view: BomView, csv: bool) -> Table {
         let first = if group == Group::Location { "Location" } else { "Locations" };
-        let mut t = Table { headers: vec![first, "Qty", "Tags", "Description", "Maker", "Part number"], rows: Vec::new() };
-        for r in self.bom(group) {
-            let who = r.tags.first().cloned().unwrap_or_default();
-            t.rows.push(vec![
-                Cell::opt(&r.location, || format!("{who} has no location.")),
-                Cell::ok(r.qty.to_string()),
-                Cell::ok(r.tags.join(", ")),
-                Cell::opt(&r.description, || format!("{who} has no description.")),
-                Cell::opt(&r.maker, || format!("{who} has no maker.")),
-                Cell::opt(&r.part_number, || format!("{who} has no part number.")),
-            ]);
+        let nested = view.nested && group == Group::Location;
+        let mut headers = vec![first, "Qty"];
+        if csv {
+            headers.push("Unit");
+        }
+        headers.push("Tags");
+        if csv && nested {
+            headers.push("Line");
+        }
+        headers.extend(["Description", "Maker", "Part number"]);
+        if view.article {
+            headers.push("Article number");
+        }
+        let mut t = Table { headers, rows: Vec::new() };
+        for r in self.bom_with(group, nested) {
+            let who = self.row_who(&r);
+            let mut cells = vec![Cell::opt(&r.location, || format!("{who} has no location."))];
+            let qty = if r.no_qty() {
+                String::new()
+            } else if csv {
+                r.qty.to_string()
+            } else {
+                r.qty_text()
+            };
+            cells.push(if r.overflow { Cell { text: qty, flag: Some("The quantity is too large to add up.".into()) } } else { Cell::ok(qty) });
+            if csv {
+                cells.push(Cell::ok(if r.metres { "m" } else { "pcs" }));
+            }
+            cells.push(Cell::ok(r.tags.join(", ")));
+            if csv && nested {
+                // `0` a main part (or a strip's own row), `1`… a line, blank for an item.
+                let line = match (r.line, r.item) {
+                    (Some(n), _) => n.to_string(),
+                    (None, true) => String::new(),
+                    (None, false) => "0".into(),
+                };
+                cells.push(Cell::ok(line));
+            }
+            let description = if csv { r.description.clone() } else { r.description_text() };
+            cells.push(Cell::opt(&description, || format!("{who} has no description.")));
+            cells.push(Cell::opt(&r.maker, || format!("{who} has no maker.")));
+            cells.push(Cell::opt(&r.part_number, || format!("{who} has no part number.")));
+            if view.article {
+                let a = r.article_number.clone().unwrap_or_default();
+                cells.push(match &r.article_flag {
+                    Some(why) => Cell { text: if a.is_empty() { "?".into() } else { a }, flag: Some(why.clone()) },
+                    None => Cell::ok(a),
+                });
+            }
+            t.rows.push(cells);
         }
         t
+    }
+
+    /// Who a row's `?` hover names: the first tag, `Line 2 of -K03` for a nested line, or the item.
+    fn row_who(&self, r: &BomRow) -> String {
+        if let (Some(n), Some(c)) = (r.line, r.devices.first()) {
+            let tag = self.devices.get(c).map_or("?", |d| d.tag.as_str());
+            return format!("Line {n} of {tag}");
+        }
+        match r.tags.first() {
+            Some(t) => t.clone(),
+            None if r.item => format!("The item {}", r.description.as_deref().unwrap_or("")).trim_end().to_string(),
+            None => String::new(),
+        }
     }
 
     /// The wire report as a table.
     pub fn wire_table(&self) -> Table {
         let mut t = Table {
-            headers: vec!["Wire number", "From", "From location", "To", "To location", "Cross-section", "Colour", "Potential", "Cable", "Page"],
+            headers: vec![
+                "Wire number",
+                "From",
+                "From location",
+                "To",
+                "To location",
+                "Cross-section",
+                "Colour",
+                "Potential",
+                "Category",
+                "Cable",
+                "Page",
+            ],
             rows: Vec::new(),
         };
         for r in self.wires() {
@@ -1443,11 +2494,13 @@ impl Outputs {
                 end_loc(&r.from),
                 Cell::opt(&r.to.text(style), || "Loose end.".into()),
                 end_loc(&r.to),
-                Cell::opt(&r.cross_section, || "No cross-section, and its potential gives none.".into()),
+                // Brief 050b (design 050 §5.6): the wire's own value or its category's.
+                Cell::opt(&r.cross_section, || "No cross-section, and its category gives none.".into()),
                 Cell::opt(&r.colour.as_deref().map(|c| ecad_model::wiring::colour_text(self.colour_style, c)), || {
-                    "No colour, and its potential gives none.".into()
+                    "No colour, and its category gives none.".into()
                 }),
                 Cell::ok(r.potential.clone().unwrap_or_default()),
+                Cell::ok(r.category.as_ref().map(|c| c.1.clone()).unwrap_or_default()),
                 Cell::ok(r.cable.clone()),
                 Cell::opt(&r.page.as_ref().map(|p| p.text(style)), || "The wire has no route.".into()),
             ]);
@@ -1533,9 +2586,11 @@ impl Outputs {
                     }
                 };
                 let marker = if s.acc.markers.contains(&r.label) { " \u{25ad}" } else { "" };
-                if r.spare() {
-                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok("spare"), Cell::default()];
-                    row.push(Cell::ok(if r.pe { format!("{} PE{marker}", r.label) } else { format!("{}{marker}", r.label) }));
+                // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+                let pe_mark = r.pe && !r.ty.multi();
+                if r.terminal.is_none() {
+                    let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(r.state()), Cell::default()];
+                    row.push(Cell::ok(if pe_mark { format!("{} PE{marker}", r.shown) } else { format!("{}{marker}", r.shown) }));
                     row.push(Cell::ok(s.bridge_cell(ri)));
                     row.extend(std::iter::repeat_n(Cell::default(), 5));
                     t.rows.push(row);
@@ -1549,13 +2604,13 @@ impl Outputs {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
                     };
-                    let label = if i == 0 { format!("{}{marker}", r.label) } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { format!("{}{marker}", r.shown) } else { format!("{}\u{2032}", r.shown) };
                     let cable = outside.and_then(|c| c.cable.as_ref());
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         side(inside, |c| c.target.clone(), "A loose far end."),
                         side(inside, |c| c.wire.clone(), "The wire has no number."),
-                        Cell::ok(if r.pe { format!("{label} PE") } else { label }),
+                        Cell::ok(if pe_mark { format!("{label} PE") } else { label }),
                         Cell::ok(if i == 0 { s.bridge_cell(ri) } else { String::new() }),
                         side(outside, |c| c.wire.clone(), "The wire has no number."),
                         Cell::ok(cable.map_or_else(String::new, |(_, t)| t.clone().unwrap_or_else(|| "?".into()))),
@@ -1624,14 +2679,18 @@ impl Outputs {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let label = if i == 0 { r.label.clone() } else { format!("{}\u{2032}", r.label) };
+                    let label = if i == 0 { r.shown.clone() } else { format!("{}\u{2032}", r.shown) };
                     t.rows.push(vec![
                         Cell::ok(s.tag.clone()),
                         opt(s.location.as_ref()),
                         Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default()),
                         Cell::ok(label),
-                        Cell::ok(if r.pe { "pe" } else { "feed-through" }),
-                        Cell::ok(if r.spare() { "spare" } else { "drawn" }),
+                        Cell::ok(match r.ty.code {
+                            "ft" => "feed-through",
+                            "pe" => "pe",
+                            c => c,
+                        }),
+                        Cell::ok(r.state()),
                         opt(inside.and_then(|c| c.target.as_ref())),
                         opt(inside.and_then(|c| c.wire.as_ref())),
                         Cell::ok(r.bridge_group.filter(|_| i == 0).map(|g| g.to_string()).unwrap_or_default()),
@@ -1676,6 +2735,25 @@ impl Outputs {
         t
     }
 
+    /// Brief 032 §3.5: the From and To of core `i` of cable row `r` (a core chain runs from its
+    /// first member's outer end to its last member's), in reference style `style`.
+    pub fn chain_ends(&self, r: &CableRow, i: usize, style: ecad_model::ReferenceStyle) -> (Option<String>, Option<String>) {
+        let w = r.members.get(i).and_then(|w| self.wires.get(w));
+        let tail = r.tails.get(i).filter(|t| Some(**t) != r.members.get(i).copied()).and_then(|t| self.wires.get(t));
+        match (w, tail) {
+            (Some(h), Some(t)) => {
+                let outer = |x: &WireRow, first: bool| match (x.from.continuation, x.to.continuation) {
+                    (true, false) => x.to.text(style),
+                    (false, true) => x.from.text(style),
+                    _ if first => x.from.text(style),
+                    _ => x.to.text(style),
+                };
+                (outer(h, true), outer(t, false))
+            }
+            _ => (w.and_then(|w| w.from.text(style)), w.and_then(|w| w.to.text(style))),
+        }
+    }
+
     /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
     /// show `spare` in From.
     pub fn core_table(&self, k: CableId) -> Table {
@@ -1684,11 +2762,12 @@ impl Outputs {
         let style = self.style;
         let member = |i: usize, label: Option<String>, state: &str| {
             let w = r.members.get(i).and_then(|w| self.wires.get(w));
+            let (from, to) = self.chain_ends(r, i, style);
             vec![
                 Cell::opt(&label, || "The core has no label.".into()),
                 Cell::ok(w.and_then(|w| w.wire_number.clone()).unwrap_or_default()),
-                Cell::ok(w.and_then(|w| w.from.text(style)).unwrap_or_default()),
-                Cell::ok(w.and_then(|w| w.to.text(style)).unwrap_or_default()),
+                Cell::ok(from.unwrap_or_default()),
+                Cell::ok(to.unwrap_or_default()),
                 Cell::ok(state),
             ]
         };
@@ -1714,7 +2793,185 @@ impl Outputs {
     }
 }
 
+/// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
+/// `c` included, read on `doc` (called on the state before and after a rename, so both the old
+/// and the new group): their core chains may join or break.
+fn continuation_group_cables(doc: &Document, c: ComponentId) -> BTreeSet<CableId> {
+    let Some(key) = doc.components.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+        return BTreeSet::new();
+    };
+    let mut group = doc.continuations_named(&key);
+    if !group.contains(&c) {
+        group.push(c);
+    }
+    let mut out = BTreeSet::new();
+    for k in group {
+        for (t, _) in doc.terminals_of(k) {
+            for (w, _) in doc.ends_at(t) {
+                out.extend(doc.cables_of(w));
+            }
+        }
+    }
+    out
+}
+
+/// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each
+/// with the first stored core label along its chain, and each chain's last member.
+fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<ConductorId>) {
+    let chains = crate::references::core_chains(doc, k);
+    let mut heads = Vec::with_capacity(chains.len());
+    let mut tails = Vec::with_capacity(chains.len());
+    for ch in &chains {
+        let (Some(first), Some(last)) = (ch.first(), ch.last()) else { continue };
+        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
+        heads.push(ecad_model::CableMember { conductor: *first, core });
+        tails.push(*last);
+    }
+    (heads, tails)
+}
+
+/// Take `v` out of `map[k]`; drop the set when empty. Whether a set was dropped (a row went).
+fn remove_from<K: Ord, V: Ord>(map: &mut BTreeMap<K, BTreeSet<V>>, k: &K, v: &V) -> bool {
+    let Some(set) = map.get_mut(k) else { return false };
+    set.remove(v);
+    if set.is_empty() {
+        map.remove(k);
+        return true;
+    }
+    false
+}
+
+/// One less at `k`; drop it at 0.
+fn count_down<K: Ord>(map: &mut BTreeMap<K, usize>, k: &K) {
+    if let Some(n) = map.get_mut(k) {
+        *n = n.saturating_sub(1);
+        if *n == 0 {
+            map.remove(k);
+        }
+    }
+}
+
+/// Whether `s` is one of `subs`' names.
+fn subs_has(subs: &bom::Subs, s: &str) -> bool {
+    match subs {
+        bom::Subs::None => false,
+        bom::Subs::Fuses(v) => v.iter().any(|x| x == s),
+        bom::Subs::Positions { all, .. } => all.iter().any(|x| x == s),
+    }
+}
+
 /// Whether `page` exists and is drawn from the report models.
+/// A half row's group (design 024 §6.1 as for devices): maker, part number, description, compared
+/// without case; a half with no part number is a group of its own (its connector and tag).
+type HalfKey = (String, String, String, Option<(ComponentId, String)>);
+
+fn half_key(r: &BomRow) -> HalfKey {
+    let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
+    let own = if r.part_number.is_some() { None } else { r.devices.first().copied().zip(r.tags.first().cloned()) };
+    (low(&r.maker), low(&r.part_number), low(&r.description), own)
+}
+
+impl Outputs {
+    /// Keep connector `c`'s half rows, their groups and their main symbols' pages (review of
+    /// #81, 1 and 2). `set_device` has taken the old ones out.
+    fn set_connector(&mut self, c: ComponentId, rows: Vec<BomRow>, pages: BTreeSet<PageId>) {
+        for r in &rows {
+            let (lk, hk) = (loc_key(r.location.as_deref()), half_key(r));
+            let n = self.half_loc.entry((lk.clone(), hk.clone())).or_default();
+            *n += 1;
+            if *n == 1 {
+                *self.half_loc_rows.entry(lk).or_default() += 1;
+            }
+            *self.half_part.entry(hk).or_default() += 1;
+        }
+        for p in &pages {
+            self.by_page.entry(*p).or_default().insert(c);
+        }
+        self.connector_pages.insert(c, pages);
+        self.connectors.insert(c, rows);
+    }
+
+    fn remove_connector(&mut self, c: ComponentId) {
+        for r in &self.connectors.remove(&c).unwrap_or_default() {
+            let (lk, hk) = (loc_key(r.location.as_deref()), half_key(r));
+            if let Some(n) = self.half_loc.get_mut(&(lk.clone(), hk.clone())) {
+                *n -= 1;
+                if *n == 0 {
+                    self.half_loc.remove(&(lk.clone(), hk.clone()));
+                    if let Some(m) = self.half_loc_rows.get_mut(&lk) {
+                        *m -= 1;
+                        if *m == 0 {
+                            self.half_loc_rows.remove(&lk);
+                        }
+                    }
+                }
+            }
+            if let Some(n) = self.half_part.get_mut(&hk) {
+                *n -= 1;
+                if *n == 0 {
+                    self.half_part.remove(&hk);
+                }
+            }
+        }
+        for p in self.connector_pages.remove(&c).unwrap_or_default() {
+            if let Some(set) = self.by_page.get_mut(&p) {
+                set.remove(&c);
+                if set.is_empty() {
+                    self.by_page.remove(&p);
+                }
+            }
+        }
+    }
+}
+
+/// Connector `c`'s BOM rows, one per drawn half (design 044 §8.1), and its halves' main pages.
+fn connector_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> (Vec<BomRow>, BTreeSet<PageId>) {
+    let halves = crate::connectors::half_rows(doc, c, cache);
+    let pages = halves.iter().filter_map(|h| h.main.map(|(_, p)| p)).collect();
+    let rows = halves
+        .into_iter()
+        .map(|h| BomRow {
+            location: h.location.value,
+            qty: Qty::ONE,
+            tags: vec![h.tag],
+            devices: vec![c],
+            description: h.description,
+            maker: h.maker,
+            part_number: h.part_number,
+            ..BomRow::default()
+        })
+        .collect();
+    (rows, pages)
+}
+
+/// Half rows grouped as device rows are (design 024 §6.1): by location and part, or by part with
+/// their locations counted; a half with no part number is a row of its own.
+fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec<BomRow> {
+    let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
+    type Key = (String, String, String, String, usize);
+    let mut groups: BTreeMap<Key, (BomRow, BTreeMap<LocKey, usize>)> = BTreeMap::new();
+    for (i, r) in rows.enumerate() {
+        let loc = if group == Group::Location { r.location.clone().unwrap_or_default() } else { String::new() };
+        let own = if r.part_number.is_some() { 0 } else { i + 1 };
+        let key = (loc, low(&r.maker), low(&r.part_number), low(&r.description), own);
+        let e = groups.entry(key).or_insert_with(|| (BomRow { qty: Qty(0), tags: Vec::new(), devices: Vec::new(), ..r.clone() }, BTreeMap::new()));
+        e.0.qty = Qty(e.0.qty.0.saturating_add(Qty::ONE.0));
+        e.0.tags.extend(r.tags.iter().cloned());
+        e.0.devices.extend(r.devices.iter().copied());
+        *e.1.entry(loc_key(r.location.as_deref())).or_default() += 1;
+    }
+    groups
+        .into_values()
+        .map(|(mut r, locs)| {
+            if group == Group::Part {
+                let words: Vec<String> = locs.iter().map(|(k, n)| format!("{} \u{d7}{n}", if k.0 { "?".to_string() } else { k.2.clone() })).collect();
+                r.location = Some(words.join(", "));
+            }
+            r
+        })
+        .collect()
+}
+
 fn needs_outputs(doc: &Document, page: PageId) -> bool {
     doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(crate::generated::GenKind::needs_outputs)
 }
@@ -1785,7 +3042,11 @@ pub fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
             for (k, c) in keys.iter().zip(r) {
                 let v = match (c.flag.is_some(), *k) {
                     (true, _) => Value::Null,
-                    (false, "qty" | "cores") => c.text.parse::<u64>().map_or_else(|_| json!(c.text), |n| json!(n)),
+                    (false, "qty" | "cores") => match c.text.parse::<u64>() {
+                        Ok(n) => json!(n),
+                        // Brief 047: metres (`5.6`).
+                        Err(_) => c.text.parse::<f64>().ok().filter(|x| x.is_finite()).map_or_else(|| json!(c.text), |x| json!(x)),
+                    },
                     (false, _) => json!(c.text),
                 };
                 o.insert((*k).to_string(), v);
@@ -1891,6 +3152,60 @@ pub fn accessory_fix_commands(o: &Outputs, fix: Fix) -> Vec<(String, &'static st
             ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
             ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
+        // Brief 036 (design 036 §8).
+        Fix::MoveToNextFree(t) => vec![("Move to next free".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "next"}))],
+        Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "new"}))],
+        Fix::LevelMissing(c, n) => {
+            let Some(s) = o.strips.get(c) else { return Vec::new() };
+            let key = ecad_model::links::key(u32::from(n));
+            let kept = s.level_missing.iter().find(|(m, _)| *m == u32::from(n)).map(|(_, items)| items.clone()).unwrap_or_default();
+            let after = s.acc.links.iter().find(|l| l.n == u32::from(n)).map(|l| crate::accessories::drop_items(&l.text, &kept));
+            let mut out = Vec::new();
+            if let Some(v) = after {
+                let v = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
+                out.push(("Drop missing levels".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": v})));
+            }
+            out.push(("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})));
+            out
+        }
+        // Brief 045 (design 045 §9).
+        Fix::Plc(c, f) => o.plc.fix_commands(c, f),
+        // Brief 047 (design 047 §9).
+        Fix::UseArticle(c, n) => {
+            let Some(e) = o.entry(c, n) else { return Vec::new() };
+            let Some(best) = o.article_values(c, n).into_iter().next() else { return Vec::new() };
+            let mut params = json!({"part_number": e.part_number, "article_number": best.0});
+            if let Some(m) = &e.maker {
+                params["maker"] = json!(m);
+            }
+            vec![(format!("Use {} for all", best.0), "article", params)]
+        }
+        Fix::DropMissingFor(c, n) => {
+            let Some(e) = o.entry(c, n) else { return Vec::new() };
+            let kept = if e.subs.is_empty() { serde_json::Value::Null } else { json!(e.subs.join(", ")) };
+            vec![(format!("Remove {}", e.missing.join(", ")), "partline", json!({"component": c.hex(), "line": n, "set": {"for": kept}}))]
+        }
+        Fix::FuseDevices => o
+            .strips
+            .fuse_devices
+            .iter()
+            .map(|d| {
+                let tag = o.devices.get(d).map_or_else(|| "?".to_string(), |x| x.tag.clone());
+                (format!("Make {tag} a strip position"), "toposition", json!({"device": d.hex()}))
+            })
+            .collect(),
+        // Brief 044 (design 044 §6.3).
+        Fix::ConnectorNextPin(t) => vec![("Move to next free".to_string(), "pinlabel", json!({"terminal": t.hex(), "to": "next"}))],
+        Fix::SetPins(c, n) => {
+            vec![(format!("Set pins to {n}"), "setprop", json!({"component": c.hex(), "key": crate::connectors::PINS_KEY, "value": n.to_string()}))]
+        }
+        Fix::IgnoreConnector(c, k) => {
+            vec![(
+                "Ignore".to_string(),
+                "setprop",
+                json!({"component": c.hex(), "key": format!("{}{}", crate::connectors::IGNORE_PREFIX, k.name()), "value": "yes"}),
+            )]
+        }
         _ => Vec::new(),
     }
 }

@@ -13,17 +13,22 @@ use egui_kittest::kittest::Queryable;
 fn trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
-    Trial::new(None).unwrap()
+    let mut t = Trial::new(None).unwrap();
+    crate::project_panel::open_panels(&mut t);
+    t
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(eframe::egui::vec2(1600.0, 1000.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1200.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }
@@ -88,11 +93,11 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     let mut h = harness(trial());
     h.run_steps(3);
     let before = head(h.state_mut());
-    // The row's right-click menu: Rename… asks the new title in a name box, prefilled with the
-    // current one (owner, 2026-11-08): OK renames, one transaction.
+    // The row's right-click (brief 041: its wheel): Rename asks the new title in a name box,
+    // prefilled with the current one (owner, 2026-11-08): OK renames, one transaction.
     h.get_by_label("Page 1: 1").click_secondary();
     h.run_steps(3);
-    h.get_by_label("Rename…").click();
+    h.get_by_label("Rename").click();
     h.run_steps(4);
     let t = h.state_mut();
     assert_eq!(t.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
@@ -105,10 +110,14 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     assert!(t.name_box.is_none());
     assert_eq!(head(t), before + 1);
     assert_eq!(doc(t).pages[&doc(t).page_order[0]].title, "Supply");
-    // New page from the same menu: the name box with the next number; OK adds it.
+    // New page from the same wheel: the name box with the next number; OK adds it.
     h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
-    h.get_by_label("New page…").click();
+    {
+        // Brief 041: the slot inside the wheel (the Pages tab has a New page button too).
+        let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("the row's wheel");
+        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_ui::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
+    }
     h.run_steps(3);
     assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("2"));
     h.get_by_label("OK").click();
@@ -150,7 +159,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     click(t, 40.0, 5.0);
     assert!(t.cad.session.running.is_none());
     let said = t.cad.session.log.join("\n");
-    assert!(said.contains("Cable -C01 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."), "{said}");
+    assert!(said.contains("Cable -C01 continued on page 2 with 3 wires; this end shows 1/F2 and the end on page 1 now shows 2/F1."), "{said}");
     assert!(said.contains("Connect each wire's free end to its connection point with Connect."));
     // Go to Reference with Field's reference point selected (pickfirst): lands on page 1 with
     // the other end's point selected.
@@ -175,7 +184,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     let shown = p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap();
     assert_eq!(shown, Some(doc(t).page_order[0]), "the other page is current");
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
-    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable -C01 (1-B-6)."));
+    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable -C01 (1/F2)."));
 }
 
 /// The reference texts the active page draws now (the drawing as it is, not a fresh derivation),
@@ -202,7 +211,7 @@ fn drawn_ref_texts(t: &mut Trial) -> (Option<ecad_model::PageId>, Vec<String>) {
 /// Owner's two-page trial (brief 014 fix round) with one page window (brief 016): page 2's cable
 /// end is erased (page 1's marker becomes `?`), the owner clicks page 1 in the Project panel and
 /// types `u`: page 2, where the erase was, comes to the front with its end back (AC8), and page 1
-/// shows `2-A-6` when it is clicked again. Through undo and redo, the page shown always draws what
+/// shows `2/F1` when it is clicked again. Through undo and redo, the page shown always draws what
 /// the document says.
 #[test]
 fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
@@ -256,12 +265,12 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     assert_eq!(head(t), before + 2);
     let (shown, texts) = drawn_ref_texts(t);
     assert_eq!(shown, Some(page2), "the undo brought page 2 to the front");
-    assert!(texts.iter().any(|x| x == "1-B-6"), "{texts:?}");
+    assert!(texts.iter().any(|x| x == "1/F2"), "{texts:?}");
     assert!(t.cad.session.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."));
     h.get_by_label("Page 1: 1").click();
     h.run_steps(3);
     let (_, texts) = drawn_ref_texts(h.state_mut());
-    assert!(texts.iter().any(|x| x == "2-A-6"), "page 1 shows {texts:?}");
+    assert!(texts.iter().any(|x| x == "2/F1"), "page 1 shows {texts:?}");
     // Pressing `u` again and again, then redoing: the page shown always draws what the document
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut Trial, page: ecad_model::PageId| {

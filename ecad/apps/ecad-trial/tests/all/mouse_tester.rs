@@ -26,7 +26,7 @@ use serde_json::json;
 pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 
 /// Keeps every texture delta so a frame can be rendered later (see `shot`).
-struct Collect(Deltas);
+pub(crate) struct Collect(pub(crate) Deltas);
 
 impl egui_kittest::TestRenderer for Collect {
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
@@ -43,7 +43,8 @@ pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
-    let mut b = Harness::builder().with_size(egui::vec2(1280.0, 800.0));
+    crate::project_panel::open_panels(&mut t);
+    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
     if let Some(d) = deltas {
         b = b.renderer(Collect(d));
     }
@@ -54,6 +55,9 @@ pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }
@@ -335,7 +339,7 @@ fn ctrl_z_during_wire_removes_the_last_point_and_space_is_enter() {
     let after = (head(&mut h), doc(&mut h));
     assert!(after == before, "Ctrl+Z during Wire changed the project (it undid a committed object)");
     assert_eq!(still.as_deref(), Some("wire"), "Ctrl+Z ended the Wire command");
-    assert_eq!(prompt(&h), "Specify next point or [Undo]:", "one point is left");
+    assert_eq!(prompt(&h), "Specify next point or [Undo/Join]:", "one point is left");
     h.key_press(Key::Escape);
     h.run_steps(2);
     // Space as Enter ends Add Connection Point at its point prompt.
@@ -466,8 +470,9 @@ fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     ok(&mut h, r#"wire {"points":[[90,0],[90,-20]]}"#);
-    let cyan = egui::Color32::from_rgb(0, 255, 255);
-    let green = egui::Color32::from_rgb(0, 255, 0);
+    // Brief 040: the token colours and sizes (paper sheet).
+    let cyan = egui::Color32::from_rgb(0x0a, 0x8f, 0x94);
+    let green = egui::Color32::from_rgb(0x17, 0xa0, 0x5b);
     for (what, zoom) in [
         ("extents", json!({"mode": "extents"})),
         ("x0.01", json!({"mode": "scale", "factor": 0.01})),
@@ -484,11 +489,11 @@ fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
         let shapes = overlay_shapes(&h);
         let at_a1: Vec<_> = shapes.iter().filter(|s| (s.0 - a1).length() < 0.5).collect();
         assert!(at_a1.iter().any(|s| s.2 == cyan && (s.1 - 8.0).abs() < 0.01 && !s.3), "{what}: 8 px cyan ring at A1: {at_a1:?}");
-        assert!(at_a1.iter().any(|s| s.2 == green && (s.1 - 4.0).abs() < 0.01 && s.3), "{what}: 4 px green dot at A1: {at_a1:?}");
+        assert!(at_a1.iter().any(|s| s.2 == green && (s.1 - 5.0).abs() < 0.01 && s.3), "{what}: 5 px green dot at A1: {at_a1:?}");
         if what != "x100 at A1" {
             let loose = screen(&h, 90.0, -20.0);
             let sq: Vec<_> = shapes.iter().filter(|s| (s.0 - loose).length() < 0.5).collect();
-            assert!(sq.iter().any(|s| (s.1 - 6.0).abs() < 0.01 && s.2 != egui::Color32::from_rgb(255, 0, 0)), "{what}: 6 px neutral square: {sq:?}");
+            assert!(sq.iter().any(|s| (s.1 - 7.0).abs() < 0.01 && s.2 != egui::Color32::from_rgb(255, 0, 0)), "{what}: 7 px neutral square: {sq:?}");
         }
     }
 }
@@ -516,7 +521,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 
 /// Render the harness's last frame with egui-wgpu (the canvas uses its CPU path in tests, so the
 /// frame is plain egui shapes) and save it as PNG. `None` when no adapter is available.
-pub(crate) fn shot(h: &Harness<'static, Trial>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
+pub(crate) fn shot<S>(h: &Harness<'static, S>, deltas: &Deltas, path: &std::path::Path) -> Option<egui::ColorImage> {
     use eframe::egui_wgpu::{self, wgpu};
     let setup = egui_wgpu::WgpuSetup::without_display_handle();
     let instance = block_on(setup.new_instance());
@@ -723,7 +728,7 @@ fn marks_are_not_painted_over_a_paper_space_layout_at_model_positions() {
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     view(&mut h);
-    let cyan = egui::Color32::from_rgb(0, 255, 255);
+    let cyan = egui::Color32::from_rgb(0x0a, 0x8f, 0x94);
     assert!(overlay_shapes(&h).iter().any(|s| s.2 == cyan), "rings in model space");
     h.get_by_label("Layout1").click();
     h.run_steps(5);

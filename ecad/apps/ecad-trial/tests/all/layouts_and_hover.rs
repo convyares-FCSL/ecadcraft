@@ -19,13 +19,16 @@ mod hover_and_marks {
         ecad_cadcraft::views::isolate_for_tests();
         let mut t = Trial::new(None).unwrap();
         t.hover_delay = 0.0;
-        let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(
+        let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
             |ui, t: &mut Trial| {
                 t.logic(&ui.ctx().clone());
                 t.ui(ui);
             },
             t,
         );
+        // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+        // command line, which sit behind the shell's developer switch now.
+        h.state_mut().set_cad_chrome(true);
         h.run_steps(5);
         h
     }
@@ -87,7 +90,8 @@ mod hover_and_marks {
         fn walk(s: &egui::Shape, out: &mut Vec<Pos2>) {
             match s {
                 egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
-                egui::Shape::Circle(c) if c.stroke.color == egui::Color32::from_rgb(0, 255, 255) => out.push(c.center),
+                // Brief 040: the connection point token colour (was cyan).
+                egui::Shape::Circle(c) if c.stroke.color == egui::Color32::from_rgb(0x0a, 0x8f, 0x94) => out.push(c.center),
                 _ => {}
             }
         }
@@ -313,13 +317,16 @@ mod layout_refusals {
         ecad_cadcraft::views::isolate_for_tests();
         let mut t = Trial::new(None).unwrap();
         t.hover_delay = 0.0;
-        let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(
+        let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
             |ui, t: &mut Trial| {
                 t.logic(&ui.ctx().clone());
                 t.ui(ui);
             },
             t,
         );
+        // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+        // command line, which sit behind the shell's developer switch now.
+        h.state_mut().set_cad_chrome(true);
         h.run_steps(5);
         h
     }

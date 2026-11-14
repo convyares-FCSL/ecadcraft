@@ -1,2 +1,9 @@
 # Golden files are compared byte for byte: never convert their line endings.
 crates/ecad-file/tests/golden/*.ecad -text
+
+# Lanes in flight add lines to these lists only (owner, 2026-11-13; see the files' comments).
+# A union merge keeps both sides' added lines instead of a conflict; `cargo fmt` and the
+# `lanes_are_in_brief_order` test catch the order. Only for files that lanes add lines to.
+**/tests/all/lanes/mod.rs merge=union
+crates/ecad-cadcraft/src/lanes.rs merge=union
+crates/ecad-cadcraft/src/defaults/mod.rs merge=union

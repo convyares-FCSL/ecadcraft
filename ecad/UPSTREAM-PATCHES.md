@@ -19,6 +19,7 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | `docs/cadcraft-assessment.md` | Phase 0 assessment |
 | `docs/document-architecture-proposal.md` | architecture proposal (PR #1) |
 | `docs/ecad-architecture-foundations.md` | owner's foundations note |
+| `ATTRIBUTION.md` | Shared with upstream: ECAD's rows (brief 037) for the embedded IBM Plex Sans and Barlow Semi Condensed faces under `ecad/assets/fonts/` (owner answer Q1, 2026-11-13: ECAD keeps these fonts in its own repository); on upstream merges keep upstream's rows and ours |
 
 ## Upstream fixes taken ahead of the next sync
 
@@ -33,7 +34,9 @@ Already merged upstream; each entry goes away at the next upstream sync, which b
 Proposal §14, capabilities X1-X7, X8 (Tool Sets tabs supplied by the embedder, approved
 2026-10-15) and X9 (overlay marks drawn by a document's owner, approved 2026-11-01 for brief 008,
 owner answer O2) and X10 (a section of the Properties palette drawn by the embedder, approved
-2026-11-08 for brief 019, owner answer Q8). One shape, one marker (`ECAD-SEAM(owner)`), nothing
+2026-11-08 for brief 019, owner answer Q8), and US2 (CADCraft's interface font set as a value
+the embedder extends, approved 2026-11-13 with brief 037, design `ui-architecture.md` §1.4), and US1 (CADCraft's
+drawing embedded in a window the embedder draws, approved 2026-11-13 with brief 038, design `ui-architecture.md` §1.3). One shape, one marker (`ECAD-SEAM(owner)`), nothing
 ECAD-specific: the interface passes drawings, handles, command ids and provenance. Documents
 without an owner behave exactly as before.
 
@@ -52,13 +55,16 @@ without an owner behave exactly as before.
 | `crates/engine/src/cmd/clipboard.rs` | X6 | COPYCLIP reported with its serial; PASTECLIP provenance |
 | `crates/ui-egui/src/closing.rs` | X5 | close and quit prompts ask the session (owner-aware) |
 | `crates/ui-egui/src/chrome.rs` | X5 | file tab unsaved marker asks the session (owner-aware) |
-| `crates/ui-egui/src/canvas.rs` | X9 | the drawing area paints the active document's overlay marks (`owner_mark_shapes`: a ring, dot or square centred on a drawing position, at a constant size on screen, after the drawing and before grips and previews); a plain drawing has none, so it is drawn as before |
+| `crates/ui-egui/src/canvas.rs` | X9, US1 | US1: without `Embedding::idle_typing`, keys reach the command line only while a command prompts (or its options menu is open); without `Embedding::canvas_menus`, a right-click on the drawing while no command runs opens no shortcut, grip or snap menu and is kept for `CadApp::take_secondary_click`; right-click during a command is unchanged. X9: the drawing area paints the active document's overlay marks (`owner_mark_shapes`: a ring, dot or square centred on a drawing position, at a constant size on screen, after the drawing and before grips and previews); a plain drawing has none, so it is drawn as before |
 | `crates/engine/tests/ext_owner.rs` | tests | **new file**: owner interface tests, including the start check (commands and LISP refused before the drawing changes; plain drawings unaffected; a panicking check refuses and recovers) and overlay marks (`the_owner_draws_overlay_marks`: plain drawings have none; undrawable marks dropped; capped; busy or panicking owner draws none; asking changes nothing) |
 | `crates/engine/tests/ext_commands.rs` | tests | **new file**: extension command registration test |
 | `crates/ui-egui/src/palettes.rs` | X8, X10 | Tool Sets tabs supplied by the embedder (`ExtraToolTab` of `ExtraToolGroup`s of `ExtraTool`s): shown after Drafting and Modeling, each with collapsible groups of text buttons; a click is queued, never started; without extra tabs the strip and palettes are unchanged; X10 (approved 2026-11-08 for brief 019, owner answer Q8): `properties_section` calls `CadApp::owner_properties` under its header, before CADCraft's own rows; without it the palette is unchanged |
-| `crates/ui-egui/src/lib.rs` | X8, X10 | `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once); X10: `CadApp::owner_properties`, a section of the Properties palette drawn by the embedder (`None` by default) |
+| `crates/ui-egui/src/lib.rs` | X8, X10, US1 | US1 (brief 038, design `ui-architecture.md` §1.3): `Embedding { chrome, idle_typing, canvas_menus, style }` (default all on: CADCraft's interface unchanged), `CadApp::embedding`, `CadApp::ui_embedded` (everything `ui` does, the drawing filling the given `Ui`), `CadApp::take_secondary_click`; without `chrome`, `draw` paints only the drawing area and CADCraft's dialogs and protective prompts (`draw_overlays`, split out of `draw` unchanged); without `style`, `ui_frame_begin` installs no fonts and applies no visuals (canvas colours still set). X8: `CadApp::extra_tool_tabs` (empty by default) and the click queue, `CadApp::take_tool_requests` (each click returned once); X10: `CadApp::owner_properties`, a section of the Properties palette drawn by the embedder (`None` by default) |
 | `crates/ui-egui/tests/owner_overlay.rs` | tests | **new file** (X9): marks keep their screen size at every zoom and sit on their drawing position; marks off the drawing area or off any screen are left out; an owned drawing asks its owner every frame and drawing the marks changes nothing |
 | `crates/ui-egui/tests/toolsets_extra.rs` | tests | **new file**: without extra tabs Drafting and Modeling are unchanged; an extra tab shows its groups, queues a click once without starting it, and keeps the selection; a tab named like a built-in one is ignored |
+| `crates/ui-egui/src/theme.rs` | US2 | font definitions builder (brief 037, design `ui-architecture.md` §1.4): `font_definitions(language) -> egui::FontDefinitions` is the font set `install_fonts` installed (system UI font, CJK, Arabic, Korean and craft-fonts fallbacks for the language); `install_fonts` now sets exactly that, so behaviour is unchanged. An embedder extends the set (ECAD puts IBM Plex Sans first) and installs it itself |
+| `crates/ui-egui/tests/embedded_view.rs` | tests | **new file** (US1): `Embedding::default()` draws CADCraft's window and idle typing starts a command; without chrome only the drawing is drawn, in the rect given; without idle typing `L` + Enter starts nothing while a prompt still takes `10,10`; without canvas menus an idle right-click opens no menu and is reported once, and right-click during a command is unchanged |
+| `crates/ui-egui/tests/font_definitions.rs` | tests | **new file** (US2): after `install_fonts` the fonts in use equal `font_definitions` for English and Japanese; the builder's result is an independent value |
 
 Not yet covered by provenance (copies through them are refused by the adapter until added):
 ARRAY, grip copy (`gripcmds.rs`), MIRROR/ROTATE/SCALE through other code paths, PASTEBLOCK,
@@ -92,3 +98,26 @@ decisions, 2026-11-09):
 guard autosaves open drawings through `autosave::plan_with`, which skips owned documents (X5), so
 an ECAD page's unsaved work is not saved when the UI panics (the app keeps running, so the
 project can still be saved). A generic `DocumentOwner::emergency_save` hook would close that gap.
+
+## Code patches to upstream crates: PDF window culling (brief 033, owner answer Q1, 2026-11-12)
+
+Generic and not ECAD-specific: a page of a `pages` plot writes only what lies in its window. To
+be offered upstream to CADCraft (design 033 FU2).
+
+| File | What changes |
+| --- | --- |
+| `crates/io/src/pdf.rs` | `marks` skips a polyline, fill, mask or point primitive whose page-point bounds miss the plot area grown by its stroke width and `CULL_MARGIN_PT` (`outside_plot_area`); infinite lines and images are unchanged. Each page of a `pages` plot builds the whole model, so before this every page's content stream held every page's geometry and the file grew with pages squared. The page clips to the same area, so what shows is unchanged |
+| `crates/io/src/tests.rs` | tests: a page of a `pages` plot holds only its window's paths; 20 pages are at most 2.2 times 10; a culled page's content stream equals that of its sheet plotted alone; a wide stroke whose edge reaches the window and text running into it are kept, text wholly outside is culled; a plot without a window draws everything |
+
+## Code patches to upstream crates: the canvas (U4a, brief 040, 2026-11-13)
+
+Generic, nothing ECAD-specific; offered upstream with US1 and US2 (design `ui-architecture.md`
+§1.6). Defaults are unchanged: without `register_faces` the font table is as before, and
+`Embedding::default()` still draws the viewport label.
+
+| File | Seam | What changes |
+| --- | --- | --- |
+| `crates/fonts/src/ttf.rs` | US3 (embedder fonts, design `ui-architecture.md` §4) | `EmbeddedFace { family, style, bytes }` and `register_faces(&'static [EmbeddedFace]) -> Result<(), FacesAlreadyRegistered>`, called once at start-up: the faces are listed like the embedded craft-fonts fonts (in place of an installed file of the same stem, never of a font in the user's own folders, kept by a rescan) and found by family name, the regular face by the family alone and the others by family and style (`Db::embedder_face`); a second call is refused and the first faces stay; registering bumps the font generation. `embedder_faces()` lists them |
+| `crates/fonts/tests/embedder_faces.rs` | tests | **new file** (US3): unregistered, nothing is listed or found; a registered face is found by family and by family and style; a second call is refused, not a panic, and the first faces stay; a rescan keeps them |
+| `crates/ui-egui/src/canvas.rs` | US1 (one line) | the viewport label (`+ \| Top \| 2D Wireframe`) is drawn only with `Embedding::chrome`: an embedder without CADCraft's chrome labels its own view |
+| `crates/ui-egui/tests/embedded_view.rs` | tests | `the_viewport_label_is_drawn_only_with_cadcrafts_chrome`: drawn with the default and with chrome on, not without |

@@ -127,10 +127,89 @@ pub enum Kind {
     LinkOrphan,
     /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
     LinkOnNonStrip,
+    /// Brief 033: a contact table the user placed overlaps the title block.
+    TableOverTitle,
+    /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
+    ContinuationClash,
+    /// Brief 036 (design 036 §8): a level of a multi-level position drawn twice.
+    LevelTwice,
+    /// A position whose levels are drawn by symbols of two types.
+    PositionMixed,
+    /// A link naming a level its position does not have.
+    LevelMissing,
+    /// Fuse terminals that are devices of their own (one count row).
+    FuseDevice,
+    /// Fuse positions with no rating (one count row).
+    NoFuseRating,
+    /// Brief 040: a wire or core colour code the app does not know (drawn in ink).
+    UnknownColour,
+    /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
+    DashesLeftOut,
+    /// Brief 045 (design 045 §9): two cards in one slot of a rack.
+    SlotTwice,
+    /// A card naming a rack that is not in the project.
+    RackMissing,
+    /// A card in a slot its rack does not have (or in a rack but no slot).
+    SlotRange,
+    /// PLC cards in no rack (one count row).
+    Unracked,
+    /// Brief 045b: one channel drawn twice.
+    ChannelTwice,
+    /// A channel drawn beyond its card's channel count.
+    ChannelOver,
+    /// A channel drawn by a symbol of another card type.
+    ChannelType,
+    /// Two cards' address blocks overlap.
+    AddressOverlap,
+    /// One address given to two channels (one typed).
+    AddressTwice,
+    /// A block past byte 65 535.
+    AddressOverflow,
+    /// Used channels with no address (one count row).
+    NoAddress,
+    /// Brief 051 (design 051 §2.8): a wire that runs on through a PLC card to another point.
+    WireThroughCard,
+    /// Brief 051 (design 051 §2.5): a run's texts are wider or deeper than its cells at the
+    /// project's text styles (Info; nothing is shrunk).
+    PlcTextWide,
+    /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
+    ConnectorPinTwice,
+    /// A connector whose whole halves are of two families.
+    ConnectorFamily,
+    /// A connector whose whole halves differ in size.
+    ConnectorSize,
+    /// A connector's pins with no mate (one count row per connector).
+    ConnectorLonePin,
+    /// A connector pin numbered beyond its `pins`.
+    ConnectorOver,
+    /// Brief 047 (design 047 §9): items without a part number (one count row).
+    ItemNoPartNumber,
+    /// Fuses (of banks, strips and fuse terminals) that no part line serves (one count row).
+    FuseNoInsert,
+    /// One part number with two article numbers.
+    ArticleConflict,
+    /// A part line's `for` names a fuse or position the device does not have.
+    PartForMissing,
+    /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
+    BadPartKey,
+    /// Brief 050a: an object's style choice names no style (drawn with the next level's).
+    StyleUnknown,
+    /// Brief 050a (FP4 ruling): 031's text sizes, weights or fonts set as project properties in
+    /// an older build, no longer read. One row per kind of key.
+    IgnoredOldSetting,
+    /// Brief 050a (design 050 §3.2): style records past the bounds, ignored.
+    StyleLimits,
+    /// Brief 050b: a wire's own category names no category (drawn without one).
+    CategoryUnknown,
+    /// Brief 050b: two categories name one potential (the first by ID is used).
+    CategoryPotentialTwice,
+    /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
+    /// has no length.
+    WireAllowance,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 34] = [
+    pub const ALL: [Kind; 72] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -165,6 +244,44 @@ impl Kind {
         Kind::LinkAcrossPartition,
         Kind::LinkOrphan,
         Kind::LinkOnNonStrip,
+        Kind::TableOverTitle,
+        Kind::ContinuationClash,
+        Kind::LevelTwice,
+        Kind::PositionMixed,
+        Kind::LevelMissing,
+        Kind::FuseDevice,
+        Kind::NoFuseRating,
+        Kind::UnknownColour,
+        Kind::DashesLeftOut,
+        Kind::SlotTwice,
+        Kind::RackMissing,
+        Kind::SlotRange,
+        Kind::Unracked,
+        Kind::ChannelTwice,
+        Kind::ChannelOver,
+        Kind::ChannelType,
+        Kind::AddressOverlap,
+        Kind::AddressTwice,
+        Kind::AddressOverflow,
+        Kind::NoAddress,
+        Kind::WireThroughCard,
+        Kind::PlcTextWide,
+        Kind::ConnectorPinTwice,
+        Kind::ConnectorFamily,
+        Kind::ConnectorSize,
+        Kind::ConnectorLonePin,
+        Kind::ConnectorOver,
+        Kind::ItemNoPartNumber,
+        Kind::FuseNoInsert,
+        Kind::ArticleConflict,
+        Kind::PartForMissing,
+        Kind::BadPartKey,
+        Kind::StyleUnknown,
+        Kind::IgnoredOldSetting,
+        Kind::StyleLimits,
+        Kind::CategoryUnknown,
+        Kind::CategoryPotentialTwice,
+        Kind::WireAllowance,
     ];
 
     /// The JSON name.
@@ -204,6 +321,44 @@ impl Kind {
             Kind::LinkAcrossPartition => "link-across-partition",
             Kind::LinkOrphan => "link-orphan",
             Kind::LinkOnNonStrip => "link-on-non-strip",
+            Kind::TableOverTitle => "table-over-title",
+            Kind::ContinuationClash => "continuation-clash",
+            Kind::LevelTwice => "level-twice",
+            Kind::PositionMixed => "position-mixed",
+            Kind::LevelMissing => "level-missing",
+            Kind::FuseDevice => "fuse-device",
+            Kind::NoFuseRating => "no-fuse-rating",
+            Kind::UnknownColour => "unknown-colour",
+            Kind::DashesLeftOut => "dashes-left-out",
+            Kind::SlotTwice => "slot-twice",
+            Kind::RackMissing => "rack-missing",
+            Kind::SlotRange => "slot-range",
+            Kind::Unracked => "unracked",
+            Kind::ChannelTwice => "channel-twice",
+            Kind::ChannelOver => "channel-over",
+            Kind::ChannelType => "channel-type",
+            Kind::AddressOverlap => "address-overlap",
+            Kind::AddressTwice => "address-twice",
+            Kind::AddressOverflow => "address-overflow",
+            Kind::NoAddress => "no-address",
+            Kind::WireThroughCard => "wire-through-card",
+            Kind::PlcTextWide => "plc-text-wide",
+            Kind::ConnectorPinTwice => "connector-pin-twice",
+            Kind::ConnectorFamily => "connector-family",
+            Kind::ConnectorSize => "connector-size",
+            Kind::ConnectorLonePin => "connector-lone-pin",
+            Kind::ConnectorOver => "connector-over",
+            Kind::ItemNoPartNumber => "item-no-part-number",
+            Kind::FuseNoInsert => "fuse-no-insert",
+            Kind::ArticleConflict => "article-conflict",
+            Kind::PartForMissing => "part-for-missing",
+            Kind::BadPartKey => "bad-part-key",
+            Kind::StyleUnknown => "style-unknown",
+            Kind::IgnoredOldSetting => "ignored-old-setting",
+            Kind::StyleLimits => "style-limits",
+            Kind::CategoryUnknown => "category-unknown",
+            Kind::CategoryPotentialTwice => "category-potential-twice",
+            Kind::WireAllowance => "wire-allowance",
         }
     }
 
@@ -220,7 +375,7 @@ impl Kind {
             Kind::TwoFixed => "One net, two fixed numbers",
             Kind::OpenEnd => "Open end",
             Kind::LooseWire => "Loose wire",
-            Kind::LooksConnected => "Looks connected, no junction",
+            Kind::LooksConnected => looks_connected_words(),
             Kind::DrawnAway => "End drawn away from its connection point",
             Kind::SinglePoint => "Net with a single connection point",
             Kind::ThinJunction => "Junction with fewer than three wires",
@@ -249,12 +404,58 @@ impl Kind {
             Kind::LinkAcrossPartition => "Link crosses a partition",
             Kind::LinkOrphan => "Link names positions the strip lacks",
             Kind::LinkOnNonStrip => "Link on a device that is not a strip",
+            Kind::TableOverTitle => "Contact table over the title block",
+            Kind::ContinuationClash => "Continuation sheet has another page's number",
+            Kind::LevelTwice => "Terminal level drawn twice",
+            Kind::PositionMixed => "Position mixes terminal types",
+            Kind::LevelMissing => "Link names a level the position lacks",
+            Kind::FuseDevice => "Fuse terminals that are devices of their own",
+            Kind::NoFuseRating => "Fuse positions without a rating",
+            Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
+            Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
+            Kind::SlotTwice => "Two cards in one slot",
+            Kind::RackMissing => "Card names a rack that is not in the project",
+            Kind::SlotRange => "Card in a slot its rack does not have",
+            Kind::Unracked => "PLC cards in no rack",
+            Kind::ChannelTwice => "Channel drawn twice",
+            Kind::ChannelOver => "Channel beyond the card's count",
+            Kind::ChannelType => "Channel drawn as another card type",
+            Kind::AddressOverlap => "Address blocks overlap",
+            Kind::AddressTwice => "Address given twice",
+            Kind::AddressOverflow => "Address block past byte 65535",
+            Kind::NoAddress => "Used channels with no address",
+            Kind::WireThroughCard => "Wire runs through a PLC card",
+            Kind::PlcTextWide => "PLC texts wider than their cells",
+            Kind::ConnectorPinTwice => "Connector pin drawn twice on one half",
+            Kind::ConnectorFamily => "Connector halves of two families",
+            Kind::ConnectorSize => "Connector halves of two sizes",
+            Kind::ConnectorLonePin => "Connector pins without a mate",
+            Kind::ConnectorOver => "Connector pin beyond its pin count",
+            Kind::ItemNoPartNumber => "Items without a part number",
+            Kind::FuseNoInsert => "Fuses without an insert",
+            Kind::ArticleConflict => "One part number, two article numbers",
+            Kind::PartForMissing => "Part line names a fuse or position the device lacks",
+            Kind::BadPartKey => "Part line or item value ECAD does not read",
+            Kind::StyleUnknown => "Style not found; drawn without it",
+            Kind::IgnoredOldSetting => "Set in an older build, now ignored: set it in Standards",
+            Kind::StyleLimits => "Style records past the limits are ignored",
+            Kind::CategoryUnknown => "Wire category not found; drawn without one",
+            Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
+            Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
         }
     }
 
     pub fn severity(self) -> Severity {
         match self {
-            Kind::JoinsPotentials | Kind::SharedNumber | Kind::TwoFixed | Kind::DuplicateTag | Kind::TerminalTwice => Severity::Error,
+            Kind::JoinsPotentials
+            | Kind::SharedNumber
+            | Kind::TwoFixed
+            | Kind::DuplicateTag
+            | Kind::TerminalTwice
+            | Kind::LevelTwice
+            | Kind::SlotTwice
+            | Kind::ChannelTwice
+            | Kind::ConnectorPinTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -273,7 +474,25 @@ impl Kind {
             | Kind::AccessoryOrphan
             | Kind::LinkAcrossPartition
             | Kind::LinkOrphan
-            | Kind::LinkOnNonStrip => Severity::Warning,
+            | Kind::LinkOnNonStrip
+            | Kind::TableOverTitle
+            | Kind::ContinuationClash
+            | Kind::PositionMixed
+            | Kind::LevelMissing
+            | Kind::DashesLeftOut
+            | Kind::RackMissing
+            | Kind::SlotRange
+            | Kind::ChannelOver
+            | Kind::ChannelType
+            | Kind::AddressOverlap
+            | Kind::AddressTwice
+            | Kind::AddressOverflow
+            | Kind::ConnectorFamily
+            | Kind::ConnectorSize
+            | Kind::ArticleConflict
+            | Kind::PartForMissing
+            | Kind::CategoryPotentialTwice
+            | Kind::WireThroughCard => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -296,6 +515,8 @@ pub enum Object {
 pub enum Fix {
     /// `junction {at}` on the row's page.
     AddJunction(Pt),
+    /// 032: `joinwires {at}` on the row's page (Looks connected: **Join**).
+    Join(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
     NumberThem,
     /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
@@ -324,6 +545,41 @@ pub enum Fix {
     LinkOrphan(ComponentId, u16),
     /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
     LinkOnNonStrip(ComponentId),
+    /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
+    MoveTable(ComponentId),
+    /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
+    RenumberPage(PageId),
+    /// Brief 036: **Move to next free** (the level drawn twice, to the next position of its type
+    /// with that level free; `termlabel {terminal, move_to: "next"}`).
+    MoveToNextFree(TerminalId),
+    /// Brief 036: **Move to new position** (the other type's levels; `termlabel {terminal,
+    /// move_to: "new"}`).
+    MoveToNewPosition(TerminalId),
+    /// Brief 036: link `n` names missing levels: **Drop missing levels** or **Delete link**.
+    LevelMissing(ComponentId, u16),
+    /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
+    /// (`toposition`).
+    FuseDevices,
+    /// Brief 045 (design 045 §9): a PLC row's buttons, from the kept PLC model
+    /// ([`crate::plc::Plc::fix_commands`]).
+    Plc(ComponentId, crate::plc::PlcFix),
+    /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
+    ConnectorNextPin(TerminalId),
+    /// Brief 044: **Set pins to n** (`setprop pins`).
+    SetPins(ComponentId, u32),
+    /// Brief 044: **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
+    /// the lone pins lack (§4.4 gives them first).
+    PlaceMates(ComponentId, crate::symbols::Side),
+    /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
+    IgnoreConnector(ComponentId, Kind),
+    /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
+    /// `n` of the component (`article`).
+    UseArticle(ComponentId, u8),
+    /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
+    /// (`partline set for`).
+    DropMissingFor(ComponentId, u8),
+    /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
+    OpenStandards(&'static str),
 }
 
 /// One row of the Checks list.
@@ -343,9 +599,26 @@ impl Check {
         self.kind.severity()
     }
 
-    /// The row's text: the kind's words, or for the unnumbered row its count.
+    /// The row's text: the kind's words, or for the unnumbered row its count. Brief 044 (design
+    /// 044 §6.3): a connector row's text names its connector (`-X10's halves differ: …`).
     pub fn what(&self) -> String {
-        self.kind.words().to_string()
+        match self.kind {
+            Kind::ConnectorPinTwice
+            | Kind::ConnectorFamily
+            | Kind::ConnectorSize
+            | Kind::ConnectorLonePin
+            | Kind::ConnectorOver
+            | Kind::StyleUnknown
+            | Kind::IgnoredOldSetting
+            | Kind::StyleLimits
+            | Kind::CategoryPotentialTwice
+            | Kind::WireAllowance
+                if !self.which.is_empty() =>
+            {
+                self.which.clone()
+            }
+            _ => self.kind.words().to_string(),
+        }
     }
 
     /// Where the row is, as references name a place (`3-D-5`, or `/3.D` in that style); the page
@@ -401,6 +674,10 @@ pub enum Key {
     CableReferences(CableId),
     Cable(ecad_model::CableId),
     Project,
+    /// Brief 040: a page's dash budget.
+    Page(PageId),
+    /// Brief 050a: the style rows (unknown styles, old settings, limits).
+    Styles,
 }
 
 type Cell = (PageId, i64, i64);
@@ -694,6 +971,17 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     out
 }
 
+// 032: the Looks connected row's words and fix (design 032 §2.7): two open ends that meet are
+// joined by merging them (`joinwires`), not by a junction.
+fn looks_connected_words() -> &'static str {
+    "Looks connected"
+}
+
+// 032: see `looks_connected_words`.
+fn looks_connected_fix(at: Pt) -> Fix {
+    Fix::Join(at)
+}
+
 /// The checks of conductor `c`: open end, loose wire, looks connected, drawn away.
 pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -> Vec<Check> {
     let mut out = Vec::new();
@@ -727,7 +1015,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
                     at: Some(at),
                     object: Object::Conductor(c),
                     which: which.clone(),
-                    fix: Some(Fix::AddJunction(at)),
+                    fix: Some(looks_connected_fix(at)),
                 });
             }
         }
@@ -748,7 +1036,40 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
             }
         }
     }
+    // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
+    if let Some(code) = crate::look::conductor_colour(doc, c).filter(|code| crate::look::colour_code(code).is_none()) {
+        let (page, at) = conductor_place(doc, c, None);
+        let code = crate::look::shorten(code.trim(), crate::look::MAX_CODE_CHARS);
+        out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Conductor(c), which: format!("{which} {code}"), fix: None });
+    }
     out
+}
+
+/// The checks of `page` as a whole: brief 040's dash budget ([`crate::look::dash_budget`]).
+pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
+    let left = crate::look::dash_budget(doc, page).left_out;
+    if left.is_empty() {
+        return Vec::new();
+    }
+    let n = left.len();
+    let which = if n == 1 { "1 wire".to_string() } else { format!("{n} wires") };
+    vec![Check { kind: Kind::DashesLeftOut, page: Some(page), at: None, object: Object::None, which, fix: None }]
+}
+
+/// Whether connection point `t` is one its symbol marks quiet (brief 034, design 034 §11): a
+/// spare connector pin, fuse output or card supply point may stay unwired without an
+/// `Unconnected` check. Every other check on it still runs.
+fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
+    let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return false };
+    doc.representations_of(Subject::Component(c)).any(|(_, r)| {
+        let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
+        let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
+        crate::devices::shown_terminals(doc, c, r)
+            .iter()
+            .filter(|(x, _)| *x == t)
+            .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
+            .any(|td| crate::symbols::is_quiet(s, &td.key))
+    })
 }
 
 /// The checks of connection point `t`: a device point with nothing attached.
@@ -760,6 +1081,9 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
     if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.conductors.is_empty()) {
+        return Vec::new();
+    }
+    if is_quiet_point(doc, t) {
         return Vec::new();
     }
     let (page, at) = terminal_place(doc, t);
@@ -820,6 +1144,19 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
     for (which, page, at) in crate::xref::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
+    }
+    // Brief 044 (design 044 §6.3): a connector's mating checks.
+    out.extend(crate::connectors::checks(doc, c));
+    // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
+    if let Some((which, page, at)) = crate::xref::title_check(doc, c) {
+        out.push(Check {
+            kind: Kind::TableOverTitle,
+            page: Some(page),
+            at: Some(at),
+            object: Object::Component(c),
+            which,
+            fix: Some(Fix::MoveTable(c)),
+        });
     }
     out
 }
@@ -903,6 +1240,10 @@ impl Checks {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
             ch.set(Key::Cable(*k), cable_checks(doc, *k));
         }
+        for page in doc.pages.keys() {
+            ch.set(Key::Page(*page), page_checks(doc, *page));
+        }
+        ch.set(Key::Styles, crate::styles::checks::rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1058,6 +1399,19 @@ impl Checks {
         for k in &scope.cables {
             self.set(Key::Cable(*k), cable_checks(doc, *k));
         }
+        // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
+        // that had a row (a wire removed or recoloured there).
+        let mut pages: BTreeSet<PageId> = self.by_key.keys().filter_map(|k| if let Key::Page(p) = k { Some(*p) } else { None }).collect();
+        for c in scope.conductors.iter().chain(scope.routes.iter()) {
+            pages.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+        }
+        for page in pages {
+            let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
+            self.set(Key::Page(page), rows);
+        }
+        if scope.styles {
+            self.set(Key::Styles, crate::styles::checks::rows(doc));
+        }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
@@ -1082,6 +1436,8 @@ pub struct Scope {
     cable_references: BTreeSet<CableId>,
     /// Cables to re-check (brief 026: provisional and shared tags).
     cables: BTreeSet<ecad_model::CableId>,
+    /// Brief 050a: the style rows (`crate::styles::checks::touches`).
+    styles: bool,
 }
 
 impl Scope {
@@ -1099,6 +1455,7 @@ impl Scope {
             s.nodes.insert(n);
         };
         for op in ops {
+            self.styles |= crate::styles::checks::touches(op);
             match op {
                 Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
                     self.conductors.insert(*id);
@@ -1124,6 +1481,13 @@ impl Scope {
                     self.terminals.insert(*id);
                     self.components.insert(terminal.component);
                     node(self, Node::Terminal(*id));
+                }
+                // Brief 048: another definition may bridge other points.
+                Op::SetComponentDefinition { id, .. } => {
+                    self.components.insert(*id);
+                    for (t, _) in doc.terminals_of(*id) {
+                        node(self, Node::Terminal(t));
+                    }
                 }
                 Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
                     self.tag_holders(doc, component.properties.get(ecad_model::tag::TAG_KEY));
@@ -1196,6 +1560,11 @@ impl Scope {
                 // numbering and reference style change where rows say they are; label looks
                 // (colour style, height), tag settings and units change nothing here.
                 Op::SetProjectSettings { before, after } => {
+                    // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
+                    // title block when the project's sheet changes.
+                    if before.sheet != after.sheet {
+                        self.components.extend(crate::xref::placed_tables(doc));
+                    }
                     let (b, a) = (&before.wiring, &after.wiring);
                     if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials
                     {
@@ -1207,9 +1576,19 @@ impl Scope {
                         self.relocate = true;
                     }
                 }
+                // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
+                // are checked again for a table over the title block.
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == ecad_model::sheet::SHEET_KEY => {
+                    self.relocate = true;
+                    for (_, r) in doc.representations_on(*p) {
+                        if let Subject::Component(c) = r.subject {
+                            self.components.insert(c);
+                        }
+                    }
+                }
                 // Page numbers, folders and the page order change where rows say they are (brief
                 // 019), not what they find: the rows are copied again.
-                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project, .. }
+                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. }
                 | Op::AddFolder { .. }
                 | Op::RemoveFolder { .. }
                 | Op::ModifyFolder { .. }
@@ -1224,6 +1603,8 @@ impl Scope {
                     }
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+                // Brief 050a: style records and the standard reach only the style rows (above).
+                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
             }
         }
     }

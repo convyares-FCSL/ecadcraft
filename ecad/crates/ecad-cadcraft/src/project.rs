@@ -24,7 +24,6 @@ use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
 use crate::translate;
-use crate::verify::verify_page_with;
 pub use crate::views::View;
 
 /// What a projected handle stands for.
@@ -75,6 +74,8 @@ pub struct HandleMap {
     /// Loose wire ends at a cable end that stops at a reference (design 009 §7.3): no loose-end
     /// square is shown there.
     quiet: Vec<Pt>,
+    /// Brief 032 §2.6: open ends lying on another wire (the yellow looks-connected ring).
+    looks: Vec<Pt>,
     /// Reference texts (brief 010): reference representation → handle.
     refs: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
@@ -89,6 +90,13 @@ pub struct HandleMap {
     xref_parts: HashMap<Handle, (RepresentationId, u32)>,
     /// Brief 030: link line segments: (strip, link, index) → handle.
     links: BTreeMap<(ComponentId, u32, u32), Handle>,
+    /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
+    /// the conductor as its label is (derived: left out of an edit with other objects, refused
+    /// alone), and each dash's route handle.
+    dashes: BTreeMap<(RepresentationId, u32), Handle>,
+    dash_routes: HashMap<Handle, Handle>,
+    /// Brief 040: the route handles drawn in a wire colour.
+    coloured: BTreeSet<Handle>,
 }
 
 impl HandleMap {
@@ -131,6 +139,10 @@ impl HandleMap {
     pub fn quiet_ends(&self) -> &[Pt] {
         &self.quiet
     }
+    /// Open ends that look connected (design 032 §2.6), computed with the page's projection.
+    pub fn looks_connected(&self) -> &[Pt] {
+        &self.looks
+    }
     /// Whether `cable` is drawn as a fan on this page.
     pub fn is_fan(&self, cable: CableId) -> bool {
         self.fan_cables.contains(&cable)
@@ -162,6 +174,10 @@ impl HandleMap {
     pub fn insert_tag_text(&mut self, rep: RepresentationId, of: crate::devices::TextOf, h: Handle) {
         self.tags.insert((rep, of), h);
         self.by_handle.insert(h, Mapped::Tag(rep));
+    }
+    /// The derived text a handle draws (brief 031: Show/Hide Text and Move Text pick by it).
+    pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, crate::devices::TextOf)> {
+        self.tags.iter().find(|(_, x)| **x == h).map(|(k, _)| *k)
     }
     /// Every handle of a tag text or terminal label.
     pub fn tag_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
@@ -198,6 +214,31 @@ impl HandleMap {
     pub fn insert_link(&mut self, strip: ComponentId, n: u32, index: u32, h: Handle) {
         self.links.insert((strip, n, index), h);
         self.by_handle.insert(h, Mapped::Link(strip, n));
+    }
+    /// Brief 040: the handle of dash `index` of route `rep`.
+    pub fn dash(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
+        self.dashes.get(&(rep, index)).copied()
+    }
+    pub fn insert_dash(&mut self, rep: RepresentationId, conductor: ConductorId, index: u32, h: Handle, route: Handle) {
+        self.dashes.insert((rep, index), h);
+        self.dash_routes.insert(h, route);
+        self.by_handle.insert(h, Mapped::Label(conductor));
+    }
+    /// The route a dash is laid over (picking a dash picks the wire).
+    pub fn route_of_dash(&self, h: Handle) -> Option<Handle> {
+        self.dash_routes.get(&h).copied()
+    }
+    /// Every handle of a dash.
+    pub fn dash_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.dashes.values().copied()
+    }
+    /// Mark route handle `h` as drawn in a wire colour.
+    pub fn insert_coloured(&mut self, h: Handle) {
+        self.coloured.insert(h);
+    }
+    /// Whether route handle `h` is drawn in a wire colour.
+    pub fn is_coloured(&self, h: Handle) -> bool {
+        self.coloured.contains(&h)
     }
     pub fn insert_xref(&mut self, rep: RepresentationId, index: u32, h: Handle) {
         self.xrefs.insert((rep, index), h);
@@ -242,6 +283,9 @@ impl HandleMap {
                 + self.frame.len()
                 + self.xrefs.len()
                 + self.links.len()
+                + self.dashes.len()
+            && self.dash_routes.len() == self.dashes.len()
+            && self.dashes.values().all(|h| matches!(self.by_handle.get(h), Some(Mapped::Label(_))))
             && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
             && self.xref_parts.len() == self.xrefs.len()
             && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::Xref(k.0)) && self.xref_parts.get(h) == Some(k))
@@ -517,6 +561,10 @@ pub struct Project {
     /// Cables shown in fan view (brief 005); every other cable is traditional. Presentation only:
     /// never in the ledger, never a transaction, never the unsaved state (P5, SAVE-03).
     pub views: BTreeSet<CableId>,
+    /// Show Hidden Text (brief 031, design §5.7): pages also draw their hidden derived texts,
+    /// dimmed. A session display state like `views`: never in the ledger or the file, not
+    /// undoable, never printed. Off when a project is opened.
+    pub show_hidden_text: bool,
     /// Where this user's cable views are remembered ([`crate::views::Settings`]).
     pub settings: crate::views::Settings,
     /// Whether [`crate::views::NOT_REMEMBERED`] was said in this session.
@@ -548,6 +596,8 @@ pub struct Project {
     pub(crate) last_placed: Option<(String, ComponentId)>,
     /// The last continuation name placed in this session, the prompt's default (design 022 §3.2).
     pub(crate) last_continuation: Option<String>,
+    /// Brief 049: the last caption given in this session, Caption Continuations' default.
+    pub(crate) last_caption: Option<String>,
     /// The Wire tool's potential for new wires in this session; `None` is `auto` (design 022 §6).
     pub wire_potential: Option<String>,
     /// The Checks list (design 022 §8), built on its first show and then kept from each change's
@@ -558,6 +608,13 @@ pub struct Project {
     pub outputs: Option<crate::outputs::Outputs>,
     /// `reports` asked for the Reports window (the trial opens it and clears this).
     pub open_reports: bool,
+    /// Brief 035: `agentaccess` asked for this agent access preference (the trial applies it and
+    /// clears this).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub agent_access_request: Option<crate::agent_access::Preference>,
+    /// Brief 035: the trial's agent access state as `agentaccess` reports it (set by the trial).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub agent_access_status: Option<crate::agent_access::Status>,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
@@ -566,8 +623,15 @@ pub struct Project {
     frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
     /// An op of the update map was committed since the frame was drawn.
     frame_stale: bool,
+    /// Brief 033 (design 033 §6): the drawing changed since the newest issued revision, as the
+    /// title block shows it; worked out on first use and after every change.
+    pub pending: bool,
+    pending_known: bool,
     /// How many times a frame was worked out again (tests and bench: only when it can differ).
     pub frame_builds: u64,
+    /// How many times a page in the window was projected again after a change or a view switch
+    /// ([`Project::refresh_page`]; tests: a commit that touched another page projects nothing).
+    pub projections: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
     pub revision_view: Option<crate::sheet_cmds::RevisionView>,
     /// How many transactions the command now running may record, when its caller caps them (an
@@ -590,6 +654,9 @@ pub struct Project {
     /// The general reference index (brief 025): built on open and branch switch, kept per commit
     /// from the ops ([`crate::xref::Watch`]).
     pub xref: crate::xref::RefIndex,
+    /// Brief 044 (design 044 §11.1): the connector index, built on open and branch switch, kept
+    /// per commit from the ops ([`crate::connectors::Index`]).
+    pub connectors: crate::connectors::Index,
     /// What the last commit's [`crate::xref::Watch`] derived after it, with the state it was
     /// derived for (head and last transaction ID): the next commit's "before" while unchanged.
     xref_shown: Option<((u64, u128), crate::xref::Shown)>,
@@ -653,9 +720,13 @@ fn cables_layer() -> CLayer {
 
 /// One computed part of a cable's drawing (briefs 005, 009) as an entity on the reserved layer:
 /// a line for two points, else a polyline; an arc; a text. Trunk and spine carry the cable
-/// lineweight, bends, tails and frames the wire lineweight, text the layer's.
-pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
-    use crate::look::{LABEL_HEIGHT, Shape, Weight};
+/// lineweight, bends, tails and frames the wire lineweight, text the layer's. A text takes its
+/// height and style from `look` (brief 031): a reference end's text is a reference, every other
+/// one cable text.
+pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Part, handle: Handle) -> Entity {
+    use crate::look::{Role, Shape, Weight};
+    use crate::text_style::TextKind;
+    let text_kind = if part.role == Role::ReferenceText { TextKind::Reference } else { TextKind::CableText };
     use ecad_model::Primitive;
     let kind = match &part.shape {
         Shape::Path { points, closed: false } if points.len() == 2 => match points.as_slice() {
@@ -666,9 +737,14 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
         Shape::Arc { center, radius, start, end } => {
             kind_for_primitive(&Primitive::Arc { center: *center, radius: *radius, start: *start, end: *end })
         }
-        Shape::Text { at, rotation, value } => {
-            kind_for_primitive(&Primitive::Text { at: *at, height: LABEL_HEIGHT, rotation: *rotation, value: value.clone() })
-        }
+        Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
+            at: *at,
+            height: look.style(text_kind).height,
+            rotation: *rotation,
+            value: value.clone(),
+            halign: Default::default(),
+            valign: Default::default(),
+        }),
     };
     let lineweight = match part.weight {
         Weight::Cable => Lineweight::Mm100(crate::look::CABLE_WEIGHT),
@@ -676,15 +752,25 @@ pub(crate) fn part_entity(part: &crate::look::Part, handle: Handle) -> Entity {
         Weight::Text => Lineweight::ByLayer,
     };
     let color = part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
-    Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind }
+    let mut e = Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind };
+    if matches!(part.shape, Shape::Text { .. }) {
+        look.apply(&mut e, text_kind);
+    }
+    e
 }
 
 /// One part of a device cross-reference (brief 025) as an entity on the tags layer: a text, or a
 /// line (the table's bar at the wire lineweight).
 pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
     let mut e = match &part.shape {
-        crate::xref::Shape::Text { at, value, height, halign, valign } => {
-            crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER)
+        crate::xref::Shape::Text { at, value, height, halign, valign, rotation } => {
+            let mut e = crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER);
+            // Brief 049 (FP3): a continuation's reference reads along its wire; every other part
+            // keeps 0, so its entity is unchanged.
+            if let EntityKind::Text(t) = &mut e.kind {
+                t.rotation = *rotation;
+            }
+            e
         }
         crate::xref::Shape::Line(a, b) => Entity {
             handle,
@@ -791,6 +877,54 @@ pub fn project_page_with(
 pub fn project_page_framed(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
 ) -> Result<(Drawing, HandleMap), String> {
+    project_page_shown(doc, page, base, prev, fan, tol, frame, false)
+}
+
+/// [`project_page_with`] with Show Hidden Text (brief 031, design §5.7): `hidden_text` also draws
+/// every hidden derived text, dimmed, on [`crate::text_style::HIDDEN_LAYER`] (not plotted). A
+/// session display state: print and PDF project with it off.
+///
+/// # Errors
+/// As [`project_page`].
+pub fn project_page_with_hidden(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+) -> Result<(Drawing, HandleMap), String> {
+    project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false)
+}
+
+/// [`project_page_with_hidden`] with the project's pending flag (brief 033, design 033 §6): the
+/// frame's Rev box and the cover show the pending marker as the project draws them.
+///
+/// # Errors
+/// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
+pub fn project_page_pending(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
+) -> Result<(Drawing, HandleMap), String> {
+    project_page_shown(doc, page, base, prev, fan, tol, &crate::generated::parts_of_pending(doc, page, None, pending), hidden_text)
+}
+
+/// [`project_page_framed`] with Show Hidden Text (see [`project_page_with_hidden`]).
+///
+/// # Errors
+/// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
+pub fn project_page_shown(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    hidden_text: bool,
+) -> Result<(Drawing, HandleMap), String> {
+    project_page_kept(doc, page, base, prev, fan, tol, frame, hidden_text, None)
+}
+
+/// [`project_page_shown`] with the kept PLC model, when built (brief 045).
+///
+/// # Errors
+/// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
+pub fn project_page_kept(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    hidden_text: bool, plc: Option<&crate::plc::Plc>,
+) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
         if d.layer(&l.name).is_none() {
@@ -867,6 +1001,12 @@ pub fn project_page_framed(
         ents.push(e);
         map.insert_item(*id, h);
     }
+    // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
+    crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    // Brief 050b: wire routes in their category's line type and weight.
+    crate::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
+    // Brief 050a: location box outlines in their location style.
+    crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: Vec<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
@@ -880,6 +1020,8 @@ pub fn project_page_framed(
             groups.push(Group { name: format!("{ECAD_PREFIX}{:032x}", rid.0), description: String::new(), selectable: true, members });
         }
     }
+    // The project's text styles (brief 031), for every derived text of the page.
+    let look = crate::text_style::Look::new(doc);
     for (k, f) in &fans {
         map.quiet.extend(f.quiet.iter().copied());
         for (i, part) in f.parts.iter().enumerate() {
@@ -889,25 +1031,50 @@ pub fn project_page_framed(
                 && let Some(r) = part.reference
             {
                 let h = prev.ref_text(r).unwrap_or_else(|| d.new_handle());
-                ents.push(part_entity(part, h));
+                ents.push(part_entity(&look, part, h));
                 map.insert_ref_text(r, h);
                 continue;
             }
             let index = u32::try_from(i).map_err(|_| "a cable drawing has too many parts")?;
             let h = prev.fan(*k, index).unwrap_or_else(|| d.new_handle());
-            ents.push(part_entity(part, h));
+            ents.push(part_entity(&look, part, h));
             map.insert_part(*k, index, h, f.is_fan(), part.core, part.reference);
         }
     }
-    // Device tags and terminal labels (brief 018): derived on every draw, never stored.
-    for t in crate::devices::texts_on_page(doc, page) {
-        let h = prev.tag_text(t.rep, t.of).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::devices::text_entity(&t, h));
-        map.insert_tag_text(t.rep, t.of, h);
+    // Device tags and terminal labels (brief 018): derived on every draw, never stored, in the
+    // project's text styles (brief 031).
+    crate::text_style::install_look(&mut d, &look);
+    if hidden_text {
+        crate::text_style::add_hidden_layer(&mut d);
+    }
+    for t in crate::devices::all_texts_on_page_with(doc, page, plc) {
+        if !t.shown && !hidden_text {
+            continue;
+        }
+        // Brief 050a: an object's own text style in a font of its own.
+        if let Some(f) = t.text.own.as_ref().and_then(|o| o.family.as_deref()) {
+            crate::text_style::install_family(&mut d, doc, f);
+        }
+        let h = prev.tag_text(t.text.rep, t.text.of).unwrap_or_else(|| d.new_handle());
+        let mut e = crate::devices::text_entity(&look, &t.text, h);
+        if !t.shown {
+            crate::text_style::dim_hidden(&mut e);
+        }
+        ents.push(e);
+        map.insert_tag_text(t.text.rep, t.text.of, h);
     }
     // Device cross-references (brief 025): texts under contacts and tables under heads, derived
     // on every draw of the page, never stored.
     for part in crate::xref::parts_on_page(doc, page) {
+        let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
+        let mut e = xref_entity(&part, h);
+        // Brief 049 (review of #85, 3): a continuation's other-end text in the sheet's Ink 2.
+        crate::continuations::colour(doc, &part, &mut e);
+        ents.push(e);
+        map.insert_xref(part.rep, part.index, h);
+    }
+    // PLC card frames (brief 051): derived on every draw, never stored; mapped like 025's parts.
+    for part in crate::plc::look::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
         ents.push(xref_entity(&part, h));
         map.insert_xref(part.rep, part.index, h);
@@ -924,25 +1091,32 @@ pub fn project_page_framed(
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::locations::label_entity(&value, at, h));
+        ents.push(crate::locations::styled_label_entity(doc, &look, rep, &value, at, h));
         map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
+    // Looks-connected marks (brief 032 §2.6): derived with the page, after its quiet ends.
+    map.looks = crate::wires::looks_connected_on_page(doc, page, &map.quiet);
     // Conductor labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
+        if let Some(f) = l.own.as_ref().and_then(|o| o.family.as_deref()) {
+            crate::text_style::install_family(&mut d, doc, f);
+        }
         let h = prev.label(l.rep).unwrap_or_else(|| d.new_handle());
-        ents.push(crate::wires::label_entity(&l, h));
+        ents.push(crate::wires::label_entity(&look, &l, h));
         map.insert_label(l.rep, l.conductor, h);
     }
     ents.sort_by_key(|e| e.handle);
     let mut store = EntityStore::new();
     // The sheet frame and title block (brief 019): derived, never stored, and drawn first so
     // everything else lies on top of it (picks find the drawing, not the frame).
+    // Brief 050a: the frame style's line colour, on the frame's own lines (ink otherwise).
+    let frame_rgb = crate::frame::line_colour(doc, page);
     for (i, part) in frame.iter().enumerate() {
         let index = u32::try_from(i).map_err(|_| "the frame has too many parts")?;
         let h = prev.frame_part(index).unwrap_or_else(|| d.new_handle());
-        store.push(crate::frame::entity(part, h));
+        store.push(crate::frame::styled_entity(part, h, frame_rgb));
         map.insert_frame(index, h);
     }
     for e in ents {
@@ -993,6 +1167,7 @@ impl Project {
         let id: ProjectId = ids.fresh();
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
+        let connectors = crate::connectors::Index::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -1015,6 +1190,7 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
+            show_hidden_text: false,
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
@@ -1027,15 +1203,24 @@ impl Project {
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
+            last_caption: None,
             wire_potential: None,
             checks: None,
             xref,
+            connectors,
             outputs: None,
             open_reports: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            agent_access_request: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            agent_access_status: None,
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            pending: false,
+            pending_known: false,
             frame_builds: 0,
+            projections: 0,
             revision_view: None,
             tx_budget: None,
             confirm_issue_undo: false,
@@ -1076,6 +1261,7 @@ impl Project {
         let baseline = ledger.head();
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
+        let connectors = crate::connectors::Index::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -1098,6 +1284,7 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
+            show_hidden_text: false,
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
@@ -1110,15 +1297,24 @@ impl Project {
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
+            last_caption: None,
             wire_potential: None,
             checks: None,
             xref,
+            connectors,
             outputs: None,
             open_reports: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            agent_access_request: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            agent_access_status: None,
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            pending: false,
+            pending_known: false,
             frame_builds: 0,
+            projections: 0,
             revision_view: None,
             tx_budget: None,
             confirm_issue_undo: false,
@@ -1200,6 +1396,7 @@ impl Project {
         let summary = summary.join("\n");
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
+        let connectors = crate::connectors::Index::build(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
             path: Some(path.clone()),
@@ -1222,6 +1419,7 @@ impl Project {
             me: Weak::new(),
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
+            show_hidden_text: false,
             settings: crate::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
@@ -1234,15 +1432,24 @@ impl Project {
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
+            last_caption: None,
             wire_potential: None,
             checks: None,
             xref,
+            connectors,
             outputs: None,
             open_reports: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            agent_access_request: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            agent_access_status: None,
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            pending: false,
+            pending_known: false,
             frame_builds: 0,
+            projections: 0,
             revision_view: None,
             tx_budget: None,
             confirm_issue_undo: false,
@@ -1322,6 +1529,7 @@ impl Project {
         self.ledger = ledger;
         self.xref = crate::xref::RefIndex::build(self.ledger.document());
         self.xref_shown = None;
+        self.connectors = crate::connectors::Index::build(self.ledger.document());
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.views.retain(|c| cables.contains(c));
@@ -1330,6 +1538,7 @@ impl Project {
         self.goto_ring = None;
         self.frame = None;
         self.frame_stale = false;
+        self.pending_known = false;
         self.revision_view = None;
         self.clips.clear();
         self.last_placed = None;
@@ -1459,7 +1668,13 @@ impl Project {
     /// the frame's update map says it may differ, or for another page).
     fn project(&mut self, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
         let parts = self.frame_parts(page);
-        project_page_framed(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts)
+        // Brief 045 (review of #84, 3): a page with PLC channel cells reads its addresses from the
+        // kept PLC model, built on its first show.
+        if self.outputs.is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
+            self.outputs();
+        }
+        let plc = self.outputs.as_ref().map(|o| &o.plc);
+        project_page_kept(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text, plc)
     }
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
@@ -1475,8 +1690,12 @@ impl Project {
         if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
+        if !self.pending_known {
+            self.refresh_pending();
+        }
         let doc = self.ledger.document();
         let (input, total) = crate::generated::input_of(doc, page, self.outputs.as_ref());
+        let input = input.with_pending(doc, self.pending);
         self.frame_stale = false;
         let generated = crate::generated::kind_of(doc, page).is_some();
         if let Some((p, old, parts)) = &self.frame
@@ -1533,6 +1752,19 @@ impl Project {
         self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
         self.redraw_window(pg, Some("cableview"));
         (true, self.settings.store(self.id, &self.views))
+    }
+
+    /// Turn Show Hidden Text on or off (brief 031, design §5.7): display only, like a cable view:
+    /// no transaction, no head move, no unsaved change. The open page is redrawn now, the others
+    /// when they become active. Returns whether it changed.
+    pub(crate) fn set_hidden_text(&mut self, pg: &mut Pages<'_>, on: bool) -> bool {
+        if self.show_hidden_text == on {
+            return false;
+        }
+        self.show_hidden_text = on;
+        self.record_change(None, crate::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
+        self.redraw_window(pg, Some("hiddentext"));
+        true
     }
 
     fn owner_ref(&self) -> Option<OwnerRef> {
@@ -1682,11 +1914,23 @@ impl Project {
     /// The tag numbering ([`crate::devices::TagHigh`]) reads the transactions this change added,
     /// so reads (prompts, previews, pick lists) never read the log. The Pages tree's version moves
     /// only with a change of its update map (`tree`, brief 019, or pages added or removed).
+    /// Work out the pending flag again (design 033 §6.3): O(1) on an ordinary edit, the walk
+    /// stops at the first decisive transaction. A flip redraws the frame.
+    pub(crate) fn refresh_pending(&mut self) {
+        let now = crate::revisions::is_pending(&self.ledger);
+        if self.pending_known && now != self.pending {
+            self.frame_stale = true;
+        }
+        self.pending = now;
+        self.pending_known = true;
+    }
+
     fn record_change(
         &mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
         tree: bool,
     ) {
         self.goto_ring = None;
+        self.refresh_pending();
         self.tag_high.catch_up(&self.ledger);
         if devices.pages || tree {
             self.page_list_version += 1;
@@ -1810,6 +2054,8 @@ impl Project {
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
+        // One sheet for the projection, any rebuild and the check (see `look::pin_sheet`).
+        let _sheet = crate::look::pin_sheet();
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
         let Some(current) = pg.doc(uid).map(|st| st.doc.clone()) else { return };
@@ -1817,6 +2063,7 @@ impl Project {
         let base = committed.map(|(d, _)| d.clone()).or(current).unwrap_or_else(|| Arc::new(base_drawing()));
         let prev = view.map.clone();
         let head = self.ledger.head();
+        self.projections += 1;
         let first = if self.take_projection_fault() { Err("injected projection failure".to_string()) } else { self.project(page, &base, &prev) };
         // Only a normal projection keeps the engine's handles, so only then is fidelity comparable.
         let normal = first.is_ok();
@@ -1840,7 +2087,16 @@ impl Project {
         // Recovery path: fresh handles, so the check is by content against the document.
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
-                let v = verify_page_with(self.ledger.document(), page, &d, &map, &self.views, self.tolerance);
+                let v = crate::verify::verify_page_pending(
+                    self.ledger.document(),
+                    page,
+                    &d,
+                    &map,
+                    &self.views,
+                    self.tolerance,
+                    self.show_hidden_text,
+                    self.pending,
+                );
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
                     Ok((d, map))
@@ -1926,6 +2182,44 @@ impl Project {
         self.sync_saved(pg);
     }
 
+    /// After a commit, undo or redo whose touched pages are `pages` (`None`: any page): redraw the
+    /// active page only when the change could alter it (overseer item O1, design ui-architecture
+    /// §8.4). The touched set names the page's own objects, its references, its numbered wires and
+    /// the generated pages whose content changed ([`Project::generated_touched`]); the kept frame
+    /// (title block, Total, the pending Rev box) has its own update map, `frame_stale`. A frame
+    /// kept for another page means the active page's frame is not kept, so it is drawn.
+    fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
+        let active = self.active_page();
+        let frame_other = self.frame.as_ref().is_none_or(|(p, _, _)| Some(*p) != active);
+        let touched = match (pages, active) {
+            (Some(set), Some(a)) => set.contains(&a),
+            _ => true,
+        };
+        if touched || self.frame_stale || frame_other {
+            self.redraw_window(pg, command);
+        } else {
+            self.sync_saved(pg);
+        }
+    }
+
+    /// The generated pages whose content the last transaction changed, from the generators' own
+    /// update maps: `outputs`, the pages drawn from the report models
+    /// ([`Project::update_outputs`]), and the cover, contents and revision pages
+    /// ([`crate::generated::touches`] on the transaction's ops). The page list is read only when
+    /// the ops can change such a page.
+    fn generated_touched(&self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
+        use crate::generated::GenKind;
+        let mut out = outputs;
+        let doc = self.ledger.document();
+        let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
+        let kinds: Vec<GenKind> =
+            [GenKind::Cover, GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
+        if !kinds.is_empty() {
+            out.extend(doc.page_order.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some_and(|k| kinds.contains(&k))));
+        }
+        out
+    }
+
     /// Commit ECAD-made ops (Path A) and refresh the open pages.
     ///
     /// # Errors
@@ -1971,7 +2265,7 @@ impl Project {
         // 025).
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
-        let pages = pages_touched(self.ledger.document(), &ops);
+        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
@@ -1996,9 +2290,11 @@ impl Project {
         let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
-        self.update_outputs(outputs);
-        self.record_change(touched(touched(pages, refs.pages), numbered), devices, props, tree);
-        self.redraw_window(pg, Some(command));
+        let generated = self.update_outputs(outputs);
+        let generated = Some(self.generated_touched(generated));
+        let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
+        self.record_change(pages.clone(), devices, props, tree);
+        self.redraw_touched(pg, Some(command), pages.as_ref());
         if let Some(line) = refs.orphaned {
             pg.echo(line);
         }
@@ -2012,6 +2308,22 @@ impl Project {
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         let mut out = watch.finish(ledger.document(), &mut self.xref, ops);
         let head = ledger.head();
+        // Brief 044 (design 044 §11.1): the connector index, from the ops; verify mode compares it
+        // with a rebuild.
+        let touched = crate::connectors::Index::touched(ledger.document(), ops);
+        self.connectors.update(ledger.document(), &touched);
+        if ecad_model::ledger::verify_mode() && self.connectors != crate::connectors::Index::build(ledger.document()) {
+            self.connectors = crate::connectors::Index::build(ledger.document());
+            out.problems.push("the kept connector index differed from a rebuild; rebuilt".into());
+        }
+        // A project naming or description default redraws the connectors that inherit it.
+        let named = self.connectors.pages_for(ops);
+        if !named.is_empty() {
+            out.pages = out.pages.map(|mut p| {
+                p.extend(named);
+                p
+            });
+        }
         for line in std::mem::take(&mut out.problems) {
             self.events.record(EventKind::IndexRebuilt, None, head, None, line);
         }
@@ -2046,9 +2358,10 @@ impl Project {
 
     /// Bring the kept report models (if shown once) in line with the last transaction, from its
     /// ops only (design 024 §9); `scope` was worked out before it. A change of a generated page's
-    /// sheet count marks the frame (its Total) stale.
-    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) {
-        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return };
+    /// sheet count marks the frame (its Total) stale. Returns the generated pages drawn from the
+    /// models whose content changed (overseer item O1: they join the commit's touched pages).
+    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) -> BTreeSet<PageId> {
+        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return BTreeSet::new() };
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
@@ -2061,6 +2374,8 @@ impl Project {
         };
         let (before, revision) = (sheets(&o), o.revision);
         o.update(doc, ops, scope);
+        // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
+        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, ops);
         if ecad_model::ledger::verify_mode()
             && let Some(line) = o.verify_strips(doc)
         {
@@ -2069,19 +2384,25 @@ impl Project {
         // The shown generated page redraws only when what it shows changed (tester 028, defect
         // 2): the BOM page on any row change (024), a terminal plan when a strip it shows changed,
         // a cable schedule when a cable row changed.
-        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| match crate::generated::kind_of(doc, *p) {
+        // Every such page says whether it was rewritten (overseer item O1), from the kept set.
+        let rewritten = |p: PageId| match crate::generated::kind_of(doc, p) {
             Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
-            Some(crate::generated::GenKind::Terminals) => match crate::generated::strip_of(doc, *p) {
-                Some(c) => o.strips.last_changed.contains(&c),
-                None => !o.strips.last_changed.is_empty(),
-            },
+            // Brief 046 (design 046 §9): either style, by its own kept change set.
+            Some(crate::generated::GenKind::Terminals) => crate::generated::terminals_rewritten(doc, p, &o),
             Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
+            // Brief 045c: the I/O list when a card's rows changed.
+            Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
+            // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
+            Some(crate::generated::GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || plc_places_moved,
             _ => false,
-        });
-        if sheets(&o) != before || shown_changed {
+        };
+        let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
+        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| rewritten(*p));
+        if sheets(&o) != before || shown_changed || o.numbers_moved {
             self.frame_stale = true;
         }
         self.outputs = Some(o);
+        changed
     }
 
     /// The report models, built whole on their first show (design 024 §8.1) and kept after that.
@@ -2145,7 +2466,7 @@ impl Project {
                 let st = view.and_then(|v| v.uid).and_then(|u| pg.doc(u));
                 let matches = match (view, st) {
                     (Some(v), Some(st)) => Some(
-                        project_page_with(doc, *p, &st.doc, &v.map, &self.views, self.tolerance)
+                        project_page_pending(doc, *p, &st.doc, &v.map, &self.views, self.tolerance, self.show_hidden_text, self.pending)
                             .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
                             .unwrap_or(false),
                     ),
@@ -2349,8 +2670,9 @@ impl DocumentOwner for Project {
         // for a preview of one of them.
         let refs = self.finish_watch(watch);
         self.update_checks(checks);
-        self.update_outputs(outputs);
-        let changed = touched(refs.pages, self.numbered_pages(n)).map(|mut c| {
+        let generated = self.update_outputs(outputs);
+        let generated = Some(self.generated_touched(generated));
+        let changed = touched(touched(refs.pages, self.numbered_pages(n)), generated).map(|mut c| {
             c.insert(page);
             c
         });
@@ -2527,7 +2849,7 @@ impl Project {
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
-        let pages = pages_touched(self.ledger.document(), &ops);
+        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
@@ -2568,10 +2890,12 @@ impl Project {
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
                 let refs = self.finish_watch(watch);
                 self.update_checks(checks);
-                self.update_outputs(outputs);
+                let generated = self.update_outputs(outputs);
+                let generated = Some(self.generated_touched(generated));
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
                 let target = front_after_history(&order_before, &self.ledger.document().page_order, Some(&drawn), self.active_page());
-                self.record_change(touched(pages, refs.pages), devices, props, tree);
+                let pages = touched(touched(pages, refs.pages), generated);
+                self.record_change(pages.clone(), devices, props, tree);
                 match target {
                     // The page the undo or redo changed comes to the front, so the change is seen
                     // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
@@ -2583,7 +2907,7 @@ impl Project {
                         let words = crate::references::page_words(self.ledger.document(), page);
                         pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
                     }
-                    _ => self.redraw_window(pg, Some(command)),
+                    _ => self.redraw_touched(pg, Some(command), pages.as_ref()),
                 }
                 if let Some(line) = refs.orphaned {
                     pg.echo(line);
@@ -2596,11 +2920,35 @@ impl Project {
     }
 }
 
+/// Whether definition `id` is used by nothing once `ops` are applied to `doc`: every item and
+/// component using it now is removed or moved off it by `ops` (brief 048, FP8's removal of a
+/// superseded version in the update's own transaction).
+fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &[Op]) -> bool {
+    let items = doc.items_using(id);
+    let comps = doc.components_using(id);
+    let item_left = |i: &ecad_model::ItemId| {
+        !ops.iter().any(|o| match o {
+            Op::RemoveItem { id: x, .. } => x == i,
+            Op::ModifyItem { id: x, after, .. } => x == i && !matches!(&after.kind, ecad_model::ItemKind::Symbol(sym) if sym.definition == id),
+            _ => false,
+        })
+    };
+    let comp_left = |c: &ecad_model::ComponentId| {
+        !ops.iter().any(|o| match o {
+            Op::DeleteComponent { id: x, .. } => x == c,
+            Op::SetComponentDefinition { id: x, after, .. } => x == c && *after != Some(id),
+            _ => false,
+        })
+    };
+    !items.iter().any(item_left) && !comps.iter().any(comp_left)
+}
+
 /// The pages whose drawing `ops` could change directly (their items and representations, and the
 /// pages a conductor whose ends they attach is routed on), worked out on the document before them;
 /// `None` when that could be any page (op kinds other than item, representation, attachment and
 /// new-object ops). Reference texts on other pages are [`crate::references::Snapshot`]'s part.
-pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<PageId>> {
+/// Brief 045: `plc`, the kept PLC model when built, gives a rack's cards without a walk.
+pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::Plc>) -> Option<BTreeSet<PageId>> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {
@@ -2621,13 +2969,15 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
             Op::AttachEnd { conductor, .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*conductor)).map(|(_, r)| r.page));
             }
-            // A continuation's partners list it on their pages (brief 022): any page.
+            // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
+            // pages come from the reference index's watch (`xref::Watch`), and its own pages from
+            // its representation ops.
             Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. }
-                if ecad_model::connectivity::continuation_key(&component.properties).is_some() =>
-            {
-                return None;
-            }
+                if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
+            // same transaction (the invariant requires it), and those ops name its pages.
+            Op::DeleteConductor { .. } => {}
             Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
@@ -2652,16 +3002,33 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                     }
                 }
             }
-            // A device's tag is drawn beside each of its symbols (brief 018): their pages. A
-            // continuation's name is drawn beside its partners too (brief 022): any page.
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
+            // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
+            // partners' pages come from the reference index's watch.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, .. }
+                if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
+                    && crate::continuations::is_continuation(doc, *c) =>
+            {
+                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
             Op::SetProperty { object: ecad_model::ObjectRef::Component(_), key, .. }
                 if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
             {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, after, .. } => {
+                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
+                // card's slot or size moves the addresses of the cards after it.
+                out.extend(crate::plc::pages_touched(doc, plc, *c, key, after.as_deref()));
+            }
+            Op::SetComponentDefinition { id: c, .. } => {
                 out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
             }
+            // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
+            // nowhere. Its last copies move off it in the same transaction (review of PR #86,
+            // finding 1), and their own ops name their pages; the document here is the one before.
+            Op::RemoveDefinition { id, .. } if unused_after(doc, *id, ops) => {}
             // A conductor's label shows its properties (brief 022): its pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
@@ -2678,13 +3045,95 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BT
                 }
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
+            // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
+            // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
+            // Their pages come from the connector index after the commit (`Project::finish_watch`).
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {}
             // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
             // page, kept by its own rule).
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::accessories::strip_key_of_project(key).is_some() => {}
+            // Brief 050a (design 050 §10): a style record marks the pages of its users (every page
+            // when the project's choice resolves to it); the standard's header none.
+            Op::SetStyle { .. } | Op::SetStandard { .. } => out.extend(crate::styles::pages_touched(doc, op)?),
+            // A standard's value acts like a project-level write of its key, and changes nothing on
+            // a page while the project holds its own value.
+            Op::SetProperty { object: ecad_model::ObjectRef::Standard, key, before, after } => {
+                let hidden = crate::defaults::find(key)
+                    .is_some_and(|e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).from == crate::defaults::Source::Project);
+                if !hidden {
+                    let as_project =
+                        Op::SetProperty { object: ecad_model::ObjectRef::Project, key: key.clone(), before: before.clone(), after: after.clone() };
+                    out.extend(pages_touched(doc, std::slice::from_ref(&as_project), plc)?);
+                }
+            }
             _ => return None,
         }
     }
+    out.extend(located_tag_pages(doc, ops));
     Some(out)
+}
+
+/// The pages whose located tags `ops` (about to be committed on `doc`) can change, beyond the
+/// pages the ops name (QA gate of M1; the update map of design 024 §3.3 under O1, which redraws
+/// only touched pages). A device's location comes from its main symbol's context (its location
+/// box, else its page, else the project), and each of its symbols shows that location as a tag
+/// prefix where the symbol's own context differs. So:
+/// - a context change on page `p` (the page's `location`, or a location box on `p` added, removed,
+///   moved, reshaped or relabelled) touches the pages of every device with a symbol on `p`;
+/// - a device's symbol added, removed, moved or relinked touches the device's other pages (its main
+///   symbol, and with it its location, may have changed).
+///
+/// A project-level `location` change already touches every page (`None`). Bounded by the
+/// symbols on the pages in context and the representations of the devices moved.
+fn located_tag_pages(doc: &ecad_model::Document, ops: &[Op]) -> BTreeSet<PageId> {
+    let created: BTreeSet<ecad_model::ComponentId> = ops
+        .iter()
+        .filter_map(
+            |op| if let Op::CreateComponent { id, component } = op { crate::locations::is_box_component(component).then_some(*id) } else { None },
+        )
+        .collect();
+    let is_box = |c: ecad_model::ComponentId| created.contains(&c) || crate::locations::is_box(doc, c);
+    let (mut context, mut moved) = (BTreeSet::<PageId>::new(), BTreeSet::<ecad_model::ComponentId>::new());
+    let mut reps: Vec<&ecad_model::Representation> = Vec::new();
+    for op in ops {
+        match op {
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } if key == ecad_model::book::LOCATION_KEY => {
+                context.insert(*p);
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } if is_box(*c) => {
+                context.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => reps.push(rep),
+            Op::ModifyRepresentation { before, after, .. } => reps.extend([before, after]),
+            Op::AddItem { id, .. } | Op::RemoveItem { id, .. } | Op::ModifyItem { id, .. } => {
+                reps.extend(doc.representation_of_item(*id).map(|(_, r)| r));
+            }
+            _ => {}
+        }
+    }
+    for r in reps {
+        if let Subject::Component(c) = r.subject {
+            if is_box(c) {
+                context.insert(r.page);
+            } else {
+                moved.insert(c);
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    for p in &context {
+        for (_, r) in doc.representations_on(*p) {
+            if let Subject::Component(c) = r.subject
+                && !is_box(c)
+            {
+                moved.insert(c);
+            }
+        }
+    }
+    for c in moved {
+        out.extend(doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page));
+    }
+    out
 }
 
 /// The pages whose drawn objects `ops` add, change or remove (items and representations): where

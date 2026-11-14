@@ -256,7 +256,8 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_type() {
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: ComponentId = id(&v, "strip");
     let e = t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12X"})).unwrap_err();
-    assert!(e.contains("\"12X\" is not a terminal count. Write 12, or 12+2PE."), "{e}");
+    // Brief 036 (FP1): the refusal names the type codes too.
+    assert!(e.contains("\"12X\" is not a terminal count. Write 12, 12+2PE or 12+4x3"), "{e}");
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12 + 2pe"})).unwrap();
     assert_eq!(t.h.doc().components[&x1].properties["terminals"], "12+2PE");
     t.h.run("place", json!({"symbol": "terminalpe", "at": [360, 250], "device": x1.hex()})).unwrap();

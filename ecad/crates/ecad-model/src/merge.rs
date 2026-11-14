@@ -42,6 +42,7 @@ use crate::doc::{
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
+use crate::style::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 use crate::tag::{self, HighWater};
 
 /// An object a merge compares.
@@ -109,7 +110,13 @@ impl Scope {
     pub fn add_ops(&mut self, ops: &[Op]) {
         for op in ops {
             self.touched.add(op);
-            if matches!(op, Op::SetProperty { object: ObjectRef::Project, .. } | Op::SetProjectSettings { .. }) {
+            if matches!(
+                op,
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, .. }
+                    | Op::SetProjectSettings { .. }
+                    | Op::SetStyle { .. }
+                    | Op::SetStandard { .. }
+            ) {
                 self.project = true;
             }
         }
@@ -336,6 +343,20 @@ fn shown(v: Option<&String>) -> String {
     v.map_or_else(|| "(none)".to_string(), Clone::clone)
 }
 
+/// A property value as a person reads it (brief 045, FP1 condition 1): a value that is a
+/// component's ID (32 hex digits, a component of one of `docs`) is shown as that component's tag,
+/// never as the ID; any other value as stored.
+pub fn value_words(docs: &[&Document], v: &str) -> String {
+    let t = v.trim();
+    if t.len() == 32
+        && let Some(c) = ComponentId::parse(t)
+        && docs.iter().any(|d| d.components.contains_key(&c))
+    {
+        return name_of(docs, Obj::Component(c));
+    }
+    v.to_string()
+}
+
 /// Merge property maps: per key (design §5.1).
 fn merge_props(
     ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, a: &Properties, t: &Properties, s: &Properties, keep: &dyn Fn(&str) -> bool,
@@ -354,8 +375,9 @@ fn merge_props(
                     kind: ConflictKind::Value,
                     object: obj,
                     what: format!("{what} · {}", key_words(k)),
-                    target: shown(t.get(k)),
-                    source: shown(s.get(k)),
+                    // Brief 045 (FP1): a value naming a component shows its tag.
+                    target: shown(t.get(k).map(|v| value_words(&[ctx.inp.target, ctx.inp.source, ctx.inp.ancestor], v)).as_ref()),
+                    source: shown(s.get(k).map(|v| value_words(&[ctx.inp.source, ctx.inp.target, ctx.inp.ancestor], v)).as_ref()),
                     choices: vec![Choice::Target, Choice::Source, Choice::Value(String::new())],
                     chosen: None,
                 };
@@ -550,7 +572,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
         Obj::Conductor(i) => a.conductors.get(&i) != b.conductors.get(&i),
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
-        Obj::Project => a.properties != b.properties || a.settings != b.settings,
+        Obj::Project => a.properties != b.properties || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles,
     }
 }
 
@@ -720,9 +742,126 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     field(ctx, obj, "settings", "Project settings · changed on both".into(), &a.settings, &t.settings, &s.settings, &|_| {
                         "its settings".into()
                     });
+                merge_standard(ctx, m, obj);
             }
         }
     }
+}
+
+/// The standard and the style records (brief 050a, design 050 §3.5): the standard's header is
+/// one unit, its values merge per key like project properties, and each style record
+/// `(layer, catalogue, id)` is one unit. A standard removed on one side and changed in any part
+/// on the other is one removed conflict; removed on one side and untouched on the other, it goes.
+fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
+    let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
+    // Risk 20: a standard removed on one side and changed on the other (its header, a value or a
+    // standard-layer style) is one conflict, keep it with those changes or remove it; merged per
+    // part, the header alone would decide and the other side's changes would vanish.
+    let removed = |d: &Document| a.standard.is_some() && d.standard.is_none();
+    let changed = |d: &Document| d.standard.is_some() && d.standard != a.standard;
+    let one_sided = match (removed(t), removed(s)) {
+        (true, false) if changed(s) => Some(false),
+        (false, true) if changed(t) => Some(true),
+        _ => None,
+    };
+    if let Some(target_keeps) = one_sided {
+        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.clone());
+        let (on_changed, on_removed) = if target_keeps { (ctx.t(), ctx.s()) } else { (ctx.s(), ctx.t()) };
+        let word = |keeps: bool| if keeps { "changed" } else { "removed" };
+        let c = Conflict {
+            id: format!("{}/standard", obj.hex()),
+            kind: ConflictKind::Removed,
+            object: obj,
+            what: format!("Standard \"{name}\" · removed on {on_removed}; changed on {on_changed}"),
+            target: word(target_keeps).into(),
+            source: word(!target_keeps).into(),
+            choices: vec![Choice::Target, Choice::Source],
+            chosen: None,
+        };
+        let keep = match ctx.ask(c) {
+            Some(Choice::Source) => !target_keeps,
+            _ => target_keeps,
+        };
+        let keeper = if target_keeps { t } else { s };
+        m.styles = merge_style_layer(ctx, StyleLayer::Project, &a.styles, &t.styles, &s.styles);
+        m.standard = if keep { keeper.standard.clone() } else { None };
+        return;
+    }
+    let all = |_: &str| true;
+    let header = |d: &Document| d.standard.as_ref().map(|x| x.header.clone());
+    let head = field(ctx, obj, "standard", "Standard · changed on both".into(), &header(a), &header(t), &header(s), &|h| {
+        h.as_ref().map_or_else(|| "IEC (built in)".into(), |h| format!("\"{}\"", h.name))
+    });
+    let empty = Properties::new();
+    fn values<'d>(d: &'d Document, empty: &'d Properties) -> &'d Properties {
+        d.standard.as_ref().map_or(empty, |x| &x.values)
+    }
+    let merged_values = merge_props(ctx, obj, "Standard", values(a, &empty), values(t, &empty), values(s, &empty), &all);
+    let no_cats = StyleCatalogues::new();
+    fn std_cats<'d>(d: &'d Document, none: &'d StyleCatalogues) -> &'d StyleCatalogues {
+        d.standard.as_ref().map_or(none, |x| &x.styles)
+    }
+    let std_styles = merge_style_layer(ctx, StyleLayer::Standard, std_cats(a, &no_cats), std_cats(t, &no_cats), std_cats(s, &no_cats));
+    m.styles = merge_style_layer(ctx, StyleLayer::Project, &a.styles, &t.styles, &s.styles);
+    m.standard = head.map(|header| Standard { header, values: merged_values, styles: std_styles });
+}
+
+/// A style record's name in texts: `Text style "Tag large"` (`Wire category "24 V DC"`).
+pub fn style_words(catalogue: &str, id: &StyleRef, record: Option<&StyleRecord>) -> String {
+    let kind = match catalogue {
+        "text" => "Text style",
+        "location" => "Location box style",
+        "frame" => "Frame style",
+        "wire" => "Wire category",
+        _ => "Style",
+    };
+    match record.map(|r| r.name.as_str()).filter(|n| !n.is_empty()) {
+        Some(n) => format!("{kind} \"{n}\""),
+        None => format!("{kind} {id}"),
+    }
+}
+
+/// Merge one layer's style records, each record whole.
+fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogues, t: &StyleCatalogues, s: &StyleCatalogues) -> StyleCatalogues {
+    let mut out = t.clone();
+    let cats: BTreeSet<&String> = a.keys().chain(t.keys()).chain(s.keys()).collect();
+    for cat in cats {
+        let get = |c: &'_ StyleCatalogues| c.get(cat).cloned().unwrap_or_default();
+        let (ra, rt, rs) = (get(a), get(t), get(s));
+        let ids: BTreeSet<&StyleRef> = ra.keys().chain(rt.keys()).chain(rs.keys()).collect();
+        for id in ids {
+            let (x, y, z) = (ra.get(id), rt.get(id), rs.get(id));
+            let v = match pick(x, y, z) {
+                Some(v) => v,
+                None => {
+                    let what = style_words(cat, id, y.or(z).or(x));
+                    let show = |r: Option<&StyleRecord>| match r {
+                        None => "removed".to_string(),
+                        Some(r) => {
+                            let f: Vec<String> = r.fields.iter().map(|(k, v)| format!("{k} {v}")).collect();
+                            if f.is_empty() { "no changes".into() } else { f.join(", ") }
+                        }
+                    };
+                    let c = Conflict {
+                        id: format!("project/style.{}.{cat}.{id}", layer.word()),
+                        kind: ConflictKind::Value,
+                        object: Obj::Project,
+                        what: format!("{what} · changed on both"),
+                        target: show(y),
+                        source: show(z),
+                        choices: vec![Choice::Target, Choice::Source],
+                        chosen: None,
+                    };
+                    match ctx.ask(c) {
+                        Some(Choice::Source) => z.cloned(),
+                        _ => y.cloned(),
+                    }
+                }
+            };
+            crate::style::put(&mut out, cat, id, v.as_ref());
+        }
+    }
+    out
 }
 
 /// A wire's drawing (its symbol or route item) changed on both sides while one of its ends is a
@@ -1179,10 +1318,10 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
 }
 
 /// The next free tag with `prefix` (above `high` and every tag already given out here).
-fn next_tag(prefix: &str, high: &mut HighWater, padding: u8) -> String {
+fn next_tag(prefix: &str, high: &mut HighWater, style: tag::Style) -> String {
     let n = high.get(prefix).copied().unwrap_or(0).saturating_add(1);
     high.insert(prefix.to_string(), n);
-    tag::format(prefix, n, padding)
+    tag::format(prefix, n, style)
 }
 
 /// What holds a tag in the merged state.
@@ -1223,7 +1362,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 out.insert(Obj::Component(*id));
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
@@ -1280,7 +1419,8 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
     for x in &present {
         tag::note(&mut high, x);
     }
-    let padding = m.settings.tag_padding;
+    // Brief 033: the merged project's tag style (padding, dash, case).
+    let style = tag::Style::of(m);
     let mut out = BTreeSet::new();
     let mut done: BTreeSet<String> = BTreeSet::new();
     let ours: Vec<Holder> = objects
@@ -1322,7 +1462,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         // Provisional duplicates were never issued: the source's takes the next one, silently.
         if let Some((p, _)) = tag::provisional(&tag_text) {
             let n = top_provisional(m, &p).saturating_add(1);
-            src.set_tag(m, tag::format_provisional(&p, n));
+            src.set_tag(m, style.provisional(&p, n));
             // The indexed copy is stale now (reviewer 026, 5): rebuilt when next needed.
             indexed = None;
             out.insert(src.obj());
@@ -1331,7 +1471,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         }
         let prefix = tag::parse(&tag_text).map(|p| p.0);
         let fresh = match &prefix {
-            Some(p) => next_tag(p, &mut high, padding),
+            Some(p) => next_tag(p, &mut high, style),
             None => format!("{tag_text}-2"),
         };
         let id = format!("rule/tag/{key}");
@@ -1645,15 +1785,18 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             // `numbering.high.<P>` is internal (brief 026): never listed (reviewer 026, nit).
             match keys.first() {
                 Some(k) => {
-                    let q = |v: Option<&String>| v.map_or_else(|| "(none)".into(), |v| format!("\"{v}\""));
+                    // Brief 045 (FP1): a value naming a component shows its tag.
+                    let q = |v: Option<&String>| v.map_or_else(|| "(none)".into(), |v| format!("\"{}\"", value_words(&[s, a], v)));
                     let more = if keys.len() > 1 { format!(" (+{} more)", keys.len() - 1) } else { String::new() };
                     format!("· {} {} → {}{more}", key_words(k), q(pa.get(*k)), q(ps.get(*k)))
                 }
                 None if obj == Obj::Project => {
-                    if a.settings == s.settings {
-                        String::new()
-                    } else {
+                    if a.settings != s.settings {
                         "· settings changed".into()
+                    } else if a.standard != s.standard || a.styles != s.styles {
+                        "· standard or styles changed".into()
+                    } else {
+                        String::new()
                     }
                 }
                 None => "changed".into(),

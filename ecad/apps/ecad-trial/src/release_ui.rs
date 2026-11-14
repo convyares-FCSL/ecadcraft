@@ -46,6 +46,10 @@ pub enum Out {
 /// The dialog's state.
 #[derive(Debug, Clone, Default)]
 pub struct ReleaseDialog {
+    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    pub host: Option<egui::Rect>,
+    /// Brief 038: its workspace is not shown, so it is not drawn.
+    pub hidden: bool,
     /// `None`: release the pending revision; `Some(rev)`: write that issued revision's folder.
     pub rev: Option<String>,
     /// The engine's view, taken again when [`ReleaseDialog::key`] changes.
@@ -147,174 +151,171 @@ impl ReleaseDialog {
             Some(r) => format!("WRITE REV {}'S FOLDER", r.to_uppercase()),
             None => format!("RELEASE REV {}", v.rev.to_uppercase()),
         };
-        egui::Window::new(title).id(egui::Id::unique(RELEASE_ID)).collapsible(false).default_width(560.0).min_width(560.0).open(&mut open).show(
-            ctx,
-            |ui| {
-                ui.style_mut().interaction.selectable_labels = false;
-                // The revision fields: the pending row's, edited as in Revisions (one `revision`
-                // each on leaving it); an issued row's, read only.
+        let window =
+            egui::Window::new(title).id(egui::Id::unique(RELEASE_ID)).collapsible(false).default_width(560.0).min_width(560.0).open(&mut open);
+        crate::shell::hosted(window, self.host).show(ctx, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
+            // The revision fields: the pending row's, edited as in Revisions (one `revision`
+            // each on leaving it); an issued row's, read only.
+            ui.horizontal_wrapped(|ui| {
+                for (i, (f, label)) in
+                    ecad_cadcraft::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
+                {
+                    ui.label(RichText::new(label).small());
+                    let w = match *f {
+                        "description" => 180.0,
+                        "date" => 80.0,
+                        "rev" => 36.0,
+                        _ => 48.0,
+                    };
+                    let Some(val) = self.fields.get_mut(i) else { continue };
+                    let editable = self.rev.is_none() && !self.read_only;
+                    let r = ui.add_enabled(editable, egui::TextEdit::singleline(val).desired_width(w)).accessible_name(format!("ecad.release.{f}"));
+                    if r.lost_focus() && self.orig.get(i) != Some(val) {
+                        let value = if val.trim().is_empty() { Value::Null } else { Value::String(val.clone()) };
+                        let mut m = Map::new();
+                        m.insert((*f).into(), value);
+                        out = Some(Out::Run(format!("revision {}", Value::Object(m))));
+                        if let Some(o) = self.orig.get_mut(i) {
+                            *o = val.clone();
+                        }
+                    }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Folder").small());
+                ui.add(egui::TextEdit::singleline(&mut self.folder).desired_width(440.0)).accessible_name("ecad.release.folder");
+            });
+            let writes: Vec<String> =
+                v.writes.iter().filter(|(s, _)| s != "manifest").map(|(s, f)| if s == "book" { f.clone() } else { s.clone() }).collect();
+            ui.add(egui::Label::new(RichText::new(format!("Writes  {}", writes.join(" \u{b7} "))).small()).wrap())
+                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.writes"));
+            // Brief 028: a list the project gives none of, and why (`No terminal strips in this project.`).
+            for (slot, why) in &v.not_included {
+                ui.label(RichText::new(format!("{slot}: {why}")).small().color(t.text_dim));
+            }
+            if let Some(w) = v.exists_words() {
+                ui.label(RichText::new(w).small().color(ui.visuals().warn_fg_color));
+            }
+            if let Some(w) = &v.warning {
                 ui.horizontal_wrapped(|ui| {
-                    for (i, (f, label)) in
-                        ecad_cadcraft::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
-                    {
-                        ui.label(RichText::new(label).small());
-                        let w = match *f {
-                            "description" => 180.0,
-                            "date" => 80.0,
-                            "rev" => 36.0,
-                            _ => 48.0,
-                        };
-                        let Some(val) = self.fields.get_mut(i) else { continue };
-                        let editable = self.rev.is_none() && !self.read_only;
-                        let r =
-                            ui.add_enabled(editable, egui::TextEdit::singleline(val).desired_width(w)).accessible_name(format!("ecad.release.{f}"));
-                        if r.lost_focus() && self.orig.get(i) != Some(val) {
-                            let value = if val.trim().is_empty() { Value::Null } else { Value::String(val.clone()) };
-                            let mut m = Map::new();
-                            m.insert((*f).into(), value);
-                            out = Some(Out::Run(format!("revision {}", Value::Object(m))));
-                            if let Some(o) = self.orig.get_mut(i) {
-                                *o = val.clone();
-                            }
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Folder").small());
-                    ui.add(egui::TextEdit::singleline(&mut self.folder).desired_width(440.0)).accessible_name("ecad.release.folder");
-                });
-                let writes: Vec<String> =
-                    v.writes.iter().filter(|(s, _)| s != "manifest").map(|(s, f)| if s == "book" { f.clone() } else { s.clone() }).collect();
-                ui.add(egui::Label::new(RichText::new(format!("Writes  {}", writes.join(" \u{b7} "))).small()).wrap())
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.writes"));
-                // Brief 028: a list the project gives none of, and why (`No terminal strips in this project.`).
-                for (slot, why) in &v.not_included {
-                    ui.label(RichText::new(format!("{slot}: {why}")).small().color(t.text_dim));
-                }
-                if let Some(w) = v.exists_words() {
                     ui.label(RichText::new(w).small().color(ui.visuals().warn_fg_color));
-                }
-                if let Some(w) = &v.warning {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new(w).small().color(ui.visuals().warn_fg_color));
-                        if let Some(last) = w.strip_prefix("Nothing has changed since Rev ").map(|s| s.trim_end_matches('.').to_string())
-                            && ui.small_button(format!("Write Rev {last}'s folder again")).clicked()
-                        {
-                            out = Some(Out::WriteIssued(last));
-                        }
-                    });
-                }
-                ui.separator();
-                ui.label(RichText::new("Check").small().strong());
-                if v.groups.is_empty() {
-                    ui.label(RichText::new(NOTHING_OPEN).small().color(t.text_faint));
-                }
-                egui::ScrollArea::vertical().id_salt("ecad.release.rows").max_height(320.0).show(ui, |ui| {
-                    for (g, rows) in &v.groups {
-                        let glyph = rows.first().map_or(Severity::Info, |(c, _)| c.severity());
-                        let folded = self.collapsed.contains(g);
-                        ui.horizontal(|ui| {
-                            let arrow = if folded { "\u{25b8}" } else { "\u{25be}" };
-                            let head = ui
-                                .add(
-                                    egui::Button::new(RichText::new(format!("{arrow} {} {} ({})", glyph.glyph(), g.words(), rows.len())).small())
-                                        .frame(false),
-                                )
-                                .accessible_name(format!("ecad.release.group.{}", g.id()));
-                            if head.clicked() {
-                                if folded {
-                                    self.collapsed.remove(g);
-                                } else {
-                                    self.collapsed.insert(*g);
-                                }
-                            }
-                            if *g == Group::Provisional
-                                && self.rev.is_none()
-                                && v.provisional > 0
-                                && !self.read_only
-                                && ui.small_button("Finalise numbering now").accessible_name("ecad.release.finalise").clicked()
-                            {
-                                out = Some(Out::Finalise);
-                            }
-                            if *g == Group::Parts && ui.small_button("Show in Reports").accessible_name("ecad.release.reports").clicked() {
-                                out = Some(Out::ShowReports);
-                            }
-                        });
-                        if folded {
-                            continue;
-                        }
-                        for (i, (c, place)) in rows.iter().take(ROWS_SHOWN).enumerate() {
-                            let text = RichText::new(format!("   {} {:<34} {:<9} {}", c.severity().glyph(), c.kind.words(), place, c.which))
-                                .small()
-                                .monospace();
-                            let r = ui
-                                .add(egui::Button::new(text.color(Self::colour(&t, c.severity()))).frame(false))
-                                .accessible_name(format!("ecad.release.row.{}.{i}", g.id()));
-                            if r.on_hover_text("Show it: its page, centred, with a ring on it").clicked() && c.page.is_some() {
-                                out = Some(Out::GoTo(Box::new(c.clone())));
-                            }
-                        }
-                        if rows.len() > ROWS_SHOWN && ui.small_button(format!("Show all {} in Checks", rows.len())).clicked() {
-                            out = Some(Out::ShowChecks);
-                        }
+                    if let Some(last) = w.strip_prefix("Nothing has changed since Rev ").map(|s| s.trim_end_matches('.').to_string())
+                        && ui.small_button(format!("Write Rev {last}'s folder again")).clicked()
+                    {
+                        out = Some(Out::WriteIssued(last));
                     }
                 });
-                if self.rev.is_none() && v.errors > 0 {
-                    let n = if v.errors == 1 { "1 error".to_string() } else { format!("{} errors", v.errors) };
-                    let them = if v.errors == 1 { "it is" } else { "they are" };
-                    ui.checkbox(&mut self.accept, format!("Release with {n} ({them} listed in the folder's checks.csv)"))
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::CheckBox, true, "ecad.release.accept"));
-                }
-                if let Some(e) = &self.error {
-                    ui.add(egui::Label::new(RichText::new(e).small().color(Color32::from_rgb(0xFF, 0x00, 0x00))).wrap());
-                }
-                // §9: the folder exists.
-                if let Some(q) = self.exists.clone() {
-                    ui.separator();
-                    ui.add(egui::Label::new(RichText::new(q).small()).wrap())
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.exists"));
+            }
+            ui.separator();
+            ui.label(RichText::new("Check").small().strong());
+            if v.groups.is_empty() {
+                ui.label(RichText::new(NOTHING_OPEN).small().color(t.text_faint));
+            }
+            egui::ScrollArea::vertical().id_salt("ecad.release.rows").max_height(320.0).show(ui, |ui| {
+                for (g, rows) in &v.groups {
+                    let glyph = rows.first().map_or(Severity::Info, |(c, _)| c.severity());
+                    let folded = self.collapsed.contains(g);
                     ui.horizontal(|ui| {
-                        for (label, id) in [("Add missing files", "add-missing"), ("Replace", "replace"), ("Keep both", "keep-both")] {
-                            if ui.button(label).accessible_name(format!("ecad.release.exists.{id}")).clicked() {
-                                out = Some(Out::Release(self.params(Some(id))));
+                        let arrow = if folded { "\u{25b8}" } else { "\u{25be}" };
+                        let head = ui
+                            .add(
+                                egui::Button::new(RichText::new(format!("{arrow} {} {} ({})", glyph.glyph(), g.words(), rows.len())).small())
+                                    .frame(false),
+                            )
+                            .accessible_name(format!("ecad.release.group.{}", g.id()));
+                        if head.clicked() {
+                            if folded {
+                                self.collapsed.remove(g);
+                            } else {
+                                self.collapsed.insert(*g);
                             }
                         }
-                        if ui.button("Cancel").accessible_name("ecad.release.exists.cancel").clicked() {
-                            self.exists = None;
+                        if *g == Group::Provisional
+                            && self.rev.is_none()
+                            && v.provisional > 0
+                            && !self.read_only
+                            && ui.small_button("Finalise numbering now").accessible_name("ecad.release.finalise").clicked()
+                        {
+                            out = Some(Out::Finalise);
+                        }
+                        if *g == Group::Parts && ui.small_button("Show in Reports").accessible_name("ecad.release.reports").clicked() {
+                            out = Some(Out::ShowReports);
                         }
                     });
+                    if folded {
+                        continue;
+                    }
+                    for (i, (c, place)) in rows.iter().take(ROWS_SHOWN).enumerate() {
+                        let text =
+                            RichText::new(format!("   {} {:<34} {:<9} {}", c.severity().glyph(), c.kind.words(), place, c.which)).small().monospace();
+                        let r = ui
+                            .add(egui::Button::new(text.color(Self::colour(&t, c.severity()))).frame(false))
+                            .accessible_name(format!("ecad.release.row.{}.{i}", g.id()));
+                        if r.on_hover_text("Show it: its page, centred, with a ring on it").clicked() && c.page.is_some() {
+                            out = Some(Out::GoTo(Box::new(c.clone())));
+                        }
+                    }
+                    if rows.len() > ROWS_SHOWN && ui.small_button(format!("Show all {} in Checks", rows.len())).clicked() {
+                        out = Some(Out::ShowChecks);
+                    }
                 }
-                // Why Release is greyed, in words, with its way out beside it (design 027 §6).
-                if let Some(why) = self.blocked().filter(|_| self.exists.is_none()) {
-                    ui.add(egui::Label::new(RichText::new(why).small().color(ui.visuals().warn_fg_color)).wrap())
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.why"));
-                }
+            });
+            if self.rev.is_none() && v.errors > 0 {
+                let n = if v.errors == 1 { "1 error".to_string() } else { format!("{} errors", v.errors) };
+                let them = if v.errors == 1 { "it is" } else { "they are" };
+                ui.checkbox(&mut self.accept, format!("Release with {n} ({them} listed in the folder's checks.csv)"))
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::CheckBox, true, "ecad.release.accept"));
+            }
+            if let Some(e) = &self.error {
+                ui.add(egui::Label::new(RichText::new(e).small().color(Color32::from_rgb(0xFF, 0x00, 0x00))).wrap());
+            }
+            // §9: the folder exists.
+            if let Some(q) = self.exists.clone() {
+                ui.separator();
+                ui.add(egui::Label::new(RichText::new(q).small()).wrap())
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.exists"));
                 ui.horizontal(|ui| {
-                    if self.rev.is_none() && v.refusal.as_deref() == Some(ecad_cadcraft::release::SAVE_FIRST) && ui.button("Save As…").clicked() {
-                        out = Some(Out::SaveAs);
+                    for (label, id) in [("Add missing files", "add-missing"), ("Replace", "replace"), ("Keep both", "keep-both")] {
+                        if ui.button(label).accessible_name(format!("ecad.release.exists.{id}")).clicked() {
+                            out = Some(Out::Release(self.params(Some(id))));
+                        }
                     }
-                    let label = match (&self.rev, v.provisional) {
-                        (Some(r), _) => format!("Write Rev {r}'s folder"),
-                        (None, 0) => format!("Release Rev {}", v.rev),
-                        (None, n) => format!("Release Rev {} ({n} provisional)", v.rev),
-                    };
-                    let blocked = self.blocked().filter(|_| self.exists.is_none());
-                    let go = ui
-                        .add_enabled(blocked.is_none() && self.exists.is_none(), egui::Button::new(RichText::new(label).strong()))
-                        .accessible_name("ecad.release.go");
-                    let go = match &blocked {
-                        Some(why) => go.on_disabled_hover_text(why),
-                        None => go,
-                    };
-                    if go.clicked() {
-                        out = Some(Out::Release(self.params(None)));
-                    }
-                    if ui.button("Cancel").accessible_name("ecad.release.cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        out = Some(Out::Close);
+                    if ui.button("Cancel").accessible_name("ecad.release.exists.cancel").clicked() {
+                        self.exists = None;
                     }
                 });
-            },
-        );
+            }
+            // Why Release is greyed, in words, with its way out beside it (design 027 §6).
+            if let Some(why) = self.blocked().filter(|_| self.exists.is_none()) {
+                ui.add(egui::Label::new(RichText::new(why).small().color(ui.visuals().warn_fg_color)).wrap())
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.why"));
+            }
+            ui.horizontal(|ui| {
+                if self.rev.is_none() && v.refusal.as_deref() == Some(ecad_cadcraft::release::SAVE_FIRST) && ui.button("Save As…").clicked() {
+                    out = Some(Out::SaveAs);
+                }
+                let label = match (&self.rev, v.provisional) {
+                    (Some(r), _) => format!("Write Rev {r}'s folder"),
+                    (None, 0) => format!("Release Rev {}", v.rev),
+                    (None, n) => format!("Release Rev {} ({n} provisional)", v.rev),
+                };
+                let blocked = self.blocked().filter(|_| self.exists.is_none());
+                let go = ui
+                    .add_enabled(blocked.is_none() && self.exists.is_none(), egui::Button::new(RichText::new(label).strong()))
+                    .accessible_name("ecad.release.go");
+                let go = match &blocked {
+                    Some(why) => go.on_disabled_hover_text(why),
+                    None => go,
+                };
+                if go.clicked() {
+                    out = Some(Out::Release(self.params(None)));
+                }
+                if ui.button("Cancel").accessible_name("ecad.release.cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    out = Some(Out::Close);
+                }
+            });
+        });
         if !open {
             out = Some(Out::Close);
         }

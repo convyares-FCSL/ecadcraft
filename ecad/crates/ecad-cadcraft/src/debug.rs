@@ -42,8 +42,7 @@ use ecad_model::{
 use serde_json::{Value, json};
 
 use crate::access::PagesRef;
-use crate::project::{HandleMap, Mapped, Persistence, Project, project_page_with};
-use crate::verify::verify_page_with;
+use crate::project::{HandleMap, Mapped, Persistence, Project};
 
 /// Selected handles described per snapshot (the rest are counted).
 pub const MAX_SELECTION: usize = 500;
@@ -524,6 +523,8 @@ impl Project {
             pages,
             views: self.views.clone(),
             tolerance: self.tolerance,
+            hidden_text: self.show_hidden_text,
+            pending: self.pending,
         }
     }
 }
@@ -537,6 +538,10 @@ pub struct ProjectionInputs {
     /// Cables shown in fan view: the fresh projection uses the same views (design 005 §8).
     pub views: std::collections::BTreeSet<ecad_model::CableId>,
     pub tolerance: f64,
+    /// Show Hidden Text (brief 031): the fresh projection draws hidden texts the same way.
+    pub hidden_text: bool,
+    /// Brief 033: the project's pending flag, so the fresh frame shows the same Rev box.
+    pub pending: bool,
 }
 
 /// One open page's drawing and handle map.
@@ -808,8 +813,17 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
     }
     for p in &inputs.pages {
         let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.clone());
-        let same = project_page_with(&inputs.doc, p.id, &p.drawing, &p.map, &inputs.views, inputs.tolerance)
-            .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
+        let same = crate::project::project_page_pending(
+            &inputs.doc,
+            p.id,
+            &p.drawing,
+            &p.map,
+            &inputs.views,
+            inputs.tolerance,
+            inputs.hidden_text,
+            inputs.pending,
+        )
+        .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
             Ok(true) => lines.push(format!("page {title}: drawing equals a fresh projection ({} handles)", p.map.len())),
             Ok(false) => {
@@ -821,7 +835,16 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
                 lines.push(format!("page {title}: projection failed: {e}"));
             }
         }
-        let v = verify_page_with(&inputs.doc, p.id, &p.drawing, &p.map, &inputs.views, inputs.tolerance);
+        let v = crate::verify::verify_page_pending(
+            &inputs.doc,
+            p.id,
+            &p.drawing,
+            &p.map,
+            &inputs.views,
+            inputs.tolerance,
+            inputs.hidden_text,
+            inputs.pending,
+        );
         ok &= v.ok();
         lines.push(format!("page {title}: {}", v.summary()));
     }
@@ -998,6 +1021,7 @@ pub fn op_view(op: &Op) -> OpView {
         Op::RemoveItem { item, .. } => (val(item), None),
         Op::CreateComponent { component, .. } => (None, val(component)),
         Op::DeleteComponent { component, .. } => (val(component), None),
+        Op::SetComponentDefinition { before, after, .. } => (val(before), val(after)),
         Op::AddTerminal { terminal, .. } => (None, val(terminal)),
         Op::RemoveTerminal { terminal, .. } => (val(terminal), None),
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
@@ -1019,6 +1043,11 @@ pub fn op_view(op: &Op) -> OpView {
         Op::AddFolder { folder, index, .. } => (None, val(&json!({"folder": folder, "index": index}))),
         Op::RemoveFolder { folder, index, .. } => (val(&json!({"folder": folder, "index": index})), None),
         Op::ModifyFolder { before, after, .. } => (val(before), val(after)),
+        Op::SetStyle { layer, catalogue, id, before, after } => (
+            val(&json!({"layer": layer, "catalogue": catalogue, "id": id, "record": before})),
+            val(&json!({"layer": layer, "catalogue": catalogue, "id": id, "record": after})),
+        ),
+        Op::SetStandard { before, after } => (val(before), val(after)),
     };
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
@@ -1057,6 +1086,10 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.push(ObjectId::Component(*id));
             out.extend(component.definition.map(ObjectId::Definition));
         }
+        Op::SetComponentDefinition { id, before, after } => {
+            out.push(ObjectId::Component(*id));
+            out.extend(before.iter().chain(after).copied().map(ObjectId::Definition));
+        }
         Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
             out.push(ObjectId::Terminal(*id));
             out.push(ObjectId::Component(terminal.component));
@@ -1091,13 +1124,15 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             ecad_model::ObjectRef::Conductor(c) => ObjectId::Conductor(*c),
             ecad_model::ObjectRef::Cable(c) => ObjectId::Cable(*c),
             ecad_model::ObjectRef::Page(p) => ObjectId::Page(*p),
-            ecad_model::ObjectRef::Project => ObjectId::Settings,
+            ecad_model::ObjectRef::Project | ecad_model::ObjectRef::Standard => ObjectId::Settings,
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
         Op::SetProjectSettings { .. } => out.push(ObjectId::Settings),
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
         // Folders (brief 019) are not among the debugger's objects yet.
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}
+        // The standard and style records (brief 050a) are project-wide, like the settings.
+        Op::SetStyle { .. } | Op::SetStandard { .. } => out.push(ObjectId::Settings),
     }
     let mut seen = BTreeSet::new();
     out.retain(|i| seen.insert(*i));

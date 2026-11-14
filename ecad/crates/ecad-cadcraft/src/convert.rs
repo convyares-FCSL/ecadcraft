@@ -4,9 +4,13 @@
 //! reproduces it exactly (H2, projection fidelity). Anything else is reported as unsupported
 //! rather than silently simplified.
 
-use cadcraft_engine::doc::{Arc as CArc, Circle, Common, Entity, EntityKind, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint, Text};
+use cadcraft_engine::doc::{
+    Arc as CArc, Circle, Common, Entity, EntityKind, HAlign, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint, Text, VAlign,
+};
 use cadcraft_engine::geom::{PolyVertex, Vec2, Vec3};
-use ecad_model::{Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance};
+use ecad_model::{
+    Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance, TextHAlign, TextVAlign,
+};
 
 /// Layer that carries terminal markers in projected drawings. Reserved: users' edits on it are refused.
 pub const MARKER_LAYER: &str = "ECAD-TERMINALS";
@@ -74,19 +78,41 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
         }),
         Primitive::Arc { center, radius, start, end } => EntityKind::Arc(CArc { center: v3(*center), radius: *radius, start: *start, end: *end }),
         Primitive::Circle { center, radius } => EntityKind::Circle(Circle { center: v3(*center), radius: *radius }),
-        Primitive::Text { at, height, rotation, value } => EntityKind::Text(Text {
-            insert: v3(*at),
-            align_pt: None,
-            height: *height,
-            value: value.clone(),
-            rotation: *rotation,
-            width_factor: 1.0,
-            oblique: 0.0,
-            style: "Standard".into(),
-            halign: Default::default(),
-            valign: Default::default(),
-        }),
+        Primitive::Text { at, height, rotation, value, halign, valign } => {
+            // Brief 031 (FP4, design §6.6): a justified text keeps its alignment point.
+            let (h, v) = (engine_halign(*halign), engine_valign(*valign));
+            let left = h == HAlign::Left && v == VAlign::Baseline;
+            EntityKind::Text(Text {
+                insert: v3(*at),
+                align_pt: (!left).then(|| v3(*at)),
+                height: *height,
+                value: value.clone(),
+                rotation: *rotation,
+                width_factor: 1.0,
+                oblique: 0.0,
+                style: "Standard".into(),
+                halign: h,
+                valign: v,
+            })
+        }
         Primitive::Point { at } => EntityKind::Point(CPoint { p: v3(*at), angle: 0.0 }),
+    }
+}
+
+fn engine_halign(h: TextHAlign) -> HAlign {
+    match h {
+        TextHAlign::Left => HAlign::Left,
+        TextHAlign::Center => HAlign::Center,
+        TextHAlign::Right => HAlign::Right,
+    }
+}
+
+fn engine_valign(v: TextVAlign) -> VAlign {
+    match v {
+        TextVAlign::Baseline => VAlign::Baseline,
+        TextVAlign::Bottom => VAlign::Bottom,
+        TextVAlign::Middle => VAlign::Middle,
+        TextVAlign::Top => VAlign::Top,
     }
 }
 
@@ -135,7 +161,24 @@ fn primitive_from(kind: &EntityKind) -> Option<Primitive> {
         EntityKind::LwPolyline(p) => Primitive::Polyline { vertices: p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(), closed: p.closed },
         EntityKind::Arc(a) => Primitive::Arc { center: pt(a.center), radius: a.radius, start: a.start, end: a.end },
         EntityKind::Circle(c) => Primitive::Circle { center: pt(c.center), radius: c.radius },
-        EntityKind::Text(t) => Primitive::Text { at: pt(t.insert), height: t.height, rotation: t.rotation, value: t.value.clone() },
+        EntityKind::Text(t) => {
+            // Brief 031 (FP4): left, centre and right with any vertical alignment are recorded at
+            // their alignment point; Aligned, Middle and Fit are not (the round trip refuses them).
+            let halign = match t.halign {
+                HAlign::Left => TextHAlign::Left,
+                HAlign::Center => TextHAlign::Center,
+                HAlign::Right => TextHAlign::Right,
+                _ => return None,
+            };
+            let valign = match t.valign {
+                VAlign::Baseline => TextVAlign::Baseline,
+                VAlign::Bottom => TextVAlign::Bottom,
+                VAlign::Middle => TextVAlign::Middle,
+                VAlign::Top => TextVAlign::Top,
+            };
+            let at = t.align_pt.filter(|_| !(halign == TextHAlign::Left && valign == TextVAlign::Baseline)).unwrap_or(t.insert);
+            Primitive::Text { at: pt(at), height: t.height, rotation: t.rotation, value: t.value.clone(), halign, valign }
+        }
         EntityKind::Point(p) => Primitive::Point { at: pt(p.p) },
         _ => return None,
     })
@@ -165,6 +208,22 @@ pub fn kind_name(kind: &EntityKind) -> &'static str {
     }
 }
 
+/// Refusal of a CADCraft `table` on an ECAD page (brief 033, design 033 §11.1).
+pub const TABLE_REFUSED: &str =
+    "Tables can't be placed on ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸ Generated).";
+
+/// Why an entity of `kind` cannot be placed on an ECAD page (design 033 §11.2): each kind has its
+/// own plural phrase, never a name with `s` added ("hatchs", "object of this kinds").
+pub fn not_placeable(kind: &EntityKind) -> String {
+    match kind {
+        EntityKind::Table(_) => TABLE_REFUSED.into(),
+        EntityKind::Hatch(_) => "Hatches can't be placed on ECAD pages yet. Draw the outline with lines.".into(),
+        EntityKind::Dimension(_) => "Dimensions can't be placed on ECAD pages yet.".into(),
+        EntityKind::MText(_) => "Multiline text can't be placed on ECAD pages yet. Use single-line text.".into(),
+        _ => "Objects of this kind can't be placed on ECAD pages yet.".into(),
+    }
+}
+
 /// The ECAD item for an entity on `page`, or why it cannot be recorded.
 ///
 /// # Semantics
@@ -173,6 +232,11 @@ pub fn kind_name(kind: &EntityKind) -> &'static str {
 /// # Errors
 /// A message naming what ECAD pages do not support yet.
 pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, String> {
+    // Brief 033 (design 033 §11.1): a table is refused first, whatever its layer, so its words
+    // are the ones the user sees; the commit is refused, so nothing is written.
+    if matches!(e.kind, EntityKind::Table(_)) {
+        return Err(TABLE_REFUSED.into());
+    }
     if e.common.layer == MARKER_LAYER {
         return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
     }
@@ -189,7 +253,7 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
     let kind = match (primitive_from(&e.kind), symbol_from(&e.kind)) {
         (Some(p), _) => ItemKind::Primitive(p),
         (_, Some(s)) => ItemKind::Symbol(s),
-        _ => return Err(format!("{}s are not supported on ECAD pages yet", kind_name(&e.kind))),
+        _ => return Err(not_placeable(&e.kind)),
     };
     let item = Item { page, style, kind };
     match entity_for(doc, &item, e.handle) {

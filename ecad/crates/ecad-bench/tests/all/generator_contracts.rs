@@ -112,17 +112,14 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     let dir = std::env::temp_dir().join(format!("ecad-bench-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let g = generate(TINY, Variant::Churned).unwrap();
-    let path = dir.join("tiny.ecad");
-    std::fs::write(&path, g.file_bytes().unwrap()).unwrap();
+    // Written straight in the version 2 format the app opens.
+    let v2 = dir.join("tiny.ecad");
+    ecad_bench::v2::write(&g, &v2).unwrap();
 
     // The whole measurement path, once.
-    let (m, doc) = ecad_bench::measure::measure(&path, 1, &dir).unwrap();
+    let (m, doc) = ecad_bench::measure::measure(&v2, 1, &dir).unwrap();
     assert_eq!(m.transactions, g.ledger.head());
     assert_eq!(&doc, g.ledger.document());
-
-    // The app opens version 2 files (brief 021): convert first.
-    let v2 = dir.join("tiny.v2.ecad");
-    ecad_bench::v2::convert(&path, &v2).unwrap();
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 9, ecad_cadcraft::views::Settings::none()).unwrap();
     for page in &g.pages {

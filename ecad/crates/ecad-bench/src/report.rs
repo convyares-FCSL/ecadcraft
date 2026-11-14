@@ -25,10 +25,16 @@ pub struct Row {
     pub strips: Option<crate::strips::MeasuredStrips>,
     /// The pre-release check and the release on that file (brief 027).
     pub release: Option<crate::release::MeasuredRelease>,
+    /// Text placement and styles on that file (brief 031).
+    pub text: Option<crate::text::MeasuredText>,
+    /// Wire joins, cable continuation and wire labels on that file (brief 032).
+    pub wires: Option<crate::wires_nets::MeasuredWires>,
+    /// PLC racks and cards on that file (brief 045).
+    pub plc: Option<crate::plc::MeasuredPlc>,
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 42] = [
+const COLUMNS: [(&str, &str); 41] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -66,14 +72,13 @@ const COLUMNS: [(&str, &str); 42] = [
     ("xmove_ms", "xmove ms"),
     ("xrenum_ms", "xrenum ms"),
     ("xmirror_ms", "xmirror ms"),
-    ("convert_ms", "v2 convert ms"),
     ("v2_open_ms", "v2 open ms"),
     ("v2_save_ms", "v2 save ms"),
     ("v2_crash_open_ms", "v2 crash open ms"),
     ("v2_open_x10_ms", "v2 open x10 ms"),
 ];
 
-fn values(r: &Row) -> [Option<f64>; 42] {
+fn values(r: &Row) -> [Option<f64>; 41] {
     let m = &r.measured;
     let v = r.v2.as_ref();
     [
@@ -114,7 +119,6 @@ fn values(r: &Row) -> [Option<f64>; 42] {
         Some(m.xmove_ms),
         Some(m.xrenum_ms),
         Some(m.xmirror_ms),
-        v.map(|v| v.convert_ms),
         v.map(|v| v.open_ms),
         v.map(|v| v.save_ms),
         v.map(|v| v.crash_open_ms),
@@ -225,8 +229,8 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
          pnum, frame, tbupd, gridchange and \
          revopen (brief 019): renumber page 2 with its references refreshed; work out one page's frame \
          and title block; change the project title; change the grid (A3 and A2 in turn); open Rev A \
-         read-only. Peak memory is not measured. Since brief 021 the app opens version 2 files: every \
-         column from 1st page on is measured on the version 2 file; open, edit and save are version 1.\n"
+         read-only. Peak memory is not measured. The projects are written as version 2 files, the \
+         format the app opens, and every column is measured on them.\n"
     ));
     out.push_str(&format!(
         "\nCross-references (brief 025):\n{:<8} {:<8} {:>10} {:>10} {:>10} {:>11}\n",
@@ -246,18 +250,16 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
          targets renumbered; xmirror: a page with 10 tables brought to the front (compare with switch).\n",
     );
     out.push_str(&format!(
-        "\nContainer version 2 (brief 021):\n{:<8} {:<8} {:>9} {:>11} {:>11} {:>11} {:>14} {:>15} {:>11}\n",
-        "tier", "history", "v1 MB", "v2 MB", "convert ms", "v2 open ms", "v2 save ms", "crash open ms", "open x10 ms"
+        "\nContainer version 2 (brief 021):\n{:<8} {:<8} {:>9} {:>11} {:>14} {:>15} {:>11}\n",
+        "tier", "history", "v2 MB", "v2 open ms", "v2 save ms", "crash open ms", "open x10 ms"
     ));
     for r in rows {
         let Some(v) = &r.v2 else { continue };
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>11.2} {:>11.0} {:>11.1} {:>14.2} {:>15.1} {:>11.1}   (x10: {:.2} MB, {:.2} MB stored, {:.2} MB compacted; undo {:.2} ms, first past 1 024: {:.1} ms)\n",
+            "{:<8} {:<8} {:>9.2} {:>11.1} {:>14.2} {:>15.1} {:>11.1}   (x10: {:.2} MB, {:.2} MB stored, {:.2} MB compacted; undo {:.2} ms, first past 1 024: {:.1} ms)\n",
             r.tier,
             r.variant,
-            mb(r.measured.bytes),
             mb(v.bytes),
-            v.convert_ms,
             v.open_ms,
             v.save_ms,
             v.crash_open_ms,
@@ -330,6 +332,31 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             o.wireupd_ms,
             o.work
         ));
+        // Brief 047 (design 047 §10).
+        let b = &o.bom;
+        out.push_str(&format!(
+            "BOM lines on {} {}: bomline {:.2} ms (< 16), bomkit {:.2} ms (50 devices, < 30), bomitem {:.2} ms (< 16), \
+             bomart {:.2} ms ({} entries, < 30), bomcols {:.2} ms ({} sheets, < 50)\n",
+            r.tier, r.variant, b.bomline_ms, b.bomkit_ms, b.bomitem_ms, b.bomart_ms, b.art_entries, b.bomcols_ms, b.sheets
+        ));
+    }
+    for r in rows {
+        let Some(t) = &r.text else { continue };
+        out.push_str(&format!(
+            "
+Texts on {} {} (densest page: {} symbols, {} texts): textplace {:.2} ms (large: < 25), textstyle {:.1} ms              (large: < 1.2 x propredraw {:.1} ms)
+",
+            r.tier, r.variant, t.symbols, t.texts, t.textplace_ms, t.textstyle_ms, t.propredraw_ms
+        ));
+    }
+    for r in rows {
+        let Some(w) = &r.wires else { continue };
+        out.push_str(&format!(
+            "
+Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {:.2} ms (as junction {:.2} ms),              lnet {:.2} ms (within 10% of leach {:.2} ms; {} routes on the densest page), ccont {:.2} ms (50 cores, < 20)
+",
+            r.tier, r.variant, w.wmerge_ms, w.wopen_ms, w.jjoin_ms, w.junction_ms, w.lnet_ms, w.leach_ms, w.routes, w.ccont_ms
+        ));
     }
     for r in rows {
         let Some(t) = &r.strips else { continue };
@@ -358,6 +385,33 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
              linkset {:.2} ms (< 16), linkpage {:.3} ms (< 4)\n",
             t.accset_ms, t.accmany_ms, t.accproj_ms, t.accproj_work, t.linkset_ms, t.linkpage_ms
         ));
+        // Brief 036 (design 036 §11.3).
+        out.push_str(&format!(
+            "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
+             toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
+            t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
+        ));
+        // Brief 046 (design 046 §10).
+        out.push_str(&format!(
+            "Strip pages: spage {:.2} ms (< 100), spageupd {:.2} ms (< 16), spageoff {:.2} ms ({} projections; stripupd + < 1), \
+             spagetype {:.2} ms (< 16; {} strips marked), spbuild {:.2} ms (part of stripbuild; growth < 10 %)\n",
+            t.spage_ms, t.spageupd_ms, t.spageoff_ms, t.spageoff_projections, t.spagetype_ms, t.spagetype_work, t.spbuild_ms
+        ));
+    }
+    for r in rows {
+        let Some(t) = &r.plc else { continue };
+        out.push_str(&format!(
+            "
+PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.2} ms (< 16; {} racks and cards recomputed),              chfence {:.2} ms (< 16), plcstyle {:.2} ms (< 16), iolist {:.2} ms ({} rows; < 50), iolistupd {:.2} ms (< 5)
+",
+            r.tier, r.variant, t.racks, t.cards, t.plcbuild_ms, t.slotmove_ms, t.work, t.chfence_ms, t.plcstyle_ms, t.iolist_ms, t.rows, t.iolistupd_ms
+        ));
+        // Brief 051 (design 051 §9.4).
+        out.push_str(&format!(
+            "PLC look on {} {}: plcframe {:.2} ms (< 8), plcframe upd {:.2} ms (< 4), plcstrip {:.2} ms (< 10), plcrack {:.2} ms (< 30)
+",
+            r.tier, r.variant, t.plcframe_ms, t.plcframeupd_ms, t.plcstrip_ms, t.plcrack_ms
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -368,11 +422,12 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
     }
     if let Some(p) = print {
         out.push_str(&format!(
-            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets), release {:.2} s ({} sheets, {} files; \
+            "\nPrint and release on the {}-page project: print {:.2} s ({} sheets, {} KB), release {:.2} s ({} sheets, {} files; \
              target 5 s), rerelease {:.2} s\n",
             p.pages,
             p.print_ms / 1000.0,
             p.print_sheets,
+            p.print_bytes.div_ceil(1024),
             p.release_s,
             p.sheets,
             p.files,
@@ -455,7 +510,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
     let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
     let print_v = print.map(|p| {
         json!({
-            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "release_s": p.release_s,
+            "pages": p.pages, "print_ms": p.print_ms, "print_sheets": p.print_sheets, "print_bytes": p.print_bytes, "release_s": p.release_s,
             "rerelease_s": p.rerelease_s, "sheets": p.sheets, "files": p.files,
         })
     });
@@ -522,7 +577,6 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             }
             let v2 = json!({
                 "v2_bytes": r.v2.as_ref().map(|v| v.bytes),
-                "convert_ms": r.v2.as_ref().map(|v| v.convert_ms),
                 "v2_open_ms": r.v2.as_ref().map(|v| v.open_ms),
                 "v2_save_ms": r.v2.as_ref().map(|v| v.save_ms),
                 "v2_crash_open_ms": r.v2.as_ref().map(|v| v.crash_open_ms),
@@ -552,6 +606,8 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "work": t.work,
                     // Brief 030.
                     "acc": acc_json(t),
+                    // Brief 046.
+                    "spage": spage_json(t),
                 })),
                 "history": r.history.as_ref().map(|h| json!({
                     "histshow_ms": h.histshow_ms, "histupd_ms": h.histupd_ms, "histsel_ms": h.histsel_ms,
@@ -569,9 +625,30 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     })).collect::<Vec<_>>(),
                 })),
             });
+            // Brief 031: added here, as the macro above is at its recursion limit.
+            if let Some(o) = row.as_object_mut() {
+                o.insert("text".into(), r.text.as_ref().map_or(Value::Null, text_json));
+            }
             if let (Some(o), Value::Object(extra)) = (row.as_object_mut(), v2) {
                 o.extend(extra);
             }
+            // Brief 032 (set apart, as brief 025's columns).
+            row["wires"] = r.wires.as_ref().map_or(Value::Null, wires_json);
+            // Brief 045 (set apart, as brief 025's columns).
+            row["plc"] = r.plc.as_ref().map_or(Value::Null, |t| {
+                json!({"plcbuild_ms": t.plcbuild_ms, "slotmove_ms": t.slotmove_ms, "racks": t.racks, "cards": t.cards, "work": t.work,
+                    "chfence_ms": t.chfence_ms, "plcstyle_ms": t.plcstyle_ms,
+                    "iolist_ms": t.iolist_ms, "iolistupd_ms": t.iolistupd_ms, "rows": t.rows,
+                    "plcframe_ms": t.plcframe_ms, "plcframeupd_ms": t.plcframeupd_ms, "plcstrip_ms": t.plcstrip_ms, "plcrack_ms": t.plcrack_ms})
+            });
+            // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
+            row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {
+                let b = &o.bom;
+                json!({
+                    "bomline_ms": b.bomline_ms, "bomkit_ms": b.bomkit_ms, "bomitem_ms": b.bomitem_ms,
+                    "bomart_ms": b.bomart_ms, "art_entries": b.art_entries, "bomcols_ms": b.bomcols_ms, "sheets": b.sheets,
+                })
+            });
             row
         }).collect::<Vec<_>>(),
     });
@@ -622,9 +699,35 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
 
 /// Brief 030's rows (design 030 §11.3), apart so the report's `json!` stays within its recursion
 /// limit.
+/// Brief 031's row as JSON.
+fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
+    json!({
+        "textplace_ms": t.textplace_ms, "textstyle_ms": t.textstyle_ms, "propredraw_ms": t.propredraw_ms,
+        "symbols": t.symbols, "texts": t.texts,
+    })
+}
+
+/// Brief 046's rows (its own object: one `json!` would pass the macro's recursion limit).
+fn spage_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
+    json!({
+        "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
+        "spageoff_projections": t.spageoff_projections, "spagetype_ms": t.spagetype_ms, "spagetype_work": t.spagetype_work, "spbuild_ms": t.spbuild_ms,
+    })
+}
+
 fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     serde_json::json!({
         "accset_ms": t.accset_ms, "accmany_ms": t.accmany_ms, "accproj_ms": t.accproj_ms,
         "accproj_work": t.accproj_work, "linkset_ms": t.linkset_ms, "linkpage_ms": t.linkpage_ms,
+        "lvlfence_ms": t.lvlfence_ms, "lvlplace_ms": t.lvlplace_ms, "lvlsep_ms": t.lvlsep_ms, "lvlsep_work": t.lvlsep_work,
+        "toposition_ms": t.toposition_ms, "lvltrenum_ms": t.lvltrenum_ms,
+    })
+}
+
+/// Brief 032's row as JSON (outside the report's one `json!`, which is at the macro's depth).
+fn wires_json(w: &crate::wires_nets::MeasuredWires) -> serde_json::Value {
+    json!({
+        "wopen_ms": w.wopen_ms, "wmerge_ms": w.wmerge_ms, "junction_ms": w.junction_ms, "jjoin_ms": w.jjoin_ms,
+        "lnet_ms": w.lnet_ms, "leach_ms": w.leach_ms, "routes": w.routes, "ccont_ms": w.ccont_ms,
     })
 }

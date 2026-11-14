@@ -434,7 +434,7 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     let dots = |h: &mut H| -> Vec<Pt> {
         h.p(|p| overlay_marks(p, uid))
             .into_iter()
-            .filter(|m| m.shape == MarkShape::Dot && (m.color.0, m.color.1, m.color.2) == (0xff, 0x00, 0xff))
+            .filter(|m| m.shape == MarkShape::Dot && (m.color.0, m.color.1, m.color.2) == (0x7a, 0x3f, 0xe0))
             .map(|m| Pt::new(m.at.x, m.at.y))
             .collect()
     };

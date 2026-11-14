@@ -46,6 +46,8 @@ pub struct MeasuredOutputs {
     pub devices: usize,
     /// Symbols inside the box.
     pub inside: usize,
+    /// Brief 047's rows, with the same models and BOM page.
+    pub bom: crate::bom::MeasuredBom,
 }
 
 fn ms(t: Instant) -> f64 {
@@ -106,7 +108,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         out.reportfirst_ms = median(&mut first);
         out.devices = project.read(&mut s, |p, _| p.outputs.as_ref().map_or(0, ecad_cadcraft::outputs::Outputs::device_count))?;
         // A BOM page, so its sheets and Total follow the models too.
-        run(&mut s, "newpage", json!({"generated": "bom-location"}))?;
+        let bom_page = run(&mut s, "newpage", json!({"generated": "bom-location"}))?;
+        let bom_page: Option<PageId> = bom_page["page"].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);
         let (page1, devices) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             (doc.page_order.first().copied(), ecad_cadcraft::devices::devices(doc, None))
@@ -207,6 +210,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
             run(&mut s, "undo", json!({}))?;
         }
         out.wireupd_ms = median(&mut wireupd);
+        // Brief 047, with the BOM page on screen for its column toggle.
+        if let Some(bom_page) = bom_page {
+            out.bom = crate::bom::measure(&mut s, &project, &devices, bom_page, runs)?;
+        }
         drop(project);
         drop(s);
         Ok(out)

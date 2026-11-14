@@ -201,7 +201,7 @@ fn the_fan_of_g_is_the_worked_example() {
         let mut v: Vec<(i64, i64)> = h
             .p(|p| overlay_marks(p, uid))
             .into_iter()
-            .filter(|m| m.shape == shape && (m.color.0, m.color.1, m.color.2) != (0xff, 0x00, 0xff))
+            .filter(|m| m.shape == shape && (m.color.0, m.color.1, m.color.2) != (0x7a, 0x3f, 0xe0))
             .map(|m| ((m.at.x * 1e6) as i64, (m.at.y * 1e6) as i64))
             .collect();
         v.sort();
@@ -247,7 +247,7 @@ fn the_fan_of_g_is_the_worked_example() {
     // The marks did not move; the magenta crossing dots are gone.
     assert_eq!(marks(&mut g.h, MarkShape::Ring), rings);
     assert_eq!(marks(&mut g.h, MarkShape::Dot), dots);
-    let magenta = g.h.p(|p| overlay_marks(p, uid)).iter().filter(|m| (m.color.0, m.color.2) == (0xff, 0xff)).count();
+    let magenta = g.h.p(|p| overlay_marks(p, uid)).iter().filter(|m| (m.color.0, m.color.1, m.color.2) == (0x7a, 0x3f, 0xe0)).count();
     assert_eq!(magenta, 0);
     // Back to traditional: the page is drawn as before.
     view(&mut g.h, g.c1, "traditional");

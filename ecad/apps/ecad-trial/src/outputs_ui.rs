@@ -8,8 +8,9 @@
 //! ops); the copy is taken again only when the models' revision, the tab or the grouping changed.
 //! Live while open: no refresh button. Rows are virtualised.
 
+use crate::shell::Hosted;
 use cadcraft_ui_egui::theme::Tokens;
-use ecad_cadcraft::outputs::{Group, Table};
+use ecad_cadcraft::outputs::{BomView, Group, Table};
 use eframe::egui::{self, Color32, RichText, Sense, pos2, vec2};
 
 /// The tabs.
@@ -75,14 +76,21 @@ pub enum Out {
     Select(Tab, usize),
     /// Write the shown table as CSV to this path.
     Export(String),
-    /// Brief 030: run this command line (the Accessory menu).
+    /// Brief 030: run this command line (the Accessory menu; brief 039: a terminal plan edit,
+    /// whose refusal goes back through [`Reports::ran`]).
     Run(String),
+    /// Brief 039: show this page, centred on this point (a Terminals row's place).
+    GotoAt(ecad_model::PageId, ecad_model::Pt),
     Close,
 }
 
 /// The Reports window's state.
 #[derive(Debug, Default)]
 pub struct Reports {
+    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    pub host: Option<egui::Rect>,
+    /// Brief 038: its workspace is not shown, so it is not drawn.
+    pub hidden: bool,
     pub tab: Tab,
     pub group: Group,
     pub find: String,
@@ -114,10 +122,46 @@ pub struct Reports {
     pub note: Option<String>,
     /// How many times the copy was taken (tests: only when the models changed).
     pub copies: u64,
+    /// The copy's cells marked `?`, counted when it is taken (Project ▸ Reports' right panel).
+    pub flagged: usize,
     pub rows_drawn: usize,
     /// The project folder and name, for the export path's default.
     pub stem: String,
+    /// Brief 039: the Terminals tab as the one table's terminal manager.
+    pub terminals: crate::lists::terminals::TerminalsView,
+    /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
+    pub io: crate::lists::plc::IoView,
+    pub io_shown: bool,
+    /// UI rev 3 (boards 2.04, 2.05): Project ▸ Wires and Cables, kept in step while shown.
+    pub wires: crate::lists::wires::WiresView,
+    pub cables: crate::lists::cables::CablesView,
+    pub wires_shown: bool,
+    pub cables_shown: bool,
+    /// UI rev 3 (board 2.06): Project ▸ Reports' list of reports; the window is its preview,
+    /// shown without its own tab row.
+    pub list: crate::lists::reports::ReportsList,
+    pub preview: bool,
+    /// UI rev 3: the Project tabs' counts (terminals, PLC channels, wires, cables), from kept
+    /// counts, taken with the Reports tab counts.
+    pub tab_counts: [usize; 4],
+    /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
+    /// them; ticking writes `setdefault`), whether the project can be written (Columns and the
+    /// add-item button are greyed when not), each BOM row's item when it lists one item only, and
+    /// the BOM as CSV (Qty a number, a Unit column), row for row with the shown table.
+    pub view: BomView,
+    pub writable: bool,
+    pub items: Vec<Option<ecad_model::ComponentId>>,
+    csv: Option<Table>,
 }
+
+/// Brief 047's element names (design 047 §11).
+pub const COLUMNS: &str = "ecad.reports.columns";
+pub const COLUMN_ARTICLE: &str = "ecad.reports.columns.article";
+pub const COLUMN_NESTED: &str = "ecad.reports.columns.nested";
+pub const ADD_ITEM: &str = "ecad.reports.additem";
+/// The status words for an item row (it is on no page).
+pub const ITEM_NO_PAGE: &str = "Items are on no page.";
+pub const READ_ONLY: &str = "The project is read-only.";
 
 impl Reports {
     /// The table shown now (all rows; [`Reports::shown`] says which are visible).
@@ -127,11 +171,29 @@ impl Reports {
 
     /// Bring the copy up to date with the project's kept models (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
-        let style = p.ledger.document().settings.reference_style as u64;
+        // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
+        if self.io_shown {
+            p.outputs();
+            if let Some(o) = p.outputs.as_ref() {
+                self.io.sync(serial, p.ledger.document(), o, self.writable);
+            }
+        }
+        let reference_style = p.ledger.document().settings.reference_style;
+        let style = reference_style as u64;
         let o = p.outputs();
+        if self.wires_shown {
+            self.wires.sync(serial, o);
+        }
+        if self.cables_shown {
+            self.cables.sync(serial, o);
+        }
         // The counts on the tabs, from kept counts (no rows made).
         if self.counted != Some((serial, o.build_id ^ o.revision, self.group)) {
             self.counts = [o.bom_count(self.group), o.wire_count(), o.cable_count(), o.strips.len()];
+            let terminals = o.strips.sorted().iter().map(|s| s.rows.len()).sum();
+            let cards: Vec<_> = o.plc.cards.values().collect();
+            let channels = usize::try_from(ecad_cadcraft::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
+            self.tab_counts = [terminals, channels, o.wire_count(), o.cable_count()];
             self.counted = Some((serial, o.build_id ^ o.revision, self.group));
         }
         // The Terminals tab follows only the strips it shows (review of PR #55, finding 2; design
@@ -141,12 +203,23 @@ impl Reports {
             _ => o.revision,
         };
         let revision = revision.wrapping_add(u64::from(self.hide_accessories));
+        if self.tab == Tab::Terminals {
+            self.terminals.sync(serial, o, self.strip, !self.hide_accessories, reference_style);
+        }
         let key = (serial, revision, self.tab, self.group, self.strip, self.cores_of);
         if self.seen == Some(key) {
             self.filter();
             return;
         }
         self.gos.clear();
+        self.view = o.view;
+        self.items.clear();
+        self.csv = None;
+        if self.tab == Tab::Bom {
+            self.items =
+                o.bom(self.group).iter().map(|r| if r.item && r.entries.len() == 1 { r.entries.first().map(|e| e.0) } else { None }).collect();
+            self.csv = Some(o.bom_table_with(self.group, o.view, true));
+        }
         self.table = match (self.tab, self.cores_of) {
             (Tab::Bom, _) => o.bom_table(self.group),
             (Tab::Wires, _) => o.wire_table(),
@@ -164,6 +237,7 @@ impl Reports {
         }
         self.seen = Some(key);
         self.copies += 1;
+        self.flagged = self.table.flagged();
         self.filter();
     }
 
@@ -172,6 +246,16 @@ impl Reports {
         self.seen = None;
         self.counted = None;
         self.strips_seen = None;
+        self.terminals.invalidate();
+        self.wires.invalidate();
+        self.cables.invalidate();
+    }
+
+    /// The result of the last [`Out::Run`]: a terminal plan edit's refusal shows under its cell.
+    pub fn ran(&mut self, refusal: Option<String>) {
+        // Only the view whose edit is running holds it.
+        self.io.ran(refusal.clone());
+        self.terminals.ran(refusal);
     }
 
     fn filter(&mut self) {
@@ -197,9 +281,43 @@ impl Reports {
         self.shown.get(i).copied()
     }
 
-    /// The table as shown (grouping, sort and filter), for CSV.
+    /// The table as shown (grouping, sort and filter), for CSV. Brief 047: the BOM in its CSV
+    /// form (design 047 §6.4), the same rows.
     pub fn shown_table(&self) -> Table {
-        Table { headers: self.table.headers.clone(), rows: self.shown.iter().filter_map(|i| self.table.rows.get(*i).cloned()).collect() }
+        let t = self.csv.as_ref().filter(|_| self.tab == Tab::Bom).unwrap_or(&self.table);
+        Table { headers: t.headers.clone(), rows: self.shown.iter().filter_map(|i| t.rows.get(*i).cloned()).collect() }
+    }
+
+    /// Brief 047: the BOM tab's Columns menu and + Item (design 047 §6.1).
+    fn bom_tools(&mut self, ui: &mut egui::Ui, out: &mut Option<Out>) {
+        let writable = self.writable;
+        let r = ui.add_enabled_ui(writable, |ui| {
+            ui.menu_button(RichText::new("Columns v").small(), |ui| {
+                let mut article = self.view.article;
+                if ui.checkbox(&mut article, "Article number").accessible_name(COLUMN_ARTICLE).changed() {
+                    let v = if article { "on" } else { "off" };
+                    *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.column.article", "level": "project", "value": v}))));
+                    ui.close();
+                }
+                if self.group == Group::Location {
+                    let mut nested = self.view.nested;
+                    if ui.checkbox(&mut nested, "Lines under devices").accessible_name(COLUMN_NESTED).changed() {
+                        let v = if nested { "nested" } else { "flat" };
+                        *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.lines", "level": "project", "value": v}))));
+                        ui.close();
+                    }
+                }
+            })
+            .response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, COLUMNS));
+            let add = ui.button("+ Item").accessible_name(ADD_ITEM);
+            if add.clicked() {
+                *out = Some(Out::Run("bomitem".into()));
+            }
+        });
+        if !writable {
+            r.response.on_hover_text(READ_ONLY);
+        }
     }
 
     /// The window. Returns what it asks for.
@@ -213,9 +331,11 @@ impl Reports {
             .resizable(true)
             .collapsible(false)
             .open(&mut open)
+            .hosted(self.host)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    for (i, tab) in TABS.into_iter().enumerate() {
+                    // UI rev 3: as Project ▸ Reports' preview the list above picks the tab.
+                    for (i, tab) in TABS.into_iter().enumerate().filter(|_| !self.preview) {
                         let n = self.counts.get(i).copied().unwrap_or(0);
                         let b = ui
                             .selectable_label(self.tab == tab, format!("{} ({n})", tab.label()))
@@ -294,6 +414,7 @@ impl Reports {
                         })
                         .response
                         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.group"));
+                        self.bom_tools(ui, &mut out);
                     }
                     ui.label(RichText::new("Find").small());
                     let find = ui.add(egui::TextEdit::singleline(&mut self.find).desired_width(120.0)).accessible_name("ecad.reports.find");
@@ -331,6 +452,18 @@ impl Reports {
                     ui.label(RichText::new(n).small().color(t.text_dim));
                 }
                 ui.separator();
+                // Brief 039: the terminal manager is the one table, mirrored (design 036 §9).
+                if self.tab == Tab::Terminals {
+                    for a in self.terminals.show(ui, true) {
+                        out = Some(match a {
+                            crate::lists::ListAction::Run(line) => Out::Run(line),
+                            crate::lists::ListAction::GoTo(pg, at) => Out::GotoAt(pg, at),
+                            _ => continue,
+                        });
+                    }
+                    self.rows_drawn = self.terminals.table.rows_drawn;
+                    return;
+                }
                 if self.table.rows.is_empty() {
                     ui.label(RichText::new(self.tab.empty()).color(t.text_dim));
                     self.rows_drawn = 0;
@@ -361,6 +494,9 @@ impl Reports {
                     x += w;
                 }
                 let tab = self.tab;
+                let items = std::mem::take(&mut self.items);
+                let writable = self.writable;
+                let mut note = None;
                 let mut drawn = 0;
                 egui::ScrollArea::vertical().id_salt("ecad.reports.rows").auto_shrink([false, false]).show_rows(
                     ui,
@@ -391,7 +527,21 @@ impl Reports {
                             let resp = resp.accessible_name(format!("ecad.reports.{}.row.{i}", tab.name()));
                             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
                             let resp = if tip.is_empty() { resp } else { resp.on_hover_text(tip.join("\n")) };
-                            if resp.double_clicked() {
+                            // Brief 047: an item row has no page; its menu deletes it.
+                            let item = if tab == Tab::Bom { self.shown.get(i).and_then(|k| items.get(*k).copied().flatten()) } else { None };
+                            if let Some(c) = item {
+                                if resp.clicked() || resp.double_clicked() {
+                                    note = Some(ITEM_NO_PAGE.to_string());
+                                }
+                                resp.context_menu(|ui| {
+                                    let d = ui.add_enabled(writable, egui::Button::new("Delete item"));
+                                    let d = d.accessible_name(format!("ecad.reports.bom.row.{i}.delete"));
+                                    if d.clicked() {
+                                        out = Some(Out::Run(format!("bomitem {}", serde_json::json!({"item": c.hex(), "delete": true}))));
+                                        ui.close();
+                                    }
+                                });
+                            } else if resp.double_clicked() {
                                 out = Some(Out::Select(tab, i));
                             } else if resp.clicked() {
                                 out = Some(Out::Goto(tab, i));
@@ -399,6 +549,10 @@ impl Reports {
                         }
                     },
                 );
+                self.items = items;
+                if note.is_some() {
+                    self.note = note;
+                }
                 self.rows_drawn = drawn;
             });
         if !open {
@@ -410,7 +564,11 @@ impl Reports {
     fn widths(&self, ui: &egui::Ui) -> Vec<f32> {
         let total = ui.available_width().max(200.0);
         let weights: Vec<f32> = match self.tab {
-            Tab::Bom => vec![1.2, 0.5, 2.0, 2.5, 1.2, 1.6],
+            Tab::Bom => {
+                let mut v = vec![1.2, 0.6, 2.0, 2.5, 1.2, 1.6];
+                v.extend(std::iter::repeat_n(1.2, self.table.headers.len().saturating_sub(6)));
+                v
+            }
             Tab::Wires => vec![1.0, 1.4, 1.0, 1.4, 1.0, 0.9, 0.8, 0.8, 1.2, 0.9],
             Tab::Cables if self.cores_of.is_some() => vec![0.6, 1.0, 1.4, 1.4, 0.6],
             Tab::Cables => {
@@ -448,6 +606,10 @@ pub enum ScopeKind {
 /// The Print Book dialog (design 024 §4.1).
 #[derive(Debug, Clone, Default)]
 pub struct PrintBook {
+    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    pub host: Option<egui::Rect>,
+    /// Brief 038: its workspace is not shown, so it is not drawn.
+    pub hidden: bool,
     pub scope: ScopeKind,
     /// The folders to choose from: (id hex, path), and the chosen one.
     pub folders: Vec<(String, String)>,
@@ -460,6 +622,9 @@ pub struct PrintBook {
     pub sheets: usize,
     pub unknown: Vec<String>,
     pub flagged: usize,
+    /// Brief 033: what Print Book will note (a continuation number prints its whole page; the
+    /// drawing changed since the newest issue).
+    pub notes: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -487,6 +652,7 @@ impl PrintBook {
             .resizable(false)
             .default_width(420.0)
             .open(&mut open)
+            .hosted(self.host)
             .show(ctx, |ui| {
                 egui::Grid::new("ecad.printbook.grid").num_columns(2).show(ui, |ui| {
                     ui.label("Pages");
@@ -536,6 +702,9 @@ impl PrintBook {
                     });
                     ui.end_row();
                 });
+                for n in &self.notes {
+                    ui.label(RichText::new(n).small().color(WARNING)).accessible_name("ecad.printbook.note");
+                }
                 if self.flagged > 0 {
                     let n = if self.flagged == 1 { "1 value".to_string() } else { format!("{} values", self.flagged) };
                     ui.label(RichText::new(format!("{n} marked ? on generated pages.")).small().color(t.text_dim));

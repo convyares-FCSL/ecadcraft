@@ -51,7 +51,19 @@ pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     let default = read(s, |p, _| Ok(p.last_placed.as_ref().map(|(k, _)| k.clone()))).ok().flatten();
     let default =
         default.and_then(|k| symbols::by_key(&k)).or_else(|| symbols::STARTERS.first()).ok_or_else(|| other("no starter symbols are built in"))?;
-    Ok(Box::new(Safe(Place { stage: Stage::Symbol, default, symbol: None, rotation: 0, mirror: false, join: None, tag: None, last: None })))
+    Ok(Box::new(Safe(Place {
+        stage: Stage::Symbol,
+        default,
+        symbol: None,
+        rotation: 0,
+        mirror: false,
+        join: None,
+        tag: None,
+        last: None,
+        rack: None,
+        slot: None,
+        project: None,
+    })))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +82,10 @@ enum Stage {
     ConfirmJoin(ComponentId, String),
     /// The typed device does not exist: make it a new device with that tag?
     ConfirmNew(String),
+    /// Brief 045 (design 045 §2.4): which rack a new card goes in.
+    Rack,
+    /// Which slot of that rack.
+    Slot,
 }
 
 struct Place {
@@ -85,11 +101,98 @@ struct Place {
     tag: Option<String>,
     /// The device of the most recent placement in this command.
     last: Option<ComponentId>,
+    /// Brief 045: the rack the next card goes in, once answered (`Some(None)`: no rack).
+    rack: Option<Option<ComponentId>>,
+    /// The slot answered for it (`None`: the next free one).
+    slot: Option<u32>,
+    /// Brief 048: a project symbol typed by its key (its newest version), placed instead of a
+    /// starter: `place {symbol: key}` resolves it the same way.
+    project: Option<ProjectPick>,
+}
+
+/// Why a project symbol is not added to a device by hand (its `join` default says how it joins).
+const PROJECT_JOINS: &str = "A project symbol joins devices as its own Join setting says; place it as a new device.";
+
+/// A project symbol chosen at Place Symbol's first prompt (brief 048, design 048 §8.2).
+#[derive(Debug, Clone)]
+struct ProjectPick {
+    key: String,
+    name: String,
+    def: ecad_model::Definition,
 }
 
 impl Place {
     fn symbol(&self) -> &'static Starter {
         self.symbol.unwrap_or(self.default)
+    }
+
+    /// Take the default (starter) symbol, leaving any project symbol chosen before.
+    fn take_default(&mut self) {
+        self.symbol = Some(self.default);
+        self.project = None;
+    }
+
+    /// The definition the next click places: the project symbol's, else the starter's.
+    fn definition(&self) -> Option<&ecad_model::Definition> {
+        match &self.project {
+            Some(p) => Some(&p.def),
+            None => self.symbol().definition().ok(),
+        }
+    }
+
+    /// Brief 045 (design 045 §2.4): whether the next placement is a new card that still needs its
+    /// rack answered (the project has a rack).
+    fn needs_rack(&self, s: &Session) -> bool {
+        let card = crate::plc::rack::CardType::of_body(self.symbol().key).is_some_and(|t| !t.is_rack());
+        card && self.join.is_none()
+            && self.tag.is_none()
+            && self.rack.is_none()
+            && read(s, |p, _| Ok(!crate::plc::rack::racks(p.ledger.document()).is_empty())).unwrap_or(false)
+    }
+
+    /// Whether the next placement is a new card (a card body, not a rack, joining no device).
+    fn is_card(&self) -> bool {
+        crate::plc::rack::CardType::of_body(self.symbol().key).is_some_and(|t| !t.is_rack()) && self.join.is_none()
+    }
+
+    /// ` in -A01 slot 2` (or ` in no rack`) for a new card whose rack was answered.
+    fn slot_words(&self, s: &Session) -> String {
+        if !self.is_card() {
+            return String::new();
+        }
+        match self.rack {
+            Some(Some(r)) => read(s, |p, _| {
+                let doc = p.ledger.document();
+                let slot = self.slot.or_else(|| crate::plc::rack::next_free_slot(doc, r, None));
+                Ok(match slot {
+                    Some(n) => format!(" in {} slot {n}", devices::tag_words(doc, r)),
+                    None => format!(" in {}", devices::tag_words(doc, r)),
+                })
+            })
+            .unwrap_or_default(),
+            Some(None) => " in no rack".into(),
+            None => String::new(),
+        }
+    }
+
+    /// Go on to the insertion point, asking Rack and Slot first for a new card.
+    fn go_to_point(&mut self, s: &Session) {
+        self.stage = if self.needs_rack(s) { Stage::Rack } else { Stage::Point };
+    }
+
+    /// The rack offered by default: the rack of the last card placed, else the only rack.
+    fn default_rack(&self, s: &Session) -> Option<ComponentId> {
+        read(s, |p, _| {
+            let doc = p.ledger.document();
+            let last = self.last.or_else(|| p.last_placed.as_ref().map(|(_, c)| *c));
+            let of_last = last.and_then(|c| match crate::plc::rack::rack_ref(doc, c) {
+                crate::plc::rack::RackRef::Rack(r) => Some(r),
+                _ => None,
+            });
+            Ok(of_last.or_else(|| crate::plc::rack::default_rack(doc, None).ok()))
+        })
+        .ok()
+        .flatten()
     }
 
     fn placement(&self, at: Vec2) -> Placement {
@@ -99,6 +202,9 @@ impl Place {
     /// What the next click makes: `new device -K03` or `joins -K01 as 13/14`, with the tag and
     /// labels it will draw.
     fn outcome(&self, s: &Session) -> Option<(String, String, Vec<String>)> {
+        if self.project.is_some() {
+            return None;
+        }
         let sym = self.symbol();
         read(s, |p, _| {
             let doc = p.ledger.document();
@@ -135,6 +241,19 @@ impl Place {
             self.stage = Stage::DeviceSymbol(c);
             return Ok(Step::Continue);
         }
+        self.project = None;
+        // Brief 048: a project symbol's key (its newest version), before the starters'.
+        let project = read(s, |p, _| {
+            Ok(symbols::project_by_key(p.ledger.document(), t)
+                .and_then(|v| Some(ProjectPick { key: v.key()?.to_string(), name: v.def.name.clone(), def: v.def.clone() })))
+        })
+        .ok()
+        .flatten();
+        if let Some(pick) = project {
+            self.symbol = Some(self.default);
+            self.project = Some(pick);
+            return Ok(Step::Continue);
+        }
         let found = match symbols::by_key(t) {
             Some(exact) => vec![exact],
             None => symbols::search(t),
@@ -161,7 +280,7 @@ impl Place {
 
     fn list(s: &mut Session) {
         for x in symbols::STARTERS {
-            s.echo(format!("{:<9} {:<28} -{}  {}", x.key, x.name, x.prefix, x.labels().join("/")));
+            s.echo(format!("{:<9} {:<28} -{}  {}", x.key, x.name, x.prefix(), x.labels().join("/")));
         }
     }
 
@@ -170,15 +289,29 @@ impl Place {
             return Err(other(OUT_OF_RANGE));
         }
         let sym = self.symbol();
+        let key = self.project.as_ref().map_or(sym.key, |p| p.key.as_str());
+        let name = self.project.as_ref().map_or(sym.name, |p| p.name.as_str()).to_string();
         let mut params = json!({
-            "symbol": sym.key, "at": [at.x, at.y], "rotation": f64::from(self.rotation), "mirror": self.mirror,
+            "symbol": key, "at": [at.x, at.y], "rotation": f64::from(self.rotation), "mirror": self.mirror,
         });
         if let Some(c) = self.join {
             params["device"] = Value::String(c.hex());
         } else if let Some(t) = &self.tag {
             params["tag"] = Value::String(t.clone());
         }
+        // Brief 045: the rack and slot answered for a new card.
+        match self.rack {
+            Some(Some(r)) => {
+                params["rack"] = Value::String(r.hex());
+                if let Some(n) = self.slot {
+                    params["slot"] = json!(n);
+                }
+            }
+            Some(None) => params["rack"] = Value::Null,
+            None => {}
+        }
         let r = commit(s, "place", &params)?;
+        let card_placed = r.get("rack").is_some();
         let tag = r.get("tag").and_then(Value::as_str).unwrap_or_default().to_string();
         let labels: Vec<&str> =
             r.get("terminals").and_then(Value::as_array).into_iter().flatten().filter_map(|t| t.get("label").and_then(Value::as_str)).collect();
@@ -193,14 +326,17 @@ impl Place {
             let pages: Vec<String> =
                 r.get("pages").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_u64).map(|n| n.to_string()).collect();
             let pages = if pages.len() == 1 { format!("page {}", pages.join(", ")) } else { format!("pages {}", pages.join(", ")) };
-            s.echo(format!("Added {} {} to {tag} (now on {pages}).", sym.name, labels.join("/")));
+            s.echo(format!("Added {name} {} to {tag} (now on {pages}).", labels.join("/")));
             self.join = component;
-        } else {
-            s.echo(format!("Placed {tag} ({}) with connection points {}.", sym.name, labels.join(", ")));
+        } else if !card_placed {
+            s.echo(format!("Placed {tag} ({name}) with connection points {}.", labels.join(", ")));
         }
         // A typed tag names one device; the next click makes a new one with the next number.
         self.tag = None;
         self.last = component;
+        // Brief 045: the next card goes in the same rack's next free slot (the Rack keyword changes
+        // it), so Enter at the insertion point still ends the command.
+        self.slot = None;
         Ok(Step::Continue)
     }
 
@@ -210,7 +346,7 @@ impl Place {
         if self.last.is_some() {
             return self.last;
         }
-        let prefix = self.symbol().prefix;
+        let prefix = self.symbol().prefix();
         read(s, |p, _| {
             let doc = p.ledger.document();
             Ok(p.last_placed
@@ -242,31 +378,34 @@ impl Place {
                         } else {
                             self.mirror = !self.mirror;
                         }
-                        self.symbol = Some(self.default);
-                        self.stage = Stage::Point;
+                        self.take_default();
+                        self.go_to_point(s);
                         Ok(Step::Continue)
                     }
                     Input::Enter => {
-                        self.symbol = Some(self.default);
+                        self.take_default();
                         self.join = device;
-                        self.stage = Stage::Point;
+                        self.go_to_point(s);
                         Ok(Step::Continue)
                     }
                     Input::Text(t) => {
                         self.choose(s, &t)?;
                         if self.symbol.is_some() && matches!(self.stage, Stage::Symbol | Stage::DeviceSymbol(_)) {
                             if let Some(c) = device {
+                                if self.project.is_some() {
+                                    return Err(other(PROJECT_JOINS));
+                                }
                                 read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())).map_err(other)?;
                                 self.join = Some(c);
                             }
-                            self.stage = Stage::Point;
+                            self.go_to_point(s);
                         }
                         Ok(Step::Continue)
                     }
                     // A click takes the default symbol and places it there (click-first, design 008).
                     Input::Point(p) if device.is_none() => {
-                        self.symbol = Some(self.default);
-                        self.stage = Stage::Point;
+                        self.take_default();
+                        self.go_to_point(s);
                         self.place_at(s, p)
                     }
                     _ => Ok(Step::Continue),
@@ -282,7 +421,14 @@ impl Place {
                     Ok(Step::Continue)
                 }
                 Input::Keyword(k) if k == "Device" => {
+                    if self.project.is_some() {
+                        return Err(other(PROJECT_JOINS));
+                    }
                     self.stage = Stage::Device;
+                    Ok(Step::Continue)
+                }
+                Input::Keyword(k) if k == "Rack" && self.is_card() => {
+                    self.stage = Stage::Rack;
                     Ok(Step::Continue)
                 }
                 Input::Keyword(k) if k == "Tag" => {
@@ -297,21 +443,21 @@ impl Place {
             Stage::Device => match i {
                 Input::Keyword(k) if k == "New" => {
                     self.join = None;
-                    self.stage = Stage::Point;
+                    self.go_to_point(s);
                     Ok(Step::Continue)
                 }
                 // The default device's keyword, clicked or typed: the same as typing its tag.
                 Input::Keyword(k) => self.step(s, Input::Text(k)),
                 Input::Enter => {
                     self.join = self.default_device(s);
-                    self.stage = Stage::Point;
+                    self.go_to_point(s);
                     Ok(Step::Continue)
                 }
                 Input::Text(t) => {
                     let sym = self.symbol();
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::tag::normalise(&t, devices::padding(doc))?;
+                        let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
                         let holder = devices::holder_of(doc, &normal, None);
                         if let Some(c) = holder {
                             devices::join_labels(doc, c, sym, &Default::default())?;
@@ -322,7 +468,7 @@ impl Place {
                     match holder {
                         Some(c) => {
                             self.join = Some(c);
-                            self.stage = Stage::Point;
+                            self.go_to_point(s);
                         }
                         None => self.stage = Stage::ConfirmNew(normal),
                     }
@@ -332,13 +478,13 @@ impl Place {
             },
             Stage::Tag => match i {
                 Input::Enter => {
-                    self.stage = Stage::Point;
+                    self.go_to_point(s);
                     Ok(Step::Continue)
                 }
                 Input::Text(t) => {
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::tag::normalise(&t, devices::padding(doc))?;
+                        let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
                         Ok((devices::holder_of(doc, &normal, None), normal))
                     })
                     .map_err(other)?;
@@ -347,7 +493,7 @@ impl Place {
                         None => {
                             self.tag = Some(normal);
                             self.join = None;
-                            self.stage = Stage::Point;
+                            self.go_to_point(s);
                         }
                     }
                     Ok(Step::Continue)
@@ -362,7 +508,7 @@ impl Place {
                     })?;
                     self.join = Some(c);
                     self.tag = None;
-                    self.stage = Stage::Point;
+                    self.go_to_point(s);
                     Ok(Step::Continue)
                 }
                 (Some(false), _) => {
@@ -375,7 +521,7 @@ impl Place {
                 (Some(true), _) | (None, Input::Enter) => {
                     self.tag = Some(t);
                     self.join = None;
-                    self.stage = Stage::Point;
+                    self.go_to_point(s);
                     Ok(Step::Continue)
                 }
                 (Some(false), _) => {
@@ -384,6 +530,42 @@ impl Place {
                 }
                 _ => Ok(Step::Continue),
             },
+            Stage::Rack => {
+                let answer = match i {
+                    Input::Enter => Some(self.default_rack(s)),
+                    Input::Keyword(k) | Input::Text(k) if k.trim().eq_ignore_ascii_case("none") => Some(None),
+                    Input::Keyword(k) | Input::Text(k) => {
+                        let r = read(s, |p, _| crate::plc::rack::rack_param(p.ledger.document(), &json!(k))).map_err(other)?;
+                        Some(Some(r))
+                    }
+                    _ => None,
+                };
+                if let Some(a) = answer {
+                    self.rack = Some(a);
+                    self.slot = None;
+                    self.stage = if a.is_some() { Stage::Slot } else { Stage::Point };
+                }
+                Ok(Step::Continue)
+            }
+            Stage::Slot => {
+                let typed = match i {
+                    Input::Enter => None,
+                    Input::Text(t) | Input::Keyword(t) => Some(t),
+                    _ => return Ok(Step::Continue),
+                };
+                let Some(Some(r)) = self.rack else {
+                    self.stage = Stage::Point;
+                    return Ok(Step::Continue);
+                };
+                let params = match &typed {
+                    Some(v) => json!({"rack": r.hex(), "slot": v.trim()}),
+                    None => json!({"rack": r.hex()}),
+                };
+                let at = read(s, |p, _| crate::plc::rack::place_target(p.ledger.document(), &params, None)).map_err(other)?;
+                self.slot = at.map(|(_, n)| n);
+                self.stage = Stage::Point;
+                Ok(Step::Continue)
+            }
         }
     }
 }
@@ -402,10 +584,12 @@ impl Interactive for Place {
             Stage::Point => {
                 let rot = format!("rotation {}{}", self.rotation, if self.mirror { ", mirrored" } else { "" });
                 let what = match self.outcome(s) {
-                    Some((w, _, _)) => format!("{w}, {rot}"),
+                    Some((w, _, _)) => format!("{w}{}, {rot}", self.slot_words(s)),
                     None => rot,
                 };
-                prompt(format!("Specify insertion point ({what})"), Accept::POINT, &["Rotate", "Mirror", "Device", "Tag"], None)
+                let keywords: &[&str] =
+                    if self.is_card() { &["Rotate", "Mirror", "Device", "Tag", "Rack"] } else { &["Rotate", "Mirror", "Device", "Tag"] };
+                prompt(format!("Specify insertion point ({what})"), Accept::POINT, keywords, None)
             }
             Stage::Device => {
                 let default = self
@@ -429,6 +613,27 @@ impl Interactive for Place {
             Stage::ConfirmNew(t) => {
                 prompt(format!("No device {t}. Make it a new device with that tag?"), Accept::TEXT, &["Yes", "Choose another"], Some("Yes".into()))
             }
+            Stage::Rack => {
+                let tags: Vec<String> = read(s, |p, _| {
+                    let doc = p.ledger.document();
+                    Ok(crate::plc::rack::racks(doc).into_iter().take(8).map(|c| devices::tag_words(doc, c)).collect())
+                })
+                .unwrap_or_default();
+                let default = self
+                    .default_rack(s)
+                    .and_then(|c| read(s, |p, _| Ok(devices::tag_words(p.ledger.document(), c))).ok())
+                    .unwrap_or_else(|| "None".into());
+                let mut keywords: Vec<&str> = tags.iter().map(String::as_str).collect();
+                keywords.push("None");
+                prompt("Rack", Accept::TEXT, &keywords, Some(default))
+            }
+            Stage::Slot => {
+                let next = match self.rack {
+                    Some(Some(r)) => read(s, |p, _| Ok(crate::plc::rack::next_free_slot(p.ledger.document(), r, None))).ok().flatten(),
+                    _ => None,
+                };
+                prompt("Slot", Accept::TEXT, &[], next.map(|n| n.to_string()))
+            }
         }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
@@ -441,7 +646,7 @@ impl Interactive for Place {
             return Vec::new();
         }
         let pl = self.placement(cursor);
-        let Ok(def) = self.symbol().definition() else { return Vec::new() };
+        let Some(def) = self.definition() else { return Vec::new() };
         def.graphics.iter().filter_map(|g| super::forms::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
     }
     /// Its terminal rings, tag and terminal labels at their would-be positions.
@@ -451,12 +656,14 @@ impl Interactive for Place {
         }
         let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
         let pl = self.placement(cursor);
-        let Ok(def) = self.symbol().definition() else { return Vec::new() };
+        let Some(def) = self.definition() else { return Vec::new() };
         let mut out: Vec<Entity> =
             def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI)).collect();
         if let Some((_, tag, labels)) = self.outcome(s) {
             let at: Vec<(TextOf, String, ecad_model::Pt)> = def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
-            for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at) {
+            // The project's sizes (design 031 §3.2), as the page will draw them.
+            let Ok(sizes) = read(s, |p, _| Ok(devices::TagSizes::of(p.ledger.document()))) else { return out };
+            for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at, sizes) {
                 let e = devices::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
                 out.push(preview_entity(s, e.kind, TERMINAL_ACI));
             }
@@ -621,7 +828,7 @@ impl Props {
                     if key == "tag" {
                         let holder = read(s, |p, _| {
                             let doc = p.ledger.document();
-                            let normal = ecad_model::tag::normalise(&t, devices::padding(doc))?;
+                            let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
                             Ok(devices::holder_of(doc, &normal, Some(c)).map(|h| (h, normal)))
                         })
                         .map_err(other)?;

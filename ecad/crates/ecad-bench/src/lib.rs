@@ -15,14 +15,21 @@
 //! Peak memory is not measured (it cannot be read cheaply on Windows without new dependencies).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod bom;
+pub mod connectors;
 pub mod generate;
 pub mod history;
 pub mod measure;
 pub mod outputs;
+pub mod plc;
 pub mod release;
 pub mod report;
 pub mod strips;
+pub mod styles;
+pub mod symbols;
+pub mod text;
 pub mod v2;
+pub mod wires_nets;
 
 use std::path::{Path, PathBuf};
 
@@ -116,29 +123,25 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             return Err(format!("tier {}: the lean and churned histories end in different documents", tier.name));
         }
         for g in [&lean, &churned] {
+            // Written straight in the version 2 format the app opens; an earlier file there (a
+            // stale one from an older build included) is replaced, never converted.
             let path = folder.join(format!("{}-{}.ecad", tier.name, g.variant.name()));
             measure::claim(&path)?;
-            let bytes = g.file_bytes()?;
-            std::fs::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+            eprintln!("{} {}: writing {}…", tier.name, g.variant.name(), path.display());
+            v2::write(g, &path)?;
             paths.push((g.variant, path));
         }
     }
     let mut rows = Vec::new();
     for (variant, path) in paths {
-        // The app opens version 2 files (brief 021): convert first (timed), the converter's checks
-        // included.
-        let v2_path = path.with_file_name(format!("{}-{}.v2.ecad", tier.name, variant.name()));
-        measure::claim(&v2_path)?;
-        eprintln!("{} {}: converting to {}…", tier.name, variant.name(), v2_path.display());
-        let convert_ms = v2::convert(&path, &v2_path)?;
         eprintln!("{} {}: measuring {} ({runs} runs of each)…", tier.name, variant.name(), path.display());
-        let measured = measure::measure_with(&path, &v2_path, runs, scratch);
+        let measured = measure::measure(&path, runs, scratch);
         // The opens leave an empty lock file beside a kept project: remove it once released.
         measure::release_lock_file(&path);
-        measure::release_lock_file(&v2_path);
         let (measured, _) = measured?;
         eprintln!("{} {}: measuring version 2…", tier.name, variant.name());
-        let v2m = v2::measure(&v2_path, runs, scratch, convert_ms);
+        let v2_path = path;
+        let v2m = v2::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
         let compression = v2::compression(&v2_path)?;
         eprintln!("{} {}: measuring history and branches…", tier.name, variant.name());
@@ -149,8 +152,17 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         measure::release_lock_file(&v2_path);
         eprintln!("{} {}: measuring terminal strips and cable cores…", tier.name, variant.name());
         let strips = strips::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring text placement and styles…", tier.name, variant.name());
+        let text = text::measure(&v2_path, runs, scratch);
         eprintln!("{} {}: measuring the pre-release check and the release…", tier.name, variant.name());
         let rel = release::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring wire joins, cable continuation and wire labels…", tier.name, variant.name());
+        let wires = wires_nets::measure(&v2_path, runs, scratch);
+        measure::release_lock_file(&v2_path);
+        eprintln!("{} {}: measuring PLC racks and cards…", tier.name, variant.name());
+        let plc = plc::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
         rows.push(report::Row {
             tier: tier.name.into(),
@@ -162,24 +174,24 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             outputs: Some(outs?),
             strips: Some(strips?),
             release: Some(rel?),
+            text: Some(text?),
+            wires: Some(wires?),
+            plc: Some(plc?),
         });
     }
     Ok(rows)
 }
 
-/// Generate the 25-page project (lean), convert it, and time Print Book and release on it.
+/// Generate the 25-page project (lean), write it, and time Print Book and release on it.
 ///
 /// # Errors
-/// Generation, conversion or a measurement failed.
+/// Generation, writing or a measurement failed.
 pub fn measure_print(folder: &Path, scratch: &Path, runs: usize) -> Result<release::MeasuredPrint, String> {
     eprintln!("{}: generating the 25-page project…", PRINT_TIER.name);
     let g = generate(PRINT_TIER, Variant::Lean)?;
-    let path = folder.join(format!("{}-{}.ecad", PRINT_TIER.name, Variant::Lean.name()));
-    measure::claim(&path)?;
-    std::fs::write(&path, g.file_bytes()?).map_err(|e| format!("{}: {e}", path.display()))?;
-    let v2_path = path.with_file_name(format!("{}-{}.v2.ecad", PRINT_TIER.name, Variant::Lean.name()));
+    let v2_path = folder.join(format!("{}-{}.ecad", PRINT_TIER.name, Variant::Lean.name()));
     measure::claim(&v2_path)?;
-    v2::convert(&path, &v2_path)?;
+    v2::write(&g, &v2_path)?;
     eprintln!("{}: measuring Print Book and release ({runs} runs)…", PRINT_TIER.name);
     let m = release::measure_print(&v2_path, runs, scratch);
     measure::release_lock_file(&v2_path);

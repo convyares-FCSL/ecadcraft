@@ -21,6 +21,7 @@ use crate::doc::{Document, End, Properties};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
+use crate::style::{StyleCatalogues, StyleLayer, StyleRef};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
 fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) -> bool, out: &mut Vec<Op>) {
@@ -134,13 +135,15 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             }
         }
     }
-    // Components: properties in place; another definition is a remove and an add.
+    // Components: properties in place; another definition is `SetComponentDefinition` (brief 048,
+    // FP5), after the definitions are embedded.
     for id in ids(&from.components, &to.components, scope.map(|s| &s.components)) {
         match (from.components.get(&id), to.components.get(&id)) {
-            (Some(a), Some(b)) if a.definition == b.definition => props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes),
             (Some(a), Some(b)) => {
-                removes.push(Op::DeleteComponent { id, component: a.clone() });
-                adds.push(Op::CreateComponent { id, component: b.clone() });
+                props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes);
+                if a.definition != b.definition {
+                    changes.push(Op::SetComponentDefinition { id, before: a.definition, after: b.definition });
+                }
             }
             (Some(a), None) => removes.push(Op::DeleteComponent { id, component: a.clone() }),
             (None, Some(b)) => adds.push(Op::CreateComponent { id, component: b.clone() }),
@@ -245,6 +248,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         if from.settings != to.settings {
             changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
         }
+        styles(from, to, &mut changes);
     }
 
     let mut out = Vec::with_capacity(removes.len() + adds.len() + changes.len());
@@ -258,6 +262,48 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     out
 }
 
+/// `SetStyle` ops turning `a`'s records into `b`'s, for `layer`.
+fn style_records(layer: StyleLayer, a: &StyleCatalogues, b: &StyleCatalogues, out: &mut Vec<Op>) {
+    let cats: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    for cat in cats {
+        let (ra, rb) = (a.get(cat), b.get(cat));
+        let ids: BTreeSet<&StyleRef> = ra.into_iter().flat_map(|m| m.keys()).chain(rb.into_iter().flat_map(|m| m.keys())).collect();
+        for id in ids {
+            let (before, after) = (ra.and_then(|m| m.get(id)).cloned(), rb.and_then(|m| m.get(id)).cloned());
+            if before != after {
+                out.push(Op::SetStyle { layer, catalogue: cat.clone(), id: id.clone(), before, after });
+            }
+        }
+    }
+}
+
+/// The standard and the style records (brief 050a), in an order each op's precondition holds:
+/// a new standard's header before its contents, a removed one's contents before its header.
+fn styles(from: &Document, to: &Document, out: &mut Vec<Op>) {
+    let all = |_: &str| true;
+    let empty_props = Properties::new();
+    let empty_cats = StyleCatalogues::new();
+    let (fs, ts) = (from.standard.as_ref(), to.standard.as_ref());
+    let (fh, th) = (fs.map(|s| s.header.clone()), ts.map(|s| s.header.clone()));
+    let contents = |out: &mut Vec<Op>| {
+        props(ObjectRef::Standard, fs.map_or(&empty_props, |s| &s.values), ts.map_or(&empty_props, |s| &s.values), &all, out);
+        style_records(StyleLayer::Standard, fs.map_or(&empty_cats, |s| &s.styles), ts.map_or(&empty_cats, |s| &s.styles), out);
+    };
+    match (fs, ts) {
+        (Some(_), None) => {
+            contents(out);
+            out.push(Op::SetStandard { before: fh, after: None });
+        }
+        _ => {
+            if fh != th {
+                out.push(Op::SetStandard { before: fh, after: th });
+            }
+            contents(out);
+        }
+    }
+    style_records(StyleLayer::Project, &from.styles, &to.styles, out);
+}
+
 /// The objects `ops` name, by kind and ID (for counting what a restore changes).
 pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
     let mut out = BTreeMap::new();
@@ -266,7 +312,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::AddPage { id, .. } | Op::RemovePage { id, .. } => ("page", id.0),
             Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => ("layer", id.0),
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => ("item", id.0),
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => ("component", id.0),
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => ("component", id.0),
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),
@@ -282,6 +328,12 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
                 ObjectRef::Cable(c) => ("cable", c.0),
                 ObjectRef::Page(c) => ("page", c.0),
                 ObjectRef::Project => ("project", 0),
+                ObjectRef::Standard => ("standard", 0),
+            },
+            Op::SetStandard { .. } => ("standard", 0),
+            Op::SetStyle { id, .. } => match id {
+                StyleRef::Own(n) => ("style", *n),
+                StyleRef::Builtin(w) => ("style", w.bytes().fold(0u128, |h, b| h.wrapping_mul(31).wrapping_add(u128::from(b)))),
             },
             Op::SetProjectSettings { .. } => ("settings", 0),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => continue,

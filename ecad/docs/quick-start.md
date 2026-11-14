@@ -11,296 +11,92 @@ any change that affects these instructions (see `ecad/CLAUDE.md`).
 > (brief 016; there is no top banner any more). An **ECAD** tab in Tool Sets has buttons for the
 > ECAD commands; most work by clicking, with prompts at CADCraft's command line. A **Developer** section at the bottom of the
 > panel (folded) holds the ECAD command field for JSON forms, the read-only debugger (stage 2b)
-> drawn inline, Inspect Project's summary and snapshot export; none of them is shown unless you
-> unfold it.
+> drawn inline, Inspect Project's summary, snapshot export and the `ui.primitives` page (every
+> interface widget in every state, brief 037); none of them is shown unless you unfold it.
 
 **Words:** a device's landing point for a wire is a **connection point** (`-K01:A1`); a
 **terminal** is only the DIN-rail terminal device (`-X01:1`). See `ecad/docs/glossary.md`.
 
 ## Which revision this describes, and what has been tried
 
-**Brief 026 (design `ecad/docs/design/026.md`), on `feature/numbering`, not yet in `dev`:** one
-numbering mechanism for devices, cables and wires. **Renumber…** (ECAD tab, new **Numbering**
-group; the Devices tab's header; a folder's right-click **Renumber in this folder…**; **Renumber
-Wires** opens it with Wires chosen) previews old → new in **drawing order** (page, then column,
-then row of the sheet grid) and applies it as one transaction (one `u`). Typing a tag fixes it
-(**Fixed** beside Tag releases it); a taken tag offers **Swap** first, then **Make it the same
-device**, then **Use -K08**. **Project settings → Numbering → Provisional tags until Finalise**
-gives new devices `-K?1`, cables `-W?1` and new nets `24V-?` (orange) until **Finalise
-numbering**; Checks lists them and Issue Revision asks **Finalise numbering now** or **Issue
-anyway**. New cables are tagged `-W01`… automatically; devices and cables share one tag namespace.
-A merge's tag conflict offers **Make them one device**. Section 5M describes it.
-- *Automated checks:* `ecad/crates/ecad-model/src/numbering.rs` (drawing order, scopes, fixed,
-  provisional, hostile requests), `tag.rs` (provisional form, the high-water reset), `merge.rs`
-  (Make them one, provisional duplicates), `ecad/apps/ecad-mcp/tests/all/numbering_contracts.rs`
-  (every new or changed write through `execute`, its transaction and author, writes off), and
-  `ecad/crates/ecad-cadcraft/tests/all/numbering_contracts.rs` (labels, Checks, save and reopen).
-- *Agent-observed:* the worker looked at the headless screenshots `026-*.png`; no agent has
-  clicked through the live window.
-- *Owner-tried:* not yet.
+What each brief added, what was tried and how to try it by clicking is in its own file in
+[`quick-start/`](quick-start/), one per brief (`<NNN>-<name>.md`, the brief's own file name). The
+list below is the whole folder, by phase, as of the phase-end tidy-up after M1 and UI rev 3
+(2026-11-14). During a phase a lane writes only its own file, and this list is brought up to date
+at the next tidy-up (`ecad/CLAUDE.md`, "Branches and testing"), so it can lag behind the folder.
+UI rev 3 redrew the frame, panels, inspector, tools and canvas that UI rev 2 introduced: where the
+two disagree on what you see, the UI rev 3 files describe the app as it is.
 
-**Brief 028 (design `ecad/docs/design/028.md`), on `feature/terminal-strips`, not yet in `dev`:**
-a terminal clicked on a wire splits it and both halves land on it; **Place Terminals** puts one
-terminal on every wire a line crosses; **Draw Bridge** links two terminals of a strip. A strip's
-**Terminals offered** (`12+2PE`) gives spare positions; a cable's **Cores** (or its type, `7G1.5`)
-gives used, spare and over cores, and a new member takes the next free core. The terminal plan
-and the cable schedule are in Reports and on generated pages; the BOM counts a strip per terminal
-type; five Checks rows have fixes. Section 5O describes it.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/strips_contracts.rs` (design 028 §12
-  A–H, L, the update map and the FP5 finding; the kept strips equal a rebuild after the edits,
-  and in verify mode after every commit), `ecad/apps/ecad-mcp/tests/all/strips_contracts.rs` (the
-  brief 011 rule), unit tests of the offer and core grammars in
-  `ecad/crates/ecad-cadcraft/src/strips.rs`.
-- *Agent-observed:* none yet; no agent has clicked through the live window.
-- *Owner-tried:* not yet.
+**Foundations: the trial, files, agents and speed**
 
-**Brief 024 (design `ecad/docs/design/024.md`), on `feature/outputs`, not yet in `dev`:** a
-device's **location** (`+CP1`) is its own value, else the **location box** its main symbol sits
-in, else its page's, else the project's; Properties says where it comes from (`+JB1 (from box on
-3)`). Location boxes are dashed rectangles or closed polylines labelled `+…`, drawn with
-**Location Box** (ECAD tab) or made from an existing closed polyline; what they hold updates live,
-and nothing is written on the devices. A symbol drawn away from its device's location shows the
-prefix (`+CP1-K01`). **Reports** (BOM, wires, cables, each exported as Excel-safe CSV) and
-**Print Book** (one PDF of every page, a folder or a page list) are buttons in the PROJECT panel's
-header; its **v** beside **+** adds generated pages: Cover, Contents, Revision list, BOM by
-location. Section 5K describes it.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/outputs_contracts.rs` (precedence, live
-  boxes, innermost wins, own value kept and flagged with its fix, the prefix, reports and CSV,
-  generated pages and overflow, Print Book; every edit's kept models equal a fresh build),
-  `ecad/apps/ecad-mcp/tests/all/outputs_contracts.rs` (MCP writes as the agent, refused with writes
-  off; reports and printing read), `ecad/apps/ecad-mcp/tests/all/demo.rs`
-  (`the_demo_locations_reports_and_generated_pages`), and `ecad/apps/ecad-trial/tests/all/outputs_ui.rs`
-  (the windows, headless, with screenshots).
-- *Agent-observed:* the worker looked at the headless screenshots `024-*.png`; no agent has
-  clicked through the live window.
-**Brief 025 (design `ecad/docs/design/025.md`), on `feature/cross-references`, not yet in `dev`:**
-a contact shows where its coil is (`100-B-3`) and a coil shows a **contact table** under it: one
-row per pole, power then auxiliary, with each pole's place, the poles the part offers that nobody
-drew (grey, `—`) and those drawn beyond the offer (red, and a Checks warning). A device's
-**Contacts offered** (`3P+1NO+1NC`) and **Contact table** placement are set in Properties; Move
-Mirror Table moves the table; Go to Reference follows contacts and coils both ways. Cable
-references now run on the same reference index with no visible change. Section 5L describes it.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/xref_contracts.rs` (design 025 §10
-  checks A–G, J, K, and the index against a rebuild after every commit in verify mode),
-  `ecad/apps/ecad-mcp/tests/all/xref_contracts.rs` (the brief 011 rule), unit tests of the
-  `contacts` grammar and `mirror` values in `ecad/crates/ecad-cadcraft/src/xref.rs`.
-- *Agent-observed:* the worker looked at the headless screenshots `025-coil-table.png`,
-  `025-contacts.png`, `025-props.png` and `025-checks.png`; no agent has clicked through the live
-  window.
-- *Owner-tried:* not yet.
+- [003: windows trial and docs](quick-start/003-windows-trial-and-docs.md)
+- [008: usability mouse tools](quick-start/008-usability-mouse-tools.md)
+- [011: agent access mcp](quick-start/011-agent-access-mcp.md)
+- [012: load benchmark](quick-start/012-load-benchmark.md)
+- [015: startup timing](quick-start/015-startup-timing.md)
+- [016: project tab](quick-start/016-project-tab.md)
+- [017: fast tests](quick-start/017-fast-tests.md)
+- [021: container v2 redb](quick-start/021-container-v2-redb.md)
 
-**Brief 020b (design `ecad/docs/design/020.md` §4–§6), on `feature/history-merge`, not yet in
-`dev`:** a branch is **merged into main** (or into the branch it came from), and a branch is
-**updated from main**, through a dialog that previews the changes and lists each conflict with an
-explicit choice (nothing preselected; **Keep main for all** / **Keep branch for all**; **Edit**
-for text). The merge is one step on main, drawn as a join in the History graph; a plain `u` of a
-merge asks first (**Undo merge**), and undoing it reopens the branch. The branch bar's **Merge
-into main…** and **Update from main…** buttons work now (they were disabled in 020a); so do
-Revisions' **Merge into main…**, the History tab's **⋯** entries and a Now row's right-click.
-A branch's first save writes its first snapshot, so switching to it costs about an open. The
-History graph reads 200 rows and the next 200 when scrolled to the end; a version's details name
-the devices it changed (`-K05 added`); **F2** renames the branch shown. Section 5J steps 3, 5 and
-9–11 describe it.
-- *Automated checks:* `ecad/crates/ecad-file/tests/all/merge_store_contracts.rs` (the merge record,
-  the merge index and the merged status through merge, undo and redo across saves, the first-save
-  snapshot), `ecad/apps/ecad-mcp/tests/all/merge_contracts.rs` (merge, update, a conflict refused
-  without a choice and merged with one, undo merge, writes off), the merge engine's unit tests in
-  `ecad/crates/ecad-model/src/merge.rs`, and `ecad/apps/ecad-trial/tests/all/merge_ui.rs` (the
-  branch bar's Merge into main…, the dialog with one conflict, Merge, the join, Undo merge asked).
-- *Agent-observed:* the worker looked at the headless screenshots `020-merge.png` and
-  `020-undomerge.png`; no agent has clicked through the live window.
-- *Owner-tried:* not yet.
+**Cables**
 
-**Brief 020a (design `ecad/docs/design/020.md`), merged into `dev` (PR #48):** the
-project's history is a **History** tab in the PROJECT panel: a graph of the main line with its
-versions and issued revisions, and branches drawn from where they start. Select a row to see it,
-**Show** it read-only, **Restore** it (one new step, undoable), make a **New version**, and work
-on **branches** (create, rename, switch with **Save and switch**, archive, reopen). A project
-reopens on the branch you last used; the window title and a branch bar say which branch is shown
-once there is more than one. Section 5J describes it.
-- *Automated checks:* `ecad/crates/ecad-file/tests/all/branches_contracts.rs` (branch rows,
-  switching, reopening on the last branch, snapshots on a branch, deep branches, Verify, readers
-  ignoring unknown optional fields), `ecad/apps/ecad-mcp/tests/all/history_contracts.rs` (every
-  history and branch command through MCP, refused with writes off), and the unit tests of the
-  graph's order and lanes in `ecad/crates/ecad-cadcraft/src/history.rs`.
-- *Agent-observed:* not yet clicked through by an agent in the live window.
-- *Owner-tried:* not yet.
+- [004: cable slash](quick-start/004-cable-slash.md)
+- [005: cable views](quick-start/005-cable-views.md)
+- [009: cable look and cores](quick-start/009-cable-look-and-cores.md)
+- [010: cable references](quick-start/010-cable-references.md)
 
-**Brief 021 (container v2 on redb, EEP-0005), on `feature/container-v2` (built on
-`dev`, brief 022 included), not yet in `dev`:** a `.ecad` file is now one **redb** database. Saving writes
-one transaction in a few milliseconds and opening reads the latest snapshot and the changes after
-it, so both stay fast as the history grows. A version 1 file is **offered** for conversion when
-you open it (a new `<name>.v2.ecad`, the original untouched), or converted with `ecad upgrade`.
-`ecadinspect` shows a version 2 file's tables, branches, log, versions and chunks, and exports the
-history as version 1 JSON Lines. The debugger gains **Storage** and **Branches** views. Sections
-7, 7B, 7C, 8 and "Measuring load time" describe it.
-- *Automated checks:* `ecad/crates/ecad-file/tests/all/container_v2.rs` (reopen, saves and
-  snapshots, versions and revisions, the append-only API, damage),
-  `ecad/crates/ecad-file/tests/all/container_crash.rs` (power loss, torn writes and process kills,
-  in the slow set), `ecad/crates/ecad-model/tests/all/ledger_base.rs` (a project opened from a
-  snapshot undoes and rebuilds exactly as a replayed one), `ecad/apps/ecad-cli/tests/all/cli_contracts.rs`
-  (`ecad upgrade`), `ecad/dev/ecad-inspector/tests/all/cli_contracts.rs` (every `ecadinspect`
-  view, `export-jsonl` read back by version 1; moved there by brief 029), and the
-  debugger checks in `ecad/crates/ecad-cadcraft/tests/all/debugger.rs` and
-  `ecad/apps/ecad-trial/tests/all/debugger.rs`.
-- *Agent-observed:* the worker ran the crash suite and the benchmark; no agent has clicked through
-  the live window.
-- *Owner-tried:* not yet.
+**Devices, pages, numbering and outputs**
 
-**Brief 022 (design `ecad/docs/design/022.md`), on `feature/connectivity`, not yet in `dev`:**
-ECAD knows what is connected. Nets come from the attachments (a T joins only at a junction dot,
-crossings never join, continuations with one name join across pages); every wire shows its net's
-wire number with its cross-section and colour (`24V-04 0.5 BU`); adding a wire never renumbers
-another net; the Project panel has a **Checks** tab. Section 5I describes it, on the demo project.
-- *Automated checks:* `ecad/crates/ecad-model/tests/all/connectivity_contracts.rs` (net rules,
-  numbering rules, a random-op test against a fresh build after every step),
-  `ecad/crates/ecad-cadcraft/tests/all/wiring_contracts.rs` (T, crossing, labels, stable numbers,
-  one row per seeded fault, the kept Checks list against a fresh build),
-  `ecad/apps/ecad-mcp/tests/all/demo.rs` (the demo's numbers) and `mcp_contracts.rs` (every new
-  command through MCP), `ecad/apps/ecad-trial/tests/all/checks_ui.rs` (the Checks tab by label,
-  go-to, Add junction, and the `022-*.png` screenshots).
-- *Agent-observed:* the worker rendered the `022-*.png` screenshots headless (wgpu) and looked at
-  them; no agent has clicked through the live window.
-- *Owner-tried:* not yet.
+- [018: components and tags](quick-start/018-components-and-tags.md)
+- [019: sheets and properties](quick-start/019-sheets-and-properties.md)
+- [020: history and branches](quick-start/020-history-and-branches.md)
+- [022: connectivity and wire numbers](quick-start/022-connectivity-and-wire-numbers.md)
+- [024: outputs](quick-start/024-outputs.md)
+- [025: device cross references](quick-start/025-device-cross-references.md)
+- [026: numbering](quick-start/026-numbering.md)
+- [028: terminal strips](quick-start/028-terminal-strips.md)
+- [031: text](quick-start/031-text.md)
+- [032: wires nets](quick-start/032-wires-nets.md)
+- [033: print project](quick-start/033-print-project.md)
+- [034: component library](quick-start/034-component-library.md)
 
-**Brief 019 (design `ecad/docs/design/019.md`), on `feature/sheets` (built on
-`feature/project-manager`), not yet in `dev`:** every page is an A3 sheet with a lettered and
-numbered grid and a title block; references read `page-column-row` (`105-C-4`); pages have their
-own numbers and sit in folders; project and page properties are edited in CADCraft's
-**Properties** palette and a **Project Properties** dialog; revisions are issued and opened
-read-only. Section 5H describes it; 5D, 5E and 5G changed with it (texts such as `/2.1` now read
-`2-A-6`, and moving a page no longer renumbers it).
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/sheets_contracts.rs` (design 019 checks
-  A–G and J), `ecad/crates/ecad-model/tests/all/sheet_contracts.rs` (folders and their
-  invariants), the round trip in `ecad/crates/ecad-file/tests/all/records_contracts.rs`, check I in
-  `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and
-  `ecad/apps/ecad-trial/tests/all/sheets_ui.rs` (the tree, the Properties section, both dialogs,
-  Rev A and the undo question, by the UI in a headless 1280×800 window, with the eight `019-*.png`
-  screenshots).
-- *Agent-observed:* the worker rendered the `019-*.png` screenshots headless (wgpu) and looked at
-  them; no agent has clicked through the live window.
-- *Owner-tried:* not yet.
+**UI rev 2 (U1 to U4d)**
 
-**Brief 016 (design `ecad/docs/design/016.md`), on `feature/project-manager`, not yet in `dev`:**
-the Project panel, one active page at a time, undo and redo bringing their page to the front, a
-read-only preview of another page, and the top banner replaced by the panel's header and an
-folded **Developer** section at the bottom of the panel (design 016, "Top bar removed"). Sections 4, 5E, 6, 7 and 8 describe it.
-- *Automated checks:* `ecad/apps/ecad-trial/tests/all/project_panel.rs` (design 016 checks A to J by
-  label in a 1280×800 headless window, and the six `016-*.png` screenshots), the one-window and
-  undo checks in `ecad/crates/ecad-cadcraft/tests/all/project_pages.rs`, check K in
-  `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and `the_quick_start_trial_runs_headless`
-  (sections 5 to 7 below).
-- *Agent-observed:* the worker rendered the `016-*.png` reference screenshots headless (wgpu) and
-  looked at them; no agent has clicked through the live window.
-- *Owner-tried:* not yet.
+- [037: ui tokens](quick-start/037-ui-tokens.md)
+- [038: the shell (U2)](quick-start/038-ui-shell.md)
+- [039: the one table (U3)](quick-start/039-ui-table.md)
+- [040: the canvas (U4a)](quick-start/040-ui-canvas.md)
+- [041: the wheel, the intent line and the seven tool groups (U4b)](quick-start/041-ui-wheel-tools.md)
+- [042: the inspector, Settings and Standards (U4c)](quick-start/042-ui-inspector-standards.md)
+- [043: the agent banner and History authors (U4d)](quick-start/043-ui-agent-banner.md)
 
-This guide describes `dev` with stage 2b (the debugger panel, PR #11) and the ECAD tab in Tool
-Sets (PR #12) merged on 2026-10-15, on top of stage 2a, now built on **CADCraft 0.19.0**
-(upstream tag `v0.19.0`, commit `227e3c38`, brief 023, 2026-11-09; egui 0.37, Rust 1.95 or later;
-before that CADCraft 0.15.1, brief 007). The steps below did not change with either sync; the
-Block Editor, REFEDIT and LISP are refused on ECAD pages, and BREAK, TRIM and OOPS are refused
-where they would split or bring back an object with an electrical meaning (section 9). Your trials
-recorded below were on the earlier CADCraft 0.6.2 base, except your click-only trial of brief 008
-on native Windows, which was on 0.15.1.
+**M1**
 
-**Brief 008 (design `ecad/docs/design/008.md`)**, merged into `dev` (PR #16), changed how
-sections 4 to 7 are done: the ECAD tools work by clicking, connection points and wire ends are marked on
-the drawing, and hovering an ECAD object names it. It adds one approved CADCraft change (overlay
-marks drawn by a document's owner, listed in `ecad/UPSTREAM-PATCHES.md`). For it there are
-automated checks and your first click-only trial on native Windows (below); no agent has run it on
-a display.
+- [035: mcp bridge](quick-start/035-mcp-bridge.md)
+- [036: multi level terminals](quick-start/036-multi-level-terminals.md)
+- [044: Connector devices](quick-start/044-connectors.md)
+- [045: PLC racks and cards](quick-start/045-plc.md)
+- [046: graphical terminal-strip pages](quick-start/046-strip-pages.md)
+- [047: BOM completeness](quick-start/047-bom-completeness.md)
+- [048: Symbol builder](quick-start/048-symbol-builder.md)
+- [049: Continuation cross-references](quick-start/049-continuation-refs.md)
+- [050a: the style model (standards and style catalogues)](quick-start/050a-style-model.md)
+- [050b: wire categories](quick-start/050b-wire-categories.md)
+- [051: PLC visuals and the rack overview](quick-start/051-plc-visuals.md)
 
-**Branch `ecad/windows-trial` (brief 003)**, cut from `dev` at `0afaf1d`, makes the trial behave
-natively on Windows: `~` in a typed path is your home folder (on Windows your user profile, such
-as `C:\Users\<you>`, whether or not `HOME` is set) and may be written `~/` or `~\`; the Save As
-dialog suggests `C:\dev\ecad-projects` on Windows (`~/ecad-projects` on Linux) and creates that
-folder the first time you save into it; a reserved device name such as `CON.ecad` is refused;
-typing the project's own file in another letter case saves it without a "replace?" question;
-release builds on Windows open no console window. Until it is merged, `dev` behaves as the
-previous version of this guide said. For this branch there are automated checks only (below),
-run on native Windows 11 Pro (10.0.26200) with Rust 1.99.1, 2026-11-01; nobody has tried it on a
-display yet.
+**Drawing-pack re-run fixes**
 
-**Branch `ecad/cable-slash` (brief 004, design `ecad/docs/design/004.md`)** adds **Cable Slash**
-to the ECAD tab: a short line drawn across wires makes them one cable (section 5A). Nothing
-outside `ecad/` changes, and the file format is unchanged. For this branch there are automated
-checks and your trial on native Windows (2026-11-06, below); no agent has run it on a display.
+- [Pack re-run fixes (2026-11-14)](quick-start/pack-rerun-fixes.md)
 
-**Branch `ecad/cable-views` (brief 005, design `ecad/docs/design/005.md`)**, cut from `dev`
-after brief 004 was merged, adds **Cable View** to the ECAD tab: one click switches a cable
-between the traditional view (every wire and the slash) and a fan view (one magenta trunk that
-fans out to the wire ends), and back (section 5B). The switch is presentation only: it writes no
-transaction and never changes the project's change count. Each cable's view is remembered for you
-outside the `.ecad` file, in `cable-views.json` in your ECAD settings folder (section 9). Nothing
-outside `ecad/` changes, and the file format is unchanged. For this branch there are automated
-checks only (below), written with the branch and run by the tester and CI; nobody has run it on a
-display yet.
+**UI rev 3**
 
-**Branch `ecad/cable-look` (brief 009, design `ecad/docs/design/009.md`)**, cut from `dev` after
-brief 005 was merged, restyles the fan to read like a cable on an electrical drawing (a label box,
-a thick trunk and spines, curved bends and thin tails with each core's label and wire number),
-adds **Core Label** to the ECAD tab (a core number or colour per wire in a cable, shown just past
-the slash in traditional view and at the tail start in fan view), and draws brief 010's cable
-reference end as a marker where the fan stops (section 5C). At your request of 2026-11-07 the
-trunk joins the middle of each spine, and **Cable Join** slides it up or down the spine. Nothing outside `ecad/` changes, and
-the file format is unchanged: a core label is the existing member `core` field, set with the
-existing member ops. For this branch there are automated checks only, written with the branch,
-and reference screenshots rendered headless for the owner to approve
-(`ecad/apps/ecad-trial/tests/reference/009-*.png`, and `005-fan.png` redrawn in the new look);
-nobody has run it on a display yet. In this combined trial with brief 010 the marker shows 010's
-live reference text (such as `/2.1`, or a red `/?` while the end has no other end).
-
-**Branch `ecad/cable-references` (brief 010, design `ecad/docs/design/010.md`)**, cut from `dev`
-after brief 005 was merged, lets one cable be drawn on two pages (section 5D). **Cable Reference**
-marks where a cable leaves a page; **Continue Cable** draws the same cable on another page (short
-wires that are the same wires, and a slash); each end shows the other end's page and column, such
-as `/2.1`, worked out every time the page is drawn, so renumbering or moving pages never breaks
-it. **Go to Reference** jumps between the ends, and **Rename Page** and **Move Page** are new in the
-Pages group. Nothing outside `ecad/` changes, and the file format is unchanged. The decisions the
-overseer took on the design's open questions while you were away (one conductor drawn on two
-pages is one core, two references per cable, no continuation on the same page) are listed in the
-pull request for you to confirm. For this branch there are automated checks only (below); nobody
-has run it on a display yet. In this combined trial the marker is brief 009's flag around that
-text, with 010's ring on the point.
-
-**Branch `ecad/agent-mcp` (brief 011)**, cut from `ecad/cable-views` (PR #24) with `dev`
-merged, adds `ecad-mcp`: an AI agent such as Claude Code can read and change a project through
-MCP, headless (section 7A). Nothing outside `ecad/` changes, and the file format is unchanged. For
-this branch there are automated checks only, written with the branch and run by the tester and
-CI; nobody has connected Claude Code to it yet.
-
-**Branch `ecad/load-benchmark` (brief 012)**, cut from `dev` at `60c7c35`, adds the on-demand load
-benchmark `cargo xtask bench` (section 8, "Measuring load time"). The app, the file format and CI
-are unchanged. Evidence: the generator's shape tests (`ecad/crates/ecad-bench/tests/all/
-generator_contracts.rs`), written with the branch and run by the tester and CI; one agent run of
-`cargo xtask bench --tier small` on native Windows 11 Pro, 2026-11-07, which printed the table and
-wrote the JSON. You have not run it yet.
-
-**Branch `ecad/startup-timing` (brief 015)**, cut from `dev` at `bb86e05`, adds start-up timing
-to the trial, switched on by `ECAD_STARTUP_TIMING=1` (section 8, "Measuring start-up"). With the
-switch off nothing changes. Evidence: `ecad/apps/ecad-trial/tests/all/startup_contracts.rs`, written
-with the branch; three agent launches of the release trial on native Windows 11 Pro, 2026-11-08
-(section 8). You have not run it yet.
-
-**Branch `feature/fast-tests` (brief 017)** changes how the tests are built and run, not the app:
-nothing you run or see changes. Each crate's integration tests are one executable
-(`tests/all/`), so the test paths below are `…/tests/all/<file>.rs`. Tests that take more than
-about 2 s are marked slow: plain `cargo test` and `cargo xtask test-changed` skip them, and
-`cargo xtask ci` (the QA gate, Linux and Windows CI) runs them with `--include-ignored`. To run
-the whole set by hand: `cargo test --workspace --all-features -- --include-ignored`.
-
-**Branch `feature/components` (brief 018, design `ecad/docs/design/018.md` with your answers of
-2026-11-08)** makes placed symbols real devices with tags (section 5E). **Place Symbol** now asks
-which symbol first (18 built-in IEC-style starter symbols: coil, contacts, MCBs, fuse, PSU, push
-buttons, lamp, motors, transformer, terminal, PLC channels); each new device gets the next tag
-of its prefix (`-K01`, `-Q01`…, highest + 1, two digits by default), and a contact can be added to
-an existing device (`-K01`'s coil on one page, its contacts on another). Tags and connection point labels
-are drawn beside every symbol. **Find Symbol**, **Device Properties** and **Delete Device** are
-new in the Components group. Nothing outside `ecad/` changes. Existing files are written as before, but
-one model rule is relaxed (I14, your decision of 2026-11-08): a project with a contact added to a
-device is refused by older builds, and so is one whose tag settings were changed (two optional
-project settings, your decision of 2026-11-08). For this branch there are automated checks only (below),
-written and run by the worker; nobody has run it on a display yet.
+- [UI rev 3, board 1.01: the frame](quick-start/uiv3-frame.md)
+- [UI rev 3, section A: the left panels](quick-start/uiv3-panels.md)
+- [UI rev 3, section B: the inspector](quick-start/uiv3-B-inspector.md)
+- [UI rev 3, section C: tools, placing and the wheel](quick-start/uiv3-tools.md)
+- [UI rev 3, section D: the canvas, sheet colour and themes](quick-start/uiv3-canvas.md)
+- [UI rev 3, section E: the Project workspace (boards 2.01–2.06)](quick-start/uiv3-project.md)
+- [UI rev 3, section F: Library, Publish and Settings](quick-start/uiv3-library.md)
 
 Three kinds of evidence exist, and they are kept apart:
 
@@ -993,7 +789,7 @@ shows the same facts.
    `0V-01 0.5 BU` on both; the cable cores below the contactor show their number only
    (`L1-02`). Page 1 shows `L-01 2.5 BN`, `N-01 2.5 BU`, `PE 2.5 GNYE`,
    `24V-01 0.5 BU`, `0V-01 0.5 BU`. Colours are IEC 60757 codes (`BN`, `BU`, `BK`, `GY`,
-   `GNYE`…); labels are small (1.8 mm) and no two touch. Switch cable `-W01` to fan view
+   `GNYE`…); labels are small (1.6 mm, brief 031) and no two touch. Switch cable `-W01` to fan view
    (**Cable View**, click it): its cores' labels hide with the cores; back to traditional, they
    return. Nothing is recorded.
 2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
@@ -1038,7 +834,7 @@ Typed instead, in the ECAD command field: `nets {"number":"24V-04"}`,
 `24V-2.01`…; fixed ones stay), `checks {}`, `junction {"at":[57.5,52.5]}` (on page 2),
 `place {"symbol":"continuation","at":[0,0],"name":"24V"}`,
 `wiresettings {"colour_style":"three-letter"}` (labels read `BLU`, `BRN`, `GRN/YEL`; back with
-`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.8 mm). By clicking, both are in
+`"iec"`), `wiresettings {"label_height":2.5}` (the default is 1.6 mm since brief 031). By clicking, both are in
 **Project settings** (under the PROJECT panel's header), section **Wires**: **Colours** `IEC  BN BU
 GNYE` or `BRN BLU GRN/YEL`, and **Label height** in mm; OK writes them in one transaction. A colour may also be free
 text (`setprop {"conductor":"<id>","key":"colour","value":"Violet stripe"}`).
@@ -1189,7 +985,8 @@ by location**. The trial has no file dialogs: where a file is asked for, type it
    **Print**. Expected: `Printed n sheets (4 generated) to …\demo.pdf (… KB).` Open the PDF:
    cover, contents, the three drawing pages, the revision list and the BOM, each an A3 sheet with
    its frame and title block, black on white. **Pages** `1, 3` prints just those; an unknown
-   number is listed under the field and left out.
+   number is listed under the field and left out. A device without a part number shows `?` in a
+   box in the BOM, black in the PDF (brief 033); the file is a few hundred KB, not megabytes.
 
 Typed instead, in the ECAD command field: `locationbox {"location":"+JB2","corners":[[110,60],[150,90]]}`,
 `setprop {"component":"<id>","key":"location","value":null}` (back to inherited),
@@ -1540,8 +1337,8 @@ that file is not a version 1 project.
 
 `ecad-mcp` (brief 011) lets an AI agent such as Claude Code read and change an ECAD project
 through the Model Context Protocol. It runs **headless**: no window; the agent works on the
-project file in a process of its own. Watching an agent work in the running trial (bridged mode)
-is a later brief.
+project file in a process of its own. To watch an agent work in the running trial, see section
+7D in [`quick-start/035-mcp-bridge.md`](quick-start/035-mcp-bridge.md).
 
 Every step below uses the **same project file**: `C:\dev\ecad-projects\agent.ecad` on native
 Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your system.
@@ -1822,12 +1619,12 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 **Container version 2 (brief 021).** The generated version 1 file is converted to a version 2 file
 (`<tier>-<history>.v2.ecad`), and since the app opens only version 2, every column from **1st
 page** on is timed on the version 2 file; **open**, **edit** and **save** above stay the version 1
-timings, for comparison. A second table follows:
+timings. A second table follows. It reports the version 2 file only, against the targets in the
+specification; it does not compare it with the version 1 file:
 
 | Column | What it times |
 | --- | --- |
-| v1 MB, v2 MB | The version 1 file and the converted version 2 file. |
-| convert ms | `ecad upgrade`: convert, write and verify by replaying both. |
+| v2 MB | The converted version 2 file. |
 | v2 open ms | Open the version 2 file as the app does: the latest snapshot and the transactions after it. Target (EEP-0005): about 100 ms or less on large. |
 | v2 save ms | Save one new wire: one redb write transaction, durable before it returns. Target: about 1–1.4 ms on large (the bake-off's redb range). |
 | crash open ms | Open the file after a process saved and exited without closing it (as a killed app leaves it), with redb's quick repair. |
@@ -1969,13 +1766,22 @@ Your table of three clean runs goes here once you have run it.
 
 ## 9. Current limitations
 
+- **Live agent access (brief 035):** one agent changes the project at a time (others read); the
+  port is loopback only (`127.0.0.1`); `--launch` opens the trial on Windows and on Linux with a
+  display (WSL needs WSLg), not on macOS; the banner is a plain line in the Developer section until the UI shell.
 - **Outputs (brief 024):** one built-in table layout for generated pages (44 rows per A3 sheet);
   custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
+- **Multi-level terminals (brief 036):** no graphical strip pages yet (1.8) and no terminal
+  manager (2.6): Reports ▸ Terminals shows the rows, `stripplan` gives the row model with its
+  editable fields. A fuse position cannot be turned back into a device; fuse inserts are not on the
+  BOM. Labels, positions and ratings are set with `termlabel` and `setprop` typed at the command
+  line (no Properties fields or in-place plan cells yet); **Make strip position** is the Checks
+  row's button (no context menu entry yet).
 - **Strip accessories (brief 030):** accessories are placed by hand (no automatic rule yet); no
-  level jumpers, test plugs or rail parts; marker text is not printed; links join whole positions
-  (no levels). The Terminals tab's Accessory menu acts on a strip's ends and all its markers (place
+  test plugs or rail parts; marker text is not printed; links join positions on one level or
+  levels of one position (brief 036). The Terminals tab's Accessory menu acts on a strip's ends and all its markers (place
   a partition or a single marker with **Strip Accessory**); a link is extended, shortened or split
   through **Jumper**, its Properties **Positions** or `jumper`, not from a context menu. The
   generated plan page writes the marks as text (`||`, `|`, `==`, `[]`, `o` per link lane).
@@ -2060,7 +1866,8 @@ Your table of three clean runs goes here once you have run it.
   - Set Property, Add to Cable and Delete still open the ECAD command field with a template.
 - **Devices and tags** (brief 018):
   - No contact cross-references or mirror tables yet (F3), no terminal strips (F5), no location
-    boxes (F6), no `.ecadlib` symbol libraries: the 18 starter symbols are built in.
+    boxes (F6), no `.ecadlib` symbol libraries: 81 symbols are built in (21 since brief 018, 60
+    more since brief 034).
   - Tag texts and connection point labels are placed automatically (left of a symbol, or above it when
     rotated); they cannot be moved. Editing them alone is refused; erasing one erases its symbol.
   - Tag padding and each symbol's prefix are project settings, changed by typing

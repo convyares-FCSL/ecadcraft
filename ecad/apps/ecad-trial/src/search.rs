@@ -8,6 +8,10 @@
 //!
 //! It only reads the project, under the handle's short lock, and only when the query or the
 //! project's head changed.
+//!
+//! Brief 041 (Ctrl+K): the same field also finds pages (by number or title) and actions (the
+//! action table, by label and search words). Picking one of those runs it at once: a page is
+//! shown, an action runs on the selection or starts its tool ([`SymbolSearch::ran`]).
 
 use ecad_cadcraft::devices;
 use ecad_cadcraft::symbols;
@@ -34,7 +38,17 @@ pub enum Pick {
     Symbol(&'static str),
     /// Place Symbol adding a symbol to the device with this tag.
     Device(String),
+    /// Brief 041: show this page.
+    Page(ecad_model::PageId),
+    /// Brief 041: run this action (its id in the action table).
+    Action(&'static str),
+    /// Brief 048 (design 048 §8.2): Place Symbol with this project symbol (its key).
+    Project(String),
 }
+
+/// Most pages and most actions Ctrl+K lists before the symbols.
+pub const MAX_PAGES: usize = 3;
+pub const MAX_ACTIONS: usize = 4;
 
 /// One result row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +62,22 @@ pub struct Row {
 pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<String>) {
     let q: String = query.trim().chars().take(symbols::MAX_QUERY).collect();
     let mut out = Vec::new();
+    if let Some(doc) = doc
+        && !q.is_empty()
+    {
+        let ql = q.to_lowercase();
+        let pages = ecad_cadcraft::tree_rows(doc, |_| false).into_iter().filter_map(|r| match r {
+            ecad_cadcraft::TreeRow::Page(p) => Some(p),
+            ecad_cadcraft::TreeRow::Folder { .. } => None,
+        });
+        for p in pages.filter(|p| p.number.to_lowercase() == ql || p.title.to_lowercase().contains(&ql)).take(MAX_PAGES) {
+            out.push(Row { text: format!("{:<6} {:<26}  (page)", p.number, clip(&p.title, 26)), pick: Pick::Page(p.id) });
+        }
+    }
+    for a in ecad_cadcraft::actions::search(&q, MAX_ACTIONS) {
+        let key = a.key.map(|k| format!(" {}", k.words())).unwrap_or_default();
+        out.push(Row { text: format!("{:<33}{key}  (action)", a.label), pick: Pick::Action(a.id) });
+    }
     if let Some(doc) = doc
         && !q.is_empty()
     {
@@ -65,8 +95,22 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
             });
         }
     }
+    // Brief 048: the project's own symbols, before the built-ins.
+    if let Some(doc) = doc {
+        let ql = q.to_lowercase();
+        for v in symbols::project_symbols(doc) {
+            let Some(key) = v.key() else { continue };
+            if !ql.is_empty() && !v.def.name.to_lowercase().contains(&ql) && !key.to_lowercase().contains(&ql) {
+                continue;
+            }
+            out.push(Row {
+                text: format!("{key:<6} {:<26} Project · v{}  (symbol)", clip(&v.def.name, 26), v.seq),
+                pick: Pick::Project(key.to_string()),
+            });
+        }
+    }
     for s in symbols::search(&q) {
-        let prefix = doc.map_or_else(|| s.prefix.to_string(), |d| devices::prefix_for(d, s));
+        let prefix = doc.map_or_else(|| s.prefix().to_string(), |d| devices::prefix_for(d, s));
         out.push(Row { text: format!("{:<6} {:<26} -{prefix:<3} {}  (symbol)", s.key, s.name, s.labels().join("/")), pick: Pick::Symbol(s.key) });
     }
     let more = out.len().saturating_sub(MAX_ROWS);
@@ -141,6 +185,7 @@ pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
             found.sort_by_key(|(rank, _)| *rank);
             found.into_iter().take(MAX_CHOICES).map(|(_, c)| c).collect()
         }
+        Pick::Page(_) | Pick::Action(_) | Pick::Project(_) => Vec::new(),
     }
 }
 
@@ -181,6 +226,8 @@ impl<K: PartialEq, V: Clone> Cached<K, V> {
 /// The search window's state.
 #[derive(Debug, Default)]
 pub struct SymbolSearch {
+    /// Brief 038: the Library workspace's main view it fills, or `None` to float.
+    pub host: Option<egui::Rect>,
     pub open: bool,
     pub query: String,
     /// The highlighted row (Up/Down, Enter).
@@ -195,6 +242,9 @@ pub struct SymbolSearch {
     pub rebuilds: u64,
     /// The row picked: the window then shows its second step ([`choices`]).
     pub picked: Option<Pick>,
+    /// Brief 041: a page or action row picked, for the shell to act on ([`Pick::Page`],
+    /// [`Pick::Action`]).
+    pub ran: Option<Pick>,
 }
 
 impl SymbolSearch {
@@ -239,80 +289,88 @@ impl SymbolSearch {
         let mut picked = None;
         let mut back = false;
         let mut open = self.open;
-        egui::Window::new(TITLE)
+        let window = egui::Window::new(TITLE)
             .id(egui::Id::unique("ecad.symbolsearch.window"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
-            .default_pos(egui::pos2(260.0, 120.0))
-            .show(ctx, |ui| {
-                if let Some(p) = &self.picked {
-                    let what = match p {
-                        Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
-                        Pick::Device(t) => format!("Add to {t}:"),
-                    };
-                    ui.label(what);
-                    ui.push_id(CHOICES_ID, |ui| {
-                        for c in choices {
-                            if ui.button(egui::RichText::new(&c.text).monospace()).clicked() {
-                                chosen = Some(c.clone());
-                            }
-                        }
-                        if choices.is_empty() {
-                            ui.weak("Nothing can be added to that device.");
-                        }
-                    });
-                    if ui.button("Back").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        back = true;
-                    }
-                    return;
-                }
-                let label = ui.label(FIELD_LABEL);
-                let field = egui::TextEdit::singleline(&mut self.query)
-                    .id_salt(FIELD_ID)
-                    .hint_text("Find symbol or device…")
-                    .char_limit(symbols::MAX_QUERY)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(420.0);
-                let r = ui.add(field).labelled_by(label.id);
-                if std::mem::take(&mut self.focus) {
-                    r.request_focus();
-                }
-                if r.changed() {
-                    self.selected = 0;
-                }
-                let (list, more, nothing) = rows;
-                let keys = ui.input(|i| (i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::Escape)));
-                if r.has_focus() || r.lost_focus() {
-                    if keys.0 && self.selected + 1 < list.len() {
-                        self.selected += 1;
-                    }
-                    if keys.1 {
-                        self.selected = self.selected.saturating_sub(1);
-                    }
-                    if keys.2 {
-                        self.query.clear();
-                    }
-                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        picked = list.get(self.selected).map(|row| row.pick.clone());
-                    }
-                }
-                ui.push_id(RESULTS_ID, |ui| {
-                    for (i, row) in list.iter().enumerate() {
-                        let text = egui::RichText::new(&row.text).monospace();
-                        if ui.selectable_label(i == self.selected, text).clicked() {
-                            picked = Some(row.pick.clone());
+            .default_pos(egui::pos2(260.0, 120.0));
+        crate::shell::hosted(window, self.host).show(ctx, |ui| {
+            if let Some(p) = &self.picked {
+                let what = match p {
+                    Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
+                    Pick::Device(t) => format!("Add to {t}:"),
+                    Pick::Page(_) | Pick::Action(_) | Pick::Project(_) => String::new(),
+                };
+                ui.label(what);
+                ui.push_id(CHOICES_ID, |ui| {
+                    for c in choices {
+                        if ui.button(egui::RichText::new(&c.text).monospace()).clicked() {
+                            chosen = Some(c.clone());
                         }
                     }
-                    if *more > 0 {
-                        ui.weak(format!("and {more} more"));
-                    }
-                    if let Some(n) = nothing {
-                        ui.weak(n);
+                    if choices.is_empty() {
+                        ui.weak("Nothing can be added to that device.");
                     }
                 });
+                if ui.button("Back").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    back = true;
+                }
+                return;
+            }
+            let label = ui.label(FIELD_LABEL);
+            let field = egui::TextEdit::singleline(&mut self.query)
+                .id_salt(FIELD_ID)
+                .hint_text("Find symbol or device…")
+                .char_limit(symbols::MAX_QUERY)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(420.0);
+            let r = ui.add(field).labelled_by(label.id);
+            if std::mem::take(&mut self.focus) {
+                r.request_focus();
+            }
+            if r.changed() {
+                self.selected = 0;
+            }
+            let (list, more, nothing) = rows;
+            let keys = ui.input(|i| (i.key_pressed(egui::Key::ArrowDown), i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::Escape)));
+            if r.has_focus() || r.lost_focus() {
+                if keys.0 && self.selected + 1 < list.len() {
+                    self.selected += 1;
+                }
+                if keys.1 {
+                    self.selected = self.selected.saturating_sub(1);
+                }
+                if keys.2 {
+                    self.query.clear();
+                }
+                if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    picked = list.get(self.selected).map(|row| row.pick.clone());
+                }
+            }
+            ui.push_id(RESULTS_ID, |ui| {
+                for (i, row) in list.iter().enumerate() {
+                    let text = egui::RichText::new(&row.text).monospace();
+                    if ui.selectable_label(i == self.selected, text).clicked() {
+                        picked = Some(row.pick.clone());
+                    }
+                }
+                if *more > 0 {
+                    ui.weak(format!("and {more} more"));
+                }
+                if let Some(n) = nothing {
+                    ui.weak(n);
+                }
             });
+        });
         self.open = open;
+        // Brief 041: a page or an action runs at once (no second step).
+        if let Some(p @ (Pick::Page(_) | Pick::Action(_) | Pick::Project(_))) = picked {
+            self.ran = Some(p);
+            self.open = false;
+            self.query.clear();
+            return None;
+        }
         if picked.is_some() {
             self.picked = picked;
         }
@@ -334,7 +392,10 @@ mod tests {
         assert_eq!(more, symbols::STARTERS.len() - MAX_ROWS);
         assert!(nothing.is_none());
         let (r, _, _) = rows(None, "-Q");
-        assert_eq!(r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(), [Pick::Symbol("mcb1"), Pick::Symbol("mcb2")]);
+        assert_eq!(
+            r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(),
+            [Pick::Symbol("mcb1"), Pick::Symbol("mcb2"), Pick::Symbol("rcbo2"), Pick::Symbol("rcd2"), Pick::Symbol("rcd4")]
+        );
         let (r, _, nothing) = rows(None, "xyz");
         assert!(r.is_empty());
         assert_eq!(nothing.as_deref(), Some("Nothing matches \"xyz\"."));

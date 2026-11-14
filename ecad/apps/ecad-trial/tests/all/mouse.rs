@@ -16,13 +16,16 @@ fn harness() -> Harness<'static, Trial> {
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
-    let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }
@@ -115,10 +118,10 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     let mut h = harness();
     component_and_coil(&mut h);
     button(&mut h, "Wire");
-    assert_eq!(prompt(&h), "Specify first point of wire or [Potential] <auto>:");
+    assert_eq!(prompt(&h), "Specify first point of wire or [Potential/Category/Join] <auto>:");
     let first = screen(&h, 40.0, 10.0) + egui::vec2(2.0, -2.0);
     click(&mut h, first);
-    assert_eq!(prompt(&h), "Specify next point or [Undo]:");
+    assert_eq!(prompt(&h), "Specify next point or [Undo/Join]:");
     for (x, y) in [(70.0, 10.0), (70.0, 0.0)] {
         let p = screen(&h, x, y);
         click(&mut h, p);

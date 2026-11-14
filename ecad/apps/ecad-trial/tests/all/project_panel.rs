@@ -5,12 +5,13 @@
 //! `016-rename.png`, `016-drag.png`, `016-collapsed.png`, `016-preview-ref.png`, `016-large.png`).
 //!
 //! Fixture P (design §10): 010's fixture R (pages `Supply` and `Field`, cable C1 with linked
-//! references `2-A-6` and `1-B-6`) plus a third page `Spare`.
+//! references `2/F1` and `1/F2`) plus a third page `Spare`.
 
 use std::sync::{Arc, Mutex};
 
 use ecad_model::{Op, PageId};
 use ecad_trial::project_panel::{self, ROW_H};
+use ecad_trial::shell::LeftTab;
 use ecad_trial::{Trial, tools};
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
@@ -158,11 +159,25 @@ pub(crate) fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial>
 }
 
 pub(crate) fn trial() -> Trial {
+    let mut t = rev3_trial();
+    open_panels(&mut t);
+    t
+}
+
+/// The trial as it starts (UI rev 3, board 1.01: both sides closed).
+pub(crate) fn rev3_trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
     t
+}
+
+/// Open the Book panel and the inspector, as a person does from the strip and the rail: the
+/// tests of the panels' contents start with them shown (UI rev 3 starts with both closed).
+pub(crate) fn open_panels(t: &mut Trial) {
+    t.shell.state.left.collapsed = false;
+    t.shell.state.right_collapsed = false;
 }
 
 pub(crate) fn ok(h: &mut Harness<'static, Trial>, line: &str) {
@@ -209,8 +224,37 @@ fn tab_title(h: &Harness<'static, Trial>) -> String {
 }
 
 pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
-    h.get_by_label(label).click();
+    // UI rev 3: the panels' tabs are the strip's panel buttons and the inspector's Checks tab.
+    let tab = match label {
+        project_panel::PAGES_TAB => Some(LeftTab::Pages),
+        project_panel::DEVICES_TAB => Some(LeftTab::Devices),
+        ecad_trial::history_panel::HISTORY_TAB => Some(LeftTab::History),
+        _ => None,
+    };
+    if let Some(tab) = tab {
+        let s = h.state().shell_state();
+        if s.workspace != ecad_trial::shell::Workspace::Draw {
+            // Only Draw has the strip; elsewhere the tab is kept for when Draw is shown again.
+            h.state_mut().set_left_tab(tab);
+        } else if s.left.collapsed || s.left.tab != tab {
+            h.get_by_label(&ecad_trial::shell::tool_strip::panel_label(tab)).click();
+        }
+    } else if label == ecad_trial::checks_panel::CHECKS_TAB {
+        // The rail's Checks button opens it (pressed while open on Checks it would close).
+        let s = h.state().shell_state();
+        if s.right_collapsed || s.right_tab != ecad_trial::shell::RightTab::Checks {
+            h.get_by_label(&ecad_trial::shell::right::rail_label(ecad_trial::shell::RightTab::Checks)).click();
+        }
+    } else {
+        h.get_by_label(label).click();
+    }
     h.run_steps(3);
+}
+
+/// Brief 038: an entry of the top bar's project menu (the old panel header's buttons).
+pub(crate) fn project_menu(h: &mut Harness<'static, Trial>, label: &str) {
+    click(h, ecad_trial::shell::top_bar::PROJECT_MENU);
+    click(h, label);
 }
 
 pub(crate) fn key(h: &mut Harness<'static, Trial>, key: Key, modifiers: Modifiers) {
@@ -232,7 +276,7 @@ pub(crate) fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
     h.get_by_label(label).rect()
 }
 
-/// Fixture P: Supply (C1 leaving at (65,5), `2-A-6`), Field (C1 arriving at (20,5), `1-B-6`), Spare.
+/// Fixture P: Supply (C1 leaving at (65,5), `2/F1`), Field (C1 arriving at (20,5), `1/F2`), Spare.
 pub(crate) fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let supply = doc(h).page_order[0];
@@ -296,7 +340,9 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     h.event(Event::Text("l".into()));
     h.run_steps(2);
     assert!(!h.state().panel.armed, "another key disarms the panel");
-    assert_eq!(h.state().cad.cmd.buffer, "l", "and reaches the command line");
+    // Brief 038: typing while no command runs is the shell's (US1 `idle_typing` off), so the
+    // letter starts nothing at CADCraft's hidden command line.
+    assert_eq!(h.state().cad.cmd.buffer, "", "and does not reach the command line");
     h.state_mut().cad.cmd.buffer.clear();
 
     // Screenshot 016-panel: Field active, cursor on Spare.
@@ -314,8 +360,13 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert!(h.state().name_box.is_none() && head(&mut h) == before, "Cancel does nothing");
     h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
-    click(&mut h, "New page…");
-    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row menu's New page too");
+    {
+        // Brief 041: the slot inside the wheel (the Pages tab has a New page button too).
+        let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("the row's wheel");
+        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_ui::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
+    }
+    h.run_steps(3);
+    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row wheel's New page too");
     key(&mut h, Key::Enter, Modifiers::NONE);
     assert!(h.state().name_box.is_none());
     assert_eq!(head(&mut h), before + 1, "one transaction");
@@ -402,15 +453,15 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
     // Page numbers are stored (brief 019): the move changes no reference text.
     let texts: Vec<String> = ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
-    assert_eq!(texts, ["2-A-6"]);
+    assert_eq!(texts, ["2/F1"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
     click(&mut h, "Page 3: Spare");
     let before = head(&mut h);
     key(&mut h, Key::ArrowDown, Modifiers::ALT);
     assert_eq!(head(&mut h), before + 1);
     assert_eq!(titles(&mut h), ["Supply", "Spare", "Field", "4"]);
-    click(&mut h, project_panel::MOVE_DOWN);
-    assert_eq!(titles(&mut h), ["Supply", "Field", "Spare", "4"], "the header's Move down");
+    key(&mut h, Key::ArrowDown, Modifiers::ALT);
+    assert_eq!(titles(&mut h), ["Supply", "Field", "Spare", "4"], "Alt+Down again: the cursor follows the row");
 
     // C: a page change typed in the command window shows in the panel the next frame.
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field (typed)"}}"#, field.hex()));
@@ -449,12 +500,12 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(active(&mut h), Some(field));
     assert_eq!(h.state().cad.session.docs.len(), 1);
 
-    // Collapse to the strip and back.
-    click(&mut h, project_panel::COLLAPSE);
-    assert!(h.state().panel.collapsed && h.query_by_label("Page 1: Supply").is_none());
+    // Close the panel (UI rev 3: the strip's Book opens it again).
+    click(&mut h, ecad_trial::shell::left::CLOSE);
+    assert!(h.state().shell_state().left.collapsed && h.query_by_label("Page 1: Supply").is_none());
     let collapsed = take(&h, &deltas, "016-collapsed.png");
-    click(&mut h, project_panel::EXPAND);
-    assert!(!h.state().panel.collapsed);
+    click(&mut h, &ecad_trial::shell::tool_strip::panel_label(LeftTab::Pages));
+    assert!(!h.state().shell_state().left.collapsed);
 
     if shots().is_some() {
         for (name, img) in [("panel", &panel), ("rename", &rename), ("drag", &drag), ("collapsed", &collapsed)] {
@@ -483,6 +534,10 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
         .unwrap()
         .expect("Supply's reference point")
     };
+    // Brief 038: the ECAD Tool Sets tab is behind the developer switch, in the main view.
+    h.state_mut().set_cad_chrome(true);
+    h.set_size(egui::vec2(1920.0, 1200.0));
+    h.run_steps(3);
     h.state_mut().cad.session.set_selection(vec![point]);
     click(&mut h, tools::TAB);
     let before = head(&mut h);
@@ -594,9 +649,9 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
         t.elapsed().as_secs_f64() * 1000.0 / 20.0
     };
     let shown = time(&mut h);
-    h.state_mut().panel.collapsed = true;
+    h.state_mut().shell.state.left.collapsed = true;
     let hidden = time(&mut h);
-    h.state_mut().panel.collapsed = false;
+    h.state_mut().shell.state.left.collapsed = false;
     h.run_steps(2);
     assert_eq!(h.state().panel.rebuilds, rebuilds, "no rebuild per frame");
     // One rename: one rebuild, timed.
@@ -650,16 +705,17 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     ecad_cadcraft::views::isolate_for_tests();
     let mut second = Trial::with_file(None, &path).unwrap();
     second.dismiss_notice();
+    open_panels(&mut second);
     assert!(second.status().unwrap().file.read_only.is_some());
     let mut h = build(second, None);
     let before = head(&mut h);
     click(&mut h, "Page 2: Field");
     let field = doc(&mut h).page_order[1];
     assert_eq!(active(&mut h), Some(field), "switching works");
-    // New page, New folder, Move up and Move down are disabled and named by why.
-    let disabled = h.get_all_by_label(project_panel::READ_ONLY).count();
-    assert_eq!(disabled, 4, "New page, New folder, Move up and Move down");
-    h.get_all_by_label(project_panel::READ_ONLY).for_each(|n| n.click());
+    // New page and New folder (UI rev 3: Book's footer) are disabled: clicking them does nothing.
+    for label in [project_panel::NEW_PAGE, project_panel::NEW_FOLDER] {
+        h.get_by_label(label).click();
+    }
     h.run_steps(3);
     key(&mut h, Key::ArrowUp, Modifiers::ALT);
     key(&mut h, Key::F2, Modifiers::NONE);
@@ -684,7 +740,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
 // ---------------------------------------------------------------- Devices tab (after brief 018)
 
 /// A coil `-K01` on page 1 and its NO contact on page 2 (column A), page 1 shown, Devices tab open.
-fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
+pub(crate) fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let t = h.state_mut();
     let page1 = {
@@ -701,7 +757,11 @@ fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId,
     };
     t.show_page(page1).unwrap();
     h.run_steps(2);
-    click(h, project_panel::DEVICES_TAB);
+    // Brief 038 (fix round): the editable Devices table is Lists ▸ Device list (the left panel's
+    // tab is navigation, at 264 px).
+    h.state_mut().set_workspace(ecad_trial::shell::Workspace::Lists);
+    h.state_mut().shell.lists = ecad_trial::shell::ListsView::Devices;
+    h.run_steps(3);
     let c = ecad_model::ComponentId(u128::from_str_radix(&coil, 16).unwrap());
     (c, page1, page2)
 }
@@ -712,25 +772,32 @@ fn devices_fixture(h: &mut Harness<'static, Trial>) -> (ecad_model::ComponentId,
 fn devices_tab_goes_to_a_symbol_and_filters() {
     let deltas: Deltas = Arc::default();
     let mut h = build(trial(), Some(deltas.clone()));
-    let (coil, _page1, page2) = devices_fixture(&mut h);
+    let (coil, page1, page2) = devices_fixture(&mut h);
     assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "the device is listed");
     click(&mut h, "Device -K01: Contactor / relay coil");
     assert_eq!(h.state().panel.devices.selected, Some(coil));
-    let row = "-K01 NO contact, 2-A-6";
-    assert!(h.query_by_label("-K01 Contactor / relay coil, 1-A-6").is_some(), "unfolded: {:?}", h.state().panel.devices.entries());
+    // Brief 039: the row is a table row; its Pages cell lists both symbols and goes to the first.
+    let pages = {
+        use ecad_ui::table::TableSource;
+        let d = &h.state().panel.devices;
+        d.source.cell(coil, ecad_trial::lists::devices::PAGES).text().into_owned()
+    };
+    assert_eq!(pages, "1/F1, 2/F1");
     let before = head(&mut h);
-    click(&mut h, row);
-    assert_eq!(active(&mut h), Some(page2), "the symbol's page is shown");
+    h.state_mut().show_page(page2).unwrap();
+    h.run_steps(2);
+    click(&mut h, "Device -K01: Contactor / relay coil");
+    assert_eq!(active(&mut h), Some(page1), "the first symbol's page is shown");
     let selected = h.state().cad.session.selection();
     assert!(!selected.is_empty(), "the symbol is selected");
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page2).unwrap().0;
+        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page1).unwrap().0;
         ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
     });
-    assert_eq!(selected, mapped.unwrap(), "exactly the contact's drawing is selected");
+    assert_eq!(selected, mapped.unwrap(), "exactly the coil's drawing is selected");
     assert_eq!(head(&mut h), before, "a go to records nothing");
     assert_eq!(h.state().cad.session.docs.len(), 1, "one page window");
     let shot = take(&h, &deltas, "016-devices.png");
@@ -902,7 +969,9 @@ fn the_developer_section_hosts_the_command_the_debugger_and_inspect() {
     let mut h = build(trial(), Some(deltas.clone()));
     assert!(h.query_by_label("ECAD Dev").is_none(), "no ECAD Dev tab");
     assert!(h.query_by_label(ecad_trial::developer::FIELD).is_none(), "folded by default");
-    click(&mut h, project_panel::DEVELOPER);
+    // Brief 038: the Developer section is the Text panel's Commands tab (Ctrl+/).
+    h.state_mut().toggle_text_panel();
+    h.run_steps(3);
     assert!(h.state().developer.open);
     assert!(h.query_by_label("Export Inspector Snapshot").is_none(), "only with --snapshots");
     // The command field: Run shows the reply under it; one transaction.

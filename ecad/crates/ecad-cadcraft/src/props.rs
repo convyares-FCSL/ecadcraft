@@ -99,7 +99,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                     out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
                 }
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 out.insert(ObjectRef::Component(*id));
             }
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
@@ -146,7 +146,25 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
                 out.insert(ObjectRef::Project);
             }
-            Op::EmbedDefinition { .. } | Op::RemoveDefinition { .. } | Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
+            // Brief 050a: styles and the standard show in the property views of the project (the
+            // inspector's style rows re-read through it).
+            Op::SetStyle { .. } | Op::SetStandard { .. } => {
+                out.insert(ObjectRef::Project);
+            }
+            // Brief 048 (design §8.4): a project symbol's new or removed version changes whether
+            // the devices showing its lineage read "update available".
+            Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
+                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS) {
+                    for v in crate::symbols::versions_of(doc, o.definition) {
+                        for item in doc.items_using(v.id) {
+                            if let Some((_, r)) = doc.representation_of_item(item) {
+                                subject(r.subject, &mut out);
+                            }
+                        }
+                    }
+                }
+            }
+            Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
             Op::AddPage { .. }
             | Op::RemovePage { .. }
             | Op::AddFolder { .. }
@@ -296,10 +314,19 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // Brief 025: the Coil and Contacts rows name places on the device's pages.
         for c in &k.devices {
             v.deps.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
+            // Brief 049: an arrow's Other ends row names its partners' places.
+            if let Some(n) = crate::continuations::name_of(doc, *c) {
+                for o in doc.continuations_named(&n) {
+                    v.deps.insert(ObjectRef::Component(o));
+                    v.deps.extend(doc.representations_of(Subject::Component(o)).map(|(_, r)| ObjectRef::Page(r.page)));
+                }
+            }
         }
         // An inherited location (brief 024) reads the main symbol's page (its boxes and
         // `location`) and the project's.
         v.deps.insert(ObjectRef::Project);
+        // Brief 045: a card's Rack row shows its rack's tag.
+        v.deps.extend(k.devices.iter().filter_map(|c| crate::plc::props_deps(doc, *c)));
         for c in &k.devices {
             if let Some((_, r)) = crate::locations::main_rep(doc, *c) {
                 v.deps.insert(ObjectRef::Page(r.page));
@@ -307,7 +334,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         }
         match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
             [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
-            _ => v.sections.push(device_section(doc, &k.devices, k.symbol)),
+            _ => v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol)),
         }
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Conductor(*w));
@@ -389,6 +416,8 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     );
     sheet.choices = sheet_choices(doc);
     rows.push(sheet);
+    // Brief 031 (design §5.6): the page's Texts group.
+    text_rows(doc, TextsAt::Page(page), &mut rows);
     Section { title: format!("ECAD · PAGE {number}"), kind: "page", target: Some(Target::Page(page)), rows, note: None, buttons: Vec::new() }
 }
 
@@ -413,7 +442,9 @@ fn box_section(doc: &Document, b: ComponentId) -> Section {
     }
 }
 
-fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
+fn device_section(
+    doc: &Document, plc: Option<&crate::plc::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
+) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
@@ -481,11 +512,28 @@ fn device_section(doc: &Document, devices: &BTreeSet<ComponentId>, symbol: Optio
     } else {
         format!("ECAD · {} DEVICES", devices.len())
     };
+    // Brief 031 (design §5.6): the Texts group of one device, and of one symbol when one is picked.
+    if let (true, Some(c)) = (one, devices.iter().next().copied()) {
+        text_rows(doc, TextsAt::Device(c), &mut rows);
+        if let Some(r) = symbol.filter(|r| doc.representations.get(r).is_some_and(|x| x.form == ecad_model::Form::Symbol)) {
+            text_rows(doc, TextsAt::Symbol(r, c), &mut rows);
+        }
+    }
     let mut buttons = Vec::new();
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
-        (true, Some(c)) => xref_rows(doc, c, symbol, &mut rows, &mut buttons),
+        // Brief 049 (design 049 §5.2): a continuation's Caption and Other ends.
+        (true, Some(c)) if crate::continuations::is_continuation(doc, c) => continuation_rows(doc, devices, symbol, &mut rows, &mut buttons),
+        (true, Some(c)) => {
+            xref_rows(doc, c, symbol, &mut rows, &mut buttons);
+            // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
+            crate::plc::props_rows(doc, c, &mut rows);
+            crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
+        }
+        (false, _) if devices.iter().all(|c| crate::continuations::is_continuation(doc, *c)) => {
+            continuation_rows(doc, devices, None, &mut rows, &mut buttons);
+        }
         _ => {}
     }
     Section {
@@ -556,6 +604,29 @@ fn xref_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::Represen
         if dev.head.is_some() {
             buttons.push(format!("refgoto:{}::Go to coil", sym.hex()));
         }
+    }
+}
+
+/// Brief 049's rows of continuation arrows (design 049 §5.2): **Caption** (blank when they
+/// differ), and for one arrow its **Other ends** with Go to (`refgoto:<source>:<target>:<label>`).
+fn continuation_rows(
+    doc: &Document, arrows: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>,
+) {
+    use crate::continuations as k;
+    let captions: BTreeSet<Option<&str>> = arrows.iter().map(|c| k::caption_of(doc, *c)).collect();
+    let mut r = Row::rw(
+        k::CAPTION_KEY,
+        "Caption",
+        if captions.len() == 1 { captions.into_iter().next().flatten().unwrap_or_default().to_string() } else { String::new() },
+    );
+    r.varies = arrows.iter().map(|c| k::caption_of(doc, *c)).collect::<BTreeSet<_>>().len() > 1;
+    rows.push(r);
+    let Some(sym) = symbol.filter(|s| k::arrow(doc, *s).is_some()) else { return };
+    let ends = k::other_ends(doc, sym);
+    let words: Vec<String> = ends.iter().map(|e| k::end_words(doc, e)).collect();
+    rows.push(Row::ro("otherends", "Other ends", if words.is_empty() { "none".into() } else { words.join("; ") }));
+    for e in &ends {
+        buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), e.rep.hex(), e.text));
     }
 }
 
@@ -690,7 +761,13 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
         potential.inherited = true;
     }
     top.push(potential);
-    for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &pot.cross_section), (wiring::COLOUR, "Colour", &pot.colour)] {
+    // Brief 050b: what the wire has none of its own comes from its category.
+    let look = crate::styles::wire::wire_look(doc, w);
+    let cat_value =
+        |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
+    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
+    for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &cs_default), (wiring::COLOUR, "Colour", &colour_default)] {
         let shown = |v: &str| if key == wiring::COLOUR { doc.settings.wiring.colour(v) } else { v.to_string() };
         let stored = props.and_then(|p| p.get(key)).cloned();
         let mut row = Row::rw(key, label, stored.as_deref().map(shown).unwrap_or_default());
@@ -698,9 +775,9 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
             row.choices = wiring::COLOUR_CODES.iter().map(|(iec, _)| shown(iec)).collect();
         }
         if stored.is_none()
-            && let (Some(d), Some(p)) = (default, &pot.name)
+            && let (Some(d), Some(n)) = (default, &cat_name)
         {
-            row.value = format!("{} ({p})", shown(d));
+            row.value = format!("{} ({n})", shown(d));
             row.inherited = true;
         }
         top.push(row);
@@ -845,9 +922,109 @@ fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section
     Section { title: "ECAD · CABLE REFERENCE".into(), kind: "reference", target: None, rows, note: None, buttons: vec![format!("goto:{}", r.hex())] }
 }
 
+// ---------------------------------------------------------------- Texts (brief 031, design §5.6)
+
+/// Where a Texts group writes.
+#[derive(Debug, Clone, Copy)]
+enum TextsAt {
+    Device(ComponentId),
+    Symbol(ecad_model::RepresentationId, ComponentId),
+    Page(PageId),
+}
+
+/// The words a Texts row shows for a stored visibility.
+fn shown_words(w: &str) -> &'static str {
+    match w {
+        "off" => "Hidden",
+        "first" => "Once per run",
+        _ => "Shown",
+    }
+}
+
+/// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
+/// level has no value of its own. Row keys are `text.<kind>.show` (device, page) and
+/// `text.<rep>.<kind>.show` (symbol); [`edit_line`] writes them with `showtext`.
+fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
+    use crate::text_style::TextKind;
+    let kinds: &[TextKind] = match at {
+        TextsAt::Page(_) => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber, TextKind::ContinuationName],
+        _ => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber],
+    };
+    let group = match at {
+        TextsAt::Symbol(..) => "Texts on this symbol",
+        _ => "Texts",
+    };
+    for kind in kinds {
+        let Some(entry) = kind.show_entry() else { continue };
+        let (key, own, inherited) = match at {
+            TextsAt::Device(c) => {
+                let own = doc.components.get(&c).and_then(|x| x.properties.get(entry.key)).cloned();
+                (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
+            }
+            TextsAt::Symbol(r, c) => {
+                let key = crate::defaults::symbol_key(entry.key, r);
+                let own = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+                let page = doc.representations.get(&r).map(|x| x.page);
+                let scope = crate::defaults::Scope { page, component: Some(c), ..crate::defaults::Scope::project() };
+                (key, own, crate::defaults::resolve(doc, entry, scope).word())
+            }
+            TextsAt::Page(p) => {
+                let own = doc.pages.get(&p).and_then(|x| x.properties.get(entry.key)).cloned();
+                (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
+            }
+        };
+        let own = own.filter(|v| entry.parse(v).is_some());
+        let default = format!("Default ({})", shown_words(inherited).to_ascii_lowercase());
+        let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
+        let label = format!("{group}: {}", crate::text_cmds::kind_words(*kind));
+        let mut r = Row::rw(&key, &label, value);
+        r.inherited = own.is_none();
+        r.choices = vec![default, "Shown".into(), "Hidden".into()];
+        if *kind == TextKind::Tag {
+            r.choices.push("Once per run".into());
+        }
+        rows.push(r);
+    }
+}
+
+/// The `showtext` line of a Texts row edit, when `key` is a Texts row's key.
+fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<String> {
+    let rest = key.strip_prefix("text.")?.strip_suffix(".show")?;
+    let (rep, kind) = match rest.split_once('.') {
+        Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
+        _ => (None, rest),
+    };
+    crate::text_style::TextKind::from_word(kind)?;
+    let show = match value.map(|v| v.trim().to_ascii_lowercase()) {
+        Some(v) if v == "shown" || v == "on" => serde_json::json!("on"),
+        Some(v) if v == "hidden" || v == "off" => serde_json::json!("off"),
+        Some(v) if v == "once per run" || v == "first" => serde_json::json!("first"),
+        _ => serde_json::Value::Null,
+    };
+    let mut j = serde_json::json!({"kind": kind, "show": show});
+    match (rep, target) {
+        (Some(r), _) => j["representation"] = r.hex().into(),
+        (None, Target::Devices(cs)) => j["component"] = cs.first().map(|c| c.hex()).into(),
+        (None, Target::Page(p)) => j["page"] = p.hex().into(),
+        (None, _) => {}
+    }
+    Some(format!("showtext {j}"))
+}
+
 /// The command line (JSON form) that writes `value` to row `key` of `target`; `None` for `null`
 /// (clear). Several devices are written in one `setprop` with `components`.
 pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
+    // Brief 031: a Texts row writes its visibility with `showtext`.
+    if let Some(line) = showtext_line(target, key, value) {
+        return line;
+    }
+    // Brief 045: a card's Rack and Slot rows write `plcslot`.
+    if let Target::Devices(cs) = target
+        && let [c] = cs.as_slice()
+        && let Some(line) = crate::plc::edit_line(*c, key, value)
+    {
+        return line;
+    }
     let v = value.map_or(serde_json::Value::Null, |s| serde_json::Value::String(s.to_string()));
     // Brief 026: a clash box's choice (`tag#swap`…), and Fixed `no` releasing the flag.
     if let Some(way) = key.strip_prefix("tag#") {

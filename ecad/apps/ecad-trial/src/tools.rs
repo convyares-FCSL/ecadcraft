@@ -32,7 +32,7 @@ use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, Ter
 pub const TAB: &str = "ECAD";
 
 /// The tab's groups, in order.
-pub const GROUPS: &[&str] = &["Components", "Wiring", "Numbering", "Edit"];
+pub const GROUPS: &[&str] = &["Components", "Wiring", "Numbering", "Edit", "Text"];
 
 /// The developer tools' group: shown in the Project panel's collapsed **Developer** section, not
 /// in Tool Sets (owner, 2026-11-08).
@@ -159,6 +159,14 @@ pub const TOOLS: &[Tool] = &[
         label: "Junction",
         tooltip: "Click a wire where a T joins it: a junction dot, and the wire is split there",
         kind: Kind::Start("junction"),
+    },
+    // Brief 032: repair wire ends that meet.
+    Tool {
+        id: "ecad.joinwires",
+        group: "Wiring",
+        label: "Join Wires",
+        tooltip: "Click where wire ends meet: two ends become one wire; an end on a wire gets a junction",
+        kind: Kind::Start("joinwires"),
     },
     Tool {
         id: "ecad.wirenumber",
@@ -310,11 +318,64 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Open the ECAD command field: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
         kind: Kind::Trial,
     },
+    // Brief 031 (design §5.5, §5.7): the Text group (`ecad.toolset.text`).
+    Tool {
+        id: "ecad.tool.showtext",
+        group: "Text",
+        label: "Show/Hide Text",
+        tooltip: "Click a tag or label to hide it, or a symbol to show its hidden tag (Device, Page or Project: wider)",
+        kind: Kind::Start("showtext"),
+    },
+    Tool {
+        id: "ecad.tool.movetext",
+        group: "Text",
+        label: "Move Text",
+        tooltip: "Click a tag or label, then where it goes (Justify: its alignment; Reset: back to automatic)",
+        kind: Kind::Start("movetext"),
+    },
+    Tool {
+        id: "ecad.view.hiddentext",
+        group: "Text",
+        label: "Show Hidden Text",
+        tooltip: "Draw hidden tags and labels dimmed, or stop drawing them (display only; never printed)",
+        kind: Kind::Run("hiddentext"),
+    },
 ];
 
-/// The tab as CADCraft's Tool Sets panel shows it.
+/// The tab as CADCraft's Tool Sets panel shows it (developer switch only). Brief 041: every
+/// button's command is now reachable from an action ([`covered`]); the buttons stay here, behind
+/// the developer switch, until the tests that drive the forms through them move to the actions.
 pub fn tab() -> ExtraToolTab {
     ExtraToolTab { name: TAB.into(), groups: GROUPS.iter().map(|g| group(g, true)).collect() }
+}
+
+/// The command a button reaches (brief 041): its own for Start and Run, the template's, the
+/// symbol search's, or the dialog's. `None` for the developer tools.
+pub fn command_of(t: &Tool) -> Option<&'static str> {
+    Some(match t.kind {
+        Kind::Start(c) => c,
+        Kind::Run(line) => line.split_whitespace().next()?,
+        Kind::Search => "symbols",
+        Kind::Template => match t.id {
+            "ecad.setprop" => "setprop",
+            "ecad.cableadd" => "cableadd",
+            "ecad.delete" => "ecaddelete",
+            _ => return None,
+        },
+        Kind::Trial => match t.id {
+            "ecad.renumber" => "renumber",
+            "ecad.renumberwires" => "renumberwires",
+            "ecad.finalise" => "finalise",
+            // Preview Reference is the reference wheel's Preview (an action with no command).
+            "ecad.cablepreview" => return ecad_cadcraft::actions::find("reference.preview").map(|_| "reference.preview"),
+            _ => return None,
+        },
+    })
+}
+
+/// Whether an action covers the button (brief 041): its command, or Preview Reference's action.
+pub fn covered(t: &Tool) -> bool {
+    command_of(t).is_some_and(|c| ecad_cadcraft::actions::covers(c) || ecad_cadcraft::actions::find(c).is_some())
 }
 
 /// The tools of the Project panel's Developer section, in order; Export Inspector Snapshot only

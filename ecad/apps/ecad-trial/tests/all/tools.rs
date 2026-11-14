@@ -13,17 +13,22 @@ use serde_json::json;
 fn trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
-    Trial::new(None).unwrap()
+    let mut t = Trial::new(None).unwrap();
+    crate::project_panel::open_panels(&mut t);
+    t
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(eframe::egui::vec2(1600.0, 1000.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1200.0)).build_ui_state(
         |ui, t: &mut Trial| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
         t,
     );
+    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
+    // command line, which sit behind the shell's developer switch now.
+    h.state_mut().set_cad_chrome(true);
     h.run_steps(5);
     h
 }
@@ -140,7 +145,7 @@ fn the_interactive_buttons_start_their_prompts() {
         // No component on the page: no number is promised (fix round 2, N3).
         ("Add Connection Point", "addterminal", "Specify point for a connection point on a component or [Name]:"),
         ("Place Symbol", "place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
-        ("Wire", "wire", "Specify first point of wire or [Potential] <auto>:"),
+        ("Wire", "wire", "Specify first point of wire or [Potential/Category/Join] <auto>:"),
         ("Connect", "connect", "Select wire near the end to connect:"),
         ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),
         ("Cable Slash", "cableslash", "Specify first point of cable slash:"),
