@@ -1,4 +1,5 @@
-//! The shell's keys (spec §5, "Keyboard that remains"): the tool group keys V W P C D B T,
+//! The shell's keys (spec §5, "Keyboard that remains"): the tool group keys V D T W C (UI rev 3
+//! keeps a key only where a group of 041's survives), `]` (collapse or expand the inspector),
 //! Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right and Esc; and, from the action table
 //! (brief 041, [`ecad_cadcraft::actions`]), Del, F2, R, X, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z and
 //! Ctrl+Y. Undo and redo are keys only (owner answer 8).
@@ -85,16 +86,22 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
         // Pressed again while its group's tool prompts: the next tool of the group, unless the
         // prompt takes that letter (typed text, or a keyword starting with it).
         for (gi, g) in super::tool_strip::GROUPS.iter().enumerate() {
-            if t.group_tool_running(gi) && !prompt_takes(t, g.letter) && take(Modifiers::NONE, g.key) {
-                ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(x) if x.eq_ignore_ascii_case(&g.letter.to_string()))));
-                t.group_key(g.letter);
+            let Some((letter, key)) = g.key else { continue };
+            if t.group_tool_running(gi) && !prompt_takes(t, letter) && take(Modifiers::NONE, key) {
+                ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(x) if x.eq_ignore_ascii_case(&letter.to_string()))));
+                t.group_key(letter);
             }
         }
     } else {
         for g in super::tool_strip::GROUPS.iter() {
-            if take(Modifiers::NONE, g.key) {
-                t.group_key(g.letter);
+            if let Some((letter, key)) = g.key
+                && take(Modifiers::NONE, key)
+            {
+                t.group_key(letter);
             }
+        }
+        if take(Modifiers::NONE, Key::CloseBracket) {
+            t.shell.state.right_collapsed = !t.shell.state.right_collapsed;
         }
         if take(Modifiers::NONE, Key::F) {
             t.zoom_to_drawing();

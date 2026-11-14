@@ -127,7 +127,7 @@ fn new_symbol_opens_an_empty_builder_whose_missing_list_names_what_it_needs() {
     let slots = h.state().shell.slots.unwrap();
     assert_eq!(slots.right.width(), 380.0, "the builder's right panel is 380 px");
     assert!(slots.tool_strip.is_some(), "the builder has a tool strip");
-    assert!(!slots.drawer_open, "the drawer is closed while drawing");
+    assert!(slots.drawer.is_none(), "the drawer is closed while drawing");
     for item in ["name", "point", "prefix", "slot"] {
         assert!(h.query_by_label(&format!("library.details.missing.{item}")).is_some(), "Missing: {item}");
     }
@@ -213,7 +213,7 @@ fn edit_symbol_reviews_every_copy_with_update_selected_when_one_clashes() {
     let r = h.state().library.builder.as_ref().and_then(|b| b.review.clone()).expect("the review");
     assert_eq!(r.choice, review::Choice::Selected, "a clash pre-selects Update selected");
     assert!(r.header().ends_with("3 placed copies on 1 page · 1 would clash"), "{}", r.header());
-    assert!(h.state().shell.slots.unwrap().drawer_open, "the review opens the drawer");
+    assert!(h.state().shell.slots.unwrap().drawer.is_some(), "the review opens the drawer");
     assert!(h.query_by_label(review::HEADER).is_some());
     let clash = format!("{}.row.{}.check", review::BODY, reps[0].hex());
     assert!(h.get_by_label(&clash).accesskit_node().is_disabled(), "a clashing row cannot be ticked");

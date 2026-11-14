@@ -11,7 +11,6 @@ use std::sync::Arc;
 use ecad_cadcraft::history::NodeKind;
 use ecad_trial::history_panel;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 use crate::checks_ui::demo_file;
@@ -28,8 +27,8 @@ fn save_shot(h: &H, deltas: &Deltas, name: &str) {
 }
 
 fn click(h: &mut H, label: &str) {
-    h.get_by_label(label).click();
-    h.run_steps(3);
+    // UI rev 3: the panels' tabs are reached through the strip and the inspector.
+    crate::project_panel::click(h, label);
 }
 
 fn last_label(h: &mut H) -> String {

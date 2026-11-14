@@ -13,7 +13,9 @@ use serde_json::json;
 fn trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
-    Trial::new(None).unwrap()
+    let mut t = Trial::new(None).unwrap();
+    crate::project_panel::open_panels(&mut t);
+    t
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {

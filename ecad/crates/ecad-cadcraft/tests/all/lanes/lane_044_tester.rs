@@ -1553,9 +1553,10 @@ fn place_connector_action_row() {
     let a = ACTIONS.iter().find(|a| a.id == "place.connector").expect("place.connector");
     assert_eq!(a.command, "connector");
     assert_eq!(a.label, "Connector");
-    assert!(matches!(a.group, Some((ToolGroup::Place, 2))), "{:?}", a.group);
-    let place: Vec<&str> = ToolGroup::Place.tools().iter().map(|a| a.label).collect();
-    assert_eq!(place, ["Symbol", "Terminal", "Connector"]);
+    // UI rev 3: Place became the Device group (Symbol, Connector); Terminal is its own group.
+    assert!(matches!(a.group, Some((ToolGroup::Device, 1))), "{:?}", a.group);
+    let place: Vec<&str> = ToolGroup::Device.tools().iter().map(|a| a.label).collect();
+    assert_eq!(place, ["Symbol", "Connector"]);
     for w in ["connector", "plug", "socket", "d-sub", "m12", "mated"] {
         assert!(actions::search(w, 20).iter().any(|x| x.id == "place.connector"), "search {w:?}");
     }

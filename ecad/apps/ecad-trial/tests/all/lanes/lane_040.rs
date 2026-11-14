@@ -154,14 +154,18 @@ fn nothing_is_painted_while_lists_library_or_publish_hide_the_page() {
 }
 
 #[test]
-fn a_page_first_opens_where_a_tag_is_13_px_tall() {
+fn a_new_page_first_opens_with_its_sheet_fitted() {
+    // UI rev 3 replaced 040's readable first zoom (a tag `TAG_PX` tall) with the sheet fitted at
+    // a 24 px margin; `lane_uiv3` measures the margin.
     let mut h = harness();
     exec(&mut h, "newpage", json!({"title": "Fresh"}));
     h.run_steps(5);
     let (Some(rect), Some(xf)) = (h.state().cad.canvas.rect, h.state().cad.canvas.xf) else { panic!("drawn") };
     assert!(rect.height() > 0.0);
-    let tag_px = 2.5 * xf.scale;
-    assert!((tag_px - canvas::TAG_PX).abs() < 0.5, "a 2.5 mm tag is {tag_px} px");
+    // An A3 sheet (420 mm) fits inside the canvas less two margins.
+    let sheet_px = 420.0 * xf.scale;
+    assert!(sheet_px <= f64::from(rect.width()) - 47.0, "{sheet_px} in {}", rect.width());
+    assert!(2.5 * xf.scale < canvas::TAG_PX, "smaller than 040's readable zoom");
 }
 
 /// The demo page on paper and on the dark sheet, with a GNYE wire, a BU wire, an unknown code, a

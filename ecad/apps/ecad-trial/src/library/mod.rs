@@ -88,7 +88,6 @@ impl Trial {
         self.library.builder = Some(Builder::new(draft));
         self.library.compare = None;
         self.shell.state.builder = true;
-        self.shell.state.drawer_open = false;
         self.shell.state.right_collapsed = false;
         self.set_workspace(crate::shell::Workspace::Library);
     }
@@ -312,7 +311,6 @@ impl Trial {
                             if let Some(b) = self.library.builder.as_mut() {
                                 b.review = Some(review);
                             }
-                            self.shell.state.drawer_open = true;
                             return;
                         }
                         Err(e) => Err(e),
@@ -410,7 +408,6 @@ impl Trial {
                 }
                 review.compare = true;
                 self.library.compare = Some(review);
-                self.shell.state.drawer_open = true;
             }
             Err(e) => self.cad.session.echo(e),
         }

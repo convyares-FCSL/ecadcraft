@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use ecad_model::{Op, PageId};
 use ecad_trial::project_panel::{self, ROW_H};
+use ecad_trial::shell::LeftTab;
 use ecad_trial::{Trial, tools};
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
@@ -158,11 +159,25 @@ pub(crate) fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial>
 }
 
 pub(crate) fn trial() -> Trial {
+    let mut t = rev3_trial();
+    open_panels(&mut t);
+    t
+}
+
+/// The trial as it starts (UI rev 3, board 1.01: both sides closed).
+pub(crate) fn rev3_trial() -> Trial {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
     t
+}
+
+/// Open the Book panel and the inspector, as a person does from the strip and the rail: the
+/// tests of the panels' contents start with them shown (UI rev 3 starts with both closed).
+pub(crate) fn open_panels(t: &mut Trial) {
+    t.shell.state.left.collapsed = false;
+    t.shell.state.right_collapsed = false;
 }
 
 pub(crate) fn ok(h: &mut Harness<'static, Trial>, line: &str) {
@@ -209,7 +224,30 @@ fn tab_title(h: &Harness<'static, Trial>) -> String {
 }
 
 pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
-    h.get_by_label(label).click();
+    // UI rev 3: the panels' tabs are the strip's panel buttons and the inspector's Checks tab.
+    let tab = match label {
+        project_panel::PAGES_TAB => Some(LeftTab::Pages),
+        project_panel::DEVICES_TAB => Some(LeftTab::Devices),
+        ecad_trial::history_panel::HISTORY_TAB => Some(LeftTab::History),
+        _ => None,
+    };
+    if let Some(tab) = tab {
+        let s = h.state().shell_state();
+        if s.workspace != ecad_trial::shell::Workspace::Draw {
+            // Only Draw has the strip; elsewhere the tab is kept for when Draw is shown again.
+            h.state_mut().set_left_tab(tab);
+        } else if s.left.collapsed || s.left.tab != tab {
+            h.get_by_label(&ecad_trial::shell::tool_strip::panel_label(tab)).click();
+        }
+    } else if label == ecad_trial::checks_panel::CHECKS_TAB {
+        // The rail's Checks button opens it (pressed while open on Checks it would close).
+        let s = h.state().shell_state();
+        if s.right_collapsed || s.right_tab != ecad_trial::shell::RightTab::Checks {
+            h.get_by_label(&ecad_trial::shell::right::rail_label(ecad_trial::shell::RightTab::Checks)).click();
+        }
+    } else {
+        h.get_by_label(label).click();
+    }
     h.run_steps(3);
 }
 
@@ -462,11 +500,11 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(active(&mut h), Some(field));
     assert_eq!(h.state().cad.session.docs.len(), 1);
 
-    // Collapse to the strip and back.
-    click(&mut h, project_panel::COLLAPSE);
+    // Close the panel (UI rev 3: the strip's Book opens it again).
+    click(&mut h, ecad_trial::shell::left::CLOSE);
     assert!(h.state().shell_state().left.collapsed && h.query_by_label("Page 1: Supply").is_none());
     let collapsed = take(&h, &deltas, "016-collapsed.png");
-    click(&mut h, project_panel::EXPAND);
+    click(&mut h, &ecad_trial::shell::tool_strip::panel_label(LeftTab::Pages));
     assert!(!h.state().shell_state().left.collapsed);
 
     if shots().is_some() {
@@ -667,6 +705,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     ecad_cadcraft::views::isolate_for_tests();
     let mut second = Trial::with_file(None, &path).unwrap();
     second.dismiss_notice();
+    open_panels(&mut second);
     assert!(second.status().unwrap().file.read_only.is_some());
     let mut h = build(second, None);
     let before = head(&mut h);

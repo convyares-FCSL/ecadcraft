@@ -4,8 +4,15 @@
 //! registry with a badge for where it comes from (built-in, standard, project, page, object,
 //! symbol). A badge opens Settings ▸ Standards at that key. A value set at this object's level is
 //! a field (a list for a choice), with Reset when it is overridden here; a value read from
-//! further out is grey text that goes to where it is set. It collapses to a 44 px rail. The Text
-//! panel opens over it ([`super::text_panel`]).
+//! further out is grey text that goes to where it is set. The Text panel opens over it
+//! ([`super::text_panel`]).
+//!
+//! UI rev 3: the right side mirrors the left. A permanent 56 px rail at the right edge has one
+//! labelled button per tab, Device, Layout and Checks, each with a ‹ mark (› while open); Checks
+//! carries a dot when there are problems. Pressing one opens the panel beside the rail on that
+//! tab, and pressing it again closes it (the strip's panel buttons' rule); `]` or the header's
+//! close button closes it too. The rail's buttons are the tabs: the panel has no tab selector. Until the tabs' own contents come, Device and Layout both
+//! show today's properties and Checks today's check list (it was the drawer's).
 //!
 //! **Update map** (the inspector's rows): rebuilt on a new selection or page, or after a change
 //! that touched the selected object, the page or the project (`props_changes_since`); every other
@@ -22,6 +29,7 @@ use ecad_ui::tokens::{Icon, size, space};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
 
 use super::Slots;
+use super::state::RightTab;
 use crate::Trial;
 
 /// Accessible labels.
@@ -31,33 +39,56 @@ pub const TITLE: &str = "PROPERTIES";
 /// The right panel's title in the Library (brief 048).
 pub const LIBRARY_TITLE: &str = "DETAILS";
 
+/// The rail button's accessible label for `tab`.
+pub fn rail_label(tab: RightTab) -> String {
+    format!("{} tab", tab.label())
+}
+
+impl Trial {
+    /// Expand the inspector on `tab`.
+    pub fn open_inspector(&mut self, tab: RightTab) {
+        self.shell.state.right_tab = tab;
+        self.shell.state.right_collapsed = false;
+    }
+
+    /// A rail button: open the inspector on `tab`, or close it when it is already open there (the
+    /// strip's panel buttons' rule, mirrored).
+    pub fn toggle_inspector(&mut self, tab: RightTab) {
+        if !self.shell.state.right_collapsed && self.shell.state.right_tab == tab {
+            self.shell.state.right_collapsed = true;
+        } else {
+            self.open_inspector(tab);
+        }
+    }
+}
+
 /// Draw the right panel (or its rail, or the Text panel over it).
 pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     let s = ecad_ui::SHELL;
+    // The rail, always shown at the right edge (the strip's mirror).
+    super::fill(ui, slots.rail, s.panel);
+    ui.painter().vline(slots.rail.left() + 0.5, slots.rail.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    rail(t, ui, slots.rail, !slots.right_rail);
+    if slots.right_rail {
+        return;
+    }
     let rect = slots.right;
     super::fill(ui, rect, s.panel);
     ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
-    if t.shell.state.text_panel && !slots.right_rail {
+    if t.shell.state.text_panel {
         super::text_panel::show(t, ui, rect);
-        return;
-    }
-    if slots.right_rail {
-        let expand = super::in_rect(ui, rect.shrink(space::S), "ecad.shell.right.rail", |ui| {
-            ui.vertical_centered(|ui| ui.add(ecad_ui::prim::IconButton::new(Icon::ChevronLeft, EXPAND)).clicked()).inner
-        });
-        if expand {
-            t.shell.state.right_collapsed = false;
-        }
         return;
     }
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
     // Brief 048: the Library's right panel holds a symbol's details (design 048 §3.1, §8.1).
     let library = t.shell.state.workspace == super::Workspace::Library;
+    // No tab selector: the rail's buttons are the tabs. The header names the panel.
+    let title = if library { LIBRARY_TITLE } else { t.shell.state.right_tab.label() };
     let collapse = super::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
         ui.horizontal_centered(|ui| {
-            ecad_ui::prim::read_value(ui, if library { LIBRARY_TITLE } else { TITLE });
+            ui.label(egui::RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)).color(ecad_ui::color(s.text)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, COLLAPSE)).clicked()
+                ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, COLLAPSE)).on_hover_text("Collapse (])").clicked()
             })
             .inner
         })
@@ -71,6 +102,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         super::in_rect(ui, body, crate::library::details::DETAILS, |ui| {
             egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| t.library_right(ui));
         });
+        return;
+    }
+    if t.shell.state.right_tab == RightTab::Checks {
+        checks(t, ui, body);
         return;
     }
     sync(t);
@@ -89,6 +124,65 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     });
     for a in acts {
         t.inspector_action(a);
+    }
+}
+
+/// The Checks tab: today's check list (it was the drawer's until UI rev 3).
+fn checks(t: &mut Trial, ui: &mut egui::Ui, body: Rect) {
+    if !t.project_open() {
+        return;
+    }
+    if t.lists_shows_checks() {
+        super::in_rect(ui, body, "ecad.shell.right.checks", |ui| ecad_ui::prim::read_value(ui, super::CHECKS_IN_LISTS));
+        return;
+    }
+    let writable = {
+        let h = t.header();
+        h.name.is_some() && !h.read_only && t.panel.revision.is_none()
+    };
+    let actions = super::in_rect(ui, body, "ecad.shell.right.checks", |ui| t.panel.checks.show(ui, writable));
+    for a in actions {
+        t.panel_action(a);
+    }
+}
+
+/// The collapsed rail: one labelled button per tab, each with a ‹ mark; Checks carries a dot
+/// when there are problems. A press expands the panel on that tab.
+fn rail(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, open: bool) {
+    let s = ecad_ui::SHELL;
+    let problems = t.checks_count().0 > 0;
+    let x = rect.center().x - size::TOOL_BUTTON_W / 2.0;
+    let mut y = rect.top() + space::S;
+    let mut pick = None;
+    let label_style = ecad_ui::tokens::ui_type::TypeStyle { size: size::TOOL_LABEL, line: 12.0, weight: 400 };
+    for tab in RightTab::ALL {
+        let r = Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON_W, size::TOOL_BUTTON));
+        y += size::TOOL_BUTTON + 2.0;
+        // Lit while the inspector is open on it, as the strip's open panel button.
+        let on = open && tab == t.shell.state.right_tab;
+        let resp = super::bar::hit(ui, r, &rail_label(tab), on, false, true);
+        let ink = if resp.hovered() || on { ecad_ui::color(s.text) } else { ecad_ui::color(s.text_2) };
+        let icon = match tab {
+            RightTab::Device => Icon::Place,
+            RightTab::Layout => Icon::Rotate,
+            RightTab::Checks => Icon::Checks,
+        };
+        let icon_rect = Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON));
+        ecad_ui::icons::paint(ui.painter(), icon_rect, icon, if on { ecad_ui::color(s.accent_text) } else { ink });
+        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, tab.label(), super::bar::font(ui, label_style), ink);
+        let mark = Rect::from_center_size(pos2(r.left() + 4.0, icon_rect.center().y), vec2(8.0, 8.0));
+        // ‹ opens towards the canvas; › while open (the strip's marks, mirrored).
+        let chevron = if on { Icon::ChevronRight } else { Icon::ChevronLeft };
+        ecad_ui::icons::paint(ui.painter(), mark, chevron, ecad_ui::color(s.text_3));
+        if tab == RightTab::Checks && problems {
+            ui.painter().circle_filled(pos2(icon_rect.right() + 2.0, icon_rect.top() + 1.0), 3.5, ecad_ui::color(s.error));
+        }
+        if resp.clicked() {
+            pick = Some(tab);
+        }
+    }
+    if let Some(tab) = pick {
+        t.toggle_inspector(tab);
     }
 }
 

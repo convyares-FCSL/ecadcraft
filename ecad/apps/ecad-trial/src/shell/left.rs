@@ -1,14 +1,16 @@
-//! The left panel (spec §2): navigation only, the same in every workspace. Tabs Pages, Devices
-//! and History host today's Project panel tabs unchanged ([`crate::project_panel`]); each tab
-//! keeps its own width; the panel drags between 200 and 420 px at its inner edge and collapses to
-//! a 44 px rail of the tabs' icons.
+//! The panel slot (UI rev 3): beside the tool strip in Draw, one panel at a time, opened by the
+//! strip's Book, Devices and History buttons and closed by its own close button or the same strip
+//! button. Book, Devices and History host today's Project panel tabs unchanged
+//! ([`crate::project_panel`]); each keeps its own width (Book and Devices 248 px, History 280 px)
+//! and drags between 200 and 420 px at its inner edge. Pinning and floating come later: the panel
+//! docks, and the drawing moves over for it.
 
 use ecad_ui::tokens::{Icon, size, space};
 use eframe::egui::{self, Color32, Rect, pos2, vec2};
 
 use super::{LeftTab, Slots};
 use crate::Trial;
-use crate::project_panel::{self, Tab};
+use crate::project_panel::Tab;
 
 /// The colours the moved panels draw with, from the shell's tokens (they used CADCraft's theme
 /// before brief 038). Named as the CADCraft tokens they replace, so their code reads the same.
@@ -49,16 +51,8 @@ pub fn colours() -> Colours {
     }
 }
 
-fn tab_icon(tab: LeftTab) -> Icon {
-    match tab {
-        LeftTab::Pages => Icon::Pages,
-        LeftTab::Devices => Icon::Devices,
-        LeftTab::History => Icon::History,
-    }
-}
-
 impl Trial {
-    /// Show a left tab (the panel expands if it was a rail).
+    /// Open the panel slot on `tab`.
     pub fn set_left_tab(&mut self, tab: LeftTab) {
         let panel_tab = match tab {
             LeftTab::Pages => Tab::Pages,
@@ -80,47 +74,43 @@ impl Trial {
     }
 }
 
-/// Draw the left panel (or its rail).
+/// Accessible label of the panel's close button.
+pub const CLOSE: &str = "Close the panel";
+
+/// Draw the panel slot, when a panel is open.
 pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
-    let s = ecad_ui::SHELL;
-    let rect = slots.left;
-    super::fill(ui, rect, s.panel);
-    ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
     // The panel's tab follows the shell's (History may have been opened by the agent banner).
     let shown = match t.panel.tab {
         Tab::Devices => LeftTab::Devices,
         Tab::History => LeftTab::History,
         Tab::Pages | Tab::Checks => t.shell.state.left.tab,
     };
-    if shown != t.shell.state.left.tab || t.panel.tab == Tab::Checks {
+    if shown != t.shell.state.left.tab {
+        // Asked for elsewhere (the agent banner's History): it opens.
         t.set_left_tab(shown);
+    } else if t.panel.tab == Tab::Checks {
+        // Checks live in the inspector now: the panel's own tab goes back, nothing opens.
+        let closed = t.shell.state.left.collapsed;
+        t.set_left_tab(shown);
+        t.shell.state.left.collapsed = closed;
     }
-    if slots.left_rail {
-        rail(t, ui, rect);
-        return;
-    }
+    let Some(rect) = slots.panel else { return };
+    let s = ecad_ui::SHELL;
+    super::fill(ui, rect, s.panel);
+    ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
-    let mut pick = None;
-    let mut collapse = false;
-    super::in_rect(ui, header.shrink2(vec2(space::M, space::XS)), "ecad.shell.left.tabs", |ui| {
+    let title = t.shell.state.left.tab.label();
+    let close = super::in_rect(ui, header.shrink2(vec2(space::L, space::XS)), "ecad.shell.left.head", |ui| {
         ui.horizontal_centered(|ui| {
-            for tab in LeftTab::ALL {
-                let on = t.shell.state.left.tab == tab;
-                let r = ecad_ui::prim::Chip::new(tab.label()).selected(on).show(ui).response;
-                r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, tab.label()));
-                if r.clicked() {
-                    pick = Some(tab);
-                }
-            }
+            ui.label(egui::RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)).color(ecad_ui::color(s.text)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                collapse = ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, project_panel::COLLAPSE)).clicked();
-            });
-        });
+                ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, CLOSE)).clicked()
+            })
+            .inner
+        })
+        .inner
     });
-    if let Some(tab) = pick {
-        t.set_left_tab(tab);
-    }
-    if collapse {
+    if close {
         t.shell.state.left.collapsed = true;
     }
     let body = Rect::from_min_max(pos2(rect.left() + space::S, header.bottom()), pos2(rect.right() - space::S, rect.bottom()));
@@ -135,27 +125,6 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         t.panel_action(a);
     }
     resize_edge(t, ui, rect);
-}
-
-/// The collapsed rail: one icon per tab; a click opens the panel on that tab.
-fn rail(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
-    let mut pick = None;
-    super::in_rect(ui, rect.shrink(space::S), "ecad.shell.left.rail", |ui| {
-        ui.vertical_centered(|ui| {
-            let expand = ui.add(ecad_ui::prim::IconButton::new(Icon::ChevronRight, project_panel::EXPAND));
-            if expand.clicked() {
-                pick = Some(t.shell.state.left.tab);
-            }
-            for tab in LeftTab::ALL {
-                if ui.add(ecad_ui::prim::IconButton::new(tab_icon(tab), tab.label()).selected(t.shell.state.left.tab == tab)).clicked() {
-                    pick = Some(tab);
-                }
-            }
-        });
-    });
-    if let Some(tab) = pick {
-        t.set_left_tab(tab);
-    }
 }
 
 /// The inner edge: drag to resize the tab's width (200–420), double-click for its default.

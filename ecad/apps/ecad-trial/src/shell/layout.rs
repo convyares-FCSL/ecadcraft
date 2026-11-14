@@ -1,32 +1,38 @@
-//! The shell's layout (design `ui-architecture.md` §5.1–§5.3): pure arithmetic from the window's
-//! rect and the [`ShellState`] to the rect of every slot. No egui context, so every size rule is
-//! a plain unit test.
+//! The shell's layout (UI rev 3, "Shell at 1920 × 1080"; earlier design `ui-architecture.md`
+//! §5.1–§5.3): pure arithmetic from the window's rect and the [`ShellState`] to the rect of every
+//! slot. No egui context, so every size rule is a plain unit test.
 //!
-//! Sizes are spec §2's at 100 % interface scale. The drawer is 150 px open and 36 px collapsed;
-//! the main view's height at 1920 × 1080 is design §5.2's (824 with the drawer open, 974
-//! collapsed), which counts the drawer's 36 px header row on top of the 150 px body when open.
+//! One bar at each edge: the top bar (40 px) and the bottom bar (32 px). Between them, in Draw:
+//! the tool strip (56 px) at the left edge, the panel slot beside it while a panel is open (Book
+//! and Devices 248 px, History 280 px), the canvas, and its mirror at the right: the inspector's
+//! permanent 56 px rail at the right edge, with the inspector (320 px) beside it while open. Project, Library and Publish have no strip and no panel slot; their
+//! inspector is 340 px open. The agent banner sits under the top bar while an agent is connected.
+//!
+//! Brief 048: the symbol builder (Library) has a strip too, and a 380 px right panel. Its review
+//! ("Before saving") and Compare take a drawer under the canvas while one is shown; rev 3 has no
+//! drawer otherwise (Checks are the inspector's tab).
 
 use ecad_ui::tokens::size;
 use eframe::egui::{Rect, pos2, vec2};
 
 use super::state::{LeftTab, ShellState, Workspace};
 
-/// The left panel's default width, its drag range and its rail (spec §2).
-pub const LEFT_W: f32 = 264.0;
+/// The panel slot's default width (Book, Devices), its drag range, and History's default.
+pub const LEFT_W: f32 = 248.0;
 pub const LEFT_MIN: f32 = 200.0;
 pub const LEFT_MAX: f32 = 420.0;
-/// History's default width (design §5.2).
-pub const HISTORY_W: f32 = 400.0;
-/// A collapsed side panel's rail.
-pub const RAIL_W: f32 = 44.0;
-/// The right panel's width.
-pub const RIGHT_W: f32 = 340.0;
+pub const HISTORY_W: f32 = 280.0;
+/// The inspector's collapsed rail: the tool strip's width, its mirror image.
+pub const RAIL_W: f32 = size::TOOL_STRIP;
+/// The inspector's width in Draw, and in the other workspaces.
+pub const RIGHT_W: f32 = 320.0;
+pub const RIGHT_W_WIDE: f32 = 340.0;
 /// The right panel's width in the symbol builder (spec §2, design 048 §3.1).
 pub const RIGHT_W_BUILDER: f32 = 380.0;
-/// The drawer's body when open, and its header row (all that shows when collapsed).
+/// Brief 048's review drawer: its body and its header row.
 pub const DRAWER_BODY: f32 = 150.0;
 pub const DRAWER_HEADER: f32 = 36.0;
-/// Below this main-view width the shell collapses panels (right, then left, then the drawer).
+/// Below this main-view width the shell collapses panels (the inspector, then the panel slot).
 pub const MAIN_MIN_W: f32 = 760.0;
 /// The companion split's handle, and the least width of each half.
 pub const SPLIT_HANDLE: f32 = 6.0;
@@ -37,48 +43,60 @@ pub const HALF_MIN: f32 = 360.0;
 pub struct Slots {
     pub top_bar: Rect,
     pub agent_banner: Option<Rect>,
-    pub left: Rect,
+    /// The panel slot beside the strip, while a panel is open (Draw only).
+    pub panel: Option<Rect>,
     pub tool_strip: Option<Rect>,
     pub main: Rect,
     pub companion: Option<Rect>,
+    /// Brief 048's review drawer under the canvas, while a review or Compare is shown.
+    pub drawer: Option<Rect>,
     /// The companion split's drag handle, between `main` and `companion`.
     pub handle: Option<Rect>,
-    pub drawer: Rect,
+    /// The inspector beside the rail while open; a zero-width rect at the rail's left edge while
+    /// closed.
     pub right: Rect,
+    /// The inspector's rail at the right edge, always shown (the strip's mirror).
+    pub rail: Rect,
+    /// The bottom bar.
     pub status: Rect,
-    /// Whether each panel is shown as its rail / the drawer open, after forced collapses.
-    pub left_rail: bool,
+    /// Whether the inspector is closed (only its rail shows), after forced collapses.
     pub right_rail: bool,
-    pub drawer_open: bool,
 }
 
-/// The left panel's width for its tab, kept within the drag range.
+/// The panel slot's width for its tab, kept within the drag range.
 pub fn left_width(state: &ShellState) -> f32 {
     let w = state.left.width_per_tab.get(state.left.tab.index()).copied().unwrap_or(LEFT_W);
     if w.is_finite() { w.clamp(LEFT_MIN, LEFT_MAX) } else { LEFT_W }
 }
 
+/// The inspector's open width in `workspace` (`builder`: the symbol builder is shown).
+pub fn right_width(workspace: Workspace, builder: bool) -> f32 {
+    match workspace {
+        Workspace::Draw => RIGHT_W,
+        Workspace::Library if builder => RIGHT_W_BUILDER,
+        _ => RIGHT_W_WIDE,
+    }
+}
+
 /// The slots for `window`. `agent`: an agent is connected (the banner shows).
 pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
-    let (mut left_rail, mut right_rail, mut drawer_open) = (state.left.collapsed, state.right_collapsed && !state.text_panel, state.drawer_open);
-    // Brief 048: the builder has a tool strip too, and a wider right panel.
+    let draw = state.workspace == Workspace::Draw;
     let builder = state.workspace == Workspace::Library && state.builder;
-    let strip = state.workspace == Workspace::Draw || builder;
-    let right_w = if builder { RIGHT_W_BUILDER } else { RIGHT_W };
-    let main_w = |left_rail: bool, right_rail: bool| {
-        let l = if left_rail { RAIL_W } else { left_width(state) };
-        let r = if right_rail { RAIL_W } else { right_w };
-        window.width() - l - r - if strip { size::TOOL_STRIP } else { 0.0 }
+    let right_w = right_width(state.workspace, state.builder);
+    let mut panel_open = draw && !state.left.collapsed;
+    let mut right_rail = state.right_collapsed && !state.text_panel;
+    let strip_w = if draw || builder { size::TOOL_STRIP } else { 0.0 };
+    let main_w = |panel_open: bool, right_rail: bool| {
+        let l = if panel_open { left_width(state) } else { 0.0 };
+        let r = if right_rail { 0.0 } else { right_w };
+        window.width() - strip_w - l - r - RAIL_W
     };
-    // Collapse order (design §5.2): the right panel, then the left, then the drawer.
-    // The Text panel keeps the right panel open (it is drawn over it).
-    if main_w(left_rail, right_rail) < MAIN_MIN_W {
+    // Collapse order: the inspector to its rail, then the panel slot closes. The Text panel keeps
+    // the inspector open (it is drawn over it).
+    if main_w(panel_open, right_rail) < MAIN_MIN_W {
         right_rail = !state.text_panel;
-        if main_w(left_rail, right_rail) < MAIN_MIN_W {
-            left_rail = true;
-            if main_w(left_rail, right_rail) < MAIN_MIN_W {
-                drawer_open = false;
-            }
+        if main_w(panel_open, right_rail) < MAIN_MIN_W {
+            panel_open = false;
         }
     }
     let top_bar = Rect::from_min_size(window.min, vec2(window.width(), size::TOP_BAR));
@@ -90,18 +108,21 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     });
     let status = Rect::from_min_max(pos2(window.left(), window.bottom() - size::STATUS_BAR), window.max);
     let bottom = status.top().max(y);
-    let lw = if left_rail { RAIL_W } else { left_width(state) };
-    let rw = if right_rail { RAIL_W } else { right_w };
-    let left = Rect::from_min_max(pos2(window.left(), y), pos2(window.left() + lw, bottom));
-    let right = Rect::from_min_max(pos2((window.right() - rw).max(left.right()), y), pos2(window.right(), bottom));
-    let tool_strip = strip.then(|| Rect::from_min_max(pos2(left.right(), y), pos2((left.right() + size::TOOL_STRIP).min(right.left()), bottom)));
-    let main_left = tool_strip.map_or(left.right(), |s| s.right());
-    let drawer_h = if drawer_open { DRAWER_HEADER + DRAWER_BODY } else { DRAWER_HEADER };
-    let drawer_top = (bottom - drawer_h).max(y);
-    let drawer = Rect::from_min_max(pos2(main_left, drawer_top), pos2(right.left().max(main_left), bottom));
-    let view = Rect::from_min_max(pos2(main_left, y), pos2(right.left().max(main_left), drawer_top));
+    let rail = Rect::from_min_max(pos2((window.right() - RAIL_W).max(window.left()), y), pos2(window.right(), bottom));
+    let rw = if right_rail { 0.0 } else { right_w };
+    let right = Rect::from_min_max(pos2((rail.left() - rw).max(window.left()), y), pos2(rail.left(), bottom));
+    let tool_strip = (draw || builder).then(|| Rect::from_min_max(pos2(window.left(), y), pos2((window.left() + strip_w).min(right.left()), bottom)));
+    let mut x = tool_strip.map_or(window.left(), |s| s.right());
+    let panel = panel_open.then(|| {
+        let r = Rect::from_min_max(pos2(x, y), pos2((x + left_width(state)).min(right.left()), bottom));
+        x = r.right();
+        r
+    });
+    let drawer_top = if state.review { (bottom - DRAWER_HEADER - DRAWER_BODY).max(y) } else { bottom };
+    let drawer = state.review.then(|| Rect::from_min_max(pos2(x, drawer_top), pos2(right.left().max(x), bottom)));
+    let view = Rect::from_min_max(pos2(x, y), pos2(right.left().max(x), drawer_top));
     let (main, handle, companion) = split(view, state);
-    Slots { top_bar, agent_banner, left, tool_strip, main, companion, handle, drawer, right, status, left_rail, right_rail, drawer_open }
+    Slots { top_bar, agent_banner, panel, tool_strip, main, companion, handle, drawer, right, rail, status, right_rail }
 }
 
 /// The main view split for the companion: each half at least [`HALF_MIN`] wide, or no split.
@@ -119,7 +140,7 @@ fn split(view: Rect, state: &ShellState) -> (Rect, Option<Rect>, Option<Rect>) {
     (main, Some(handle), Some(companion))
 }
 
-/// The left panel's default width for `tab`.
+/// The panel slot's default width for `tab`.
 pub fn default_width(tab: LeftTab) -> f32 {
     match tab {
         LeftTab::History => HISTORY_W,

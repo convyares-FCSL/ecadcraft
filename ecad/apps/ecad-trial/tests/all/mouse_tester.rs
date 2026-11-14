@@ -43,6 +43,7 @@ pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = Trial::new(None).unwrap();
     t.hover_delay = 0.0;
+    crate::project_panel::open_panels(&mut t);
     let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
     if let Some(d) = deltas {
         b = b.renderer(Collect(d));

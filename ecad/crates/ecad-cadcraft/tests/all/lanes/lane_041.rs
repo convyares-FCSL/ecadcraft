@@ -225,17 +225,20 @@ fn a_kind_with_fewer_actions_leaves_its_slots_empty() {
 
 #[test]
 fn tool_groups_list_only_tools_that_start_a_command() {
+    // UI rev 3's strip order; PLC has no placing tool yet.
     let names: Vec<Vec<&str>> = ToolGroup::ALL.iter().map(|g| g.tools().iter().map(|a| a.label).collect()).collect();
     assert_eq!(
         names,
         [
             vec!["Select"],
-            vec!["Wire"],
-            vec!["Symbol", "Terminal", "Connector"],
-            vec!["Cable slash", "Continue cable"],
             vec!["Line", "Polyline", "Rectangle", "Circle", "Arc"],
-            vec!["Location box"],
             vec!["Text", "Note", "Revision cloud"],
+            vec!["Symbol", "Connector"],
+            vec!["Terminal"],
+            vec![],
+            vec!["Wire"],
+            vec!["Cable slash", "Continue cable"],
+            vec!["Location box"],
         ]
     );
     for g in ToolGroup::ALL {
@@ -243,8 +246,9 @@ fn tool_groups_list_only_tools_that_start_a_command() {
             assert!(a.is_tool() || a.id == "select", "{} in {g:?} is not a tool", a.id);
         }
     }
-    let letters: String = ToolGroup::ALL.iter().map(|g| g.letter()).collect();
-    assert_eq!(letters, "VWPCDBT");
+    // Rev 3 keeps a key only where a group of 041's survives.
+    let letters: String = ToolGroup::ALL.iter().filter_map(|g| g.letter()).collect();
+    assert_eq!(letters, "VDTWC");
 }
 
 #[test]

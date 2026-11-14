@@ -183,7 +183,7 @@ fn while_wire_runs_right_click_finishes_the_segment_and_the_intent_line_replaces
     h.run_steps(2);
     // At rest: the intent line, no command line.
     assert!(!h.state().cad.ui.show_command_line);
-    assert_eq!(h.state().intent_text(), intent::AT_REST);
+    assert_eq!(h.state().intent_text(), "", "UI rev 3: nothing over the sheet at rest");
     keys(&mut h, Modifiers::NONE, Key::W);
     assert_eq!(running(&h).as_deref(), Some("wire"));
     assert!(!h.state().cad.ui.show_command_line, "no command line while prompting");
@@ -246,11 +246,16 @@ fn every_key_the_brief_names() {
     let main = h.state().shell.slots.unwrap().main.center();
     h.event(Event::PointerMoved(main));
     h.run_steps(2);
-    // V W P C D B T: each group's first tool; Select ends the running one.
-    for (k, want) in [(Key::W, "wire"), (Key::P, "place"), (Key::C, "cableslash"), (Key::D, "line"), (Key::B, "locationbox"), (Key::T, "text")] {
+    // V D T W C (UI rev 3 dropped P and B): each group's first tool; Select ends the running one.
+    for (k, want) in [(Key::W, "wire"), (Key::C, "cableslash"), (Key::D, "line"), (Key::T, "text")] {
         cancel(&mut h);
         keys(&mut h, Modifiers::NONE, k);
         assert_eq!(running(&h).as_deref(), Some(want), "{k:?}");
+    }
+    for k in [Key::P, Key::B] {
+        cancel(&mut h);
+        keys(&mut h, Modifiers::NONE, k);
+        assert!(running(&h).is_none(), "{k:?} starts nothing now");
     }
     // Esc ends the tool (back to selecting); V is Select.
     keys(&mut h, Modifiers::NONE, Key::Escape);
@@ -297,7 +302,7 @@ fn every_key_the_brief_names() {
 #[test]
 fn the_tool_strip_lists_only_tools_that_exist_and_steps_with_its_key() {
     let mut h = shell();
-    let draw = tool_strip::GROUPS.iter().find(|g| g.letter == 'D').unwrap();
+    let draw = tool_strip::GROUPS.iter().find(|g| g.letter() == Some('D')).unwrap();
     h.get_by_label(draw.label).hover();
     h.run_steps(2);
     for name in ["Line", "Polyline", "Rectangle", "Circle", "Arc"] {
@@ -416,7 +421,7 @@ fn screenshots_for_the_owner() {
     shot(&h, "041-intent-wire.png");
     cancel(&mut h);
     // The Draw flyout.
-    let draw = tool_strip::GROUPS.iter().find(|g| g.letter == 'D').unwrap();
+    let draw = tool_strip::GROUPS.iter().find(|g| g.letter() == Some('D')).unwrap();
     h.get_by_label(draw.label).hover();
     h.run_steps(3);
     shot(&h, "041-flyout.png");

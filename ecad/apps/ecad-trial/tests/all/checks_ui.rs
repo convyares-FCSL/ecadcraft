@@ -69,8 +69,8 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 }
 
 fn click(h: &mut H, label: &str) {
-    h.get_by_label(label).click();
-    h.run_steps(3);
+    // UI rev 3: the panels' tabs are reached through the strip and the inspector.
+    crate::project_panel::click(h, label);
 }
 
 #[test]
@@ -156,9 +156,8 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // The Checks tab: -M01:PE, a click goes to page 3, centres it, selects the motor, rings PE.
     click(&mut h, checks_panel::CHECKS_TAB);
-    // Brief 038: Checks is the shell's drawer, open; the whole list (the drawer shows a few rows)
-    // is Lists ▸ Check list.
-    assert!(h.state().shell_state().drawer_open);
+    // UI rev 3: Checks is the inspector's tab; the whole list is Project ▸ Check list.
+    assert_eq!(h.state().shell_state().right_tab, ecad_trial::shell::RightTab::Checks);
     h.state_mut().set_workspace(ecad_trial::shell::Workspace::Lists);
     h.state_mut().shell.lists = ecad_trial::shell::ListsView::Checks;
     h.run_steps(3);

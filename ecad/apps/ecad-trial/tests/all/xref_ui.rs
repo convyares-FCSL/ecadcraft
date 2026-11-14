@@ -123,11 +123,9 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
     h.run_steps(2);
 
     // The Checks tab: one too-many-contacts row; a click goes to page 105.
-    h.get_by_label(checks_panel::CHECKS_TAB).click();
-    h.run_steps(3);
-    // Brief 038: Checks is the shell's drawer, open; the whole list (the drawer shows a few rows)
-    // is Lists ▸ Check list.
-    assert!(h.state().shell_state().drawer_open);
+    crate::project_panel::click(&mut h, checks_panel::CHECKS_TAB);
+    // UI rev 3: Checks is the inspector's tab; the whole list is Project ▸ Check list.
+    assert_eq!(h.state().shell_state().right_tab, ecad_trial::shell::RightTab::Checks);
     h.state_mut().set_workspace(ecad_trial::shell::Workspace::Lists);
     h.state_mut().shell.lists = ecad_trial::shell::ListsView::Checks;
     h.run_steps(3);

@@ -17,51 +17,11 @@ fn window(w: f32, h: f32) -> Rect {
     Rect::from_min_size(pos2(0.0, 0.0), vec2(w, h))
 }
 
-fn size(r: Rect) -> (f32, f32) {
-    (r.width(), r.height())
-}
-
 fn at(state: &ShellState, w: f32, h: f32, agent: bool) -> Slots {
     layout::layout(window(w, h), state, agent)
 }
 
-#[test]
-fn the_sizes_at_1920_by_1080_are_the_designs() {
-    let draw = ShellState::default();
-    let s = at(&draw, 1920.0, 1080.0, false);
-    assert_eq!(size(s.main), (1268.0, 824.0), "Draw, drawer open");
-    assert_eq!((size(s.top_bar), size(s.status)), ((1920.0, 44.0), (1920.0, 26.0)));
-    assert_eq!((s.left.width(), s.tool_strip.map(|r| r.width()), s.right.width()), (264.0, Some(48.0), 340.0));
-    assert_eq!(s.drawer.width(), s.main.width(), "the drawer is the main view's width");
-    let closed = ShellState { drawer_open: false, ..draw.clone() };
-    assert_eq!(size(at(&closed, 1920.0, 1080.0, false).main), (1268.0, 974.0), "drawer collapsed to 36");
-    let banner = at(&draw, 1920.0, 1080.0, true);
-    assert_eq!(size(banner.main), (1268.0, 824.0 - 32.0), "32 px less with the agent banner");
-    assert_eq!(banner.agent_banner.map(size), Some((1920.0, 32.0)));
-    let lists = ShellState { workspace: Workspace::Lists, ..draw.clone() };
-    let l = at(&lists, 1920.0, 1080.0, false);
-    assert_eq!((l.main.width(), l.tool_strip), (1316.0, None), "no tool strip in Lists");
-    let mut history = draw.clone();
-    history.left.tab = LeftTab::History;
-    history.left.width_per_tab[LeftTab::History.index()] = 420.0;
-    assert_eq!(at(&history, 1920.0, 1080.0, false).main.width(), 1112.0, "left panel at 420");
-    assert_eq!(ShellState::default().left.width_per_tab, [264.0, 264.0, 400.0], "History defaults to 400");
-}
-
-#[test]
-fn narrow_windows_collapse_right_then_left_then_the_drawer() {
-    let s = ShellState::default();
-    let wide = at(&s, 1920.0, 1080.0, false);
-    assert!(!wide.right_rail && !wide.left_rail && wide.drawer_open);
-    let a = at(&s, 1366.0, 768.0, false);
-    assert!(a.right_rail && !a.left_rail && a.drawer_open, "first the right panel");
-    assert!(a.main.width() >= layout::MAIN_MIN_W, "{}", a.main.width());
-    let b = at(&s, 1060.0, 700.0, false);
-    assert!(b.right_rail && b.left_rail && b.drawer_open, "then the left");
-    let c = at(&s, 850.0, 560.0, false);
-    assert!(c.right_rail && c.left_rail && !c.drawer_open, "then the drawer");
-    assert!(!ShellState::default().right_collapsed, "a view state: nothing saved changed");
-}
+// The region sizes and the narrow-window collapses are UI rev 3's now: `lane_uiv3`.
 
 #[test]
 fn the_companion_keeps_360_px_a_half_or_closes() {
@@ -69,8 +29,8 @@ fn the_companion_keeps_360_px_a_half_or_closes() {
     let w = at(&s, 1920.0, 1080.0, false);
     let (main, comp) = (w.main, w.companion.expect("room for two"));
     assert!(main.width() >= layout::HALF_MIN && comp.width() >= layout::HALF_MIN);
-    assert_eq!(main.width() + layout::SPLIT_HANDLE + comp.width(), 1268.0);
-    // 1366: the main view is 974 wide, so a 0.9 split is held at 360 px for the companion.
+    assert_eq!(main.width() + layout::SPLIT_HANDLE + comp.width(), 1920.0 - 56.0 - 56.0, "UI rev 3: strip and rail");
+    // 1366: a 0.9 split is held at 360 px for the companion.
     let n = at(&s, 1366.0, 768.0, false);
     assert_eq!(n.companion.map(|r| r.width()), Some(layout::HALF_MIN));
     // Below the 900 px window minimum, the main view cannot hold two halves.
@@ -80,7 +40,7 @@ fn the_companion_keeps_360_px_a_half_or_closes() {
 
 #[test]
 fn the_shell_state_round_trips_and_a_corrupt_value_starts_with_defaults() {
-    let mut s = ShellState { workspace: Workspace::Publish, drawer_open: false, cad_chrome: true, ..ShellState::default() };
+    let mut s = ShellState { workspace: Workspace::Publish, right_collapsed: false, cad_chrome: true, ..ShellState::default() };
     s.left.tab = LeftTab::Devices;
     s.left.width_per_tab[1] = 333.0;
     let (back, line) = ShellState::from_stored(Some(&s.to_stored()));
@@ -236,14 +196,14 @@ fn group_keys_start_tools_over_the_page_but_not_while_a_field_has_focus() {
     // The search field has the keyboard: the letters are typed, no tool starts.
     h.get_by_label(top_bar::SEARCH).click();
     h.run_steps(2);
-    for (letter, k) in tool_strip::GROUPS.iter().map(|g| (g.letter, g.key)) {
+    for (letter, k) in tool_strip::GROUPS.iter().filter_map(|g| g.key) {
         h.event(Event::Text(letter.to_string()));
         h.key_press(k);
         h.run_steps(1);
     }
     h.run_steps(2);
     assert!(h.state().cad.session.running.is_none(), "no tool while typing");
-    assert_eq!(h.state().search.query, "VWPCDBT");
+    assert_eq!(h.state().search.query, "VDTWC");
 }
 
 #[test]
@@ -271,15 +231,18 @@ fn nothing_from_the_old_panels_is_lost() {
     }
     h.key_press(Key::Escape);
     h.run_steps(2);
-    // The page tools, the tabs and the drawer.
+    // The page tools, the panels and the inspector's tabs (UI rev 3: the strip opens the panels;
+    // Checks, the drawer before, is the inspector's tab).
     for label in [project_panel::NEW_PAGE, project_panel::REPORTS, project_panel::PRINT_BOOK, project_panel::NEW_FOLDER, "ecad.project.newpage.kind"]
     {
         assert!(h.query_by_label(label).is_some(), "Pages: {label}");
     }
-    for label in [project_panel::PAGES_TAB, project_panel::DEVICES_TAB, ecad_trial::history_panel::HISTORY_TAB, ecad_trial::checks_panel::CHECKS_TAB]
-    {
-        assert!(h.query_by_label(label).is_some(), "tab: {label}");
+    for tab in [LeftTab::Pages, LeftTab::Devices, LeftTab::History] {
+        let label = tool_strip::panel_label(tab);
+        assert!(h.query_by_label(&label).is_some(), "panel: {label}");
     }
+    let checks = ecad_trial::shell::right::rail_label(ecad_trial::shell::RightTab::Checks);
+    assert!(h.query_by_label(&checks).is_some(), "the inspector's Checks tab");
     assert!(h.query_by_label_contains(top_bar::CHECKS_PILL).is_some() && h.query_by_label_contains(top_bar::AGENT_PILL).is_some());
     // The Developer fold: the Text panel's Commands tab.
     keys(&mut h, Modifiers::COMMAND, Key::Slash);
@@ -510,7 +473,7 @@ fn lists_shows_the_device_list_at_the_main_views_width() {
     let filters: Vec<Rect> = h.query_all_by_label(ecad_trial::devices_panel::FILTER).map(|n| n.rect()).collect();
     assert_eq!(filters.len(), 1, "one Devices view");
     assert!(filters.iter().all(|r| main.contains(r.center())), "in the main view");
-    assert!(h.query_by_label(ecad_trial::shell::DEVICES_IN_LISTS).is_some(), "the left tab defers");
+    assert!(h.state().shell.slots.unwrap().panel.is_none(), "UI rev 3: Project has no panel slot");
     assert!(h.state().reports.as_ref().is_some_and(|r| r.hidden), "Reports is not drawn over it");
     h.get_by_label(ecad_trial::shell::LISTS_TERMINALS).click();
     h.run_steps(3);

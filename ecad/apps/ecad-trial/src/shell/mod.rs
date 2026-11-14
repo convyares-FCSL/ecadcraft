@@ -1,16 +1,22 @@
-//! The shell (brief 038, U2; design `ui-architecture.md` §5): ECADCraft's window around
-//! CADCraft's drawing.
+//! The shell (brief 038, U2; design `ui-architecture.md` §5; reframed by UI rev 3,
+//! `docs/discussions/ui-2026-11/rev3-build-spec.md`): ECADCraft's window around CADCraft's
+//! drawing. One bar at each edge; the drawing comes first.
 //!
-//! - top bar: the project menu, the four workspaces (Ctrl+1–4), search (Ctrl+K), the Checks,
-//!   revision and agent pills ([`top_bar`]);
+//! - top bar: the project pill and menu, the four workspaces (Ctrl+1–4), search (Ctrl+K), the
+//!   agent icon, the light/dark switch, help and the account ([`top_bar`]);
 //! - the agent banner while an agent is connected (035's banner, styled by 043);
-//! - left panel: Pages, Devices and History, navigation only ([`left`]);
-//! - tool strip in Draw: seven groups whose flyouts list today's tools ([`tool_strip`]);
+//! - tool strip in Draw, at the left edge: the Book, Devices and History panel buttons, nine tool
+//!   groups, and the Snap, Grid and Ortho toggles ([`tool_strip`]);
+//! - the panel slot beside it while a panel is open: Book, Devices or History, navigation only
+//!   ([`left`]);
 //! - main view: the page (CADCraft's drawing through upstream seam US1, `CadApp::ui_embedded`),
 //!   or Lists, Library and Publish hosting today's Reports, symbol search and Release / Print Book;
 //!   it splits for a companion view ([`layout`]);
-//! - drawer: Checks ([`drawer`]); right panel: the ECAD properties ([`right`]), with the Text
-//!   panel over it (Ctrl+/; [`text_panel`]); status bar ([`status_bar`]);
+//! - the inspector at the right, a 56 px rail of its Device, Layout and Checks tabs when
+//!   collapsed ([`right`]), with the Text panel over it (Ctrl+/; [`text_panel`]);
+//! - the bottom bar: status, the page well and the view ([`status_bar`]);
+//! - brief 048's review drawer under the canvas, only while a symbol review or Compare shows
+//!   ([`drawer`]);
 //! - Settings, a full-window overlay opened from the project menu ([`crate::settings`], brief
 //!   042); its Developer section has the developer switch, which shows CADCraft's own interface
 //!   inside the main view (`--cad-ui`, `ui.cadchrome`).
@@ -22,6 +28,7 @@
 //! action table (U4b), the canvas look (U4a), the inspector and Standards (U4c), the restyled
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
+pub mod bar;
 pub mod drawer;
 pub mod intent;
 pub mod keys;
@@ -43,7 +50,10 @@ use eframe::egui::{self, Rect};
 
 use crate::Trial;
 pub use layout::{Slots, layout};
-pub use state::{LeftTab, ShellState, Views, Workspace};
+pub use state::{LeftTab, RightTab, ShellState, Views, Workspace};
+
+/// The margin round the sheet when it fits the canvas (UI rev 3), px.
+pub const FIT_MARGIN: f32 = 24.0;
 
 /// Accessible labels of the shell's own elements (design §9: tests find them by label).
 pub const SETTINGS: &str = "Settings";
@@ -100,7 +110,7 @@ pub const LISTS_TERMINALS: &str = "Terminal plan";
 pub const LISTS_PLC: &str = "PLC";
 pub const LISTS_CHECKS: &str = "Check list";
 pub const LISTS_REPORTS: &str = "Reports";
-/// Said in the drawer while Lists shows the Check list.
+/// Said in the inspector's Checks tab while Lists shows the Check list.
 pub const CHECKS_IN_LISTS: &str = "The checks are shown in Lists ▸ Check list.";
 /// Said in the left panel's Devices tab while Lists shows the same view.
 pub const DEVICES_IN_LISTS: &str = "The devices are shown in Lists ▸ Device list.";
@@ -158,6 +168,12 @@ pub struct Shell {
     view_of: Option<(String, Option<PageId>)>,
     /// The shell's own share of the last frame, in milliseconds (design §10).
     pub frame_ms: f64,
+    /// The bottom bar's page well (UI rev 3).
+    pub well: status_bar::Well,
+    /// When the project last became saved in this session (`HH:MM`, local), and the save state
+    /// last frame.
+    pub saved_at: Option<String>,
+    pub saved_was: Option<String>,
 }
 
 impl std::fmt::Debug for Shell {
@@ -190,6 +206,9 @@ impl Shell {
             right_section: crate::sheets_ui::section(props),
             view_of: None,
             frame_ms: 0.0,
+            well: status_bar::Well::default(),
+            saved_at: None,
+            saved_was: None,
         }
     }
 
@@ -299,6 +318,8 @@ impl Trial {
         (self.developer.open, self.shell.state.text_panel) = (open, open);
         // The banner's slot while an agent is shown, unless the agent pill hid it (brief 043).
         let agent = self.agent.banner.as_ref().is_some_and(|b| !crate::agent::banner::hidden(ui.ctx(), &b.session));
+        // Brief 048: the review drawer shows while a review or Compare is open.
+        self.shell.state.review = self.drawer_review_tab().is_some();
         let slots = layout(ui.max_rect(), &self.shell.state, agent);
         self.shell.slots = Some(slots);
         // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
@@ -504,6 +525,41 @@ impl Trial {
     /// Whether `at` is over the page shown, with no window or popup above it there.
     pub fn over_shown_page(&self, ctx: &egui::Context, at: egui::Pos2) -> bool {
         self.shell.page_rect.is_some_and(|r| r.contains(at)) && ctx.layer_id_at(at).is_none_or(|l| l.order == egui::Order::Background)
+    }
+
+    /// Fit the page shown with its frame and title block visible and a 24 px margin (UI rev 3,
+    /// "Canvas"); a page without a frame fits its drawing.
+    pub fn fit_sheet(&mut self) -> bool {
+        let Some(rect) = self.shell.slots.map(|s| s.main) else { return false };
+        self.fit_sheet_in(rect)
+    }
+
+    /// [`Trial::fit_sheet`] in `rect`.
+    pub fn fit_sheet_in(&mut self, rect: Rect) -> bool {
+        let Ok(d) = self.cad.session.doc() else { return false };
+        let mut b = cadcraft_engine::geom::Bounds2::default();
+        for e in d.model.iter().filter(|e| e.common.layer == ecad_cadcraft::frame::LAYER) {
+            b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
+        }
+        if b.is_empty() {
+            return self.zoom_to_drawing();
+        }
+        self.fit_bounds(b, rect)
+    }
+
+    /// Fit `b` (drawing units) in `rect` with [`FIT_MARGIN`] px all round.
+    pub fn fit_bounds(&mut self, b: cadcraft_engine::geom::Bounds2, rect: Rect) -> bool {
+        let (bw, bh) = (b.max.x - b.min.x, b.max.y - b.min.y);
+        let (w, h) = (f64::from(rect.width() - 2.0 * FIT_MARGIN), f64::from(rect.height() - 2.0 * FIT_MARGIN));
+        if !(bw > 0.0 && bh > 0.0 && w > 0.0 && h > 0.0) {
+            return false;
+        }
+        let scale = (w / bw).min(h / bh);
+        let Ok(st) = self.cad.session.state_mut() else { return false };
+        let mut view = st.view();
+        view.center = cadcraft_engine::geom::Vec2::new((b.min.x + b.max.x) / 2.0, (b.min.y + b.max.y) / 2.0);
+        view.height = f64::from(rect.height()) / scale;
+        view.height.is_finite() && st.set_view(view)
     }
 
     /// The companion split's handle: drag to resize, double-click for the default.
