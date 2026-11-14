@@ -14,6 +14,12 @@ pub fn corner(px: f32) -> CornerRadius {
     CornerRadius::same(px.round().clamp(0.0, 255.0) as u8)
 }
 
+/// The UI face (the first face of egui's `Proportional`, IBM Plex Sans regular) at `size` px: a
+/// `ui_type` token's size, or a size the drawing works out from one (a symbol drawn at its scale).
+pub fn ui_font(size: f32) -> FontId {
+    FontId::proportional(size)
+}
+
 /// The one shadow style (popovers and the sheet).
 pub fn shadow() -> Shadow {
     let i8_px = |v: f32| v.round().clamp(-128.0, 127.0) as i8;

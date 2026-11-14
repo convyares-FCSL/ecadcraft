@@ -85,12 +85,16 @@ canvas switches to these in U4a.
 | `sheet.agent_write` | `#5F8F00` | `#B9E34A` | no | dashed outline |
 
 The selection is filled at 12 % (`sheet.selection_fill`), the placement preview at 8 %
-(`sheet.preview_fill`).
+(`sheet.preview_fill`). Page thumbnails and the page menu's previews are drawn in neutral greys
+on either sheet (`sheet.thumbnail_paper`, `sheet.preview_paper`, `sheet.thumbnail_ink`).
 
 | Token | Value |
 | --- | --- |
 | `sheet.selection_fill` | `12 %` |
 | `sheet.preview_fill` | `8 %` |
+| `sheet.thumbnail_paper` | `#E8E8E8` |
+| `sheet.preview_paper` | `#ECECEC` |
+| `sheet.thumbnail_ink` | `#464646` |
 
 ## Wire colours
 
@@ -121,6 +125,8 @@ face of `Proportional`.
 | `ui_type.body_emphasis` | `13 / 18 px` | `500` | Emphasis in body text |
 | `ui_type.title` | `15 / 20 px` | `600` | Panel and card titles |
 | `ui_type.object` | `20 / 26 px` | `600` | The selected object's name, screen titles |
+| `ui_type.micro` | `9 / 12 px` | `400` | Point keys and slot labels on symbol drawings in the Library |
+| `ui_type.lead` | `14 / 20 px` | `400` | An empty screen's hint |
 
 ## Sheet text
 
@@ -187,6 +193,10 @@ px (`ecad_tokens::radius`). A pill is fully rounded: half its height.
 | `radius.tile` | `8 px` | Tiles |
 | `radius.popover` | `10 px` | Popovers |
 | `radius.card` | `10 px` | Cards |
+| `radius.row` | `4 px` | A row's hover or selection ground, a small button's hover |
+| `radius.check` | `4 px` | Check boxes |
+| `radius.segment` | `5 px` | The selected segment in a segmented control (button less its 1 px inset) |
+| `radius.inset_card` | `6 px` | A card inside a panel section (inspector part cards) |
 | `radius.pill` | `full` | Pills |
 
 ## Line weights

@@ -160,6 +160,13 @@ pub const DARK: Sheet = Sheet {
     agent_write: Color::hex(0xB9E34A),
 };
 
+/// A page thumbnail's paper in the Book panel (UI rev 3, board 1.02).
+pub const THUMBNAIL_PAPER: Color = Color::hex(0xE8E8E8);
+/// A page's preview paper in the status bar's page menu (UI rev 3).
+pub const PREVIEW_PAPER: Color = Color::hex(0xECECEC);
+/// The ink of page thumbnails and previews (UI rev 3).
+pub const THUMBNAIL_INK: Color = Color::hex(0x464646);
+
 /// Selection fill opacity, % (spec: "12 % fill").
 pub const SELECTION_FILL_PERCENT: u8 = 12;
 /// Placement preview fill opacity, % (spec: "8 % fill").
