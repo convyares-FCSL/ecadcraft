@@ -39,6 +39,8 @@ arrives in 0.4.0.
   The project keeps one list of functions and locations, with rename and merge.
 - **Performance.** The BOM column change, strip build and PLC rack drop under their targets.
 - **CI.** The full suite runs in parallel (nextest and sharded slow tests).
+- **A faster dev harness** in the style of SolidCraft's testing, started now because it speeds up
+  everything after it.
 
 ### 0.2.2: pages, title blocks, PLC signals, ratings
 
@@ -103,7 +105,6 @@ Network and Tests may move to 0.3.1 if the week runs short.
 
 - A simpler, leaner `.ecad` pipeline. The old v1 container is removed.
 - Groundwork for the v1 format freeze.
-- **A faster dev harness** in the style of SolidCraft's testing.
 
 Out of scope on purpose: hazardous areas, functional-safety calculations, 3D and automatic
 wire routing.
