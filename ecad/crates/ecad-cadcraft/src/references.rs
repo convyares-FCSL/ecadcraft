@@ -76,7 +76,24 @@ pub fn all(doc: &Document) -> Vec<CableReference> {
 
 /// The reference ends on `page`, derived.
 pub fn references_on_page(doc: &Document, page: PageId) -> Vec<CableReference> {
-    cable_references(doc).into_iter().filter(|r| r.page == page).collect()
+    page_cable_references(doc, page).into_iter().filter(|r| r.page == page).collect()
+}
+
+/// The references of the cables with a reference end on `page`, derived as [`all`] derives them
+/// (a reference's text reads only its own cable's references and routes; brief 014's
+/// [`cable_references_of`]). Cost is in proportion to the page's representations and those
+/// cables, not to the document (brief 053: `wire` and `joinwires` derived every reference of the
+/// project to find a page's markers).
+fn page_cable_references(doc: &Document, page: PageId) -> Vec<CableReference> {
+    let cables: BTreeSet<CableId> = doc
+        .representations_on(page)
+        .filter(|(_, r)| is_reference(r))
+        .filter_map(|(_, r)| match r.subject {
+            Subject::Cable(k) => Some(k),
+            _ => None,
+        })
+        .collect();
+    cable_references_of(doc, &cables)
 }
 
 /// What one reference end shows on its page (design 010 §6.1, §6.2). Call [`markers_on_page`].
@@ -113,7 +130,7 @@ pub struct Marker {
 /// Ends that cannot be located (a missing or non-finite point, only from a hostile file) are left
 /// out; `cablerefs` and the hover still list them with `/?`.
 pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
-    markers_from(doc, cable_references(doc), page)
+    markers_from(doc, page_cable_references(doc, page), page)
 }
 
 /// [`markers_on_page`] from references already derived (`refs`, as [`all`] returns them), so one
@@ -487,9 +504,12 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 
 // ---------------------------------------------------------------- per commit (brief 014)
 
+/// Style catalogues no cable reference reads (brief 053): a change of one reaches no reference.
+const NO_REFERENCE_STYLES: &[&str] = &["text", "wire", "location"];
+
 /// The cables whose references, or whose drawing at a reference end on any page, `ops` could
 /// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
-/// layer, cable property or settings ops), which means the whole document, as before
+/// layer, standard, frame style or settings ops), which means the whole document, as before
 /// brief 014. Worked out on the document before the ops.
 ///
 /// # Semantics
@@ -582,11 +602,26 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(*id);
             }
+            // Brief 053: a cable's property (its type, tag) is that cable's alone, so only its
+            // reference ends may read differently (before, every cable: `spagetype`).
+            Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
+                out.insert(*k);
+            }
             Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
                 out.insert(*cable);
             }
             Op::SetProjectSettings { before, after }
                 if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
+            // Brief 053: the text, wire and location styles only change how things are drawn;
+            // no reference reads them (the derivation reads cables, routes, pages and the sheet),
+            // so they reach none (before, every cable: `textstyle` derived every reference twice).
+            // Any other catalogue (the frame, one added later) and a standard, which may come to
+            // carry sheets, still reach every cable.
+            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(&catalogue.as_str()) => {}
+            // Brief 053: a deleted component has no terminals and no representations left (the
+            // model's invariants I8 and I10); removing those is its own op above, so the record
+            // itself reaches no reference (`toposition` derived every one twice).
+            Op::DeleteComponent { .. } => {}
             _ => return None,
         }
     }

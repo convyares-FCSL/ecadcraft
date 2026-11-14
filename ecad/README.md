@@ -47,5 +47,5 @@ cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snap
 Docs: [`docs/quick-start.md`](docs/quick-start.md) (run and try the app),
 [`docs/experiment-report.md`](docs/experiment-report.md),
 [`docs/environments.md`](docs/environments.md), and the architecture proposal in
-`../docs/document-architecture-proposal.md`. Versions: product `0.1.0-dev`; incorporated
+`../docs/document-architecture-proposal.md`. Versions: product `0.3.0-dev`; incorporated
 CADCraft commit in [`UPSTREAM.md`](UPSTREAM.md); format versions are independent.

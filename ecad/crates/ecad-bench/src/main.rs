@@ -43,6 +43,42 @@ fn main() -> ExitCode {
     }
     // Brief 044: only the connector rows (connplace, connpins, connside, pinlabel) on one version 2
     // file.
+    // `--write <tier> <lean|churned> <file>`: write one generated project, to time a part on.
+    if let [flag, name, variant, file] = args.as_slice()
+        && flag == "--write"
+    {
+        let r = ecad_bench::tier(name).ok_or_else(|| format!("unknown tier {name}")).and_then(|t| {
+            let v = match variant.as_str() {
+                "lean" => ecad_bench::Variant::Lean,
+                "churned" => ecad_bench::Variant::Churned,
+                other => return Err(format!("unknown variant {other}")),
+            };
+            ecad_bench::v2::write(&ecad_bench::generate(t, v)?, std::path::Path::new(file))
+        });
+        return match r {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // `--part <measure|outputs|strips|text|wires|plc> <file>`: one group of rows on a written
+    // project, printed as it is measured; the full table needs a tier run.
+    if let [flag, part, file] = args.as_slice()
+        && flag == "--part"
+    {
+        return match ecad_bench::measure_part(part, std::path::Path::new(file)) {
+            Ok(text) => {
+                println!("{text}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if let [flag, file] = args.as_slice()
         && flag == "--connectors"
     {

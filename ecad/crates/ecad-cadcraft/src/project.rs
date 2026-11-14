@@ -966,10 +966,8 @@ pub fn project_page_kept(
     }
     // Blocks for the definitions shown on this page.
     let used: BTreeSet<_> = doc
-        .items
-        .values()
-        .filter(|i| i.page == page)
-        .filter_map(|i| match &i.kind {
+        .items_on(page)
+        .filter_map(|(_, i)| match &i.kind {
             ItemKind::Symbol(s) => Some(s.definition),
             ItemKind::Primitive(_) => None,
         })
@@ -997,11 +995,11 @@ pub fn project_page_kept(
     let hidden: BTreeSet<ecad_model::ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut map = HandleMap::default();
     let mut ents: Vec<Entity> = Vec::new();
-    for (id, item) in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
-        let h = prev.item(*id).unwrap_or_else(|| d.new_handle());
+    for (id, item) in doc.items_on(page).filter(|(id, _)| !hidden.contains(id)) {
+        let h = prev.item(id).unwrap_or_else(|| d.new_handle());
         let e = entity_for(doc, item, h).ok_or_else(|| format!("item {id} cannot be drawn"))?;
         ents.push(e);
-        map.insert_item(*id, h);
+        map.insert_item(id, h);
     }
     // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
     crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
@@ -1010,12 +1008,12 @@ pub fn project_page_kept(
     // Brief 050a: location box outlines in their location style.
     crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();
-    for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
+    for (rid, r) in doc.representations_on(page).filter(|(_, r)| r.form == Form::Drawn) {
         let mut members: Vec<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
         for (t, at) in &r.connection_points {
-            let h = prev.marker(*rid, *t).unwrap_or_else(|| d.new_handle());
+            let h = prev.marker(rid, *t).unwrap_or_else(|| d.new_handle());
             ents.push(marker_entity(*at, h));
-            map.insert_marker(*rid, *t, h);
+            map.insert_marker(rid, *t, h);
             members.push(h);
         }
         if matches!(r.subject, Subject::Component(_)) && members.len() > 1 {

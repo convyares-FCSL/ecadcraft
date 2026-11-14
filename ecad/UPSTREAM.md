@@ -1,7 +1,7 @@
 # Incorporated CADCraft
 
 The CADCraft (upstream) commit this repository incorporates. It is tracked separately from the
-ECAD product version (`0.1.0-dev`, `ecad/Cargo.toml`) and from document format versions
+ECAD product version (`0.3.0-dev`, `ecad/Cargo.toml`) and from document format versions
 (`ecad_model::SCHEMA_VERSION`, and the container and record versions in `ecad-file`, such as
 `ecad_file::CONTAINER_VERSION`). See
 `docs/document-architecture-proposal.md` §8.1.
