@@ -81,14 +81,16 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     let (build, rated, dev, pin) = found;
     out.checks_build_ms = build;
     out.rated = rated;
-    let dev = dev.ok_or("no protective device in the project")?;
     let (mut d, mut w, mut pd) = (Vec::new(), Vec::new(), Vec::new());
     for i in 0..runs.max(1) {
-        let value = if i % 2 == 0 { "20 A" } else { "4A C" };
-        d.push(exec(&mut s, "setprop", json!({"component": dev.hex(), "key": "rating", "value": value}))?);
-        let (e, r) = project.configure(&mut s, |p| (p.checks().rating.evaluated, p.checks().rating.retraced))?;
-        out.device_evaluated = e;
-        out.device_retraced = r;
+        // A project with no protective device measures only the default change.
+        if let Some(dev) = dev {
+            let value = if i % 2 == 0 { "20 A" } else { "4A C" };
+            d.push(exec(&mut s, "setprop", json!({"component": dev.hex(), "key": "rating", "value": value}))?);
+            let (e, r) = project.configure(&mut s, |p| (p.checks().rating.evaluated, p.checks().rating.retraced))?;
+            out.device_evaluated = e;
+            out.device_retraced = r;
+        }
         let temp = if i % 2 == 0 { "45" } else { "40" };
         pd.push(exec(&mut s, "setdefault", json!({"key": "rating.panel_temperature", "level": "project", "value": temp}))?);
     }
