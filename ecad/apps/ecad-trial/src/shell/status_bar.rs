@@ -189,7 +189,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     t.sync_well();
     let y = rect.center().y;
     let pill_at = |x: f32, w: f32| Rect::from_min_size(pos2(x, y - PILL_H / 2.0), vec2(w, PILL_H));
-    let draw = t.shell.state.workspace == Workspace::Draw;
+    // UI rev 3: Settings (boards 5.01, 5.02) shows only the status, as Project, Library and Publish.
+    let draw = t.shell.state.workspace == Workspace::Draw && !t.shell.settings_open;
 
     // ---- Status: saved, revision, checks.
     let save = t.save_state();

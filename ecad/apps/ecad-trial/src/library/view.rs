@@ -98,11 +98,24 @@ impl Trial {
         }
     }
 
+    /// The Library's right panel in `rect` (UI rev 3 boards 3.01–3.04: no inspector rail; the
+    /// selected symbol, or the builder's Details).
+    pub(crate) fn library_panel(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        let s = ecad_ui::SHELL;
+        ui.painter().rect_filled(rect, 0.0, ecad_ui::color(s.panel));
+        ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        let body = rect.shrink2(egui::vec2(ecad_ui::tokens::space::L, ecad_ui::tokens::space::L));
+        crate::shell::in_rect(ui, body, details::DETAILS, |ui| {
+            egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| self.library_right(ui));
+        });
+    }
+
     /// The right panel in the Library: the builder's Details, or the selected symbol's.
     pub(crate) fn library_right(&mut self, ui: &mut egui::Ui) {
         let writable = self.project_open() && self.writable();
         if self.library.builder.is_none() {
-            let acts = browser::details(ui, &self.library.browser, &self.library.listing, writable);
+            let page = self.panel.active.and_then(|a| self.panel.rows().iter().find(|r| r.id == a)).map(|r| r.number.clone());
+            let acts = browser::details(ui, &self.library.browser, &self.library.listing, writable, page.as_deref());
             self.browser_acts(acts);
             return;
         }

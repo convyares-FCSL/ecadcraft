@@ -317,7 +317,9 @@ fn the_project_popouts_keep_their_size() {
             rects.push(rect(&h));
         }
         assert!(rects.iter().all(|x| *x == Some(settled)), "{label}: {settled:?} then {rects:?}");
-        assert!(settled.bottom() < tall - 200.0, "{label} ends above the window's bottom: {settled:?}");
+        // UI rev 3 (board 5.01): Project info's Save sits at the foot of Settings, inside the
+        // window; the settings' OK row stays under their fields.
+        assert!(settled.bottom() < tall - 32.0, "{label} ends above the bottom bar: {settled:?}");
         click(&mut h, "ecad.projectprops.cancel");
         assert!(h.state().project_props.is_none(), "{label} closed");
         assert!(!h.state().shell.settings_open, "Cancel closes Settings");

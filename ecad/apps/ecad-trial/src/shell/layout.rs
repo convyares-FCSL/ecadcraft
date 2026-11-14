@@ -30,9 +30,13 @@ pub const RIGHT_W: f32 = 320.0;
 pub const RIGHT_W_WIDE: f32 = 340.0;
 /// The right panel's width in the symbol builder (spec §2, design 048 §3.1).
 pub const RIGHT_W_BUILDER: f32 = 380.0;
+/// Publish's print settings column (board 4.01).
+pub const RIGHT_W_PUBLISH: f32 = 360.0;
 /// Brief 048's review drawer: its body and its header row.
 pub const DRAWER_BODY: f32 = 150.0;
 pub const DRAWER_HEADER: f32 = 36.0;
+/// The drawer's body under the Library's symbol review (board 3.04).
+pub const DRAWER_BODY_LIBRARY: f32 = 300.0;
 /// Compare revisions (board 1.16): its header row over the canvas and its list of changes under it.
 pub const COMPARE_HEADER: f32 = 44.0;
 pub const COMPARE_LIST: f32 = 172.0;
@@ -83,6 +87,7 @@ pub fn right_width(workspace: Workspace, builder: bool) -> f32 {
     match workspace {
         Workspace::Draw => RIGHT_W,
         Workspace::Library if builder => RIGHT_W_BUILDER,
+        Workspace::Publish => RIGHT_W_PUBLISH,
         _ => RIGHT_W_WIDE,
     }
 }
@@ -93,19 +98,23 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let builder = state.workspace == Workspace::Library && state.builder;
     let right_w = right_width(state.workspace, state.builder);
     let mut panel_open = draw && !state.left.collapsed;
+    // UI rev 3 (boards 3.01–4.01): Library and Publish keep their own right column, with no
+    // inspector rail.
+    let own_right = matches!(state.workspace, Workspace::Library | Workspace::Publish);
+    let rail_w = if own_right { 0.0 } else { RAIL_W };
     // An unpinned panel floats over the drawing: it takes no width from the canvas.
     let panel_floats = state.left.floats();
-    let mut right_rail = state.right_collapsed && !state.text_panel;
+    let mut right_rail = !own_right && state.right_collapsed && !state.text_panel;
     let strip_w = if draw || builder { size::TOOL_STRIP } else { 0.0 };
     let main_w = |panel_open: bool, right_rail: bool| {
         let l = if panel_open && !panel_floats { left_width(state) } else { 0.0 };
         let r = if right_rail { 0.0 } else { right_w };
-        window.width() - strip_w - l - r - RAIL_W
+        window.width() - strip_w - l - r - rail_w
     };
     // Collapse order: the inspector to its rail, then the panel slot closes. The Text panel keeps
     // the inspector open (it is drawn over it).
     if main_w(panel_open, right_rail) < MAIN_MIN_W {
-        right_rail = !state.text_panel;
+        right_rail = !own_right && !state.text_panel;
         if main_w(panel_open, right_rail) < MAIN_MIN_W {
             panel_open = false;
         }
@@ -119,7 +128,7 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     });
     let status = Rect::from_min_max(pos2(window.left(), window.bottom() - size::STATUS_BAR), window.max);
     let bottom = status.top().max(y);
-    let rail = Rect::from_min_max(pos2((window.right() - RAIL_W).max(window.left()), y), pos2(window.right(), bottom));
+    let rail = Rect::from_min_max(pos2((window.right() - rail_w).max(window.left()), y), pos2(window.right(), bottom));
     let rw = if right_rail { 0.0 } else { right_w };
     let right = Rect::from_min_max(pos2((rail.left() - rw).max(window.left()), y), pos2(rail.left(), bottom));
     let tool_strip = (draw || builder).then(|| Rect::from_min_max(pos2(window.left(), y), pos2((window.left() + strip_w).min(right.left()), bottom)));
@@ -131,7 +140,9 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
         }
         r
     });
-    let drawer_top = if state.review { (bottom - DRAWER_HEADER - DRAWER_BODY).max(y) } else { bottom };
+    // UI rev 3 (board 3.04): the Library's symbol review is taller.
+    let drawer_body = if state.workspace == Workspace::Library { DRAWER_BODY_LIBRARY } else { DRAWER_BODY };
+    let drawer_top = if state.review { (bottom - DRAWER_HEADER - drawer_body).max(y) } else { bottom };
     let drawer = state.review.then(|| Rect::from_min_max(pos2(x, drawer_top), pos2(right.left().max(x), bottom)));
     let mut view = Rect::from_min_max(pos2(x, y), pos2(right.left().max(x), drawer_top));
     let compare = (draw && state.compare).then(|| {
