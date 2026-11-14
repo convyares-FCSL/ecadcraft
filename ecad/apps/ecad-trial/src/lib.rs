@@ -1911,6 +1911,10 @@ impl Trial {
                 }
             }
             A::Reports => self.reports_view(),
+            A::ProjectDevices => {
+                self.shell.lists = shell::ListsView::Devices;
+                self.set_workspace(shell::Workspace::Lists);
+            }
             A::PrintBook(folder) => {
                 self.open_print_book(folder);
                 self.publish_view(shell::PublishTab::PrintBook);
@@ -2108,6 +2112,7 @@ impl Trial {
     pub fn history_action(&mut self, d: history_panel::Do) {
         use history_panel::Do;
         match d {
+            Do::Agent(a) => self.agent_action(a),
             Do::Run(cmd, params) => {
                 match self.run_click(cmd, params) {
                     Ok(_) => {

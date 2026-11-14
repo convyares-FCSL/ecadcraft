@@ -460,8 +460,8 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     key(&mut h, Key::ArrowDown, Modifiers::ALT);
     assert_eq!(head(&mut h), before + 1);
     assert_eq!(titles(&mut h), ["Supply", "Spare", "Field", "4"]);
-    click(&mut h, project_panel::MOVE_DOWN);
-    assert_eq!(titles(&mut h), ["Supply", "Field", "Spare", "4"], "the header's Move down");
+    key(&mut h, Key::ArrowDown, Modifiers::ALT);
+    assert_eq!(titles(&mut h), ["Supply", "Field", "Spare", "4"], "Alt+Down again: the cursor follows the row");
 
     // C: a page change typed in the command window shows in the panel the next frame.
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field (typed)"}}"#, field.hex()));
@@ -712,10 +712,10 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     click(&mut h, "Page 2: Field");
     let field = doc(&mut h).page_order[1];
     assert_eq!(active(&mut h), Some(field), "switching works");
-    // New page, New folder, Move up and Move down are disabled and named by why.
-    let disabled = h.get_all_by_label(project_panel::READ_ONLY).count();
-    assert_eq!(disabled, 4, "New page, New folder, Move up and Move down");
-    h.get_all_by_label(project_panel::READ_ONLY).for_each(|n| n.click());
+    // New page and New folder (UI rev 3: Book's footer) are disabled: clicking them does nothing.
+    for label in [project_panel::NEW_PAGE, project_panel::NEW_FOLDER] {
+        h.get_by_label(label).click();
+    }
     h.run_steps(3);
     key(&mut h, Key::ArrowUp, Modifiers::ALT);
     key(&mut h, Key::F2, Modifiers::NONE);

@@ -233,8 +233,8 @@ fn nothing_from_the_old_panels_is_lost() {
     h.run_steps(2);
     // The page tools, the panels and the inspector's tabs (UI rev 3: the strip opens the panels;
     // Checks, the drawer before, is the inspector's tab).
-    for label in [project_panel::NEW_PAGE, project_panel::REPORTS, project_panel::PRINT_BOOK, project_panel::NEW_FOLDER, "ecad.project.newpage.kind"]
-    {
+    // UI rev 3: Reports and Print Book are the Project and Publish workspaces.
+    for label in [project_panel::NEW_PAGE, project_panel::NEW_FOLDER, "ecad.project.newpage.kind"] {
         assert!(h.query_by_label(label).is_some(), "Pages: {label}");
     }
     for tab in [LeftTab::Pages, LeftTab::Devices, LeftTab::History] {

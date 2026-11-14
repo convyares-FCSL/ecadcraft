@@ -31,6 +31,7 @@
 pub mod bar;
 pub mod connector;
 pub mod drawer;
+pub mod glyphs;
 pub mod intent;
 pub mod keys;
 pub mod layout;
@@ -362,6 +363,7 @@ impl Trial {
             }
         }
         self.shell.frame_ms = cadcraft_ui_egui::now_ms() - t0;
+        left::close_on_draw(self, ui.ctx(), &slots);
         self.main_view(ui, &slots);
         self.take_props();
     }
