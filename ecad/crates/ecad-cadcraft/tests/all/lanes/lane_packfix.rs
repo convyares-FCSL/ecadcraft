@@ -110,3 +110,85 @@ fn bug_3_a_located_tag_keeps_a_separator_with_the_tag_dash_off() {
     assert_eq!(ecad_cadcraft::locations::located_tag("+X1", "-K01"), "+X1-K01");
     assert_eq!(ecad_cadcraft::locations::located_tag("+X1", "=PWR"), "+X1=PWR");
 }
+
+// ---------------------------------------------------------------- bug 4
+
+/// Each contact table's box on `page` (its lines and text anchors), by head.
+fn table_boxes(h: &mut H, page: PageId) -> Vec<(ecad_model::Pt, ecad_model::Pt)> {
+    use ecad_cadcraft::xref::Shape;
+    use std::collections::BTreeMap;
+    let parts = h.p(|p| ecad_cadcraft::xref::parts_on_page(p.ledger.document(), page));
+    let mut boxes: BTreeMap<_, (ecad_model::Pt, ecad_model::Pt)> = BTreeMap::new();
+    for part in parts.iter().filter(|p| parts.iter().any(|q| q.rep == p.rep && q.bar)) {
+        let pts = match &part.shape {
+            Shape::Line(a, b) => vec![*a, *b],
+            Shape::Text { at, .. } => vec![*at],
+        };
+        for q in pts {
+            let e = boxes.entry(part.rep).or_insert((q, q));
+            e.0 = ecad_model::Pt::new(e.0.x.min(q.x), e.0.y.min(q.y));
+            e.1 = ecad_model::Pt::new(e.1.x.max(q.x), e.1.y.max(q.y));
+        }
+    }
+    boxes.into_values().collect()
+}
+
+#[test]
+fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
+    let mut h = H::new(9104);
+    let page = h.first_page();
+    let coils: Vec<ComponentId> = [100.0, 115.0, 130.0, 145.0].iter().map(|x| placed(&mut h, json!({"symbol": "coil", "at": [x, 70.0]}))).collect();
+    h.run("newpage", json!({"title": "Contacts"})).unwrap();
+    for (i, k) in coils.iter().enumerate() {
+        let x = 60.0 + 30.0 * i as f64;
+        h.run("place", json!({"symbol": "no", "at": [x, 150.0], "device": k.hex()})).unwrap();
+        h.run("place", json!({"symbol": "nc", "at": [x, 100.0], "device": k.hex()})).unwrap();
+    }
+    let boxes = table_boxes(&mut h, page);
+    assert_eq!(boxes.len(), 4, "one table per coil");
+    for (i, a) in boxes.iter().enumerate() {
+        for b in boxes.iter().skip(i + 1) {
+            let apart = a.1.x <= b.0.x || b.1.x <= a.0.x || a.1.y <= b.0.y || b.1.y <= a.0.y;
+            assert!(apart, "tables overlap: {a:?} {b:?}");
+        }
+    }
+    // A table on its own keeps its place under its coil.
+    let mut solo = H::new(9105);
+    let p = solo.first_page();
+    let k = placed(&mut solo, json!({"symbol": "coil", "at": [100.0, 70.0]}));
+    solo.run("newpage", json!({"title": "Contacts"})).unwrap();
+    solo.run("place", json!({"symbol": "no", "at": [60.0, 150.0], "device": k.hex()})).unwrap();
+    let one = table_boxes(&mut solo, p);
+    let top = solo.p(|p| ecad_cadcraft::xref::contacts_json(p.ledger.document(), k)).unwrap()["table"]["top"][0].as_f64().unwrap();
+    assert_eq!(one.len(), 1);
+    assert!(one.iter().all(|b| (b.0.x - (top - 10.0)).abs() < 1e-6), "{one:?} {top}");
+    // The leftmost of the four keeps that same place: only the later ones move.
+    assert!(boxes.iter().any(|b| (b.0.x - (top + 0.0 - 10.0)).abs() < 1e-6), "{boxes:?}");
+}
+
+// ---------------------------------------------------------------- bug 11
+
+#[test]
+fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
+    use ecad_cadcraft::xref::Shape;
+    let mut h = H::new(9111);
+    let p1 = h.first_page();
+    let p2: PageId = id(&h.run("newpage", json!({"title": "Coils"})).unwrap(), "page");
+    let k = placed(&mut h, json!({"symbol": "coil", "at": [100, 150]}));
+    h.activate(p1);
+    let power = h.run("place", json!({"symbol": "power4", "at": [100, 150], "device": k.hex()})).unwrap();
+    let nc = h.run("place", json!({"symbol": "nc", "at": [200, 150], "device": k.hex()})).unwrap();
+    let parts = h.p(|p| ecad_cadcraft::xref::parts_on_page(p.ledger.document(), p1));
+    let text_of = |rep: ecad_model::RepresentationId| {
+        parts.iter().find(|x| x.rep == rep).and_then(|x| match &x.shape {
+            Shape::Text { value, .. } => Some(value.clone()),
+            Shape::Line(..) => None,
+        })
+    };
+    let nc_text = text_of(id(&nc, "representation")).expect("the NC shows its coil");
+    assert_eq!(text_of(id(&power, "representation")).as_deref(), Some(nc_text.as_str()), "the power contacts show the same place");
+    // The coil's table lists four power poles and the NC.
+    let rows = h.p(|p| ecad_cadcraft::xref::contacts_json(p.ledger.document(), k)).unwrap();
+    assert!(p2 != p1);
+    assert_eq!(rows["rows"].as_array().map(Vec::len), Some(5), "{rows}");
+}
