@@ -170,6 +170,16 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         });
         return;
     }
+    // UI rev 3, Project workspace (boards 2.01–2.06): the selected row with its own head, its
+    // properties and its own checks (`lists::detail`); the Checks tab stays the check list.
+    if t.shell.state.workspace == super::Workspace::Lists && t.shell.state.right_tab != RightTab::Checks {
+        // The inspector keeps following the page's selection meanwhile.
+        if t.project_open() {
+            sync(t);
+        }
+        crate::lists::detail::show(t, ui, rect);
+        return;
+    }
     if t.project_open() {
         sync(t);
     }

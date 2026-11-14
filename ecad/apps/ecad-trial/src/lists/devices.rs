@@ -26,6 +26,8 @@ pub const SYMBOL: ColumnId = ColumnId(4);
 pub const PAGES: ColumnId = ColumnId(5);
 pub const PART: ColumnId = ColumnId(6);
 pub const STATE: ColumnId = ColumnId(7);
+/// UI rev 3 (board 2.01): how many part lines the device's part set has.
+pub const PARTS: ColumnId = ColumnId(8);
 
 /// The chips.
 pub const PROVISIONAL: &str = "Provisional";
@@ -49,19 +51,26 @@ pub fn column_of(key: &str) -> Option<ColumnId> {
     }
 }
 
-/// The columns.
+/// The columns, in UI rev 3's order (board 2.01). The state (provisional, not on a page yet,
+/// fixed) is no column of its own: the tag shows a provisional one, On page says "not yet", and
+/// the chips still filter by both.
 pub fn columns() -> Vec<Column> {
     vec![
-        Column::set(TAG.0, "Tag", Width::Initial(80.0)),
-        Column::set(DESCRIPTION.0, "Description", Width::Initial(170.0)),
-        Column::read(FUNCTION.0, "Function", Width::Initial(80.0)).groupable(),
-        Column::read(LOCATION.0, "Location", Width::Initial(130.0)).groupable(),
-        Column::read(SYMBOL.0, "Symbol", Width::Initial(150.0)).groupable(),
-        Column::read(PAGES.0, "Placed", Width::Initial(110.0)),
-        Column::read(PART.0, "Part", Width::Initial(120.0)).groupable(),
-        Column::read(STATE.0, "State", Width::Remainder).groupable(),
+        Column::set(TAG.0, "Tag", Width::Initial(90.0)),
+        Column::set(DESCRIPTION.0, "Description", Width::Initial(420.0)),
+        Column::read(FUNCTION.0, "Function", Width::Initial(96.0)).groupable(),
+        Column::read(LOCATION.0, "Location", Width::Initial(170.0)).groupable(),
+        Column::read(PART.0, "Main part, order code", Width::Initial(200.0)).groupable(),
+        Column::read(PARTS.0, "Parts", Width::Initial(56.0)).align(ecad_ui::table::Align::Right),
+        Column::read(SYMBOL.0, "Symbol", Width::Initial(200.0)).groupable(),
+        Column::read(PAGES.0, "On page", Width::Remainder),
     ]
 }
+
+/// What the Main part column says of a device with no part (board 2.01).
+pub const NO_PARTS: &str = "No parts yet";
+/// What On page says of a device on no page.
+pub const NOT_YET: &str = "not yet";
 
 /// One device's row: its list entry and its location as shown.
 #[derive(Debug, Clone, PartialEq)]
@@ -69,6 +78,8 @@ pub struct DeviceRow {
     pub entry: DeviceEntry,
     /// `+CP1`, `+CP1 (from box on 105)`, `?`.
     pub location: String,
+    /// UI rev 3: its part set's lines (`ecad_cadcraft::bom::part_set`).
+    pub parts: usize,
 }
 
 /// The devices as a table source, in the Devices list's order.
@@ -91,6 +102,13 @@ fn location(doc: &ecad_model::Document, c: ComponentId, cache: &mut ecad_cadcraf
     ecad_cadcraft::locations::resolve_with(doc, c, cache).shown(doc)
 }
 
+fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_cadcraft::locations::BoxCache) -> DeviceRow {
+    // A part set lists the main part first; a device with only a main part has that one line.
+    let set = ecad_cadcraft::bom::part_set(doc, e.id).len();
+    let main = e.properties.get(3).is_some_and(|p| p.as_deref().is_some_and(|p| !p.trim().is_empty()));
+    DeviceRow { entry: e.clone(), location: location(doc, e.id, cache), parts: if set > 0 { set } else { usize::from(main) } }
+}
+
 impl DevicesSource {
     pub fn row(&self, c: ComponentId) -> Option<&DeviceRow> {
         self.rows.get(&c)
@@ -105,7 +123,7 @@ impl DevicesSource {
     pub fn build(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry]) {
         let mut cache = ecad_cadcraft::locations::BoxCache::default();
         self.keys = entries.iter().map(|e| e.id).collect();
-        self.rows = entries.iter().map(|e| (e.id, DeviceRow { entry: e.clone(), location: location(doc, e.id, &mut cache) })).collect();
+        self.rows = entries.iter().map(|e| (e.id, row(doc, e, &mut cache))).collect();
     }
 
     /// Re-read the rows of `touched` from `entries` (added, changed or removed), and the order.
@@ -114,7 +132,7 @@ impl DevicesSource {
         for c in touched {
             match entries.iter().find(|e| e.id == *c) {
                 Some(e) => {
-                    self.rows.insert(*c, DeviceRow { entry: e.clone(), location: location(doc, *c, &mut cache) });
+                    self.rows.insert(*c, row(doc, e, &mut cache));
                 }
                 None => {
                     self.rows.remove(c);
@@ -168,11 +186,14 @@ impl TableSource for DevicesSource {
                 }
                 Cell::read(names.join(", "))
             }
-            PAGES => Cell::Read { text: e.symbols.iter().map(|s| s.place.as_str()).collect::<Vec<_>>().join(", "), go: !e.symbols.is_empty() },
+            PAGES if e.symbols.is_empty() => Cell::read(NOT_YET),
+            PAGES => Cell::Read { text: e.symbols.iter().map(|s| s.place.as_str()).collect::<Vec<_>>().join(", "), go: true },
+            // Rev 3: the main part's order code; the maker is in the right panel.
             PART => {
-                let (maker, part) = (prop(2), prop(3));
-                Cell::read(if maker.is_empty() || part.is_empty() { format!("{maker}{part}") } else { format!("{maker} {part}") })
+                let part = prop(3);
+                if part.is_empty() { Cell::Badge(NO_PARTS.into(), Tone::Warning) } else { Cell::read(part) }
             }
+            PARTS => Cell::Number(r.parts as f64, ""),
             STATE => {
                 if e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional) {
                     Cell::Badge(PROVISIONAL.into(), Tone::Provisional)

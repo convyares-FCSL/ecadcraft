@@ -491,7 +491,6 @@ impl DevicesPanel {
     /// The tab's contents: Renumber, the table, the selected device's properties. Returns the
     /// actions asked for.
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
-        use ecad_ui::table::TableEvent;
         let mut out = Vec::new();
         ui.horizontal(|ui| {
             // Brief 026 (design §9): Renumber in the header.
@@ -502,13 +501,37 @@ impl DevicesPanel {
         // The selected device's properties, at the bottom of the tab.
         let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 } + if self.error.is_some() { 60.0 } else { 0.0 };
         let list_h = (ui.available_height() - editor_h).max(ecad_ui::tokens::size::ROW_TABLE * 4.0);
-        self.table.query = self.filter.clone();
-        let events = ui
+        let acts = ui
             .allocate_ui(vec2(ui.available_width(), list_h), |ui| {
                 ui.set_min_height(list_h);
-                self.table.show(ui, &self.source)
+                self.show_table(ui, writable, true)
             })
             .inner;
+        out.extend(acts);
+        if let Some(c) = self.selected {
+            self.editor(ui, c, writable, &mut out);
+        }
+        out
+    }
+
+    /// The selected device's properties (UI rev 3: Project ▸ Devices shows them in the right
+    /// panel); nothing when no device is selected.
+    pub fn show_editor(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
+        let mut out = Vec::new();
+        if let Some(c) = self.selected {
+            self.editor(ui, c, writable, &mut out);
+        }
+        out
+    }
+
+    /// The table alone, with or without its toolbar (UI rev 3: Project ▸ Devices draws the
+    /// filter in the workspace's head). Returns the actions asked for.
+    pub fn show_table(&mut self, ui: &mut egui::Ui, writable: bool, toolbar: bool) -> Vec<Action> {
+        use ecad_ui::table::TableEvent;
+        let mut out = Vec::new();
+        self.table.toolbar = toolbar;
+        self.table.query = self.filter.clone();
+        let events = self.table.show(ui, &self.source);
         self.filter = self.table.query.clone();
         self.rows_drawn = self.table.rows_drawn;
         // The device's symbols, first first; empty for a device with none.
@@ -548,9 +571,6 @@ impl DevicesPanel {
                 TableEvent::Export(csv) => crate::lists::copy_csv(ui, csv),
                 TableEvent::Button { .. } => {}
             }
-        }
-        if let Some(c) = self.selected {
-            self.editor(ui, c, writable, &mut out);
         }
         out
     }

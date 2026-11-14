@@ -231,6 +231,13 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
                 sort = SortVal::of(&cell);
             }
         }
+        // A group column the source does not show (UI rev 3: Wires grouped by potential, Terminals
+        // by strip) is read for its text alone.
+        if let Some(g) = self.group_by
+            && !cols.iter().any(|c| c.id == g)
+        {
+            group = src.cell(key, g).text().into_owned();
+        }
         let mut chips = 0u64;
         for i in 0..src.chips().len().min(64) {
             if src.chip(key, i) {

@@ -16,12 +16,15 @@ use super::cells;
 use crate::color;
 use crate::style::corner;
 
-/// `ecad.plc.tile_width`: a tile's width, px.
-pub const TILE_WIDTH: f32 = 112.0;
-/// `ecad.plc.square`: a mark's side, px.
-pub const MARK: f32 = 8.0;
-/// `ecad.plc.square_gap`: between marks, px.
-pub const MARK_GAP: f32 = 3.0;
+/// `ecad.plc.tile_width`: a tile's width, px (UI rev 3, board 2.03: a card per slot at the
+/// board's scale; was 112).
+pub const TILE_WIDTH: f32 = 196.0;
+/// `ecad.plc.square`: a mark's side, px (rev 3; was 8).
+pub const MARK: f32 = 13.0;
+/// `ecad.plc.square_gap`: between marks, px (rev 3; was 3).
+pub const MARK_GAP: f32 = 4.0;
+/// A tile's least height, px (rev 3: every card is as tall as the board's).
+pub const TILE_MIN_HEIGHT: f32 = 200.0;
 /// Marks in a row (one byte, Q16).
 pub const MARKS_PER_ROW: usize = 8;
 
@@ -67,6 +70,10 @@ pub struct Tile {
     /// Its element name (`ecad.plc.tile.<slot>`).
     pub name: String,
     pub head: String,
+    /// The head line's right-hand words (UI rev 3: what the card is, `16 outputs, relay`).
+    pub kind: String,
+    /// A line under the marks (rev 3: the card's addresses, `%Q2.0–%Q3.7`).
+    pub under: String,
     pub title: String,
     /// The title in the faint colour (a free slot).
     pub faint_title: bool,
@@ -100,13 +107,16 @@ fn mark_rows(n: usize) -> usize {
 /// A tile's height for `marks` mark rows and `links` link lines, px.
 fn tile_height(lines: usize, marks: usize, links: usize) -> f32 {
     let m = if marks > 0 { marks as f32 * (MARK + MARK_GAP) - MARK_GAP + space::S } else { 0.0 };
-    2.0 * space::M
-        + ui_type::CAPTION.line
-        + ui_type::TITLE.line
-        + lines as f32 * ui_type::SMALL.line
+    let h = 2.0 * space::L
+        + ui_type::SMALL.line
         + space::XS
+        + ui_type::OBJECT.line
+        + lines as f32 * (ui_type::BODY.line + space::XS)
+        + space::M
         + m
-        + links as f32 * ui_type::SMALL.line
+        + space::L
+        + links as f32 * ui_type::BODY.line;
+    h.max(TILE_MIN_HEIGHT)
 }
 
 /// Paint one mark at `r`.
@@ -141,7 +151,7 @@ pub fn legend(ui: &mut Ui, items: &[(Mark, &str)]) {
 /// is wider than the view. Returns what was clicked.
 pub fn show(ui: &mut Ui, id: Id, tiles: &[Tile], selected: Option<usize>) -> Vec<StripEvent> {
     let mut out = Vec::new();
-    let lines = tiles.iter().map(|t| t.lines.len()).max().unwrap_or(0);
+    let lines = tiles.iter().map(|t| t.lines.len() + usize::from(!t.under.is_empty())).max().unwrap_or(0);
     let marks = tiles.iter().map(|t| mark_rows(t.marks.len())).max().unwrap_or(0);
     let links = tiles.iter().map(|t| t.links.len()).max().unwrap_or(0);
     let h = tile_height(lines, marks, links);
@@ -186,24 +196,29 @@ fn tile(ui: &mut Ui, id: Id, i: usize, t: &Tile, selected: bool, h: f32, out: &m
     } else {
         p.rect_stroke(rect, corner(radius::CHIP), Stroke::new(line::HAIRLINE_PX, color(s.line)), StrokeKind::Inside);
     }
-    let inner = rect.shrink(space::M);
+    let inner = rect.shrink(space::L);
     let w = inner.width();
     let mut y = inner.top();
     let head_ink = if selected { s.accent_text } else { s.text_3 };
-    let head = if selected { format!("{} \u{b7} selected", t.head) } else { t.head.clone() };
-    let g = cells::fitted(ui, &head, ui_type::CAPTION, color(head_ink), w);
-    ui.painter().galley(pos2(inner.left(), y), g, color(head_ink));
-    y += ui_type::CAPTION.line;
-    let title_ink = if t.faint_title { s.text_2 } else { s.text };
-    let g = cells::fitted(ui, &t.title, ui_type::TITLE, color(title_ink), w);
-    ui.painter().galley(pos2(inner.left(), y), g, color(title_ink));
-    y += ui_type::TITLE.line;
-    for l in &t.lines {
-        let g = cells::fitted(ui, l, ui_type::SMALL, color(s.text_2), w);
-        ui.painter().galley(pos2(inner.left(), y), g, color(s.text_2));
-        y += ui_type::SMALL.line;
+    // The head line: the slot at the left, what the card is at the right (board 2.03).
+    let kind_w = if t.kind.is_empty() { 0.0 } else { w * 0.6 };
+    if !t.kind.is_empty() {
+        let g = cells::fitted(ui, &t.kind, ui_type::SMALL, color(s.text_3), kind_w);
+        ui.painter().galley(pos2(inner.right() - g.size().x, y), g, color(s.text_3));
     }
-    y += space::XS;
+    let g = cells::fitted(ui, &t.head, ui_type::SMALL, color(head_ink), w - kind_w - space::S);
+    ui.painter().galley(pos2(inner.left(), y), g, color(head_ink));
+    y += ui_type::SMALL.line + space::XS;
+    let title_ink = if t.faint_title { s.text_2 } else { s.text };
+    let g = cells::fitted(ui, &t.title, ui_type::OBJECT, color(title_ink), w);
+    ui.painter().galley(pos2(inner.left(), y), g, color(title_ink));
+    y += ui_type::OBJECT.line;
+    for l in &t.lines {
+        let g = cells::fitted(ui, l, ui_type::BODY, color(s.text_2), w);
+        ui.painter().galley(pos2(inner.left(), y), g, color(s.text_2));
+        y += ui_type::BODY.line + space::XS;
+    }
+    y += space::M;
     // Marks, a row of eight per byte.
     let mut mark_hit = None;
     for (k, m) in t.marks.iter().enumerate() {
@@ -222,12 +237,18 @@ fn tile(ui: &mut Ui, id: Id, i: usize, t: &Tile, selected: bool, h: f32, out: &m
             mark_hit = Some((k, false));
         }
     }
+    if !t.under.is_empty() {
+        let rows = mark_rows(t.marks.len()) as f32;
+        let uy = y + rows * (MARK + MARK_GAP) - MARK_GAP + space::M;
+        let g = cells::fitted(ui, &t.under, ui_type::BODY, color(s.text_2), w);
+        ui.painter().galley(pos2(inner.left(), uy), g, color(s.text_2));
+    }
     // Links at the foot.
-    let foot = rect.bottom() - space::M - t.links.len() as f32 * ui_type::SMALL.line;
+    let foot = rect.bottom() - space::L - t.links.len() as f32 * ui_type::BODY.line;
     let mut link_hit = None;
     for (li, parts) in t.links.iter().enumerate() {
         let mut x = inner.left();
-        let ly = foot + li as f32 * ui_type::SMALL.line;
+        let ly = foot + li as f32 * ui_type::BODY.line;
         for (pi, part) in parts.iter().enumerate() {
             let ink = match (part.enabled, part.tone) {
                 (false, Tone::Accent | Tone::Plain) => s.text_3,
@@ -236,10 +257,16 @@ fn tile(ui: &mut Ui, id: Id, i: usize, t: &Tile, selected: bool, h: f32, out: &m
                 (_, Tone::Error) => s.error,
                 (_, Tone::Plain) => s.text_2,
             };
-            let room = (inner.right() - x).max(0.0);
-            let g = cells::fitted(ui, &part.text, ui_type::SMALL, color(ink), room);
-            let r = Rect::from_min_size(pos2(x, ly), g.size());
-            x = r.right() + space::XS;
+            // Rev 3: a link that goes somewhere sits on a soft pill (the board's `page 5 →`).
+            let pill = part.enabled && part.tone == Tone::Accent;
+            let pad = if pill { space::S } else { 0.0 };
+            let room = (inner.right() - x - 2.0 * pad).max(0.0);
+            let g = cells::fitted(ui, &part.text, ui_type::BODY, color(ink), room);
+            let r = Rect::from_min_size(pos2(x + pad, ly), g.size());
+            if pill {
+                ui.painter().rect_filled(r.expand2(vec2(pad, space::XXS)), corner(radius::CHIP), color(s.accent_soft));
+            }
+            x = r.right() + pad + space::S;
             ui.painter().galley(r.min, g, color(ink));
             if part.tone == Tone::Plain && part.tip.is_none() {
                 continue;
