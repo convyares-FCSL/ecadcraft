@@ -168,10 +168,10 @@ fn item_ops(doc: &Document, item: &Value) -> Result<(Vec<Op>, Vec<RatedSubject>)
         };
         sets.push((prop, after));
     }
-    if let Some(o) = item.as_object() {
-        if let Some(k) = o.keys().find(|k| !matches!(k.as_str(), "wire" | "cable") && !KEYS.iter().any(|(j, ..)| j == k)) {
-            return Err(format!("{k} is not a rating key; the keys are {}.", KEYS.iter().map(|k| k.0).collect::<Vec<_>>().join(", ")));
-        }
+    if let Some(o) = item.as_object()
+        && let Some(k) = o.keys().find(|k| !matches!(k.as_str(), "wire" | "cable") && !KEYS.iter().any(|(j, ..)| j == k))
+    {
+        return Err(format!("{k} is not a rating key; the keys are {}.", KEYS.iter().map(|k| k.0).collect::<Vec<_>>().join(", ")));
     }
     let mut ops = Vec::new();
     for s in &subjects {

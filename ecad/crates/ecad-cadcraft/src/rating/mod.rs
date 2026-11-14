@@ -953,10 +953,10 @@ impl Touch {
             match op {
                 Op::SetProperty { object: ObjectRef::Conductor(c), key, .. } => {
                     self.retrace.insert(RatedSubject::Conductor(*c));
-                    if key == ecad_model::connectivity::POTENTIAL || key == ecad_model::connectivity::WIRE_NUMBER {
-                        if let Some(n) = conn.net_of_conductor(*c) {
-                            self.nets.insert(n);
-                        }
+                    if (key == ecad_model::connectivity::POTENTIAL || key == ecad_model::connectivity::WIRE_NUMBER)
+                        && let Some(n) = conn.net_of_conductor(*c)
+                    {
+                        self.nets.insert(n);
                     }
                     for k in doc.cables_of(*c) {
                         self.retrace.insert(RatedSubject::Cable(k));

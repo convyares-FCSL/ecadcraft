@@ -91,14 +91,13 @@ fn rows(r: &Rating) -> Vec<Row> {
         }
     };
     match r.basis {
-        Basis::Datasheet => match r.rated {
-            Some((a, at)) => {
+        Basis::Datasheet => {
+            if let Some((a, at)) = r.rated {
                 v.push(row("Rated", format!("{} A", dataset::fmt_num(a)), format!("at {} \u{b0}C", dataset::fmt_num(at))));
                 temp_row(&mut v, if cable { "ambient" } else { "panel" }, if cable { "Ambient" } else { "Panel" });
                 group_row(&mut v);
             }
-            None => {}
-        },
+        }
         Basis::Table => {
             if let Some((a, size, method)) = r.table_value {
                 let name = r.table.as_ref().map(|(n, _)| n.clone()).unwrap_or_default();

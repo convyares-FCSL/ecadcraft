@@ -262,13 +262,12 @@ pub fn parse(text: &str) -> Dataset {
             }
         };
         match row(line) {
-            Ok((k, v)) => {
-                if d.rows.contains_key(&k) {
-                    bad(format!("repeats {}", k.words()));
-                } else {
-                    d.rows.insert(k, v);
+            Ok((k, v)) => match d.rows.entry(k) {
+                std::collections::btree_map::Entry::Occupied(e) => bad(format!("repeats {}", e.key().words())),
+                std::collections::btree_map::Entry::Vacant(e) => {
+                    e.insert(v);
                 }
-            }
+            },
             Err(e) => bad(e),
         }
     }

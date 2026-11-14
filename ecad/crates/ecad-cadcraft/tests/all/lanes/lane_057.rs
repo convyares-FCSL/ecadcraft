@@ -339,7 +339,7 @@ fn c18_no_values_shipped() {
                 let text = std::fs::read_to_string(&p).unwrap();
                 for kind in ["capacity,", "grouping,", "resistance,", "ambient,"] {
                     let row = text.lines().any(|l| {
-                        let t = l.trim_start_matches(|c: char| c == ' ' || c == '"' || c == '/');
+                        let t = l.trim_start_matches([' ', '"', '/']);
                         t.starts_with(kind) && t[kind.len()..].chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
                     });
                     assert!(!row, "{} holds a {kind} row", p.display());
