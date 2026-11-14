@@ -59,10 +59,11 @@ pub fn rectangle(a: Pt, b: Pt) -> Vec<Pt> {
 /// The echo of a new box: `Location box +CP1: 4 devices inside, 3 now in +CP1 (1 keeps its own +CP2).`
 pub fn box_words(location: &str, inside: usize, keeps: usize) -> String {
     let devices = if inside == 1 { "1 device".to_string() } else { format!("{inside} devices") };
+    // Brief 052: a box proposes; it never changes a device's stored location by itself.
     if keeps == 0 {
-        format!("Location box {location}: {devices} inside, now in {location}.")
+        format!("Location box {location}: {devices} inside.")
     } else {
-        format!("Location box {location}: {devices} inside, {} now in {location} ({keeps} keep their own location).", inside - keeps)
+        format!("Location box {location}: {devices} inside ({keeps} with another location).")
     }
 }
 
@@ -89,6 +90,7 @@ fn run_locationbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
             _ => return Err("nothing to draw".into()),
         };
         let shown = crate::locations::location_value(doc, &location)?;
+        let added = planned.added.clone();
         p.apply_edit(pg, "locationbox", &format!("Location box {shown}"), planned.ops)?;
         let doc = p.ledger.document();
         let (inside, keeps) = doc
@@ -96,7 +98,10 @@ fn run_locationbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
             .get(&planned.rep)
             .and_then(|r| crate::locations::box_of_rep(doc, planned.rep, r))
             .map_or((0, 0), |b| crate::locations::inside_counts(doc, &b));
-        let message = box_words(&shown, inside, keeps);
+        let mut message = box_words(&shown, inside, keeps);
+        if let Some(a) = added {
+            message = format!("{message} {a}");
+        }
         pg.echo(message.clone());
         Ok(json!({
             "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),

@@ -105,7 +105,7 @@ fn a_coil_placed_after_its_contacts_is_the_head() {
     assert_eq!(reps::head(&d, k), Some(coil));
     assert_eq!(xref::device(&d, k).head, Some(coil));
     assert_eq!(reps::goto(&d, k, None), Some(coil));
-    assert_eq!(locations::main_rep(&d, k).map(|(r, _)| r), Some(coil));
+    assert_eq!(reps::goto(&d, k, None), Some(coil));
     for c in contacts {
         assert_eq!(reps::parent(&d, c), Some(coil), "{c:?}");
         assert!(reps::siblings(&d, c).iter().all(|s| contacts.contains(s) && *s != c));
@@ -209,7 +209,7 @@ fn a_stored_main_role_means_nothing() {
     edited.rebuild_index();
     assert_eq!(xref::device(&plain, k), xref::device(&edited, k));
     assert_eq!(reps::goto(&plain, k, None), reps::goto(&edited, k, None));
-    assert_eq!(locations::main_rep(&plain, k).map(|(r, _)| r), locations::main_rep(&edited, k).map(|(r, _)| r));
+    assert_eq!(reps::goto(&plain, k, None), reps::goto(&edited, k, None));
     assert_eq!(locations::resolve(&plain, k), locations::resolve(&edited, k));
     let parts = |d: &Document| xref::parts_on_page(d, p1).into_iter().map(|p| (p.rep, p.index, format!("{:?}", p.shape))).collect::<Vec<_>>();
     assert_eq!(parts(&plain), parts(&edited));
@@ -243,7 +243,7 @@ fn go_to_and_numbering_share_one_drawing_order() {
     assert_eq!(reps::goto_place(&d, k).map(|(p, _)| p), anchor);
     let mut places = ecad_model::numbering::Places::new(&d);
     assert_eq!(reps::goto_in(&mut places, k, None), Some(b), "a shared Places gives the same answer");
-    assert_eq!(locations::main_rep(&d, k).map(|(r, _)| r), Some(b));
+    assert_eq!(reps::goto(&d, k, None), Some(b));
     // Two heads on one page: the head is the one numbering would anchor at.
     let c1 = h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap();
     let q: ComponentId = id(&c1, "component");

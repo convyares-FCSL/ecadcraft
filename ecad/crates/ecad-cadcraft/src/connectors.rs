@@ -42,8 +42,9 @@ pub const PINS_KEY: &str = "pins";
 pub const PIN_NAMES_KEY: &str = "pin_names";
 /// The start of the per-half property keys (FP4).
 pub const HALF_PREFIX: &str = "half.";
-/// The per-half fields the BOM and locations read (FP4).
-pub const HALF_FIELDS: [&str; 4] = ["description", "maker", "part_number", "location"];
+/// The per-half fields the BOM reads (FP4). A half's location is the connector's override
+/// `location.socket` / `location.plug` (brief 052, FP4: `half.<s>.location` is retired).
+pub const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
 /// The start of a connector's ignored-warning keys (`ignore.connector-family`; overseer, fix round
 /// 1: the Checks rows' Ignore button).
 pub const IGNORE_PREFIX: &str = "ignore.";
@@ -907,13 +908,7 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
         if field.is_empty() || field.chars().count() > 32 || !field.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
             return Some(Err(format!("A half's field is a word such as {}: half.{letter}.description.", HALF_FIELDS.join(", "))));
         }
-        return Some(match field {
-            "location" => match value.map(str::trim).filter(|v| !v.is_empty()) {
-                None => Ok(None),
-                Some(v) => crate::locations::location_value(doc, v).map(Some),
-            },
-            _ => crate::devices::property_value(doc, "description", value),
-        });
+        return Some(crate::devices::property_value(doc, "description", value));
     }
     if crate::defaults::connectors::is_naming_key(key) {
         if !is_connector(doc, c) {
@@ -947,7 +942,7 @@ pub struct HalfRow {
     pub part_number: Option<String>,
     pub location: Located,
     /// Where its go-to lands ([`half_goto`]) and that symbol's page.
-    pub main: Option<(RepresentationId, PageId)>,
+    pub goto: Option<(RepresentationId, PageId)>,
 }
 
 /// The pin count of half `side`: its whole-half size, else the connector's pin count.
@@ -967,7 +962,7 @@ pub fn default_description(doc: &Document, family: Family, side: Side, n: usize)
 
 /// One row per drawn half of connector `c` (design 044 §8.1): its half tag, own fields or the
 /// registry's description, and its location (§8.2). Empty for a connector with nothing drawn.
-pub fn half_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<HalfRow> {
+pub fn half_rows(doc: &Document, c: ComponentId, _cache: &mut BoxCache) -> Vec<HalfRow> {
     if !is_connector(doc, c) {
         return Vec::new();
     }
@@ -979,16 +974,8 @@ pub fn half_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<Ha
             let v = default_description(doc, half_family(doc, c, side), side, half_size(doc, c, side, &d));
             (!v.is_empty()).then_some(v)
         });
-        let location = match half_prop(doc, c, side, "location") {
-            Some(v) => Located { value: Some(v), source: crate::locations::Source::Device },
-            None => match doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
-                Some(v) => Located { value: Some(v.clone()), source: crate::locations::Source::Device },
-                None => match doc.representations.get(&main) {
-                    Some(r) => crate::locations::rep_context(doc, r, cache),
-                    None => Located { value: None, source: crate::locations::Source::None },
-                },
-            },
-        };
+        // Brief 052 (design 052 §5.2): the half's override, else the connector's stored location.
+        let location = crate::locations::half_location(doc, c, side);
         out.push(HalfRow {
             side,
             tag: half_tag(doc, c, side),
@@ -996,7 +983,7 @@ pub fn half_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<Ha
             maker: half_prop(doc, c, side, "maker"),
             part_number: half_prop(doc, c, side, "part_number"),
             location,
-            main: doc.representations.get(&main).map(|r| (main, r.page)),
+            goto: doc.representations.get(&main).map(|r| (main, r.page)),
         });
     }
     out

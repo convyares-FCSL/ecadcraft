@@ -558,6 +558,13 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     if crate::text_style::is_reserved_key(&key) {
         return Err(err(crate::text_style::RESERVED_KEY));
     }
+    // Brief 052 (design 052 §5.9): a function or location (and the retired connector half key)
+    // is stored as an entry key of the project's list, on components only.
+    if params.get("component").is_some() || params.get("components").is_some() {
+        if let Some(prop) = crate::location_cmds::aspect_property(&key) {
+            return crate::location_cmds::run_setprop(s, params, prop);
+        }
+    }
     // Several devices at once (brief 019, the Properties panel): one transaction for all.
     if params.get("components").is_some() {
         let cs: Vec<ComponentId> = id_list(params, "components", MAX_HANDLES).map_err(err)?;

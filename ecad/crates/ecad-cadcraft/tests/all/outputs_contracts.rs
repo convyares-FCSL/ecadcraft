@@ -112,14 +112,14 @@ fn location_boxes_are_live_and_the_innermost_wins() {
     assert_eq!(loc(&doc, m).0, s("+JB2"));
     assert_eq!(loc(&doc, x).0, s("+JB1"));
     same_as_built(&mut h);
-    // An own value that differs: kept, flagged, one-click fix.
+    // Brief 052: a stored value none of its symbols' contexts has: flagged, one-click fix.
     h.run("setprop", json!({"component": x.hex(), "key": "location", "value": "+CP9"})).unwrap();
     assert_eq!(loc(&h.doc(), x), (s("+CP9"), "device"));
     let checks = ecad_cadcraft::checks::all(&h.doc(), 1e-6);
-    let own: Vec<_> = checks.iter().filter(|c| c.kind == Kind::OwnLocation).collect();
+    let own: Vec<_> = checks.iter().filter(|c| c.kind == Kind::LocationUnused).collect();
     assert_eq!(own.len(), 1, "{checks:?}");
-    assert!(own[0].which.contains("is +CP9 but sits in box +JB1"), "{}", own[0].which);
-    assert_eq!(own[0].fix, Some(Fix::UseBoxLocation(x)));
+    assert!(own[0].which.contains("is +CP9, but none of its symbols is in +CP9"), "{}", own[0].which);
+    assert_eq!(own[0].fix, Some(Fix::UseContext(x, ecad_cadcraft::designations::Aspect::Location)));
     same_as_built(&mut h);
     h.run("setprop", json!({"component": x.hex(), "key": "location", "value": null})).unwrap();
     assert_eq!(loc(&h.doc(), x), (s("+JB1"), "box"));
@@ -178,7 +178,7 @@ fn a_contact_away_from_its_coil_shows_the_location_prefix() {
     assert!(texts2.contains(&format!("+CP1{tag}")), "{texts2:?}");
     let texts1: Vec<String> = ecad_cadcraft::devices::texts_on_page(&doc, p1).into_iter().map(|t| t.value).collect();
     assert!(texts1.contains(&tag), "{texts1:?}");
-    assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::OwnLocation));
+    assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LocationUnused));
 }
 
 fn wire(h: &mut H, points: &[(f64, f64)]) -> ConductorId {

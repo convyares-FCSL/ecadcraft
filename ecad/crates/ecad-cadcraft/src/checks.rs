@@ -94,8 +94,19 @@ pub enum Kind {
     ProvisionalTag,
     /// Nets without a number while provisional tags are on: one summary row (Q6).
     ProvisionalWires,
-    /// Brief 024 (design 024 §8.3): a device's own location differs from its box's.
-    OwnLocation,
+    /// Brief 052 (design 052 §6): a device's stored location is the context of none of its
+    /// symbols.
+    LocationUnused,
+    /// The same for its function.
+    FunctionUnused,
+    /// Devices without a function (one count row, when some function is set).
+    NoFunction,
+    /// A stored function or location names no entry of the project's list.
+    DesignationMissing,
+    /// Two entries of one aspect share a code (only a branch merge makes them).
+    DesignationDuplicate,
+    /// A device with two heads (only a merge makes them).
+    TwoHeads,
     /// A location box outline crosses itself.
     BoxCrosses,
     /// Two location boxes overlap without nesting.
@@ -210,7 +221,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 72] = [
+    pub const ALL: [Kind; 77] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -228,7 +239,12 @@ impl Kind {
         Kind::DuplicateTag,
         Kind::ProvisionalTag,
         Kind::ProvisionalWires,
-        Kind::OwnLocation,
+        Kind::LocationUnused,
+        Kind::FunctionUnused,
+        Kind::NoFunction,
+        Kind::DesignationMissing,
+        Kind::DesignationDuplicate,
+        Kind::TwoHeads,
         Kind::BoxCrosses,
         Kind::BoxesOverlap,
         Kind::NoPartNumber,
@@ -305,7 +321,12 @@ impl Kind {
             Kind::DuplicateTag => "duplicate-tag",
             Kind::ProvisionalTag => "provisional-tag",
             Kind::ProvisionalWires => "provisional-wires",
-            Kind::OwnLocation => "own-location",
+            Kind::LocationUnused => "location-unused",
+            Kind::FunctionUnused => "function-unused",
+            Kind::NoFunction => "function-none",
+            Kind::DesignationMissing => "designation-missing",
+            Kind::DesignationDuplicate => "designation-duplicate",
+            Kind::TwoHeads => "two-heads",
             Kind::BoxCrosses => "box-crosses",
             Kind::BoxesOverlap => "boxes-overlap",
             Kind::NoPartNumber => "no-part-number",
@@ -388,7 +409,12 @@ impl Kind {
             Kind::DuplicateTag => "Two cables share a tag",
             Kind::ProvisionalTag => "Provisional tag",
             Kind::ProvisionalWires => "Wire numbers provisional",
-            Kind::OwnLocation => "Own location differs from its box",
+            Kind::LocationUnused => "Location used by none of its symbols",
+            Kind::FunctionUnused => "Function used by none of its symbols",
+            Kind::NoFunction => "Devices without a function",
+            Kind::DesignationMissing => "Function or location no longer in the list",
+            Kind::DesignationDuplicate => "Two entries share a code",
+            Kind::TwoHeads => "A device with two heads",
             Kind::BoxCrosses => "Location box outline crosses itself",
             Kind::BoxesOverlap => "Location boxes overlap without nesting",
             Kind::NoPartNumber => "Devices without a part number",
@@ -469,7 +495,11 @@ impl Kind {
             | Kind::TooManyTerminals
             | Kind::TooManyCores
             | Kind::CoreTwice
-            | Kind::OwnLocation
+            | Kind::LocationUnused
+            | Kind::FunctionUnused
+            | Kind::DesignationMissing
+            | Kind::DesignationDuplicate
+            | Kind::TwoHeads
             | Kind::BoxCrosses
             | Kind::OrphanReference
             | Kind::AccessoryOrphan
@@ -522,8 +552,13 @@ pub enum Fix {
     NumberThem,
     /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
     Finalise,
-    /// Brief 024: clear the device's own location (`setprop … value: null`): Use the box's location.
-    UseBoxLocation(ComponentId),
+    /// Brief 052 (design 052 §6): **Use +CP1**: set the device's value of the aspect to the one
+    /// context all its symbols share (`setlocation`).
+    UseContext(ComponentId, crate::designations::Aspect),
+    /// Brief 052: **Set location** / **Set function**: the inspector's row of that device or box.
+    SetDesignation(ComponentId, crate::designations::Aspect),
+    /// Brief 052: **Show in Settings**: Settings ▸ Project info ▸ Functions and locations.
+    ShowDesignations,
     /// Brief 024: open Reports on the BOM tab with Only ? on.
     ShowReports,
     /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
@@ -679,6 +714,8 @@ pub enum Key {
     Page(PageId),
     /// Brief 050a: the style rows (unknown styles, old settings, limits).
     Styles,
+    /// Brief 052: the project's list of functions and locations (duplicate codes).
+    Designations,
 }
 
 type Cell = (PageId, i64, i64);
@@ -1101,7 +1138,8 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
 /// pass so the book is built at most once (review of #105, 1).
 pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId) -> Vec<Check> {
     let doc = places.doc();
-    let mut out = Vec::new();
+        let mut out = Vec::new();
+    designation_checks(places, c, &mut out);
     let place = || doc.terminals_of(c).next().map_or((None, None), |(t, _)| terminal_place(doc, t));
     match kind_of(doc, c) {
         Some(JUNCTION) => {
@@ -1165,6 +1203,108 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId) -> Vec<Check
             which,
             fix: Some(Fix::MoveTable(c)),
         });
+    }
+    out
+}
+
+/// The rows of design 052 §6 for component `c`: a stored function or location naming no entry
+/// (devices and boxes); for a device, a value none of its symbols' contexts has, and two heads.
+/// O(its representations and their pages' boxes).
+fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Check>) {
+    use crate::designations::{self as d, Aspect};
+    let doc = places.doc();
+    let Some(comp) = doc.components.get(&c) else { return };
+    let is_box = crate::locations::is_box_component(comp);
+    if !is_box && !crate::locations::is_device(doc, c) {
+        return;
+    }
+    let who = if is_box { "A box".to_string() } else { crate::devices::tag_words(doc, c) };
+    let (page, at) = if is_box {
+        doc.representations_of(Subject::Component(c)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)))
+    } else {
+        crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a))
+    };
+    for (k, v) in &comp.properties {
+        let Some(a) = Aspect::of_property(k) else { continue };
+        if d::code_of(doc, a, v).is_none() {
+            out.push(Check {
+                kind: Kind::DesignationMissing,
+                page,
+                at,
+                object: Object::Component(c),
+                which: format!("{who}'s {} is no longer in the list", a.word()),
+                fix: Some(Fix::SetDesignation(c, a)),
+            });
+        }
+    }
+    if is_box {
+        return;
+    }
+    let reps: Vec<&ecad_model::Representation> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r).collect();
+    if reps.is_empty() {
+        return;
+    }
+    let mut cache = crate::locations::BoxCache::default();
+    for a in Aspect::ALL {
+        let own = crate::locations::resolve_in(doc, c, a);
+        let (Some(key), Some(code)) = (own.key.clone(), own.value.clone()) else { continue };
+        let contexts: Vec<crate::locations::Located> = reps.iter().map(|r| crate::locations::rep_context_in(doc, a, r, &mut cache)).collect();
+        if contexts.iter().any(|x| x.key.as_deref() == Some(key.as_str())) {
+            continue;
+        }
+        // **Use +CP1** when every symbol is in one context that has a value.
+        let shared = contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).and_then(|f| f.value.clone());
+        let use_words = shared.map(|s| format!(" (all of them are in {s})")).unwrap_or_default();
+        out.push(Check {
+            kind: if a == Aspect::Location { Kind::LocationUnused } else { Kind::FunctionUnused },
+            page,
+            at,
+            object: Object::Component(c),
+            which: format!("{who} is {code}, but none of its symbols is in {code}{use_words}"),
+            fix: contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).map(|_| Fix::UseContext(c, a)),
+        });
+    }
+    let heads = crate::reps::heads(doc, c);
+    if let [_, second, ..] = heads.as_slice()
+        && let Some(r) = doc.representations.get(second)
+    {
+        let mut xp = crate::xref::Places::new(doc);
+        let wheres: Vec<String> = heads
+            .iter()
+            .filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::xref::anchor(doc, x))))
+            .collect();
+        out.push(Check {
+            kind: Kind::TwoHeads,
+            page: Some(r.page),
+            at: crate::xref::anchor(doc, r),
+            object: Object::Component(c),
+            which: format!("{who} has two {}s ({})", crate::devices::head_noun(doc, *second), wheres.join(", ")),
+            fix: None,
+        });
+    }
+}
+
+/// The rows of the project's list (design 052 §6): two entries of one aspect sharing a code.
+pub fn designation_rows(doc: &Document) -> Vec<Check> {
+    use crate::designations::{self as d, Aspect};
+    let mut out = Vec::new();
+    for a in Aspect::ALL {
+        let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+        for e in d::entries(doc, a) {
+            *seen.entry(e.code.to_uppercase()).or_default() += 1;
+        }
+        for (code, n) in seen {
+            if n > 1 {
+                out.push(Check {
+                    kind: Kind::DesignationDuplicate,
+                    page: None,
+                    at: None,
+                    object: Object::None,
+                    which: format!("Two {} are called {code}", a.plural()),
+                    fix: Some(Fix::ShowDesignations),
+                });
+            }
+        }
     }
     out
 }
@@ -1260,6 +1400,7 @@ impl Checks {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
+        ch.set(Key::Designations, designation_rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1429,6 +1570,9 @@ impl Checks {
         if scope.styles {
             self.set(Key::Styles, crate::styles::checks::rows(doc));
         }
+        if scope.designations {
+            self.set(Key::Designations, designation_rows(doc));
+        }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
@@ -1455,6 +1599,8 @@ pub struct Scope {
     cables: BTreeSet<ecad_model::CableId>,
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
     styles: bool,
+    /// Brief 052: the list's rows (an entry's code changed, added or removed).
+    designations: bool,
 }
 
 impl Scope {
@@ -1514,6 +1660,13 @@ impl Scope {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Component(c), key, before, after } => {
+                    // Brief 052 (design 052 §6): a box's value is a context for the devices on its
+                    // pages.
+                    if crate::locations::is_box(doc, *c) {
+                        for p in doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                            self.devices_on(doc, p);
+                        }
+                    }
                     if key == ecad_model::tag::TAG_KEY {
                         self.tag_holders(doc, [before, after].into_iter().flatten());
                     }
@@ -1603,6 +1756,28 @@ impl Scope {
                         }
                     }
                 }
+                // Brief 052 (design 052 §6): a page's function or location is a context for the
+                // devices on it; the project's for every device (rare); the list's codes for the
+                // objects storing that entry, and the duplicate rows.
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
+                    self.relocate = true;
+                    self.devices_on(doc, *p);
+                }
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
+                    self.relocate = true;
+                    self.components.extend(doc.components.keys().copied());
+                }
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
+                    self.relocate = true;
+                    self.designations = true;
+                    if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
+                        for (c, x) in &doc.components {
+                            if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+                                self.components.insert(*c);
+                            }
+                        }
+                    }
+                }
                 // Page numbers, folders and the page order change where rows say they are (brief
                 // 019), not what they find: the rows are copied again.
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. }
@@ -1622,6 +1797,17 @@ impl Scope {
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
                 // Brief 050a: style records and the standard reach only the style rows (above).
                 Op::SetStyle { .. } | Op::SetStandard { .. } => {}
+            }
+        }
+    }
+
+    /// Every device with a symbol on `page` (brief 052: their contexts may have changed).
+    fn devices_on(&mut self, doc: &Document, page: PageId) {
+        for (_, r) in doc.representations_on(page) {
+            if let Subject::Component(c) = r.subject
+                && crate::locations::is_device(doc, c)
+            {
+                self.components.insert(c);
             }
         }
     }
@@ -1667,6 +1853,10 @@ impl Scope {
                 self.routes.insert(c);
             }
             Subject::Component(c) => {
+                // Brief 052: a box drawn, moved or erased changes the contexts on its page.
+                if crate::locations::is_box(doc, c) {
+                    self.devices_on(doc, r.page);
+                }
                 // Its points moved: the wires attached to them may now be drawn away; a
                 // continuation's place moves its partners' rows.
                 self.component(doc, c, None);

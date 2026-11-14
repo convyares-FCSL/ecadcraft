@@ -587,6 +587,9 @@ pub struct Project {
     change_count: u64,
     /// The highest number each tag prefix has had (brief 018), read from the log as it grows.
     pub(crate) tag_high: crate::devices::TagHigh,
+    /// Brief 052 (design 052 §5.9): the use index of the project's list of functions and
+    /// locations, read from the log as it grows; rebuilt on a branch switch.
+    pub(crate) designation_uses: crate::designations::Uses,
     /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
     page_list_version: u64,
     /// What OOPS may bring back on each page document (brief 023, [`crate::oops`]).
@@ -1198,6 +1201,7 @@ impl Project {
             changes: std::collections::VecDeque::new(),
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
+            designation_uses: crate::designations::Uses::default(),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
@@ -1292,6 +1296,7 @@ impl Project {
             changes: std::collections::VecDeque::new(),
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
+            designation_uses: crate::designations::Uses::default(),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
@@ -1427,6 +1432,7 @@ impl Project {
             changes: std::collections::VecDeque::new(),
             change_count: 0,
             tag_high: crate::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
+            designation_uses: crate::designations::Uses::default(),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
@@ -1530,6 +1536,7 @@ impl Project {
         self.connectors = crate::connectors::Index::build(self.ledger.document());
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
+        self.designation_uses.reset();
         self.views.retain(|c| cables.contains(c));
         self.checks = None;
         self.outputs = None;
@@ -3043,6 +3050,27 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 }
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
+            // Brief 052 (design 052 §8.2a): a rename in the project's list redraws the pages of
+            // the devices, boxes and pages storing that entry (every page when it is the project's
+            // default); a description is drawn on no page.
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
+                let (_, entry, is_code) = crate::designations::parse_list_property(key)?;
+                if is_code {
+                    if doc.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+                        return None;
+                    }
+                    for (c, x) in &doc.components {
+                        if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+                            out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                        }
+                    }
+                    for (pid, x) in &doc.pages {
+                        if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+                            out.insert(*pid);
+                        }
+                    }
+                }
+            }
             // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
             // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
             // Their pages come from the connector index after the commit (`Project::finish_watch`).
@@ -3067,73 +3095,10 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             _ => return None,
         }
     }
-    out.extend(located_tag_pages(doc, ops));
+    // Brief 052 (design 052 §8.2): a device's location and function are stored, so a box or a
+    // page value changes the tag prefixes of that page only, and a moved symbol those of its own
+    // page; both pages are named by the ops above. #102's widening is gone.
     Some(out)
-}
-
-/// The pages whose located tags `ops` (about to be committed on `doc`) can change, beyond the
-/// pages the ops name (QA gate of M1; the update map of design 024 §3.3 under O1, which redraws
-/// only touched pages). A device's location comes from its go-to symbol's context (its head, else
-/// its first symbol in book order: `locations::main_rep`; its location
-/// box, else its page, else the project), and each of its symbols shows that location as a tag
-/// prefix where the symbol's own context differs. So:
-/// - a context change on page `p` (the page's `location`, or a location box on `p` added, removed,
-///   moved, reshaped or relabelled) touches the pages of every device with a symbol on `p`;
-/// - a device's symbol added, removed, moved or relinked touches the device's other pages (its go-to
-///   symbol, and with it its location, may have changed: a coil placed after its contacts becomes
-///   the head).
-///
-/// A project-level `location` change already touches every page (`None`). Bounded by the
-/// symbols on the pages in context and the representations of the devices moved.
-fn located_tag_pages(doc: &ecad_model::Document, ops: &[Op]) -> BTreeSet<PageId> {
-    let created: BTreeSet<ecad_model::ComponentId> = ops
-        .iter()
-        .filter_map(
-            |op| if let Op::CreateComponent { id, component } = op { crate::locations::is_box_component(component).then_some(*id) } else { None },
-        )
-        .collect();
-    let is_box = |c: ecad_model::ComponentId| created.contains(&c) || crate::locations::is_box(doc, c);
-    let (mut context, mut moved) = (BTreeSet::<PageId>::new(), BTreeSet::<ecad_model::ComponentId>::new());
-    let mut reps: Vec<&ecad_model::Representation> = Vec::new();
-    for op in ops {
-        match op {
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } if key == ecad_model::book::LOCATION_KEY => {
-                context.insert(*p);
-            }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } if is_box(*c) => {
-                context.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
-            }
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => reps.push(rep),
-            Op::ModifyRepresentation { before, after, .. } => reps.extend([before, after]),
-            Op::AddItem { id, .. } | Op::RemoveItem { id, .. } | Op::ModifyItem { id, .. } => {
-                reps.extend(doc.representation_of_item(*id).map(|(_, r)| r));
-            }
-            _ => {}
-        }
-    }
-    for r in reps {
-        if let Subject::Component(c) = r.subject {
-            if is_box(c) {
-                context.insert(r.page);
-            } else {
-                moved.insert(c);
-            }
-        }
-    }
-    let mut out = BTreeSet::new();
-    for p in &context {
-        for (_, r) in doc.representations_on(*p) {
-            if let Subject::Component(c) = r.subject
-                && !is_box(c)
-            {
-                moved.insert(c);
-            }
-        }
-    }
-    for c in moved {
-        out.extend(doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page));
-    }
-    out
 }
 
 /// The pages whose drawn objects `ops` add, change or remove (items and representations): where

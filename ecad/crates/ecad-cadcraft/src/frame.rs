@@ -176,8 +176,9 @@ impl FrameInput {
             drawing_number: prop(DRAWING_NUMBER),
             status: prop(STATUS),
             page_title: doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default(),
-            function: inherited(FUNCTION_KEY),
-            location: inherited(LOCATION_KEY),
+            // Brief 052: stored as entry keys of the project's list; the title block shows codes.
+            function: crate::designations::shown_text(doc, crate::designations::Aspect::Function, Some(&inherited(FUNCTION_KEY)).filter(|v| !v.is_empty()).map(String::as_str)),
+            location: crate::designations::shown_text(doc, crate::designations::Aspect::Location, Some(&inherited(LOCATION_KEY)).filter(|v| !v.is_empty()).map(String::as_str)),
             page: book.number(doc, page),
             rev: crate::revisions::rev_box(doc, false),
             next_page,

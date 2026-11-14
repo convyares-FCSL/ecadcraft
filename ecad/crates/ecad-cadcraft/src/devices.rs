@@ -368,8 +368,8 @@ fn noun(s: &Starter) -> &'static str {
     }
 }
 
-/// The noun of head representation `h`, for "already has a …".
-fn head_noun(doc: &Document, h: RepresentationId) -> &'static str {
+/// The noun of head representation `h`, for "already has a …" and "has two …s".
+pub(crate) fn head_noun(doc: &Document, h: RepresentationId) -> &'static str {
     doc.representations.get(&h).and_then(|r| rep_starter(doc, r)).map_or("head symbol", noun)
 }
 
@@ -1458,10 +1458,14 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
     reps.sort_by_key(|(n, rid, _)| (*n, *rid));
     let mut v = json!({ "component": c.hex() });
     for (key, _) in PROPERTIES {
-        v[key] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
+        // Brief 052: a function or location shows its code; its stored key is `<key>_key`.
+        v[key] = props.get(key).map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
+        if crate::designations::Aspect::of_property(key).is_some() {
+            v[format!("{key}_key")] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
+        }
     }
-    // Brief 024 (design 024 §3.4): the location shown and where it comes from, and each symbol's
-    // context.
+    // Brief 052 (design 052 §5.1): the location stored (never derived), and each symbol's own
+    // location (overrides, §5.2) and context (what a box or page there proposes).
     let mut boxes = crate::locations::BoxCache::default();
     let loc = crate::locations::resolve_with(doc, c, &mut boxes);
     v["location_shown"] = loc.value.map_or(Value::Null, Value::String);
@@ -1469,6 +1473,8 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
     for (_, rid, x) in &mut reps {
         if let Some(r) = doc.representations.get(rid) {
             x["context"] = crate::locations::rep_context(doc, r, &mut boxes).value.map_or(Value::Null, Value::String);
+            x["location"] = crate::locations::rep_location(doc, c, r).value.map_or(Value::Null, Value::String);
+            x["type"] = json!(crate::reps::rep_type(doc, r).word());
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
@@ -1567,8 +1573,10 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    if loc.value.is_some() || props.contains_key("function") {
-        lines.push(format!("Location: {words}   Function: {}", get("function")));
+    if loc.key.is_some() || props.contains_key("function") {
+        let function = crate::locations::resolve_function(doc, c);
+        let function = if function.key.is_some() { function.text() } else { String::new() };
+        lines.push(format!("Location: {words}   Function: {function}"));
     }
     if let Some(r) = doc.representations.get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());

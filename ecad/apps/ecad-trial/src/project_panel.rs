@@ -181,8 +181,13 @@ pub enum Action {
     RevisionPage(PageId),
     /// Brief 020a: something the History tab asked for.
     History(crate::history_panel::Do),
-    /// Brief 024: Checks' **Use the box's location** (`setprop … value: null`).
-    UseBoxLocation(ecad_model::ComponentId),
+    /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
+    UseContext(ecad_model::ComponentId, ecad_cadcraft::designations::Aspect),
+    /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
+    /// inspector shows its row.
+    GoToDevice(ecad_model::ComponentId),
+    /// Brief 052: Checks' **Show in Settings**: Settings ▸ Project info.
+    ShowDesignations,
     /// Brief 024: Checks' **Show**: Reports, BOM, Only ?.
     ShowReports,
     /// Brief 024: open the Reports window.

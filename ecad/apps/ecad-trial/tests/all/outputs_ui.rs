@@ -55,7 +55,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 fn main_symbol(h: &mut H, tag: &str) -> ecad_model::RepresentationId {
     let d = doc(h);
     let c = d.components_tagged(tag)[0];
-    ecad_cadcraft::locations::main_rep(&d, c).unwrap().0
+    ecad_cadcraft::reps::goto(&d, c, None).unwrap()
 }
 
 #[test]
@@ -107,20 +107,21 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     save(&h, &deltas, "024-location-box.png");
     save(&h, &deltas, "024-prefix.png");
 
-    // 3. An own location in a box: Checks warns; Use the box's location fixes it in one step.
+    // 3. Brief 052: a stored location none of its symbols is in: Checks warns; Use it sets the
+    // box's in one step.
     let x2 = doc(&mut h).components_tagged("-X02")[0];
     ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"location","value":"+CP9"}}"#, x2.hex()));
     h.state_mut().panel.tab = project_panel::Tab::Checks;
     h.run_steps(4);
     let rows = h.state().panel.checks.rows().to_vec();
-    assert!(rows.iter().any(|r| r.check.kind == Kind::OwnLocation), "{rows:?}");
+    assert!(rows.iter().any(|r| r.check.kind == Kind::LocationUnused), "{rows:?}");
     save(&h, &deltas, "024-check-own-location.png");
     let before = doc(&mut h);
-    h.state_mut().panel_action(project_panel::Action::UseBoxLocation(x2));
+    h.state_mut().panel_action(project_panel::Action::UseContext(x2, ecad_cadcraft::designations::Aspect::Location));
     h.run_steps(3);
     assert_ne!(doc(&mut h), before, "one step");
     let d = doc(&mut h);
-    assert_eq!(ecad_cadcraft::locations::resolve(&d, x2).source.word(), "box");
+    assert_eq!(ecad_cadcraft::locations::resolve(&d, x2).source.word(), "device");
 
     // 4. Reports: the BOM has devices only, -S01 flagged; wires; cables.
     h.state_mut().panel_action(project_panel::Action::Reports);

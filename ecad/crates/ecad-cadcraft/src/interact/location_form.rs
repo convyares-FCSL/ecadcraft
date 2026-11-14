@@ -29,7 +29,9 @@ pub(crate) fn locationbox(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let page_default = read(s, |p, page| {
         let doc = p.ledger.document();
-        Ok(doc.pages.get(&page).and_then(|x| x.properties.get(LOCATION_KEY)).or_else(|| doc.properties.get(LOCATION_KEY)).cloned())
+        // Brief 052: a stored entry key, shown by its code.
+        let stored = doc.pages.get(&page).and_then(|x| x.properties.get(LOCATION_KEY)).or_else(|| doc.properties.get(LOCATION_KEY));
+        Ok(crate::designations::shown(doc, crate::designations::Aspect::Location, stored.map(String::as_str)))
     })
     .unwrap_or(None);
     let default = LAST.lock().ok().and_then(|g| g.clone()).or(page_default).unwrap_or_else(|| "+CP1".into());
@@ -64,7 +66,7 @@ impl LocationBox {
                     if !crate::locations::is_device(doc, c) {
                         return None;
                     }
-                    let own = doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).cloned();
+                    let own = crate::designations::shown(doc, crate::designations::Aspect::Location, doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).map(String::as_str));
                     Some((crate::locations::anchor(doc, r)?, own))
                 })
                 .collect())

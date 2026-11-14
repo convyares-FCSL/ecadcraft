@@ -1020,7 +1020,7 @@ fn a_project_without_024_opens_unchanged() {
     assert!(
         checks.iter().all(|c| !matches!(
             c.kind,
-            ecad_cadcraft::checks::Kind::OwnLocation | ecad_cadcraft::checks::Kind::BoxCrosses | ecad_cadcraft::checks::Kind::BoxesOverlap
+            ecad_cadcraft::checks::Kind::LocationUnused | ecad_cadcraft::checks::Kind::BoxCrosses | ecad_cadcraft::checks::Kind::BoxesOverlap
         )),
         "{checks:?}"
     );
@@ -1091,7 +1091,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     assert!(b[0].vertices.len() >= 3);
     for c in [k1, k2] {
         let want =
-            locations::innermost(&b, locations::anchor(&doc, locations::main_rep(&doc, c).unwrap().1).unwrap()).and_then(|x| x.location.clone());
+            locations::innermost(&b, locations::anchor(&doc, &doc.representations[&ecad_cadcraft::reps::goto(&doc, c, None).unwrap()]).unwrap()).and_then(|x| x.location.clone());
         assert_eq!(locations::resolve(&doc, c).value, want, "{c:?}");
     }
     verify(&mut h, "after merge");
