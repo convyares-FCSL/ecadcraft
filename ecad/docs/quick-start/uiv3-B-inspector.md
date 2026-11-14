@@ -31,5 +31,5 @@ UI-only change: it adds no new behaviour.
 
 ## Checks
 
-`cargo test -p ecad-trial lane_uiv3_b`. Set `ECAD_TESTER_SHOTS` to a folder to write the
+`cargo test -p ecad-trial uiv3_inspector`. Set `ECAD_TESTER_SHOTS` to a folder to write the
 screenshots `uiv3-B-1.05-ours.png`, `-1.06-`, `-1.07-` and `uiv3-B-nothing-selected-ours.png`.

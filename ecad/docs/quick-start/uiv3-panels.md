@@ -2,8 +2,8 @@
 
 Boards 1.02 (Book pinned, two pages ticked), 1.03 (Devices floating), 1.04 (History) and 1.08
 (the page well's hover preview). The build spec is
-`docs/discussions/ui-2026-11/rev3-build-spec.md`. Folded into `docs/quick-start.md` at the
-phase-end tidy-up.
+`docs/discussions/ui-2026-11/rev3-build-spec.md`. Listed in the index of
+`docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## Pin or let it close
 

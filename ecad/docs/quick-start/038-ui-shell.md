@@ -56,5 +56,5 @@ the page preview.
 ## Checks
 
 Automated (agent, native Windows 11, 2026-11-13): `cargo test -p ecad-trial` (all tests, the
-new `lanes::lane_038` ones included) and `cargo test -p cadcraft-ui-egui --test embedded_view`
+new `shell_ui` ones included) and `cargo test -p cadcraft-ui-egui --test embedded_view`
 (upstream seam US1). Nobody has tried it by hand yet.

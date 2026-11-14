@@ -2,7 +2,7 @@
 
 What section F changed, and how to try it by clicking. Boards 3.01–3.04, 4.01, 5.01 and 5.02 of
 `docs/discussions/ui-2026-11/rev3-build-spec.md`. A UI-only round: nothing new is written to a
-project. Folded into `docs/quick-start.md` at the phase-end tidy-up.
+project. Listed in the index of `docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## Library (boards 3.01–3.04)
 
@@ -58,7 +58,7 @@ project. Folded into `docs/quick-start.md` at the phase-end tidy-up.
 
 ## Checks
 
-- `cargo test -p ecad-trial lane_uiv3f`: Settings between the bars and its list; the Library's
+- `cargo test -p ecad-trial uiv3_library`: Settings between the bars and its list; the Library's
   tabs, Source filter and no rail; Publish's ticks choosing Print Book's pages.
-- Screenshots: `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial lane_uiv3f` writes
+- Screenshots: `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial uiv3_library` writes
   `uiv3-F-<board>-ours.png` for each board.

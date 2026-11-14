@@ -52,4 +52,4 @@ wire {"points": [[10,150],[60,150]], "category": "24 V DC"}
 
 ## Checked here
 
-Automated: `cargo test -p ecad-cadcraft lane_050`, `-p ecad-mcp lane_050`. Not owner-tried yet.
+Automated: `cargo test -p ecad-cadcraft style_contracts`, `-p ecad-mcp style_contracts`. Not owner-tried yet.

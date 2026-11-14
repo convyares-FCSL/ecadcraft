@@ -1,8 +1,8 @@
 # UI rev 3, board 1.01: the frame
 
 What the UI rev 3 pilot changed, and how to try it by clicking. The build spec is
-`docs/discussions/ui-2026-11/rev3-build-spec.md`. Folded into `docs/quick-start.md` at the
-phase-end tidy-up.
+`docs/discussions/ui-2026-11/rev3-build-spec.md`. Listed in the index of
+`docs/quick-start.md` (phase-end tidy-up after M1).
 
 ## What changed
 

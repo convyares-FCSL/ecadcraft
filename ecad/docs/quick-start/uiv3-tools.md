@@ -39,5 +39,5 @@ Kept: **V** Select, **D** Draw, **T** Text, **W** Wire, **C** Cable (groups that
 
 ## Automated checks
 
-`cargo test -p ecad-trial lane_uiv3_tools`; `cargo test -p ecad-cadcraft lane_041`.
-Screenshots: set `ECAD_TESTER_SHOTS` to a folder before `lane_uiv3_tools`.
+`cargo test -p ecad-trial uiv3_tools`; `cargo test -p ecad-cadcraft actions_contracts`.
+Screenshots: set `ECAD_TESTER_SHOTS` to a folder before `uiv3_tools`.
