@@ -66,7 +66,7 @@ fn a_style_field_applies_in_one_transaction_and_patches_one_row() {
     let (text, _) = &v.cats[0];
     let tag = text.key_of(&StyleRef::Builtin("tag".into())).unwrap();
     let rows = ecad_ui::table::TableSource::keys(text).len();
-    assert_eq!(rows, 22, "one row per text style (051 adds two)");
+    assert_eq!(rows, 23, "one row per text style (051 adds two)");
     h.state_mut().settings.standards.style_focus = Some(tag);
     h.run_steps(3);
     assert!(h.query_by_label("ecad.standards.style.field.colour").is_some());
@@ -123,4 +123,82 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     let style = rows.iter().find(|r| r.key == "text.tag.style").unwrap();
     assert_eq!((style.value.as_str(), style.from), ("Tag large", Source::Object));
     assert!(h.query_by_label("ecad.inspector.reset.text.tag.style").is_some(), "Reset clears it");
+}
+
+/// Screenshots for the owner's look check (written when `ECAD_TESTER_SHOTS` names a folder and a
+/// wgpu adapter exists; never committed): Settings ▸ Standards on the text and wire catalogues
+/// with a style's detail, a 24 V wire's Category row in the inspector, and one page printed mono
+/// and in colour (PDF, beside the PNGs).
+#[test]
+#[ignore = "slow: a 1920×1080 trial and two prints; run by name for the screenshots"]
+fn look_check_screenshots() {
+    use std::sync::Arc;
+    let deltas: crate::mouse_tester::Deltas = Arc::default();
+    let mut h = harness_with(Some(deltas.clone()));
+    h.state_mut().set_cad_chrome(false);
+    ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
+    for (y, pot) in [(150, "L1"), (140, "N"), (130, "PE"), (120, "24V"), (110, "0V")] {
+        ok(&mut h, &format!(r#"wire {{"points":[[40,{y}],[160,{y}]],"potential":"{pot}"}}"#));
+    }
+    ok(&mut h, r#"standard {"new":"House"}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"text","id":"tag","fields":{"colour":"RD"}}"#);
+    let out = std::env::var_os("ECAD_TESTER_SHOTS").map(std::path::PathBuf::from);
+    let save = |h: &H, name: &str| {
+        if let Some(dir) = &out
+            && std::fs::create_dir_all(dir).is_ok()
+            && crate::mouse_tester::shot(h, &deltas, &dir.join(name)).is_none()
+        {
+            eprintln!("no wgpu adapter: {name} skipped");
+        }
+    };
+
+    // Settings ▸ Standards: the text styles with Tag's detail, then the wire categories with 24 V DC's.
+    h.state_mut().open_standards(None);
+    h.run_steps(3);
+    click(&mut h, standards::CATALOGUE_STYLES);
+    let tag = h.state().settings.standards.cats[0].0.key_of(&StyleRef::Builtin("tag".into())).unwrap();
+    h.state_mut().settings.standards.style_focus = Some(tag);
+    h.run_steps(4);
+    save(&h, "050-standards-text.png");
+    click(&mut h, "ecad.standards.catalogue.wire");
+    let v = &h.state().settings.standards;
+    let wire = standards::CATALOGUES.iter().position(|c| c.0 == "wire").unwrap();
+    let dc24 = v.cats[wire].0.key_of(&StyleRef::Builtin("dc24".into())).unwrap();
+    h.state_mut().settings.standards.style_focus = Some(dc24);
+    h.run_steps(4);
+    save(&h, "050-standards-wire.png");
+    h.state_mut().close_settings();
+    h.run_steps(3);
+
+    // The 24 V wire selected: the inspector's Category row says where its category comes from.
+    let handle = {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let page = doc.page_order[0];
+            let w = doc.conductors.keys().find(|c| ecad_model::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V"))).copied().unwrap();
+            let (item, _) = ecad_model::derive::route_on_page(doc, w, page).unwrap();
+            p.pages[&page].map.item(item).unwrap()
+        })
+        .unwrap()
+    };
+    h.state_mut().cad.session.set_selection(vec![handle]);
+    h.run_steps(4);
+    let rows = &h.state().settings.inspector.rows;
+    let cat = rows.iter().find(|r| r.key == "wire.category").expect("a Category row");
+    assert!(cat.value.contains("24 V DC") && cat.value.contains("from potential"), "{}", cat.value);
+    save(&h, "050-inspector-category.png");
+
+    // One page printed mono and in colour.
+    if let Some(dir) = &out {
+        ecad_cadcraft::printbook::install_io();
+        for (word, file) in [("mono", "050-print-mono.pdf"), ("colour", "050-print-colour.pdf")] {
+            let path = dir.join(file).to_string_lossy().into_owned();
+            let r = h.state_mut().cad.session.execute("printbook", &serde_json::json!({"scope": {"pages": "1"}, "path": path, "colour": word}));
+            if let Err(e) = r {
+                eprintln!("printbook {word}: {e}");
+            }
+        }
+    }
 }

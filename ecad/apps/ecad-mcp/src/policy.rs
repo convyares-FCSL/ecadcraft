@@ -72,11 +72,13 @@ pub const READ_COMMANDS: &[&str] = &[
     "defaults",
     "pagetexts",
     "hiddentext",
+    // Brief 050a: the style catalogues' list reads the project.
+    "styles",
+    // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
+    "symbolimpact",
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
-    // Brief 050a: the style catalogues' list reads the project.
-    "styles",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and

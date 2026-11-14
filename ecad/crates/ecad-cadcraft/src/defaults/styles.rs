@@ -33,6 +33,8 @@ pub static DESCRIPTION: Entry = text("text.description.style", "Description styl
 pub static PART_NUMBER: Entry = text("text.part_number.style", "Part number style", "part_number");
 pub static CONTINUATION_NAME: Entry = text("text.continuation_name.style", "Continuation name style", "continuation_name");
 pub static REFERENCE: Entry = text("text.reference.style", "Reference style", "reference");
+/// Brief 049's continuation caption (design 049 §7), a built-in text style since 050a.
+pub static CONTINUATION_CAPTION: Entry = text("text.continuation_caption.style", "Continuation caption style", "continuation_caption");
 pub static WIRE_LABEL: Entry = text("text.wire_label.style", "Wire label style", "wire_label");
 pub static CABLE_TEXT: Entry = text("text.cable_text.style", "Cable text style", "cable_text");
 pub static LOCATION_LABEL: Entry = text("text.location.style", "Location label style", "location");
@@ -59,6 +61,7 @@ pub static TEXT: &[&Entry] = &[
     &PART_NUMBER,
     &CONTINUATION_NAME,
     &REFERENCE,
+    &CONTINUATION_CAPTION,
     &WIRE_LABEL,
     &CABLE_TEXT,
     &LOCATION_LABEL,
@@ -121,6 +124,7 @@ pub static ENTRIES: &[&Entry] = &[
     &PART_NUMBER,
     &CONTINUATION_NAME,
     &REFERENCE,
+    &CONTINUATION_CAPTION,
     &WIRE_LABEL,
     &CABLE_TEXT,
     &LOCATION_LABEL,

@@ -750,10 +750,43 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
 
 /// The standard and the style records (brief 050a, design 050 §3.5): the standard's header is
 /// one unit, its values merge per key like project properties, and each style record
-/// `(layer, catalogue, id)` is one unit. A standard removed on one side and kept on the other is
-/// the header's conflict; without a header the result holds no standard at all.
+/// `(layer, catalogue, id)` is one unit. A standard removed on one side and changed in any part
+/// on the other is one removed conflict; removed on one side and untouched on the other, it goes.
 fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
     let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
+    // Risk 20: a standard removed on one side and changed on the other (its header, a value or a
+    // standard-layer style) is one conflict, keep it with those changes or remove it; merged per
+    // part, the header alone would decide and the other side's changes would vanish.
+    let removed = |d: &Document| a.standard.is_some() && d.standard.is_none();
+    let changed = |d: &Document| d.standard.is_some() && d.standard != a.standard;
+    let one_sided = match (removed(t), removed(s)) {
+        (true, false) if changed(s) => Some(false),
+        (false, true) if changed(t) => Some(true),
+        _ => None,
+    };
+    if let Some(target_keeps) = one_sided {
+        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.clone());
+        let (on_changed, on_removed) = if target_keeps { (ctx.t(), ctx.s()) } else { (ctx.s(), ctx.t()) };
+        let word = |keeps: bool| if keeps { "changed" } else { "removed" };
+        let c = Conflict {
+            id: format!("{}/standard", obj.hex()),
+            kind: ConflictKind::Removed,
+            object: obj,
+            what: format!("Standard \"{name}\" · removed on {on_removed}; changed on {on_changed}"),
+            target: word(target_keeps).into(),
+            source: word(!target_keeps).into(),
+            choices: vec![Choice::Target, Choice::Source],
+            chosen: None,
+        };
+        let keep = match ctx.ask(c) {
+            Some(Choice::Source) => !target_keeps,
+            _ => target_keeps,
+        };
+        let keeper = if target_keeps { t } else { s };
+        m.styles = merge_style_layer(ctx, StyleLayer::Project, &a.styles, &t.styles, &s.styles);
+        m.standard = if keep { keeper.standard.clone() } else { None };
+        return;
+    }
     let all = |_: &str| true;
     let header = |d: &Document| d.standard.as_ref().map(|x| x.header.clone());
     let head = field(ctx, obj, "standard", "Standard · changed on both".into(), &header(a), &header(t), &header(s), &|h| {
@@ -1329,7 +1362,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 out.insert(Obj::Component(*id));
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {

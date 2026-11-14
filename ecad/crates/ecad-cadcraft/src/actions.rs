@@ -272,6 +272,16 @@ pub enum App {
     WireSettings,
     /// Open the Text panel's command field with a template for the object (no form exists yet).
     Template,
+    /// Brief 048: Library ▸ the symbol builder, empty (design 048 §3.3).
+    NewSymbol,
+    /// Brief 048: the builder on the version a placed symbol shows (design 048 §6.1).
+    EditSymbol,
+    /// Brief 048: the builder from the selected plain geometry, or a drawn device's drawing
+    /// (design 048 §4).
+    MakeSymbol,
+    /// Brief 048: bring a placed symbol to its newest version (`symbolupdate`), with the review in
+    /// the drawer when it would clash (design 048 §8.4).
+    UpdateSymbol,
 }
 
 /// How an action runs its command on the object (or the selection).
@@ -534,7 +544,9 @@ pub const ACTIONS: &[Action] = &[
         label: "Mirror",
         icon: Icon::Mirror,
         group: None,
-        wheel: &[(K::Device, S::TopLeft), (K::Mixed, S::TopLeft)],
+        // Brief 048 (Q1): Edit symbol takes the device wheel's TopLeft; Mirror keeps X, Ctrl+K and
+        // the selection wheel.
+        wheel: &[(K::Mixed, S::TopLeft)],
         key: Some(Key::X),
         search: &["flip"],
         searchable: true,
@@ -695,6 +707,55 @@ pub const ACTIONS: &[Action] = &[
     slot("page.rename", "renamepage", Params::App(App::RenamePage), "Rename", Icon::Edit, &[(K::PageRow, S::Top)], write),
     slot("page.preview", "", Params::App(App::PreviewPage), "Preview", Icon::Eye, &[(K::PageRow, S::TopLeft)], ok),
     slot("page.folder", "newfolder", Params::App(App::NewFolder), "New folder", Icon::Pages, &[(K::PageRow, S::BottomLeft)], write),
+    // ---- Brief 048 (design 048 §9.6): the symbol builder.
+    Action {
+        id: "symbol.edit",
+        command: "",
+        params: Params::App(App::EditSymbol),
+        label: "Edit symbol",
+        icon: Icon::Edit,
+        group: None,
+        wheel: &[(K::Device, S::TopLeft)],
+        key: None,
+        search: &["symbol builder", "change symbol"],
+        searchable: true,
+        enabled: ok,
+    },
+    Action {
+        id: "symbol.make",
+        command: "",
+        params: Params::App(App::MakeSymbol),
+        label: "Make symbol",
+        // The selection wheel's Right slot goes somewhere (spec §5): to the builder.
+        icon: Icon::GoTo,
+        group: None,
+        wheel: &[(K::Mixed, S::Right)],
+        key: None,
+        search: &["symbol from selection", "symbol builder"],
+        searchable: true,
+        enabled: ok,
+    },
+    Action {
+        id: "symbol.new",
+        command: "",
+        params: Params::App(App::NewSymbol),
+        label: "New symbol",
+        icon: Icon::NewSymbol,
+        group: None,
+        wheel: &[],
+        key: None,
+        search: &["symbol builder", "draw symbol", "library"],
+        searchable: true,
+        enabled: ok,
+    },
+    search_only(
+        "symbol.update",
+        "symbolupdate",
+        Params::App(App::UpdateSymbol),
+        "Update symbol",
+        Icon::NewSymbol,
+        &["update available", "newest version"],
+    ),
     // ---- Found with Ctrl+K only (no slot yet, or not about one object).
     Action {
         id: "find.symbol",
@@ -829,6 +890,13 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
     ("article", "the command line and Checks' Use … for all until 2.3's catalogue"),
+    // Brief 048 (design 048 §9.6): the builder's Save and the review drawer (048b).
+    ("symbolnew", "the builder's Save"),
+    ("symboledit", "the builder's Save"),
+    ("symbolimpact", "the builder's review drawer"),
+    ("makesymbol", "the builder's Save (048c's Make symbol)"),
+    // Brief 049 (design 049 §5.1): no wheel slot.
+    ("contcaption", "the command line and the inspector's Caption row"),
 ];
 
 /// The action with this id.
@@ -849,6 +917,21 @@ pub fn wheel(kind: ObjectKind) -> [Option<&'static Action>; 8] {
                 *slot = Some(a);
             }
         }
+    }
+    out
+}
+
+/// The wheel of `target`: its kind's ([`wheel`]), except that a device whose clicked
+/// representation is a drawing offers Make symbol where a symbol offers Edit symbol (design 048
+/// §4.2).
+pub fn wheel_for(target: &Target) -> [Option<&'static Action>; 8] {
+    let mut out = wheel(target.kind);
+    if target.kind == ObjectKind::Device
+        && target.drawn
+        && let Some(slot) = out.get_mut(Slot::TopLeft.index())
+        && slot.is_some_and(|a| a.id == "symbol.edit")
+    {
+        *slot = find("symbol.make");
     }
     out
 }

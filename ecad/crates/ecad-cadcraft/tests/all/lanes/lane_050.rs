@@ -40,7 +40,7 @@ fn a_new_project_uses_iec_and_lists_the_built_in_styles() {
     assert_eq!(h.run("standard", json!({})).unwrap(), json!({"name": "IEC (built in)", "id": null}));
     let text = h.run("styles", json!({"catalogue": "text"})).unwrap();
     // Brief 051 (FP1): two more, `channel_text` and `address`.
-    assert_eq!(text["styles"].as_array().unwrap().len(), 22, "one built-in style per 031 kind and 051's two");
+    assert_eq!(text["styles"].as_array().unwrap().len(), 23, "one built-in style per 031/049 kind and 051's two");
     let tag = &text["styles"][0];
     assert_eq!((tag["id"].as_str(), tag["layer"].as_str()), (Some("tag"), Some("builtin")));
     assert_eq!(tag["fields"]["height"]["value"], json!(2.5));
@@ -314,7 +314,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     });
     let doc = h.doc();
     let cat = styles::catalogue("text").unwrap();
-    assert!(styles::rows(&doc, cat).len() <= 22 + ecad_model::style::MAX_STYLES_PER_CATALOGUE);
+    assert!(styles::rows(&doc, cat).len() <= 23 + ecad_model::style::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_cadcraft::checks::all(&doc, 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_cadcraft::checks::Kind::StyleLimits));
     assert!(rows.iter().filter(|c| c.kind == ecad_cadcraft::checks::Kind::StyleUnknown).count() >= 2);

@@ -287,20 +287,33 @@ fn frame_parts(doc: &Document, run: &Run, out: &mut Vec<Part>) {
         let mut y = bottom + INSET_Y;
         for (t, kind) in lines.iter().rev() {
             let h = text_style(doc, *kind).height;
-            push(Shape::Text { at: p(x, y), value: t.clone(), height: h, halign: HAlign::Left, valign: VAlign::Bottom }, out);
+            push(Shape::Text { at: p(x, y), value: t.clone(), height: h, halign: HAlign::Left, valign: VAlign::Bottom, rotation: 0.0 }, out);
             y += h + LINE_GAP;
         }
         let h = text_style(doc, TextKind::PartNumber).height;
-        push(Shape::Text { at: p(r - INSET_X, bottom + INSET_Y), value: ttext, height: h, halign: HAlign::Right, valign: VAlign::Bottom }, out);
+        push(
+            Shape::Text {
+                at: p(r - INSET_X, bottom + INSET_Y),
+                value: ttext,
+                height: h,
+                halign: HAlign::Right,
+                valign: VAlign::Bottom,
+                rotation: 0.0,
+            },
+            out,
+        );
     } else {
         let mut y = bottom - INSET_Y;
         for (t, kind) in &lines {
             let h = text_style(doc, *kind).height;
-            push(Shape::Text { at: p(x, y), value: t.clone(), height: h, halign: HAlign::Left, valign: VAlign::Top }, out);
+            push(Shape::Text { at: p(x, y), value: t.clone(), height: h, halign: HAlign::Left, valign: VAlign::Top, rotation: 0.0 }, out);
             y -= h + LINE_GAP;
         }
         let h = text_style(doc, TextKind::PartNumber).height;
-        push(Shape::Text { at: p(r - INSET_X, bottom - INSET_Y), value: ttext, height: h, halign: HAlign::Right, valign: VAlign::Top }, out);
+        push(
+            Shape::Text { at: p(r - INSET_X, bottom - INSET_Y), value: ttext, height: h, halign: HAlign::Right, valign: VAlign::Top, rotation: 0.0 },
+            out,
+        );
     }
 }
 

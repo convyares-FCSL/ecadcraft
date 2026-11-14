@@ -437,7 +437,7 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     }
     // 050b (design 050 §5.4): one category per potential.
     if cat.word == "wire"
-        && let Some(p) = r.fields.get("potential").map(|p| p.trim()).filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case(wire::NONE))
+        && let Some(p) = r.fields.get("potential").map(|p| p.trim()).filter(|p| !p.is_empty())
         && let Some(other) = wire::WireLooks::new(doc).for_potential(p).filter(|o| *o != id)
     {
         return Err(format!("{} is already the default for {p}; clear it there first.", name(doc, "wire", other)));
@@ -507,7 +507,9 @@ mod tests {
         for c in CATALOGUES {
             assert!(ms::is_word(c.word), "{}", c.word);
             for f in c.fields {
-                assert!(defaults::accepts(f.kind, &f.builtin), "{}.{} built-in", c.word, f.key);
+                // 050b (design 050 §5.3): an empty built-in is "no value" (potential, part number).
+                let empty = matches!(f.builtin, Value::Text(""));
+                assert!(empty || defaults::accepts(f.kind, &f.builtin), "{}.{} built-in", c.word, f.key);
             }
             for b in c.builtins {
                 assert!(ms::is_word(b.id), "{}", b.id);

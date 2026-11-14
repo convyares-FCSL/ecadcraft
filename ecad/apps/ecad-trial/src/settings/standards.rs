@@ -24,8 +24,12 @@ use crate::lists::style_catalogues::{self as sc, CatalogueSource, DetailState};
 
 /// Accessible names.
 pub const STANDARD_LINE: &str = "ecad.standards.standard";
-pub const CATALOGUE_DEFAULTS: &str = "ecad.standards.defaults";
-pub const CATALOGUE_STYLES: &str = "ecad.standards.text_styles";
+/// Brief 050a (design 050 §9): `ecad.standards.catalogue.<word>`.
+pub const CATALOGUE_DEFAULTS: &str = "ecad.standards.catalogue.defaults";
+pub const CATALOGUE_STYLES: &str = "ecad.standards.catalogue.text";
+/// 042's names of those two tabs, kept as aliases until the phase-end tidy-up (design 050 §9).
+pub const ALIAS_DEFAULTS: &str = "ecad.standards.defaults";
+pub const ALIAS_TEXT_STYLES: &str = "ecad.standards.text_styles";
 pub const VALUE: &str = "ecad.standards.value";
 pub const APPLY: &str = "ecad.standards.apply";
 pub const RESET: &str = "ecad.standards.reset";
@@ -287,7 +291,16 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
             let on = t.settings.standards.catalogue == i;
             let r = ui.selectable_label(on, label);
             r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, name));
-            if r.clicked() && !on {
+            // 042's names stay as aliases over the same tab.
+            let alias =
+                [(CATALOGUE_DEFAULTS, ALIAS_DEFAULTS), (CATALOGUE_STYLES, ALIAS_TEXT_STYLES)].iter().find(|(n, _)| *n == name).map(|(_, a)| *a);
+            let mut clicked = r.clicked();
+            if let Some(a) = alias {
+                let ar = ui.interact(r.rect, egui::Id::unique(("ecad.standards.alias", a)), egui::Sense::click());
+                ar.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, a));
+                clicked |= ar.clicked();
+            }
+            if clicked && !on {
                 t.settings.standards.catalogue = i;
                 t.settings.standards.style_focus = None;
                 t.settings.standards.style_detail = DetailState::default();

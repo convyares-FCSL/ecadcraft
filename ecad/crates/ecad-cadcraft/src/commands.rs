@@ -518,6 +518,26 @@ fn kept_words(n: usize) -> String {
 
 fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let key = params.get("key").and_then(Value::as_str).ok_or_else(|| err("`key` is required"))?.to_string();
+    // Brief 050a (design 050 §3.4): an older build's text size, weight or font on the project is
+    // cleared here (its Checks row goes); it is never written.
+    if params.get("project").and_then(Value::as_bool) == Some(true)
+        && params.get("value").is_some_and(Value::is_null)
+        && crate::styles::checks::is_old_key(&key)
+    {
+        return with_project(s, |p, pg, _| {
+            let before = p.ledger.document().properties.get(&key).cloned();
+            if before.is_none() {
+                return Ok(json!({"changed": false}));
+            }
+            p.apply_edit(
+                pg,
+                "setprop",
+                "Clear an older build's text setting",
+                vec![Op::SetProperty { object: ObjectRef::Project, key, before, after: None }],
+            )?;
+            Ok(json!({"changed": true}))
+        });
+    }
     // `null` clears the property; a missing value or another type is an error, never a clear.
     let value = match params.get("value") {
         Some(Value::Null) => None,
@@ -665,6 +685,14 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
         let after = match key.as_str() {
             crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
             crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
+            // Brief 049: a caption, on continuation arrows only (each is checked).
+            crate::continuations::CAPTION_KEY => {
+                let mut out = None;
+                for c in &cs {
+                    out = crate::continuations::caption_value(doc, *c, value.as_deref())?;
+                }
+                out
+            }
             crate::strips::OFFER_KEY if cs.iter().any(|c| crate::strips::is_strip(doc, *c)) => crate::strips::offer_value(value.as_deref())?,
             // Brief 030: the same rule for every strip (a link's text depends on its strip).
             k if k.starts_with(crate::accessories::ACC_PREFIX) || k.starts_with(ecad_model::links::PREFIX) || crate::accessories::is_part_key(k) => {
@@ -1133,6 +1161,7 @@ pub fn builtin_coil() -> Definition {
             TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
         ],
+        ..Default::default()
     }
 }
 

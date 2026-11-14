@@ -164,6 +164,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         graphics: vec![],
         terminals: ["1", "2", "3"].iter().map(|k| TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0) }).collect(),
         bridges: vec![vec!["1".into(), "2".into()]],
+        ..Default::default()
     };
     p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
     let (_, bt) = p.device_with(3, Component { definition: Some(def), ..Component::default() });

@@ -58,6 +58,7 @@ fn label_of(k: TextKind) -> &'static str {
         TextKind::PartNumber => "Part number",
         TextKind::ContinuationName => "Continuation name",
         TextKind::Reference => "Reference",
+        TextKind::ContinuationCaption => "Continuation caption",
         TextKind::WireLabel => "Wire label",
         TextKind::CableText => "Cable text",
         TextKind::LocationLabel => "Location label",

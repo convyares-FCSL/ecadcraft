@@ -271,6 +271,43 @@ pub struct Definition {
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<String>>,
+    /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<TextSlot>,
+    /// The symbol's own defaults (brief 048, FP2). Left out when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub defaults: BTreeMap<String, String>,
+    /// The origin an edited copy came from (brief 048, FP4). Left out when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<Origin>,
+}
+
+/// A text slot of a definition (brief 048, FP1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TextSlot {
+    pub text: String,
+    pub at: Pt,
+    #[serde(default, skip_serializing_if = "is_left")]
+    pub h: m::TextHAlign,
+    #[serde(default, skip_serializing_if = "is_baseline")]
+    pub v: m::TextVAlign,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rotation: f64,
+}
+
+fn is_zero(x: &f64) -> bool {
+    // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
+    // that the read-back value (0.0, left out) does not match.
+    *x == 0.0
+}
+
+fn origin(o: &m::Origin) -> Origin {
+    Origin { library: o.library, definition: o.definition, library_seq: o.library_seq, content_hash: o.content_hash }
+}
+
+fn morigin(o: Origin) -> m::Origin {
+    m::Origin { library: o.library, definition: o.definition, library_seq: o.library_seq, content_hash: o.content_hash }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -687,6 +724,12 @@ pub enum Op {
         id: ComponentId,
         component: Component,
     },
+    /// Brief 048, FP5.
+    SetComponentDefinition {
+        id: ComponentId,
+        before: Option<DefinitionId>,
+        after: Option<DefinitionId>,
+    },
     AddTerminal {
         id: TerminalId,
         terminal: Terminal,
@@ -1002,15 +1045,13 @@ impl From<&m::Definition> for Definition {
     fn from(d: &m::Definition) -> Self {
         Definition {
             name: d.name.clone(),
-            origin: d.origin.as_ref().map(|o| Origin {
-                library: o.library,
-                definition: o.definition,
-                library_seq: o.library_seq,
-                content_hash: o.content_hash,
-            }),
+            origin: d.origin.as_ref().map(origin),
             graphics: d.graphics.iter().map(Into::into).collect(),
             terminals: d.terminals.iter().map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) }).collect(),
             bridges: d.bridges.clone(),
+            texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
+            defaults: d.defaults.clone(),
+            derived_from: d.derived_from.as_ref().map(origin),
         }
     }
 }
@@ -1089,6 +1130,7 @@ impl From<&m::Op> for Op {
             m::Op::RemoveItem { id, item } => Op::RemoveItem { id: *id, item: item.into() },
             m::Op::CreateComponent { id, component } => Op::CreateComponent { id: *id, component: component.into() },
             m::Op::DeleteComponent { id, component } => Op::DeleteComponent { id: *id, component: component.into() },
+            m::Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id: *id, before: *before, after: *after },
             m::Op::AddTerminal { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
             m::Op::RemoveTerminal { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
@@ -1271,15 +1313,13 @@ impl From<Definition> for m::Definition {
     fn from(d: Definition) -> Self {
         m::Definition {
             name: d.name,
-            origin: d.origin.map(|o| m::Origin {
-                library: o.library,
-                definition: o.definition,
-                library_seq: o.library_seq,
-                content_hash: o.content_hash,
-            }),
+            origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
             terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) }).collect(),
             bridges: d.bridges,
+            texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
+            defaults: d.defaults,
+            derived_from: d.derived_from.map(morigin),
         }
     }
 }
@@ -1334,6 +1374,7 @@ impl TryFrom<Op> for m::Op {
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
             Op::CreateComponent { id, component } => m::Op::CreateComponent { id, component: component.into() },
             Op::DeleteComponent { id, component } => m::Op::DeleteComponent { id, component: component.into() },
+            Op::SetComponentDefinition { id, before, after } => m::Op::SetComponentDefinition { id, before, after },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },

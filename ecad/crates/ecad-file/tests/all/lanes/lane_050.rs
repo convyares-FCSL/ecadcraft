@@ -111,3 +111,36 @@ fn hostile_style_records_are_refused_in_words() {
         assert!(e.is_err(), "{path} = {bad} decoded");
     }
 }
+
+/// Review of PR 88, finding 1 (FP6): a version 2 project chunk written before 050b stores a
+/// potential's `colour` and `cross_section`; read now, they arrive as the legacy fields (so Checks
+/// can name them), and an unchanged table writes back the same bytes.
+#[test]
+fn a_pre_050b_project_chunk_keeps_its_potential_colours() {
+    use ecad_file::v2::chunks::{ModelMeta, PROJECT_KEY, assemble, build_full};
+    let mut doc = ecad_model::Document::default();
+    doc.settings.wiring.potentials = ecad_model::wiring::default_potentials();
+    let meta = ModelMeta::default();
+    let body_of = |doc: &ecad_model::Document| {
+        let (set, chunks) = build_full(doc, &meta).unwrap();
+        let h = set.chunks[PROJECT_KEY];
+        let body = chunks.iter().find(|c| c.hash == h).unwrap().body.clone();
+        (set, chunks, body)
+    };
+    let (set, chunks, body) = body_of(&doc);
+    let text = String::from_utf8(body).unwrap();
+    assert!(!text.contains(r#""colour":"#) && !text.contains("legacy"), "050b's table stores no colour: {text}");
+    // The same row as an older build wrote it.
+    let old = text.replacen(r#""numbered":true"#, r#""numbered":true,"colour":"BN","cross_section":"2.5""#, 1);
+    assert_ne!(old, text);
+    let mut bodies: Vec<(String, Vec<u8>)> = Vec::new();
+    for (k, h) in &set.chunks {
+        let b = if k == PROJECT_KEY { old.clone().into_bytes() } else { chunks.iter().find(|c| c.hash == *h).unwrap().body.clone() };
+        bodies.push((k.clone(), b));
+    }
+    let (read, _) = assemble(&set, bodies).unwrap();
+    let row = &read.settings.wiring.potentials[0];
+    assert_eq!((row.legacy_colour.as_deref(), row.legacy_cross_section.as_deref()), (Some("BN"), Some("2.5")), "{row:?}");
+    let (_, _, again) = body_of(&read);
+    assert_eq!(String::from_utf8(again).unwrap(), old, "the old chunk's bytes (and hash) are kept");
+}

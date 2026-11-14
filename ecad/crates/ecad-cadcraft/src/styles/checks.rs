@@ -126,7 +126,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     // 050b: a category on the BOM (a part number) with no allowance.
     for row in super::rows(doc, &super::wire::CATALOGUE) {
         let f = |k: &str| super::field_of(doc, "wire", &row.id, k, None);
-        let has_part = f("part_number").is_some_and(|r| !r.text().eq_ignore_ascii_case(super::wire::NONE));
+        let has_part = f("part_number").is_some_and(|r| super::wire::filled(&r).is_some());
         if has_part && f("allowance").is_some_and(|r| r.number() <= 0.0) {
             out.push(Check {
                 kind: Kind::WireAllowance,

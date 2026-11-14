@@ -37,7 +37,9 @@ const TEXT24: Kind = Kind::Parsed { max_chars: 24, parse: any_text };
 const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
 static FIELDS: &[Field] = &[
-    Field { key: "potential", label: "Potential", kind: TEXT24, builtin: Value::Text(NONE), over: None },
+    // Design 050 §5.3: potential and the BOM texts are empty by default (only colour and
+    // cross-section default to `none`), so a potential named "none" is a name like any other.
+    Field { key: "potential", label: "Potential", kind: TEXT24, builtin: Value::Text(""), over: None },
     Field { key: "colour", label: "Colour", kind: TEXT24, builtin: Value::Text(NONE), over: Some(ecad_model::wiring::COLOUR) },
     Field { key: "cross_section", label: "Cross-section", kind: TEXT24, builtin: Value::Text(NONE), over: Some(ecad_model::wiring::CROSS_SECTION) },
     Field {
@@ -62,9 +64,9 @@ static FIELDS: &[Field] = &[
         builtin: Value::Choice("project"),
         over: None,
     },
-    Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(NONE), over: None },
-    Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(NONE), over: None },
-    Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(NONE), over: None },
+    Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(""), over: None },
+    Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(""), over: None },
+    Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, builtin: Value::Number(0.0), over: None },
 ];
 
@@ -229,6 +231,12 @@ fn text_of(r: &Resolved<'_>) -> Option<String> {
     (!t.trim().is_empty() && !t.eq_ignore_ascii_case(NONE)).then_some(t)
 }
 
+/// A text field with no sentinel (potential, part number, maker, description): `None` when empty.
+pub fn filled(r: &Resolved<'_>) -> Option<String> {
+    let t = r.text();
+    (!t.trim().is_empty()).then_some(t)
+}
+
 /// The categories of a project read once, for many conductors (a page, a report).
 #[derive(Debug, Clone, Default)]
 pub struct WireLooks {
@@ -244,7 +252,7 @@ impl WireLooks {
         let mut all: BTreeMap<String, Vec<StyleRef>> = BTreeMap::new();
         for row in super::rows(doc, &CATALOGUE) {
             let p = super::field(doc, &CATALOGUE, &row.id, &FIELDS[0], None);
-            if let Some(name) = text_of(&p) {
+            if let Some(name) = filled(&p) {
                 all.entry(name.trim().to_lowercase()).or_default().push(row.id);
             }
         }

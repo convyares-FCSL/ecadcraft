@@ -1021,6 +1021,7 @@ pub fn op_view(op: &Op) -> OpView {
         Op::RemoveItem { item, .. } => (val(item), None),
         Op::CreateComponent { component, .. } => (None, val(component)),
         Op::DeleteComponent { component, .. } => (val(component), None),
+        Op::SetComponentDefinition { before, after, .. } => (val(before), val(after)),
         Op::AddTerminal { terminal, .. } => (None, val(terminal)),
         Op::RemoveTerminal { terminal, .. } => (val(terminal), None),
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
@@ -1084,6 +1085,10 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
             out.push(ObjectId::Component(*id));
             out.extend(component.definition.map(ObjectId::Definition));
+        }
+        Op::SetComponentDefinition { id, before, after } => {
+            out.push(ObjectId::Component(*id));
+            out.extend(before.iter().chain(after).copied().map(ObjectId::Definition));
         }
         Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
             out.push(ObjectId::Terminal(*id));

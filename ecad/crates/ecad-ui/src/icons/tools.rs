@@ -225,3 +225,35 @@ pub fn eye(p: &mut Pen) {
     p.arc(8.0, 4.0, 7.21, 33.7, 146.3);
     p.circle(8.0, 8.0, 2.0);
 }
+
+/// New symbol (brief 048): a symbol box on two leads, a plus at its top right.
+pub fn new_symbol(p: &mut Pen) {
+    p.rect(3.0, 5.0, 10.0, 12.0);
+    p.line((6.5, 1.5), (6.5, 5.0));
+    p.line((6.5, 12.0), (6.5, 14.5));
+    p.line((12.75, 1.5), (12.75, 6.0));
+    p.line((10.5, 3.75), (15.0, 3.75));
+}
+
+/// Connection point (brief 048, the builder's C tool): a hollow ring at a lead's end.
+pub fn connection_point(p: &mut Pen) {
+    p.line((8.0, 14.5), (8.0, 8.5));
+    p.circle(8.0, 5.5, 3.0);
+}
+
+/// Text slot (brief 048, the builder's S tool): a dashed box with an anchor dot at its left.
+pub fn text_slot(p: &mut Pen) {
+    p.dashed((2.0, 5.0), (14.0, 5.0), 2.0, 1.5);
+    p.dashed((2.0, 11.0), (14.0, 11.0), 2.0, 1.5);
+    p.dashed((2.0, 5.0), (2.0, 11.0), 2.0, 1.5);
+    p.dashed((14.0, 5.0), (14.0, 11.0), 2.0, 1.5);
+    p.dot(2.0, 11.0, 1.5);
+    p.line((5.0, 9.0), (11.0, 9.0));
+}
+
+/// Origin (brief 048, the builder's O tool): a cross with a ring at its centre.
+pub fn origin(p: &mut Pen) {
+    p.line((8.0, 1.5), (8.0, 14.5));
+    p.line((1.5, 8.0), (14.5, 8.0));
+    p.circle(8.0, 8.0, 3.0);
+}
