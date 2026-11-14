@@ -529,17 +529,8 @@ fn place_pins(
         take(halves, &name, &mut taken);
         let rotation = along_wire(doc, page, &on);
         let placement = Placement { origin: on.at, rotation, mirror: false, scale: 1.0 };
-        let (_, _, shown) = cn::symbol_ops(
-            &mut p.ids,
-            page,
-            style.clone(),
-            def,
-            starter,
-            component,
-            std::slice::from_ref(&name),
-            placement,
-            &mut ops,
-        )?;
+        let (_, _, shown) =
+            cn::symbol_ops(&mut p.ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)?;
         let land = cn::land_pin(doc, &mut p.ids, page, on, &shown, placement)
             .map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, on.conductor)))?;
         if let Some((n, _)) = &land.dropped_number {

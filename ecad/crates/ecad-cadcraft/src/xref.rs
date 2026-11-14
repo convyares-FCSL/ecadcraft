@@ -326,8 +326,8 @@ pub enum Class {
     Head,
     /// A symbol with contact poles.
     Child,
-    /// Brief 044 (design 044 §7): a connector half's main symbol (a pin pair that is both
-    /// halves' main symbol: `Both`).
+    /// Brief 044 (design 044 §7, design 052 §3.4): a connector half's whole-half symbol. A
+    /// pin-only half has none.
     Half(crate::symbols::Side),
     /// Brief 044: any other connector symbol, by the side it draws.
     Pin(crate::symbols::Side),
@@ -443,19 +443,17 @@ pub fn device(doc: &Document, c: ComponentId) -> Device {
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Component(c)) {
-        match raw_class(doc, r) {
-            Class::Child => {
-                children.push(rid);
-                let Some(s) = starter_of(doc, r) else { continue };
-                let kinds = poles_of(s);
-                let pts = crate::devices::shown_terminals(doc, c, r);
-                let at = anchor(doc, r);
-                for (i, (kind, power)) in kinds.iter().enumerate() {
-                    let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
-                    poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
-                }
-            }
-            _ => {}
+        if raw_class(doc, r) != Class::Child {
+            continue;
+        }
+        children.push(rid);
+        let Some(s) = starter_of(doc, r) else { continue };
+        let kinds = poles_of(s);
+        let pts = crate::devices::shown_terminals(doc, c, r);
+        let at = anchor(doc, r);
+        for (i, (kind, power)) in kinds.iter().enumerate() {
+            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
+            poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
         }
     }
     Device { component: c, head, children, poles }
