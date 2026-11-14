@@ -834,10 +834,35 @@ fn cover_lines(doc: &Document, total: usize, pending: bool) -> Vec<(String, f64)
     out
 }
 
+/// A table page laid out: its columns (A3 widths), rows, and sheets as [`paginate_with`] makes
+/// them.
+struct Laid {
+    cols: Vec<(String, f64)>,
+    rows: Vec<TRow>,
+    sheets: Vec<(usize, usize, Option<String>)>,
+}
+
+impl Laid {
+    fn of(doc: &Document, page: PageId, kind: GenKind, outputs: Option<&Outputs>) -> Laid {
+        let (cols, mut rows) = table(doc, kind, outputs);
+        if kind == GenKind::Terminals
+            && let Some(o) = outputs
+        {
+            rows = terminal_rows(doc, page, o);
+        }
+        let heads: Vec<Option<String>> = rows.iter().map(|r| r.heading.then(|| r.cells.first().cloned().unwrap_or_default())).collect();
+        let sheets = paginate_with(&heads, kind == GenKind::Terminals);
+        Laid { cols, rows, sheets }
+    }
+}
+
 /// The content of sheet `i` of a generated page of `kind`, with its frame `input` (paper
 /// millimetres, sheet origin at x = `x0`).
 #[allow(clippy::too_many_arguments)]
-fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&Outputs>, total: usize) -> Vec<Part> {
+fn content(
+    doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&Outputs>, total: usize,
+    laid: &mut Option<Laid>,
+) -> Vec<Part> {
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
     let looks = Look::new(doc);
@@ -871,12 +896,8 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
         }
         return d.out;
     }
-    let (cols, mut rows) = table(doc, kind, outputs);
-    if kind == GenKind::Terminals
-        && let Some(o) = outputs
-    {
-        rows = terminal_rows(doc, page, o);
-    }
+    // The table and its sheets are laid out once per page, not once per sheet (brief 053).
+    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, outputs));
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
@@ -898,8 +919,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     d.line((l, y), (r, y));
     // The sheets as the sheet count makes them; a sheet starting inside a location block repeats it
     // as `(continued)`, which takes one of its rows.
-    let heads: Vec<Option<String>> = rows.iter().map(|r| r.heading.then(|| r.cells.first().cloned().unwrap_or_default())).collect();
-    let (start, end, prev_heading) = paginate_with(&heads, kind == GenKind::Terminals).get(i).cloned().unwrap_or((0, 0, None));
+    let (start, end, prev_heading) = sheets.get(i).cloned().unwrap_or((0, 0, None));
     let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
     if let Some(h) = prev_heading {
         d.text((l + 1.0, y - ROW_MM / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
@@ -973,6 +993,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
     let graphic =
         (kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic).then_some(outputs).flatten();
     let mut out = Vec::new();
+    let mut laid = None;
     for i in 0..n {
         let mut inp = input.clone();
         if let Some(o) = graphic {
@@ -998,7 +1019,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
             }
         }
         out.extend(frame);
-        out.extend(content(doc, page, kind, &inp, i, x0, outputs, total));
+        out.extend(content(doc, page, kind, &inp, i, x0, outputs, total, &mut laid));
     }
     out
 }
