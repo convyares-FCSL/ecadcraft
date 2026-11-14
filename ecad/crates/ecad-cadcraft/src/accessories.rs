@@ -290,8 +290,25 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
 
 /// The rule for a project property `strip_*` (FP3, FP6): `None` when `key` is not one.
 pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+    // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
+    if is_type_article_project_key(key) {
+        return Some(crate::bom::article_value(value));
+    }
     let sk = strip_key_of_project(key)?;
     Some(part_value(doc, &sk, value))
+}
+
+/// Whether `key` is a strip's own terminal type article number, `article_number.<code>` (design
+/// 047 §5; feed-through's `article_number` is 047's own key, checked by [`crate::bom::setprop_rule`]).
+fn is_type_article_key(key: &str) -> bool {
+    key.strip_prefix(crate::bom::ARTICLE_KEY).and_then(|r| r.strip_prefix('.')).is_some_and(|code| crate::terminal_types::by_code(code).is_some())
+}
+
+/// Whether `key` is a project terminal type article number, `strip_<code>_article_number`.
+fn is_type_article_project_key(key: &str) -> bool {
+    key.strip_prefix("strip_")
+        .and_then(|r| r.strip_suffix(&format!("_{}", crate::bom::ARTICLE_KEY)))
+        .is_some_and(|code| crate::terminal_types::by_code(code).is_some())
 }
 
 /// Every position label of strip `c` in plan order: drawn labels and the offer's positions.
@@ -394,6 +411,9 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
     }
     if strip && is_part_key(key) {
         return part_value(doc, key, value).map(Some);
+    }
+    if strip && is_type_article_key(key) {
+        return crate::bom::article_value(value).map(Some);
     }
     Ok(None)
 }

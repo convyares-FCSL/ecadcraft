@@ -324,6 +324,16 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     assert_eq!(row(&rows, "JB-1")["article_number"], "A-0300");
     let e = f.h.run("setprop", json!({"component": f.x05.hex(), "key": "link.1.article_number", "value": "x".repeat(65)})).unwrap_err();
     assert!(e.contains("at most 64 characters"), "{e}");
+    // A terminal type's article number is checked as every other, at both levels (review of PR #87).
+    let head = f.h.head();
+    let e = f.h.run("setprop", json!({"component": f.x05.hex(), "key": "article_number.fuse", "value": "x".repeat(65)})).unwrap_err();
+    assert!(e.contains("at most 64 characters"), "{e}");
+    let e = f.h.run("projectprops", json!({"props": {"strip_fuse_article_number": "x".repeat(65)}})).unwrap_err();
+    assert!(e.contains("at most 64 characters"), "{e}");
+    assert_eq!(f.h.head(), head, "nothing written");
+    set(&mut f.h, f.x05, "part_number.fuse", "FU-9");
+    set(&mut f.h, f.x05, "article_number.fuse", " A-0500 ");
+    assert_eq!(row(&bom(&mut f.h, json!({})), "FU-9")["article_number"], "A-0500", "trimmed");
     same_as_built(&mut f.h);
     // `article` writes where each part number lives: the project's default, a strip's own key.
     let head = f.h.head();
