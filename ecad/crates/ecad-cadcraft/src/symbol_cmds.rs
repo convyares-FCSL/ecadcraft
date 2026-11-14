@@ -421,11 +421,16 @@ pub struct Row {
 
 impl Row {
     /// The row as data; `book` is the project's page book, built once per listing (a page's
-    /// number alone walks the book).
-    pub fn json(&self, doc: &Document, book: &ecad_model::book::Book) -> Value {
+    /// number alone walks the book); `places` gives the copy's place (`2-D-4`, in the project's
+    /// reference style, design 048 §6.1's page and zone).
+    pub fn json(&self, doc: &Document, book: &ecad_model::book::Book, places: &mut crate::xref::Places<'_>) -> Value {
+        let at = match doc.items.get(&self.item).map(|i| &i.kind) {
+            Some(ItemKind::Symbol(s)) => Some(s.placement.origin),
+            _ => None,
+        };
         json!({
             "rep": self.rep.hex(), "item": self.item.hex(), "page": self.page.hex(),
-            "page_number": book.number(doc, self.page), "component": self.component.hex(),
+            "page_number": book.number(doc, self.page), "place": places.text(self.page, at), "component": self.component.hex(),
             "tag": self.tag, "from": self.from.hex(), "changes": self.changes, "clash": self.clash, "builtin": self.builtin,
         })
     }
@@ -792,10 +797,12 @@ fn run_symbolimpact(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         let problems = problems(&content, &Rules { doc, lineage: (!e.builtin).then_some(e.lineage), grid: true });
         let pages: BTreeSet<PageId> = shown.iter().map(|r| r.page).collect();
         let book = ecad_model::book::Book::of(doc);
+        let mut places = crate::xref::Places::new(doc);
+        let rows_json: Vec<Value> = shown.iter().map(|r| r.json(doc, &book, &mut places)).collect();
         Ok(json!({
             "name": content.name, "version": e.seq, "builtin": e.builtin,
             "copies": shown.len(), "pages": pages.len(), "clashes": shown.iter().filter(|r| r.clash.is_some()).count(),
-            "rows": shown.iter().map(|r| r.json(doc, &book)).collect::<Vec<_>>(),
+            "rows": rows_json,
             "problems": problems,
         }))
     })

@@ -102,7 +102,8 @@ impl Review {
                 Row {
                     rep: s(r, "rep"),
                     tag: s(r, "tag"),
-                    page_number: s(r, "page_number"),
+                    // The copy's place (page and zone) when it can be located, else its page.
+                    page_number: Some(s(r, "place")).filter(|p| !p.is_empty() && !p.contains('?')).unwrap_or_else(|| s(r, "page_number")),
                     changes: r.get("changes").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
                     checked: clash.is_none() && !builtin,
                     description: String::new(),

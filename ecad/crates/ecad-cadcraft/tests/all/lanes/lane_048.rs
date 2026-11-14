@@ -450,3 +450,50 @@ fn a_copy_of_a_built_in_not_placed_yet_remembers_where_it_came_from() {
     let from = v.def.derived_from.clone().expect("derived_from");
     assert_eq!((from.library, from.definition), (symbols::STARTER_LIBRARY, coil.id));
 }
+
+/// The pages a command marked changed (`None`: every page).
+fn marked(h: &mut H, cmd: &str, params: Value) -> Option<std::collections::BTreeSet<PageId>> {
+    let n = h.p(|p| p.change_count());
+    h.s.execute(cmd, &params).unwrap();
+    h.p(|p| p.changes_since(n))
+}
+
+/// Review of PR #86, finding 1: Update all removes the superseded version in its own transaction,
+/// and that marks only the pages holding copies (not every page), and so do undo and redo.
+#[test]
+fn update_all_marks_only_the_pages_with_copies_and_so_do_undo_and_redo() {
+    let mut h = H::new(4818);
+    let mut pages = vec![h.first_page()];
+    for n in 2..=10 {
+        pages.push(id(&h.run("newpage", json!({"title": format!("P{n}")})).unwrap(), "page"));
+    }
+    let v1: DefinitionId = id(&h.run("symbolnew", float(json!({}))).unwrap(), "definition");
+    let (a, b) = (pages[1], pages[4]);
+    for (pg, x) in [(a, 100.0), (a, 150.0), (b, 100.0)] {
+        h.activate(pg);
+        place(&mut h, x, 100.0);
+    }
+    let wider = json!({"kind": "polyline", "vertices": [[-5, -7.5], [5, -7.5], [5, 7.5], [-5, 7.5]], "closed": true});
+    let touched = marked(&mut h, "symboledit", float(json!({"definition": v1.hex(), "graphics": [wider], "update": "all"})));
+    let both: std::collections::BTreeSet<PageId> = [a, b].into_iter().collect();
+    assert!(!h.doc().definitions.contains_key(&v1), "v1 removed in the update (FP8)");
+    assert_eq!(touched.as_ref(), Some(&both), "Update all marks the two pages with copies");
+    assert_eq!(marked(&mut h, "undo", Value::Null).as_ref(), Some(&both), "undo");
+    assert_eq!(marked(&mut h, "redo", Value::Null).as_ref(), Some(&both), "redo");
+    h.check();
+}
+
+/// Review of PR #86, finding 2: each impact row names its copy's place (page and zone, in the
+/// project's reference style), so copies on one page can be told apart.
+#[test]
+fn impact_rows_name_each_copys_page_and_zone() {
+    let mut h = H::new(4819);
+    let v1: DefinitionId = id(&h.run("symbolnew", float(json!({}))).unwrap(), "definition");
+    place(&mut h, 60.0, 100.0);
+    place(&mut h, 300.0, 100.0);
+    let v = h.run("symbolimpact", float(json!({"definition": v1.hex()}))).unwrap();
+    let places: Vec<&str> = v["rows"].as_array().unwrap().iter().map(|r| r["place"].as_str().unwrap()).collect();
+    assert_eq!(places.len(), 2);
+    assert!(places.iter().all(|p| !p.contains('?') && p.len() > 1), "{places:?}");
+    assert_ne!(places[0], places[1], "two zones of one page: {places:?}");
+}
