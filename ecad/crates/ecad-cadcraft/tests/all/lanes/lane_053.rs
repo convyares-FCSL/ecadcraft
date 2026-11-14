@@ -26,6 +26,31 @@ fn a_bom_page_lays_its_table_out_once_per_draw() {
     assert_eq!(groupings, 1, "the BOM rows were grouped {groupings} times for {sheets} sheets");
 }
 
+/// `textstyle`, `toposition`, `spagetype`: a style, a standard, a deleted component's record and
+/// a cable's property reach no cable's references but that cable's (before, each made a commit
+/// derive every reference of the project twice).
+#[test]
+fn ops_that_read_no_reference_touch_no_cable() {
+    use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
+    use ecad_model::{CableId, Component, ComponentId, ObjectRef, Op};
+    let doc = ecad_model::Document::default();
+    let touched = |ops: Vec<Op>| ecad_cadcraft::references::cables_touched(&doc, &ops);
+    let style = Op::SetStyle {
+        layer: StyleLayer::Project,
+        catalogue: "text".into(),
+        id: StyleRef::builtin("tag").unwrap(),
+        before: None,
+        after: Some(StyleRecord::default()),
+    };
+    assert_eq!(touched(vec![style]), Some(Default::default()), "a text style");
+    assert_eq!(touched(vec![Op::SetStandard { before: None, after: None }]), Some(Default::default()), "a standard");
+    let gone = Op::DeleteComponent { id: ComponentId(7), component: Component::default() };
+    assert_eq!(touched(vec![gone]), Some(Default::default()), "a deleted component");
+    let k = CableId(9);
+    let typed = Op::SetProperty { object: ObjectRef::Cable(k), key: "type".into(), before: None, after: Some("5G1.5".into()) };
+    assert_eq!(touched(vec![typed]), Some([k].into()), "a cable's own property");
+}
+
 /// `wire`, `joinwires`: a page's reference markers come from the references of the cables drawn
 /// on it, and equal the markers taken from every reference of the project.
 #[test]

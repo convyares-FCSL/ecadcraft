@@ -578,11 +578,24 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(*id);
             }
+            // Brief 053: a cable's property (its type, tag) is that cable's alone, so only its
+            // reference ends may read differently (before, every cable: `spagetype`).
+            Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
+                out.insert(*k);
+            }
             Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
                 out.insert(*cable);
             }
             Op::SetProjectSettings { before, after }
                 if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
+            // Brief 053: a style or standard is read by no reference (the derivation reads
+            // cables, routes, pages and project settings only), so it reaches none (before, every
+            // cable: `textstyle` derived every reference twice).
+            Op::SetStyle { .. } | Op::SetStandard { .. } => {}
+            // Brief 053: a deleted component has no terminals and no representations left (the
+            // model's invariants I8 and I10); removing those is its own op above, so the record
+            // itself reaches no reference (`toposition` derived every one twice).
+            Op::DeleteComponent { .. } => {}
             _ => return None,
         }
     }
