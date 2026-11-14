@@ -238,6 +238,8 @@ fn placing_a_coil_shows_the_device_about_to_be_placed() {
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     assert!(h.query_by_label(right::CHANGES).is_none());
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
 /// Review of #91, 1: while an old revision is shown read-only, a check's fix would write the live
 /// project behind it, so the fix buttons are off (the guard the drawer's list had).

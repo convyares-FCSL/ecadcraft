@@ -26,9 +26,18 @@ pub struct Placing {
 }
 
 impl Placing {
+    /// The click makes (or adds to) a tagged device: the symbol is not tagless (a junction, a
+    /// continuation) and the tool names its tag.
+    pub fn makes_device(&self) -> bool {
+        self.tag.is_some() && self.symbol.is_none_or(|s| s.kind != symbols::Kind::Tagless)
+    }
+
     /// The header: the tag (or the symbol's name) and `Contactor coil · not placed yet`.
     pub fn head(&self) -> (String, String) {
         let name = self.symbol.map_or("Symbol", |s| s.name);
+        if !self.makes_device() {
+            return (name.to_string(), NOT_PLACED.to_string());
+        }
         let title = self.tag.clone().unwrap_or_else(|| name.to_string());
         let sub = match (&self.tag, self.joins) {
             (Some(t), true) => format!("{name} \u{b7} joins {t} \u{b7} {NOT_PLACED}"),
@@ -40,8 +49,12 @@ impl Placing {
     /// What the click changes, as (mark, words): `ok`, `free` or `warning`.
     pub fn changes(&self) -> Vec<(&'static str, String)> {
         let mut out = Vec::new();
-        let tag = self.tag.clone().unwrap_or_else(|| "the device".into());
-        if self.joins {
+        let device = self.makes_device();
+        let tag = self.tag.clone().unwrap_or_default();
+        if !device {
+            let name = self.symbol.map_or("symbol", |s| s.name).to_lowercase();
+            out.push(("ok", format!("Adds the {name} where you click.")));
+        } else if self.joins {
             out.push(("ok", format!("Adds this symbol to {tag} where you click.")));
         } else {
             out.push(("ok", format!("Adds device {tag} where you click.")));
@@ -56,7 +69,7 @@ impl Placing {
             let verb = if labels.len() == 1 { "joins" } else { "join" };
             out.push(("free", format!("{list} {verb} a wire end they land on; otherwise they stay free connection points until you wire them.")));
         }
-        if !self.joins {
+        if device && !self.joins {
             out.push(("warning", format!("Checks counts {tag} among the devices without a part number until you choose one.")));
         }
         out
@@ -84,28 +97,24 @@ pub fn show(ui: &mut egui::Ui, cx: &mut super::Cx<'_>, p: &Placing, standard: &s
     let (function, location) = (from_page("function"), from_page("location"));
     let mut folded = std::mem::take(&mut cx.insp.folded);
     let name = p.symbol.map_or("Symbol", |s| s.name);
-    w::section(ui, &mut folded, full, "placing-identity", "Identity", p.tag.as_deref().unwrap_or(""), false, |ui| {
-        let tag_hint = if p.joins { "joins" } else { "next free" };
-        boxed(ui, "Tag", p.tag.as_deref().unwrap_or("?"), tag_hint, "ecad.inspector.placing.tag");
+    let device = p.makes_device();
+    let summary = if device { p.tag.as_deref().unwrap_or("") } else { "" };
+    w::section(ui, &mut folded, full, "placing-identity", "Identity", summary, false, |ui| {
+        // A junction or a continuation takes no tag.
+        if let Some(tag) = p.tag.as_deref().filter(|_| device) {
+            boxed(ui, "Tag", tag, if p.joins { "joins" } else { "next free" }, "ecad.inspector.placing.tag");
+        }
         for (label, v, key) in [("Function", &function, "function"), ("Location", &location, "location")] {
             match v {
                 Some((value, from)) if !value.is_empty() => boxed(ui, label, value, from, &format!("ecad.inspector.placing.{key}")),
                 _ => boxed(ui, label, "", "none", &format!("ecad.inspector.placing.{key}")),
             }
         }
-        w::row(ui, "Description", |ui| {
-            let width = ui.available_width();
-            let (rect, r) = ui.allocate_exact_size(vec2(width, w::FIELD_H), Sense::hover());
-            dashed(ui.painter(), rect.shrink(0.5), w::text_3());
-            ui.painter().text(
-                pos2(rect.left() + space::M, rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                "Type one now or later",
-                w::font(ui, ui_type::BODY),
-                w::text_3(),
-            );
-            r.on_hover_text("Set it in the Device tab once it is placed");
-        });
+        // Read, not an input: the description is set once the device is placed.
+        if device && !p.joins {
+            w::read(ui, "Description", "Set it once placed", "ecad.inspector.placing.description")
+                .on_hover_text("Type one in the Device tab after the click");
+        }
         // One label (the symbol and its standard), so it never reads as the picker's tile.
         w::row(ui, "Symbol", |ui| {
             let mut job = egui::text::LayoutJob::default();
@@ -115,10 +124,12 @@ pub fn show(ui: &mut egui::Ui, cx: &mut super::Cx<'_>, p: &Placing, standard: &s
             ui.label(job);
         });
     });
-    w::section(ui, &mut folded, full, "placing-parts", "Parts", "none yet", false, |ui| {
-        w::button(ui, "From catalogue", false, Some(super::device::NOT_YET));
-        ui.add(egui::Label::new(w::rich(ui, "Contacts offered follow the part set you choose.", ui_type::SMALL, w::text_3())).wrap());
-    });
+    if device && !p.joins {
+        w::section(ui, &mut folded, full, "placing-parts", "Parts", "none yet", false, |ui| {
+            w::button(ui, "From catalogue", false, Some(super::device::NOT_YET));
+            ui.add(egui::Label::new(w::rich(ui, "Contacts offered follow the part set you choose.", ui_type::SMALL, w::text_3())).wrap());
+        });
+    }
     w::section(ui, &mut folded, full, "placing-changes", "What this click changes", "", false, |ui| {
         ui.scope(|ui| {
             for (mark, words) in p.changes() {
@@ -153,17 +164,6 @@ fn boxed(ui: &mut egui::Ui, label: &str, value: &str, hint: &str, name: &str) {
             p.galley(pill.center() - g.size() / 2.0, g, w::text_3());
         }
     });
-}
-
-/// A dashed outline (a value not given yet).
-fn dashed(p: &egui::Painter, r: egui::Rect, colour: egui::Color32) {
-    let s = Stroke::new(1.0, colour);
-    let pts = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
-    for pair in pts.windows(2) {
-        if let [a, b] = pair {
-            p.extend(egui::Shape::dashed_line(&[*a, *b], s, 4.0, 3.0));
-        }
-    }
 }
 
 /// One line of What this click changes: a tick, a ring (stays free) or a warning, then the words.
@@ -218,5 +218,17 @@ mod tests {
         assert!(c[0].1.contains("to -K01"), "{c:?}");
         assert!(c.iter().all(|(m, _)| *m != "warning"), "{c:?}");
         assert!(p.head().1.contains("joins -K01"));
+    }
+
+    /// Review of #91, 2: a continuation or a junction makes no device and takes no tag.
+    #[test]
+    fn a_tagless_symbol_announces_no_device() {
+        for key in ["continuation", "junction"] {
+            let p = Placing { tag: None, joins: false, symbol: symbols::by_key(key) };
+            assert!(!p.makes_device(), "{key}");
+            let c = p.changes();
+            assert!(c.iter().all(|(m, w)| *m != "warning" && !w.contains("device")), "{key}: {c:?}");
+            assert_eq!(p.head().1, NOT_PLACED, "{key}");
+        }
     }
 }
