@@ -89,3 +89,24 @@ fn bug_2_place_names_a_new_project_symbol_device_by_its_typed_tag() {
     // `tag` and `device` together are refused.
     assert!(h.run("place", json!({"symbol": "s1", "at": [160, 100], "tag": "B9", "device": a.hex()})).is_err());
 }
+
+// ---------------------------------------------------------------- bug 3
+
+#[test]
+fn bug_3_a_located_tag_keeps_a_separator_with_the_tag_dash_off() {
+    for dash in [false, true] {
+        let mut h = H::new(9103);
+        let page = h.first_page();
+        h.run("projectprops", json!({"tag_dash": dash})).unwrap();
+        let k = placed(&mut h, json!({"symbol": "coil", "at": [100, 100]}));
+        h.run("setprop", json!({"component": k.hex(), "key": "location", "value": "X1"})).unwrap();
+        let bare = tag(&h.doc(), k);
+        let bare = bare.trim_start_matches('-');
+        let texts = page_texts(&mut h, page);
+        assert!(texts.contains(&format!("+X1-{bare}")), "dash {dash}: {texts:?}");
+        assert!(!texts.contains(&format!("+X1{bare}")), "dash {dash}: {texts:?}");
+    }
+    assert_eq!(ecad_cadcraft::locations::located_tag("+X1", "K01"), "+X1-K01");
+    assert_eq!(ecad_cadcraft::locations::located_tag("+X1", "-K01"), "+X1-K01");
+    assert_eq!(ecad_cadcraft::locations::located_tag("+X1", "=PWR"), "+X1=PWR");
+}
