@@ -12,7 +12,7 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | --- | --- |
 | `README.md` | ECAD repository front page |
 | `.git-blame-ignore-revs` | Commits `git blame` skips: the ECAD workspace reformat (PR #46) |
-| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy, fast tests of changed crates and their dependents) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main` and by hand; actions pinned to commit hashes |
+| `.github/workflows/ci.yml` | CI: quick ECAD check (fmt, clippy, fast tests of changed crates and their dependents) on PRs into `dev`; full CADCraft and ECAD suite on PRs into `main`, pushes to `main`, by hand and nightly on `dev` (ECAD tests through cargo-nextest, sharded; large bench nightly); actions pinned to commit hashes |
 | `.github/dependabot.yml` | Only GitHub Actions pins, weekly, into `dev`; upstream's daily root Cargo updates removed (root dependencies arrive with the upstream sync) |
 | `docs/concept-spec.md` | ECAD concept spec (moves to `ecad/docs/` once housekeeping R11 is approved) |
 | `docs/decisions.md` | ECAD decision log |

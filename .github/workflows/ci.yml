@@ -6,9 +6,20 @@
 #   2026-11-12). Workers test only their own changed crates; the slow set and the whole suite run
 #   at the QA gate. All test binaries took ~8 min of a ~12 min run (2026-11-08); a change to a
 #   leaf crate builds a few of them.
-# - Full suite, the QA gate: on pull requests into main, pushes to main, and by hand
-#   (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD workspace
-#   (`cargo xtask ci` with wasm, and plain `cargo test --workspace`) on Linux and natively on Windows.
+# - Full suite, the QA gate: on pull requests into main, pushes to main, by hand
+#   (workflow_dispatch) and nightly on dev (schedule): the CADCraft workspace (formatting, lints,
+#   tests) and the ECAD workspace on Linux and natively on Windows. The ECAD workspace runs what
+#   `cargo xtask ci` runs, split into parallel jobs (2026-11-14; as one job per platform it took
+#   52 min on Linux and 104 min on Windows on PR #99):
+#   - `cargo xtask lint`: fmt, clippy with all features and with the default ones, layers, the
+#     patch guard and wasm;
+#   - every test with all features, the slow set included, through cargo-nextest in three shards:
+#     ecad-bench (whose tier equivalence test alone took 24 min) and the rest split in two;
+#   - the fast tests with default features, and the doctests (nextest does not run doctests);
+#   - Windows: clippy (both feature sets), every fast test (both feature sets), the doctests, and
+#     the slow tests except those that only compute in memory, which run on Linux
+#     (`ci-windows` in ecad/.config/nextest.toml names them and says why). fmt, layers, the patch
+#     guard and wasm give the same result on any host, so they run on Linux only.
 # Every action is pinned to a commit hash (the tag in the comment); Dependabot proposes updates
 # (owner decision, 2026-11-08). Green CI is required before review; it is not approval to merge.
 name: CI
@@ -18,13 +29,24 @@ on:
     branches: [main]
   pull_request:
     branches: [dev, main]
+  # Nightly on dev: the full suite and the large bench, so a slow-set failure shows up before the
+  # QA gate, and the caches it saves belong to the default branch, where every pull request can
+  # restore them (see "Caches" below). Nothing waits for it.
+  schedule:
+    - cron: "0 2 * * *"
   workflow_dispatch:
+    inputs:
+      bench:
+        description: Also run the large-tier load bench (cargo xtask bench --tier large)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The nightly run has its own group, so it neither cancels nor is cancelled by a push to main.
+  group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   cancel-in-progress: true
 
 env:
@@ -35,15 +57,31 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_DEBUG: 0
   CARGO_PROFILE_TEST_DEBUG: 0
+  # cargo-nextest comes from its GitHub release, checked against these SHA-256 sums (the release
+  # assets' own digests), rather than through an installer action.
+  NEXTEST_VERSION: 0.9.150
+  NEXTEST_SHA256_LINUX: b0959bc64232974224cf9fb22c915845398c0e8668fa7831eb5b43fb1eef781f
+  NEXTEST_SHA256_WINDOWS: b7a8bf567140b8b366716f2dea27b32e088dc12f53597315f976d0dbf7c6ade8
+  # The nightly run checks out dev (a scheduled run's own ref is the default branch); every other
+  # event checks out its own ref.
+  CHECKOUT_REF: ${{ github.event_name == 'schedule' && 'dev' || '' }}
+
+# Caches: the repository's cache store holds 10 GB and evicts the least recently used entries
+# (it was full, at 10.6 GB, after PR #99, and the gate's jobs found no cache). A cache saved by a
+# pull request is visible only to that pull request; one saved on the default branch (pushes to
+# main and the nightly run) is visible to every run. Each ECAD job names its cache (`shared-key`),
+# one job per name saves it, and rust-cache does not save when it restored the exact key, so a
+# pull request whose lock file matches the nightly's adds no copy of its own.
 
 jobs:
   quick:
     name: ECAD quick check
-    if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ env.CHECKOUT_REF }}
           # test-changed diffs from the merge base with origin/dev; the whole history is ~25 MB.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -52,6 +90,10 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
+          shared-key: ecad-quick
+          # Only the nightly writes it: a copy saved by a pull request is visible to that pull
+          # request alone, and these copies filled the store. Pull requests restore the nightly's.
+          save-if: ${{ github.event_name == 'schedule' }}
       - name: Format
         working-directory: ecad
         run: cargo fmt --all -- --check
@@ -60,8 +102,15 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       # Fast tests only (no --include-ignored): the slow set runs at the QA gate.
       - name: Tests of changed crates and their dependents
+        if: github.event_name == 'pull_request'
         working-directory: ecad
         run: cargo xtask test-changed --base origin/dev --with-dependents
+      # Nightly: build every test binary, so the cache saved on the default branch serves any pull
+      # request into dev. The tests themselves run in the full-suite jobs.
+      - name: Build every test for the pull requests' cache
+        if: github.event_name == 'schedule'
+        working-directory: ecad
+        run: cargo test --workspace --all-features --no-run
 
   fmt:
     name: Format
@@ -69,6 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt
@@ -80,6 +131,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
       # The packages CADCraft's own CI installs (upstream ci.yml, 0.15.1); mesa-vulkan-drivers gives
       # the UI tests a software GPU for their wgpu rendering.
       - name: Install windowing, font and GPU libraries for the desktop app and its tests
@@ -110,13 +163,15 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
-  ecad:
-    name: ECAD workspace
+  ecad-lint:
+    name: ECAD lint (fmt, clippy, layers, patch guard, wasm)
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ env.CHECKOUT_REF }}
           # The upstream patch guard diffs against the incorporated CADCraft commit.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -126,35 +181,177 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
-      - name: fmt, clippy, tests, layers, patch guard, wasm
+          shared-key: ecad-lint
+      - name: fmt, clippy, layers, patch guard, wasm
         working-directory: ecad
-        run: cargo xtask ci
-      - name: Tests without extra features
+        run: cargo xtask lint
+
+  ecad-test:
+    name: ECAD tests with all features and the slow set (${{ matrix.shard.name }})
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          # ecad-bench holds the longest tests (the small and medium tier equivalence, 24 min on
+          # PR #99, and the translation oracle, 4.5 min), so it runs on its own.
+          - { name: ecad-bench, filter: "package(ecad-bench)", partition: "" }
+          - { name: rest 1 of 2, filter: "not package(ecad-bench)", partition: "--partition hash:1/2" }
+          - { name: rest 2 of 2, filter: "not package(ecad-bench)", partition: "--partition hash:2/2" }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ecad
+          # Every shard builds the same test binaries; one of them saves the cache.
+          shared-key: ecad-test
+          save-if: ${{ matrix.shard.name == 'ecad-bench' }}
+      - name: Install cargo-nextest
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/nextest.tar.gz" \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$NEXTEST_VERSION/cargo-nextest-$NEXTEST_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$NEXTEST_SHA256_LINUX  $RUNNER_TEMP/nextest.tar.gz" | sha256sum -c -
+          # From inside the folder: GNU tar reads a path like D:/a/_temp as host:file.
+          cd "$RUNNER_TEMP" && tar -xzf nextest.tar.gz -C "$HOME/.cargo/bin"
+      # All features: the fault-injection containment tests run in CI, never in normal builds.
+      # The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
+      - name: Tests (nextest)
         working-directory: ecad
-        run: cargo test --workspace
+        run: >-
+          cargo nextest run --workspace --all-features --profile ci --run-ignored all
+          ${{ matrix.shard.partition }} -E '${{ matrix.shard.filter }}'
+      - name: Keep the JUnit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-linux-${{ strategy.job-index }}
+          path: ecad/target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+
+  ecad-test-default:
+    name: ECAD tests with default features, and doctests
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ecad
+          shared-key: ecad-test-default
+      - name: Install cargo-nextest
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/nextest.tar.gz" \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$NEXTEST_VERSION/cargo-nextest-$NEXTEST_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$NEXTEST_SHA256_LINUX  $RUNNER_TEMP/nextest.tar.gz" | sha256sum -c -
+          # From inside the folder: GNU tar reads a path like D:/a/_temp as host:file.
+          cd "$RUNNER_TEMP" && tar -xzf nextest.tar.gz -C "$HOME/.cargo/bin"
+      # What the plain `cargo test --workspace` step ran: the fast set with default features.
+      - name: Tests without extra features (nextest)
+        working-directory: ecad
+        run: cargo nextest run --workspace --profile ci
+      # The doctests both cargo test runs used to include.
+      - name: Doctests, all features
+        working-directory: ecad
+        run: cargo test --workspace --all-features --doc -- --include-ignored
+      - name: Doctests, default features
+        working-directory: ecad
+        run: cargo test --workspace --doc
+      - name: Keep the JUnit report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-linux-default
+          path: ecad/target/nextest/ci/junit.xml
+          if-no-files-found: ignore
 
   ecad-windows:
     name: ECAD workspace (Windows)
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: windows-latest
+    timeout-minutes: 120
     steps:
       # ECAD files are LF (ecad/CLAUDE.md); the runner's Git would otherwise check out CRLF.
       - name: Check out with LF line endings
         run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # The upstream patch guard diffs against the incorporated CADCraft commit.
-          fetch-depth: 0
+          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
+          components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
-      - name: fmt, clippy, tests, layers, patch guard, wasm
+          shared-key: ecad-windows
+      - name: Install cargo-nextest
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/nextest.tar.gz" \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$NEXTEST_VERSION/cargo-nextest-$NEXTEST_VERSION-x86_64-pc-windows-msvc.tar.gz"
+          echo "$NEXTEST_SHA256_WINDOWS  $RUNNER_TEMP/nextest.tar.gz" | sha256sum -c -
+          # From inside the folder: GNU tar reads a path like D:/a/_temp as host:file.
+          cd "$RUNNER_TEMP" && tar -xzf nextest.tar.gz -C "$HOME/.cargo/bin"
+      # Code under cfg(windows) is linted only here.
+      - name: Clippy, all targets and features
         working-directory: ecad
-        run: cargo xtask ci
-      - name: Tests without extra features
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Clippy, default features
         working-directory: ecad
-        run: cargo test --workspace
+        run: cargo clippy --workspace -- -D warnings
+      - name: Tests with all features and the slow tests that touch the platform (nextest)
+        working-directory: ecad
+        run: cargo nextest run --workspace --all-features --profile ci-windows --run-ignored all
+      - name: Doctests, all features
+        working-directory: ecad
+        run: cargo test --workspace --all-features --doc -- --include-ignored
+      - name: Tests without extra features (nextest)
+        working-directory: ecad
+        run: cargo nextest run --workspace --profile ci
+      - name: Doctests, default features
+        working-directory: ecad
+        run: cargo test --workspace --doc
+      - name: Keep the JUnit reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: junit-windows
+          path: ecad/target/nextest/*/junit.xml
+          if-no-files-found: ignore
+
+  # The large-tier load bench (release build): nightly, or by hand with the `bench` input. It never
+  # runs on a pull request and nothing waits for it; the results are kept as an artifact.
+  ecad-bench:
+    name: ECAD large bench
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.bench)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ecad
+          shared-key: ecad-bench
+      - name: Large-tier load bench
+        working-directory: ecad
+        run: cargo xtask bench --tier large
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-large
+          path: ecad/target/bench/*.json
+          if-no-files-found: ignore
