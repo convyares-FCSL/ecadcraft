@@ -259,6 +259,12 @@ fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 _ => return Err(NEEDS_OBJECT.into()),
             },
         };
+        // Brief 054 (design 054 §2.3): a generated page's type keeps its kind's position.
+        if let (Target::Page(pg), Some(v)) = (target, value.as_deref())
+            && entry.key == crate::defaults::pages::PAGE_TYPE.key
+        {
+            crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg))?;
+        }
         let ops = ops(doc, entry, level, target, value)?;
         let changed = !ops.is_empty();
         if changed {

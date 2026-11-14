@@ -59,10 +59,11 @@ pub fn is_word(w: &str) -> bool {
 }
 
 /// Whether a property `key` is a style choice (design 050 §2.5, FP5): `text.<kind>.style`,
-/// `location.style`, `print.frame.style` or `wire.category`. Objects holding one are the style's
-/// explicit users, kept in the document's index ([`crate::Document::style_users`]).
+/// `location.style`, `print.frame.style`, `wire.category` or `page.type` (brief 054, FP2). Objects
+/// holding one are the style's explicit users, kept in the document's index
+/// ([`crate::Document::style_users`]).
 pub fn is_choice_key(key: &str) -> bool {
-    matches!(key, "location.style" | "print.frame.style" | "wire.category")
+    matches!(key, "location.style" | "print.frame.style" | "wire.category" | "page.type")
         || key.strip_prefix("text.").and_then(|r| r.strip_suffix(".style")).is_some_and(is_word)
 }
 

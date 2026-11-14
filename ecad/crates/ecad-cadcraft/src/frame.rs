@@ -101,6 +101,8 @@ pub struct FrameInput {
     pub text: FrameText,
     /// Brief 050a: the page's frame style (line weights, colour, grid labels).
     pub look: crate::styles::frame::FrameLook,
+    /// Brief 054 (FP6): the page type's zones; off draws no zone ticks or labels.
+    pub zones: bool,
 }
 
 /// A text kind's look where ECAD draws in paper millimetres (frame, generated pages): its height
@@ -187,7 +189,9 @@ impl FrameInput {
             rev_columns,
             pending: false,
             text: FrameText::of(doc),
-            look: crate::styles::frame::frame_look(doc, page),
+            // Brief 054 (design 054 §3.2, FP6): the page type's frame style and zones.
+            look: crate::styles::page::frame_look(doc, page),
+            zones: crate::styles::page::zones(doc, page),
         }
     }
 }
@@ -218,7 +222,8 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         // Brief 050a: the frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
-        Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text",
+        // Brief 054: a page type's sheet, frame, title block or zones.
+        Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text" || catalogue == crate::styles::page::WORD,
         Op::SetStandard { before, after } => before.is_none() != after.is_none(),
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
@@ -413,11 +418,11 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     for ci in 0..s.columns {
         let x0 = f64::from(ci) * cw;
         let c = grid.column_number(ci);
-        if ci > 0 {
+        if ci > 0 && input.zones {
             d.line((x0, top), (x0, top + 3.0), inner, None);
             d.line((x0, bottom), (x0, bottom - 3.0), inner, None);
         }
-        if input.look.grid_labels {
+        if input.look.grid_labels && input.zones {
             let label = grid.column_label(c);
             d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
             d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
@@ -426,11 +431,11 @@ fn built_in(input: &FrameInput) -> Vec<Part> {
     for ri in 0..s.rows {
         let y1 = top - f64::from(ri) * rh;
         let r = grid.row_number(ri);
-        if ri > 0 {
+        if ri > 0 && input.zones {
             d.line((0.0, y1), (-3.0, y1), inner, None);
             d.line((a, y1), (a + 3.0, y1), inner, None);
         }
-        if input.look.grid_labels {
+        if input.look.grid_labels && input.zones {
             let label = grid.row_label(r);
             d.text((-MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
             d.text((a + MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);

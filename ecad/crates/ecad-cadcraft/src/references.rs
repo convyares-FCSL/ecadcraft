@@ -541,9 +541,17 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
             // say about themselves, so their cables (whose other ends show it).
             Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. }
-                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
             {
                 out.extend(cables_on(doc, *p));
+            }
+            // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
+            Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
+                    for p in pages {
+                        out.extend(cables_on(doc, p));
+                    }
+                }
             }
             // A page moved between folders, a page added, removed or moved, a folder op: only the
             // pages whose book position changed may read differently (an unnumbered page's
