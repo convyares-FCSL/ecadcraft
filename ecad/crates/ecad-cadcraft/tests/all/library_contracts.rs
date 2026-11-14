@@ -50,7 +50,7 @@ fn embeds(ops: &[Op]) -> usize {
 
 /// Brief 034's symbols, with the tag their first placement in a fresh project gets.
 fn new_keys() -> Vec<&'static symbols::Starter> {
-    // Brief 045's channel cells join cards (`lanes::lane_045`).
+    // Brief 045's channel cells join cards (`plc_contracts`).
     STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_cadcraft::plc::channels::cell_type(s).is_none()).collect()
 }
 

@@ -271,16 +271,16 @@ fn addresses(h: &mut H, page: PageId) -> Vec<String> {
 fn bug_7_raising_a_cards_channel_count_addresses_the_new_channels() {
     let mut h = H::new(9107);
     let page = h.first_page();
-    super::lane_045::placed(&mut h, "plccpu", 50.0, 400.0);
-    let card = super::lane_045::placed(&mut h, "plcrtd", 100.0, 400.0);
+    super::plc_contracts::placed(&mut h, "plccpu", 50.0, 400.0);
+    let card = super::plc_contracts::placed(&mut h, "plcrtd", 100.0, 400.0);
     for i in 0..4 {
         let x = 60.0 + 40.0 * f64::from(i);
         h.run("place", json!({"symbol": "chrtd", "at": [x, 300.0], "device": card.hex()})).unwrap();
     }
     assert_eq!(addresses(&mut h, page).len(), 4);
     h.run("setprop", json!({"component": card.hex(), "key": "channels", "value": "8"})).unwrap();
-    assert_eq!(super::lane_045::prop(&mut h, card, "plc.channels").as_deref(), Some("8"), "`channels` is the card's count");
-    assert_eq!(super::lane_045::prop(&mut h, card, "channels"), None, "no free property beside it");
+    assert_eq!(super::plc_contracts::prop(&mut h, card, "plc.channels").as_deref(), Some("8"), "`channels` is the card's count");
+    assert_eq!(super::plc_contracts::prop(&mut h, card, "channels"), None, "no free property beside it");
     for i in 4..8 {
         let x = 60.0 + 40.0 * f64::from(i);
         h.run("place", json!({"symbol": "chrtd", "at": [x, 300.0], "device": card.hex()})).unwrap();
@@ -290,8 +290,8 @@ fn bug_7_raising_a_cards_channel_count_addresses_the_new_channels() {
     // On a device that is not a card, `channels` stays free text.
     let k = placed(&mut h, json!({"symbol": "coil", "at": [100, 100]}));
     h.run("setprop", json!({"component": k.hex(), "key": "channels", "value": "x"})).unwrap();
-    assert_eq!(super::lane_045::prop(&mut h, k, "channels").as_deref(), Some("x"));
-    super::lane_045::same_as_built(&mut h);
+    assert_eq!(super::plc_contracts::prop(&mut h, k, "channels").as_deref(), Some("x"));
+    super::plc_contracts::same_as_built(&mut h);
 }
 
 /// The key of the card's point that wire `x` (vertical, through y 200) is attached to.

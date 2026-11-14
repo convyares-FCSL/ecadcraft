@@ -8,3 +8,5 @@ mod fonts_embedded;
 mod icons;
 mod primitives;
 mod style;
+mod table;
+mod wheel;

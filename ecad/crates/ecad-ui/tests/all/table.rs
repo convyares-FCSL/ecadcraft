@@ -413,7 +413,7 @@ fn ten_thousand_rows_lay_out_only_the_visible_ones() {
 
 /// The `ui` measure (criterion 6): 10 000 rows, scrolled frame by frame; prints the table body's
 /// time per frame, sort, group and filter. Run in release:
-/// `cargo test -p ecad-ui --release lane_039::measure -- --ignored --nocapture`.
+/// `cargo test -p ecad-ui --release table::measure -- --ignored --nocapture`.
 #[test]
 #[ignore = "measure: run by hand in release (criterion 6)"]
 fn measure_10k_rows() {

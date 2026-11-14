@@ -165,7 +165,7 @@ fn anchors() {
             continue;
         }
         // Brief 044's pins (design 044 §3.2) show their half's tag only; brief 045's channel cells
-        // have design 045 §7.1's anchors (`lanes::lane_045`).
+        // have design 045 §7.1's anchors (`plc_contracts`).
         if matches!(st.key, "pinpair" | "pins" | "pinp") || (crate::tester_034_library::BRIEF_045.contains(&st.key) && st.key.starts_with("ch")) {
             continue;
         }

@@ -21,7 +21,7 @@ fn at(state: &ShellState, w: f32, h: f32, agent: bool) -> Slots {
     layout::layout(window(w, h), state, agent)
 }
 
-// The region sizes and the narrow-window collapses are UI rev 3's now: `lane_uiv3`.
+// The region sizes and the narrow-window collapses are UI rev 3's now: `uiv3_frame`.
 
 #[test]
 fn the_companion_keeps_360_px_a_half_or_closes() {
@@ -209,7 +209,7 @@ fn group_keys_start_tools_over_the_page_but_not_while_a_field_has_focus() {
 #[test]
 fn nothing_from_the_old_panels_is_lost() {
     // Brief 041 replaced "every ECAD Tool Sets button is in one flyout": every button's command
-    // is reachable from an action (lane_041); the developer ones are in the Text panel.
+    // is reachable from an action (`wheel_ui`); the developer ones are in the Text panel.
     for t in tools::TOOLS.iter().filter(|t| t.group != tools::DEV_GROUP) {
         assert!(tools::covered(t), "{} ({})", t.label, t.id);
     }

@@ -7,7 +7,7 @@ use ecad_cadcraft::plc::sheets::{self, Seg};
 use ecad_model::{ComponentId, PageId};
 use serde_json::{Value, json};
 
-use super::lane_045::placed;
+use super::plc_contracts::placed;
 use crate::common::{H, id, pts};
 
 /// A CPU with a DI card in slot 1 wired to eight lamps through a fence, an AI card in slot 2 and a
