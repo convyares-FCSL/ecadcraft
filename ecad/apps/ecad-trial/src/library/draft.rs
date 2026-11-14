@@ -53,7 +53,13 @@ pub enum Source {
         replace: bool,
     },
     /// Promote a drawn component (design 048 §4.2): its drawing and points are kept as they are.
-    Promote { component: String, tag: String },
+    Promote {
+        component: String,
+        tag: String,
+        /// The page point of the draft's (0, 0): promotion takes slots as page points.
+        #[serde(default)]
+        at: [f64; 2],
+    },
 }
 
 /// What the builder offers and does not apply until accepted (design 048 §4.1 step 3).

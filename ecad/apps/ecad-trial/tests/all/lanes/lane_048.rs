@@ -282,6 +282,47 @@ fn make_symbol_from_lines_offers_points_and_replaces_the_drawing_on_save() {
 }
 
 #[test]
+fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
+    let mut h = shell(None);
+    let mut hs = Vec::new();
+    for (a, b) in [((0.0, 0.0), (10.0, 0.0)), ((10.0, 0.0), (10.0, 10.0))] {
+        let v = run(&mut h, "line", json!({"points": [[a.0 + 100.0, a.1 + 100.0], [b.0 + 100.0, b.1 + 100.0]]}));
+        hs.push(v["handles"][0].as_str().unwrap().to_string());
+    }
+    let v = run(&mut h, "convertcomponent", json!({"handles": hs}));
+    let c = ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap());
+    for (at, label) in [([100, 100], "A1"), ([110, 110], "A2")] {
+        run(&mut h, "addterminal", json!({"handle": hs[0], "at": at, "label": label}));
+    }
+    let w = run(&mut h, "wire", json!({"points": [[100, 100], [100, 80]]}));
+    let mut t = ecad_cadcraft::interact::kind::Target::new(ObjectKind::Device, [100.0, 100.0], "component");
+    t.component = Some(c);
+    t.drawn = true;
+    h.state_mut().make_symbol(Some(&t)).unwrap();
+    h.run_steps(3);
+    assert_eq!(h.state().library.builder.as_ref().unwrap().draft.shape.points.len(), 2, "its points come with it");
+    let main = h.state().shell.slots.unwrap().main;
+    h.event(Event::PointerMoved(main.center()));
+    tool(&mut h, Tool::Slot);
+    click_mm(&mut h, -10.0, 5.0);
+    fill(&mut h, details::NAME, "Mine");
+    fill(&mut h, details::KEY, "mine");
+    fill(&mut h, details::PREFIX, "A");
+    h.run_steps(2);
+    h.get_by_label(details::SAVE).click();
+    h.run_steps(4);
+    assert!(h.state().library.builder.is_none(), "saved: {:?}", h.state().library.builder.as_ref().and_then(|b| b.refusal.clone()));
+    let d = doc(&mut h);
+    let (_, rep) = d.representations_of(Subject::Component(c)).next().expect("the same device");
+    assert_eq!(rep.form, ecad_model::Form::Symbol);
+    let w = ecad_model::ConductorId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    assert!(d.terminals_of(c).any(|(term, _)| d.ends_at(term).iter().any(|(x, _)| *x == w)), "the wire stays attached");
+    let v = symbols::project_by_key(&d, "mine").unwrap();
+    let slot = v.def.texts.first().expect("the tag slot");
+    assert!(slot.at.x.abs() < 50.0 && slot.at.y.abs() < 50.0, "the slot is in the symbol's frame: {:?}", slot.at);
+}
+
+#[test]
 fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     let mut h = shell(None);
     let (reps, _) = three_copies(&mut h);

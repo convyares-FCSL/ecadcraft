@@ -207,11 +207,11 @@ impl Trial {
                     .collect();
                 let graphics = prims.iter().map(|g| ecad_cadcraft::symbol_cmds::shifted(g, o)).collect();
                 let tag = ecad_cadcraft::devices::tag_words(doc, c);
-                Some((graphics, points, tag))
+                Some((graphics, points, tag, [o.x, o.y]))
             })?;
-            let (graphics, points, tag) = found.ok_or("That device has no drawing to make a symbol of.")?;
+            let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
             let content = Content { graphics, points, ..Content::default() };
-            let mut draft = Draft::of_content(&content, Source::Promote { component: c.hex(), tag: tag.clone() });
+            let mut draft = Draft::of_content(&content, Source::Promote { component: c.hex(), tag: tag.clone(), at });
             draft.shape.offers = draft::offers_for(&draft.shape.graphics).into_iter().filter(|o| matches!(o, draft::Offer::Slot { .. })).collect();
             draft.mark_start();
             self.library.back_to_page = true;
@@ -317,9 +317,17 @@ impl Trial {
                 params["replace"] = json!(replace);
                 self.cad.run("makesymbol", params)
             }
-            Source::Promote { component, .. } => {
+            Source::Promote { component, at, .. } => {
                 params["component"] = json!(component);
                 params.as_object_mut().map(|o| o.remove("graphics"));
+                // Promotion reads slots as page points (its drawing stays where it is).
+                if let Some(slots) = params.get_mut("slots").and_then(Value::as_array_mut) {
+                    for s in slots {
+                        if let (Some(x), Some(y)) = (s["at"][0].as_f64(), s["at"][1].as_f64()) {
+                            s["at"] = json!([x + at[0], y + at[1]]);
+                        }
+                    }
+                }
                 self.cad.run("makesymbol", params)
             }
         };

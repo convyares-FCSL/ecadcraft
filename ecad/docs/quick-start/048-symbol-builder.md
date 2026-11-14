@@ -4,13 +4,50 @@ Brief 048 (`docs/briefs/048-symbol-builder.md`, design `docs/design/048.md`). A 
 in the project, with connection points, text slots and its own defaults, places like a built-in;
 editing it later lists what changes on every placed copy before anything is saved.
 
-Status: **part 048a** (model and commands) built by the worker; **not yet tried by the owner**.
-The builder in the Library workspace (048b) and Make symbol from the page with "update available"
-(048c) follow on the same branch. Until then a symbol is made through the commands below, typed at
-the command line as JSON or sent by an agent over MCP. What is listed under "Checked by the
-worker" ran as automated tests only.
+Status: **048a, 048b and 048c built by the worker**; **not yet tried by the owner**. What is listed
+under "Checked by the worker" ran as automated tests only.
+
+## Draw a new symbol (048b, click only)
+
+1. **Library** (Ctrl+3), then **New symbol** at the top right of the browser. The builder opens on
+   an empty 2.5 mm grid. The right panel's **Before it can be placed** list shows what is missing.
+2. **Draw** (D) ▸ Rectangle: click two corners to draw a 40 × 20 mm box. Draw ▸ Line: draw three
+   short leads down from its lower edge (Esc ends a chain). **Text** (T): click above the box and
+   type a group heading such as `POWER`, then Enter.
+3. **Connection point** (C): click the end of each lead. A point goes on the 5 mm grid, and a
+   click off it is refused at the cursor. Type a label (`L+`, `M`, `PE`) or press Enter for none.
+4. **Text slot** (S): the Tag chip is chosen; click beside the box. R turns the selected slot 90°,
+   and H and V step its alignment.
+5. In Details, type a name, a key (`psu1`) and a tag prefix (`G`). When every row shows Done,
+   **Save to project** turns blue. Click it. The browser shows the tile under **This project** as
+   `Project · v1`. Click **Place**, then click the page three times.
+
+## Edit it and read the review (048b)
+
+1. Draw a wire from one copy's point. Right-click any copy ▸ **Edit symbol** (the wheel's top-left
+   slot). Select the wired point, press Delete, and drag another point 5 mm.
+2. **Save…** opens **Before saving** in the drawer: one row per copy, and the wired copy's row in
+   red, naming the wire, unticked. **Update selected** is pre-selected.
+3. **Save** writes the new version and the two updates in one step. Select the third copy:
+   Properties reads `Symbol: v1 · update available (v2)` with **Update** and **Compare**.
+
+## Make a symbol from the page (048c)
+
+1. In Draw, select a few plain lines and a text such as `-LS1`, right-click ▸ **Make symbol** (the
+   wheel's right slot). The builder shows them on the grid. Free line ends are offered as
+   connection points and the tag-like text as the tag slot. Offers are drawn dashed, and nothing
+   is applied until you accept them in Details.
+2. **Accept all and save to project** replaces the drawing on the page with a device of the new
+   symbol (untick **Replace the drawing…** to keep the lines).
+3. A drawing made with Make component gets **Make symbol** on its device wheel. Saving it keeps
+   the device, its connection points and its wires.
+
+The builder keeps the draft while you work, also when you leave the Library or the app stops.
+Drafts show in the browser under **Drafts**, with Resume and Discard. Save is the only write.
 
 ## A symbol by command (048a)
+
+Agents and scripts use the JSON forms; the builder's Save runs the same commands.
 
 1. Open any project. At the command line type (one line):
 
@@ -47,7 +84,7 @@ its texts there instead of in the automatic tag block.
 | `symboledit {definition, …content…, update: all \| selected \| none \| new, copies?, builtins?}` | A new version and the chosen placed copies updated; editing a built-in makes a project copy that remembers its source |
 | `symbolimpact {definition, …content…}` | Read only: every placed copy, what changes there and whether it clashes |
 | `symbolupdate {copies \| lineage, to?}` | Brings placed copies to the newest (or `to`) version; refused while one clashes |
-| `makesymbol {handles? \| component, name, key, points?, slots?, defaults?, replace?}` | A symbol from plain lines, arcs and texts (points and slots in page coordinates), replacing them with a device; or a drawn component promoted, keeping its component, connection point and wire IDs |
+| `makesymbol {handles? \| component, name, key, points?, slots?, defaults?, replace?}` | A symbol from plain lines, arcs and texts (points and slots in page coordinates; or `graphics` as edited plus `at`, all in the symbol's frame), replacing them with a device; or a drawn component promoted, keeping its component, connection point and wire IDs |
 | `place {symbol: <project key>, at, device?}` | The newest version of that project symbol; `device` for a symbol that is part of a device |
 
 An update keeps every component, connection point and wire ID; the end of a wire on a moved point
@@ -61,8 +98,6 @@ hand stays. A version no copy uses any more after an update is removed in the sa
   `-p ecad-mcp lane_048`: the op `SetComponentDefinition` (apply, undo, diff, merge), the
   definition's new fields and their content hash, design 048 §12 rows 1–9 and 11–14, and the MCP
   contract.
-
-## Not yet
-
-- The builder (Library ▸ New symbol, Edit symbol on the wheel, the review drawer): part 048b.
-- Make symbol from the selection wheel, "update available" in Properties and Devices: part 048c.
+- `cargo test -p ecad-trial lane_048`: the builder, the review with a clash, Make symbol from
+  lines and from a drawn device, the wheel slots, Compare and Update; screenshots with
+  `ECAD_TESTER_SHOTS`.
