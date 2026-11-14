@@ -119,12 +119,17 @@ fn publish_ticks_choose_the_pages_print_book_prints() {
     assert!(h.state().release.is_none(), "Release opens only from its button");
     let all = h.state().print_book.as_ref().map(|d| d.sheets).unwrap_or(0);
     assert!(all > 1, "{all} sheets");
+    // Review of #95: the book is worked out once, not every frame, until a tick changes it.
+    let books = h.state().publish.books;
+    h.run_steps(10);
+    assert_eq!(h.state().publish.books, books, "no rebuild at rest");
     let first = doc(&mut h).page_order[0];
     click(&mut h, &format!("{}.{}.include", ecad_trial::publish::PAGE, first.hex()));
     h.run_steps(2);
     let d = h.state().print_book.clone().expect("Print Book's choices");
     assert_eq!(d.scope, ecad_trial::outputs_ui::ScopeKind::Pages);
     assert!(d.sheets < all, "{} of {all}", d.sheets);
+    assert_eq!(h.state().publish.books, books + 1, "one rebuild for the tick");
     click(&mut h, ecad_trial::publish::SELECT_ALL);
     assert_eq!(h.state().print_book.as_ref().map(|d| d.scope), Some(ecad_trial::outputs_ui::ScopeKind::All));
     let _ = std::fs::remove_dir_all(&dir);

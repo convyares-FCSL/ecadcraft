@@ -77,14 +77,53 @@ pub struct Publish {
     /// The project serial and change count the thumbnails are good for.
     thumbs_at: Option<(u64, u64)>,
     /// The scope and change count the sheet count was taken at.
-    counted: Option<(String, u64, u64)>,
+    counted: Option<(Option<(u64, u64)>, u64, u64)>,
     /// What the last Export said.
     pub note: Option<String>,
     /// Thumbnails drawn so far (tests: only when a change touched the page).
     pub drawn: u64,
+    /// Pages whose thumbnail could not be drawn, kept until a change touches them (so they are
+    /// not projected again every frame).
+    failed: BTreeSet<PageId>,
+    /// Bumped whenever `excluded` changes.
+    excluded_rev: u64,
+    /// The book as Publish lays it out, kept until the Pages rows or the ticks change.
+    book: Book,
+    /// How many times the book was worked out (tests: not every frame).
+    pub books: u64,
+}
+
+/// The pages in book order, their groups, their places in the output and Print Book's page list,
+/// worked out from the Pages rows and the ticks only when either changed (review of #95).
+#[derive(Debug, Default)]
+struct Book {
+    /// (the Pages rows' rebuild count, `excluded_rev`) they were worked out at.
+    at: Option<(u64, u64)>,
+    groups: Vec<Group>,
+    order: Vec<PageId>,
+    position: BTreeMap<PageId, usize>,
+    /// Print Book's page list (`None`: every page).
+    pages: Option<String>,
+}
+
+impl Publish {
+    /// Tick or untick `page`.
+    pub fn toggle(&mut self, page: PageId) {
+        if !self.excluded.remove(&page) {
+            self.excluded.insert(page);
+        }
+        self.excluded_rev += 1;
+    }
+
+    /// Tick every page.
+    pub fn select_all(&mut self) {
+        self.excluded.clear();
+        self.excluded_rev += 1;
+    }
 }
 
 /// One group of pages, as in the book.
+#[derive(Debug)]
 struct Group {
     name: String,
     pages: Vec<(PageId, String, String)>,
@@ -119,30 +158,54 @@ impl Trial {
         groups.into_iter().map(|(_, g)| g).collect()
     }
 
-    /// Keep Print Book's scope in step with the ticks, and its counts with the project.
+    /// Keep the book (groups, order, places) and Print Book's scope in step with the Pages rows
+    /// and the ticks, and the sheet count with the project: each worked out again only when what
+    /// it reads changed.
     fn publish_sync(&mut self) {
-        let rows: Vec<(PageId, String)> = self.panel.rows().iter().map(|r| (r.id, r.number.clone())).collect();
-        self.publish.excluded.retain(|p| rows.iter().any(|r| r.0 == *p));
-        let excluded = self.publish.excluded.clone();
+        let at = (self.panel.rebuilds, self.publish.excluded_rev);
+        if self.publish.book.at != Some(at) {
+            let groups = self.publish_groups();
+            let order: Vec<PageId> = groups.iter().flat_map(|g| g.pages.iter().map(|p| p.0)).collect();
+            let present: BTreeSet<PageId> = order.iter().copied().collect();
+            let before = self.publish.excluded.len();
+            self.publish.excluded.retain(|p| present.contains(p));
+            if self.publish.excluded.len() != before {
+                self.publish.excluded_rev += 1;
+            }
+            let excluded = &self.publish.excluded;
+            let mut position = BTreeMap::new();
+            for p in order.iter().filter(|p| !excluded.contains(p)) {
+                let n = position.len() + 1;
+                position.insert(*p, n);
+            }
+            let pages = (!excluded.is_empty()).then(|| {
+                groups.iter().flat_map(|g| g.pages.iter()).filter(|p| !excluded.contains(&p.0)).map(|p| p.1.as_str()).collect::<Vec<_>>().join(", ")
+            });
+            self.publish.books += 1;
+            self.publish.book = Book { at: Some((self.panel.rebuilds, self.publish.excluded_rev)), groups, order, position, pages };
+        }
         let Some(d) = &mut self.print_book else { return };
         d.hidden = true;
-        if excluded.is_empty() {
-            d.scope = ScopeKind::All;
-        } else {
-            d.scope = ScopeKind::Pages;
-            d.pages = rows.iter().filter(|r| !excluded.contains(&r.0)).map(|r| r.1.clone()).collect::<Vec<_>>().join(", ");
+        // Print Book is opened again after an export: give it the ticks back.
+        match &self.publish.book.pages {
+            None => d.scope = ScopeKind::All,
+            Some(list) => {
+                d.scope = ScopeKind::Pages;
+                if d.pages != *list {
+                    d.pages.clone_from(list);
+                }
+            }
         }
-        let scope = match d.scope {
-            ScopeKind::Pages => ecad_cadcraft::printbook::Scope::Pages(d.pages.clone()),
-            _ => ecad_cadcraft::printbook::Scope::All,
-        };
-        let key = format!("{:?}", scope);
         let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else { return };
-        let count = p.read(&mut self.cad.session, |p, _| p.change_count()).unwrap_or(0);
-        let at = (key, self.project_serial, count);
-        if self.publish.counted.as_ref() == Some(&at) {
+        let Ok(count) = p.read(&mut self.cad.session, |p, _| p.change_count()) else { return };
+        let counted = (self.publish.book.at, self.project_serial, count);
+        if self.publish.counted.as_ref() == Some(&counted) {
             return;
         }
+        let scope = match &self.publish.book.pages {
+            Some(list) => ecad_cadcraft::printbook::Scope::Pages(list.clone()),
+            None => ecad_cadcraft::printbook::Scope::All,
+        };
         if let Ok(((sheets, unknown, flagged), notes)) =
             p.configure(&mut self.cad.session, |p| (ecad_cadcraft::printbook::count(p, &scope), ecad_cadcraft::printbook::notes(p, &scope)))
             && let Some(d) = &mut self.print_book
@@ -152,7 +215,7 @@ impl Trial {
             d.flagged = flagged;
             d.notes = notes;
         }
-        self.publish.counted = Some(at);
+        self.publish.counted = Some(counted);
     }
 
     /// Draw up to [`THUMBS_PER_FRAME`] missing thumbnails of `want`; drop the ones a change
@@ -168,9 +231,14 @@ impl Trial {
         let read = p.read(&mut self.cad.session, |p, _| (p.change_count(), since.map(|n| p.changes_since(n))));
         let Ok((count, touched)) = read else { return };
         match touched {
-            None => self.publish.thumbs.clear(),
-            Some(None) => self.publish.thumbs.clear(),
-            Some(Some(pages)) => self.publish.thumbs.retain(|k, _| !pages.contains(k)),
+            None | Some(None) => {
+                self.publish.thumbs.clear();
+                self.publish.failed.clear();
+            }
+            Some(Some(pages)) => {
+                self.publish.thumbs.retain(|k, _| !pages.contains(k));
+                self.publish.failed.retain(|k| !pages.contains(k));
+            }
         }
         self.publish.thumbs_at = Some((serial, count));
         let sheet = crate::canvas::Sheet::Paper.tokens().sheet;
@@ -182,18 +250,35 @@ impl Trial {
                 ctx.request_repaint();
                 break;
             }
-            if self.publish.thumbs.contains_key(page) {
+            if self.publish.thumbs.contains_key(page) || self.publish.failed.contains(page) {
                 continue;
             }
-            let Ok(Ok(d)) = p.read(&mut self.cad.session, |p, _| preview_drawing(p, *page)) else { continue };
-            let view = PreviewView::extents(&d, w, h);
-            if let Ok(img) = rasterise(&d, view, w, h, bg, 0.0) {
-                let image = egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.rgba);
-                let texture = ctx.load_texture(format!("publish.thumb.{}", page.hex()), image, egui::TextureOptions::LINEAR);
-                self.publish.thumbs.insert(*page, Thumb { texture });
-                self.publish.drawn += 1;
-            }
             drawn += 1;
+            let d = match p.read(&mut self.cad.session, |p, _| preview_drawing(p, *page)) {
+                Ok(Ok(d)) => d,
+                // The page cannot be drawn: remember it until a change touches it.
+                Ok(Err(_)) => {
+                    self.publish.failed.insert(*page);
+                    continue;
+                }
+                // The project is busy: try again next frame.
+                Err(_) => {
+                    ctx.request_repaint();
+                    break;
+                }
+            };
+            let view = PreviewView::extents(&d, w, h);
+            match rasterise(&d, view, w, h, bg, 0.0) {
+                Ok(img) => {
+                    let image = egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.rgba);
+                    let texture = ctx.load_texture(format!("publish.thumb.{}", page.hex()), image, egui::TextureOptions::LINEAR);
+                    self.publish.thumbs.insert(*page, Thumb { texture });
+                    self.publish.drawn += 1;
+                }
+                Err(_) => {
+                    self.publish.failed.insert(*page);
+                }
+            }
         }
     }
 
@@ -206,8 +291,7 @@ impl Trial {
         if open {
             self.publish_sync();
         }
-        let groups = self.publish_groups();
-        let total: usize = groups.iter().map(|g| g.pages.len()).sum();
+        let total = self.publish.book.order.len();
         let included = total.saturating_sub(self.publish.excluded.len());
 
         // Left: the output sets.
@@ -279,7 +363,7 @@ impl Trial {
             });
         });
         if select_all {
-            self.publish.excluded.clear();
+            self.publish.select_all();
         }
         let body = Rect::from_min_max(pos2(centre.left(), chead.bottom()), centre.max);
         if !open {
@@ -288,14 +372,10 @@ impl Trial {
             });
             return;
         }
-        let order: Vec<PageId> = groups.iter().flat_map(|g| g.pages.iter().map(|p| p.0)).collect();
-        let mut position: BTreeMap<PageId, usize> = BTreeMap::new();
-        for p in order.iter().filter(|p| !self.publish.excluded.contains(p)) {
-            let n = position.len() + 1;
-            position.insert(*p, n);
-        }
-        if self.publish.preview.is_none_or(|p| !order.contains(&p)) {
-            self.publish.preview = self.panel.active.filter(|a| order.contains(a)).or(order.first().copied());
+        let book = &self.publish.book;
+        let in_book = |p: &PageId| book.position.contains_key(p) || self.publish.excluded.contains(p);
+        if self.publish.preview.is_none_or(|p| !in_book(&p)) {
+            self.publish.preview = self.panel.active.filter(in_book).or(book.order.first().copied());
         }
         let mut toggles = Vec::new();
         let mut chosen = None;
@@ -304,22 +384,43 @@ impl Trial {
         let thumbs = &self.publish.thumbs;
         let preview = self.publish.preview;
         let excluded = &self.publish.excluded;
+        let tile = vec2(THUMB_W + 8.0, THUMB_H + 34.0);
+        let gap = vec2(space::XL, space::L);
+        let group_head = 30.0;
         crate::shell::in_rect(ui, body.shrink2(vec2(space::XL, space::L)), "publish.pages", |ui| {
-            egui::ScrollArea::vertical().id_salt("publish.pages.scroll").auto_shrink([false, false]).show(ui, |ui| {
-                let clip = ui.clip_rect();
-                for g in &groups {
-                    ui.label(egui::RichText::new(&g.name).font(bar::font(ui, ui_type::BODY_EMPHASIS)).color(c32(s.text_2)));
-                    ui.add_space(space::S);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = vec2(space::XL, space::L);
-                        for (id, number, title) in &g.pages {
-                            let (r, resp) = ui.allocate_exact_size(vec2(THUMB_W + 8.0, THUMB_H + 34.0), Sense::click());
+            let per_row = (((ui.available_width() + gap.x) / (tile.x + gap.x)).floor() as usize).max(1);
+            // Each group's top, in the content's own coordinates.
+            let mut tops = Vec::with_capacity(book.groups.len());
+            let mut y = 0.0;
+            for g in &book.groups {
+                tops.push(y);
+                let rows = g.pages.len().div_ceil(per_row);
+                y += group_head + rows as f32 * (tile.y + gap.y) + space::M;
+            }
+            let height = y;
+            egui::ScrollArea::vertical().id_salt("publish.pages.scroll").auto_shrink([false, false]).show_viewport(ui, |ui, view| {
+                ui.set_height(height);
+                let origin = ui.max_rect().min;
+                for (g, top) in book.groups.iter().zip(&tops) {
+                    let rows = g.pages.len().div_ceil(per_row);
+                    let bottom = top + group_head + rows as f32 * (tile.y + gap.y);
+                    if bottom < view.top() || *top > view.bottom() {
+                        continue;
+                    }
+                    bar::text_at(ui, origin.x, origin.y + top + 10.0, &g.name, ui_type::BODY_EMPHASIS, c32(s.text_2));
+                    // Only the rows in view are laid out.
+                    let first = (((view.top() - top - group_head) / (tile.y + gap.y)).floor().max(0.0)) as usize;
+                    let last = (((view.bottom() - top - group_head) / (tile.y + gap.y)).ceil().max(0.0) as usize).min(rows);
+                    for row in first..last {
+                        for col in 0..per_row {
+                            let Some((id, number, title)) = g.pages.get(row * per_row + col) else { break };
+                            let at = origin + vec2(col as f32 * (tile.x + gap.x), top + group_head + row as f32 * (tile.y + gap.y));
+                            let r = Rect::from_min_size(at, tile);
+                            let resp = ui.interact(r, egui::Id::unique(("publish.page", *id)), Sense::click());
                             let name = format!("{PAGE}.{}", id.hex());
                             let on = !excluded.contains(id);
                             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, preview == Some(*id), &name));
-                            if r.intersects(clip) {
-                                visible.push(*id);
-                            }
+                            visible.push(*id);
                             let pic = Rect::from_min_size(r.min + vec2(4.0, 4.0), vec2(THUMB_W, THUMB_H));
                             let p = ui.painter();
                             if preview == Some(*id) {
@@ -358,7 +459,7 @@ impl Trial {
                             if tr.clicked() {
                                 toggles.push(*id);
                             }
-                            if let Some(n) = position.get(id) {
+                            if let Some(n) = book.position.get(id) {
                                 let at = pos2(pic.right() - 16.0, pic.top() + 16.0);
                                 p.circle_filled(at, 11.0, c32(s.accent));
                                 p.text(at, Align2::CENTER_CENTER, n.to_string(), bar::font(ui, ui_type::CAPTION), egui::Color32::WHITE);
@@ -375,15 +476,12 @@ impl Trial {
                             }
                             resp.on_hover_text("Click to preview it at the right. Pages print in book order: reordering comes with output sets.");
                         }
-                    });
-                    ui.add_space(space::L);
+                    }
                 }
             });
         });
         for id in toggles {
-            if !self.publish.excluded.remove(&id) {
-                self.publish.excluded.insert(id);
-            }
+            self.publish.toggle(id);
         }
         if let Some(p) = chosen {
             self.publish.preview = Some(p);
