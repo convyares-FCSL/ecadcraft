@@ -118,3 +118,13 @@ fn the_small_and_medium_tiers_are_the_same_both_ways() {
         same_both_ways(tier(name).unwrap(), name);
     }
 }
+
+/// The ccont row's own cable must not share a tag with a generated cable: on large, `-W932` was
+/// one, and the row failed.
+#[test]
+fn the_continued_cable_tag_is_beyond_every_tier_s_cables() {
+    let n: usize = ecad_bench::wires_nets::CCONT_TAG.trim_start_matches("-W").parse().unwrap();
+    for t in ecad_bench::TIERS.iter().chain([&ecad_bench::PRINT_TIER]) {
+        assert!(n > t.cables, "{} has a generated cable {}", t.name, ecad_bench::wires_nets::CCONT_TAG);
+    }
+}

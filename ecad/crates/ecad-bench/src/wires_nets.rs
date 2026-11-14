@@ -27,6 +27,10 @@ use crate::measure::{median, path_text, remove};
 const OPEN_SEED: u64 = 0x0032_0000;
 /// Cores of the continued cable.
 const CORES: usize = 50;
+/// The continued cable's tag. The generator tags its cables `-W1` to `-W<cables>` (2 500 on
+/// large), so this must lie beyond every tier's cables, or `cableslash` continues the generated
+/// cable of that tag and is refused (as `-W932` was on large).
+pub const CCONT_TAG: &str = "-W8032";
 /// Where the bench draws: right of an A3 sheet, clear of the generated pattern.
 const X0: f64 = 600.0;
 
@@ -119,7 +123,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             run(&mut s, "place", json!({"symbol": "continuation", "at": [X0 + 100.0, y(i)], "name": format!("B{i}")}))?;
             run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;
         }
-        run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": "-W932"}))?;
+        run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?;
         let second: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032 b"}))?, "page")?;
         run(&mut s, "openpage", json!({"page": second.hex()}))?;
         for i in 0..CORES {
@@ -128,7 +132,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         }
         let mut ccont = Vec::new();
         for _ in 0..runs {
-            ccont.push(timed(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": "-W932"}))?);
+            ccont.push(timed(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?);
         }
         out.ccont_ms = median(&mut ccont);
         drop(project);
