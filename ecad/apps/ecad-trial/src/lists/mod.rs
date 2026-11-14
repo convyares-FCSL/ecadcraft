@@ -6,7 +6,7 @@
 //! - [`devices`]: Devices: tag and description set here, function, location, symbol, pages, part
 //!   and state read.
 //! - [`terminals`]: the terminal manager, mirrored (inside | strip | outside) on 036's row model.
-//! - [`plc`]: Lists ▸ I/O, read only (brief 045c).
+//! - [`plc`]: Lists ▸ PLC (brief 051; 045c's I/O list): rack chips, tiles, the channel table.
 //!
 //! The shell (U2) places each view through [`show`], one call per tab. Until it lands, today's
 //! hosts call the same views: the Project panel's Checks and Devices tabs
@@ -31,8 +31,8 @@ pub enum Tab {
     Checks,
     Devices,
     Terminals,
-    /// Brief 045c: Lists ▸ I/O.
-    Io,
+    /// Brief 051: Lists ▸ PLC (045c's Lists ▸ I/O).
+    Plc,
 }
 
 /// What a list view asks the trial for.
@@ -44,6 +44,19 @@ pub enum ListAction {
     Run(String),
     /// Show this page, centred on this point.
     GoTo(ecad_model::PageId, ecad_model::Pt),
+    /// Brief 051: say this in the status line (the command line's echo).
+    Say(String),
+    /// Brief 051: Lists ▸ PLC's own steps, answered by the view ([`plc::IoView::handle`]).
+    Tile(usize),
+    Chip(usize),
+    Scope(bool),
+    Reveal(plc::IoKey),
+    /// Brief 051: show this page at the card's first drawing on it.
+    GoToCard(ecad_model::PageId, Option<ecad_model::ComponentId>),
+    /// Brief 051: the Check list, filtered to this device.
+    ChecksOf(ecad_model::ComponentId),
+    /// Brief 051: Place Symbol for a card body, for this free slot.
+    PlaceCard(u32),
 }
 
 /// The views' state, for the shell's slots.
@@ -62,7 +75,7 @@ pub fn show(ui: &mut eframe::egui::Ui, tab: Tab, lists: Lists<'_>, writable: boo
         Tab::Checks => lists.checks.show(ui, writable).into_iter().map(ListAction::Panel).collect(),
         Tab::Devices => lists.devices.show(ui, writable).into_iter().map(ListAction::Panel).collect(),
         Tab::Terminals => lists.terminals.show(ui, writable),
-        Tab::Io => lists.io.show(ui),
+        Tab::Plc => lists.io.show(ui).into_iter().filter_map(|a| lists.io.handle(a)).collect(),
     }
 }
 

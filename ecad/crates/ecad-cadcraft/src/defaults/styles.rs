@@ -49,6 +49,9 @@ pub static TITLE_PAGE: Entry = text("text.title_page.style", "Title block page n
 pub static TITLE_REV: Entry = text("text.title_rev.style", "Title block revision style", "title_rev");
 pub static TABLE_HEADING: Entry = text("text.table_heading.style", "Table heading style", "table_heading");
 pub static COVER: Entry = text("text.cover.style", "Cover title style", "cover");
+// Brief 051 (design 051 §5, FP1).
+pub static CHANNEL_TEXT: Entry = text("text.channel_text.style", "PLC channel text style", "channel_text");
+pub static ADDRESS: Entry = text("text.address.style", "PLC address style", "address");
 
 /// Every text style choice, in the order of `TextKind::ALL`.
 pub static TEXT: &[&Entry] = &[
@@ -73,6 +76,8 @@ pub static TEXT: &[&Entry] = &[
     &TITLE_REV,
     &TABLE_HEADING,
     &COVER,
+    &CHANNEL_TEXT,
+    &ADDRESS,
 ];
 
 /// A location box's style.
@@ -134,6 +139,8 @@ pub static ENTRIES: &[&Entry] = &[
     &TITLE_REV,
     &TABLE_HEADING,
     &COVER,
+    &CHANNEL_TEXT,
+    &ADDRESS,
     &LOCATION,
     &FRAME,
     &WIRE_CATEGORY,

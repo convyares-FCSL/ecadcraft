@@ -918,8 +918,13 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Terminal(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
-        TextOf::Description | TextOf::Caption | TextOf::ChannelText { .. } => TextKind::Description,
-        TextOf::ChannelNo | TextOf::Address => TextKind::PointLabel,
+        TextOf::Description => TextKind::Description,
+        // Brief 051 (design 051 §5): the card's caption is a name-block line; channel functions
+        // and addresses have text styles of their own.
+        TextOf::Caption => TextKind::PartNumber,
+        TextOf::ChannelText { .. } => TextKind::ChannelText,
+        TextOf::Address => TextKind::Address,
+        TextOf::ChannelNo => TextKind::PointLabel,
         TextOf::PartNumber => TextKind::PartNumber,
         TextOf::Slot(_) => TextKind::Description,
     }
@@ -1112,12 +1117,18 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
                 overlaps: false,
             });
         }
+        // Brief 051 (design 051 §2.6): a framed PLC cell or body has its tag and caption in its
+        // frame's name block, not beside it.
+        let framed = crate::plc::look::framed(doc, c, rid, r);
         // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
-        if let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
+        if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
             out.push(text);
         }
         // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
         out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
+        if framed {
+            continue;
+        }
         // Brief 048 (design 048 §2.3): a symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {

@@ -13,7 +13,11 @@
 pub mod address;
 pub mod channels;
 pub mod iolist;
+pub mod look;
+pub mod overview;
+pub mod page;
 pub mod rack;
+pub mod sheets;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -356,6 +360,7 @@ impl Plc {
     pub fn touched(&self, doc: &Document, ops: &[Op]) -> BTreeSet<ComponentId> {
         let mut out = BTreeSet::new();
         let mut all = false;
+        let mut styles = false;
         for op in ops {
             match op {
                 Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
@@ -393,8 +398,28 @@ impl Plc {
                         );
                     }
                 }
+                // Brief 051 (design 051 §9.1): a card's symbol moved, or a wire on one of its
+                // points re-routed, changes its runs and their Checks rows.
+                Op::ModifyItem { id, .. } => match doc.representation_of_item(*id).map(|(_, r)| r.subject) {
+                    Some(Subject::Component(c)) if self.cards.contains_key(&c) => {
+                        out.insert(c);
+                    }
+                    Some(Subject::Conductor(w)) => {
+                        let ends = doc.conductors.get(&w).map(|x| x.ends).unwrap_or_default();
+                        out.extend(
+                            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                        );
+                    }
+                    _ => {}
+                },
+                // A text style or standard changed: the bands of every card (rare).
+                Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,
                 _ => {}
             }
+        }
+        if styles {
+            out.extend(self.cards.keys().copied());
         }
         if all {
             // A project default: only the racks and cards that inherit it (they have no own value
@@ -557,6 +582,9 @@ impl Plc {
         let mut out = Vec::new();
         if let Some(card) = self.cards.get(&g) {
             self.channel_checks(doc, card, &mut out);
+            // Brief 051 (design 051 §2.5, §2.8): the card on its pages.
+            look::through_checks(doc, card.id, &card.tag, &mut out);
+            look::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, &mut out);
         }
         if let Some(card) = self.cards.get(&g)
             && matches!(card.rack, RackRef::Missing(_) | RackRef::Bad)
@@ -868,20 +896,22 @@ impl Plc {
     }
 
     /// How many sheets the I/O page needs at `per` lines a sheet, from the kept row counts (no rows
-    /// made): each card with channels from a new sheet, its heading repeated on each sheet it runs
-    /// onto, as [`crate::generated::paginate_with`] lays them out.
+    /// made): brief 051's packing (design 051 §4.1), [`sheets::pack`].
     pub fn iolist_sheets(&self, per: usize) -> usize {
-        let per = per.max(2);
-        let n: usize = self
-            .cards
-            .values()
-            .filter(|c| c.ty.has_channels())
-            .map(|c| {
-                let lines = c.rows + 1;
-                1 + lines.saturating_sub(per).div_ceil(per - 1)
-            })
-            .sum();
-        n.max(1)
+        let rows: Vec<usize> = iolist::cards_in_order(self).iter().map(|c| c.rows).collect();
+        sheets::pack(&rows, 2.0, 1.0, 1.0, per.max(3) as f64).len().max(1)
+    }
+
+    /// Brief 051: the Checks rows about device `c` (a card or a rack), from its own group and its
+    /// rack's group (slot rows sit there).
+    pub fn checks_naming(&self, c: ComponentId) -> impl Iterator<Item = &Check> {
+        let rack = self.cards.get(&c).and_then(|x| match x.rack {
+            RackRef::Rack(r) | RackRef::Missing(r) => Some(r),
+            _ => None,
+        });
+        let own = self.checks.get(&c).into_iter().flatten();
+        let more = rack.filter(|r| *r != c).and_then(|r| self.checks.get(&r)).into_iter().flatten();
+        own.chain(more).filter(move |k| overview::names(&k.object, c))
     }
 
     /// The racks by tag.
@@ -907,8 +937,11 @@ impl Plc {
     }
 
     /// One card as `plcracks` lists it.
-    pub fn card_json(&self, _doc: &Document, c: ComponentId) -> Value {
+    pub fn card_json(&self, doc: &Document, c: ComponentId) -> Value {
         let Some(card) = self.cards.get(&c) else { return Value::Null };
+        // Brief 051 (design 051 §7): the tile's data.
+        let tile = overview::card_tile(doc, self, card, String::new());
+        let (inputs, outputs) = overview::spans(doc, self, card);
         let rack = match card.rack {
             RackRef::Rack(r) => json!(self.tag_of(r)),
             RackRef::Missing(_) | RackRef::Bad => json!("missing"),
@@ -929,6 +962,9 @@ impl Plc {
             "pinned": self.blocks.get(&c).is_some_and(|b| b.pinned),
             "part_number": card.part_number,
             "maker": card.maker,
+            "pages": tile.json(doc)["pages"],
+            "checks": tile.checks,
+            "range": json!({"inputs": inputs, "outputs": outputs}),
         })
     }
 
@@ -1200,7 +1236,11 @@ pub fn channel_texts(
     let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).word() == "90";
     let anchors = crate::symbols::anchors(s);
     let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
-    let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Description).height;
+    // Brief 051 (design 051 §5): the two text styles of their own.
+    let addr_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Address).height;
+    let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::ChannelText).height;
+    // Brief 051 (design 051 §2.7): a cell at 180° keeps its texts upright and in their bands.
+    let upside = pl.rotation.is_finite() && (pl.rotation.to_degrees().rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();
     let mut push = |role: TextRole, of: TextOf, value: String, height: f64, shown: bool, horizontal: bool| {
         let Some(a) = anchors.iter().find(|x| x.role == role) else { return };
@@ -1209,7 +1249,24 @@ pub fn channel_texts(
             return;
         }
         let (h, v) = if horizontal && role == TextRole::ChannelText {
-            (cadcraft_engine::doc::HAlign::Center, cadcraft_engine::doc::VAlign::Top)
+            let v = if upside { cadcraft_engine::doc::VAlign::Bottom } else { cadcraft_engine::doc::VAlign::Top };
+            (cadcraft_engine::doc::HAlign::Center, v)
+        } else if upside && role == TextRole::ChannelText {
+            // Above the card, reading upwards from 2 over its frame.
+            (cadcraft_engine::doc::HAlign::Left, cadcraft_engine::doc::VAlign::Middle)
+        } else if upside {
+            // Turned with the cell, the anchor's sides swap: swap the alignment back.
+            let h = match a.h {
+                crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Right,
+                crate::symbols::HAlign::Centre => cadcraft_engine::doc::HAlign::Center,
+                crate::symbols::HAlign::Right => cadcraft_engine::doc::HAlign::Left,
+            };
+            let v = match a.v {
+                crate::symbols::VAlign::Bottom => cadcraft_engine::doc::VAlign::Top,
+                crate::symbols::VAlign::Middle => cadcraft_engine::doc::VAlign::Middle,
+                crate::symbols::VAlign::Top => cadcraft_engine::doc::VAlign::Bottom,
+            };
+            (h, v)
         } else {
             let h = match a.h {
                 crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Left,
@@ -1232,7 +1289,7 @@ pub fn channel_texts(
     };
     push(TextRole::ChannelNo, TextOf::ChannelNo, (i + first).to_string(), label, on(&crate::defaults::plc::CHANNEL_SHOW), false);
     if let Some(a) = addr {
-        push(TextRole::Address, TextOf::Address, a, label, on(&crate::defaults::plc::ADDRESS_SHOW), false);
+        push(TextRole::Address, TextOf::Address, a, addr_h, on(&crate::defaults::plc::ADDRESS_SHOW), false);
     }
     if let Some(d) = description {
         push(TextRole::ChannelText, TextOf::ChannelText { rotated }, d, desc_h, true, !rotated);

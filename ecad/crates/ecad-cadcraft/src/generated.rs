@@ -70,17 +70,27 @@ pub enum GenKind {
     Terminals,
     /// Brief 028: the cable schedule.
     Cables,
+    /// Brief 051 (design 051 §4.2, FP2): the rack overview, before the I/O list.
+    PlcRack,
     /// Brief 045 (design 045 §8.2, FP5): the I/O list.
     IoList,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 7] =
-        [GenKind::Cover, GenKind::Contents, GenKind::Revisions, GenKind::BomLocation, GenKind::Terminals, GenKind::Cables, GenKind::IoList];
+    pub const ALL: [GenKind; 8] = [
+        GenKind::Cover,
+        GenKind::Contents,
+        GenKind::Revisions,
+        GenKind::BomLocation,
+        GenKind::Terminals,
+        GenKind::Cables,
+        GenKind::PlcRack,
+        GenKind::IoList,
+    ];
 
     /// Whether its content comes from the report models (built for it on first show).
     pub fn needs_outputs(self) -> bool {
-        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::IoList)
+        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList)
     }
 
     /// The stored value.
@@ -92,6 +102,7 @@ impl GenKind {
             GenKind::BomLocation => "bom-location",
             GenKind::Terminals => "terminals",
             GenKind::Cables => "cables",
+            GenKind::PlcRack => "plcrack",
             GenKind::IoList => "iolist",
         }
     }
@@ -110,6 +121,7 @@ impl GenKind {
             GenKind::BomLocation => "BOM by location",
             GenKind::Terminals => "Terminal plan",
             GenKind::Cables => "Cable schedule",
+            GenKind::PlcRack => "PLC racks",
             GenKind::IoList => "I/O list",
         }
     }
@@ -235,8 +247,10 @@ pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize 
         }
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
-        // Brief 045c: each card from a new sheet, as the terminal plan.
+        // Brief 051 (design 051 §4.1): cards packed on sheets, from the kept row counts.
         Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(ROWS_PER_SHEET)),
+        // Brief 051 (design 051 §4.2): racks packed on sheets, from the kept slot counts.
+        Some(GenKind::PlcRack) => return outputs.map_or(1, |o| crate::plc::sheets::rack_sheets(doc, page, &o.plc)),
     };
     rows.div_ceil(ROWS_PER_SHEET).max(1)
 }
@@ -392,22 +406,22 @@ pub fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> String {
 }
 
 /// Draws in paper millimetres, sheet origin at `x0`.
-struct Draw {
-    k: f64,
-    x0: f64,
-    out: Vec<Part>,
+pub(crate) struct Draw {
+    pub(crate) k: f64,
+    pub(crate) x0: f64,
+    pub(crate) out: Vec<Part>,
 }
 
 impl Draw {
-    fn p(&self, x: f64, y: f64) -> Pt {
+    pub(crate) fn p(&self, x: f64, y: f64) -> Pt {
         Pt::new((x + self.x0) * self.k, y * self.k)
     }
-    fn line(&mut self, a: (f64, f64), b: (f64, f64)) {
+    pub(crate) fn line(&mut self, a: (f64, f64), b: (f64, f64)) {
         let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
         self.out.push(Part { kind, weight: Some(THIN_WEIGHT), aci: None, layer: LAYER });
     }
     /// A filled dot of `radius` millimetres (concentric circles, like the junction glyph).
-    fn dot(&mut self, at: (f64, f64), radius: f64) {
+    pub(crate) fn dot(&mut self, at: (f64, f64), radius: f64) {
         let center = self.p(at.0, at.1);
         for k in [1.0, 0.66, 0.33] {
             let kind = kind_for_primitive(&Primitive::Circle { center, radius: radius * k * self.k });
@@ -415,12 +429,12 @@ impl Draw {
         }
     }
     /// A closed rectangle from `a` to `b` (paper millimetres), weight `weight`, colour `aci`.
-    fn rect(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
+    pub(crate) fn rect(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
         let v = vec![self.p(a.0, a.1), self.p(b.0, a.1), self.p(b.0, b.1), self.p(a.0, b.1)];
         let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
         self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
     }
-    fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
+    pub(crate) fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
@@ -600,6 +614,8 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
         }
         // Brief 028 (design 028 §5.3), drawn by `terminal_rows`.
         GenKind::Terminals => (TERMINAL_COLUMNS.to_vec(), Vec::new()),
+        // Brief 051: drawn by `crate::plc::sheets`.
+        GenKind::PlcRack => (Vec::new(), Vec::new()),
         // Brief 045c (design 045 §8.2).
         GenKind::IoList => {
             let Some(o) = outputs else { return (crate::plc::iolist::PAGE_COLUMNS.to_vec(), Vec::new()) };
@@ -834,6 +850,17 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     if kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic {
         return outputs.map_or_else(Vec::new, |o| crate::strip_page::content(doc, page, input, i, x0, o));
     }
+    // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
+    if matches!(kind, GenKind::IoList | GenKind::PlcRack) {
+        let a = crate::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
+        let plc = outputs.map(|o| &o.plc);
+        if kind == GenKind::IoList {
+            crate::plc::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+        } else {
+            crate::plc::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+        }
+        return d.out;
+    }
     let (cols, mut rows) = table(doc, kind, outputs);
     if kind == GenKind::Terminals
         && let Some(o) = outputs
@@ -854,8 +881,7 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     // The sheets as the sheet count makes them; a sheet starting inside a location block repeats it
     // as `(continued)`, which takes one of its rows.
     let heads: Vec<Option<String>> = rows.iter().map(|r| r.heading.then(|| r.cells.first().cloned().unwrap_or_default())).collect();
-    let (start, end, prev_heading) =
-        paginate_with(&heads, matches!(kind, GenKind::Terminals | GenKind::IoList)).get(i).cloned().unwrap_or((0, 0, None));
+    let (start, end, prev_heading) = paginate_with(&heads, kind == GenKind::Terminals).get(i).cloned().unwrap_or((0, 0, None));
     let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
     if let Some(h) = prev_heading {
         d.text((l + 1.0, y - ROW_MM / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));

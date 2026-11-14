@@ -140,6 +140,13 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         return terminal(p, page, t, strip, Some(cap.terminal));
     }
     let Some(h) = picked else { return t };
+    // Brief 051 (review of #89, 2): a card frame's part stands for the card, through its symbol.
+    let h = match map.get(h) {
+        Some(Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => {
+            doc.representations.get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
+        }
+        _ => h,
+    };
     match map.get(h) {
         None if free_text => {
             t.kind = ObjectKind::Text;

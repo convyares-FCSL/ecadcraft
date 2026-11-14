@@ -882,8 +882,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("pagetexts", "a read for agents"),
     ("defaults", "Settings ▸ Standards (U4c)"),
     ("xrefs", "a read for agents"),
-    ("plcracks", "a read; the PLC manager (2.8) draws it"),
-    ("iolist", "a read; Lists ▸ I/O shows it"),
+    ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
+    ("iolist", "a read; Lists ▸ PLC shows it"),
+    // Brief 051 (design 051 §3.6).
+    ("plcpage", "Lists ▸ PLC ▸ a tile's Make its page"),
     // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),

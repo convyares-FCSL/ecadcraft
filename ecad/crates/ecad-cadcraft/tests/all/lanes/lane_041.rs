@@ -122,6 +122,8 @@ const ECAD_COMMANDS: &[&str] = &[
     "partline",
     "bomitem",
     "article",
+    // Brief 051.
+    "plcpage",
     // Brief 050a.
     "standard",
     "setstyle",

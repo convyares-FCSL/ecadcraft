@@ -16,7 +16,7 @@ fn f_fence_makes_channels_0_to_7_in_one_transaction() {
     let (mut p, c) = with_cards(0x7045_f101);
     let a03 = c["-A03"];
     p.h.activate(p.inputs);
-    step(&mut p.h, "plcchannels", json!({"card": a03.hex(), "from": [90, 200], "to": [180, 200]}));
+    step(&mut p.h, "plcchannels", json!({"card": a03.hex(), "from": [90, 200], "to": [260, 200]}));
     let d = p.h.doc();
     let pts = channel_points(&d, a03);
     let got: Vec<(String, String)> = pts.iter().map(|(k, (l, _))| (k.clone(), l.clone())).collect();
@@ -83,7 +83,7 @@ fn f_rest_at_a_point() {
 fn f_fence_new_card() {
     let mut p = fixture_p(0x7045_f104);
     p.h.activate(p.inputs);
-    let v = step(&mut p.h, "plcchannels", json!({"card": null, "type": "DI", "from": [90, 200], "to": [180, 200]}));
+    let v = step(&mut p.h, "plcchannels", json!({"card": null, "type": "DI", "from": [90, 200], "to": [260, 200]}));
     let card: ComponentId = id(&v, "card");
     let d = p.h.doc();
     assert!(tag(&d, card).starts_with("-A"));

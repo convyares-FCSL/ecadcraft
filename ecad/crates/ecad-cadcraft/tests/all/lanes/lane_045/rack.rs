@@ -236,10 +236,13 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
         assert_eq!(now, p, "a retag changes no card property");
     }
     let page = h.first_page();
-    let captions: Vec<String> = ecad_cadcraft::devices::all_texts_on_page(&d, page)
+    // Brief 051 (design 051 §2.6): captions are in the cards' name blocks.
+    let captions: Vec<String> = ecad_cadcraft::plc::look::parts_on_page(&d, page)
         .into_iter()
-        .filter(|t| t.text.of == ecad_cadcraft::devices::TextOf::Caption)
-        .map(|t| t.text.value)
+        .filter_map(|p| match p.shape {
+            ecad_cadcraft::xref::Shape::Text { value, .. } if value.contains(" slot ") => Some(value),
+            _ => None,
+        })
         .collect();
     assert_eq!(captions.len(), 6, "{captions:?}");
     assert!(captions.contains(&"-A10 slot 2".to_string()), "{captions:?}");
@@ -251,13 +254,18 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
 fn a4_the_caption_pattern_and_show_rule_come_from_the_registry() {
     let Rack { mut h, cards, .. } = rack(4506);
     let page = h.first_page();
+    // Brief 051 (design 051 §2.6): the caption is the second line of the card's name block.
     let caption = |h: &mut H, c: ComponentId| {
         let d = h.doc();
         let rep = d.representations_of(ecad_model::Subject::Component(c)).next().map(|(r, _)| r);
-        ecad_cadcraft::devices::all_texts_on_page(&d, page)
+        ecad_cadcraft::plc::look::parts_on_page(&d, page)
             .into_iter()
-            .find(|t| t.text.of == ecad_cadcraft::devices::TextOf::Caption && Some(t.text.rep) == rep)
-            .map(|t| (t.text.value, t.shown))
+            .filter(|p| Some(p.rep) == rep)
+            .filter_map(|p| match p.shape {
+                ecad_cadcraft::xref::Shape::Text { value, .. } if value.contains("lot") => Some((value, true)),
+                _ => None,
+            })
+            .next()
     };
     assert_eq!(caption(&mut h, cards[1]), Some(("-A01 slot 2".into(), true)));
     h.run("setdefault", json!({"key": "plc.card.caption", "level": "project", "value": "{rack} Slot{slot:02}"})).unwrap();
@@ -267,7 +275,8 @@ fn a4_the_caption_pattern_and_show_rule_come_from_the_registry() {
     let e = h.run("setdefault", json!({"key": "plc.card.caption", "level": "project", "value": "x".repeat(10_000)})).unwrap_err();
     assert!(!e.is_empty());
     h.run("setdefault", json!({"key": "plc.text.caption.show", "level": "object", "component": cards[1].hex(), "value": "off"})).unwrap();
-    assert_eq!(caption(&mut h, cards[1]), Some(("-A01 Slot02".into(), false)));
+    // Brief 051: a hidden caption is not in the name block.
+    assert_eq!(caption(&mut h, cards[1]), None);
     // A card in no rack has no caption.
     h.run("plcslot", json!({"card": cards[2].hex(), "rack": null})).unwrap();
     assert_eq!(caption(&mut h, cards[2]), None);

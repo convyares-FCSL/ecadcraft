@@ -127,7 +127,7 @@ pub struct Reports {
     pub stem: String,
     /// Brief 039: the Terminals tab as the one table's terminal manager.
     pub terminals: crate::lists::terminals::TerminalsView,
-    /// Brief 045c: Lists ▸ I/O, kept in step while it is shown.
+    /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
     pub io: crate::lists::plc::IoView,
     pub io_shown: bool,
     /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
@@ -161,7 +161,7 @@ impl Reports {
         if self.io_shown {
             p.outputs();
             if let Some(o) = p.outputs.as_ref() {
-                self.io.sync(serial, p.ledger.document(), o);
+                self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
         }
         let reference_style = p.ledger.document().settings.reference_style;
@@ -226,6 +226,8 @@ impl Reports {
 
     /// The result of the last [`Out::Run`]: a terminal plan edit's refusal shows under its cell.
     pub fn ran(&mut self, refusal: Option<String>) {
+        // Only the view whose edit is running holds it.
+        self.io.ran(refusal.clone());
         self.terminals.ran(refusal);
     }
 
@@ -428,7 +430,7 @@ impl Reports {
                         out = Some(match a {
                             crate::lists::ListAction::Run(line) => Out::Run(line),
                             crate::lists::ListAction::GoTo(pg, at) => Out::GotoAt(pg, at),
-                            crate::lists::ListAction::Panel(_) => continue,
+                            _ => continue,
                         });
                     }
                     self.rows_drawn = self.terminals.table.rows_drawn;

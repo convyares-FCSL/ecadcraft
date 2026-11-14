@@ -1073,6 +1073,12 @@ pub fn project_page_kept(
         ents.push(e);
         map.insert_xref(part.rep, part.index, h);
     }
+    // PLC card frames (brief 051): derived on every draw, never stored; mapped like 025's parts.
+    for part in crate::plc::look::parts_on_page(doc, page) {
+        let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
+        ents.push(xref_entity(&part, h));
+        map.insert_xref(part.rep, part.index, h);
+    }
     // Link lines (brief 030): derived on every draw, never stored.
     let mut seen: BTreeMap<(ComponentId, u32), u32> = BTreeMap::new();
     for part in crate::link_lines::parts_on_page(doc, page) {
@@ -2368,6 +2374,8 @@ impl Project {
         };
         let (before, revision) = (sheets(&o), o.revision);
         o.update(doc, ops, scope);
+        // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
+        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, ops);
         if ecad_model::ledger::verify_mode()
             && let Some(line) = o.verify_strips(doc)
         {
@@ -2384,6 +2392,8 @@ impl Project {
             Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
             // Brief 045c: the I/O list when a card's rows changed.
             Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
+            // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
+            Some(crate::generated::GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || plc_places_moved,
             _ => false,
         };
         let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();

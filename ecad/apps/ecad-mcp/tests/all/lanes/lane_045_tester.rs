@@ -57,7 +57,8 @@ fn writes_a(c: &mut Client) -> Ids {
     let rack = c.exec("place", json!({"symbol": "plccpu", "at": [100, 200]}));
     one_by_agent(c, n, "place plccpu");
     let rack = hex(&rack, "component");
-    for x in [100, 110, 120, 130] {
+    // Brief 051: the pack's 20 mm pitch.
+    for x in [100, 120, 140, 160] {
         c.exec("wire", json!({"points": [[x, 450], [x, 350]]}));
     }
     let n = c.log().len();
@@ -88,7 +89,7 @@ fn writes_a(c: &mut Client) -> Ids {
 fn writes_b(c: &mut Client, ids: &Ids) {
     let (rack, di, ai) = (&ids.rack, &ids.di, &ids.ai);
     let n = c.log().len();
-    let v = c.exec("plcchannels", json!({"card": di, "from": [90, 400], "to": [140, 400]}));
+    let v = c.exec("plcchannels", json!({"card": di, "from": [90, 400], "to": [170, 400]}));
     let ops = one_by_agent(c, n, "plcchannels fence");
     assert!(ops.iter().filter(|o| matches!(o, Op::AddTerminal { .. })).count() >= 4, "{v}");
     let n = c.log().len();

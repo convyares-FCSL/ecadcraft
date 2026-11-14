@@ -18,6 +18,7 @@ pub mod edit;
 pub mod export;
 pub mod selection;
 pub mod source;
+pub mod strip;
 pub mod tint;
 pub mod view_model;
 

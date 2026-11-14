@@ -469,11 +469,12 @@ const fn cell(key: &'static str, name: &'static str, aliases: &'static [&'static
     st(key, name, aliases, Kind::Channel(t), id).of(Family::Plc).quiet_at(Quiet::All)
 }
 
-/// A cell's width and its points (role, x) (design 045 §4.1).
-fn cell_shape(key: &str) -> Option<(f64, &'static [(&'static str, f64)])> {
+/// A cell's width and its points (role, x) (design 045 §4.1; brief 051, design 051 §2.2: the
+/// pack's pitch, 20 mm per single-point channel).
+pub fn cell_shape(key: &str) -> Option<(f64, &'static [(&'static str, f64)])> {
     Some(match key {
-        "chdi" => (10.0, &[("in", 0.0)]),
-        "chdq" => (10.0, &[("out", 0.0)]),
+        "chdi" => (20.0, &[("in", 0.0)]),
+        "chdq" => (20.0, &[("out", 0.0)]),
         "chai" | "chao" => (20.0, &[("+", -5.0), ("-", 5.0)]),
         "chrtd" => (40.0, &[("I+", -15.0), ("S+", -5.0), ("S-", 5.0), ("I-", 15.0)]),
         "chiol" => (30.0, &[("L+", -10.0), ("C/Q", 0.0), ("L-", 10.0)]),
@@ -481,29 +482,50 @@ fn cell_shape(key: &str) -> Option<(f64, &'static [(&'static str, f64)])> {
     })
 }
 
-/// A cell's graphics (design 045 §4.1): a lead from each point down to the cell's top edge, the
-/// cell box (top, bottom and both sides, so adjacent cells share an edge), the role names, and its
-/// mark.
+/// The line of a cell's points: its top edge (design 051 §2.2), local y.
+pub const CELL_TOP: f64 = 5.0;
+/// The header band under the top edge (the dividers), mm.
+pub const HEADER_BAND: f64 = 10.0;
+/// The mark band under the header, mm; a cell's mark sits at its centre.
+pub const MARK_BAND: f64 = 15.0;
+/// The name band at the built-in text styles, mm (design 051 §2.5: at least 12.5).
+pub const NAME_BAND: f64 = 12.5;
+/// A channel text's end under the frame's bottom edge, mm.
+pub const OUTSIDE_GAP: f64 = 2.0;
+/// The frame's depth under the top edge at the built-in text styles: header, mark and name bands.
+pub const FRAME_DEPTH: f64 = HEADER_BAND + MARK_BAND + NAME_BAND;
+/// The height of a role name drawn under its pin, mm (`point_label`'s built-in).
+const ROLE_H: f64 = 1.5;
+
+/// A cell's graphics (brief 051, design 051 §2.2): its share of the card's top edge through its
+/// points, its two dividers down the header band (adjacent cells draw theirs on one line), the role
+/// names under the pins of a multi-point cell, and its mark at the centre of the mark band. No
+/// bottom edge and no leads: the card's frame closes the box.
 fn cell_graphics(key: &str) -> Vec<Primitive> {
     let Some((w, points)) = cell_shape(key) else { return Vec::new() };
     let h = w / 2.0;
-    let mut g = vec![rect((-h, -15.0), (h, 0.0))];
-    for (role, x) in points {
-        g.push(line((*x, 5.0), (*x, 0.0)));
-        if points.len() > 1 {
-            g.push(text((*x - 0.5 * 0.8 * 1.6 * role.chars().count() as f64, -2.5), 1.6, role));
+    let div = CELL_TOP - HEADER_BAND;
+    let mut g = vec![line((-h, CELL_TOP), (h, CELL_TOP)), line((-h, CELL_TOP), (-h, div)), line((h, CELL_TOP), (h, div))];
+    if points.len() > 1 {
+        for (role, x) in points {
+            // Under the pin, which 031's rule puts right of the point, 2.5 under the edge.
+            g.push(text((*x + 1.0, CELL_TOP - 6.5), ROLE_H, role));
         }
     }
-    let into = poly(&[(-1.5, -6.5), (0.0, -8.0), (1.5, -6.5)], false);
-    let out = poly(&[(-1.5, -8.0), (0.0, -6.5), (1.5, -8.0)], false);
-    let tilde = poly(&[(-3.0, -11.0), (-1.5, -10.0), (0.0, -11.0), (1.5, -12.0), (3.0, -11.0)], false);
+    // The marks: new drawings for ECAD (034 §2.1's rules: mm, no arcs).
+    let c = CELL_TOP - HEADER_BAND - MARK_BAND / 2.0;
+    let into = |dy: f64| poly(&[(-1.5, c + 1.5 + dy), (0.0, c - 1.5 + dy), (1.5, c + 1.5 + dy)], false);
+    let out = |dy: f64| poly(&[(-1.5, c - 1.5 + dy), (0.0, c + 1.5 + dy), (1.5, c - 1.5 + dy)], false);
+    let tilde = poly(&[(-3.0, c - 2.0), (-1.5, c - 1.0), (0.0, c - 2.0), (1.5, c - 3.0), (3.0, c - 2.0)], false);
     match key {
-        "chdi" => g.push(into),
-        "chdq" => g.push(out),
-        "chai" => g.extend([into, tilde]),
-        "chao" => g.extend([out, tilde]),
-        "chrtd" => g.push(text((-3.0, -10.0), 2.5, "RTD")),
-        "chiol" => g.push(text((-3.0, -10.0), 2.5, "IOL")),
+        "chdi" => g.push(into(0.0)),
+        "chdq" => g.push(out(0.0)),
+        "chai" => g.extend([into(1.5), tilde]),
+        "chao" => g.extend([out(1.5), tilde]),
+        // A small resistor with a slash.
+        "chrtd" => g.extend([rect((-2.0, c - 1.0), (2.0, c + 1.0)), line((-2.5, c - 1.5), (2.5, c + 1.5))]),
+        // A small diamond.
+        "chiol" => g.push(poly(&[(0.0, c + 1.5), (1.5, c), (0.0, c - 1.5), (-1.5, c)], true)),
         _ => {}
     }
     g
@@ -960,9 +982,16 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
             let h = cell_shape(s.key).map_or(5.0, |(w, _)| w / 2.0);
             vec![
                 tag,
-                a(TextRole::ChannelNo, -h + 1.0, -2.0, HAlign::Left, VAlign::Top),
-                a(TextRole::Address, 0.0, -12.0, HAlign::Centre, VAlign::Middle),
-                Anchor { role: TextRole::ChannelText, at: p(0.0, -17.0), h: HAlign::Right, v: VAlign::Middle, rotation: 90.0 },
+                // Brief 051 (design 051 §2.5): the mark band's top line, and outside the frame.
+                a(TextRole::ChannelNo, -h + 1.0, CELL_TOP - HEADER_BAND - 1.0, HAlign::Left, VAlign::Top),
+                a(TextRole::Address, 0.0, CELL_TOP - HEADER_BAND - 1.0, HAlign::Centre, VAlign::Top),
+                Anchor {
+                    role: TextRole::ChannelText,
+                    at: p(0.0, CELL_TOP - FRAME_DEPTH - OUTSIDE_GAP),
+                    h: HAlign::Right,
+                    v: VAlign::Middle,
+                    rotation: 90.0,
+                },
             ]
         }
         // Card bodies: the tag above, the description inside under the header.
@@ -1214,11 +1243,28 @@ impl Connector {
     }
 }
 
-/// A PLC card body (design 034 §6): its type text and its supply points, each with a lead to the
-/// body's edge.
-fn card_body(type_text: &str, points: &[(f64, f64)]) -> Vec<Primitive> {
-    let mut g = vec![rect((-15.0, -20.0), (15.0, 20.0)), line((-15.0, 15.0), (15.0, 15.0)), text((-13.0, 16.5), 2.5, type_text)];
-    g.extend(points.iter().map(|&(x, y)| line((x, y), (x, 20.0_f64.copysign(y)))));
+/// A PLC card body as the card's power end (brief 051, design 051 §2.4): on each side that has
+/// points, an edge through them and dividers between neighbouring points and at both ends, down
+/// (or up) the header band; width the points' span plus 10, at least 20. The type word is the
+/// frame's type text now, not graphics.
+fn card_body(points: &[(f64, f64)]) -> Vec<Primitive> {
+    let mut g = Vec::new();
+    for side in [1.0_f64, -1.0] {
+        let mut xs: Vec<f64> = points.iter().filter(|(_, y)| y.signum() == side).map(|(x, _)| *x).collect();
+        if xs.is_empty() {
+            continue;
+        }
+        xs.sort_by(f64::total_cmp);
+        let (lo, hi) = (xs.first().copied().unwrap_or(0.0), xs.last().copied().unwrap_or(0.0));
+        let pad = ((20.0 - (hi - lo)) / 2.0).max(5.0);
+        let (l, r) = (lo - pad, hi + pad);
+        let y = 25.0 * side;
+        let d = y - HEADER_BAND * side;
+        g.push(line((l, y), (r, y)));
+        let mut cuts = vec![l, r];
+        cuts.extend(xs.windows(2).filter_map(|w| Some((w.first()? + w.get(1)?) / 2.0)));
+        g.extend(cuts.into_iter().map(|x| line((x, y), (x, d))));
+    }
     g
 }
 
@@ -1522,9 +1568,9 @@ fn graphics(key: &str) -> Vec<Primitive> {
             line((0.0, -6.0), (0.0, -10.0)),
         ],
         // ---- Brief 034 stage 3b (design 034 §6).
-        "plcps" => card_body("PS", &[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
-        "plccm" => card_body("CM", &[(-5.0, -25.0), (5.0, -25.0)]),
-        k if card_type(k).is_some() => card_body(card_type(k).unwrap_or_default(), &[(-5.0, 25.0), (5.0, 25.0)]),
+        "plcps" => card_body(&[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
+        "plccm" => card_body(&[(-5.0, -25.0), (5.0, -25.0)]),
+        k if card_type(k).is_some() => card_body(&[(-5.0, 25.0), (5.0, 25.0)]),
         k if cell_shape(k).is_some() => cell_graphics(k),
         // ---- Brief 044 (design 044 §3.2): connector pins, 034's cup and pin, no body.
         "pinpair" => {
@@ -1744,24 +1790,25 @@ mod tests {
         ("rj45", 50.0, 10.0, "1/2/3/4/5/6/7/8/SH"),
         ("usba", 30.0, 10.0, "1/2/3/4/SH"),
         ("usbb", 30.0, 10.0, "1/2/3/4/SH"),
-        ("plccpu", 30.0, 45.0, "L+/M"),
-        ("plcps", 30.0, 50.0, "L/N/PE/L+/M"),
-        ("plcdi", 30.0, 45.0, "L+/M"),
-        ("plcdq", 30.0, 45.0, "L+/M"),
-        ("plcai", 30.0, 45.0, "L+/M"),
-        ("plcao", 30.0, 45.0, "L+/M"),
-        ("plcrtd", 30.0, 45.0, "L+/M"),
-        ("plciol", 30.0, 45.0, "L+/M"),
+        // Brief 051 (design 051 §2.2, §2.4, FP3): cells at the pack's pitch, bodies as power ends.
+        ("plccpu", 20.0, 10.0, "L+/M"),
+        ("plcps", 25.0, 50.0, "L/N/PE/L+/M"),
+        ("plcdi", 20.0, 10.0, "L+/M"),
+        ("plcdq", 20.0, 10.0, "L+/M"),
+        ("plcai", 20.0, 10.0, "L+/M"),
+        ("plcao", 20.0, 10.0, "L+/M"),
+        ("plcrtd", 20.0, 10.0, "L+/M"),
+        ("plciol", 20.0, 10.0, "L+/M"),
         // Brief 045 (design 045 §3.1).
-        ("plcim", 30.0, 45.0, "L+/M"),
-        ("plcpm", 30.0, 45.0, "L+/M"),
-        ("plccm", 30.0, 45.0, "P1/P2"),
-        ("chdi", 10.0, 20.0, ".in"),
-        ("chdq", 10.0, 20.0, ".out"),
-        ("chai", 20.0, 20.0, ".+/.-"),
-        ("chao", 20.0, 20.0, ".+/.-"),
-        ("chrtd", 40.0, 20.0, ".I+/.S+/.S-/.I-"),
-        ("chiol", 30.0, 20.0, ".L+/.C/Q/.L-"),
+        ("plcim", 20.0, 10.0, "L+/M"),
+        ("plcpm", 20.0, 10.0, "L+/M"),
+        ("plccm", 20.0, 10.0, "P1/P2"),
+        ("chdi", 20.0, 19.0, ".in"),
+        ("chdq", 20.0, 19.0, ".out"),
+        ("chai", 20.0, 20.5, ".+/.-"),
+        ("chao", 20.0, 20.5, ".+/.-"),
+        ("chrtd", 40.0, 19.0, ".I+/.S+/.S-/.I-"),
+        ("chiol", 30.0, 19.0, ".L+/.C/Q/.L-"),
         // Brief 044 (design 044 §3.2): the definition keys are the side keys.
         ("pinpair", 3.0, 10.0, ".s/.p"),
         ("pins", 3.0, 5.0, ".s"),
@@ -1770,10 +1817,16 @@ mod tests {
 
     #[test]
     fn new_symbols_have_the_designed_box_and_labels() {
-        for (key, w, h, labels) in NEW {
+        let mut wrong = Vec::new();
+        for (key, w, h, _) in NEW {
+            let (sw, sh) = by_key(key).unwrap().size();
+            if (sw - w).abs() > 1e-6 || (sh - h).abs() > 1e-6 {
+                wrong.push(format!("{key}: box {sw}×{sh}, want {w}×{h}"));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        for (key, _, _, labels) in NEW {
             let s = by_key(key).unwrap();
-            let (sw, sh) = s.size();
-            assert!((sw - w).abs() < 1e-6 && (sh - h).abs() < 1e-6, "{key}: box {sw}×{sh}, want {w}×{h}");
             assert_eq!(s.labels().join("/"), *labels, "{key}");
         }
         assert_eq!(STARTERS.iter().filter(|s| s.family != Family::Basic).count(), NEW.len());
