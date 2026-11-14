@@ -1,6 +1,7 @@
 # Brief 055: Library ▸ Title blocks, a simple title block and frame editor
 
-Status: Draft
+Status: Approved (owner, 2026-11-14: design §15 Q1–Q10 as recommended; Q3 DXF logos only in
+0.2.2, PNG/JPEG in 0.4.0. Overseer, 2026-11-14: FP1–FP5 approved.)
 Branch: `feature/title-blocks`, from `origin/dev` `8b6c2ccd` (050a merged).
 Designer: **yes** (`docs/design/055.md`) · Size: L, in three parts (below)
 Release: 0.2.2 (UI rev 4). Spec: UI rev 4 build spec, "Library workspace ▸ Title blocks"
@@ -107,7 +108,7 @@ pre-v1); **FP4** a page's sheet, margins and keep-out strip resolved through its
 sites; **FP5** `ecr` in the built-in revision columns. No raster assets, no new op, no new table.
 
 **Approved (overseer, 2026-11-14): FP1–FP5.** FP3: redrawing the built-in frame to the house block
-is accepted (pre-v1). Owner answers to design §15 are still to come.
+is accepted (pre-v1).
 
 ## Parts
 
@@ -130,5 +131,8 @@ the crates touched.
 
 ## Needs owner check
 
-Design §15 questions 1–10. The house block on the sample project beside `dev`, and the editor beside
+**Owner (Carl, 2026-11-14):** design §15 questions 1–10 answered as recommended. Q3: DXF logos
+only in 0.2.2; PNG/JPEG image support comes in 0.4.0.
+
+Still the owner's check on the PR: the house block on the sample project beside `dev`, and the editor beside
 board 3.05.
