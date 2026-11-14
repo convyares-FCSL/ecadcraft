@@ -3069,7 +3069,71 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             _ => return None,
         }
     }
+    out.extend(located_tag_pages(doc, ops));
     Some(out)
+}
+
+/// The pages whose located tags `ops` (about to be committed on `doc`) can change, beyond the
+/// pages the ops name (QA gate of M1; the update map of design 024 §3.3 under O1, which redraws
+/// only touched pages). A device's location comes from its main symbol's context (its location
+/// box, else its page, else the project), and each of its symbols shows that location as a tag
+/// prefix where the symbol's own context differs. So:
+/// - a context change on page `p` (the page's `location`, or a location box on `p` added, removed,
+///   moved, reshaped or relabelled) touches the pages of every device with a symbol on `p`;
+/// - a device's symbol added, removed, moved or relinked touches the device's other pages (its main
+///   symbol, and with it its location, may have changed).
+///
+/// A project-level `location` change already touches every page (`None`). Bounded by the
+/// symbols on the pages in context and the representations of the devices moved.
+fn located_tag_pages(doc: &ecad_model::Document, ops: &[Op]) -> BTreeSet<PageId> {
+    let created: BTreeSet<ecad_model::ComponentId> = ops
+        .iter()
+        .filter_map(
+            |op| if let Op::CreateComponent { id, component } = op { crate::locations::is_box_component(component).then_some(*id) } else { None },
+        )
+        .collect();
+    let is_box = |c: ecad_model::ComponentId| created.contains(&c) || crate::locations::is_box(doc, c);
+    let (mut context, mut moved) = (BTreeSet::<PageId>::new(), BTreeSet::<ecad_model::ComponentId>::new());
+    let mut reps: Vec<&ecad_model::Representation> = Vec::new();
+    for op in ops {
+        match op {
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } if key == ecad_model::book::LOCATION_KEY => {
+                context.insert(*p);
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } if is_box(*c) => {
+                context.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => reps.push(rep),
+            Op::ModifyRepresentation { before, after, .. } => reps.extend([before, after]),
+            Op::AddItem { id, .. } | Op::RemoveItem { id, .. } | Op::ModifyItem { id, .. } => {
+                reps.extend(doc.representation_of_item(*id).map(|(_, r)| r));
+            }
+            _ => {}
+        }
+    }
+    for r in reps {
+        if let Subject::Component(c) = r.subject {
+            if is_box(c) {
+                context.insert(r.page);
+            } else {
+                moved.insert(c);
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    for p in &context {
+        for (_, r) in doc.representations_on(*p) {
+            if let Subject::Component(c) = r.subject
+                && !is_box(c)
+            {
+                moved.insert(c);
+            }
+        }
+    }
+    for c in moved {
+        out.extend(doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page));
+    }
+    out
 }
 
 /// The pages whose drawn objects `ops` add, change or remove (items and representations): where
