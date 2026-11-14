@@ -55,6 +55,58 @@ pub fn page_block(doc: &Document, page: PageId) -> Block {
     block_of(doc, &id, &sheet::sheet_of(doc, page), &sheet::margins_of(doc, page), &FrameText::of(doc))
 }
 
+/// What an op can change of the pages' grids and keep-out strips through their frames (brief 055,
+/// FP4): what the kept references and place indexes must follow (review of #110, 1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reach {
+    /// Not a frame op: the index's own rules apply.
+    NotFrame,
+    /// A frame op that changes no page's sheet, margins or block height (a weight, a colour, a
+    /// field moved): nothing to follow.
+    Unchanged,
+    /// The pages whose grid or keep-out may change.
+    Pages(std::collections::BTreeSet<PageId>),
+    /// Any page (the project's or the standard's frame choice, a standard switched).
+    Wide,
+}
+
+/// What a frame record sets that the grid and the keep-out read: its sheet, its margins and its
+/// block's height.
+fn geometry(r: Option<&ecad_model::StyleRecord>) -> Option<(Option<String>, Option<String>, Option<u64>)> {
+    let r = r?;
+    let h = r.title_block().and_then(TitleBlockLayout::height).map(f64::to_bits);
+    Some((r.field(sheet::FRAME_SHEET_FIELD).map(str::to_string), r.field(sheet::FRAME_MARGINS_FIELD).map(str::to_string), h))
+}
+
+/// What `op` reaches through the frames (see [`Reach`]). `doc` is the state the op applies to or
+/// came from; callers that see both states call it with each. Bounded: a frame record's change
+/// walks the pages once.
+pub fn frame_reach(doc: &Document, op: &ecad_model::Op) -> Reach {
+    use ecad_model::{ObjectRef, Op};
+    match op {
+        Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == sheet::FRAME_STYLE_KEY || key == sheet::TITLE_BLOCK_KEY => {
+            Reach::Pages([*p].into())
+        }
+        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == sheet::FRAME_STYLE_KEY => Reach::Wide,
+        Op::SetStandard { before, after } if before != after => Reach::Wide,
+        Op::SetStyle { catalogue, id, before, after, .. } if catalogue == sheet::FRAME_CATALOGUE => {
+            match (geometry(before.as_ref()), geometry(after.as_ref())) {
+                (Some(a), Some(b)) if a == b => Reach::Unchanged,
+                // A frame made or deleted: a choice naming it starts or stops resolving.
+                (None, _) | (_, None) => Reach::Wide,
+                _ => Reach::Pages(
+                    doc.page_order
+                        .iter()
+                        .copied()
+                        .filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id)
+                        .collect(),
+                ),
+            }
+        }
+        _ => Reach::NotFrame,
+    }
+}
+
 /// `A3`, or `594×420`: how a field bound to `print:sheet` names a sheet.
 pub fn sheet_name(spec: &SheetSpec) -> String {
     spec.preset_name().map_or_else(|| format!("{}×{}", spec.width, spec.height), str::to_string)

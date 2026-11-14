@@ -337,3 +337,123 @@ fn a_dxf_title_block_imports_at_full_size() {
     let e = h.run("titleblockimport", json!({"dxf": dxf(&big, &[]), "sheet": "A3"})).unwrap_err();
     assert_eq!(e, "The drawing is 260 × 200 mm; the block area of A3 is 400 × 140 mm. Scale it in the DXF first.");
 }
+
+/// The texts drawn on `page` now (the kept references as shown, not a fresh derivation).
+fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
+    h.activate(page);
+    h.s.doc()
+        .unwrap()
+        .model
+        .iter()
+        .filter(|e| e.common.layer != frame::LAYER)
+        .filter_map(|e| match &e.kind {
+            EntityKind::Text(t) => Some(t.value.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The texts a fresh derivation puts on `page` (contact references and tables, brief 025).
+fn fresh_xref_texts(h: &mut H, page: PageId) -> Vec<String> {
+    let doc = h.doc();
+    ecad_cadcraft::xref::parts_on_page(&doc, page)
+        .into_iter()
+        .filter_map(|p| match p.shape {
+            ecad_cadcraft::xref::Shape::Text { value, .. } => Some(value),
+            ecad_cadcraft::xref::Shape::Line(..) => None,
+        })
+        .collect()
+}
+
+/// Review of #110, 1: a frame decides its pages' grids (FP4), so changing the project's frame to
+/// an A2 frame, or a frame's own sheet, re-traces the contact references through the update map:
+/// each page shows what a fresh derivation says.
+#[test]
+fn references_follow_the_frames_sheet() {
+    let mut h = H::new(0x055A);
+    let coils = h.first_page();
+    h.run("place", json!({"symbol": "coil", "at": [330, 150], "tag": "K1"})).unwrap();
+    let contacts: PageId = crate::common::id(&h.run("newpage", json!({"title": "Contacts"})).unwrap(), "page");
+    h.activate(contacts);
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "tag": "K1"})).unwrap();
+    let before = fresh_xref_texts(&mut h, contacts);
+    assert!(!before.is_empty(), "the contact names its coil's place");
+    let check = |h: &mut H, what: &str| {
+        for p in [coils, contacts] {
+            let want = fresh_xref_texts(h, p);
+            let shown = drawn_texts(h, p);
+            for t in &want {
+                assert!(shown.contains(t), "{what}, page {p:?}: {t} not drawn; drawn: {shown:?}");
+            }
+        }
+    };
+    let id = new_frame(&mut h, "A2");
+    h.activate(contacts);
+    h.run("setdefault", json!({"key": "print.frame.style", "level": "project", "value": id})).unwrap();
+    assert_ne!(fresh_xref_texts(&mut h, contacts), before, "the A2 zones differ from the A3 ones");
+    check(&mut h, "A2 frame");
+    // A frame's own sheet changed in place reaches its pages too.
+    h.activate(contacts);
+    h.run("titleblock", json!({"id": id, "fields": {"sheet": "A1"}})).unwrap();
+    check(&mut h, "A1 sheet");
+    h.check();
+}
+
+/// Review of #110, 2: switching one standard for another redraws the frame.
+#[test]
+fn a_standard_switch_redraws_the_frame() {
+    let page = PageId(0);
+    let a = ecad_model::StandardHeader { id: ecad_model::StandardId(1), name: "A".into(), based_on: "iec".into(), origin: None };
+    let b = ecad_model::StandardHeader { id: ecad_model::StandardId(2), name: "B".into(), based_on: "iec".into(), origin: None };
+    let doc = ecad_model::Document::default();
+    let shown = FrameInput::of(&doc, page, &Book::of(&doc));
+    let op = ecad_model::Op::SetStandard { before: Some(a), after: Some(b) };
+    assert!(frame::touches(&[op], page, &shown));
+}
+
+/// Review of #110, 1: the update maps of the cable references and the Devices list follow a
+/// frame choice and a frame's sheet, margins or block height; a frame's weight changes none.
+#[test]
+fn the_update_maps_follow_frame_choices_and_frame_geometry() {
+    use ecad_cadcraft::{device_list, references};
+    use ecad_model::{ObjectRef, Op};
+    let mut h = H::new(0x055B);
+    let page = h.first_page();
+    for y in [0.0, 5.0] {
+        h.run("wire", json!({"points": [[60.0, y], [380.0, y]]})).unwrap();
+    }
+    let c1: ecad_model::CableId = crate::common::id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 12], "tag": "C1"})).unwrap(), "cable");
+    h.run("cableref", json!({"cable": c1.hex(), "at": [380, 5]})).unwrap();
+    let coil: ecad_model::ComponentId =
+        crate::common::id(&h.run("place", json!({"symbol": "coil", "at": [200, 150], "tag": "K1"})).unwrap(), "component");
+    let id = new_frame(&mut h, "A2");
+    let doc = h.doc();
+    let choice = |object| Op::SetProperty { object, key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
+    // The project's frame: every cable, every place.
+    assert_eq!(references::cables_touched(&doc, &[choice(ObjectRef::Project)]), None);
+    assert!(device_list::devices_touched(&doc, &[choice(ObjectRef::Project)]).pages);
+    // A page's frame or borrowed block: that page's cables and devices.
+    for key in ["print.frame.style", "title_block"] {
+        let op = Op::SetProperty { object: ObjectRef::Page(page), key: key.into(), before: None, after: Some(id.clone()) };
+        assert!(references::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
+        assert!(device_list::devices_touched(&doc, &[op]).components.contains(&coil), "{key}");
+    }
+    // A frame record: its sheet reaches its pages; its weight reaches nothing.
+    let own = ecad_model::StyleRef::parse(&id).unwrap();
+    let rec = doc.styles.get("frame").and_then(|m| m.get(&own)).cloned().unwrap();
+    let set = |after: ecad_model::StyleRecord| Op::SetStyle {
+        layer: ecad_model::StyleLayer::Project,
+        catalogue: "frame".into(),
+        id: own.clone(),
+        before: Some(rec.clone()),
+        after: Some(after),
+    };
+    let mut heavier = rec.clone();
+    heavier.fields.insert("border_weight".into(), "0.7".into());
+    assert_eq!(references::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
+    let mut a1 = rec.clone();
+    a1.fields.insert("sheet".into(), "A1".into());
+    let mut used = doc.clone();
+    used.properties.insert("print.frame.style".into(), id.clone());
+    assert!(references::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
+}

@@ -1675,6 +1675,21 @@ impl Scope {
                 }
                 _ => {}
             }
+            // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
+            // area above the block, so its pages' devices, tables and arrows follow it.
+            match crate::title_block::frame_reach(doc, op) {
+                crate::title_block::Reach::Pages(ps) => {
+                    for p in ps {
+                        self.devices.extend(idx.devices_on(doc, p));
+                        self.names.extend(crate::continuations::names_on(doc, idx, p));
+                    }
+                }
+                crate::title_block::Reach::Wide => {
+                    self.wide = true;
+                    self.arrows_wide = true;
+                }
+                crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
+            }
             // Brief 049: what continuation arrows the op could change.
             match op {
                 Op::SetProperty { object: ObjectRef::Page(p), key, .. }

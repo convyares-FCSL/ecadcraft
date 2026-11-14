@@ -258,7 +258,9 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         // look and its texts' styles).
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
         Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text",
-        Op::SetStandard { before, after } => before.is_none() != after.is_none(),
+        // Review of #110, 2: switching one standard for another may change its frame records and
+        // its `print.frame.style`.
+        Op::SetStandard { before, after } => before != after,
         // Brief 055 (design 055 §10.1): a project key the block's fields read (its bound key
         // set), the defaults pages inherit, and the revision keys; any other key redraws nothing.
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
