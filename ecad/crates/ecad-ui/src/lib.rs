@@ -7,6 +7,7 @@
 //! - [`prim`]: the nine primitives (button, icon button, pill, chip, badge, field, segmented
 //!   control, key cap, row) and [`prim::read_value`], [`prim::provisional`].
 //! - [`icons`]: the shell's icons, painted in code.
+//! - [`panel`]: a right-hand panel's section headers, value rows, status pill and rules.
 //! - [`showcase`]: one page drawing every primitive in every state (for screenshots).
 //! - [`table`]: the one table every manager uses (brief 039): sort, filter, group, multi-select,
 //!   inline edit, go-to, change tint, CSV; virtualised.
@@ -20,6 +21,7 @@
 
 pub mod fonts;
 pub mod icons;
+pub mod panel;
 pub mod prim;
 pub mod showcase;
 pub mod style;

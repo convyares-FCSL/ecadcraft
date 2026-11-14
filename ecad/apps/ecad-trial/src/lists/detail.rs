@@ -9,9 +9,10 @@
 //! **Update map.** Nothing of its own: it shows what the tab's view holds this frame.
 
 use ecad_model::{ComponentId, PageId, Pt, RepresentationId};
+use ecad_ui::panel;
 use ecad_ui::prim::{self, Tone};
-use ecad_ui::tokens::{line, radius, space, ui_type};
-use eframe::egui::{self, Rect, Stroke, pos2, vec2};
+use ecad_ui::tokens::{space, ui_type};
+use eframe::egui::{self, Rect, vec2};
 
 use crate::Trial;
 use crate::shell::ListsView;
@@ -437,39 +438,12 @@ fn detail(t: &Trial) -> Option<Detail> {
 
 /// One value row: the label, the value (boxed when set here), its hint at the right.
 fn prop_row(ui: &mut egui::Ui, p: &Prop) {
-    let s = ecad_ui::SHELL;
-    let h = ecad_ui::tokens::size::CONTROL;
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h + space::XS), egui::Sense::hover());
-    let painter = ui.painter();
-    let label_w = 96.0;
-    let small = ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL);
-    let body = ecad_ui::fonts::font(ui.ctx(), ui_type::BODY);
-    painter.text(pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, p.label, small.clone(), ecad_ui::color(s.text_2));
-    let value = Rect::from_min_max(pos2(rect.left() + label_w, rect.top() + space::XXS), pos2(rect.right(), rect.bottom() - space::XXS));
-    if p.set {
-        painter.rect_filled(value, ecad_ui::style::corner(radius::FIELD), ecad_ui::color(s.raised));
-    }
-    let ink = if p.later.is_some() {
-        s.text_3
-    } else if p.set {
-        s.text
-    } else {
-        s.text_2
+    let kind = match (p.later.is_some(), p.set) {
+        (true, _) => panel::ValueKind::Later,
+        (false, true) => panel::ValueKind::Set,
+        (false, false) => panel::ValueKind::Read,
     };
-    let hint_w = if p.hint.is_empty() {
-        0.0
-    } else {
-        let g = painter.layout_no_wrap(p.hint.clone(), small.clone(), ecad_ui::color(s.text_3));
-        let w = g.size().x;
-        painter.galley(pos2(value.right() - space::M - w, value.center().y - g.size().y / 2.0), g, ecad_ui::color(s.text_3));
-        w + space::M
-    };
-    let room = (value.width() - 2.0 * space::M - hint_w).max(0.0);
-    let g = ecad_ui::table::cells::fitted(ui, &p.value, ui_type::BODY, ecad_ui::color(ink), room);
-    let _ = body;
-    ui.painter().galley(pos2(value.left() + space::M, value.center().y - g.size().y / 2.0), g, ecad_ui::color(ink));
-    let label = format!("{}: {}", p.label, p.value);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
+    let resp = panel::value_row(ui, p.label, &p.value, &p.hint, kind);
     if let Some(why) = p.later {
         resp.on_hover_text(why);
     }
@@ -477,30 +451,18 @@ fn prop_row(ui: &mut egui::Ui, p: &Prop) {
 
 /// A section's head: its title and fold mark, its hint at the right. Returns whether it is open.
 fn section_head(ui: &mut egui::Ui, id: egui::Id, title: &str, hint: &str) -> bool {
-    let s = ecad_ui::SHELL;
     let open_id = id.with("open");
     let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(true);
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), egui::Sense::click());
+    let resp = panel::section_header(ui, open, title, hint);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, title));
     if resp.clicked() {
         open = !open;
         ui.data_mut(|d| d.insert_temp(open_id, open));
     }
-    let icon = Rect::from_center_size(pos2(rect.left() + 6.0, rect.center().y), vec2(12.0, 12.0));
-    ecad_ui::icons::paint(ui.painter(), icon, if open { ecad_ui::Icon::ChevronDown } else { ecad_ui::Icon::ChevronRight }, ecad_ui::color(s.text_2));
-    let font = ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
-    ui.painter().text(pos2(icon.right() + space::S, rect.center().y), egui::Align2::LEFT_CENTER, title, font, ecad_ui::color(s.text));
-    if !hint.is_empty() {
-        let small = ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL);
-        ui.painter().text(pos2(rect.right(), rect.center().y), egui::Align2::RIGHT_CENTER, hint, small, ecad_ui::color(s.text_3));
+    if open {
+        ui.add_space(panel::BODY_GAP);
     }
     open
-}
-
-fn rule(ui: &mut egui::Ui) {
-    let s = ecad_ui::SHELL;
-    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), space::M), egui::Sense::hover());
-    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
 }
 
 /// What the panel asks the trial for.
@@ -523,6 +485,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let writable = t.project_writable();
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
+    let full = rect.x_range();
+    let rule = |ui: &mut egui::Ui| panel::rule(ui, full);
     crate::shell::in_rect(ui, rect.shrink2(vec2(space::L, space::M)), "ecad.project.detail", |ui| {
         egui::ScrollArea::vertical().id_salt("ecad.project.detail.scroll").auto_shrink([false, false]).show(ui, |ui| {
             // The head: the name, where it is, the go-to.
@@ -541,10 +505,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             ui.add_space(space::S);
             // Its own checks.
             if d.checks.is_empty() {
-                prim::pill(ui, &format!("\u{2713} No checks on {}", d.title), Tone::Ok);
+                let words = format!("No checks on {}", d.title);
+                panel::status_pill(ui, Tone::Ok, &words, &format!("\u{2713} {words}"));
             } else {
                 for (c, tone) in &d.checks {
-                    prim::pill(ui, c, *tone);
+                    panel::status_pill(ui, *tone, c, c);
                 }
             }
             ui.add_space(space::S);

@@ -36,9 +36,12 @@ pub const PAGE_WELL: f32 = 880.0;
 pub const ICON_BUTTON: f32 = 28.0;
 /// Icon grid: icons are drawn on a 16 px grid ([`crate::line::ICON_STROKE_PX`]).
 pub const ICON: f32 = 16.0;
+/// The label column of a panel's value rows (inspector and Project panel, UI rev 4 boards 2.03,
+/// 2.05, 2.06).
+pub const LABEL_COLUMN: f32 = 96.0;
 
 /// Every token as `(name, px)`, names as in `tokens.md`.
-pub const ALL: [(&str, f32); 18] = [
+pub const ALL: [(&str, f32); 19] = [
     ("size.control_small", CONTROL_SMALL),
     ("size.control", CONTROL),
     ("size.search_field", SEARCH_FIELD),
@@ -57,4 +60,5 @@ pub const ALL: [(&str, f32); 18] = [
     ("size.page_well", PAGE_WELL),
     ("size.icon_button", ICON_BUTTON),
     ("size.icon", ICON),
+    ("size.label_column", LABEL_COLUMN),
 ];
