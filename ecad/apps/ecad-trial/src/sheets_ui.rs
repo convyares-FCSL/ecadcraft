@@ -484,7 +484,7 @@ impl ProjectProps {
                     ui.label(RichText::new("References").small().strong());
                     ui.add_enabled_ui(!ro, |ui| {
                         ui.horizontal(|ui| {
-                            for (word, shown) in [("page-zone", "105/B3"), ("page-column-row", "105-B-3"), ("page-column", "/105.B")] {
+                            for (word, shown) in [("page-zone", "105/B3"), ("page-column-row", "105-B-3"), ("page-column", "/105.3")] {
                                 if ui.radio(self.style == word, shown).clicked() {
                                     self.style = word.to_string();
                                 }

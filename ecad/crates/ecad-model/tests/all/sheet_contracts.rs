@@ -140,7 +140,7 @@ fn references_and_sheets_read_from_page_and_project() {
     // UI rev 3: rows lettered, columns numbered, and the zone's letter first in every style.
     assert_eq!(place.text(ecad_model::ReferenceStyle::PageZone), "105/D3");
     assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumnRow), "105-D-3");
-    assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumn), "/105.D");
+    assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumn), "/105.3", "the column: the current path");
     assert_eq!(ecad_model::ReferenceStyle::default(), ecad_model::ReferenceStyle::PageZone, "2/B5 for a new project");
     // A grid lettered across the top (a project saved with `letters numbers`) reads as before.
     let mut old = ecad_model::sheet::SheetSpec::default();

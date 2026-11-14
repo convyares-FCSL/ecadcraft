@@ -206,13 +206,14 @@ pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 pub const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
 /// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08; UI round 2
-/// and rev 3): `105/B3`, `105-B-3` or `/105.B`; `?` (`/?`) when the place cannot be located.
+/// and rev 3): `105/B3`, `105-B-3` or `/105.3`; `?` (`/?`) when the place cannot be located.
 ///
 /// # Semantics
 /// The zone's **letter comes first**: on the default grid (rows lettered, columns numbered) the
 /// row, then the column; on a grid lettered across the top (a project saved before UI rev 3, or a
 /// sheet spec saying `letters numbers`) the column, then the row, as before (`105-C-4`). The
-/// page-and-one-zone style names the lettered axis.
+/// page-and-column style names the column whatever its label (`/105.3` on the default grid): the
+/// current path it exists to name (review of PR #96, finding 2).
 pub fn place_text(style: ReferenceStyle, page: &str, column: Option<&str>, row: Option<&str>) -> String {
     let lettered = |l: &str| l.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
     // Rows lettered and columns not: the row is the zone's letter.
@@ -222,7 +223,6 @@ pub fn place_text(style: ReferenceStyle, page: &str, column: Option<&str>, row: 
         (ReferenceStyle::PageZone, Some(c), Some(r)) => format!("{page}/{c}{r}"),
         (ReferenceStyle::PageColumnRow, Some(c), Some(r)) if rows_first => format!("{page}-{r}-{c}"),
         (ReferenceStyle::PageColumnRow, Some(c), Some(r)) => format!("{page}-{c}-{r}"),
-        (ReferenceStyle::PageColumn, Some(_), Some(r)) if rows_first => format!("/{page}.{r}"),
         (ReferenceStyle::PageColumn, Some(c), _) => format!("/{page}.{c}"),
         _ => unlocated(style).to_string(),
     }

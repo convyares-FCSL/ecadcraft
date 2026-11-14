@@ -11,8 +11,11 @@ full dark"). Folded into `docs/quick-start.md` at the phase-end tidy-up.
   2: "zones A–F × 1–8"). Before, it was the other way round.
 - **References read `2/B5`**: page, then the zone, letter first (contact tables, cross-references,
   cable and continuation references, check rows). This is the new default reference style,
-  `page-zone`. Project properties still offer `105-B-3` and `/105.B` (the lettered zone); both now
-  put the letter first too.
+  `page-zone`. Project properties still offer `105-B-3` (the letter first too) and `/105.3` (the
+  column).
+- **The page-column wire numbering scheme** separates a numbered column from the page: `1.12.`,
+  so page 1 column 12 and page 11 column 2 never share a sequence. A grid lettered across the top
+  keeps `1A.`.
 - **Projects saved before.** A project that kept the default A3 grid stored no grid and no
   reference style, so it opens with the new grid and `2/B5`. A project with another sheet (A2,
   custom) stored its labels and keeps its old grid, with the letter still first (`105/C4`).

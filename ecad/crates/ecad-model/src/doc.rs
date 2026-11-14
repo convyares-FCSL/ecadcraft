@@ -431,7 +431,7 @@ impl ContactMirror {
 pub enum ReferenceStyle {
     /// `105-B-3`: page number, then the zone, letter first.
     PageColumnRow,
-    /// `/105.B`: page number and the lettered zone.
+    /// `/105.3`: page number and column.
     PageColumn,
     /// `105/B3`: page number, then the zone, letter first (UI round 2 and rev 3; the default of a
     /// new project).
