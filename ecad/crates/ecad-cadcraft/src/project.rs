@@ -2048,6 +2048,8 @@ impl Project {
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
+        // One sheet for the projection, any rebuild and the check (see `look::pin_sheet`).
+        let _sheet = crate::look::pin_sheet();
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
         let Some(current) = pg.doc(uid).map(|st| st.doc.clone()) else { return };

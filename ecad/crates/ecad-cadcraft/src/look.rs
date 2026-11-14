@@ -1172,6 +1172,25 @@ pub fn projection_sheet() -> &'static ecad_tokens::Sheet {
     PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
 }
 
+/// Keeps the sheet [`pin_sheet`] read for this thread until it is dropped.
+#[derive(Debug)]
+pub struct SheetPin(Option<&'static ecad_tokens::Sheet>);
+
+impl Drop for SheetPin {
+    fn drop(&mut self) {
+        PROJECTION_SHEET.with(|c| c.set(self.0));
+    }
+}
+
+/// Read the sheet once and keep it for this thread until the pin drops: a page's projection and
+/// its check then agree on every colour. Without it, a sheet switch on another thread
+/// (`canvassheet`, which is process-wide) between the projection and the check made a rebuilt
+/// page fail its check and become unavailable (CI on PR 88, `history_ui`).
+pub fn pin_sheet() -> SheetPin {
+    let s = projection_sheet();
+    SheetPin(PROJECTION_SHEET.with(|c| c.replace(Some(s))))
+}
+
 /// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
 /// the screen shows).
 pub fn with_paper<R>(f: impl FnOnce() -> R) -> R {
