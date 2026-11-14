@@ -3075,13 +3075,15 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
 
 /// The pages whose located tags `ops` (about to be committed on `doc`) can change, beyond the
 /// pages the ops name (QA gate of M1; the update map of design 024 §3.3 under O1, which redraws
-/// only touched pages). A device's location comes from its main symbol's context (its location
+/// only touched pages). A device's location comes from its go-to symbol's context (its head, else
+/// its first symbol in book order: `locations::main_rep`; its location
 /// box, else its page, else the project), and each of its symbols shows that location as a tag
 /// prefix where the symbol's own context differs. So:
 /// - a context change on page `p` (the page's `location`, or a location box on `p` added, removed,
 ///   moved, reshaped or relabelled) touches the pages of every device with a symbol on `p`;
-/// - a device's symbol added, removed, moved or relinked touches the device's other pages (its main
-///   symbol, and with it its location, may have changed).
+/// - a device's symbol added, removed, moved or relinked touches the device's other pages (its go-to
+///   symbol, and with it its location, may have changed: a coil placed after its contacts becomes
+///   the head).
 ///
 /// A project-level `location` change already touches every page (`None`). Bounded by the
 /// symbols on the pages in context and the representations of the devices moved.

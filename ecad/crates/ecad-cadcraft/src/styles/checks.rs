@@ -86,6 +86,8 @@ fn words(doc: &Document, key: &str, value: &str, whose: &str) -> String {
 /// Every style row of `doc`.
 pub fn rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
+    // One drawing order for the rows' go-to places: the book is built at most once.
+    let mut places = ecad_model::numbering::Places::new(doc);
     // Old 031 keys: one row per kind found.
     for (field, text) in OLD_KEYS {
         if doc.properties.keys().any(|k| is_old_text_key(k, field)) {
@@ -144,7 +146,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             if let ObjectRef::Conductor(c) = o
                 && dangling(doc, "wire", value)
             {
-                let page = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
+                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
                 out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Conductor(c), which: String::new(), fix: None });
             }
             continue;
@@ -155,11 +157,11 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         }
         let (object, page, whose) = match o {
             ObjectRef::Component(c) => {
-                let page = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map(|(p, _)| p);
+                let page = crate::reps::goto_place_in(&mut places, c).map(|(p, _)| p);
                 (Object::Component(c), page, crate::devices::tag_words(doc, c))
             }
             ObjectRef::Conductor(c) => {
-                let page = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
+                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
                 (Object::Conductor(c), page, "Wire".to_string())
             }
             ObjectRef::Page(p) => (Object::None, Some(p), format!("Page {}", ecad_model::book::page_number(doc, p))),

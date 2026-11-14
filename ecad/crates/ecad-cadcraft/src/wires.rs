@@ -580,7 +580,7 @@ pub fn plan_tagless(
             subject: Subject::Component(component),
             page,
             form: Form::Symbol,
-            role: "main".into(),
+            role: s.key.into(),
             items: vec![item],
             connection_points: BTreeMap::new(),
         },

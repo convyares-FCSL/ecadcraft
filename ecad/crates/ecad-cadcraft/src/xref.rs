@@ -326,8 +326,8 @@ pub enum Class {
     Head,
     /// A symbol with contact poles.
     Child,
-    /// Brief 044 (design 044 §7): a connector half's main symbol (a pin pair that is both
-    /// halves' main symbol: `Both`).
+    /// Brief 044 (design 044 §7, design 052 §3.4): a connector half's whole-half symbol. A
+    /// pin-only half has none.
     Half(crate::symbols::Side),
     /// Brief 044: any other connector symbol, by the side it draws.
     Pin(crate::symbols::Side),
@@ -362,10 +362,13 @@ pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
 }
 
 /// The class of a component representation by its symbol alone (a second head is made `Other`
-/// by [`device`]).
+/// by [`device`]): a head by its type ([`crate::reps::rep_type`]), a child when its symbol carries
+/// poles.
 fn raw_class(doc: &Document, r: &Representation) -> Class {
+    if crate::reps::rep_type(doc, r) == crate::reps::RepType::Head {
+        return Class::Head;
+    }
     match starter_of(doc, r) {
-        Some(s) if is_head(s) => Class::Head,
         Some(s) if !poles_of(s).is_empty() => Class::Child,
         _ => Class::Other,
     }
@@ -389,7 +392,8 @@ pub struct DrawnPole {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
     pub component: ComponentId,
-    /// Its head (the lowest-ID head symbol).
+    /// Its head ([`crate::reps::head`]: the first head symbol in book order, then top-left; never
+    /// by ID or placement order, design 052 §3.4).
     pub head: Option<RepresentationId>,
     /// Its children, in ID order.
     pub children: Vec<RepresentationId>,
@@ -435,24 +439,21 @@ pub fn terminal_points(doc: &Document, c: ComponentId, r: &Representation) -> Ve
 
 /// Device `c` as the reference rule sees it: O(its representations).
 pub fn device(doc: &Document, c: ComponentId) -> Device {
-    let mut head = None;
+    let head = crate::reps::head(doc, c);
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Component(c)) {
-        match raw_class(doc, r) {
-            Class::Head if head.is_none() => head = Some(rid),
-            Class::Child => {
-                children.push(rid);
-                let Some(s) = starter_of(doc, r) else { continue };
-                let kinds = poles_of(s);
-                let pts = crate::devices::shown_terminals(doc, c, r);
-                let at = anchor(doc, r);
-                for (i, (kind, power)) in kinds.iter().enumerate() {
-                    let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
-                    poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
-                }
-            }
-            _ => {}
+        if raw_class(doc, r) != Class::Child {
+            continue;
+        }
+        children.push(rid);
+        let Some(s) = starter_of(doc, r) else { continue };
+        let kinds = poles_of(s);
+        let pts = crate::devices::shown_terminals(doc, c, r);
+        let at = anchor(doc, r);
+        for (i, (kind, power)) in kinds.iter().enumerate() {
+            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
+            poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
         }
     }
     Device { component: c, head, children, poles }
@@ -474,10 +475,7 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
         Subject::Component(c) => match raw_class(doc, r) {
-            Class::Head => {
-                let first = doc.representations_of(Subject::Component(c)).find(|(_, x)| raw_class(doc, x) == Class::Head).map(|(id, _)| id);
-                Some((Group::Device(c), if first == Some(rid) { Class::Head } else { Class::Other }))
-            }
+            Class::Head => Some((Group::Device(c), if crate::reps::head(doc, c) == Some(rid) { Class::Head } else { Class::Other })),
             Class::Child => Some((Group::Device(c), Class::Child)),
             _ => None,
         },
