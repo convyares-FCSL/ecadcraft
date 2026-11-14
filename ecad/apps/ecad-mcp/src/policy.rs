@@ -72,6 +72,8 @@ pub const READ_COMMANDS: &[&str] = &[
     "defaults",
     "pagetexts",
     "hiddentext",
+    // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
+    "symbolimpact",
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",

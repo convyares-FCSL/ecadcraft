@@ -105,6 +105,15 @@ pub enum Icon {
     // 044
     /// Connector: a socket's cup over a plug's pin.
     Connector,
+    // 048
+    /// New symbol: a symbol box with a plus at its corner.
+    NewSymbol,
+    /// Connection point (the builder's C tool): a ring on a lead.
+    ConnectionPoint,
+    /// Text slot (the builder's S tool): a dashed box with an anchor dot.
+    TextSlot,
+    /// Origin (the builder's O tool): a cross in a ring.
+    Origin,
     // UI rev 3
     /// Book: an open book (UI rev 3: the Book panel).
     Book,
@@ -136,7 +145,7 @@ pub enum Icon {
     Plus,
     /// Draw tools: a pencil (UI rev 3: the Draw group).
     Pencil,
-    /// Device tools: a body on a lead, a connection point at each end (UI rev 3: the Device group).
+    /// Device tools: a body on a lead (UI rev 3: the Device group).
     Pin,
     /// Terminal tools: a lead through a ring with a slash (UI rev 3: the Terminal group).
     TerminalPin,
@@ -152,7 +161,7 @@ pub enum Icon {
 
 impl Icon {
     /// Every icon, in declaration order.
-    pub const ALL: [Icon; 68] = [
+    pub const ALL: [Icon; 72] = [
         Icon::Select,
         Icon::Wire,
         Icon::Place,
@@ -202,6 +211,11 @@ impl Icon {
         Icon::Eye,
         // 044
         Icon::Connector,
+        // 048
+        Icon::NewSymbol,
+        Icon::ConnectionPoint,
+        Icon::TextSlot,
+        Icon::Origin,
         // UI rev 3
         Icon::Book,
         Icon::Plc,
@@ -278,6 +292,11 @@ impl Icon {
             Icon::Eye => "Show or hide",
             // 044
             Icon::Connector => "Connector",
+            // 048
+            Icon::NewSymbol => "New symbol",
+            Icon::ConnectionPoint => "Connection point",
+            Icon::TextSlot => "Text slot",
+            Icon::Origin => "Origin",
             // UI rev 3
             Icon::Book => "Book",
             Icon::Plc => "PLC",

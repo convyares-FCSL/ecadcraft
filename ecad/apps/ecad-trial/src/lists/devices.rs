@@ -162,6 +162,10 @@ impl TableSource for DevicesSource {
                         names.push(&s.name);
                     }
                 }
+                // Brief 048 (design §8.4): a copy whose project symbol has a newer version.
+                if e.symbols.iter().any(|s| s.update) {
+                    return Cell::Badge(format!("{} · update available", names.join(", ")), Tone::Provisional);
+                }
                 Cell::read(names.join(", "))
             }
             PAGES => Cell::Read { text: e.symbols.iter().map(|s| s.place.as_str()).collect::<Vec<_>>().join(", "), go: !e.symbols.is_empty() },

@@ -58,6 +58,7 @@ pub mod debugger;
 pub mod developer;
 pub mod devices_panel;
 pub mod history_panel;
+pub mod library;
 pub mod lists;
 pub mod merge_dialog;
 pub mod outputs_ui;
@@ -380,6 +381,8 @@ pub struct Trial {
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
     pub search: search::SymbolSearch,
+    /// Brief 048: the Library workspace (the browser, or the symbol builder).
+    pub library: library::Library,
     /// Brief 024: the Reports window and the Print Book dialog, while open.
     pub reports: Option<outputs_ui::Reports>,
     pub print_book: Option<outputs_ui::PrintBook>,
@@ -548,6 +551,7 @@ impl Trial {
             home: ecad_cadcraft::home(),
             lwdisplay_set: None,
             search: search::SymbolSearch::default(),
+            library: library::Library::default(),
             reports: None,
             print_book: None,
             release: None,
@@ -1222,6 +1226,7 @@ impl Trial {
         let text = match pick {
             search::Pick::Symbol(k) => k.to_string(),
             search::Pick::Device(tag) => tag,
+            search::Pick::Project(k) => k,
             // Brief 041: pages and actions are run by the shell, not placed.
             search::Pick::Page(_) | search::Pick::Action(_) => return Ok(()),
         };

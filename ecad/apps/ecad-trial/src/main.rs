@@ -75,6 +75,10 @@ impl eframe::App for App {
         if let Some(v) = views {
             storage.set_string(ecad_trial::shell::state::VIEWS_KEY, v);
         }
+        // Brief 048 (design 048 §3.2): the symbol builder's drafts.
+        if let Some(d) = self.0.library.to_save() {
+            storage.set_string(ecad_trial::library::draft::DRAFTS_KEY, d);
+        }
     }
     fn auto_save_interval(&self) -> std::time::Duration {
         // Saved on change, debounced to once a second (design 038 §5.4).
@@ -161,6 +165,7 @@ fn main() -> eframe::Result {
             trial.shell.state.cad_chrome = cad_ui;
             let stored = |k: &str| cc.storage.and_then(|s| s.get_string(k));
             trial.shell.load(stored(ecad_trial::shell::state::SHELL_KEY).as_deref(), stored(ecad_trial::shell::state::VIEWS_KEY).as_deref());
+            trial.library.load(stored(ecad_trial::library::draft::DRAFTS_KEY).as_deref());
             // Brief 035: agent access on for this run (not remembered).
             if let Some(port) = control {
                 trial.agent.control_flag(port);

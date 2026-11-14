@@ -25,6 +25,7 @@ use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, Project
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
 /// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `connector.` (brief 044),
+/// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047) and `continuation.` (brief 049). Keys already approved before
 /// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047) and `plc.` (brief 045). Keys already approved before
 /// the registry keep their names; the key-rule test reads this one list.
 /// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
@@ -42,11 +43,13 @@ pub const AREAS: &[&str] = &[
     "connector",
     "strippage",
     "bom",
+    "continuation",
     "plc",
 ];
 
 pub mod bom;
 pub mod connectors;
+pub mod continuations;
 pub mod plc;
 pub mod print;
 pub mod strip_pages;
@@ -127,6 +130,9 @@ pub enum Source {
     Object,
     /// The symbol's key on its component (`text.<rep>.<rest>`).
     Symbol,
+    /// A project symbol's own value in its definition (brief 048, FP6): the built-in of a
+    /// `symbol.<key>.*` entry of a symbol made in the project ([`symbols::resolve_for`]).
+    Definition,
 }
 
 impl Source {
@@ -139,6 +145,7 @@ impl Source {
             Source::Page => "page",
             Source::Object => "object",
             Source::Symbol => "symbol",
+            Source::Definition => "definition",
         }
     }
 }
@@ -319,6 +326,8 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         connectors::ENTRIES,
         strip_pages::ENTRIES,
         bom::ENTRIES,
+        symbols::BUILDER_ENTRIES,
+        continuations::ENTRIES,
         plc::ENTRIES,
     ]
     .into_iter()

@@ -665,6 +665,14 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
         let after = match key.as_str() {
             crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
             crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
+            // Brief 049: a caption, on continuation arrows only (each is checked).
+            crate::continuations::CAPTION_KEY => {
+                let mut out = None;
+                for c in &cs {
+                    out = crate::continuations::caption_value(doc, *c, value.as_deref())?;
+                }
+                out
+            }
             crate::strips::OFFER_KEY if cs.iter().any(|c| crate::strips::is_strip(doc, *c)) => crate::strips::offer_value(value.as_deref())?,
             // Brief 030: the same rule for every strip (a link's text depends on its strip).
             k if k.starts_with(crate::accessories::ACC_PREFIX) || k.starts_with(ecad_model::links::PREFIX) || crate::accessories::is_part_key(k) => {
@@ -1133,6 +1141,7 @@ pub fn builtin_coil() -> Definition {
             TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
         ],
+        ..Default::default()
     }
 }
 

@@ -15,6 +15,8 @@
 //! - the inspector at the right, a 56 px rail of its Device, Layout and Checks tabs when
 //!   collapsed ([`right`]), with the Text panel over it (Ctrl+/; [`text_panel`]);
 //! - the bottom bar: status, the page well and the view ([`status_bar`]);
+//! - brief 048's review drawer under the canvas, only while a symbol review or Compare shows
+//!   ([`drawer`]);
 //! - Settings, a full-window overlay opened from the project menu ([`crate::settings`], brief
 //!   042); its Developer section has the developer switch, which shows CADCraft's own interface
 //!   inside the main view (`--cad-ui`, `ui.cadchrome`).
@@ -27,6 +29,7 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod bar;
+pub mod drawer;
 pub mod intent;
 pub mod keys;
 pub mod layout;
@@ -239,7 +242,7 @@ fn fill(ui: &egui::Ui, rect: Rect, c: ecad_ui::tokens::Color) {
 }
 
 /// A child `Ui` filling `rect`.
-fn in_rect<R>(ui: &mut egui::Ui, rect: Rect, id: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+pub(crate) fn in_rect<R>(ui: &mut egui::Ui, rect: Rect, id: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.scope_builder(egui::UiBuilder::new().id_salt(id).max_rect(rect).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
         ui.set_clip_rect(rect);
         add(ui)
@@ -315,6 +318,8 @@ impl Trial {
         (self.developer.open, self.shell.state.text_panel) = (open, open);
         // The banner's slot while an agent is shown, unless the agent pill hid it (brief 043).
         let agent = self.agent.banner.as_ref().is_some_and(|b| !crate::agent::banner::hidden(ui.ctx(), &b.session));
+        // Brief 048: the review drawer shows while a review or Compare is open.
+        self.shell.state.review = self.drawer_review_tab().is_some();
         let slots = layout(ui.max_rect(), &self.shell.state, agent);
         self.shell.slots = Some(slots);
         // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
@@ -348,8 +353,12 @@ impl Trial {
         status_bar::show(self, ui, slots.status);
         left::show(self, ui, &slots);
         right::show(self, ui, &slots);
+        drawer::show(self, ui, &slots);
         if let Some(r) = slots.tool_strip {
-            tool_strip::show(self, ui, r);
+            match self.library.builder.as_mut().filter(|_| self.shell.state.workspace == Workspace::Library) {
+                Some(b) => crate::library::builder::strip(ui, r, b),
+                None => tool_strip::show(self, ui, r),
+            }
         }
         self.shell.frame_ms = cadcraft_ui_egui::now_ms() - t0;
         self.main_view(ui, &slots);
@@ -396,6 +405,9 @@ impl Trial {
         }
         if self.shell.state.workspace == Workspace::Lists {
             self.lists_view(ui, slots.main);
+        }
+        if self.shell.state.workspace == Workspace::Library {
+            self.library_view(ui, slots.main);
         }
     }
 
@@ -546,11 +558,9 @@ impl Trial {
             r.host = reports;
             r.hidden = reports.is_none();
         }
-        self.search.host = (w == Workspace::Library).then_some(slots.main);
-        if w == Workspace::Library {
-            self.shell.search_from_library |= !self.search.open;
-            self.search.open = true;
-        } else if std::mem::take(&mut self.shell.search_from_library) {
+        // Brief 048: the Library shows its own browser; the search (Ctrl+K) floats everywhere.
+        self.search.host = None;
+        if w != Workspace::Library && std::mem::take(&mut self.shell.search_from_library) {
             self.search.open = false;
         }
         let body = Rect::from_min_max(slots.main.min + egui::vec2(0.0, ecad_ui::tokens::size::PANEL_HEADER), slots.main.max);

@@ -478,6 +478,12 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     add(Node::Conductor(*c), &mut nets);
                 }
             }
+            // Brief 048: another definition may bridge other points.
+            Op::SetComponentDefinition { id, .. } => {
+                for (t, _) in doc.terminals_of(*id) {
+                    add(Node::Terminal(t), &mut nets);
+                }
+            }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 add(Node::Terminal(*id), &mut nets);
                 for (t, _) in doc.terminals_of(terminal.component) {

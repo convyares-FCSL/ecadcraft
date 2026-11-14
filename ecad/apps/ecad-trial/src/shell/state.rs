@@ -162,6 +162,14 @@ pub struct ShellState {
     pub cad_chrome: bool,
     /// Brief 040: the sheet the page is drawn on (`ui.sheet`), per person.
     pub sheet: crate::canvas::Sheet,
+    /// Brief 048: the Library shows the symbol builder (its tool strip, and the 380 px right
+    /// panel). View state, never stored.
+    #[serde(skip)]
+    pub builder: bool,
+    /// Brief 048: a symbol review or Compare is shown in the drawer under the canvas. View
+    /// state, set each frame, never stored.
+    #[serde(skip)]
+    pub review: bool,
 }
 
 impl Default for ShellState {
@@ -175,6 +183,8 @@ impl Default for ShellState {
             text_panel: false,
             cad_chrome: false,
             sheet: crate::canvas::Sheet::Paper,
+            builder: false,
+            review: false,
         }
     }
 }

@@ -464,8 +464,38 @@ pub struct TerminalDef {
     pub at: Pt,
 }
 
-/// A project-local copy of a library definition (§4.2).
+/// Where a device text of a placed copy goes, in the symbol's frame (brief 048, FP1; proposal
+/// §4.2's text slots). An anchor only: size and style come from the text styles.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextSlot {
+    /// The device text it places: one of [`TextSlot::TEXTS`], or `rating.<label>`.
+    pub text: String,
+    pub at: Pt,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub h: TextHAlign,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub v: TextVAlign,
+    /// Radians, counter-clockwise.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub rotation: f64,
+}
+
+impl TextSlot {
+    /// The device texts a slot may place (design 048 §2.3), besides `rating.<label>`.
+    pub const TEXTS: [&'static str; 8] = ["tag", "description", "rating", "part_number", "maker", "article_number", "function", "location"];
+
+    /// Whether `text` names a device text a slot may place.
+    pub fn is_known_text(text: &str) -> bool {
+        Self::TEXTS.contains(&text)
+            || text.strip_prefix("rating.").is_some_and(|l| !l.is_empty() && l.len() <= 64 && !l.chars().any(char::is_control))
+    }
+}
+
+/// The keys a definition's [`Definition::defaults`] may hold (brief 048, FP2; design §2.4).
+pub const DEFINITION_DEFAULT_KEYS: [&str; 7] = ["key", "prefix", "description", "rating", "join", "aliases", "family"];
+
+/// A project-local copy of a library definition (§4.2).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
@@ -478,6 +508,18 @@ pub struct Definition {
     /// `.s` and `.p`; [`crate::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<String>>,
+    /// Where the device texts of a placed copy go (brief 048, FP1). Empty for the starters, whose
+    /// anchors are catalogue code; left out of the file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub texts: Vec<TextSlot>,
+    /// The symbol's own default values (brief 048, FP2), keyed by [`DEFINITION_DEFAULT_KEYS`].
+    /// Empty for the starters; left out of the file when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub defaults: BTreeMap<String, String>,
+    /// The origin of the definition an edited copy came from (brief 048, FP4). Never followed by
+    /// the reader, so a cycle cannot loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<Origin>,
 }
 
 impl Definition {
@@ -691,6 +733,11 @@ impl Document {
     /// Components made from `definition`, in ID order.
     pub fn components_using(&self, definition: DefinitionId) -> Vec<ComponentId> {
         referrers(&self.index.definition_components, &definition).collect()
+    }
+
+    /// Symbol items placing `definition`, in ID order (brief 048: a definition's placed copies).
+    pub fn items_using(&self, definition: DefinitionId) -> Vec<ItemId> {
+        referrers(&self.index.definition_items, &definition).collect()
     }
 
     /// The representation an item belongs to, if any (DOC-05 allows at most one).

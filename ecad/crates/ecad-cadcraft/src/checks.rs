@@ -1417,6 +1417,13 @@ impl Scope {
                     self.components.insert(terminal.component);
                     node(self, Node::Terminal(*id));
                 }
+                // Brief 048: another definition may bridge other points.
+                Op::SetComponentDefinition { id, .. } => {
+                    self.components.insert(*id);
+                    for (t, _) in doc.terminals_of(*id) {
+                        node(self, Node::Terminal(t));
+                    }
+                }
                 Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
                     self.tag_holders(doc, component.properties.get(ecad_model::tag::TAG_KEY));
                     self.component(doc, *id, component.properties.get(NAME).map(String::as_str));

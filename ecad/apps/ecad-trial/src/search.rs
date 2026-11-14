@@ -42,6 +42,8 @@ pub enum Pick {
     Page(ecad_model::PageId),
     /// Brief 041: run this action (its id in the action table).
     Action(&'static str),
+    /// Brief 048 (design 048 §8.2): Place Symbol with this project symbol (its key).
+    Project(String),
 }
 
 /// Most pages and most actions Ctrl+K lists before the symbols.
@@ -90,6 +92,20 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
                     if n == 1 { "" } else { "s" }
                 ),
                 pick: Pick::Device(tag),
+            });
+        }
+    }
+    // Brief 048: the project's own symbols, before the built-ins.
+    if let Some(doc) = doc {
+        let ql = q.to_lowercase();
+        for v in symbols::project_symbols(doc) {
+            let Some(key) = v.key() else { continue };
+            if !ql.is_empty() && !v.def.name.to_lowercase().contains(&ql) && !key.to_lowercase().contains(&ql) {
+                continue;
+            }
+            out.push(Row {
+                text: format!("{key:<6} {:<26} Project · v{}  (symbol)", clip(&v.def.name, 26), v.seq),
+                pick: Pick::Project(key.to_string()),
             });
         }
     }
@@ -169,7 +185,7 @@ pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
             found.sort_by_key(|(rank, _)| *rank);
             found.into_iter().take(MAX_CHOICES).map(|(_, c)| c).collect()
         }
-        Pick::Page(_) | Pick::Action(_) => Vec::new(),
+        Pick::Page(_) | Pick::Action(_) | Pick::Project(_) => Vec::new(),
     }
 }
 
@@ -284,7 +300,7 @@ impl SymbolSearch {
                 let what = match p {
                     Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
                     Pick::Device(t) => format!("Add to {t}:"),
-                    Pick::Page(_) | Pick::Action(_) => String::new(),
+                    Pick::Page(_) | Pick::Action(_) | Pick::Project(_) => String::new(),
                 };
                 ui.label(what);
                 ui.push_id(CHOICES_ID, |ui| {
@@ -349,7 +365,7 @@ impl SymbolSearch {
         });
         self.open = open;
         // Brief 041: a page or an action runs at once (no second step).
-        if let Some(p @ (Pick::Page(_) | Pick::Action(_))) = picked {
+        if let Some(p @ (Pick::Page(_) | Pick::Action(_) | Pick::Project(_))) = picked {
             self.ran = Some(p);
             self.open = false;
             self.query.clear();

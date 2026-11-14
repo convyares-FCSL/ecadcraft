@@ -841,6 +841,9 @@ pub enum TextOf {
     Description,
     /// A device's part number under its tag (brief 031, hidden by default).
     PartNumber,
+    /// Another device text a project symbol's text slot places (brief 048, design §2.3): its
+    /// index in the definition's `texts`.
+    Slot(u8),
     /// Brief 045 (design 045 §7.2): a PLC card body's caption, its rack and slot.
     Caption,
     /// Brief 045 (design 045 §7.1): a channel cell's channel number, address and description
@@ -915,6 +918,7 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Description | TextOf::Caption | TextOf::ChannelText { .. } => TextKind::Description,
         TextOf::ChannelNo | TextOf::Address => TextKind::PointLabel,
         TextOf::PartNumber => TextKind::PartNumber,
+        TextOf::Slot(_) => TextKind::Description,
     }
 }
 
@@ -1102,6 +1106,12 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         }
         // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
         out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
+        // Brief 048 (design 048 §2.3): a symbol with text slots places each device text at its
+        // slot instead of in a tag block.
+        if !def.texts.is_empty() {
+            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &look, &mut fixed));
+            continue;
+        }
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
@@ -1168,6 +1178,64 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
             });
             top -= pitch * height;
         }
+    }
+    out
+}
+
+/// The texts a project symbol's slots place for representation `rid` of device `c` (brief 048,
+/// design §2.3): the tag where its show rule says, every other slot's text whenever the device
+/// has a value for it. Each is an obstacle for the page's tag blocks.
+#[allow(clippy::too_many_arguments)]
+fn slot_texts(
+    doc: &Document, c: ComponentId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
+    shown: &dyn Fn(crate::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, look: &crate::text_style::Look,
+    fixed: &mut Vec<(Pt, Pt)>,
+) -> Vec<PageText> {
+    use crate::text_style::{TextKind, text_style, width_in};
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    let prop = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let h = |a: ecad_model::TextHAlign| match a {
+        ecad_model::TextHAlign::Left => HAlign::Left,
+        ecad_model::TextHAlign::Center => HAlign::Center,
+        ecad_model::TextHAlign::Right => HAlign::Right,
+    };
+    let v = |a: ecad_model::TextVAlign| match a {
+        ecad_model::TextVAlign::Baseline => VAlign::Baseline,
+        ecad_model::TextVAlign::Bottom => VAlign::Bottom,
+        ecad_model::TextVAlign::Middle => VAlign::Middle,
+        ecad_model::TextVAlign::Top => VAlign::Top,
+    };
+    let mut out = Vec::new();
+    for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {
+        let (of, kind, value, aci) = match slot.text.as_str() {
+            "tag" => {
+                let t = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, boxes));
+                let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
+                (TextOf::Tag, TextKind::Tag, t, prov.then_some(PROVISIONAL_ACI))
+            }
+            "description" => (TextOf::Description, TextKind::Description, prop("description"), None),
+            "part_number" => (TextOf::PartNumber, TextKind::PartNumber, prop("part_number"), None),
+            other => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(other), None),
+        };
+        let Some(value) = value else { continue };
+        let style = text_style(doc, kind);
+        let height = if of == TextOf::Tag { sizes.tag } else { style.height };
+        let on = if of == TextOf::Tag { shown(kind) } else { true };
+        let at = pl.apply(slot.at);
+        if !at.is_finite() {
+            continue;
+        }
+        let (ha, va) = (h(slot.h), v(slot.v));
+        if on {
+            let w = width_in(look.fonts_for(kind), crate::text_style::TextStyle { height, ..style }, &value);
+            fixed.push(crate::text_style::text_box(w, height, at, ha, va));
+        }
+        out.push(PageText {
+            text: DerivedText { rep: rid, of, value, at, height, halign: ha, valign: va, aci },
+            shown: on,
+            moved: false,
+            overlaps: false,
+        });
     }
     out
 }

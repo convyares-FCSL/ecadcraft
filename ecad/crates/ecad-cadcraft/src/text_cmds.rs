@@ -356,14 +356,29 @@ fn run_defaults(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         let at = scope_param(doc, params)?;
         if let Some(k) = &key
             && defaults::find(k).is_none()
+            && defaults::symbols::family(doc, k).is_none()
         {
             return Err(format!("No default \"{k}\"."));
         }
-        let list: Vec<Value> = defaults::all()
+        let mut list: Vec<Value> = defaults::all()
             .filter(|e| group.as_deref().is_none_or(|g| e.group.eq_ignore_ascii_case(g)))
             .filter(|e| key.as_deref().is_none_or(|k| e.key == k))
             .map(|e| entry_json(doc, e, at))
             .collect();
+        // Brief 048 (FP6): one line per field of each project symbol, and the asked-for family entry.
+        let mut family = defaults::symbols::family_lines(doc);
+        if let Some((sym, f)) = key.as_deref().and_then(|k| defaults::symbols::family(doc, k))
+            && !family.contains(&(sym.clone(), f))
+        {
+            family.push((sym, f));
+        }
+        list.extend(
+            family
+                .into_iter()
+                .filter(|_| group.as_deref().is_none_or(|g| g.eq_ignore_ascii_case("Project symbols")))
+                .filter(|(sym, f)| key.as_deref().is_none_or(|k| k == defaults::symbols::family_key(sym, *f)))
+                .map(|(sym, f)| defaults::symbols::family_json(doc, &sym, f)),
+        );
         Ok(json!({ "defaults": list }))
     })
 }
@@ -452,6 +467,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
         TextKind::PartNumber => "part number",
         TextKind::ContinuationName => "continuation name",
         TextKind::Reference => "references",
+        TextKind::ContinuationCaption => "continuation captions",
         TextKind::LocationLabel => "location labels",
         TextKind::WireLabel => "wire labels",
         _ => kind.word(),

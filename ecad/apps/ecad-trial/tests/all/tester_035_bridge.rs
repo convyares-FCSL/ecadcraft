@@ -716,27 +716,33 @@ fn ac5_an_agent_write_waits_five_seconds_then_is_refused_while_the_person_draws_
     live.h.run_steps(2);
     assert!(live.h.state().cad.session.running.is_some(), "WIRE is running");
     let before = live.log();
+    // The hold runs on a simulated clock that moves only when the test says (the machine's load
+    // decides nothing): it stands still until the write is in.
+    let clock = ecad_trial::agent::Clock::simulated();
+    live.h.state_mut().agent.clock = clock.clone();
     // The write is held, the banner says so, reads from another session are answered at once.
     a.send_line(&json!({"jsonrpc": "2.0", "id": 777, "method": "tools/call", "params": {"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 5], [60, 5]]}}}}).to_string());
     let t0 = Instant::now();
-    for _ in 0..20 {
+    while !live.state_text().contains("waiting for you to finish WIRE") {
+        assert!(t0.elapsed() < GUARD, "the banner says the write waits: {}", live.state_text());
         live.pump();
     }
-    let state = live.state_text();
-    assert!(state.contains("waiting for you to finish WIRE"), "{state}");
-    let t_read = Instant::now();
     let project = reader.ok(&mut live, "ecad_project", json!({}));
-    assert!(project.is_object());
-    assert!(t_read.elapsed() < Duration::from_secs(1), "a read is answered at once, not held");
+    assert!(project.is_object(), "a read is answered while the write is still held");
     let port = live.port;
     let raw_ping = raw(&mut live, vec![line(port, 1, "ping", json!({}))]);
     assert_ne!(raw_ping[0]["ok"], json!(false), "{raw_ping:?}");
-    // The held write: refused after ≥ 5 s, not-run, nothing changed, the person's WIRE intact.
-    let r = a.wait(Some(&mut live), Duration::from_secs(30));
-    let held_for = t0.elapsed();
+    // Just short of 5 s the write is still held, however many frames pass.
+    clock.advance(Duration::from_millis(4_999));
+    for _ in 0..20 {
+        live.pump();
+    }
+    assert!(a.from.try_recv().is_err(), "held until the full 5 s");
+    assert!(live.state_text().contains("waiting for you to finish WIRE"), "{}", live.state_text());
+    // The held write: refused at 5 s, not-run, nothing changed, the person's WIRE intact.
+    clock.advance(Duration::from_millis(1));
+    let r = a.wait(Some(&mut live), GUARD);
     assert_eq!(r["id"], json!(777));
-    assert!(held_for >= Duration::from_secs(5), "held {held_for:?}");
-    assert!(held_for < Duration::from_secs(15), "held {held_for:?}");
     let m = r["result"]["content"][0]["text"].as_str().or(r["error"]["message"].as_str()).unwrap().to_string();
     assert!(m.contains("Refused: the designer is in the middle of WIRE; nothing was changed. Try again when they finish."), "{m}");
     assert_eq!(live.log(), before, "history unchanged");
