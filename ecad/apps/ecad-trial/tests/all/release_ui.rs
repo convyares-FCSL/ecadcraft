@@ -45,9 +45,9 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     h.run_steps(3);
     ok(&mut h, r#"projectprops {"drawing_number": "D-1001"}"#);
 
-    // The top bar's revision pill (the Project panel's Release button before brief 038) opens
-    // the dialog: Rev A, its fields empty, Release disabled until Description and Drawn are filled.
-    h.get_by_label_contains(ecad_trial::shell::top_bar::REVISION_PILL).click();
+    // Publish opens the dialog (UI rev 3: the bottom bar's revision opens History): Rev A, its
+    // fields empty, Release disabled until Description and Drawn are filled.
+    h.state_mut().set_workspace(ecad_trial::shell::Workspace::Publish);
     h.run_steps(3);
     assert!(h.state().release.is_some(), "the dialog is open");
     let d = h.state().release.clone().unwrap();

@@ -34,8 +34,8 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
 }
 
 fn click(h: &mut H, label: &str) {
-    h.get_by_label(label).click();
-    h.run_steps(3);
+    // UI rev 3: the panels' tabs are reached through the strip and the inspector.
+    crate::project_panel::click(h, label);
 }
 
 /// Replace the text of the field labelled `label`.

@@ -18,8 +18,8 @@ use crate::mouse_tester::{doc, harness_with, ok};
 type H = Harness<'static, ecad_trial::Trial>;
 
 fn click(h: &mut H, label: &str) {
-    h.get_by_label(label).click();
-    h.run_steps(3);
+    // UI rev 3: the panels' tabs are reached through the strip and the inspector.
+    crate::project_panel::click(h, label);
 }
 
 fn exists(h: &H, label: &str) -> bool {

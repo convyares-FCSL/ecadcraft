@@ -1,13 +1,15 @@
-//! The intent line (brief 041 step 4, spec §3 "CAD command line: removed"): a 28 px strip at the
-//! bottom of the page that replaces CADCraft's command line, at rest and while a tool prompts.
-//! Output only: typing still goes to the running prompt, as before.
+//! The intent line (brief 041 step 4, spec §3 "CAD command line: removed"): a 28 px strip that
+//! replaces CADCraft's command line while a tool prompts. UI rev 3: it sits at the top of the
+//! canvas, so it never covers the title block, and shows only when it has something to say
+//! (nothing permanent sits over the sheet). Output only: typing still goes to the running prompt,
+//! as before.
 //!
 //! - While a tool runs: its prompt, its keywords as chips that answer it, what is being typed,
 //!   and the electrical intent at the cursor where it is known (`interact::intent`: "joins A1 of
 //!   -K01").
 //! - A refusal (spec §5): what was refused, why, and **Show it**; a line a running tool echoed
 //!   (its refusal of a click) shows the same way.
-//! - At rest: how to reach things (no project read).
+//! - At rest: nothing (rev 3; 041 showed how to reach things here).
 //!
 //! Update map: the sentence is recomputed only when the tool, the cursor's pixel or the project's
 //! change count moved, and only while a tool runs; at rest nothing reads the project
@@ -27,8 +29,6 @@ pub const HEIGHT: f32 = 28.0;
 pub const LINE: &str = "Intent line";
 pub const SHOW_IT: &str = "Show it";
 pub const DISMISS: &str = "Dismiss";
-/// What the line says at rest.
-pub const AT_REST: &str = "Right-click an object for what you can do with it · V W P C D B T start tools · Ctrl+K searches";
 
 /// The intent line's state between frames.
 #[derive(Debug, Clone, Default)]
@@ -53,20 +53,24 @@ impl Trial {
         self.shell.tools.intent_text.clone()
     }
 
-    /// Draw the intent line at the bottom of the shown page (Draw only), with the developer
-    /// switch off.
+    /// Draw the intent line at the top of the shown page (Draw only), with the developer switch
+    /// off, while a tool prompts or a refusal or note waits.
     pub(crate) fn intent_frame(&mut self, ui: &mut egui::Ui) {
         self.track_tool_messages();
         let rect = match (self.shell.page_rect, self.shell.state.workspace) {
-            (Some(r), super::Workspace::Draw) if !self.shell.state.cad_chrome => Rect::from_min_max(egui::pos2(r.left(), r.bottom() - HEIGHT), r.max),
+            (Some(r), super::Workspace::Draw) if !self.shell.state.cad_chrome => Rect::from_min_size(r.min, egui::vec2(r.width(), HEIGHT)),
             _ => {
                 self.shell.tools.intent_text.clear();
                 return;
             }
         };
         let (parts, keywords, sentence) = self.intent_parts(ui.ctx());
+        if parts.is_empty() && self.shell.tools.intent.refusal.is_none() && self.shell.tools.intent.note.is_none() {
+            self.shell.tools.intent_text.clear();
+            return;
+        }
         super::fill(ui, rect, ecad_ui::SHELL.panel);
-        ui.painter().hline(rect.x_range(), rect.top(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.line)));
+        ui.painter().hline(rect.x_range(), rect.bottom(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.line)));
         let refusal = self.shell.tools.intent.refusal.clone();
         let note = self.shell.tools.intent.note.clone();
         let mut keyword = None;
@@ -85,7 +89,7 @@ impl Trial {
                     return;
                 }
                 if parts.is_empty() {
-                    let t = note.clone().unwrap_or_else(|| AT_REST.to_string());
+                    let t = note.clone().unwrap_or_default();
                     prim::read_value(ui, &t);
                     text = t;
                     return;

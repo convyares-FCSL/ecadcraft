@@ -222,8 +222,10 @@ fn leader_to_selection(t: &Trial, xf: &cadcraft_ui_egui::canvas::Xf, companion: 
     Some(leader::Leader { from, to, since: now })
 }
 
-/// A page shown for the first time (no view stored for it before this frame) opens at the zoom
-/// where a tag is [`TAG_PX`] tall; the shell then remembers its zoom (038's page views).
+/// A page shown for the first time (no view stored for it before this frame) opens with the
+/// sheet fitted, frame and title block visible, a 24 px margin (UI rev 3, "Canvas"; brief 040
+/// opened it where a tag is [`TAG_PX`] tall); the shell then remembers its zoom (038's page
+/// views).
 fn first_open_zoom(t: &mut Trial, st: &mut State, rect: Rect) {
     let page = t.props_seen.as_ref().and_then(|k| k.2);
     let stored: usize = t.shell.views.projects.values().map(|p| p.pages.len()).sum();
@@ -231,19 +233,10 @@ fn first_open_zoom(t: &mut Trial, st: &mut State, rect: Rect) {
     let first = switched && st.seen_page.is_some() && stored == st.stored_views.saturating_add(1);
     st.seen_page = page;
     st.stored_views = stored;
-    if !first {
+    if !first || rect.height() <= 0.0 {
         return;
     }
-    let h = st.page.tag_height;
-    if !(h.is_finite() && h > 0.0) || rect.height() <= 0.0 {
-        return;
-    }
-    if let Ok(s) = t.cad.session.state_mut() {
-        let mut view = s.view();
-        // Points per millimetre for a tag `TAG_PX` tall; the view height follows.
-        view.height = f64::from(rect.height()) / (TAG_PX / h);
-        let _ = s.set_view(view);
-    }
+    t.fit_sheet_in(rect);
 }
 
 /// Give CADCraft's font table the sheet font (US3; `ecad_cadcraft::install` does it too, and a

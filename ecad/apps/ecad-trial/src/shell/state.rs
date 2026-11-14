@@ -21,6 +21,8 @@ pub const MAX_PAGES: usize = 4096;
 pub const COMPANION_RATIO: f32 = 0.5;
 
 /// The four workspaces (spec §2): a workspace changes the main view and the tool strip only.
+/// UI rev 3 renames Lists to **Project** on screen; the variant keeps its name until the Project
+/// workspace itself is rebuilt.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Workspace {
     #[default]
@@ -37,7 +39,7 @@ impl Workspace {
     pub fn label(self) -> &'static str {
         match self {
             Workspace::Draw => "Draw",
-            Workspace::Lists => "Lists",
+            Workspace::Lists => "Project",
             Workspace::Library => "Library",
             Workspace::Publish => "Publish",
         }
@@ -57,7 +59,8 @@ impl Workspace {
     }
 }
 
-/// The left panel's tabs: navigation only (spec §2).
+/// The panels the tool strip opens beside it (UI rev 3: Book, Devices, History; navigation
+/// only). `Pages` is the Book.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LeftTab {
     #[default]
@@ -79,18 +82,22 @@ impl LeftTab {
 
     pub fn label(self) -> &'static str {
         match self {
-            LeftTab::Pages => crate::project_panel::PAGES_TAB,
+            LeftTab::Pages => BOOK,
             LeftTab::Devices => crate::project_panel::DEVICES_TAB,
             LeftTab::History => crate::history_panel::HISTORY_TAB,
         }
     }
 }
 
-/// The left panel's state.
+/// The Book panel's name on the strip (UI rev 3; the Project panel's Pages tab).
+pub const BOOK: &str = "Book";
+
+/// The panel slot's state: which panel the strip opened, if any.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LeftState {
     pub tab: LeftTab,
+    /// No panel is open (UI rev 3: the default, both sides closed).
     pub collapsed: bool,
     /// The width of each tab, in [`LeftTab::index`] order.
     pub width_per_tab: [f32; 3],
@@ -98,7 +105,7 @@ pub struct LeftState {
 
 impl Default for LeftState {
     fn default() -> Self {
-        LeftState { tab: LeftTab::Pages, collapsed: false, width_per_tab: LeftTab::ALL.map(super::layout::default_width) }
+        LeftState { tab: LeftTab::Pages, collapsed: true, width_per_tab: LeftTab::ALL.map(super::layout::default_width) }
     }
 }
 
@@ -117,14 +124,37 @@ impl Default for Companion {
     }
 }
 
-/// The shell's remembered state (design §5.1).
+/// The inspector's tabs (UI rev 3): one labelled button each on its collapsed rail.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RightTab {
+    #[default]
+    Device,
+    Layout,
+    Checks,
+}
+
+impl RightTab {
+    pub const ALL: [RightTab; 3] = [RightTab::Device, RightTab::Layout, RightTab::Checks];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RightTab::Device => "Device",
+            RightTab::Layout => "Layout",
+            RightTab::Checks => "Checks",
+        }
+    }
+}
+
+/// The shell's remembered state (design §5.1; UI rev 3's frame).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ShellState {
     pub workspace: Workspace,
     pub left: LeftState,
-    pub drawer_open: bool,
+    /// The inspector shows as its 56 px rail (UI rev 3: the default).
     pub right_collapsed: bool,
+    /// The inspector's tab.
+    pub right_tab: RightTab,
     pub companion: Option<Companion>,
     /// The Text panel over the right panel (Ctrl+/).
     pub text_panel: bool,
@@ -139,8 +169,8 @@ impl Default for ShellState {
         ShellState {
             workspace: Workspace::Draw,
             left: LeftState::default(),
-            drawer_open: true,
-            right_collapsed: false,
+            right_collapsed: true,
+            right_tab: RightTab::Device,
             companion: None,
             text_panel: false,
             cad_chrome: false,
