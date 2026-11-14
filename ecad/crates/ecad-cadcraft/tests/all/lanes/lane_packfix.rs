@@ -192,3 +192,68 @@ fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
     assert!(p2 != p1);
     assert_eq!(rows["rows"].as_array().map(Vec::len), Some(5), "{rows}");
 }
+
+// ---------------------------------------------------------------- PLC fences
+
+/// Vertical wires at `xs` from y 250 down to 150.
+fn wires(h: &mut H, xs: &[f64]) {
+    for x in xs {
+        h.run("wire", json!({"points": crate::common::pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap();
+    }
+}
+
+fn card_of(v: &Value) -> ComponentId {
+    id(v, "card")
+}
+
+// ---------------------------------------------------------------- bug 7
+
+/// Each drawn channel's address text on `page`, read with the kept PLC model as the page draws it.
+fn addresses(h: &mut H, page: PageId) -> Vec<String> {
+    let d = h.doc();
+    h.cfg(|p| {
+        let plc = p.outputs().plc.clone();
+        ecad_cadcraft::devices::all_texts_on_page_with(&d, page, Some(&plc))
+            .into_iter()
+            .filter(|t| t.text.value.starts_with("IW"))
+            .map(|t| t.text.value)
+            .collect()
+    })
+}
+
+#[test]
+fn bug_7_raising_a_cards_channel_count_addresses_the_new_channels() {
+    let mut h = H::new(9107);
+    let page = h.first_page();
+    super::lane_045::placed(&mut h, "plccpu", 50.0, 400.0);
+    let card = super::lane_045::placed(&mut h, "plcrtd", 100.0, 400.0);
+    for i in 0..4 {
+        let x = 60.0 + 40.0 * f64::from(i);
+        h.run("place", json!({"symbol": "chrtd", "at": [x, 300.0], "device": card.hex()})).unwrap();
+    }
+    assert_eq!(addresses(&mut h, page).len(), 4);
+    h.run("setprop", json!({"component": card.hex(), "key": "channels", "value": "8"})).unwrap();
+    assert_eq!(super::lane_045::prop(&mut h, card, "plc.channels").as_deref(), Some("8"), "`channels` is the card's count");
+    assert_eq!(super::lane_045::prop(&mut h, card, "channels"), None, "no free property beside it");
+    for i in 4..8 {
+        let x = 60.0 + 40.0 * f64::from(i);
+        h.run("place", json!({"symbol": "chrtd", "at": [x, 300.0], "device": card.hex()})).unwrap();
+    }
+    let all = addresses(&mut h, page);
+    assert_eq!(all.len(), 8, "every channel has its address: {all:?}");
+    // On a device that is not a card, `channels` stays free text.
+    let k = placed(&mut h, json!({"symbol": "coil", "at": [100, 100]}));
+    h.run("setprop", json!({"component": k.hex(), "key": "channels", "value": "x"})).unwrap();
+    assert_eq!(super::lane_045::prop(&mut h, k, "channels").as_deref(), Some("x"));
+    super::lane_045::same_as_built(&mut h);
+}
+
+/// The key of the card's point that wire `x` (vertical, through y 200) is attached to.
+fn landed_on(h: &mut H, card: ComponentId, page: PageId, x: f64) -> Vec<String> {
+    let d = h.doc();
+    d.terminals_of(card)
+        .filter(|(t, _)| !d.ends_at(*t).is_empty())
+        .filter(|(t, _)| (h.terminal_pos(page, *t).x - x).abs() < 1e-6)
+        .filter_map(|(_, term)| term.key.clone())
+        .collect()
+}

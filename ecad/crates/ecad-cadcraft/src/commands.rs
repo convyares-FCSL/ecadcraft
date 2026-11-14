@@ -563,6 +563,15 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     } else {
         return Err(err("`component`, `conductor` or `cable` (hex id) is required"));
     };
+    // Pack re-run, bug 7: on a PLC card with channels, `channels` is its channel count
+    // (`plc.channels`), as `terminals` is a strip's offer; on anything else it stays free text.
+    let key = match object {
+        ObjectRef::Component(c) if key.trim() == "channels" => {
+            let card = with_any_page(s, |p, _| Ok(crate::plc::card_type_of(p.ledger.document(), c).is_some_and(|t| t.has_channels())))?;
+            if card { crate::plc::rack::CHANNELS_KEY.to_string() } else { key }
+        }
+        _ => key,
+    };
     // Brief 026: tags of devices and cables share one namespace and one set of rules.
     if matches!(object, ObjectRef::Component(_) | ObjectRef::Cable(_)) {
         let tagless = matches!(object, ObjectRef::Component(c) if with_any_page(s, |p, _| Ok(crate::wires::kind_of(p.ledger.document(), c).is_some())).unwrap_or(false));
