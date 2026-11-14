@@ -418,3 +418,110 @@ fn the_kept_index_equals_a_rebuild_through_the_update_map() {
         index_matches(&mut f.h);
     }
 }
+
+/// Review of #85, 2: `xrefs {component}` and `xrefs {page}` on a name of 2,000 arrows make only
+/// the rows they return (O(m)), never all m(m−1); paging still says what comes next.
+#[test]
+#[ignore = "slow: commits 2,000 arrows, about 4 s in a debug build (the 400-arrow case runs every time)"]
+fn xrefs_on_a_large_name_stays_linear() {
+    xrefs_on_a_name_of(2000);
+}
+
+/// [`xrefs_on_a_large_name_stays_linear`] on 400 arrows: 159,600 rows would be made before the fix.
+#[test]
+fn xrefs_on_a_name_of_400_returns_only_the_window() {
+    xrefs_on_a_name_of(400);
+}
+
+fn xrefs_on_a_name_of(m: usize) {
+    use ecad_model::{Color, IdAllocator, LayerId, Op, Placement, Style};
+    let mut ledger = ecad_model::Ledger::new(0x49_15);
+    let pages: Vec<PageId> = (0..100u128).map(|i| PageId(0x100 + i)).collect();
+    let mut setup = vec![Op::AddLayer { id: LayerId(1), layer: ecad_model::Layer { name: "0".into() } }];
+    for (i, p) in pages.iter().enumerate() {
+        setup.push(Op::AddPage { id: *p, page: ecad_model::Page::new(format!("{}", 100 + i)), index: i });
+    }
+    ledger.commit(ecad_model::Author::User, "pages", setup).unwrap();
+    let mut ids = IdAllocator::seeded(0x49_15);
+    let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let starter = ecad_cadcraft::wires::continuation_starter().unwrap();
+    let mut props = ecad_model::Properties::new();
+    props.insert("kind".into(), "continuation".into());
+    props.insert("name".into(), "BIG".into());
+    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: 0.0, mirror: false, scale: 1.0 };
+    let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, props).unwrap();
+    ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
+    // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
+    // (planning and settling each one in a debug build takes seconds; the subject is `xrefs`).
+    let template: Vec<String> =
+        t.ops.iter().filter(|o| !matches!(o, Op::EmbedDefinition { .. })).map(|o| serde_json::to_string(o).unwrap()).collect();
+    let old = [t.component.hex(), t.terminal.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
+    let mut ops = Vec::new();
+    for i in 1..m {
+        let fresh = [i as u128 * 4 + 0x7000_0000, i as u128 * 4 + 0x7000_0001, i as u128 * 4 + 0x7000_0002, i as u128 * 4 + 0x7000_0003];
+        for json in &template {
+            let mut j = json.clone();
+            for (o, n) in old.iter().zip(fresh) {
+                j = j.replace(o.as_str(), &format!("{n:032x}"));
+            }
+            j = j.replace(old[4].as_str(), &pages[i % 100].hex()).replace("20.125", &format!("{}", 20.0 + (i / 100) as f64 * 15.0));
+            ops.push(serde_json::from_str::<Op>(&j).unwrap());
+        }
+    }
+    ledger.commit(ecad_model::Author::User, "arrows", ops).unwrap();
+    let doc = ledger.document().clone();
+    let first = Some(t.component);
+    assert_eq!(doc.continuations_named("BIG").len(), m);
+    let idx = RefIndex::build(&doc);
+    let t = std::time::Instant::now();
+    let v = xref::xrefs_json(&doc, &idx, first, None, None, 2000, 0).unwrap();
+    assert_eq!(v["references"].as_array().unwrap().len(), m - 1);
+    assert!(v.get("next").is_none(), "{}", v["next"]);
+    let v = xref::xrefs_json(&doc, &idx, None, None, Some(pages[3]), 30, 10).unwrap();
+    let rows = v["references"].as_array().unwrap();
+    assert_eq!(rows.len(), 30);
+    assert!(rows.iter().all(|r| r["kind"] == "continuation"));
+    assert_eq!(v["next"], json!(40));
+    let v = xref::xrefs_json(&doc, &idx, None, None, None, 10, m * (m - 1) - 2).unwrap();
+    assert_eq!((v["references"].as_array().unwrap().len(), v.get("next").is_none()), (2, true), "{v}");
+    // All m(m−1) rows would take minutes in a debug build for 2,000; the window takes little.
+    assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());
+}
+
+/// Review of #85, 3 (`ui-design-spec.md`, canvas colours): an arrow's other-end text is drawn in
+/// Ink 2 of the sheet, not in a cable colour; its caption and bracket in ink (ByLayer).
+#[test]
+fn the_reference_text_is_ink_2_and_the_caption_ink() {
+    use cadcraft_engine::doc::color::Color;
+    let mut f = fixture(0x4916);
+    let (a_c, a) = f.arrows[0];
+    f.h.activate(f.pages[0]);
+    f.h.run("contcaption", json!({"continuations": [a_c.hex()], "caption": "TO CONTROL SUPPLY"})).unwrap();
+    let colour_of = |h: &mut H, index: u32| {
+        h.pv(|p, pg| {
+            let d = pg.drawing_of(p, f.pages[0]).unwrap();
+            let hd = p.pages[&f.pages[0]].map.xref(a, index).unwrap();
+            d.model.iter().find(|e| e.handle == hd).map(|e| e.common.color).unwrap()
+        })
+    };
+    let ink2 = ecad_tokens::sheet::PAPER.color(ecad_tokens::Meaning::Ink2);
+    assert_eq!(colour_of(&mut f.h, 0), Color::True(cadcraft_engine::doc::color::Rgb(ink2.r, ink2.g, ink2.b)));
+    assert_eq!(colour_of(&mut f.h, 1), Color::ByLayer, "the bracket");
+    assert_eq!(colour_of(&mut f.h, 4), Color::ByLayer, "the caption");
+}
+
+/// Review of #85, fix round: a page with arrows, captions and their Ink 2 texts reads back as the
+/// document in the recovery check (`verify_page`), so a rebuilt page stays available.
+#[test]
+fn a_page_with_arrows_verifies() {
+    let mut f = fixture(0x4917);
+    let (a_c, _) = f.arrows[0];
+    f.h.activate(f.pages[0]);
+    f.h.run("contcaption", json!({"continuations": [a_c.hex()], "caption": "TO CONTROL SUPPLY"})).unwrap();
+    let (doc, d, map) = f.h.pv(|p, pg| {
+        let d = pg.drawing_of(p, f.pages[0]).unwrap().clone();
+        (p.ledger.document().clone(), d, p.pages[&f.pages[0]].map.clone())
+    });
+    let v = ecad_cadcraft::verify::verify_page(&doc, f.pages[0], &d, &map);
+    assert!(v.ok(), "{:?}", v.problems);
+}

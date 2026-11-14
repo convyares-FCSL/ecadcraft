@@ -1059,7 +1059,10 @@ pub fn project_page_kept(
     // on every draw of the page, never stored.
     for part in crate::xref::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
-        ents.push(xref_entity(&part, h));
+        let mut e = xref_entity(&part, h);
+        // Brief 049 (review of #85, 3): a continuation's other-end text in the sheet's Ink 2.
+        crate::continuations::colour(doc, &part, &mut e);
+        ents.push(e);
         map.insert_xref(part.rep, part.index, h);
     }
     // Link lines (brief 030): derived on every draw, never stored.

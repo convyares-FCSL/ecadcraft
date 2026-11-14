@@ -1401,6 +1401,11 @@ impl RefIndex {
         self.sources.get(&t).into_iter().flatten().copied().chain(self.implicit(t))
     }
 
+    /// How many members group `g` has (O(1)).
+    pub fn group_len(&self, g: Group) -> usize {
+        self.members.get(&g).map_or(0, BTreeSet::len)
+    }
+
     /// Every group.
     pub fn groups(&self) -> impl Iterator<Item = Group> + '_ {
         self.members.keys().copied()
@@ -1805,6 +1810,11 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 
 /// `xrefs {component?, cable?, page?, limit?, after?}`'s result (design 025 §5.4).
 ///
+/// Continuation rows (brief 049) come after the others, one per (arrow, other end), made only for
+/// the window asked for: with `component`, that arrow's; with `page`, those of the arrows on the
+/// page (a row whose source is elsewhere is listed from its source). O(arrows listed + rows
+/// returned), never O(m²) for a name of m arrows.
+///
 /// # Errors
 /// Unknown component, cable or page.
 pub fn xrefs_json(
@@ -1837,27 +1847,67 @@ pub fn xrefs_json(
             None => idx.groups().collect(),
         },
     };
-    let arrow = component.filter(|c| crate::continuations::name_of(doc, *c).is_some());
-    let all: Vec<Reference> = references(doc, idx, &groups)
-        .into_iter()
-        .filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p))
-        .filter(|r| arrow.is_none_or(|c| doc.representations.get(&r.source).is_some_and(|x| x.subject == Subject::Component(c))))
-        .collect();
-    let list: Vec<Value> = all
-        .iter()
-        .skip(after)
-        .take(limit)
-        .map(|r| {
-            json!({
-                "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
-                "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
-                "kind": r.kind, "labels": r.labels, "text": r.text,
-            })
+    // Brief 049 (review of #85, 2): continuation rows are made per source and only for the
+    // window asked for, never all m(m−1) of a name; the other groups' rows as before.
+    let (cont, other): (BTreeSet<Group>, BTreeSet<Group>) = groups.into_iter().partition(|g| matches!(g, Group::Continuation(_)));
+    let all: Vec<Reference> =
+        references(doc, idx, &other).into_iter().filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p)).collect();
+    // The arrows whose rows are listed: the given arrow's, the arrows on `page`, or every arrow.
+    let sources: Vec<(RepresentationId, usize)> = match (component, page) {
+        (Some(c), _) => doc.representations_of(Subject::Component(c)).map(|(r, _)| r).collect::<Vec<_>>(),
+        (None, Some(p)) => doc.representations_on(p).map(|(r, _)| r).collect(),
+        (None, None) => cont.iter().flat_map(|g| idx.members(*g)).collect(),
+    }
+    .into_iter()
+    .filter_map(|r| match idx.member(r) {
+        Some((g @ Group::Continuation(_), _)) if cont.contains(&g) => Some((r, idx.group_len(g).saturating_sub(1))),
+        _ => None,
+    })
+    .collect();
+    let total = sources.iter().fold(all.len(), |n, (_, k)| n.saturating_add(*k));
+    let row = |r: &Reference| {
+        json!({
+            "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
+            "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
+            "kind": r.kind, "labels": r.labels, "text": r.text,
         })
-        .collect();
+    };
+    let end = after.saturating_add(limit);
+    let mut list: Vec<Value> = all.iter().skip(after).take(limit).map(row).collect();
+    // Walk the sources, making rows only for those that overlap [after, end).
+    let mut at = all.len();
+    let mut places = Places::new(doc);
+    let mut ends: BTreeMap<String, Vec<crate::continuations::End>> = BTreeMap::new();
+    for (s, k) in &sources {
+        if at >= end {
+            break;
+        }
+        let next = at.saturating_add(*k);
+        if next > after
+            && let Some(sr) = doc.representations.get(s)
+            && let Subject::Component(c) = sr.subject
+            && let Some(name) = crate::continuations::name_of(doc, c)
+        {
+            let sorted = ends.entry(name.clone()).or_insert_with(|| crate::continuations::ends_named(doc, &mut places, &name));
+            let skip = after.saturating_sub(at);
+            let take = end.saturating_sub(at.max(after));
+            for e in sorted.iter().filter(|e| e.rep != *s).skip(skip).take(take) {
+                list.push(row(&Reference {
+                    source: *s,
+                    source_page: sr.page,
+                    target: e.rep,
+                    target_page: e.page,
+                    kind: "continuation",
+                    labels: None,
+                    text: e.text.clone(),
+                }));
+            }
+        }
+        at = next;
+    }
     let mut v = json!({ "references": list });
-    if after + limit < all.len() {
-        v["next"] = json!(after + limit);
+    if end < total {
+        v["next"] = json!(end);
     }
     Ok(v)
 }

@@ -321,9 +321,20 @@ fn reference_part(a: &Arrow, value: String, s: &Settings) -> Part {
         rep: a.rep,
         index: REF_INDEX,
         shape: Shape::Text { at, value, height: s.ref_height, halign, valign: VAlign::Middle, rotation },
-        aci: Some(crate::references::REFERENCE_ACI),
+        // Ink 2 of the sheet in use ([`colour`]), not a cable colour (review of #85, 3).
+        aci: None,
         row: None,
         bar: false,
+    }
+}
+
+/// Colour a drawn continuation part (review of #85, 3; `ui-design-spec.md`, canvas colours): an
+/// arrow's other-end text in Ink 2 of the sheet the page is projected for, as zone labels, pin
+/// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
+pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
+    if part.index == REF_INDEX && arrow(doc, part.rep).is_some() {
+        let ink2 = crate::look::projection_sheet().color(ecad_tokens::Meaning::Ink2);
+        e.common.color = cadcraft_engine::doc::color::Color::True(crate::look::rgb(ink2));
     }
 }
 
