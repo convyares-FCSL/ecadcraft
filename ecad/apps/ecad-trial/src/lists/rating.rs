@@ -78,7 +78,11 @@ fn rows(r: &Rating) -> Vec<Row> {
             if f.from.starts_with("not set") {
                 x.note = f.from.clone();
                 x.tone = Some(Tone::Warning);
-            } else if f.from != "set here" {
+            } else if f.from == "set here" {
+                if f.input.trim().parse::<f64>().is_ok() {
+                    x.note = "set here".into();
+                }
+            } else {
                 x.note = format!("{} \u{b7} {}", f.input, f.from);
             }
             x.tip = f.from.clone();
@@ -196,7 +200,8 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     };
     let was = basis;
     ui.horizontal(|ui| {
-        label(ui, "Basis");
+        ui.spacing_mut().item_spacing.x = 0.0;
+        label_w(ui, "Basis", BASIS_LABEL_W);
         let resp = ui.add_enabled_ui(p.writable, |ui| prim::segmented(ui, &mut basis, &basis_words(cable))).response;
         if !p.writable {
             resp.on_disabled_hover_text("This project is read-only here.");
@@ -215,7 +220,7 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
             ui.add_enabled_ui(p.writable, |ui| {
                 egui::ComboBox::from_id_salt(("ecad.project.detail.rating.method", id.as_str()))
                     .selected_text(text)
-                    .width(ui.available_width())
+                    .width((ui.available_width() - space::S).max(80.0))
                     .show_ui(ui, |ui| {
                         for m in &p.methods {
                             if ui.selectable_label(*m == current, format!("{m} \u{b7} {}", dataset::method_words(m))).clicked() && *m != current {
@@ -438,9 +443,16 @@ fn show_msg(ui: &mut egui::Ui, id: egui::Id, msg: Option<String>) {
 const LABEL_W: f32 = 96.0;
 const VALUE_W: f32 = 84.0;
 
+/// The Basis row's label is narrower, so the three-word segment fits the panel.
+const BASIS_LABEL_W: f32 = 64.0;
+
 fn label(ui: &mut egui::Ui, text: &str) {
+    label_w(ui, text, LABEL_W - ui.spacing().item_spacing.x);
+}
+
+fn label_w(ui: &mut egui::Ui, text: &str, w: f32) {
     let s = ecad_ui::SHELL;
-    let (rect, _) = ui.allocate_exact_size(vec2(LABEL_W - ui.spacing().item_spacing.x, ecad_ui::tokens::size::CONTROL), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(w, ecad_ui::tokens::size::CONTROL), egui::Sense::hover());
     ui.painter().text(
         pos2(rect.left(), rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -511,14 +523,9 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
             }
         }
         None => {
-            let colour = x.tone.map_or(s.text_3, tone_colour);
-            ui.painter().text(
-                pos2(note_x, rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                &x.note,
-                ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL),
-                ecad_ui::color(colour),
-            );
+            let colour = ecad_ui::color(x.tone.map_or(s.text_3, tone_colour));
+            let g = ecad_ui::table::cells::fitted(ui, &x.note, ui_type::SMALL, colour, (rect.right() - note_x).max(0.0));
+            ui.painter().galley(pos2(note_x, rect.center().y - g.size().y / 2.0), g, colour);
             if !x.tip.is_empty() {
                 resp.on_hover_text(&x.tip);
             }
