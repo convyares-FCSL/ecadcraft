@@ -106,6 +106,9 @@ redrawn to the house block and `title_block` retired (every drawing changes look
 pre-v1); **FP4** a page's sheet, margins and keep-out strip resolved through its frame, at ten call
 sites; **FP5** `ecr` in the built-in revision columns. No raster assets, no new op, no new table.
 
+**Approved (overseer, 2026-11-14): FP1–FP5.** FP3: redrawing the built-in frame to the house block
+is accepted (pre-v1). Owner answers to design §15 are still to come.
+
 ## Parts
 
 - **055a**: model, house block, sheet resolution, commands, checks and bench. It closes the
