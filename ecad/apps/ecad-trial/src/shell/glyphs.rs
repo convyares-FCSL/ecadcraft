@@ -62,14 +62,13 @@ pub fn tick(p: &Painter, r: Rect, c: Color32) {
     p.line_segment([b, d], Stroke::new(1.5, c));
 }
 
-/// A drag grip: two columns of three dots.
-pub fn grip(p: &Painter, r: Rect, c: Color32) {
-    for col in 0..2 {
-        for row in 0..3 {
-            let at = pos2(r.center().x - 2.0 + 4.0 * col as f32, r.center().y - 4.0 + 4.0 * row as f32);
-            p.circle_filled(at, 0.9, c);
-        }
-    }
+/// A person: a head over shoulders (an author with no recorded name).
+pub fn person(p: &Painter, r: Rect, c: Color32) {
+    let head = pos2(r.center().x, r.top() + r.height() * 0.3);
+    p.circle_stroke(head, r.width() * 0.22, stroke(c));
+    let shoulders =
+        Rect::from_min_max(pos2(r.left() + r.width() * 0.12, r.top() + r.height() * 0.62), pos2(r.right() - r.width() * 0.12, r.bottom()));
+    p.rect_stroke(shoulders, shoulders.height() * 0.5, stroke(c), StrokeKind::Inside);
 }
 
 /// A page thumbnail: the sheet's ground with a frame and a schematic sketch (three rails and a

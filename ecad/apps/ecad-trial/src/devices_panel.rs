@@ -39,13 +39,15 @@ type Editing = (ComponentId, &'static str, String);
 
 /// Board 1.03's texts.
 pub const FIND: &str = "Find a device or tag";
-pub const DRAG_HINT: &str = "Drag one onto the sheet to place it there.";
+/// Under "Not on a page yet": placing a listed device has no command yet, so the rows offer no
+/// drag (the board's "Drag one onto the sheet" waits for that command).
+pub const PLACE_LATER: &str = "Placing from this list is not available yet.";
 pub const FOOTER: &str = "Click goes to it. Edit many at once in Project.";
 pub const PROJECT: &str = "Project →";
-/// Said when a device is dropped on the sheet: placing a listed device has no command yet.
-pub const PLACE_LATER: &str = "Placing a device from this list is not available yet: place its symbol with the Device tool.";
 const NO_LOCATION: &str = "No location";
-const NO_FUNCTION: &str = "No function";
+/// A device's function is read from the device only (no page or box gives one yet), so the group
+/// says where the value is missing.
+const NO_FUNCTION: &str = "Function not set on the device";
 /// A list row's height, and how many devices a group shows before "n more".
 pub const DEVICE_ROW_H: f32 = 27.0;
 const GROUP_CAP: usize = 8;
@@ -89,7 +91,6 @@ enum Line {
     /// A device, by its index in the list's entries.
     Device {
         at: usize,
-        unplaced: bool,
     },
     More {
         key: String,
@@ -277,7 +278,6 @@ impl DevicesPanel {
         let mut toggle: Option<String> = None;
         let mut more: Option<String> = None;
         let mut goto: Option<ComponentId> = None;
-        let mut dropped = false;
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut drawn = 0;
         egui::ScrollArea::vertical().id_salt("ecad.devices.list").max_height(list_h).auto_shrink([false, false]).show_rows(
@@ -313,7 +313,7 @@ impl DevicesPanel {
                                 toggle = Some(key.clone());
                             }
                         }
-                        Line::Device { at, unplaced } => {
+                        Line::Device { at } => {
                             let Some(e) = self.list.entries.get(*at) else { continue };
                             let picked = self.selected == Some(e.id);
                             if picked {
@@ -322,12 +322,7 @@ impl DevicesPanel {
                             } else if resp.hovered() {
                                 p.rect_filled(rect, 0.0, c(s.hover));
                             }
-                            let mut x = rect.left() + 20.0;
-                            if *unplaced {
-                                // Drag one onto the sheet: its grip.
-                                crate::shell::glyphs::grip(&p, Rect::from_center_size(pos2(rect.left() + 26.0, y), vec2(8.0, 12.0)), c(s.text_3));
-                                x = rect.left() + 38.0;
-                            }
+                            let x = rect.left() + 20.0;
                             let tag = e.tag.as_deref().unwrap_or("(no tag)");
                             let tag_ink = c(s.text);
                             p.text(pos2(x, y), egui::Align2::LEFT_CENTER, tag, bold.clone(), tag_ink);
@@ -342,20 +337,6 @@ impl DevicesPanel {
                             if resp.clicked() {
                                 goto = Some(e.id);
                             }
-                            if *unplaced && resp.dragged() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                                if let Some(at) = ui.ctx().pointer_interact_pos() {
-                                    let ghost = egui::Painter::new(
-                                        ui.ctx().clone(),
-                                        egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("ecad.devices.ghost")),
-                                        ui.ctx().content_rect(),
-                                    );
-                                    ghost.text(at + vec2(12.0, 4.0), egui::Align2::LEFT_CENTER, tag, bold, c(s.accent_text));
-                                }
-                            }
-                            if *unplaced && resp.drag_stopped() {
-                                dropped = true;
-                            }
                         }
                         Line::More { key, n } => {
                             let label = format!("{n} more");
@@ -369,7 +350,7 @@ impl DevicesPanel {
                             p.text(
                                 pos2(rect.left() + 20.0, y),
                                 egui::Align2::LEFT_CENTER,
-                                DRAG_HINT,
+                                PLACE_LATER,
                                 crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
                                 c(s.text_3),
                             );
@@ -398,9 +379,6 @@ impl DevicesPanel {
             if !reps.is_empty() {
                 out.push(Action::GotoSymbols(reps));
             }
-        }
-        if dropped {
-            self.note = Some(PLACE_LATER.to_string());
         }
         // The footer.
         let foot = Rect::from_min_max(pos2(r.left() - 8.0, (r.bottom() - footer_h).max(r.top())), pos2(r.right() + 8.0, r.bottom()));
@@ -434,7 +412,7 @@ impl DevicesPanel {
             let k = NOT_PLACED.to_string();
             lines.push(Line::Group { key: k.clone(), name: NOT_PLACED.to_string(), count: unplaced.len(), unplaced: true });
             if !self.folded.contains(&k) {
-                lines.extend(unplaced.iter().map(|at| Line::Device { at: *at, unplaced: true }));
+                lines.extend(unplaced.iter().map(|at| Line::Device { at: *at }));
                 lines.push(Line::Hint);
             }
         }
@@ -444,7 +422,14 @@ impl DevicesPanel {
             let Some(e) = self.list.entries.get(at) else { continue };
             let name = match self.grouping {
                 Grouping::None => String::new(),
-                Grouping::Location => prop(e, 4).unwrap_or_else(|| NO_LOCATION.to_string()),
+                // Where the device is (its own value, else its box's, page's or the project's), as
+                // the Device list shows it, without the "(from box on 105)" note.
+                Grouping::Location => self
+                    .source
+                    .row(e.id)
+                    .map(|r| r.location.split(" (").next().unwrap_or_default().trim().to_string())
+                    .filter(|l| !l.is_empty() && l != "?")
+                    .unwrap_or_else(|| NO_LOCATION.to_string()),
                 Grouping::Function => prop(e, 5).unwrap_or_else(|| NO_FUNCTION.to_string()),
                 Grouping::Type => e.group.clone(),
             };
@@ -459,7 +444,7 @@ impl DevicesPanel {
                 }
             }
             let cap = if flat || self.unfolded.contains(&name) { ats.len() } else { GROUP_CAP };
-            lines.extend(ats.iter().take(cap).map(|at| Line::Device { at: *at, unplaced: false }));
+            lines.extend(ats.iter().take(cap).map(|at| Line::Device { at: *at }));
             if ats.len() > cap {
                 lines.push(Line::More { key: name.clone(), n: ats.len() - cap });
             }

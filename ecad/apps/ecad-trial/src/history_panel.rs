@@ -80,6 +80,9 @@ pub const NEW_BRANCH: &str = "New branch";
 pub const NAME_THIS: &str = "Name this one";
 pub const EARLIER: &str = "Show earlier changes";
 pub const OLDER: &str = "Show older versions";
+/// How many changes the panel shows before "Show n earlier changes" (board 1.04 shows about 8, so
+/// Versions stays in view).
+pub const FIRST_CHANGES: usize = 8;
 pub const AGENT_DISCONNECT: &str = "Disconnect the agent";
 /// The placeholders' reasons.
 pub const COMPARE_LATER: &str = "Compare is not available yet";
@@ -195,6 +198,8 @@ pub struct HistoryPanel {
     pub undo_session: bool,
     steps_for: Option<(Sel, u64)>,
     steps_more: u64,
+    /// Changes shown past the first [`FIRST_CHANGES`] (Show n earlier changes).
+    pub changes_more: usize,
     pub dialog: Option<Dialog>,
     /// A refusal or note under the header.
     pub note: Option<String>,
@@ -666,12 +671,22 @@ impl HistoryPanel {
         let groups = self.groups.clone();
         let mut i = 0;
         let mut drawn = 0;
+        // Board 1.04: a few changes first, so Versions stays in view; a session group is one
+        // row however many steps it folds (its expanded steps don't count).
+        let cap = FIRST_CHANGES + self.changes_more;
+        let mut shown = 0;
+        let mut hidden = 0;
         let top = ui.cursor().top();
         for g in &groups {
             let rows: Vec<StepRow> = self.steps.get(i..i + g.seqs.len()).map(<[StepRow]>::to_vec).unwrap_or_default();
             i += g.seqs.len();
             let key = g.seqs.first().copied().unwrap_or(0);
+            if shown >= cap {
+                hidden += if g.is_session() { 1 } else { rows.len() };
+                continue;
+            }
             if g.is_session() {
+                shown += 1;
                 let open = self.expanded.contains(&key);
                 let live = self.group_is_live(g);
                 ui.horizontal(|ui| {
@@ -690,6 +705,13 @@ impl HistoryPanel {
                 }
             }
             for r in rows {
+                if !g.is_session() {
+                    if shown >= cap {
+                        hidden += 1;
+                        continue;
+                    }
+                    shown += 1;
+                }
                 drawn += 1;
                 if self.step_row(ui, &sel, &r, cur_name) {
                     let s = Sel { branch: sel.branch, seq: r.seq, kind: NodeKind::Fork, name: None };
@@ -707,12 +729,20 @@ impl HistoryPanel {
             let x = ui.max_rect().left() + 10.0;
             ui.painter().line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_ui::color(ecad_ui::SHELL.accent).gamma_multiply(0.7)));
         }
-        if self.steps.len() as u64 >= history::STEPS_PAGE * (self.steps_more + 1) {
+        // Show the rows already read first; past them, read the next page.
+        let more_to_read = self.steps.len() as u64 >= history::STEPS_PAGE * (self.steps_more + 1);
+        if hidden > 0 || more_to_read {
+            let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
-                if ui.add(egui::Label::new(RichText::new(EARLIER).color(ecad_ui::color(ecad_ui::SHELL.accent_text))).sense(Sense::click())).clicked()
-                {
-                    self.steps_more += 1;
+                let b = ui.add(egui::Label::new(RichText::new(text).color(ecad_ui::color(ecad_ui::SHELL.accent_text))).sense(Sense::click()));
+                b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EARLIER));
+                if b.clicked() {
+                    if hidden > 0 {
+                        self.changes_more += history::STEPS_PAGE as usize;
+                    } else {
+                        self.steps_more += 1;
+                    }
                 }
             });
         }
@@ -743,14 +773,20 @@ impl HistoryPanel {
         let lane = if r.agent.is_some() { c(s.agent) } else { c(s.accent) };
         crate::shell::glyphs::lane_dot(&p, pos2(rect.left() + 10.0, rect.center().y), lane, c(s.panel));
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, picked, format!("Step {}: {}", r.seq, r.label)));
-        // The chip: AI for an agent, the person's initials.
+        // The chip: AI for an agent; a neutral person for a person, since a person's change
+        // records no name (the login's initials would mislabel someone else's changes).
         let chip_r = egui::Rect::from_center_size(pos2(rect.left() + 34.0, rect.center().y), vec2(22.0, 22.0));
-        let (fill, ink, text) = match &r.agent {
-            Some(_) => (c(s.agent), Color32::from_rgb(20, 24, 10), "AI".to_string()),
-            None => (c(s.active), c(s.text), crate::shell::top_bar::initials()),
-        };
-        p.rect_filled(chip_r, 5.0, fill);
-        p.text(chip_r.center(), egui::Align2::CENTER_CENTER, text, crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL), ink);
+        match &r.agent {
+            Some(_) => {
+                p.rect_filled(chip_r, 5.0, c(s.agent));
+                let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+                p.text(chip_r.center(), egui::Align2::CENTER_CENTER, "AI", font, Color32::from_rgb(20, 24, 10));
+            }
+            None => {
+                p.rect_filled(chip_r, 5.0, c(s.active));
+                crate::shell::glyphs::person(&p, chip_r.shrink(5.0), c(s.text_2));
+            }
+        }
         let name = author_chip(r.agent.as_deref()).to_string();
         let chip = ui.interact(chip_r, ui.scope_id().with(("ecad.history.author", r.seq)), Sense::hover());
         chip.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{AUTHOR}: {name}")));

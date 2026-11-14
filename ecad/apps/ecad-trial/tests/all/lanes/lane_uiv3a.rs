@@ -181,6 +181,44 @@ fn devices_groups_by_location_with_not_on_a_page_yet_first() {
     assert!(h.query_by_label_contains("Group -K").is_some(), "grouped by its tag's letter");
 }
 
+/// Review finding 2: Location groups by where the device is (here, its page's location), not only
+/// by a value stored on the device.
+#[test]
+fn devices_group_by_the_location_the_device_takes_from_its_page() {
+    let mut h = harness();
+    crate::project_panel::ok(&mut h, r#"pageprops {"location":"+CAB1"}"#);
+    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1"}"#);
+    h.get_by_label(&tool_strip::panel_label(LeftTab::Devices)).click();
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("Group +CAB1").is_some(), "grouped under its page's location");
+    assert!(h.query_by_label_contains("Group No location").is_none());
+}
+
+/// Review finding 4: "Not on a page yet" offers no drag while placing from the list has no
+/// command; the line under it says so.
+#[test]
+fn not_on_a_page_yet_says_placing_is_not_available_yet() {
+    assert!(!devices_panel::PLACE_LATER.to_lowercase().contains("drag"));
+    assert!(devices_panel::PLACE_LATER.contains("not available yet"));
+}
+
+/// Review finding 5: Changes shows the first few, then "Show n earlier changes", so Versions stays
+/// in view.
+#[test]
+fn history_shows_a_few_changes_then_the_rest_on_request() {
+    let mut h = harness();
+    for i in 0..12 {
+        let y = 150 + 10 * i;
+        crate::project_panel::ok(&mut h, &format!(r#"wire {{"points":[[0,{y}],[30,{y}]]}}"#));
+    }
+    h.get_by_label(&tool_strip::panel_label(LeftTab::History)).click();
+    h.run_steps(4);
+    assert_eq!(h.query_all_by_label_contains("Step ").count(), history_panel::FIRST_CHANGES);
+    h.get_by_label(history_panel::EARLIER).click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("Step ").count() > history_panel::FIRST_CHANGES);
+}
+
 #[test]
 fn history_shows_the_revision_branches_changes_and_versions() {
     let mut h = harness();

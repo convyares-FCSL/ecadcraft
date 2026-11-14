@@ -224,7 +224,7 @@ fn agent_state(ui: &egui::Ui, t: &Trial) -> (Option<egui::Color32>, String, Stri
 /// The account avatar's letters: there are no accounts yet, so two letters of the person's login
 /// name (read from the environment, shown only on this screen): its capitals when it has two
 /// (`JaneDoe` → `JD`), else its first two letters, else a neutral mark.
-pub(crate) fn initials() -> String {
+fn initials() -> String {
     let name = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
     let caps: String = name.chars().filter(|c| c.is_uppercase()).take(2).collect();
     let letters =
