@@ -1353,7 +1353,7 @@ impl RefIndex {
                         of(r, &mut out);
                     }
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     out.insert(Group::Device(*id));
                 }
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
@@ -1539,7 +1539,7 @@ impl Scope {
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
                     self.devices.insert(terminal.component);
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     self.devices.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {

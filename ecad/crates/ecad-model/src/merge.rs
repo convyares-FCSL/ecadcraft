@@ -1238,7 +1238,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 out.insert(Obj::Component(*id));
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {

@@ -159,11 +159,11 @@ fn workspaces_left_tabs_and_the_text_panel() {
         assert_eq!(h.state().shell_state().workspace, w);
         assert_eq!(h.query_by_label(tool_strip::GROUPS[1].label).is_some(), w == Workspace::Draw, "{w:?}");
     }
-    // Lists hosts Reports; Library the symbol search; Publish Release and Print Book.
+    // Lists hosts Reports; Library its browser (brief 048); Publish Release and Print Book.
     keys(&mut h, Modifiers::COMMAND, Key::Num2);
     assert!(h.query_by_label(ecad_trial::devices_panel::FILTER).is_some(), "Lists ▸ Device list");
     keys(&mut h, Modifiers::COMMAND, Key::Num3);
-    assert!(h.state().search.open && h.state().search.host.is_some());
+    assert!(h.query_by_label(ecad_trial::library::browser::NEW).is_some(), "Library ▸ the browser");
     keys(&mut h, Modifiers::COMMAND, Key::Num4);
     assert!(h.state().print_book.is_some());
     keys(&mut h, Modifiers::COMMAND, Key::Num1);

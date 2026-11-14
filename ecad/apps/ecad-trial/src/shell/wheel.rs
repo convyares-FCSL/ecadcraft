@@ -105,13 +105,14 @@ impl Trial {
                     self.refuse(a.label, why, target.as_ref());
                 }
             }
+            crate::search::Pick::Project(key) => self.place_project_symbol(&key),
             crate::search::Pick::Symbol(_) | crate::search::Pick::Device(_) => {}
         }
     }
 
     /// Open the wheel at screen point `at` for `target` (`held`: a right press opened it).
     pub fn open_wheel(&mut self, at: egui::Pos2, target: Target, held: bool) {
-        let slots = actions::wheel(target.kind);
+        let slots = actions::wheel_for(&target);
         let writable = self.writable();
         let cx = Context { target: Some(&target), writable };
         let mut specs: [Option<SlotSpec>; 8] = Default::default();
@@ -456,6 +457,17 @@ impl Trial {
             App::RenumberWires => self.open_renumber(false, true, None),
             App::Finalise => self.open_renumber(true, false, None),
             App::WireSettings => self.panel_action(crate::project_panel::Action::ProjectSettings),
+            // Brief 048 (design 048 §9.6).
+            App::NewSymbol => self.new_symbol(),
+            App::EditSymbol => {
+                let rep = target.and_then(|t| t.representation).ok_or("Edit symbol needs a placed symbol: right-click one.")?;
+                self.edit_placed(rep)?;
+            }
+            App::MakeSymbol => self.make_symbol(target)?,
+            App::UpdateSymbol => {
+                let rep = target.and_then(|t| t.representation).ok_or("Update symbol needs a placed symbol: select one.")?;
+                self.update_symbol(rep)?;
+            }
             App::Template => {
                 let line = template(a, target, &self.picked());
                 self.command = line;

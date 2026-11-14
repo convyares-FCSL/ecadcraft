@@ -99,7 +99,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                     out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
                 }
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 out.insert(ObjectRef::Component(*id));
             }
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
@@ -146,7 +146,20 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
                 out.insert(ObjectRef::Project);
             }
-            Op::EmbedDefinition { .. } | Op::RemoveDefinition { .. } | Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
+            // Brief 048 (design §8.4): a project symbol's new or removed version changes whether
+            // the devices showing its lineage read "update available".
+            Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
+                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS) {
+                    for v in crate::symbols::versions_of(doc, o.definition) {
+                        for item in doc.items_using(v.id) {
+                            if let Some((_, r)) = doc.representation_of_item(item) {
+                                subject(r.subject, &mut out);
+                            }
+                        }
+                    }
+                }
+            }
+            Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
             Op::AddPage { .. }
             | Op::RemovePage { .. }
             | Op::AddFolder { .. }

@@ -473,6 +473,13 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
+                Op::SetComponentDefinition { id, .. } => {
+                    if locations::is_box(doc, *id) {
+                        self.pages.extend(doc.representations_of(Subject::Component(*id)).map(|(_, r)| r.page));
+                    } else {
+                        self.devices.insert(*id);
+                    }
+                }
                 Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));

@@ -28,6 +28,8 @@ use crate::Trial;
 pub const COLLAPSE: &str = "Collapse the details panel";
 pub const EXPAND: &str = "Details";
 pub const TITLE: &str = "PROPERTIES";
+/// The right panel's title in the Library (brief 048).
+pub const LIBRARY_TITLE: &str = "DETAILS";
 
 /// Draw the right panel (or its rail, or the Text panel over it).
 pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
@@ -49,9 +51,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         return;
     }
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
+    // Brief 048: the Library's right panel holds a symbol's details (design 048 §3.1, §8.1).
+    let library = t.shell.state.workspace == super::Workspace::Library;
     let collapse = super::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
         ui.horizontal_centered(|ui| {
-            ecad_ui::prim::read_value(ui, TITLE);
+            ecad_ui::prim::read_value(ui, if library { LIBRARY_TITLE } else { TITLE });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, COLLAPSE)).clicked()
             })
@@ -63,6 +67,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         t.shell.state.right_collapsed = true;
     }
     let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::M, rect.bottom()));
+    if library {
+        super::in_rect(ui, body, crate::library::details::DETAILS, |ui| {
+            egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| t.library_right(ui));
+        });
+        return;
+    }
     sync(t);
     let writable = t.project_open() && !t.header().read_only;
     let section = &mut t.shell.right_section;
@@ -239,6 +249,10 @@ pub enum InspectorAction {
     Placements(Vec<RepresentationId>),
     /// Brief 044: run this command line (a connector row's edit).
     RunLine(String),
+    /// Brief 048: bring this copy to its symbol's newest version (the review shows when it clashes).
+    UpdateSymbol(RepresentationId),
+    /// Brief 048c: the drawer row of this copy against the newest version, no save.
+    Compare(RepresentationId),
 }
 
 /// The inspector's rows and what they were built from.
@@ -263,6 +277,8 @@ pub struct Inspector {
     /// Brief 047 (design 047 §6.2): the selected device's part set, read only; empty when it has
     /// no part lines.
     pub parts: Vec<ecad_cadcraft::bom::PartSetRow>,
+    /// Brief 048: "update available" for the selected symbol.
+    pub symbol_update: Option<SymbolUpdate>,
 }
 
 /// The kinds of a symbol's own texts.
@@ -280,7 +296,19 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     crate::lists::standards::value_text(e, r)
 }
 
-type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>, Vec<ecad_cadcraft::bom::PartSetRow>);
+type Built = (Vec<Row>, BTreeSet<ObjectRef>, Vec<RepresentationId>, Vec<ConnectorRow>, Vec<ecad_cadcraft::bom::PartSetRow>, Option<SymbolUpdate>);
+
+/// Brief 048 (design 048 §8.4): the selected symbol shows an older version of its project
+/// symbol than the newest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolUpdate {
+    pub rep: RepresentationId,
+    pub shown: u64,
+    pub newest: u64,
+}
+
+/// The update row's element name.
+pub const SYMBOL_UPDATE: &str = "ecad.props.symbol.update";
 
 fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let mut deps = BTreeSet::from([ObjectRef::Project]);
@@ -344,7 +372,11 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, _) => ecad_cadcraft::bom::part_set(doc, c),
         _ => Vec::new(),
     };
-    (rows, deps, placements, connector, parts)
+    let update = match what {
+        What::Symbol(_, rep) => ecad_cadcraft::symbol_cmds::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
+        _ => None,
+    };
+    (rows, deps, placements, connector, parts, update)
 }
 
 /// Bring the inspector's rows up to date (its update map).
@@ -390,8 +422,8 @@ fn sync(t: &mut Trial) {
                 i.errors.clear();
             }
             i.what = what;
-            let (rows, deps, placements, connector, parts) = rows.unwrap_or_default();
-            (i.rows, i.deps, i.placements, i.connector, i.parts) = (rows, deps, placements, connector, parts);
+            let (rows, deps, placements, connector, parts, update) = rows.unwrap_or_default();
+            (i.rows, i.deps, i.placements, i.connector, i.parts, i.symbol_update) = (rows, deps, placements, connector, parts, update);
             i.connector_edits.clear();
             i.rebuilds += 1;
             i.seen = Some((serial, count, page, selection));
@@ -439,6 +471,7 @@ impl Inspector {
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<InspectorAction> {
         let mut out = Vec::new();
         self.show_connector(ui, writable, &mut out);
+        self.show_symbol_update(ui, writable, &mut out);
         self.show_parts(ui);
         if self.rows.is_empty() {
             return out;
@@ -567,6 +600,30 @@ impl Inspector {
         }
     }
 
+    /// Brief 048 (design 048 §8.4): `Symbol: v2 · update available` with Update, which brings this
+    /// copy to the newest version (refused with the reason when it would clash).
+    fn show_symbol_update(&self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<InspectorAction>) {
+        let Some(u) = &self.symbol_update else { return };
+        ui.add_space(space::M);
+        ui.horizontal(|ui| {
+            let text = format!("Symbol: v{} · update available (v{})", u.shown, u.newest);
+            ui.label(RichText::new(text).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, SYMBOL_UPDATE));
+            if writable {
+                let r = ui.small_button("Update");
+                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SYMBOL_UPDATE}.button")));
+                if r.clicked() {
+                    out.push(InspectorAction::UpdateSymbol(u.rep));
+                }
+            }
+            // Brief 048c (design 048 §8.4): the drawer row of this copy alone, no save.
+            let c = ui.small_button("Compare");
+            c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SYMBOL_UPDATE}.compare")));
+            if c.clicked() {
+                out.push(InspectorAction::Compare(u.rep));
+            }
+        });
+    }
+
     /// Brief 047 (design 047 §6.2): the part set, one grey row per line, line 0 first; nothing to
     /// click until 2.3's catalogue. A line with no part number shows `?` in the warning colour.
     fn show_parts(&self, ui: &mut egui::Ui) {
@@ -626,6 +683,12 @@ impl Trial {
                     self.cad.session.echo(e);
                 }
             }
+            InspectorAction::UpdateSymbol(rep) => {
+                if let Err(e) = self.update_symbol(rep) {
+                    self.cad.session.echo(e);
+                }
+            }
+            InspectorAction::Compare(rep) => self.compare_symbol(rep),
             InspectorAction::Placements(reps) => {
                 if let Err(e) = self.goto_symbols(&reps) {
                     self.cad.session.echo(e);

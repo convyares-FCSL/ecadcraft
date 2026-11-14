@@ -89,6 +89,7 @@ fn base() -> Base {
         origin: None,
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
         terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0) }],
+        ..Default::default()
     };
     let comp = ids.fresh();
     let mut comp_v = Component { definition: Some(def), ..Component::default() };
@@ -621,6 +622,7 @@ impl Gen {
             origin: None,
             graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: r }],
             terminals,
+            ..Default::default()
         }
     }
 

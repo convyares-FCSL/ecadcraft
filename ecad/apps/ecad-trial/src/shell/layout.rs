@@ -21,6 +21,8 @@ pub const HISTORY_W: f32 = 400.0;
 pub const RAIL_W: f32 = 44.0;
 /// The right panel's width.
 pub const RIGHT_W: f32 = 340.0;
+/// The right panel's width in the symbol builder (spec §2, design 048 §3.1).
+pub const RIGHT_W_BUILDER: f32 = 380.0;
 /// The drawer's body when open, and its header row (all that shows when collapsed).
 pub const DRAWER_BODY: f32 = 150.0;
 pub const DRAWER_HEADER: f32 = 36.0;
@@ -59,10 +61,13 @@ pub fn left_width(state: &ShellState) -> f32 {
 /// The slots for `window`. `agent`: an agent is connected (the banner shows).
 pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let (mut left_rail, mut right_rail, mut drawer_open) = (state.left.collapsed, state.right_collapsed && !state.text_panel, state.drawer_open);
-    let strip = state.workspace == Workspace::Draw;
+    // Brief 048: the builder has a tool strip too, and a wider right panel.
+    let builder = state.workspace == Workspace::Library && state.builder;
+    let strip = state.workspace == Workspace::Draw || builder;
+    let right_w = if builder { RIGHT_W_BUILDER } else { RIGHT_W };
     let main_w = |left_rail: bool, right_rail: bool| {
         let l = if left_rail { RAIL_W } else { left_width(state) };
-        let r = if right_rail { RAIL_W } else { RIGHT_W };
+        let r = if right_rail { RAIL_W } else { right_w };
         window.width() - l - r - if strip { size::TOOL_STRIP } else { 0.0 }
     };
     // Collapse order (design §5.2): the right panel, then the left, then the drawer.
@@ -86,7 +91,7 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let status = Rect::from_min_max(pos2(window.left(), window.bottom() - size::STATUS_BAR), window.max);
     let bottom = status.top().max(y);
     let lw = if left_rail { RAIL_W } else { left_width(state) };
-    let rw = if right_rail { RAIL_W } else { RIGHT_W };
+    let rw = if right_rail { RAIL_W } else { right_w };
     let left = Rect::from_min_max(pos2(window.left(), y), pos2(window.left() + lw, bottom));
     let right = Rect::from_min_max(pos2((window.right() - rw).max(left.right()), y), pos2(window.right(), bottom));
     let tool_strip = strip.then(|| Rect::from_min_max(pos2(left.right(), y), pos2((left.right() + size::TOOL_STRIP).min(right.left()), bottom)));

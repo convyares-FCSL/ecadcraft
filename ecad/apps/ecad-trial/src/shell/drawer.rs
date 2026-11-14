@@ -19,7 +19,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     super::fill(ui, rect, s.panel);
     ui.painter().hline(rect.x_range(), rect.top() + 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), super::layout::DRAWER_HEADER));
-    let title = t.panel.checks.title();
+    // Brief 048: the same slot holds the symbol review ("Before saving") and Compare.
+    let review = t.drawer_review_tab();
+    let title = review.map_or_else(|| t.panel.checks.title(), str::to_string);
     let open = slots.drawer_open;
     let mut toggle = false;
     super::in_rect(ui, head.shrink2(vec2(space::M, space::XS)), "ecad.shell.drawer.head", |ui| {
@@ -47,6 +49,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         h.name.is_some() && !h.read_only && t.panel.revision.is_none()
     };
     if !t.project_open() {
+        return;
+    }
+    if review.is_some() {
+        super::in_rect(ui, body, crate::library::review::BODY, |ui| t.library_drawer(ui));
         return;
     }
     if t.lists_shows_checks() {
