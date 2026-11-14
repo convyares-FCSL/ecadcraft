@@ -866,7 +866,7 @@ pub struct DerivedText {
     pub aci: Option<u8>,
     /// Brief 050a: the object's own text style (its `text.<kind>.style`), drawn instead of the
     /// kind's project style; `None` for the kind's.
-    pub own: Option<crate::text_style::TextStyle>,
+    pub own: Option<crate::text_style::OwnStyle>,
 }
 
 /// The page box of a placed definition.
@@ -1049,13 +1049,11 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
     let mut fixed: Vec<crate::text_style::TextBox> = Vec::new();
     // Brief 050a (design 050 §4.1): a device's own text style for a kind (its
     // `text.<kind>.style`), else `None` (the kind's project style).
-    let own = |c: ComponentId, kind: TextKind| -> Option<crate::text_style::TextStyle> {
-        let e = kind.style_entry();
+    let own = |c: ComponentId, kind: TextKind| -> Option<crate::text_style::OwnStyle> {
         let props = &doc.components.get(&c)?.properties;
-        props.get(e.key).and_then(|v| e.parse_in(doc, v))?;
-        Some(crate::text_style::text_style_at(doc, kind, crate::defaults::Scope::component(c)))
+        crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), props)
     };
-    let height_of = |c: ComponentId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.height);
+    let height_of = |c: ComponentId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
     for (rid, r) in doc.representations_on(page) {
         let Subject::Component(c) = r.subject else { continue };
         if r.form != Form::Symbol {
@@ -1208,9 +1206,9 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
 pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
-    match t.own {
+    match &t.own {
         // Brief 050a: the device's own text style (its height is already the text's).
-        Some(s) => look.apply_style(&mut e, kind_of(t.of), s),
+        Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
         None => look.apply(&mut e, kind_of(t.of)),
     }
     // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.

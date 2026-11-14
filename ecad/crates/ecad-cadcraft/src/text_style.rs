@@ -228,6 +228,56 @@ pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     TextStyle { height, weight, style_name, colour }
 }
 
+/// An object's own text style as drawn (brief 050a, design 050 §4.1, owner answer Q1): its
+/// height, weight and colour, and the CADCraft text style naming its font. `family` is the font
+/// family it draws in when that is not the project font, so the page installs that style
+/// ([`install_family`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwnStyle {
+    pub style: TextStyle,
+    /// The CADCraft text style an entity names.
+    pub name: String,
+    pub family: Option<String>,
+}
+
+/// The CADCraft text style of an own text style drawn in `family`: `ECAD-FONT-<FAMILY>` and its
+/// `-BOLD` twin (letters and digits kept, the rest `-`).
+pub fn family_style_name(family: &str, weight: Weight) -> String {
+    let w: String = family.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '-' }).take(48).collect();
+    match weight {
+        Weight::Regular => format!("ECAD-FONT-{w}"),
+        Weight::Bold => format!("ECAD-FONT-{w}-BOLD"),
+    }
+}
+
+/// Write the two CADCraft text styles of `family` into `d` (an object's own text style's font).
+pub fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Document, family: &str) {
+    let fonts = Fonts::for_family(doc, family.to_string());
+    put_style(d, &family_style_name(family, Weight::Regular), &fonts.regular);
+    put_style(d, &family_style_name(family, Weight::Bold), &fonts.bold);
+}
+
+/// The own text style of `kind` that the object with `props` chooses (its `text.<kind>.style`),
+/// resolved at `at`; `None` when it has no valid choice of its own.
+pub fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::Properties) -> Option<OwnStyle> {
+    let e = kind.style_entry();
+    props.get(e.key).and_then(|v| e.parse_in(doc, v))?;
+    let style = text_style_at(doc, kind, at);
+    let id = style_of(doc, kind, at);
+    let font = crate::styles::field_of(doc, "text", &id, "font", None).map(|r| r.text()).unwrap_or_default();
+    let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
+        defaults::Value::Text(t) => t.to_string(),
+        _ => default_family().to_string(),
+    };
+    let family =
+        (!font.is_empty() && !font.eq_ignore_ascii_case(crate::styles::text::PROJECT_FONT) && !font.eq_ignore_ascii_case(&project)).then_some(font);
+    let name = match &family {
+        Some(f) => family_style_name(f, style.weight),
+        None => style.weight.style_name().to_string(),
+    };
+    Some(OwnStyle { style, name, family })
+}
+
 /// The text style `kind` uses at `at`.
 pub fn style_of(doc: &Document, kind: TextKind, at: Scope) -> StyleRef {
     crate::styles::chosen(doc, kind.style_entry(), at)
@@ -591,9 +641,13 @@ impl Look {
         style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
     }
 
-    /// [`Look::apply`] with an object's own style `s` of `kind` (brief 050a), in `kind`'s fonts.
-    pub fn apply_style(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, s: TextStyle) {
-        style_entity(e, s, self.fonts_for(kind).bold_lineweight);
+    /// [`Look::apply`] with an object's own text style (brief 050a): its weight, colour and the
+    /// CADCraft style naming its font.
+    pub fn apply_own(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, own: &OwnStyle) {
+        style_entity(e, own.style, self.fonts_for(kind).bold_lineweight);
+        if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+            t.style.clone_from(&own.name);
+        }
     }
 }
 

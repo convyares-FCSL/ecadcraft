@@ -511,7 +511,17 @@ fn run_style(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
                     ops.push(Op::SetStyle { layer: l, catalogue: cat.word.into(), id: id.clone(), before, after });
                 }
             }
-            let label = format!("{} {}", cat.one, rename.map_or_else(|| styles::name(doc, cat.word, &id), str::to_string));
+            // Design 050 §3.5: history names the style and the fields that changed
+            // (`Text style Tag: colour none → RD`).
+            let changes: Vec<String> = fields
+                .iter()
+                .map(|(k, v)| {
+                    let was = styles::field_of(doc, cat.word, &id, k, None).map(|r| r.text()).unwrap_or_default();
+                    format!("{k} {was} → {}", v.as_deref().unwrap_or("(reset)"))
+                })
+                .collect();
+            let name = rename.map_or_else(|| styles::name(doc, cat.word, &id), str::to_string);
+            let label = if changes.is_empty() { format!("{} {name}", cat.one) } else { format!("{} {name}: {}", cat.one, changes.join(", ")) };
             (ops, id, label)
         };
         let changed = !ops.is_empty();

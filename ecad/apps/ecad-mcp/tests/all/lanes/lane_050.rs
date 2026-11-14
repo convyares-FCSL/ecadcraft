@@ -45,7 +45,7 @@ fn the_style_commands_record_one_transaction_by_the_agent() {
         json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"}),
         "Default Tag prefix: Contactor / relay coil",
     );
-    one_undoable(&mut c, "setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}}), "Text style Tag");
+    one_undoable(&mut c, "setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}}), "Text style Tag: colour none → RD");
     let v = one_undoable(
         &mut c,
         "setstyle",

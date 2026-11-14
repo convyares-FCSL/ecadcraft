@@ -383,7 +383,21 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             edit_rule: &rule,
             join: &join,
         };
-        merge::plan(&inp, choices)
+        let mut plan = merge::plan(&inp, choices);
+        // Brief 050a (design 050 §3.5): a built-in style's conflict is worded by its name, which
+        // only the app knows (`Text style "Tag"`, not the ID `tag`).
+        for c in &mut plan.conflicts {
+            let Some(rest) = c.id.strip_prefix("project/style.") else { continue };
+            let Some((_, rest)) = rest.split_once('.') else { continue };
+            let Some((cat, id)) = rest.split_once('.') else { continue };
+            if let Some(sid) = ecad_model::StyleRef::parse(id).filter(ecad_model::StyleRef::is_builtin)
+                && let Some(catalogue) = crate::styles::catalogue(cat)
+            {
+                let name = crate::styles::name(target, cat, &sid);
+                c.what = format!("{} \"{name}\" · changed on both", catalogue.one);
+            }
+        }
+        plan
     };
     if !plan.ops.is_empty() {
         let tried = match copy.as_mut() {

@@ -200,6 +200,9 @@ pub struct WireLabel {
     /// Brief 032 fix round: its text width as the project's font draws it (lane T's
     /// `text_style::width_in`), which placement keeps clear.
     pub width: f64,
+    /// Brief 050a: the conductor's own wire label style (its `text.wire_label.style`), else the
+    /// project's.
+    pub own: Option<crate::text_style::OwnStyle>,
 }
 
 /// The vertices of a route path.
@@ -393,12 +396,24 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
     let mut out = Vec::new();
     for (i, label) in chosen {
         let Some((rid, c, v)) = routes.get(i) else { continue };
+        // Brief 050a: a conductor's own wire label style (height, weight, colour, font).
+        let own = doc.conductors.get(c).and_then(|x| {
+            let at = crate::defaults::Scope { conductor: Some(*c), ..crate::defaults::Scope::project() };
+            crate::text_style::own_style(doc, crate::text_style::TextKind::WireLabel, at, &x.properties)
+        });
+        let h = own.as_ref().map_or(h, |o| o.style.height);
         let Some((a, b)) = longest_segment(v) else { continue };
         let theta = reading_angle(a, b);
         if !theta.is_finite() {
             continue;
         }
-        let w = crate::text_style::width_in(&fonts, style, &label.text);
+        let w = match &own {
+            Some(o) => {
+                let f = o.family.as_ref().map_or_else(|| fonts.clone(), |fam| crate::text_style::Fonts::for_family(doc, fam.clone()));
+                crate::text_style::width_in(&f, o.style, &label.text)
+            }
+            None => crate::text_style::width_in(&fonts, style, &label.text),
+        };
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
         let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
         let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h).into_iter().filter(|p| p.is_finite()).map(|p| (p, text_box(p, theta, w, h))).collect();
@@ -426,6 +441,7 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
             error: label.error,
             provisional: label.provisional,
             width: w,
+            own,
         });
     }
     out
@@ -460,7 +476,10 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
             valign: VAlign::Bottom,
         }),
     };
-    look.apply(&mut e, crate::text_style::TextKind::WireLabel);
+    match &l.own {
+        Some(o) => look.apply_own(&mut e, crate::text_style::TextKind::WireLabel, o),
+        None => look.apply(&mut e, crate::text_style::TextKind::WireLabel),
+    }
     // Brief 050a: an error or provisional label keeps its own colour over the style's.
     if l.error || l.provisional {
         e.common.color = color;

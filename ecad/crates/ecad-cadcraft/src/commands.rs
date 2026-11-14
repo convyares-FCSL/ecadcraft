@@ -518,6 +518,26 @@ fn kept_words(n: usize) -> String {
 
 fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let key = params.get("key").and_then(Value::as_str).ok_or_else(|| err("`key` is required"))?.to_string();
+    // Brief 050a (design 050 §3.4): an older build's text size, weight or font on the project is
+    // cleared here (its Checks row goes); it is never written.
+    if params.get("project").and_then(Value::as_bool) == Some(true)
+        && params.get("value").is_some_and(Value::is_null)
+        && crate::styles::checks::is_old_key(&key)
+    {
+        return with_project(s, |p, pg, _| {
+            let before = p.ledger.document().properties.get(&key).cloned();
+            if before.is_none() {
+                return Ok(json!({"changed": false}));
+            }
+            p.apply_edit(
+                pg,
+                "setprop",
+                "Clear an older build's text setting",
+                vec![Op::SetProperty { object: ObjectRef::Project, key, before, after: None }],
+            )?;
+            Ok(json!({"changed": true}))
+        });
+    }
     // `null` clears the property; a missing value or another type is an error, never a clear.
     let value = match params.get("value") {
         Some(Value::Null) => None,

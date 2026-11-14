@@ -1043,6 +1043,10 @@ pub fn project_page_kept(
         if !t.shown && !hidden_text {
             continue;
         }
+        // Brief 050a: an object's own text style in a font of its own.
+        if let Some(f) = t.text.own.as_ref().and_then(|o| o.family.as_deref()) {
+            crate::text_style::install_family(&mut d, doc, f);
+        }
         let h = prev.tag_text(t.text.rep, t.text.of).unwrap_or_else(|| d.new_handle());
         let mut e = crate::devices::text_entity(&look, &t.text, h);
         if !t.shown {
@@ -1079,6 +1083,9 @@ pub fn project_page_kept(
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
+        if let Some(f) = l.own.as_ref().and_then(|o| o.family.as_deref()) {
+            crate::text_style::install_family(&mut d, doc, f);
+        }
         let h = prev.label(l.rep).unwrap_or_else(|| d.new_handle());
         ents.push(crate::wires::label_entity(&look, &l, h));
         map.insert_label(l.rep, l.conductor, h);

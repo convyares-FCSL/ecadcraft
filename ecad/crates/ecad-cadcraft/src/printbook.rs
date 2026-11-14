@@ -197,6 +197,12 @@ pub fn build_in(
                 scratch.linetypes.push(lt.clone());
             }
         }
+        // Brief 050a: the text styles of objects' own fonts (`ECAD-FONT-…`).
+        for ts in &d.text_styles {
+            if !scratch.text_styles.iter().any(|x| x.name.eq_ignore_ascii_case(&ts.name)) {
+                scratch.text_styles.push(ts.clone());
+            }
+        }
         for (name, b) in &d.blocks {
             scratch.blocks.entry(name.clone()).or_insert_with(|| b.clone());
         }
