@@ -52,6 +52,13 @@ pub struct MeasuredPlc {
     pub iolist_ms: f64,
     pub iolistupd_ms: f64,
     pub rows: usize,
+    /// Brief 051 (design 051 §9.4): the card frames of the fenced page made (< 8 ms); one channel
+    /// text edited, committed, updated and the frames made again (< 4 ms); the first rack's tiles
+    /// made (< 10 ms); the `plcrack` sheet drawn (< 30 ms).
+    pub plcframe_ms: f64,
+    pub plcframeupd_ms: f64,
+    pub plcstrip_ms: f64,
+    pub plcrack_ms: f64,
 }
 
 fn ms(t: Instant) -> f64 {
@@ -170,15 +177,16 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.slotmove_ms = median(&mut moves);
-        // 16 wires on the page shown, for the fence (setup, not timed).
+        // 16 wires on the page shown, for the fence (setup, not timed). Brief 051: the pack's 20 mm
+        // pitch (a fence across closer wires is refused).
         for i in 0..16 {
-            let x = 900.0 + 10.0 * f64::from(i);
+            let x = 900.0 + 20.0 * f64::from(i);
             run(&mut s, "wire", json!({"points": [[x, 250.0], [x, 150.0]]}))?;
         }
         let mut fences = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
-            run(&mut s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1055.0, 200.0]}))?;
+            run(&mut s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1215.0, 200.0]}))?;
             fences.push(ms(t));
             run(&mut s, "undo", json!({}))?;
         }
@@ -228,9 +236,67 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.iolistupd_ms = median(&mut upd);
+        measure_051(&project, &mut s, runs, rack, &mut out)?;
         Ok(out)
     })();
     crate::measure::release_lock_file(&copy);
     remove(&copy);
     result
+}
+
+/// Brief 051's rows (design 051 §9.4), on the project as [`measure`] left it.
+fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad_model::ComponentId, out: &mut MeasuredPlc) -> Result<(), String> {
+    // A fenced card kept on the page shown (setup, not timed).
+    let v = run(s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1215.0, 200.0]}))?;
+    let card = v.get("card").and_then(|c| c.as_str()).and_then(ecad_model::ComponentId::parse).ok_or("no fenced card")?;
+    let page = project.read(s, |p, _| p.ledger.document().representations_of(ecad_model::Subject::Component(card)).next().map(|(_, r)| r.page))?;
+    let page = page.ok_or("the fenced card is on no page")?;
+    let frames = |project: &ProjectHandle, s: &mut Session| -> Result<f64, String> {
+        project.read(s, |p, _| {
+            let t = Instant::now();
+            std::hint::black_box(ecad_cadcraft::plc::look::parts_on_page(p.ledger.document(), page));
+            ms(t)
+        })
+    };
+    let mut first = Vec::new();
+    for _ in 0..runs {
+        first.push(frames(project, s)?);
+    }
+    out.plcframe_ms = median(&mut first);
+    let mut upd = Vec::new();
+    for k in 0..runs {
+        let t = Instant::now();
+        run(s, "plcchannel", json!({"card": card.hex(), "channel": 1, "text": format!("Frame {k}")}))?;
+        project.read(s, |p, _| std::hint::black_box(ecad_cadcraft::plc::look::parts_on_page(p.ledger.document(), page)))?;
+        upd.push(ms(t));
+        run(s, "undo", json!({}))?;
+    }
+    out.plcframeupd_ms = median(&mut upd);
+    let mut strip = Vec::new();
+    for _ in 0..runs {
+        strip.push(project.configure(s, |p| {
+            p.outputs();
+            let doc = p.ledger.document();
+            let Some(o) = p.outputs.as_ref() else { return 0.0 };
+            let Some(r) = o.plc.racks.get(&rack) else { return 0.0 };
+            let t = Instant::now();
+            std::hint::black_box(ecad_cadcraft::plc::overview::rack_tiles(doc, &o.plc, r));
+            ms(t)
+        })?);
+    }
+    out.plcstrip_ms = median(&mut strip);
+    let sheet = run(s, "newpage", json!({"generated": "plcrack"}))?;
+    let sheet = sheet.get("page").and_then(|c| c.as_str()).and_then(ecad_model::PageId::parse).ok_or("no plcrack page")?;
+    let mut rack_sheet = Vec::new();
+    for _ in 0..runs {
+        rack_sheet.push(project.configure(s, |p| {
+            p.outputs();
+            let doc = p.ledger.document();
+            let t = Instant::now();
+            std::hint::black_box(ecad_cadcraft::generated::parts_of(doc, sheet, p.outputs.as_ref()));
+            ms(t)
+        })?);
+    }
+    out.plcrack_ms = median(&mut rack_sheet);
+    Ok(())
 }
