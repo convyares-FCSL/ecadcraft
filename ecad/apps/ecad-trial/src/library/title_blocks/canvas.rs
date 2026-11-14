@@ -605,6 +605,8 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_ui::tok
     let Some(d) = ed.draft.as_mut() else { return acts };
     let read_only = d.builtin;
     let resp = ui.interact(area, egui::Id::unique(super::CANVAS).with("input"), Sense::click_and_drag());
+    // Tester 055 (§5): the canvas is named for the UI tests.
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Canvas, true, super::CANVAS));
     let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
     let mm = pointer.map(|p| v.mm(p));
     let shift = ui.input(|i| i.modifiers.shift);
