@@ -1,6 +1,6 @@
 # Brief 056: The PLC signal list and PLC sync
 
-Status: Draft (FP1–FP5 approved by the overseer, 2026-11-14; owner answers to design §16 pending)
+Status: Approved (overseer: FP1–FP5, 2026-11-14; owner: design §16 answered, 2026-11-14)
 Branch: `feature/plc-signals`, from `origin/dev` `8b6c2ccd`.
 Designer: **yes** (`docs/design/056.md`) · Size: L
 Release: 0.2.2 (UI rev 4). Source: rev 4 build spec "Project workspace ▸ PLC: the signal list"
@@ -27,7 +27,7 @@ to the PLC project, and Import is a greyed placeholder.
   Description, Address and Pins as inputs, the `plcrack` and `iolist` sheets.
 - Rev 3 Project workspace: tab row with greyed **Import an I/O list**, Export copies CSV, the right
   panel for a tile.
-- No XLSX support in the workspace.
+- No XLSX support in the workspace (none is added: CSV only, Q3).
 
 ## §0 Files touched
 
@@ -37,15 +37,14 @@ Design §0.3 has the full table. In short:
 | --- | --- |
 | `ecad/crates/ecad-cadcraft/src/plc/signals.rs` (**new**) | Tag, safe state, Drives, `TestState` |
 | `ecad/crates/ecad-cadcraft/src/plc/sync.rs` (**new**) | Snapshot, matching, states; `plcsync`, `plctake`, `plcimport` |
-| `ecad/crates/ecad-cadcraft/src/plc/tagtable.rs` (**new**) | Generic CSV and TIA Portal XLSX; `plcexport` |
+| `ecad/crates/ecad-cadcraft/src/plc/tagtable.rs` (**new**) | The format layer (one interface, one registry) and its one format, generic CSV; `plcexport` |
 | `ecad/crates/ecad-cadcraft/src/plc/{mod,channels,iolist,overview,sheets,address}.rs` | `plcchannel {tag, safe}`, `plcmaketags`, row fields, tile words, sheet tiles, `percent` style |
 | `ecad/crates/ecad-cadcraft/src/defaults/plc.rs`, `checks.rs`, `release.rs`, `lanes.rs` | Registry entries, one Checks block, CSV columns, one lane line |
-| `ecad/crates/ecad-cadcraft/Cargo.toml` | XLSX writer and reader (if Q3 is yes) |
 | `ecad/apps/ecad-trial/src/lists/{plc,workspace,detail}.rs`, `lists/plc_compare.rs` (**new**) | Rack heading, card header, chip, columns, Compare, Import and Export, right panel |
 | Tests `tests/all/lanes/lane_056*` in ecad-cadcraft, ecad-mcp, ecad-trial | Design §13 |
 | `ecad/crates/ecad-bench` | Design §12.4 rows |
 | `ecad/docs/quick-start/056-plc-signals.md` (**new**) | By clicking |
-| Synthetic tag table fixtures (Q15) | Generic CSV, TIA XLSX |
+| `ecad/tests/fixtures/plc/` (Q15) | Synthetic generic CSV tag tables |
 
 Not touched: `ecad-model`, `ecad-store`, `ecad-file`, upstream, CI.
 Overlaps: `detail.rs` and `workspace.rs` with the other rev 4 Project briefs (each adds its own
@@ -66,8 +65,10 @@ arm); the `plcrack` page's place in the book with the page-types brief (054).
 5. **PLC sync** (design §6): an imported snapshot kept in the project; per-channel states (in sync,
    differs, moved, not in PLC, only in PLC) and tags on no card; the chip; Compare side by side
    with **Use PLC's**; Export tags; Import with a preview and one transaction.
-6. **Formats** (design §7): generic CSV first (no dependency, wasm, any PLC by mapping), TIA Portal
-   PLC tags XLSX second (the common PLC in the owner's work; round-trips unedited). Others later.
+6. **Formats** (design §7): **generic CSV only** (owner, Q3): no dependency, works on wasm, any PLC
+   tool's table can be mapped to it in a spreadsheet. Formats sit behind one interface and a
+   registry, so the vendor formats of 0.5.0 (TIA Portal, TwinCAT and the like, with manufacturer
+   data) are each one module, with no change to sync, Compare, the commands or the UI.
 7. **Test column** designed and shown with `—`; the Tests brief (0.2.3) fills it (design §4.6).
 8. **The rack overview in the book** (design §8): `plcrack` tiles in the new words, always present
    with a rack, tiles link to their pages; the PLC tab's footer links to it.
@@ -75,7 +76,8 @@ arm); the `plcrack` page's place in the book with the page-types brief (054).
 10. **Update maps** throughout (design §12); Checks (design §9); commands and MCP (design §10).
 
 Out of scope: tests themselves, a live link to a PLC tool, building cards from a PLC hardware
-configuration, provisional addresses, several PLC snapshots (design §15).
+configuration, vendor tag table formats (0.5.0), provisional addresses, several PLC snapshots
+(design §15).
 
 ## Acceptance criteria
 
@@ -86,11 +88,12 @@ Design §13.1 rows A–P. In short:
 2. Tag and Safe edit through `plcchannel` in one transaction each; a duplicate tag is refused with
    its sentence; an unset safe state shows the default with its badge and follows `setdefault`.
 3. Drives shows the end device through a terminal, with every target in the tooltip.
-4. Import of the generic CSV and (Q3) of the TIA XLSX gives the same states; the preview writes nothing;
+4. Import of the generic CSV (comma, and `;` with a BOM as a spreadsheet saves it) gives the
+   states of design §13.1 G; any other file is refused with words; the preview writes nothing;
    Import writes one `Import PLC tags` transaction that `u` undoes whole.
 5. The chip counts the card's differences; Compare lists them side by side; **Use PLC's** and **for
    all** take names in one transaction each.
-6. Export → reimport round-trips (same snapshot) in both formats; untagged channels are left out
+6. Export → reimport round-trips (same snapshot); untagged channels are left out
    and counted.
 7. A card move updates addresses and sync states, nothing else (counter).
 8. The `plcrack` page is in the book when a rack exists, with the new tile lines, and goes with the
@@ -115,18 +118,16 @@ Design §14:
   as one value.
 - **FP3.** Import is ops: `plcimport`, `plctake` and `plcmaketags` record `SetProperty` ops in one
   transaction each; undo restores the previous snapshot and names.
-- **FP4.** Registry entries `plc.safe.dq`, `plc.safe.ao`, `plc.tia.table`, and the address style
+- **FP4.** Registry entries `plc.safe.dq`, `plc.safe.ao`, and the address style
   value `percent`.
-- **FP5.** Two dependencies, an XLSX writer and reader (e.g. `rust_xlsxwriter`, MIT OR Apache-2.0;
-  `calamine`, MIT), wasm build kept or XLSX native-only.
+- **FP5.** No dependencies (Q3: CSV only). The XLSX crates of the draft are dropped; what
+  remains is the format layer, which is code.
 
 No new op, no record field, nothing in `ecad-model`.
 
-**Approved (overseer, 2026-11-14): FP1–FP5.** FP5 conditions (design §14): permissive licences
-only, every one already on the house-rules allowlist (MIT and Apache-2.0 are); the allowlist is
-not edited in this repository, and a licence not on it means stop and ask. One crate that reads
-and writes XLSX is preferred if a sound one exists, otherwise one reader and one writer; the PR
-names the crates weighed. `cargo xtask wasm` stays green (XLSX native-only if needed).
+**Approved (overseer, 2026-11-14): FP1–FP5.** The FP5 conditions for XLSX crates (permissive
+licences already on the house-rules allowlist, one crate for reading and writing preferred, wasm
+green) lapse with Q3. They apply again in 0.5.0. The allowlist is not edited in this repository.
 
 ## Tester
 
@@ -134,8 +135,13 @@ names the crates weighed. `cargo xtask wasm` stays green (XLSX native-only if ne
 table-sized property, and must undo whole. The tester runs design §13.1 with hostile files (O) and
 the round trip (I) first, and a merge of two branches that both imported.
 
-## Needs owner check
+## Owner answers
 
-Design §16 questions 1–16. The main ones: Q3 (formats and the XLSX dependencies), Q5 (`%I0.0`
-address style), Q6 (`DQ` or `DO`), Q12 (provisional addresses: a separate brief), Q15 (a synthetic
-TIA Portal export for the tests).
+**Owner (Carl, 2026-11-14, through the overseer):** design §16 answered.
+
+- **Q1:** file only. No live link to the PLC tool or to any external Excel file.
+- **Q3:** generic CSV only, for now. TIA Portal, TwinCAT and the like come in 0.5.0 with
+  manufacturer data. No XLSX crates in 056. The format layer stays ready for more formats.
+- **All other questions:** as recommended. Q5: add the `percent` style, `byte.bit` stays built in.
+  Q6: `DQ` everywhere. Q12: provisional addresses get a separate brief. Q15: the fixtures folder,
+  with synthetic CSV tag tables only. Q16: a tester.
