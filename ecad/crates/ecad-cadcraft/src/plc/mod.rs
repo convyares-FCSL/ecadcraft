@@ -1039,6 +1039,7 @@ pub fn caption_text(
             halign: cadcraft_engine::doc::HAlign::Left,
             valign: cadcraft_engine::doc::VAlign::Top,
             aci: None,
+            own: None,
         },
         shown,
         moved: false,
@@ -1223,7 +1224,7 @@ pub fn channel_texts(
             (h, v)
         };
         out.push(PageText {
-            text: DerivedText { rep: rid, of, value, at: p, height, halign: h, valign: v, aci: None },
+            text: DerivedText { rep: rid, of, value, at: p, height, halign: h, valign: v, aci: None, own: None },
             shown,
             moved: false,
             overlaps: false,

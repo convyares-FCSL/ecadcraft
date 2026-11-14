@@ -77,17 +77,18 @@ fn settings_opens_from_the_menu_the_status_bar_and_a_badge_and_esc_returns() {
     assert!(!h.state().shell.settings_open);
     assert_eq!(selection(&h), sel, "Close keeps the selection");
 
-    // The inspector: the symbol's tag height, read (grey) from the built-in, with its badge.
+    // The inspector: the symbol's tag prefix, read (grey) from the built-in, with its badge. (Brief
+    // 050a: the tag height is its text style's now, chosen on the device's Tag style row.)
     let rows = &h.state().settings.inspector.rows;
-    let tag = rows.iter().find(|r| r.key == "text.tag.height").expect("the tag height row");
-    assert_eq!((tag.from, tag.value.as_str(), tag.here), (Source::Builtin, "2.5 mm", None), "read here, not set");
-    assert!(h.query_by_label("ecad.inspector.text.tag.height").is_some());
+    let tag = rows.iter().find(|r| r.key == "symbol.coil.prefix").expect("the coil prefix row");
+    assert_eq!((tag.from, tag.value.as_str(), tag.here), (Source::Builtin, "-K", None), "read here, not set");
+    assert!(h.query_by_label("ecad.inspector.symbol.coil.prefix").is_some());
     save(&h, &deltas, "042-inspector.png");
-    // Its badge opens Standards at that key.
-    click(&mut h, "ecad.origin.text.tag.height");
+    // A badge opens Standards at that key (the Tag style row's, at the top of the rows).
+    click(&mut h, "ecad.origin.text.tag.style");
     assert_eq!((h.state().shell.settings_open, h.state().settings.section), (true, Section::Standards));
     let v = &h.state().settings.standards;
-    assert_eq!(v.focus.and_then(|k| v.defaults.entry(k)).map(|e| e.key), Some("text.tag.height"));
+    assert_eq!(v.focus.and_then(|k| v.defaults.entry(k)).map(|e| e.key), Some("text.tag.style"));
     h.run_steps(2);
     save(&h, &deltas, "042-standards-tag-height.png");
     h.key_press(Key::Escape);
@@ -142,21 +143,26 @@ fn the_standards_table_is_patched_by_textstyle_and_left_by_other_commits() {
     let (mut h, _) = fixture(None);
     h.state_mut().open_standards(None);
     h.run_steps(3);
+    // Brief 050a: the text styles' table on screen (its rows are what textstyle changes).
+    h.state_mut().settings.standards.catalogue = 1;
+    h.run_steps(2);
     let (rebuilds, patches) = (h.state().settings.standards.rebuilds, h.state().settings.standards.patches);
     assert_eq!(rebuilds, 1, "built on first show");
     // A commit touching no default: nothing.
     ok(&mut h, r#"wire {"points":[[0,150],[40,150]]}"#);
     h.run_steps(2);
     assert_eq!((h.state().settings.standards.rebuilds, h.state().settings.standards.patches), (rebuilds, patches));
-    // `textstyle` from the Commands field: the text rows are patched and tinted, not rebuilt.
+    // `textstyle` from the Commands field: the text styles' rows are patched and tinted, not
+    // rebuilt (brief 050a: the tag's height is its text style's).
     ok(&mut h, r#"textstyle {"kind":"tag","height":3}"#);
     h.run_steps(2);
     let v = &h.state().settings.standards;
     assert_eq!((v.rebuilds, v.patches), (rebuilds, patches + 1));
-    let k = v.defaults.key_of("text.tag.height").unwrap();
-    assert_eq!(v.defaults.from(k), Some(Source::Project));
+    let (text, table) = &v.cats[0];
+    let tag = text.row(text.key_of(&ecad_model::StyleRef::Builtin("tag".into())).unwrap()).unwrap();
+    assert!(tag.values.iter().any(|(val, from)| val == "3 mm" && *from == Source::Project), "{:?}", tag.values);
     let now = h.ctx.input(|i| i.time);
-    assert!(!h.state().settings.standards.table.tint.tinted(now).is_empty(), "the changed cells are tinted");
+    assert!(!table.tint.tinted(now).is_empty(), "the changed cells are tinted");
 }
 
 #[test]

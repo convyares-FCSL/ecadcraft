@@ -197,6 +197,12 @@ pub fn build_in(
                 scratch.linetypes.push(lt.clone());
             }
         }
+        // Brief 050a: the text styles of objects' own fonts (`ECAD-FONT-…`).
+        for ts in &d.text_styles {
+            if !scratch.text_styles.iter().any(|x| x.name.eq_ignore_ascii_case(&ts.name)) {
+                scratch.text_styles.push(ts.clone());
+            }
+        }
         for (name, b) in &d.blocks {
             scratch.blocks.entry(name.clone()).or_insert_with(|| b.clone());
         }
@@ -213,7 +219,9 @@ pub fn build_in(
                 e.common.color = Color::Index(crate::generated::FLAGGED_PRINT_ACI);
             }
             // Colour: everything but the wire colours prints in ink. Mono: the wires print in ink.
-            let wire_colour = e.common.layer == crate::wires::DASH_LAYER || map.is_coloured(e.handle);
+            // Brief 050a: a style's colour (text, location box, frame; set as a true colour by
+            // the projection) prints like a wire colour: in a colour print only.
+            let wire_colour = e.common.layer == crate::wires::DASH_LAYER || map.is_coloured(e.handle) || matches!(e.common.color, Color::True(_));
             if colour != wire_colour {
                 e.common.color = Color::Index(7);
             }

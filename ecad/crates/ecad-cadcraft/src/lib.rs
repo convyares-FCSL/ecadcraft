@@ -78,6 +78,8 @@ pub mod sheet_cmds;
 pub mod slash;
 pub mod strip_page;
 pub mod strips;
+pub mod style_cmds;
+pub mod styles;
 pub mod symbol_cmds;
 pub mod symbols;
 pub mod terminal_cmds;

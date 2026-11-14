@@ -141,7 +141,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Wires;
     h.run_steps(4);
     let wires = h.state().reports.as_ref().unwrap().table().clone();
-    assert!(wires.rows.iter().any(|row| row[8].text.starts_with("-W01 core")), "cores with their cable");
+    assert!(wires.rows.iter().any(|row| row[9].text.starts_with("-W01 core")), "cores with their cable");
     save(&h, &deltas, "024-reports-wires.png");
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
     h.run_steps(4);

@@ -146,6 +146,11 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
                 out.insert(ObjectRef::Project);
             }
+            // Brief 050a: styles and the standard show in the property views of the project (the
+            // inspector's style rows re-read through it).
+            Op::SetStyle { .. } | Op::SetStandard { .. } => {
+                out.insert(ObjectRef::Project);
+            }
             // Brief 048 (design §8.4): a project symbol's new or removed version changes whether
             // the devices showing its lineage read "update available".
             Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
@@ -756,7 +761,13 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
         potential.inherited = true;
     }
     top.push(potential);
-    for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &pot.cross_section), (wiring::COLOUR, "Colour", &pot.colour)] {
+    // Brief 050b: what the wire has none of its own comes from its category.
+    let look = crate::styles::wire::wire_look(doc, w);
+    let cat_value =
+        |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
+    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
+    for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &cs_default), (wiring::COLOUR, "Colour", &colour_default)] {
         let shown = |v: &str| if key == wiring::COLOUR { doc.settings.wiring.colour(v) } else { v.to_string() };
         let stored = props.and_then(|p| p.get(key)).cloned();
         let mut row = Row::rw(key, label, stored.as_deref().map(shown).unwrap_or_default());
@@ -764,9 +775,9 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
             row.choices = wiring::COLOUR_CODES.iter().map(|(iec, _)| shown(iec)).collect();
         }
         if stored.is_none()
-            && let (Some(d), Some(p)) = (default, &pot.name)
+            && let (Some(d), Some(n)) = (default, &cat_name)
         {
-            row.value = format!("{} ({p})", shown(d));
+            row.value = format!("{} ({n})", shown(d));
             row.inherited = true;
         }
         top.push(row);

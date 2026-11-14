@@ -25,6 +25,8 @@ fn other_value(e: &Entry) -> Option<String> {
                 .map(|s| s.to_string())
                 .collect()
         }
+        // Brief 050a: a style choice takes another built-in style of its catalogue.
+        Kind::Style(cat) => ecad_cadcraft::styles::catalogue(cat).map(|c| c.builtins.iter().map(|b| b.id.to_string()).collect()).unwrap_or_default(),
     };
     candidates.into_iter().find(|c| e.parse(c).is_some() && !c.eq_ignore_ascii_case(&builtin))
 }
@@ -83,8 +85,10 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
     let mut written = 0;
     for e in defaults::all() {
         let Some(value) = other_value(e) else {
-            // A one-word choice: only its built-in exists, written as the project's own.
-            assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1), "{}: no test value", e.key);
+            // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
+            // only its built-in exists.
+            let single = |c: &str| ecad_cadcraft::styles::catalogue(c).is_some_and(|c| c.builtins.len() == 1);
+            assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };
         let stored = default_cmds::stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));
@@ -125,7 +129,7 @@ fn setdefault_is_one_undoable_transaction() {
     let doc = h.doc();
     let t = targets(page, c, rep, &doc);
     for (key, value, (level, target, scope, source)) in
-        [("text.tag.height", "3", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "off", t[1]), ("text.tag.show", "first", t[3])]
+        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "off", t[1]), ("text.tag.show", "first", t[3])]
     {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
@@ -150,18 +154,19 @@ fn setdefault_is_one_undoable_transaction() {
 fn refusals_say_why_and_name_the_allowed_levels() {
     let (mut h, _, _, _) = fixture();
     let head = h.head();
-    // Text heights: project only (owner answer 4: page level for show and hide only).
-    let m = h.run("setdefault", json!({"key": "text.tag.height", "level": "page", "value": 3})).unwrap_err();
+    // Run gaps: project only (owner answer 4: page level for show and hide only). Brief 050a: the
+    // standard level needs a standard.
+    let m = h.run("setdefault", json!({"key": "text.run.gap", "level": "page", "value": 3})).unwrap_err();
     assert!(m.contains("cannot be set at page level") && m.contains("It can be set at: project"), "{m}");
-    let m = h.run("setdefault", json!({"key": "text.tag.height", "level": "standard", "value": 3})).unwrap_err();
+    let m = h.run("setdefault", json!({"key": "text.run.gap", "level": "standard", "value": 3})).unwrap_err();
     assert_eq!(m, default_cmds::STANDARD_READ_ONLY);
     for (params, words) in [
-        (json!({"key": "text.tag.height", "value": 11}), "length from 0.5 to 10"),
-        (json!({"key": "text.tag.height", "value": "NaN"}), "length"),
-        (json!({"key": "text.tag.height"}), "reset: true"),
-        (json!({"key": "text.tag.height", "value": 3, "reset": true}), "not both"),
+        (json!({"key": "text.run.gap", "value": 101}), "length from 0 to 100"),
+        (json!({"key": "text.run.gap", "value": "NaN"}), "length"),
+        (json!({"key": "text.run.gap"}), "reset: true"),
+        (json!({"key": "text.run.gap", "value": 3, "reset": true}), "not both"),
         (json!({"key": "text.nope", "value": 3}), "No default"),
-        (json!({"key": "text.tag.height", "level": "sideways", "value": 3}), "Unknown level"),
+        (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level"),
         (json!({"key": "text.tag.show", "level": "object", "value": "off"}), "needs a `component`"),
         (json!({"key": "symbol.coil.prefix", "value": "K1"}), "A prefix is 1 to"),
         (json!({"key": "symbol.coil.prefix", "value": &"x".repeat(10_000)}), "letters"),
@@ -199,7 +204,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
 fn the_chain_shows_a_level_that_holds_a_value_or_is_allowed() {
     let (mut h, page, c, rep) = fixture();
     let show = defaults::find("text.tag.show").unwrap();
-    let height = defaults::find("text.tag.height").unwrap();
+    let height = defaults::find("text.run.gap").unwrap();
     let doc = h.doc();
     let at = Scope::symbol(&doc, rep);
     let levels = |e: &Entry, d: &ecad_model::Document| defaults::chain(d, e, at).iter().map(|(s, _)| *s).collect::<Vec<_>>();

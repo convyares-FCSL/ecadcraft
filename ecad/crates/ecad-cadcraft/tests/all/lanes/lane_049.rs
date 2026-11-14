@@ -366,8 +366,12 @@ fn registry_defaults_apply() {
     f.h.run("setdefault", json!({"key": "continuation.places.max", "value": "1"})).unwrap();
     let t = text_of(&mut f.h, f.pages[0], f.arrows[0].1).unwrap();
     assert!(t.ends_with(" +1") && t.split(' ').count() == 2, "{t}");
-    let entry = ecad_cadcraft::defaults::find("text.continuation_caption.height").unwrap();
-    assert_eq!(entry.builtin, ecad_cadcraft::defaults::Value::Length(2.5));
+    // Brief 050a: the caption is a built-in text style, 2.5 mm regular.
+    let entry = ecad_cadcraft::defaults::find("text.continuation_caption.style").unwrap();
+    assert_eq!(entry.builtin, ecad_cadcraft::defaults::Value::Text("continuation_caption"));
+    let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
+    let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
+    assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");
     assert!(ecad_cadcraft::text_style::TextKind::from_word("continuation_caption").is_some());
 }
 

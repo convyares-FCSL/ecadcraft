@@ -1172,6 +1172,25 @@ pub fn projection_sheet() -> &'static ecad_tokens::Sheet {
     PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
 }
 
+/// Keeps the sheet [`pin_sheet`] read for this thread until it is dropped.
+#[derive(Debug)]
+pub struct SheetPin(Option<&'static ecad_tokens::Sheet>);
+
+impl Drop for SheetPin {
+    fn drop(&mut self) {
+        PROJECTION_SHEET.with(|c| c.set(self.0));
+    }
+}
+
+/// Read the sheet once and keep it for this thread until the pin drops: a page's projection and
+/// its check then agree on every colour. Without it, a sheet switch on another thread
+/// (`canvassheet`, which is process-wide) between the projection and the check made a rebuilt
+/// page fail its check and become unavailable (CI on PR 88, `history_ui`).
+pub fn pin_sheet() -> SheetPin {
+    let s = projection_sheet();
+    SheetPin(PROJECTION_SHEET.with(|c| c.replace(Some(s))))
+}
+
 /// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
 /// the screen shows).
 pub fn with_paper<R>(f: impl FnOnce() -> R) -> R {
@@ -1300,19 +1319,16 @@ pub fn wire_colours(code: &str, sheet: &ecad_tokens::Sheet) -> Option<ecad_token
     Some(ecad_tokens::wire::WireColors { solid: colour(a)?, dashes: b.and_then(colour) })
 }
 
-/// A conductor's colour code: its own, else its potential's when it is not a cable core (the
-/// same source as its label, `ecad_model::wiring::label`). `None` when it has none.
+/// The colour code a conductor's route is drawn in (brief 050b, design 050 §5.5): its wire
+/// category's line colour (`wire`: the insulation colour, its own or the category's; `ink`: none;
+/// or a code). `None` when it is drawn in ink.
 pub fn conductor_colour(doc: &Document, c: ConductorId) -> Option<String> {
-    let cond = doc.conductors.get(&c)?;
-    if let Some(v) = cond.properties.get(ecad_model::wiring::COLOUR).filter(|v| !v.trim().is_empty()) {
-        return Some(v.clone());
-    }
-    if !doc.cables_of(c).is_empty() {
-        return None;
-    }
-    let conn = doc.connectivity();
-    let net = conn.net_of_conductor(c).and_then(|id| conn.net(id))?;
-    ecad_model::wiring::net_potential(doc, net).colour.filter(|v| !v.trim().is_empty())
+    crate::styles::wire::wire_look(doc, c).route_code()
+}
+
+/// [`conductor_colour`] with the project's categories read once (`looks`).
+pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: ConductorId) -> Option<String> {
+    looks.look(doc, c).route_code()
 }
 
 /// A wire route drawn in its colours on a page (brief 040, step 3).
@@ -1336,6 +1352,7 @@ pub const MAX_COLOURED_ROUTES: usize = 20_000;
 /// Display and print only; nothing is stored.
 pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_tokens::Sheet) -> Vec<ColouredRoute> {
     let mut out = Vec::new();
+    let looks = crate::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
         let Subject::Conductor(c) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
@@ -1351,7 +1368,7 @@ pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project
         if points.len() < 2 || !points.iter().all(|q| q.x.is_finite() && q.y.is_finite()) {
             continue;
         }
-        let Some(colours) = conductor_colour(doc, c).and_then(|code| wire_colours(&code, sheet)) else { continue };
+        let Some(colours) = conductor_colour_in(doc, &looks, c).and_then(|code| wire_colours(&code, sheet)) else { continue };
         if colours.solid == sheet.ink && colours.dashes.is_none() {
             continue;
         }
@@ -1441,13 +1458,14 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     let (on, off) = (f64::from(ecad_tokens::wire::DASH_ON_MM), f64::from(ecad_tokens::wire::DASH_OFF_MM));
     let mut out = DashBudget::default();
     let mut total: usize = 0;
+    let looks = crate::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
         let Subject::Conductor(c) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
             continue;
         }
         // Only two-colour codes have dashes.
-        let Some(code) = conductor_colour(doc, c) else { continue };
+        let Some(code) = conductor_colour_in(doc, &looks, c) else { continue };
         if !colour_code(&code).is_some_and(|(_, b)| b.is_some()) {
             continue;
         }

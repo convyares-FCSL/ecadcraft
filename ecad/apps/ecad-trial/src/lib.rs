@@ -1895,6 +1895,7 @@ impl Trial {
                     let _ = self.run_line(&line);
                 }
             }
+            A::OpenStandards(word) => self.open_standards_at(word),
             A::ShowCables => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {

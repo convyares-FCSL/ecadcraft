@@ -58,15 +58,31 @@ pub fn net_json(doc: &Document, net: &NetData) -> Value {
         .filter(|x| wires::kind_of(doc, x.component) == Some(CONTINUATION))
         .filter_map(|x| doc.components.get(&x.component).and_then(|c| c.properties.get(NAME)).cloned())
         .collect();
-    json!({
+    // Brief 050b (design 050 §5.6): the net's wire category, ID and name; a net whose wires
+    // resolve to different categories has none and lists them.
+    let looks = crate::styles::wire::WireLooks::new(doc);
+    let cats: BTreeSet<ecad_model::StyleRef> = net.conductors.iter().filter_map(|c| looks.category(doc, *c).0).collect();
+    let cat_json = |id: &ecad_model::StyleRef| json!({"id": id.text(), "name": crate::styles::name(doc, "wire", id)});
+    let uncategorised = net.conductors.iter().any(|c| looks.category(doc, *c).0.is_none());
+    let (category, categories) = match (cats.len(), uncategorised) {
+        (1, false) => (cats.first().map(cat_json), None),
+        (0, _) => (None, None),
+        _ => (None, Some(cats.iter().map(cat_json).collect::<Vec<_>>())),
+    };
+    let mut out = json!({
         "number": wiring::net_number(doc, net),
         "fixed": wiring::net_fixed(net),
         "potential": pot.name,
+        "category": category,
         "conductors": net.conductors.iter().map(|c| c.hex()).collect::<Vec<_>>(),
         "points": points,
         "continuations": continuations,
         "pages": pages.into_values().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
-    })
+    });
+    if let Some(list) = categories {
+        out["categories"] = json!(list);
+    }
+    out
 }
 
 /// A net's sort key in listings: its first conductor, else its first terminal.
@@ -387,6 +403,91 @@ pub(crate) fn run_potential(s: &mut Session, params: &Value) -> cadcraft_engine:
     })
 }
 
+/// The ops giving `conductors` category `value` (`None`: clear their own), with the potential
+/// rule of design 050 §5.4: a conductor on a net with no potential also gets the category's
+/// potential; a net that has another potential keeps it. Returns the ops and what to say.
+pub(crate) fn category_ops(
+    doc: &Document, conductors: &[ConductorId], value: Option<&ecad_model::StyleRef>,
+) -> Result<(Vec<Op>, Option<String>), String> {
+    let key = wiring::WIRE_CATEGORY;
+    let pot = value.and_then(|id| crate::styles::field_of(doc, "wire", id, "potential", None)).and_then(|r| crate::styles::wire::filled(&r));
+    let conn = doc.connectivity();
+    let mut ops = Vec::new();
+    let mut kept: Option<String> = None;
+    for c in conductors {
+        let cond = doc.conductors.get(c).ok_or("No such wire.")?;
+        let before = cond.properties.get(key).cloned();
+        let after = value.map(ecad_model::StyleRef::text);
+        if before != after {
+            ops.push(Op::SetProperty { object: ObjectRef::Conductor(*c), key: key.into(), before, after });
+        }
+        if let Some(p) = &pot {
+            let net_pot = conn.net_of_conductor(*c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_potential(doc, n).name);
+            match net_pot {
+                None => {
+                    let before = cond.properties.get(wiring::POTENTIAL_KEY).cloned();
+                    if before.as_deref() != Some(p.as_str()) {
+                        ops.push(Op::SetProperty {
+                            object: ObjectRef::Conductor(*c),
+                            key: wiring::POTENTIAL_KEY.into(),
+                            before,
+                            after: Some(p.clone()),
+                        });
+                    }
+                }
+                Some(n) if !n.eq_ignore_ascii_case(p) => kept = Some(n),
+                Some(_) => {}
+            }
+        }
+    }
+    Ok((ops, kept.map(|n| format!("Category set; the net keeps potential {n}."))))
+}
+
+/// `category {conductor | net | conductors, value | null}` (brief 050b, design 050 §6.9): a
+/// wire's own category (`net`: a conductor whose whole net takes it).
+pub(crate) fn run_category(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let value = match params.get("value") {
+        Some(Value::Null) => None,
+        Some(Value::String(v)) => Some(v.clone()),
+        _ => return Err(err("`value` is required: a wire category (its ID or name), or null to clear it")),
+    };
+    let one: Option<ConductorId> = crate::commands::opt_id(params, "conductor").map_err(err)?;
+    let net: Option<ConductorId> = crate::commands::opt_id(params, "net").map_err(err)?;
+    let many: Option<Vec<ConductorId>> = match params.get("conductors") {
+        Some(v) if !v.is_null() => Some(crate::commands::id_list(params, "conductors", crate::commands::MAX_HANDLES).map_err(err)?),
+        _ => None,
+    };
+    with_project(s, |p, pg, _| {
+        let doc = p.ledger.document();
+        let conductors: Vec<ConductorId> = match (one, net, many) {
+            (Some(c), None, None) => vec![c],
+            (None, Some(c), None) => {
+                let conn = doc.connectivity();
+                conn.net_of_conductor(c).and_then(|id| conn.net(id)).map(|n| n.conductors.iter().copied().collect()).ok_or("No such wire.")?
+            }
+            (None, None, Some(v)) => v,
+            _ => return Err("Give one of `conductor`, `net` or `conductors`.".into()),
+        };
+        let id = match &value {
+            Some(v) => Some(crate::styles::find(doc, "wire", v)?),
+            None => None,
+        };
+        let (ops, said) = category_ops(doc, &conductors, id.as_ref())?;
+        let changed = !ops.is_empty();
+        if changed {
+            let label = match &id {
+                Some(i) => format!("Category {}", crate::styles::name(doc, "wire", i)),
+                None => "Clear category".into(),
+            };
+            p.apply_edit(pg, "category", &label, ops)?;
+        }
+        Ok(json!({"changed": changed, "conductors": conductors.len(), "category": id.map(|i| i.text()), "message": said}))
+    })
+}
+
+/// Refusal of a potential's colour or cross-section (brief 050b, design 050 §6.9).
+pub const CATEGORY_COLOURS: &str = "Colour and cross-section are set on wire categories now (setstyle {catalogue: \"wire\"}).";
+
 /// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
 fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
@@ -399,7 +500,7 @@ fn settings_json(doc: &Document) -> Value {
         "digits": w.digits,
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
-            "name": p.name, "prefix": p.prefix, "numbered": p.numbered, "colour": p.colour, "cross_section": p.cross_section,
+            "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
         })).collect::<Vec<_>>(),
     })
 }
@@ -447,7 +548,7 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();
         }
         if let Some(list) = params.get("potentials").filter(|v| !v.is_null()) {
-            let a = list.as_array().ok_or("`potentials` must be the whole table: [{name, prefix, numbered, colour, cross_section}]")?;
+            let a = list.as_array().ok_or("`potentials` must be the whole table: [{name, prefix, numbered}]")?;
             if a.len() > 200 {
                 return Err("at most 200 potentials".into());
             }
@@ -455,6 +556,10 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             let mut names = BTreeSet::new();
             for r in a {
                 let field = |k: &str| r.get(k).and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
+                // Brief 050b (FP6): colours and cross-sections are wire categories' now.
+                if ["colour", "cross_section"].iter().any(|k| r.get(*k).is_some_and(|v| !v.is_null())) {
+                    return Err(CATEGORY_COLOURS.into());
+                }
                 let name = wiring::valid_text("potential", Some(&field("name")))?.ok_or("every potential needs a `name`")?;
                 if !names.insert(name.to_uppercase()) {
                     return Err(format!("potential {name} is listed twice"));
@@ -462,8 +567,9 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
                 rows.push(wiring::PotentialDef {
                     prefix: wiring::valid_text("prefix", Some(&field("prefix")))?.unwrap_or_default(),
                     numbered: r.get("numbered").and_then(Value::as_bool).unwrap_or(true),
-                    colour: wiring::valid_text("colour", Some(&field("colour")))?.unwrap_or_default(),
-                    cross_section: wiring::valid_text("cross-section", Some(&field("cross_section")))?.unwrap_or_default(),
+                    // Writing the table clears an older build's colours (Checks' row goes).
+                    legacy_colour: None,
+                    legacy_cross_section: None,
                     name,
                 });
             }
@@ -713,6 +819,13 @@ pub(crate) fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Resu
         Some(_) => return Err(err("`potential` must be a string")),
     };
     let join = join_param(params).map_err(err)?;
+    // Brief 050b: the new wire's category (its ID or name).
+    let category = match params.get("category") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(v)) if v.trim().eq_ignore_ascii_case("auto") => None,
+        Some(Value::String(v)) => Some(v.clone()),
+        Some(_) => return Err(err("`category` must be a wire category's ID or name")),
+    };
     with_project(s, |p, pg, page| {
         let style = plain_style(p);
         let quiet = quiet_ends(p, page);
@@ -720,8 +833,14 @@ pub(crate) fn run_wire(s: &mut Session, params: &Value) -> cadcraft_engine::Resu
         let join = join.unwrap_or_else(|| join_by_default(doc));
         let input =
             wires::WireInput { page, style, points: pts, potential: potential.as_deref(), join, tol: p.tolerance, quiet: &quiet, max_points: max };
-        let plan = wires::plan_wire(doc, &mut p.ids, input)?;
-        p.apply_edit(pg, "wire", "Wire", plan.ops)?;
+        let mut plan = wires::plan_wire(doc, &mut p.ids, input)?;
+        if let Some(c) = &category {
+            let id = crate::styles::find(doc, "wire", c)?;
+            let after = p.ledger.preview(&plan.ops).map_err(|e| e.to_string())?;
+            let (more, _) = category_ops(&after, &[plan.conductor], Some(&id))?;
+            plan.ops.extend(more);
+        }
+        p.apply_edit(pg, "wire", "Wire", plan.ops.clone())?;
         let doc = p.ledger.document();
         let conn = doc.connectivity();
         let number = conn.net_of_conductor(plan.conductor).and_then(|n| conn.net(n)).and_then(|n| wiring::net_number(doc, n));

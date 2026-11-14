@@ -186,7 +186,7 @@ impl Trial {
                         ObjectRef::Component(c) => Object::Component(*c),
                         ObjectRef::Conductor(c) => Object::Conductor(*c),
                         ObjectRef::Cable(c) => Object::Cable(*c),
-                        ObjectRef::Page(_) | ObjectRef::Project => continue,
+                        ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => continue,
                     };
                     let mut b = Bounds2::EMPTY;
                     for h in ecad_cadcraft::checks::handles_of(p, page, object) {

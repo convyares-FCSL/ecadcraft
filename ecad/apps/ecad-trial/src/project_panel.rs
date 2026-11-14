@@ -175,6 +175,8 @@ pub enum Action {
     SetCores(ecad_model::CableId),
     NextFreeCore(ecad_model::ConductorId),
     ShowCables,
+    /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
+    OpenStandards(&'static str),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),

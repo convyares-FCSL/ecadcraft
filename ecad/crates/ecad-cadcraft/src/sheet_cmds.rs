@@ -812,6 +812,12 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         if let Some(props) = params.get("props") {
             let m = props.as_object().ok_or("`props` must be an object of key: value|null")?;
             for (k, v) in m {
+                // Brief 050a (FP4 ruling): an old 031 text key may be cleared, which removes its
+                // `ignored-old-setting` row; it is never written.
+                if v.is_null() && crate::styles::checks::is_old_key(k) {
+                    ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, None));
+                    continue;
+                }
                 check_free_key(doc, k)?;
                 let v = match v {
                     Value::Null => None,
