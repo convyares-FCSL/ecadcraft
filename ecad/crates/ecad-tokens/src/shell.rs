@@ -1,5 +1,6 @@
-//! Shell colours: the Graphite set (spec §4, "Shell colours"). The shell has one appearance; it
-//! does not follow the operating system's light or dark setting.
+//! Shell colours: the Graphite set (spec §4, "Shell colours") and the light set (UI rev 3, board
+//! 1.17). The person picks one with the top bar's light/dark switch; neither follows the operating
+//! system's setting.
 
 use crate::{Color, WHITE};
 
@@ -77,6 +78,36 @@ pub const GRAPHITE: Shell = Shell {
     cable: Color::hex(0xB48CFF),
     connect: Color::hex(0x45CFD3),
 };
+
+/// The light shell (UI rev 3, board 1.17): the same meanings as [`GRAPHITE`] on a light ground.
+/// The status and list colours are darker than Graphite's so that text in them keeps 4.5:1 on
+/// every light ground ([`Shell::text_pairs`]).
+pub const LIGHT: Shell = Shell {
+    bg: Color::hex(0xE6E8EB),
+    panel: Color::hex(0xF7F8F9),
+    raised: WHITE,
+    hover: Color::hex(0xEDEFF2),
+    active: Color::hex(0xE1E5EB),
+    line: Color::hex(0xD5D9DF),
+    line_strong: Color::hex(0xBCC3CC),
+    text: Color::hex(0x16191D),
+    text_2: Color::hex(0x474D56),
+    text_3: Color::hex(0x5F6670),
+    accent: ACCENT,
+    accent_text: Color::hex(0x1F5FCC),
+    accent_soft: ACCENT.at_percent(LIGHT_SOFT_PERCENT),
+    ok: Color::hex(0x137A45),
+    warning: Color::hex(0x8A5200),
+    error: Color::hex(0xC4231A),
+    provisional: Color::hex(0xB0186A),
+    agent: Color::hex(0x4A7200),
+    cable: Color::hex(0x6A35C8),
+    connect: Color::hex(0x08767A),
+};
+
+/// Opacity of the light shell's soft fill, %: 18 % reads too strong on a light ground (board 1.17's
+/// selected row is the accent at about 12 %).
+pub const LIGHT_SOFT_PERCENT: u8 = 12;
 
 impl Shell {
     /// Every token as `(name, colour)`, in the spec's order; names as in `tokens.md` (`shell.text_2`).

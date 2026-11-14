@@ -29,6 +29,7 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod bar;
+pub mod compare;
 pub mod drawer;
 pub mod intent;
 pub mod keys;
@@ -354,6 +355,7 @@ impl Trial {
         left::show(self, ui, &slots);
         right::show(self, ui, &slots);
         drawer::show(self, ui, &slots);
+        compare::show(self, ui, &slots);
         if let Some(r) = slots.tool_strip {
             match self.library.builder.as_mut().filter(|_| self.shell.state.workspace == Workspace::Library) {
                 Some(b) => crate::library::builder::strip(ui, r, b),

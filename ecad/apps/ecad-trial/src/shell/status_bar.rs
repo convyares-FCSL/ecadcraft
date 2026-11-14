@@ -45,6 +45,11 @@ pub const PAGE_WELL: &str = "Page well";
 pub const PAPER: &str = "Paper";
 pub const FOLLOW: &str = "Follow";
 pub const DARK: &str = "Dark";
+/// The sheet colour menu's title and footnote (board 1.18).
+pub const SHEET_MENU_TITLE: &str = "Sheet colour on screen";
+pub const SHEET_MENU_NOTE: &str = "Only the screen changes. PDFs and prints always use paper colours. Set the default for new projects in Settings.";
+/// The sheet colour menu's width, px (board 1.18).
+const SHEET_MENU_W: f32 = 260.0;
 /// Kept for the Commands button's old callers: the Text panel opens with Ctrl+/.
 pub const COMMANDS: &str = "Commands";
 
@@ -284,10 +289,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let zin = bar::icon_button(ui, Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(BTN, BTN)), Icon::Plus, ZOOM_IN, 12.0, true).clicked();
 
     let sheet = t.shell.state.sheet;
-    let sheet_word = match sheet {
-        crate::canvas::Sheet::Paper => PAPER,
-        crate::canvas::Sheet::Dark => DARK,
-    };
+    let sheet_word = sheet_label(sheet);
     // Brief 050a: the standard's name (IEC when built in); its label is `Standard: <name>`.
     let standard = t.standard_words();
     let std_text = standard.trim_start_matches("Standard: ").trim_end_matches(" (built in)").to_string();
@@ -312,8 +314,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let col_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(col_w, BTN));
     let col = bar::hit(ui, col_r, SHEET_COLOUR, false, false, true);
     let sw = Rect::from_center_size(pos2(col_r.left() + space::S + 6.0, y), vec2(12.0, 9.0));
-    let paper = ecad_ui::color(sheet.tokens().color(ecad_ui::tokens::Meaning::Sheet));
-    ui.painter().rect(sw, 1.5, paper, egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
+    sheet_swatch(ui.painter(), sw, sheet);
     let e = bar::text_at(ui, sw.right() + space::XS, y, sheet_word, ui_type::SMALL, ecad_ui::color(s.text_2));
     ecad_ui::icons::paint(
         ui.painter(),
@@ -323,16 +324,15 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     );
     let mut pick = None;
     egui::Popup::menu(&col).show(|ui| {
-        if ui.selectable_label(sheet == crate::canvas::Sheet::Paper, PAPER).on_hover_text("Always light").clicked() {
-            pick = Some(crate::canvas::Sheet::Paper);
-        }
-        ui.add_enabled(false, egui::Button::selectable(false, FOLLOW))
-            .on_disabled_hover_text("Follows the interface theme once the light theme comes");
-        if ui.selectable_label(sheet == crate::canvas::Sheet::Dark, DARK).on_hover_text("Always dark").clicked() {
-            pick = Some(crate::canvas::Sheet::Dark);
+        ui.set_width(SHEET_MENU_W);
+        ui.label(egui::RichText::new(SHEET_MENU_TITLE).small().color(ecad_ui::color(s.text_3)));
+        for choice in crate::canvas::Sheet::ALL {
+            if sheet_choice(ui, choice, choice == sheet).clicked() {
+                pick = Some(choice);
+            }
         }
         ui.separator();
-        ui.label(egui::RichText::new("The screen only: PDFs and prints use paper colours.").small());
+        ui.add(egui::Label::new(egui::RichText::new(SHEET_MENU_NOTE).small().color(ecad_ui::color(s.text_3))).wrap());
     });
 
     // ---- The page well, centred, between the status and the view.
@@ -656,4 +656,66 @@ impl Trial {
             self.focus_command = true;
         }
     }
+}
+
+/// The sheet colour's name in the bottom bar and the menu.
+pub fn sheet_label(sheet: crate::canvas::Sheet) -> &'static str {
+    match sheet {
+        crate::canvas::Sheet::Paper => PAPER,
+        crate::canvas::Sheet::Follow => FOLLOW,
+        crate::canvas::Sheet::Dark => DARK,
+    }
+}
+
+/// What a sheet colour does, after its name in the menu (board 1.18).
+fn sheet_hint(sheet: crate::canvas::Sheet) -> &'static str {
+    match sheet {
+        crate::canvas::Sheet::Paper => "always light",
+        crate::canvas::Sheet::Follow => "the app theme",
+        crate::canvas::Sheet::Dark => "always dark",
+    }
+}
+
+/// The small sheet swatch: paper, dark, or for Follow paper and dark split on the diagonal.
+fn sheet_swatch(painter: &egui::Painter, r: Rect, sheet: crate::canvas::Sheet) {
+    let s = ecad_ui::SHELL;
+    let paper = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet);
+    let dark = ecad_ui::color(ecad_ui::tokens::sheet::DARK.sheet);
+    match sheet {
+        crate::canvas::Sheet::Paper => {
+            painter.rect_filled(r, 1.5, paper);
+        }
+        crate::canvas::Sheet::Dark => {
+            painter.rect_filled(r, 1.5, dark);
+        }
+        crate::canvas::Sheet::Follow => {
+            painter.rect_filled(r, 1.5, paper);
+            let tri = vec![r.left_top(), r.right_top(), r.left_bottom()];
+            painter.add(egui::Shape::convex_polygon(tri, dark, egui::Stroke::NONE));
+        }
+    }
+    painter.rect_stroke(r, 1.5, egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
+}
+
+/// One row of the sheet colour menu: swatch, name, what it does, and a tick when chosen. Its
+/// accessible label is the name alone ([`PAPER`], [`FOLLOW`], [`DARK`]).
+fn sheet_choice(ui: &mut egui::Ui, sheet: crate::canvas::Sheet, chosen: bool) -> egui::Response {
+    let s = ecad_ui::SHELL;
+    let (r, resp) = ui.allocate_exact_size(vec2(SHEET_MENU_W, 26.0), egui::Sense::click());
+    let name = sheet_label(sheet);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, chosen, name));
+    if chosen || resp.hovered() {
+        let fill = if chosen { s.accent_soft } else { s.hover };
+        ui.painter().rect_filled(r, ecad_ui::style::corner(ecad_ui::tokens::radius::BUTTON), ecad_ui::color(fill));
+    }
+    let y = r.center().y;
+    sheet_swatch(ui.painter(), Rect::from_center_size(pos2(r.left() + space::S + 7.0, y), vec2(14.0, 11.0)), sheet);
+    let e = bar::text_at(ui, r.left() + space::S + 14.0 + space::S, y, name, ui_type::BODY, ecad_ui::color(s.text));
+    bar::text_at(ui, e, y, &format!(" · {}", sheet_hint(sheet)), ui_type::BODY, ecad_ui::color(s.text_3));
+    if chosen {
+        let c = pos2(r.right() - space::S - 6.0, y);
+        let tick = vec![c + vec2(-5.0, 0.0), c + vec2(-1.5, 3.5), c + vec2(5.0, -4.0)];
+        ui.painter().add(egui::Shape::line(tick, egui::Stroke::new(1.5, ecad_ui::color(s.accent_text))));
+    }
+    resp
 }

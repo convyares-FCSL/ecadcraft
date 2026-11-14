@@ -1,7 +1,7 @@
 //! Drawing one cell from its [`Cell`]: set values look like fields, read values are grey text
 //! (a go-to when they have a target), provisional values use the provisional look (spec §5).
 
-use ecad_tokens::{GRAPHITE, line, radius, space, ui_type};
+use ecad_tokens::{line, radius, space, ui_type};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{Color32, Galley, Rect, Stroke, StrokeKind, Ui, pos2, vec2};
 use std::sync::Arc;
@@ -40,7 +40,7 @@ pub fn text(ui: &Ui, rect: Rect, t: &str, ink: Color32, align: Align) {
 /// The field look of a set value that is not being edited (the field primitive's frame, without
 /// an editor, so a table of thousands of rows registers no text editors).
 pub fn input_look(ui: &Ui, rect: Rect, t: &str, align: Align, focused: bool) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let frame = rect.shrink2(vec2(space::XS, space::XXS));
     let stroke = if focused { Stroke::new(line::FOCUS_RING_PX, color(s.accent_text)) } else { Stroke::new(line::HAIRLINE_PX, color(s.line)) };
     ui.painter().rect(frame, corner(radius::FIELD), color(s.raised), stroke, StrokeKind::Inside);
@@ -51,7 +51,7 @@ pub fn input_look(ui: &Ui, rect: Rect, t: &str, align: Align, focused: bool) {
 
 /// Link lanes: a vertical line per lane through the rows it spans, a dot on the rows it joins.
 pub fn lanes(ui: &Ui, rect: Rect, l: &LaneCell) {
-    let ink = color(GRAPHITE.connect);
+    let ink = color(crate::SHELL.connect);
     let p = ui.painter();
     let stroke = Stroke::new(line::FOCUS_RING_PX, ink);
     for (i, lane) in l.lanes.iter().enumerate() {
@@ -71,7 +71,7 @@ pub fn lanes(ui: &Ui, rect: Rect, l: &LaneCell) {
     if !l.text.is_empty() {
         let left = rect.left() + space::M + LANE_STEP * l.lanes.len() as f32;
         let r = Rect::from_min_max(pos2(left, rect.top()), rect.max);
-        text(ui, r, &l.text, color(GRAPHITE.text_2), Align::Left);
+        text(ui, r, &l.text, color(crate::SHELL.text_2), Align::Left);
     }
 }
 
@@ -86,7 +86,7 @@ pub enum Hit {
 
 /// Draw `cell` in `rect` of `ui` (the cell's own ui). Returns what was clicked in it, if anything.
 pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -> Option<Hit> {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     match cell {
         Cell::Text(t) => text(ui, rect, t, color(s.text), align),
         Cell::Number(..) => text(ui, rect, &cell.text(), color(s.text), Align::Right),

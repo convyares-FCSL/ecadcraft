@@ -21,8 +21,8 @@ pub use label::{Chip, ChipResponse, badge, chip, keycap, pill};
 pub use row::{RowKind, RowSpec, provisional, read_value, row};
 pub use segmented::{Segmented, segmented};
 
+use ecad_tokens::Color;
 use ecad_tokens::ui_type::TypeStyle;
-use ecad_tokens::{Color, GRAPHITE};
 use egui::{Color32, Galley, Response, Ui, WidgetInfo};
 use std::sync::Arc;
 
@@ -78,7 +78,7 @@ impl Tone {
 
     /// The tone's text colour.
     pub fn text(self) -> Color {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         match self {
             Tone::Neutral => s.text_2,
             Tone::Ok => s.ok,
@@ -92,7 +92,7 @@ impl Tone {
     /// The tone's ground: `raised` when neutral, else its colour at the soft opacity.
     pub fn ground(self) -> Color {
         match self {
-            Tone::Neutral => GRAPHITE.raised,
+            Tone::Neutral => crate::SHELL.raised,
             t => t.text().at_percent(ecad_tokens::shell::SOFT_PERCENT),
         }
     }

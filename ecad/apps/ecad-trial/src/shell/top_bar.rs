@@ -141,20 +141,32 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     bar::icon_button(ui, help, Icon::Help, HELP, size::ICON, true).on_hover_text("Help comes later");
     bar::vline(ui, x, y - 10.0, y + 10.0);
     x -= space::S;
-    // One light/dark switch: the shell has one appearance until the light theme (board 1.17).
+    // One light/dark switch (boards 1.17 and 1.18): the chosen side is lit.
     let theme = Rect::from_min_max(pos2(x - 56.0, y - 12.0), pos2(x, y + 12.0));
     x = theme.left() - space::S;
-    ui.painter().rect_filled(theme, ecad_ui::style::corner(12.0), ecad_ui::color(s.raised));
+    ui.painter().rect_filled(theme, ecad_ui::style::corner(12.0), ecad_ui::color(s.bg));
     let dark = Rect::from_min_size(theme.min + vec2(2.0, 2.0), vec2(26.0, 20.0));
     let light = Rect::from_min_size(pos2(dark.right(), dark.top()), vec2(26.0, 20.0));
-    ui.painter().rect_filled(dark, ecad_ui::style::corner(10.0), ecad_ui::color(s.active));
-    let d = ui.interact(dark, egui::Id::unique(THEME_DARK), egui::Sense::click());
-    d.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, true, THEME_DARK));
-    ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(dark.center(), vec2(13.0, 13.0)), Icon::Moon, ecad_ui::color(s.text));
-    let l = ui.interact(light, egui::Id::unique(THEME_LIGHT), egui::Sense::hover());
-    l.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, false, false, THEME_LIGHT));
-    l.on_hover_text("The light interface is not available yet.");
-    ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(light.center(), vec2(13.0, 13.0)), Icon::Sun, ecad_ui::color(s.text_3));
+    let is_dark = t.shell.state.theme == super::state::Theme::Dark;
+    let on = if is_dark { dark } else { light };
+    ui.painter().rect_filled(on, ecad_ui::style::corner(10.0), ecad_ui::color(if is_dark { s.active } else { s.raised }));
+    let mut pick = None;
+    for (r, label, theme, icon) in
+        [(dark, THEME_DARK, super::state::Theme::Dark, Icon::Moon), (light, THEME_LIGHT, super::state::Theme::Light, Icon::Sun)]
+    {
+        let chosen = t.shell.state.theme == theme;
+        let resp = ui.interact(r, egui::Id::unique(label), egui::Sense::click());
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, chosen, label));
+        let ink = if chosen || resp.hovered() { s.text } else { s.text_3 };
+        ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(13.0, 13.0)), icon, ecad_ui::color(ink));
+        if resp.on_hover_text(label).clicked() {
+            pick = Some(theme);
+        }
+    }
+    if let Some(theme) = pick {
+        t.shell.state.theme = theme;
+        ui.ctx().request_repaint();
+    }
     let share = Rect::from_center_size(pos2(x - 14.0, y), vec2(28.0, 28.0));
     x = share.left() - space::XS;
     bar::icon_button(ui, share, Icon::Share, SHARE, size::ICON, true).on_hover_text("Share (coming)");

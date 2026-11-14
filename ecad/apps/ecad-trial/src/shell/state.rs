@@ -145,6 +145,25 @@ impl RightTab {
     }
 }
 
+/// The interface theme a person chose (UI rev 3, boards 1.17 and 1.18), kept with the shell state.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Theme {
+    /// Graphite, the default.
+    #[default]
+    Dark,
+    Light,
+}
+
+impl Theme {
+    /// The interface kit's theme.
+    pub fn ui(self) -> ecad_ui::Theme {
+        match self {
+            Theme::Dark => ecad_ui::Theme::Dark,
+            Theme::Light => ecad_ui::Theme::Light,
+        }
+    }
+}
+
 /// The shell's remembered state (design §5.1; UI rev 3's frame).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -160,8 +179,11 @@ pub struct ShellState {
     pub text_panel: bool,
     /// The developer switch: CADCraft's own interface inside the main view.
     pub cad_chrome: bool,
-    /// Brief 040: the sheet the page is drawn on (`ui.sheet`), per person.
+    /// Brief 040: the sheet the page is drawn on (`ui.sheet`), per person. UI rev 3: Paper, Follow
+    /// (the interface theme) or Dark; the screen only.
     pub sheet: crate::canvas::Sheet,
+    /// UI rev 3 (boards 1.17, 1.18): the interface theme, the top bar's light/dark switch.
+    pub theme: Theme,
     /// Brief 048: the Library shows the symbol builder (its tool strip, and the 380 px right
     /// panel). View state, never stored.
     #[serde(skip)]
@@ -170,6 +192,9 @@ pub struct ShellState {
     /// state, set each frame, never stored.
     #[serde(skip)]
     pub review: bool,
+    /// UI rev 3 (board 1.16): Compare revisions is open over the canvas. View state, never stored.
+    #[serde(skip)]
+    pub compare: bool,
 }
 
 impl Default for ShellState {
@@ -183,8 +208,10 @@ impl Default for ShellState {
             text_panel: false,
             cad_chrome: false,
             sheet: crate::canvas::Sheet::Paper,
+            theme: Theme::Dark,
             builder: false,
             review: false,
+            compare: false,
         }
     }
 }

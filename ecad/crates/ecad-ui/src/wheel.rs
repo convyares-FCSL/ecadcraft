@@ -17,7 +17,7 @@
 
 use std::f32::consts::TAU;
 
-use ecad_tokens::{GRAPHITE, Icon, radius, space, ui_type, wheel};
+use ecad_tokens::{Icon, radius, space, ui_type, wheel};
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Color32, Context, Id, Order, Pos2, Rect, Sense, Shape, Stroke, WidgetInfo, pos2, vec2};
 
@@ -131,7 +131,7 @@ pub fn show(ctx: &Context, w: &mut Wheel, chip: &str, slots: &[Option<SlotSpec>;
         let bg = ui.allocate_rect(cover, Sense::click_and_drag());
         bg.widget_info(|| WidgetInfo::labeled(egui::Role::Group, true, label(chip)));
         let painter = ui.painter().clone();
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         for (i, slot) in slots.iter().enumerate() {
             let on = hovered == Some(i) || w.list == Some(i);
             let (fill, ink) = match slot {

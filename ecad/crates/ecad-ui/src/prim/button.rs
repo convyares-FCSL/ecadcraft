@@ -1,6 +1,6 @@
 //! Button and icon button.
 
-use ecad_tokens::{GRAPHITE, Icon, WHITE, line, radius, size, space, ui_type};
+use ecad_tokens::{Icon, WHITE, line, radius, size, space, ui_type};
 use egui::{Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, vec2};
 
 use super::{Look, accessible, galley};
@@ -66,7 +66,7 @@ impl<'a> Button<'a> {
 
 impl Widget for Button<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let enabled = self.disabled.is_none() && ui.is_enabled();
         let text = if !enabled {
             s.text_3
@@ -156,7 +156,7 @@ impl<'a> IconButton<'a> {
 
 impl Widget for IconButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let enabled = self.disabled.is_none() && ui.is_enabled();
         let (side, icon_side, r) =
             if self.tool { (size::TOOL_BUTTON, size::TOOL_ICON, radius::TOOL) } else { (size::ICON_BUTTON, size::ICON, radius::BUTTON) };
