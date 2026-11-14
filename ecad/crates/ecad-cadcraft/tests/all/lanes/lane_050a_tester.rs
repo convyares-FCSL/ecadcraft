@@ -264,7 +264,7 @@ pub(crate) fn find_obj_mut<'a>(v: &'a mut Value, k: &str) -> Option<&'a mut serd
 
 /// The 031/040 built-in text sizes (cap height, weight) of every kind, from `dev` before 050a
 /// (`defaults/text.rs`); the built-in text styles must carry them exactly (design §4.1).
-pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 21] = [
+pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 23] = [
     ("tag", 2.5, "bold"),
     ("point_label", 1.5, "regular"),
     ("description", 1.6, "regular"),
@@ -287,6 +287,9 @@ pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 21] = [
     ("table_heading", 3.5, "regular"),
     ("cover", 10.0, "regular"),
     ("free", 2.5, "regular"),
+    // Brief 051's PLC channel text and address (FP1).
+    ("channel_text", 2.5, "regular"),
+    ("address", 2.0, "regular"),
 ];
 
 fn near(a: f64, b: f64) -> bool {
@@ -313,7 +316,7 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
     let d = h.doc();
     assert!(d.standard.is_none() && d.styles.is_empty(), "FP1/FP2: nothing stored for a new project");
     let rows = styles(&mut h, "text");
-    assert_eq!(rows.len(), 21, "{rows:?}");
+    assert_eq!(rows.len(), 23, "{rows:?}");
     for (word, height, weight) in BUILTIN_TEXT {
         let r = rows.iter().find(|r| s(&r["id"]) == word).unwrap_or_else(|| panic!("built-in text style {word}"));
         assert_eq!(s(&r["layer"]), "builtin", "{word}");
@@ -439,7 +442,7 @@ fn a02_registry_choice_entries_and_their_levels() {
         }
         checked += 1;
     }
-    assert_eq!(checked, 2 + TextKind::ALL.len(), "21 text kinds since 049's continuation caption");
+    assert_eq!(checked, 2 + TextKind::ALL.len(), "23 text kinds since 049's continuation caption and 051's two");
     for k in TextKind::ALL {
         for old in ["height", "weight", "font"] {
             assert!(defaults::find(&format!("text.{}.{old}", k.word())).is_none(), "FP4: text.{}.{old} left the registry", k.word());

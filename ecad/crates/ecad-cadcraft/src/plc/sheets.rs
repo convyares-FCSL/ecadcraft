@@ -405,11 +405,10 @@ pub fn rack_places_touched(doc: &Document, plc: &Plc, ops: &[ecad_model::Op]) ->
                 }
             }
             Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::book::FOLDER_KEY =>
+                if (key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::book::FOLDER_KEY)
+                    && page_holds(*p) =>
             {
-                if page_holds(*p) {
-                    return true;
-                }
+                return true;
             }
             _ => {}
         }

@@ -26,6 +26,9 @@ Part of the [quick start](../quick-start.md). Design: `docs/design/051.md`; buil
 | Card bodies | A card body is now one 20 mm power cell with `L+` and `M` on its top edge; put it at the end of the card's cells and it closes the box |
 | Outputs at 180° | Make its page draws output cards upside down: points on the bottom edge, channel texts above reading upwards, name block top left |
 | Text styles | Settings ▸ Standards ▸ Text styles has two more: **PLC channel text** (2.5) and **PLC address** (2.0) |
+| Checks | `Wire runs through a PLC card` (Warning): a wire on a channel that goes on through the card to another point is kept, never cut. `PLC texts wider than their cells` (Info): raise **PLC address** past what a cell holds and each card's run says so; nothing is shrunk |
+| Lists ▸ PLC | Selecting a drawn card's tile selects its symbols, so Properties shows the card |
+| Release | A `PLC racks.csv` beside the I/O list; without PLC cards it is left out with `No PLC racks.` |
 
 ## Try it
 
@@ -50,6 +53,3 @@ Part of the [quick start](../quick-start.md). Design: `docs/design/051.md`; buil
 - **Place a card…** starts Place Symbol and says which slot the card will take; it does not yet
   fill the search with `card` or preset the Rack and Slot prompts.
 - The squares' hover names channel and state, not yet the address and what it is wired to.
-- The Checks rows `wire-through-card` and `plc-text-wide` (design 051 §2.5, §2.8) are not built
-  yet; a wire attached at both ends still runs through the card.
-- The PLC racks sheet has no release slot: the page says `No PLC racks.`, the release does not.
