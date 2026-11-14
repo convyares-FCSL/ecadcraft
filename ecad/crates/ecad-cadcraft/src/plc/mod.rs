@@ -360,6 +360,7 @@ impl Plc {
     pub fn touched(&self, doc: &Document, ops: &[Op]) -> BTreeSet<ComponentId> {
         let mut out = BTreeSet::new();
         let mut all = false;
+        let mut styles = false;
         for op in ops {
             match op {
                 Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
@@ -397,8 +398,28 @@ impl Plc {
                         );
                     }
                 }
+                // Brief 051 (design 051 §9.1): a card's symbol moved, or a wire on one of its
+                // points re-routed, changes its runs and their Checks rows.
+                Op::ModifyItem { id, .. } => match doc.representation_of_item(*id).map(|(_, r)| r.subject) {
+                    Some(Subject::Component(c)) if self.cards.contains_key(&c) => {
+                        out.insert(c);
+                    }
+                    Some(Subject::Conductor(w)) => {
+                        let ends = doc.conductors.get(&w).map(|x| x.ends).unwrap_or_default();
+                        out.extend(
+                            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                        );
+                    }
+                    _ => {}
+                },
+                // A text style or standard changed: the bands of every card (rare).
+                Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,
                 _ => {}
             }
+        }
+        if styles {
+            out.extend(self.cards.keys().copied());
         }
         if all {
             // A project default: only the racks and cards that inherit it (they have no own value
@@ -561,6 +582,9 @@ impl Plc {
         let mut out = Vec::new();
         if let Some(card) = self.cards.get(&g) {
             self.channel_checks(doc, card, &mut out);
+            // Brief 051 (design 051 §2.5, §2.8): the card on its pages.
+            look::through_checks(doc, card.id, &card.tag, &mut out);
+            look::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, &mut out);
         }
         if let Some(card) = self.cards.get(&g)
             && matches!(card.rack, RackRef::Missing(_) | RackRef::Bad)

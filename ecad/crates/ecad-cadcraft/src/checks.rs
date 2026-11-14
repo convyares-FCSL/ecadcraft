@@ -167,6 +167,11 @@ pub enum Kind {
     AddressOverflow,
     /// Used channels with no address (one count row).
     NoAddress,
+    /// Brief 051 (design 051 §2.8): a wire that runs on through a PLC card to another point.
+    WireThroughCard,
+    /// Brief 051 (design 051 §2.5): a run's texts are wider or deeper than its cells at the
+    /// project's text styles (Info; nothing is shrunk).
+    PlcTextWide,
     /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
     ConnectorPinTwice,
     /// A connector whose whole halves are of two families.
@@ -204,7 +209,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 70] = [
+    pub const ALL: [Kind; 72] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -259,6 +264,8 @@ impl Kind {
         Kind::AddressTwice,
         Kind::AddressOverflow,
         Kind::NoAddress,
+        Kind::WireThroughCard,
+        Kind::PlcTextWide,
         Kind::ConnectorPinTwice,
         Kind::ConnectorFamily,
         Kind::ConnectorSize,
@@ -334,6 +341,8 @@ impl Kind {
             Kind::AddressTwice => "address-twice",
             Kind::AddressOverflow => "address-overflow",
             Kind::NoAddress => "no-address",
+            Kind::WireThroughCard => "wire-through-card",
+            Kind::PlcTextWide => "plc-text-wide",
             Kind::ConnectorPinTwice => "connector-pin-twice",
             Kind::ConnectorFamily => "connector-family",
             Kind::ConnectorSize => "connector-size",
@@ -415,6 +424,8 @@ impl Kind {
             Kind::AddressTwice => "Address given twice",
             Kind::AddressOverflow => "Address block past byte 65535",
             Kind::NoAddress => "Used channels with no address",
+            Kind::WireThroughCard => "Wire runs through a PLC card",
+            Kind::PlcTextWide => "PLC texts wider than their cells",
             Kind::ConnectorPinTwice => "Connector pin drawn twice on one half",
             Kind::ConnectorFamily => "Connector halves of two families",
             Kind::ConnectorSize => "Connector halves of two sizes",
@@ -480,7 +491,8 @@ impl Kind {
             | Kind::ConnectorSize
             | Kind::ArticleConflict
             | Kind::PartForMissing
-            | Kind::CategoryPotentialTwice => Severity::Warning,
+            | Kind::CategoryPotentialTwice
+            | Kind::WireThroughCard => Severity::Warning,
             _ => Severity::Info,
         }
     }

@@ -484,3 +484,38 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
     let t = texts(&mut h, sheet);
     assert!(t.iter().any(|x| x.starts_with("\u{2192}7-")), "{t:?}");
 }
+
+fn rows_of(h: &mut H, kind: &str) -> Vec<Value> {
+    h.run("checks", json!({"kinds": [kind]})).unwrap()["checks"].as_array().cloned().unwrap_or_default()
+}
+
+/// C: a wire that goes on through the card to another point is kept, with a Warning row.
+#[test]
+fn c_a_wire_through_the_card_is_kept_with_a_row() {
+    let mut h = H::new(5140);
+    let di = placed(&mut h, "plcdi", 100.0, 400.0);
+    placed(&mut h, "lamp", 100.0, 260.0);
+    placed(&mut h, "lamp", 100.0, 140.0);
+    placed(&mut h, "lamp", 120.0, 260.0);
+    h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
+    h.run("wire", json!({"points": pts(&[(120.0, 250.0), (120.0, 150.0)])})).unwrap();
+    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [125.0, 200.0]})).unwrap();
+    let rows = rows_of(&mut h, "wire-through-card");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let which = rows[0]["which"].as_str().unwrap_or_default().to_string();
+    assert!(which.contains("runs through -A01 channel 0 to -H02:"), "{which}");
+    assert_eq!(rows[0]["severity"], "warning", "{}", rows[0]);
+}
+
+/// H: raising the address style past the cells raises `plc-text-wide`; setting it back clears it.
+#[test]
+fn h_a_large_address_style_raises_plc_text_wide() {
+    let F { mut h, .. } = fixture(5141);
+    assert!(rows_of(&mut h, "plc-text-wide").is_empty());
+    h.run("setstyle", json!({"catalogue": "text", "id": "address", "fields": {"height": 10}})).unwrap();
+    let rows = rows_of(&mut h, "plc-text-wide");
+    assert!(!rows.is_empty(), "{rows:?}");
+    assert!(rows[0]["which"].as_str().unwrap_or_default().contains("Text styles"), "{}", rows[0]);
+    h.run("setstyle", json!({"catalogue": "text", "id": "address", "fields": {"height": null}})).unwrap();
+    assert!(rows_of(&mut h, "plc-text-wide").is_empty());
+}

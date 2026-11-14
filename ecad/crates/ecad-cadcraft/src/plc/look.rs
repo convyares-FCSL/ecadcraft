@@ -321,3 +321,156 @@ pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
 pub fn framed(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::Representation) -> bool {
     frame_shown(doc, c) && piece(doc, c, rid, r).is_some()
 }
+
+// ---------------------------------------------------------------- Checks (design 051 §2.5, §2.8)
+
+/// The runs of card `c` on `page`, reading only `c`'s representations.
+pub fn runs_of_card(doc: &Document, c: ComponentId, page: PageId) -> Vec<Run> {
+    if !frame_shown(doc, c) {
+        return Vec::new();
+    }
+    let pieces: Vec<(Piece, f64)> = doc
+        .representations_of(Subject::Component(c))
+        .filter(|(_, r)| r.page == page)
+        .take(MAX_PER_CARD)
+        .filter_map(|(rid, r)| piece(doc, c, rid, r))
+        .collect();
+    let mut out = Vec::new();
+    let mut groups: Vec<Vec<(Piece, f64)>> = Vec::new();
+    for p in pieces {
+        match groups.iter_mut().find(|g| g.first().is_some_and(|f| f.1 == p.1 && (f.0.top - p.0.top).abs() <= ALIGN)) {
+            Some(g) => g.push(p),
+            None => groups.push(vec![p]),
+        }
+    }
+    for mut g in groups {
+        g.sort_by(|a, b| a.0.left.total_cmp(&b.0.left));
+        let dir = g.first().map_or(-1.0, |p| p.1);
+        let mut cur: Vec<Piece> = Vec::new();
+        for (p, _) in g {
+            if let Some(last) = cur.last()
+                && p.left - last.right > ABUT
+            {
+                out.push(make_run(c, dir, &cur));
+                cur.clear();
+            }
+            cur.push(p);
+        }
+        if !cur.is_empty() {
+            out.push(make_run(c, dir, &cur));
+        }
+    }
+    out
+}
+
+/// The frame's rectangle of `run` (x from, x to, y low, y high), at the project's text styles.
+fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
+    let depth = HEADER_BAND + MARK_BAND + name_band(doc, &name_block(doc, run.card));
+    let bottom = run.top + run.dir * depth;
+    (run.left, run.right, run.top.min(bottom), run.top.max(bottom))
+}
+
+/// `wire-through-card` rows of card `c` (design 051 §2.8): a wire attached to one of the card's
+/// points whose route goes on into the card's frame and is attached at both ends (kept by the
+/// fence because it reaches something; connectivity is never changed silently).
+pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<crate::checks::Check>) {
+    let pages = super::overview::pages_of(doc, c);
+    for page in pages {
+        let runs = runs_of_card(doc, c, page);
+        if runs.is_empty() {
+            continue;
+        }
+        let rects: Vec<(f64, f64, f64, f64)> = runs.iter().map(|r| frame_rect(doc, r)).collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for (t, _) in doc.terminals_of(c) {
+            let Some((i, _)) = super::channels::point_of(doc, t) else { continue };
+            for (w, _) in doc.ends_at(t) {
+                if !seen.insert(w) {
+                    continue;
+                }
+                let Some(cond) = doc.conductors.get(&w) else { continue };
+                if cond.ends.iter().any(Option::is_none) {
+                    continue;
+                }
+                let Some((_, _, route)) = crate::wires::route_vertices(doc, w, page) else { continue };
+                // A segment that passes well inside a frame (past the top edge it lands on):
+                // nine points along each segment, so a straight drop through the box counts.
+                let within = |q: Pt| rects.iter().any(|(x0, x1, y0, y1)| q.x > *x0 + 0.5 && q.x < *x1 - 0.5 && q.y > *y0 + 0.5 && q.y < *y1 - 0.5);
+                let inside = route.windows(2).take(1024).any(|s| match (s.first(), s.get(1)) {
+                    (Some(a), Some(b)) => (1..10).any(|k| {
+                        let f = f64::from(k) / 10.0;
+                        within(Pt::new(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f))
+                    }),
+                    _ => false,
+                });
+                if !inside {
+                    continue;
+                }
+                let other = cond
+                    .ends
+                    .iter()
+                    .flatten()
+                    .find(|x| **x != t)
+                    .map(|x| {
+                        let name = crate::interact::terminal_name(doc, *x);
+                        match doc.terminals.get(x).and_then(|t| crate::devices::tag_of(doc, t.component)) {
+                            Some(_) if !name.contains(':') => {
+                                format!("{}:{name}", doc.terminals.get(x).map(|t| crate::devices::tag_words(doc, t.component)).unwrap_or_default())
+                            }
+                            _ => name,
+                        }
+                    })
+                    .unwrap_or_default();
+                let first = super::channels::first_number(doc, c);
+                out.push(crate::checks::Check {
+                    kind: crate::checks::Kind::WireThroughCard,
+                    page: Some(page),
+                    at: route.first().copied(),
+                    object: crate::checks::Object::Conductor(w),
+                    which: format!(
+                        "Wire {} runs through {tag} channel {} to {other}",
+                        crate::slash::wire_name(doc, w).trim_start_matches("wire "),
+                        i + first
+                    ),
+                    fix: None,
+                });
+            }
+        }
+    }
+}
+
+/// `plc-text-wide` rows of card `c` (design 051 §2.5): one per run whose addresses are wider than
+/// its cells, or whose header or mark band texts are deeper than the band, at the project's text
+/// styles. Nothing is shrunk: the style is the user's.
+pub fn wide_checks(doc: &Document, c: ComponentId, tag: &str, address: impl Fn(u32) -> Option<String>, out: &mut Vec<crate::checks::Check>) {
+    let pin = text_style(doc, TextKind::PointLabel).height;
+    let addr_h = text_style(doc, TextKind::Address).height;
+    let deep = 1.0 + pin + 1.0 + pin > HEADER_BAND || 1.0 + addr_h + 2.0 + 3.0 > MARK_BAND;
+    for page in super::overview::pages_of(doc, c) {
+        for run in runs_of_card(doc, c, page) {
+            let (Some(first), Some(last)) = (run.first, run.last) else { continue };
+            let cell_w = if run.right_cell || run.left_cell {
+                let n = last.saturating_sub(first).saturating_add(1);
+                (run.right - run.left) / f64::from(n.max(1))
+            } else {
+                continue;
+            };
+            let wide = (first..=last).take(256).any(|i| address(i).is_some_and(|a| text_width(doc, TextKind::Address, &a) > cell_w - 2.0));
+            if !(wide || deep) {
+                continue;
+            }
+            out.push(crate::checks::Check {
+                kind: crate::checks::Kind::PlcTextWide,
+                page: Some(page),
+                at: Some(Pt::new(run.left, run.top)),
+                object: crate::checks::Object::Component(c),
+                which: format!(
+                    "{tag}: addresses are wider than the {} mm cells at {} mm (Settings \u{25b8} Standards \u{25b8} Text styles \u{25b8} address)",
+                    (cell_w * 10.0).round() / 10.0,
+                    addr_h
+                ),
+                fix: None,
+            });
+        }
+    }
+}
