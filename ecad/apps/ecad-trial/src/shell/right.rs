@@ -17,6 +17,9 @@
 //!   here; a value read from further out is grey text that goes to where it is set.
 //! - **Checks** ([`checks_tab`]): This page or Project, each check with its fix and a go-to.
 //!
+//! While Place Symbol runs (board 1.11), Device and Layout describe the device about to be placed
+//! instead ([`placing_view`]): its next tag, its symbol and what the click changes.
+//!
 //! Every titled section folds to a one-line summary ([`widgets::section`]). Grey text is read from
 //! the drawing; an input box is something you set here. The rows come from the ECAD properties
 //! copy ([`crate::sheets_ui::PropsShared`], design 019; edits go through its commands as before)
@@ -31,12 +34,14 @@ mod details;
 mod device;
 mod fields;
 mod layout_tab;
+mod placing_view;
 mod widgets;
 
 pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
 pub use details::{ConnRow, DeviceDetails, DrawnRow};
 pub use device::{CONNECTION_ROW, DRAWN_ROW, OWN_CHECKS};
 pub use layout_tab::{CONTACT_TABLE, MIRROR, ROTATION};
+pub use placing_view::{CHANGES, NOT_PLACED, Placing};
 pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -167,14 +172,30 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         sync(t);
     }
     let writable = t.project_open() && !t.header().read_only;
+    // Board 1.11: the device about to be placed, on Device and Layout.
+    let placing = if t.shell.state.right_tab == RightTab::Checks { None } else { placing_view::of(t) };
+    let standard = match placing {
+        Some(_) => {
+            let words = t.standard_words();
+            format!("{} built-in", words.trim_start_matches("Standard: ").trim_end_matches(" (built in)"))
+        }
+        None => String::new(),
+    };
     let props = t.props.clone();
     let Ok(mut sh) = props.lock() else { return };
     sh.frames += 1;
     // The header: what is selected, its Row button and collapse.
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), HEAD_H));
-    let (title, sub, device) = head_words(&t.settings.inspector, &sh);
+    let (title, sub, device) = match &placing {
+        Some(p) => {
+            let (title, sub) = p.head();
+            (title, sub, None)
+        }
+        None => head_words(&t.settings.inspector, &sh),
+    };
+    let accent = placing.is_some();
     let (collapse, row) =
-        super::in_rect(ui, head.shrink2(vec2(space::L, space::S)), "ecad.shell.right.head", |ui| header(ui, &title, &sub, device.is_some()));
+        super::in_rect(ui, head.shrink2(vec2(space::L, space::S)), "ecad.shell.right.head", |ui| header(ui, &title, &sub, device.is_some(), accent));
     ui.painter().hline(rect.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
     let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::L, rect.bottom()));
     let full = rect.x_range();
@@ -198,7 +219,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
             let mut cx = Cx { sh: &mut sh, insp: &mut t.settings.inspector, checks: t.panel.checks.rows(), writable, full, panel_out: Vec::new() };
             super::in_rect(ui, body, "ecad.shell.right.body", |ui| {
                 egui::ScrollArea::vertical().id_salt(("ecad.shell.right.scroll", tab.label())).auto_shrink([false, false]).show(ui, |ui| {
-                    if tab == RightTab::Layout {
+                    if let Some(p) = &placing {
+                        placing_view::show(ui, &mut cx, p, &standard);
+                    } else if tab == RightTab::Layout {
                         layout_tab::show(ui, &mut cx, &mut acts);
                     } else {
                         device::show(ui, &mut cx, &mut acts);
@@ -225,15 +248,17 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
 }
 
 /// The header: the tag (or what is selected) and its words; the Row button and collapse at the
-/// right. Returns (collapse, row) pressed.
-fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool) -> (bool, bool) {
+/// right; `accent` draws the title in the accent colour (a device not placed yet). Returns
+/// (collapse, row) pressed.
+fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) -> (bool, bool) {
     let mut out = (false, false);
     ui.horizontal_top(|ui| {
         let right_w = if row { 96.0 } else { 36.0 };
         let text_w = (ui.available_width() - right_w).max(60.0);
         ui.vertical(|ui| {
             ui.set_width(text_w);
-            ui.add(egui::Label::new(widgets::rich(ui, title, ui_type::TITLE, widgets::text())).truncate())
+            let ink = if accent { ecad_ui::color(ecad_ui::SHELL.accent_text) } else { widgets::text() };
+            ui.add(egui::Label::new(widgets::rich(ui, title, ui_type::TITLE, ink)).truncate())
                 .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEAD_TITLE));
             if !sub.is_empty() {
                 ui.add(egui::Label::new(widgets::rich(ui, sub, ui_type::SMALL, widgets::text_2())).wrap())

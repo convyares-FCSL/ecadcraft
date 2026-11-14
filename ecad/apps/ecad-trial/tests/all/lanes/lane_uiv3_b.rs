@@ -198,10 +198,45 @@ fn screenshots_of_boards_1_05_to_1_07() {
         h.run_steps(6);
         let _ = crate::mouse_tester::shot(&h, &deltas, &out.join(name));
     }
+    // 1.11: placing a contactor coil, the picker folded.
+    h.state_mut().cad.session.set_selection(Vec::new());
+    h.state_mut().open_inspector(RightTab::Device);
+    h.state_mut().start_pick(ecad_trial::search::Pick::Symbol("coil")).unwrap();
+    h.run_steps(4);
+    h.event(egui::Event::PointerMoved(egui::pos2(1100.0, 420.0)));
+    h.run_steps(4);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-B-1.11-ours.png"));
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
     // Nothing selected: the page.
     h.state_mut().cad.session.set_selection(Vec::new());
     h.state_mut().open_inspector(RightTab::Device);
     h.run_steps(6);
     let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-B-nothing-selected-ours.png"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Board 1.11: while Place Symbol runs, Device describes the device about to be placed: its next
+/// tag in the header, its symbol, and what the click changes. Placing it ends that.
+#[test]
+fn placing_a_coil_shows_the_device_about_to_be_placed() {
+    let (mut h, dir, _one) = harness(None);
+    h.state_mut().open_inspector(RightTab::Device);
+    h.state_mut().start_pick(ecad_trial::search::Pick::Symbol("coil")).unwrap();
+    h.run_steps(4);
+    assert_eq!(h.state().picker_shown(), ecad_trial::shell::placing::Shown::Chip);
+    let sub = h.query_by_label(right::HEAD_SUB).is_some();
+    assert!(sub, "the symbol and 'not placed yet'");
+    assert!(h.query_by_label(right::CHANGES).is_some(), "what this click changes");
+    assert!(h.query_by_label("ecad.inspector.placing.tag").is_some());
+    assert!(h.query_by_label(right::ROW).is_none(), "nothing to open a row of yet");
+    // Esc ends the tool: the inspector goes back to the selection.
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    assert!(h.query_by_label(right::CHANGES).is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
