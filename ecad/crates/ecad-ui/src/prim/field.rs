@@ -1,7 +1,7 @@
 //! Field: the one input look (spec §5, "What you set and what is read"). A value set here looks
 //! like this; a value read from the drawing is [`super::read_value`] instead.
 
-use ecad_tokens::{GRAPHITE, Icon, line, radius, size, space, ui_type};
+use ecad_tokens::{Icon, line, radius, size, space, ui_type};
 use egui::{Align2, Frame, Rect, Response, RichText, Role, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2};
 
 use super::{Look, accessible};
@@ -79,7 +79,7 @@ impl<'a> Field<'a> {
 
     /// Draw it. The response is the text editor's (`changed`, `has_focus`, `lost_focus`).
     pub fn show(self, ui: &mut Ui) -> Response {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let problem = self.problem();
         let h = if self.kind == FieldKind::Search { size::SEARCH_FIELD } else { size::CONTROL };
         let w = self.width.unwrap_or(ui.spacing().text_edit_width);

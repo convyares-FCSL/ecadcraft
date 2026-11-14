@@ -166,7 +166,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     assert_eq!(rows.len(), 5, "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::NoPartNumber), "{rows:?}");
     let pe = rows.iter().find(|r| r.check.which == "-M01:PE").unwrap().clone();
-    assert_eq!(pe.locator, "3-C-5");
+    assert_eq!(pe.locator, "3/E3");
     click(&mut h, &checks_panel::row_label(&pe));
     assert_eq!(h.state().panel.active, Some(p3));
     assert!(!h.state().cad.session.selection().is_empty(), "the motor is selected");

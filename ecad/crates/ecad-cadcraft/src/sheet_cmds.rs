@@ -61,7 +61,7 @@ clears; no fields: the current values, read only)",
         CommandSpec::new("projectprops", "Project Properties", run_projectprops)
             .params(
                 "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
-page_number_step?: n, reference_style?: \"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
+page_number_step?: n, reference_style?: \"page-zone\"|\"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
 tag_prefixes?: {symbol: prefix|null}, colour_style?: \"iec\"|\"three-letter\", label_height?: mm, \
 tag_dash?: bool, tag_case?: \"upper\"|\"typed\", revision_columns?: \"rev, date, ecr:ECR@20, description\"|null, \
 revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one transaction; no fields: everything, read only)",
@@ -653,6 +653,7 @@ fn style_word(s: ReferenceStyle) -> &'static str {
     match s {
         ReferenceStyle::PageColumnRow => "page-column-row",
         ReferenceStyle::PageColumn => "page-column",
+        ReferenceStyle::PageZone => "page-zone",
     }
 }
 
@@ -851,9 +852,10 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         if let Some(v) = params.get("reference_style").filter(|v| !v.is_null()) {
             settings.reference_style = match v.as_str() {
+                Some("page-zone") => ReferenceStyle::PageZone,
                 Some("page-column-row") => ReferenceStyle::PageColumnRow,
                 Some("page-column") => ReferenceStyle::PageColumn,
-                _ => return Err("`reference_style` must be \"page-column-row\" or \"page-column\"".into()),
+                _ => return Err("`reference_style` must be \"page-zone\", \"page-column-row\" or \"page-column\"".into()),
             };
         }
         if let Some(v) = params.get("contact_mirror").filter(|v| !v.is_null()) {

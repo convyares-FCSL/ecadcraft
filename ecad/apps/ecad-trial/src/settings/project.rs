@@ -46,6 +46,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
     let pages = t.panel.rows().len();
     let sheet = match t.shell.state.sheet {
         crate::canvas::Sheet::Paper => "Paper",
+        crate::canvas::Sheet::Follow => "Follow the theme",
         crate::canvas::Sheet::Dark => "Dark",
     };
     let Some(d) = &mut t.project_props else { return };

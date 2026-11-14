@@ -28,7 +28,7 @@ pub use source::{Align, Cell, Changed, Column, ColumnId, ColumnKind, Editor, Lan
 pub use tint::{TINT_SECONDS, TintMap};
 pub use view_model::{Dir, Row, ViewModel, natural_cmp};
 
-use ecad_tokens::{GRAPHITE, Icon, line, size, space, ui_type};
+use ecad_tokens::{Icon, line, size, space, ui_type};
 use egui::{Id, Key, Modifiers, Rect, Response, Role, Sense, Stroke, Ui, WidgetInfo, pos2, vec2};
 
 use crate::prim::{self, Chip, Field, FieldKind, Kind};
@@ -76,6 +76,17 @@ pub struct Table<K: Ord> {
     now: f64,
     /// Rows laid out on the last frame (tests: virtualised).
     pub rows_drawn: usize,
+    /// Captions over runs of columns (UI rev 3's terminal plan: inside | the strip | outside),
+    /// drawn in a band above the column titles: the caption and its first and last column.
+    pub bands: Vec<Band>,
+}
+
+/// A caption over the columns from `first` to `last` (UI rev 3, board 2.02).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Band {
+    pub caption: &'static str,
+    pub first: ColumnId,
+    pub last: ColumnId,
 }
 
 impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
@@ -97,6 +108,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
             built: false,
             now: 0.0,
             rows_drawn: 0,
+            bands: Vec::new(),
         }
     }
 
@@ -256,46 +268,69 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         }
     }
 
+    /// The search field (`width` px), as the toolbar draws it. UI rev 3's Project workspace puts
+    /// it in the workspace's head instead.
+    pub fn filter_field(&mut self, ui: &mut Ui, placeholder: &str, width: f32) -> Response {
+        let label = format!("Filter {}", self.name);
+        Field::new(&mut self.query, FieldKind::Search, &label).placeholder(placeholder).width(width).show(ui)
+    }
+
+    /// The source's filter chips, as the toolbar draws them.
+    pub fn chip_row<S: TableSource<Key = K>>(&mut self, ui: &mut Ui, src: &S) {
+        for (i, chip) in src.chips().iter().enumerate() {
+            let on = self.view.chip_on(i);
+            if Chip::new(chip).selected(on).show(ui).response.clicked() {
+                self.view.set_chip(src, i, !on);
+            }
+        }
+    }
+
+    /// The Group menu over the source's groupable columns, as the toolbar draws it (nothing when
+    /// no column groups).
+    pub fn group_menu<S: TableSource<Key = K>>(&mut self, ui: &mut Ui, src: &S) {
+        let groupable: Vec<&Column> = src.columns().iter().filter(|c| c.groupable).collect();
+        if groupable.is_empty() {
+            return;
+        }
+        let now = self.view.group_by().and_then(|g| groupable.iter().find(|c| c.id == g)).map_or("None", |c| c.title);
+        let mut pick = None;
+        ui.menu_button(format!("Group: {now}"), |ui| {
+            if ui.button("None").clicked() {
+                pick = Some(None);
+            }
+            for c in &groupable {
+                if ui.button(c.title).clicked() {
+                    pick = Some(Some(c.id));
+                }
+            }
+        })
+        .response
+        .widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {}", self.name)));
+        if let Some(g) = pick {
+            self.view.set_group(src, g);
+        }
+    }
+
+    /// The rows shown, as CSV (the toolbar's Export CSV).
+    pub fn csv<S: TableSource<Key = K>>(&self, src: &S) -> String {
+        let keys = self.view.visible_keys();
+        export::csv(src, src.columns(), &keys)
+    }
+
     /// The toolbar: search, chips, group, export, the row count.
     fn show_toolbar<S: TableSource<Key = K>>(&mut self, ui: &mut Ui, src: &S, out: &mut Vec<TableEvent<K>>) {
         ui.horizontal(|ui| {
-            let label = format!("Filter {}", self.name);
-            Field::new(&mut self.query, FieldKind::Search, &label).placeholder("Filter").width(220.0).show(ui);
-            for (i, chip) in src.chips().iter().enumerate() {
-                let on = self.view.chip_on(i);
-                if Chip::new(chip).selected(on).show(ui).response.clicked() {
-                    self.view.set_chip(src, i, !on);
-                }
-            }
-            let groupable: Vec<&Column> = src.columns().iter().filter(|c| c.groupable).collect();
-            if !groupable.is_empty() {
-                let now = self.view.group_by().and_then(|g| groupable.iter().find(|c| c.id == g)).map_or("None", |c| c.title);
-                let mut pick = None;
-                ui.menu_button(format!("Group: {now}"), |ui| {
-                    if ui.button("None").clicked() {
-                        pick = Some(None);
-                    }
-                    for c in &groupable {
-                        if ui.button(c.title).clicked() {
-                            pick = Some(Some(c.id));
-                        }
-                    }
-                })
-                .response
-                .widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("Group {}", self.name)));
-                if let Some(g) = pick {
-                    self.view.set_group(src, g);
-                }
-            }
+            self.filter_field(ui, "Filter", 220.0);
+            self.chip_row(ui, src);
+            self.group_menu(ui, src);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(prim::Button::new("Export CSV").kind(Kind::Quiet).small()).clicked() {
-                    let keys = self.view.visible_keys();
-                    out.push(TableEvent::Export(export::csv(src, src.columns(), &keys)));
+                    out.push(TableEvent::Export(self.csv(src)));
                 }
                 let n = self.view.item_count();
-                let g = cells::fitted(ui, &format!("{n} row{}", if n == 1 { "" } else { "s" }), ui_type::SMALL, color(GRAPHITE.text_3), 200.0);
+                let g = cells::fitted(ui, &format!("{n} row{}", if n == 1 { "" } else { "s" }), ui_type::SMALL, color(crate::SHELL.text_3), 200.0);
                 let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
-                ui.painter().galley(r.min, g, color(GRAPHITE.text_3));
+                ui.painter().galley(r.min, g, color(crate::SHELL.text_3));
             });
         });
     }
@@ -333,9 +368,9 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         }
 
         if self.view.rows().is_empty() {
-            let g = cells::fitted(ui, self.empty, ui_type::BODY, color(GRAPHITE.text_2), ui.available_width());
+            let g = cells::fitted(ui, self.empty, ui_type::BODY, color(crate::SHELL.text_2), ui.available_width());
             let (r, _) = ui.allocate_exact_size(g.size() + vec2(0.0, space::M), Sense::hover());
-            ui.painter().galley(r.min + vec2(space::M, space::XS), g, color(GRAPHITE.text_2));
+            ui.painter().galley(r.min + vec2(space::M, space::XS), g, color(crate::SHELL.text_2));
             self.rows_drawn = 0;
             return out;
         }
@@ -351,7 +386,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
     }
 
     fn body<S: TableSource<Key = K>>(&mut self, ui: &mut Ui, src: &S, focused: bool, now: f64, out: &mut Vec<TableEvent<K>>) {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let cols = src.columns().to_vec();
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         let mut builder = egui_extras::TableBuilder::new(ui)
@@ -375,10 +410,34 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         }
         let sort = self.view.sort();
         let mut sort_click = None;
-        let table = builder.header(size::ROW_TABLE, |mut header| {
-            for c in &cols {
+        // UI rev 3: band captions over runs of columns, in a row above the titles.
+        let pos = |id: ColumnId| cols.iter().position(|c| c.id == id);
+        let bands: Vec<(&'static str, usize, usize)> =
+            self.bands.iter().filter_map(|b| Some((b.caption, pos(b.first)?, pos(b.last)?))).filter(|(_, a, b)| a <= b).collect();
+        let mut band_rects: Vec<Option<Rect>> = vec![None; bands.len()];
+        let head_h = if bands.is_empty() { size::ROW_TABLE } else { 2.0 * size::ROW_TABLE - space::M };
+        let table = builder.header(head_h, |mut header| {
+            for (ci, c) in cols.iter().enumerate() {
                 header.col(|ui| {
-                    let rect = ui.max_rect();
+                    let full = ui.max_rect();
+                    let band_h = full.height() - size::ROW_TABLE;
+                    for (bi, (caption, a, b)) in bands.iter().enumerate() {
+                        if ci < *a || ci > *b {
+                            continue;
+                        }
+                        let top = Rect::from_min_size(full.min, vec2(full.width(), band_h));
+                        let u = band_rects.get(bi).copied().flatten().map_or(top, |r| r.union(top));
+                        if let Some(slot) = band_rects.get_mut(bi) {
+                            *slot = Some(u);
+                        }
+                        if ci == *b {
+                            let g = cells::fitted(ui, caption, ui_type::SMALL, color(s.text_3), u.width() - space::M);
+                            let p = ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(u);
+                            let x = u.left() + space::M;
+                            p.galley(pos2(x, u.bottom() - g.size().y), g, color(s.text_3));
+                        }
+                    }
+                    let rect = Rect::from_min_max(pos2(full.left(), full.bottom() - size::ROW_TABLE), full.max);
                     let r = ui.interact(rect, self.id.with(("head", c.id)), if c.sortable { Sense::click() } else { Sense::hover() });
                     r.widget_info(|| WidgetInfo::labeled(Role::ColumnHeader, true, c.title));
                     let ink = if r.hovered() && c.sortable { s.text } else { s.text_2 };
@@ -621,7 +680,7 @@ fn interact_unclipped(ui: &mut Ui, rect: Rect, clip: Rect, id: Id) -> Response {
 
 /// A refusal under its cell (spec §5: where the attempt was made), in the error colour.
 fn refusal_note(ui: &Ui, rect: Rect, message: &str, id: Id) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     egui::Area::new(id.with("refusal")).order(egui::Order::Foreground).fade_in(false).fixed_pos(rect.left_bottom()).interactable(false).show(
         ui.ctx(),
         |ui| {

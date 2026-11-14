@@ -10,6 +10,8 @@
 //! - The grid's zones span the **whole frame**, title-block area included: columns run left to
 //!   right from the frame's left edge, **row 1 is the top row**, counted down from the frame's top
 //!   edge. A point outside the frame is clamped to the nearest column and row.
+//! - By default the columns are **numbered** across the top and the rows **lettered** down the
+//!   sides (owner, UI round 2: "zones A–F × 1–8"; UI rev 3 boards). A spec may say otherwise.
 //! - The project's sheet is [`crate::ProjectSettings::sheet`]; a page may override it with its
 //!   `sheet` property ([`SHEET_KEY`]), a text spec ([`SheetSpec::parse`]).
 //!
@@ -94,9 +96,10 @@ pub const PRESETS: [(&str, u32, u32, u32, u32); 4] =
     [("A3", 420, 297, 8, 6), ("A2", 594, 420, 12, 8), ("A1", 841, 594, 16, 12), ("A0", 1189, 841, 24, 16)];
 
 impl Default for SheetSpec {
-    /// A3 landscape, columns `A`–`H`, rows `1`–`6` (design 019 §3.1).
+    /// A3 landscape, columns `1`–`8` across the top, rows `A`–`F` down the sides (design 019 §3.1,
+    /// with the labels the owner chose in UI round 2: "zones A–F × 1–8").
     fn default() -> Self {
-        SheetSpec { width: 420, height: 297, columns: 8, rows: 6, column_labels: GridLabels::Letters, row_labels: GridLabels::Numbers }
+        SheetSpec { width: 420, height: 297, columns: 8, rows: 6, column_labels: GridLabels::Numbers, row_labels: GridLabels::Letters }
     }
 }
 
@@ -188,7 +191,7 @@ impl SheetSpec {
     }
 
     /// The shortest text [`SheetSpec::parse`] reads back as this spec: `A3`, `A3 10x6`,
-    /// `594x420 12x8 numbers letters`.
+    /// `594x420 12x8 letters numbers`.
     pub fn text(&self) -> String {
         let preset = PRESETS.iter().find(|p| p.1 == self.width && p.2 == self.height);
         let mut out = match preset {
@@ -398,7 +401,8 @@ mod tests {
             ("A3", "A3"),
             ("a2", "A2"),
             ("A3 10x6", "A3 10x6"),
-            ("594x420 12x8 numbers letters", "A2 numbers letters"),
+            ("594x420 12x8 letters numbers", "A2 letters numbers"),
+            ("594x420 12x8 numbers letters", "A2"),
             ("600×400", "600x400"),
             ("1000x500 20x10", "1000x500 20x10"),
         ] {
@@ -416,19 +420,19 @@ mod tests {
     fn the_a3_grid_places_points() {
         let g = Grid::new(SheetSpec::default(), LengthUnit::Millimetre);
         assert_eq!((g.area_width(), g.area_height(), g.column_width()), (400.0, 280.0, 50.0));
-        // Column C is x 110..160; row 1 is y 290 down to 243.3, row 6 reaches the frame's bottom.
+        // Column 3 is x 110..160; row A is y 290 down to 243.3, row F reaches the frame's bottom.
         assert_eq!(g.column_of(130.0), Some(3));
-        assert_eq!(g.column_label(3), "C");
+        assert_eq!(g.column_label(3), "3", "columns are numbered across the top");
         assert_eq!(g.column_of(5.0), Some(1));
         assert_eq!(g.column_of(1e9), Some(8));
         assert_eq!(g.row_of(289.0), Some(1));
         assert_eq!(g.row_of(120.0), Some(4));
         assert_eq!(g.row_of(15.0), Some(6), "the title-block area is in the last row");
         assert_eq!(g.row_of(-20.0), Some(6));
-        assert_eq!(g.row_label(4), "4");
+        assert_eq!(g.row_label(4), "D", "rows are lettered down the sides");
         assert_eq!(g.column_of(f64::NAN), None);
         assert_eq!(letters(27), "AA");
-        // Counted from the bottom-right instead: the same point is in column F, row 3.
+        // Counted from the bottom-right instead: the same point is in column 6, row C.
         let br = Grid::with_layout(SheetSpec::default(), LengthUnit::Millimetre, Margins::default(), Corner::BottomRight);
         assert_eq!((br.column_of(130.0), br.row_of(120.0)), (Some(6), Some(3)));
     }

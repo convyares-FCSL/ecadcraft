@@ -606,12 +606,12 @@ pub fn next_pin(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Si
 
 // ---------------------------------------------------------------- halves and their symbols
 
-/// Where a representation is, in words (`101 C3`), for refusals.
+/// Where a representation is, in words (`101 B3`, the zone's letter first), for refusals.
 pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
     let Some(r) = doc.representations.get(&rid) else { return String::new() };
     let page = ecad_model::book::page_number(doc, r.page);
     match crate::xref::anchor(doc, r).and_then(|a| ecad_model::wiring::place(doc, r.page, a)) {
-        Some(p) => format!("{page} {}{}", p.column_label, p.row_label),
+        Some(p) => format!("{page} {}", ecad_model::derive::zone_text(&p.column_label, &p.row_label)),
         None => page,
     }
 }

@@ -95,7 +95,7 @@ fn three_arrows_show_each_other_in_book_order() {
     let mut f = fixture(0x49_01);
     let [(_, a), (_, b), (_, c)] = f.arrows;
     let (pa, pb, pc) = (place(&mut f.h, a), place(&mut f.h, b), place(&mut f.h, c));
-    assert!(pa.starts_with("101-") && pb.starts_with("102-") && pc.starts_with("103-"), "{pa} {pb} {pc}");
+    assert!(pa.starts_with("101/") && pb.starts_with("102/") && pc.starts_with("103/"), "{pa} {pb} {pc}");
     assert_eq!(text_of(&mut f.h, f.pages[0], a), Some(format!("{pb} {pc}")));
     assert_eq!(text_of(&mut f.h, f.pages[1], b), Some(format!("{pa} {pc}")));
     assert_eq!(text_of(&mut f.h, f.pages[2], c), Some(format!("{pa} {pb}")));
@@ -177,7 +177,7 @@ fn f1_a_moved_arrow_and_a_renumbered_page_redraw_the_other_ends() {
     let changed = f.h.p(|p| p.changes_since(n)).expect("pages known");
     assert!(changed.contains(&f.pages[0]) && changed.contains(&f.pages[1]), "{changed:?}");
     let pc = place(&mut f.h, c);
-    assert!(pc.starts_with("104-"), "{pc}");
+    assert!(pc.starts_with("104/"), "{pc}");
     assert!(drawn(&mut f.h, f.pages[0]).iter().any(|t| t.ends_with(&pc)), "{:?}", drawn(&mut f.h, f.pages[0]));
     let _ = a_c;
     index_matches(&mut f.h);

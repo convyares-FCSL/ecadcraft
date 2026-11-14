@@ -37,7 +37,7 @@ fn devices_table_follows_the_page_and_edits_a_tag_in_one_transaction() {
     let d = &h.state().panel.devices;
     let listed: Vec<_> = d.list.entries.iter().map(|e| e.id).collect();
     assert_eq!(d.table.view.visible_keys(), listed, "the same rows as the Devices list");
-    assert_eq!(d.source.cell(coil, devices::PAGES).text(), "1-A-6, 2-A-6");
+    assert_eq!(d.source.cell(coil, devices::PAGES).text(), "1/F1, 2/F1");
 
     // A row selects its first symbol on its page.
     click(&mut h, "Device -K01: Contactor / relay coil");

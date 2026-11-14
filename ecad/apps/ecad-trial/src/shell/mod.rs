@@ -29,15 +29,20 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod bar;
+pub mod compare;
+pub mod connector;
 pub mod drawer;
+pub mod glyphs;
 pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
+pub mod placing;
 pub mod right;
 pub mod state;
 pub mod status_bar;
 pub mod text_panel;
+pub mod toggles;
 pub mod tool_strip;
 pub mod top_bar;
 pub mod wheel;
@@ -74,46 +79,55 @@ pub struct Visit {
     pub page: Option<PageId>,
 }
 
-/// Lists' views (spec §2: the managers as tabs). Device list, Terminal plan and Check list are
-/// U3's column sets ([`crate::lists::show`]); Reports hosts today's BOM, wires and cables (and its
-/// own Terminals tab). While Lists shows a view the left panel or the drawer also hosts, that one
-/// defers to Lists (one table is drawn once a frame).
+/// The Project workspace's views (UI rev 3, boards 2.01–2.06; was Lists): the tabs in the tool
+/// strip's order ([`crate::lists::workspace::TABS`]). The Check list is no tab (its checks are the
+/// right panel's Checks) but is still shown when asked for. While Project shows a view the left
+/// panel or the drawer also hosts, that one defers to it (one table is drawn once a frame).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ListsView {
     #[default]
     Devices,
     Terminals,
-    /// Brief 051: Lists ▸ PLC (045c's Lists ▸ I/O).
+    /// Brief 051: Project ▸ PLC (045c's Lists ▸ I/O).
     Plc,
+    /// UI rev 3 (board 2.04).
+    Wires,
+    /// UI rev 3 (board 2.05).
+    Cables,
     Checks,
     Reports,
 }
 
 impl ListsView {
-    pub const ALL: [ListsView; 5] = [ListsView::Devices, ListsView::Terminals, ListsView::Plc, ListsView::Checks, ListsView::Reports];
+    /// The tabs (the Check list is none).
+    pub const ALL: [ListsView; 6] = crate::lists::workspace::TABS;
 
-    /// Its name in Lists' switch (apart from the left panel's Devices tab).
+    /// Its name in the Project workspace's tab strip.
     pub fn label(self) -> &'static str {
         match self {
             ListsView::Devices => LISTS_DEVICES,
             ListsView::Terminals => LISTS_TERMINALS,
             ListsView::Plc => LISTS_PLC,
+            ListsView::Wires => LISTS_WIRES,
+            ListsView::Cables => LISTS_CABLES,
             ListsView::Checks => LISTS_CHECKS,
             ListsView::Reports => LISTS_REPORTS,
         }
     }
 }
 
-pub const LISTS_DEVICES: &str = "Device list";
-pub const LISTS_TERMINALS: &str = "Terminal plan";
+pub const LISTS_DEVICES: &str = "Devices";
+pub const LISTS_TERMINALS: &str = "Terminals";
 /// Brief 051 (design 051 §3.1): the rack overview and the I/O list (045c's "I/O").
 pub const LISTS_PLC: &str = "PLC";
+pub const LISTS_WIRES: &str = "Wires";
+pub const LISTS_CABLES: &str = "Cables";
 pub const LISTS_CHECKS: &str = "Check list";
 pub const LISTS_REPORTS: &str = "Reports";
 /// Said in the inspector's Checks tab while Lists shows the Check list.
-pub const CHECKS_IN_LISTS: &str = "The checks are shown in Lists ▸ Check list.";
+pub const CHECKS_IN_LISTS: &str = "The checks are shown in Project ▸ Check list.";
 /// Said in the left panel's Devices tab while Lists shows the same view.
-pub const DEVICES_IN_LISTS: &str = "The devices are shown in Lists ▸ Device list.";
+pub const DEVICES_IN_LISTS: &str = "The devices are shown in Project ▸ Devices.";
 
 /// Publish's two hosted bodies.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -153,6 +167,9 @@ pub struct Shell {
     pub publish: PublishTab,
     /// The view Lists shows.
     pub lists: ListsView,
+    /// UI rev 3: the Project workspace's selected row last frame (a new one opens the right
+    /// panel on it).
+    pub project_selected: Option<crate::lists::detail::Selected>,
     /// The rect the page is shown in this frame (Draw's main view, Lists' companion), or `None`
     /// when it is laid out hidden under a hosted view: ECAD's hover, the zone and the go-to
     /// ring's click react only inside it.
@@ -162,8 +179,6 @@ pub struct Shell {
     pub restore_view: bool,
     /// Library opened the symbol search: it closes again when another workspace is shown.
     search_from_library: bool,
-    /// The right panel's ECAD properties (the same section CADCraft's Properties palette drew).
-    right_section: Box<dyn FnMut(&mut egui::Ui)>,
     /// The project whose views were applied, and the page whose view is shown.
     view_of: Option<(String, Option<PageId>)>,
     /// The shell's own share of the last frame, in milliseconds (design §10).
@@ -183,8 +198,9 @@ impl std::fmt::Debug for Shell {
 }
 
 impl Shell {
-    /// A shell with the default state, drawing `props` in its right panel.
-    pub fn new(props: crate::sheets_ui::Shared) -> Self {
+    /// A shell with the default state. (The right panel reads the trial's `props` copy itself, UI
+    /// rev 3; the argument is kept for its callers.)
+    pub fn new(_props: crate::sheets_ui::Shared) -> Self {
         Shell {
             state: ShellState::default(),
             views: Views::default(),
@@ -200,10 +216,10 @@ impl Shell {
             settings_open: false,
             publish: PublishTab::default(),
             lists: ListsView::default(),
+            project_selected: None,
             page_rect: None,
             restore_view: false,
             search_from_library: false,
-            right_section: crate::sheets_ui::section(props),
             view_of: None,
             frame_ms: 0.0,
             well: status_bar::Well::default(),
@@ -354,6 +370,7 @@ impl Trial {
             _ => right::show(self, ui, &slots),
         }
         drawer::show(self, ui, &slots);
+        compare::show(self, ui, &slots);
         if let Some(r) = slots.tool_strip {
             match self.library.builder.as_mut().filter(|_| self.shell.state.workspace == Workspace::Library) {
                 Some(b) => crate::library::builder::strip(ui, r, b),
@@ -361,6 +378,7 @@ impl Trial {
             }
         }
         self.shell.frame_ms = cadcraft_ui_egui::now_ms() - t0;
+        left::close_on_draw(self, ui.ctx(), &slots);
         self.main_view(ui, &slots);
         self.take_props();
     }
@@ -404,114 +422,13 @@ impl Trial {
             fill(ui, c, ecad_ui::SHELL.bg);
         }
         if self.shell.state.workspace == Workspace::Lists {
-            self.lists_view(ui, slots.main);
+            self.project_view(ui, slots.main);
         }
         if self.shell.state.workspace == Workspace::Library {
             self.library_view(ui, slots.main);
         }
         if self.shell.state.workspace == Workspace::Publish {
             self.publish_main(ui, slots.main);
-        }
-    }
-
-    /// Lists' main view: its switch, then U3's column set (Device list, Terminal plan) through
-    /// [`crate::lists::show`], or Reports hosted under the switch ([`Trial::host_windows`]).
-    fn lists_view(&mut self, ui: &mut egui::Ui, main: Rect) {
-        let head = Rect::from_min_size(main.min, egui::vec2(main.width(), ecad_ui::tokens::size::PANEL_HEADER));
-        let body = Rect::from_min_max(egui::pos2(main.left(), head.bottom()), main.max);
-        fill(ui, main, ecad_ui::SHELL.panel);
-        let mut i = ListsView::ALL.iter().position(|v| *v == self.shell.lists).unwrap_or(0);
-        let labels: Vec<&str> = ListsView::ALL.iter().map(|v| v.label()).collect();
-        in_rect(ui, head.shrink(ecad_ui::tokens::space::XS), "ecad.shell.lists.head", |ui| {
-            ui.horizontal(|ui| ecad_ui::prim::segmented(ui, &mut i, &labels));
-        });
-        self.shell.lists = ListsView::ALL.get(i).copied().unwrap_or_default();
-        let tab = match self.shell.lists {
-            ListsView::Devices => crate::lists::Tab::Devices,
-            ListsView::Terminals => crate::lists::Tab::Terminals,
-            ListsView::Plc => crate::lists::Tab::Plc,
-            ListsView::Checks => crate::lists::Tab::Checks,
-            ListsView::Reports => return,
-        };
-        if !self.project_open() {
-            return;
-        }
-        // The Terminal plan is Reports' Terminals view; Reports keeps it in step.
-        self.open_reports();
-        let writable = {
-            let h = self.header();
-            h.name.is_some() && !h.read_only && self.panel.revision.is_none()
-        };
-        let Some(reports) = self.reports.as_mut() else { return };
-        if tab == crate::lists::Tab::Terminals && reports.tab != crate::outputs_ui::Tab::Terminals {
-            reports.tab = crate::outputs_ui::Tab::Terminals;
-            reports.invalidate();
-        }
-        reports.io_shown = tab == crate::lists::Tab::Plc;
-        let lists = crate::lists::Lists {
-            checks: &mut self.panel.checks,
-            devices: &mut self.panel.devices,
-            terminals: &mut reports.terminals,
-            io: &mut reports.io,
-        };
-        let actions = in_rect(ui, body.shrink(ecad_ui::tokens::space::S), "ecad.shell.lists.body", |ui| crate::lists::show(ui, tab, lists, writable));
-        for a in actions {
-            match a {
-                crate::lists::ListAction::Panel(a) => self.panel_action(a),
-                crate::lists::ListAction::Run(line) => {
-                    let refusal = self.run_line(&line);
-                    if let Some(r) = self.reports.as_mut() {
-                        r.ran(refusal);
-                    }
-                }
-                crate::lists::ListAction::GoTo(page, at) => self.goto_place(page, at),
-                other => self.plc_action(other),
-            }
-        }
-    }
-
-    /// Brief 051: what Lists ▸ PLC asks the trial for (design 051 §3.4, §3.5).
-    pub fn plc_action(&mut self, a: crate::lists::ListAction) {
-        use crate::lists::ListAction;
-        match a {
-            ListAction::Say(t) => self.cad.session.echo(t),
-            ListAction::GoToCard(page, card) => {
-                // The card's first drawing on that page, else the page.
-                let at = match (self.project.clone(), card) {
-                    (Some(p), Some(c)) => {
-                        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::plc::overview::at_on(p.ledger.document(), c, page)).ok().flatten()
-                    }
-                    _ => None,
-                };
-                match at {
-                    Some(at) => self.goto_place(page, at),
-                    None => {
-                        let _ = self.show_page(page);
-                    }
-                }
-            }
-            ListAction::ChecksOf(c) => {
-                let tag = self
-                    .project
-                    .clone()
-                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_words(p.ledger.document(), c)).ok());
-                self.shell.lists = ListsView::Checks;
-                if let Some(t) = tag {
-                    self.panel.checks.table.query = t;
-                }
-            }
-            ListAction::PlaceCard(slot) => {
-                if self.cad.session.running.is_some() {
-                    self.cad.session.cancel();
-                }
-                match self.cad.session.start("place") {
-                    Ok(()) => self.cad.session.echo(format!("Search \"card\" and pick a card body: it goes in the next free slot ({slot}).")),
-                    Err(e) => self.cad.session.echo(e.to_string()),
-                }
-                self.focus_drawing = true;
-                self.after_logic();
-            }
-            _ => {}
         }
     }
 
@@ -597,15 +514,17 @@ impl Trial {
             Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
             _ => {}
         }
-        let under_head = Rect::from_min_max(slots.main.min + egui::vec2(0.0, ecad_ui::tokens::size::PANEL_HEADER), slots.main.max);
+        // UI rev 3 (board 2.06): Project ▸ Reports hosts the window as its preview.
+        let preview = w == Workspace::Lists && self.shell.lists == ListsView::Reports;
         let reports = match w {
-            Workspace::Lists if self.shell.lists == ListsView::Reports => Some(under_head),
+            Workspace::Lists if preview && crate::lists::reports::preview_shown(self) => Some(crate::lists::workspace::reports_preview(slots.main)),
             Workspace::Draw => slots.companion,
             _ => None,
         };
         if let Some(r) = &mut self.reports {
             r.host = reports;
             r.hidden = reports.is_none();
+            r.preview = preview;
         }
         // Brief 048: the Library shows its own browser; the search (Ctrl+K) floats everywhere.
         self.search.host = None;

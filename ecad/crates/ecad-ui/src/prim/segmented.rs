@@ -1,6 +1,6 @@
 //! Segmented control: one of a few choices, side by side (the workspace switch is one).
 
-use ecad_tokens::{GRAPHITE, radius, size, space, ui_type};
+use ecad_tokens::{radius, size, space, ui_type};
 use egui::{Rect, Response, Role, Sense, Ui, Widget, WidgetInfo, pos2, vec2};
 
 use super::{Look, accessible, galley};
@@ -29,7 +29,7 @@ impl<'a> Segmented<'a> {
 
 impl Widget for Segmented<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let h = size::CONTROL;
         let galleys: Vec<_> = self.items.iter().map(|t| galley(ui, t, ui_type::BODY_EMPHASIS)).collect();
         let widths: Vec<f32> = galleys.iter().map(|g| g.size().x + 2.0 * space::L).collect();

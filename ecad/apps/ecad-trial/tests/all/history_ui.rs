@@ -72,7 +72,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     assert_eq!(h.state().panel.tab, project_panel::Tab::History);
     let kinds: Vec<_> = h.state().panel.history.graph().nodes.iter().map(|n| n.kind).collect();
     assert!(kinds.contains(&ecad_cadcraft::history::NodeKind::Now) && kinds.contains(&ecad_cadcraft::history::NodeKind::Root), "{kinds:?}");
-    click(&mut h, "ecad.history.newversion");
+    click(&mut h, history_panel::NAME_THIS);
     assert!(matches!(h.state().panel.history.dialog, Some(Dialog::NewVersion { .. })));
     type_into(&mut h, "ecad.newversion.name", "Before change");
     click(&mut h, "ecad.newversion.ok");

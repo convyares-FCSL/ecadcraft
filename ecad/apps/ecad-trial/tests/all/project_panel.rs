@@ -5,7 +5,7 @@
 //! `016-rename.png`, `016-drag.png`, `016-collapsed.png`, `016-preview-ref.png`, `016-large.png`).
 //!
 //! Fixture P (design §10): 010's fixture R (pages `Supply` and `Field`, cable C1 with linked
-//! references `2-A-6` and `1-B-6`) plus a third page `Spare`.
+//! references `2/F1` and `1/F2`) plus a third page `Spare`.
 
 use std::sync::{Arc, Mutex};
 
@@ -276,7 +276,7 @@ pub(crate) fn row_rect(h: &Harness<'static, Trial>, label: &str) -> egui::Rect {
     h.get_by_label(label).rect()
 }
 
-/// Fixture P: Supply (C1 leaving at (65,5), `2-A-6`), Field (C1 arriving at (20,5), `1-B-6`), Spare.
+/// Fixture P: Supply (C1 leaving at (65,5), `2/F1`), Field (C1 arriving at (20,5), `1/F2`), Spare.
 pub(crate) fn fixture_p(h: &mut Harness<'static, Trial>) -> (PageId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let supply = doc(h).page_order[0];
@@ -453,15 +453,15 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
     // Page numbers are stored (brief 019): the move changes no reference text.
     let texts: Vec<String> = ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
-    assert_eq!(texts, ["2-A-6"]);
+    assert_eq!(texts, ["2/F1"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
     click(&mut h, "Page 3: Spare");
     let before = head(&mut h);
     key(&mut h, Key::ArrowDown, Modifiers::ALT);
     assert_eq!(head(&mut h), before + 1);
     assert_eq!(titles(&mut h), ["Supply", "Spare", "Field", "4"]);
-    click(&mut h, project_panel::MOVE_DOWN);
-    assert_eq!(titles(&mut h), ["Supply", "Field", "Spare", "4"], "the header's Move down");
+    key(&mut h, Key::ArrowDown, Modifiers::ALT);
+    assert_eq!(titles(&mut h), ["Supply", "Field", "Spare", "4"], "Alt+Down again: the cursor follows the row");
 
     // C: a page change typed in the command window shows in the panel the next frame.
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field (typed)"}}"#, field.hex()));
@@ -712,10 +712,10 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     click(&mut h, "Page 2: Field");
     let field = doc(&mut h).page_order[1];
     assert_eq!(active(&mut h), Some(field), "switching works");
-    // New page, New folder, Move up and Move down are disabled and named by why.
-    let disabled = h.get_all_by_label(project_panel::READ_ONLY).count();
-    assert_eq!(disabled, 4, "New page, New folder, Move up and Move down");
-    h.get_all_by_label(project_panel::READ_ONLY).for_each(|n| n.click());
+    // New page and New folder (UI rev 3: Book's footer) are disabled: clicking them does nothing.
+    for label in [project_panel::NEW_PAGE, project_panel::NEW_FOLDER] {
+        h.get_by_label(label).click();
+    }
     h.run_steps(3);
     key(&mut h, Key::ArrowUp, Modifiers::ALT);
     key(&mut h, Key::F2, Modifiers::NONE);
@@ -782,7 +782,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
         let d = &h.state().panel.devices;
         d.source.cell(coil, ecad_trial::lists::devices::PAGES).text().into_owned()
     };
-    assert_eq!(pages, "1-A-6, 2-A-6");
+    assert_eq!(pages, "1/F1, 2/F1");
     let before = head(&mut h);
     h.state_mut().show_page(page2).unwrap();
     h.run_steps(2);

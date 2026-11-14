@@ -202,7 +202,7 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     assert_eq!(after.cables, before.cables, "same cable, same members");
     assert_eq!(after.conductors, before.conductors, "no conductor or attachment changed");
     assert_eq!(nets(&after), nets(&before), "nets unchanged");
-    assert_eq!(v["text"], "1-B-6");
+    assert_eq!(v["text"], "1/F2");
     assert_eq!(v["partner"], json!(reference_on(&mut r.h, r.supply).hex()));
     let free: Vec<&str> = v["routes"].as_array().unwrap().iter().map(|x| x["free_end"].as_str().unwrap()).collect();
     assert_eq!(free, ["B", "B", "B"]);
@@ -239,9 +239,9 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
     let mut r = connected();
     let doc = r.h.doc();
     let s = &markers_on_page(&doc, r.supply)[0];
-    assert_eq!((s.text.as_str(), s.text_at, s.right_aligned, s.orphan), ("2-A-6", Pt::new(70.0, 5.0), false, false));
+    assert_eq!((s.text.as_str(), s.text_at, s.right_aligned, s.orphan), ("2/F1", Pt::new(70.0, 5.0), false, false));
     let f = &markers_on_page(&doc, r.field)[0];
-    assert_eq!((f.text.as_str(), f.text_at, f.right_aligned), ("1-B-6", Pt::new(15.0, 5.0), true));
+    assert_eq!((f.text.as_str(), f.text_at, f.right_aligned), ("1/F2", Pt::new(15.0, 5.0), true));
     // The drawn text: one Text on ECAD-CABLES, mapped to its reference.
     for page in [r.supply, r.field] {
         // What the page shows once in front (only the page in front is redrawn on a change).
@@ -251,7 +251,7 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
         assert_eq!(r.h.mapped(page, h), Some(Mapped::RefText(rid)));
         let e = r.h.pv(|p, pg| pg.entities_of(p, page)).into_iter().find(|e| e.handle == h).unwrap();
         assert_eq!(e.common.layer, "ECAD-CABLES");
-        assert!(matches!(&e.kind, EntityKind::Text(t) if t.value == if page == r.supply { "2-A-6" } else { "1-B-6" }));
+        assert!(matches!(&e.kind, EntityKind::Text(t) if t.value == if page == r.supply { "2/F1" } else { "1/F2" }));
     }
     let ends = |h: &mut H, page: PageId, x: f64| {
         let u = uid(h, page);
@@ -275,8 +275,8 @@ fn texts_follow_page_moves_renames_and_point_moves_live() {
     r.h.run("movepage", json!({"page": r.field.hex(), "index": 1})).unwrap();
     assert_eq!(r.h.head(), head + 1, "exactly the move");
     // Page numbers are stored (brief 019): a move changes no number, so no text.
-    assert_eq!(text_of(&mut r.h, r.supply), "2-A-6");
-    assert_eq!(text_of(&mut r.h, r.field), "1-B-6");
+    assert_eq!(text_of(&mut r.h, r.supply), "2/F1");
+    assert_eq!(text_of(&mut r.h, r.field), "1/F2");
     assert_eq!(r.h.head(), head + 1, "no transaction of the texts' own");
     r.h.run("renamepage", json!({"page": r.field.hex(), "title": "Field 2"})).unwrap();
     assert_eq!(r.h.head(), head + 2);
@@ -292,7 +292,7 @@ fn texts_follow_page_moves_renames_and_point_moves_live() {
     let fpoint = r.h.doc().representations[&fid].items[0];
     let fh = r.h.handle_of(r.field, fpoint);
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
-    assert_eq!(text_of(&mut r.h, r.supply), "2-B-6");
+    assert_eq!(text_of(&mut r.h, r.supply), "2/F2");
 }
 
 // ---------------------------------------------------------------- AC3 (check E)
@@ -349,7 +349,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert_eq!(snap["checks"]["orphan_references"].as_array().map(Vec::len), Some(1));
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), before, "undo restores the same IDs");
-    assert_eq!(text_of(&mut r.h, r.supply), "2-A-6");
+    assert_eq!(text_of(&mut r.h, r.supply), "2/F1");
 }
 
 /// Erasing only the reference text erases its reference (design §9); moving it is refused.
@@ -401,14 +401,14 @@ fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
     let u = uid(&mut r.h, r.supply);
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(rid)).unwrap();
     let lines = r.h.p(|p| hover_lines(p, u, text)).unwrap();
-    assert_eq!(lines[0], "Cable reference  2-A-6");
-    assert!(lines.contains(&"Other end: page 2 \"Field\", column A, row 6, 3 wires".to_string()), "{lines:?}");
+    assert_eq!(lines[0], "Cable reference  2/F1");
+    assert!(lines.contains(&"Other end: page 2 \"Field\", column 1, row F, 3 wires".to_string()), "{lines:?}");
     assert_eq!(lines.iter().filter(|l| l.contains("-> -K02:")).count(), 3, "{lines:?}");
     let v = r.h.run("cablegoto", json!({"reference": rid.hex()})).unwrap();
     let fid = reference_on(&mut r.h, r.field);
     assert_eq!(v["reference"], json!(fid.hex()));
     assert_eq!(v["page"], json!(r.field.hex()));
-    assert_eq!(v["message"], "Page 2 \"Field\", at the other end of cable -C01 (2-A-6).");
+    assert_eq!(v["message"], "Page 2 \"Field\", at the other end of cable -C01 (2/F1).");
     let want = uid(&mut r.h, r.field);
     assert_eq!(r.h.s.state().unwrap().uid, want, "Field is current");
     let point = r.h.doc().representations[&fid].items[0];
@@ -532,15 +532,15 @@ fn json_forms_of_the_reference_and_page_commands() {
         (r.supply, "cableref", json!({"cable": c1, "at": [65, 5]}), Ok(r#""orphan":true"#), 1),
         (r.supply, "cablerefs", json!({"cable": c1}), Ok(r#""text":"?""#), 0),
         (r.supply, "cablegoto", json!({"reference": "<Supply's reference>"}), Err("this reference has no other end"), 0),
-        (r.field, "cablecontinue", json!({"cable": c1, "at": [20, 5], "toward": [40, 5]}), Ok(r#""text":"1-B-6""#), 1),
-        (r.field, "cablerefs", json!({}), Ok(r#""text":"2-A-6""#), 0),
+        (r.field, "cablecontinue", json!({"cable": c1, "at": [20, 5], "toward": [40, 5]}), Ok(r#""text":"1/F2""#), 1),
+        (r.field, "cablerefs", json!({}), Ok(r#""text":"2/F1""#), 0),
         (r.field, "cablegoto", json!({"reference": "0"}), Err("no such reference"), 0),
         (r.field, "renamepage", json!({"page": supply, "title": "  Supply  "}), Ok(r#""changed":false"#), 0),
         (r.field, "renamepage", json!({"page": supply, "title": "Source"}), Ok(r#""changed":true"#), 1),
         (r.field, "movepage", json!({"page": field, "index": 2}), Ok(r#""changed":false"#), 0),
         (r.field, "movepage", json!({"page": field, "index": 1}), Ok(r#""index":1"#), 1),
         // Page numbers are stored (brief 019): the move changes no text.
-        (r.field, "cablerefs", json!({"cable": c1}), Ok(r#""text":"2-A-6""#), 0),
+        (r.field, "cablerefs", json!({"cable": c1}), Ok(r#""text":"2/F1""#), 0),
     ];
     for (page, cmd, mut params, want, added) in rows {
         // IDs made by an earlier row are filled in when the row runs.
@@ -560,7 +560,7 @@ fn json_forms_of_the_reference_and_page_commands() {
     // cablegoto from Field reaches Supply (still page 1, now "Source").
     let rid = reference_hex(&mut r.h, r.field);
     let v = r.h.run("cablegoto", json!({"reference": rid})).unwrap();
-    assert_eq!(v["message"], "Page 1 \"Source\", at the other end of cable -C01 (1-B-6).");
+    assert_eq!(v["message"], "Page 1 \"Source\", at the other end of cable -C01 (1/F2).");
 }
 
 fn reference_hex(h: &mut H, page: PageId) -> String {
@@ -657,7 +657,7 @@ fn hostile_documents_derive_without_panicking() {
     }
     let refs = cable_references(&doc);
     assert_eq!(refs.len(), 5);
-    assert_eq!(refs[0].text, "1-A-6 1-B-6 1-C-6 +1");
+    assert_eq!(refs[0].text, "1/F1 1/F2 1/F3 +1");
     let lost = refs.iter().find(|r| r.at.is_none()).unwrap();
     assert_eq!(lost.locator(), "?");
     assert!(markers_on_page(&doc, page).len() == 4, "an end that cannot be located is not drawn");
@@ -876,7 +876,7 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     let took = started.elapsed();
     assert_eq!(h.head(), head + 1, "one transaction");
     assert_eq!(v["routes"].as_array().map(Vec::len), Some(n));
-    assert_eq!(v["text"], "1-B-6");
+    assert_eq!(v["text"], "1/F2");
     assert!(took < std::time::Duration::from_secs(120), "continuing {n} wires took {took:?}");
 }
 
@@ -944,7 +944,7 @@ fn the_flag_points_right_when_the_wires_come_from_the_left() {
 }
 
 /// Fixture R's page 2 (the continued end): the wires leave to the right, the flag points left and
-/// `1-B-6` sits left of the point, clear of the wires.
+/// `1/F2` sits left of the point, clear of the wires.
 #[test]
 fn the_flag_points_left_when_the_wires_leave_to_the_right() {
     let (mut r, _) = continued();
@@ -996,7 +996,7 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
     let mut r = connected();
     r.h.activate(r.supply);
     r.h.check();
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2-A-6")));
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2/F1")));
 
     // A commit on Field that changes Supply's text (Field's point moves to column 3).
     r.h.activate(r.field);
@@ -1006,15 +1006,15 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
     let fh = r.h.handle_of(r.field, fpoint);
     let n = r.h.p(|p| p.change_count());
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
-    assert_eq!(text_of(&mut r.h, r.supply), "2-B-6", "the document says the new text");
+    assert_eq!(text_of(&mut r.h, r.supply), "2/F2", "the document says the new text");
     let changed = r.h.p(|p| p.changes_since(n)).expect("pages known");
     assert!(changed.contains(&r.supply) && changed.contains(&r.field), "{changed:?}");
     r.h.check();
 
     r.h.activate(r.supply);
     let texts = drawn_texts(&mut r.h, r.supply);
-    assert!(texts.iter().any(|t| t.contains("2-B-6")), "{texts:?}");
-    assert!(!texts.iter().any(|t| t.contains("2-A-6")), "{texts:?}");
+    assert!(texts.iter().any(|t| t.contains("2/F2")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("2/F1")), "{texts:?}");
     r.h.check();
 
     // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
@@ -1042,27 +1042,27 @@ fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_whe
     let fh = r.h.handle_of(r.field, fpoint);
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
     r.h.activate(r.supply);
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2-B-6")));
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2/F2")));
 
     r.h.activate(r.field);
     let head = r.h.head();
     r.h.run("u", Value::Null).unwrap();
     assert_eq!(r.h.head(), head + 1, "one undo");
     assert_eq!(r.h.p(|p| p.active_page()), Some(r.field), "the undo was on Field: Field stays");
-    assert_eq!(text_of(&mut r.h, r.supply), "2-A-6", "the document says the reverted text");
+    assert_eq!(text_of(&mut r.h, r.supply), "2/F1", "the document says the reverted text");
     r.h.check();
 
     r.h.activate(r.supply);
     let texts = drawn_texts(&mut r.h, r.supply);
-    assert!(texts.iter().any(|t| t.contains("2-A-6")), "{texts:?}");
-    assert!(!texts.iter().any(|t| t.contains("2-B-6")), "{texts:?}");
+    assert!(texts.iter().any(|t| t.contains("2/F1")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("2/F2")), "{texts:?}");
     r.h.check();
 }
 
 /// Owner's two-page trial (brief 014 fix round), with one page window (brief 016, AC8): page 2's
 /// cable end is erased (page 1 shows `?`), then page 1 is made active and the erase is undone
 /// from there. The undone edit was on page 2, so page 2 comes to the front with its end back, and
-/// page 1 shows `2-A-6` when it is active again.
+/// page 1 shows `2/F1` when it is active again.
 #[test]
 fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     let mut r = connected();
@@ -1096,7 +1096,7 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     assert_eq!(r.h.p(|p| p.active_page()), Some(r.field), "the page of the undone edit is in front");
     assert_eq!(r.h.pv(|p, pg| pg.entities_of(p, r.field)).len(), field_before, "Field's end is back");
     assert!(r.h.s.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."), "{:?}", r.h.s.log);
-    assert_eq!(text_of(&mut r.h, r.supply), "2-A-6");
+    assert_eq!(text_of(&mut r.h, r.supply), "2/F1");
     r.h.check();
     // Redo (typed, as the owner did) stays on Field, where the change is.
     r.h.cmdline("redo");
@@ -1106,6 +1106,6 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     r.h.cmdline("u");
     assert_eq!(r.h.p(|p| p.active_page()), Some(r.field), "typed u brings Field to the front too");
     r.h.activate(r.supply);
-    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2-A-6")));
+    assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2/F1")));
     r.h.check();
 }

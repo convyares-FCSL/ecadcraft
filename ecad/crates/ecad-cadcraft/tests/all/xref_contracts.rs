@@ -105,13 +105,13 @@ fn index_matches(h: &mut H) {
 fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
     let mut x = fixture();
     for (page, r) in [(x.p100, x.power), (x.p105, x.no), (x.p105, x.nc)] {
-        assert_eq!(contact_text(&mut x.h, page, r).as_deref(), Some("100-B-3"), "{r:?}");
+        assert_eq!(contact_text(&mut x.h, page, r).as_deref(), Some("100/C2"), "{r:?}");
     }
     let r = rows(&mut x.h, x.k1);
     let labels: Vec<&str> = r.iter().map(|r| r.0.as_str()).collect();
     assert_eq!(labels, ["1/2", "3/4", "5/6", "13/14", "21/22"]);
-    assert!(r[..3].iter().all(|r| r.3 == "100-C-3" && r.2 == "drawn"), "{r:?}");
-    assert!(r[3].3.starts_with("105-") && r[4].3.starts_with("105-"), "{r:?}");
+    assert!(r[..3].iter().all(|r| r.3 == "100/C3" && r.2 == "drawn"), "{r:?}");
+    assert!(r[3].3.starts_with("105/") && r[4].3.starts_with("105/"), "{r:?}");
     // Under the rail the coil's A2 wire meets: T at y = 150 - 4.
     let top = x.h.p(|p| {
         let doc = p.ledger.document();
@@ -121,7 +121,7 @@ fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
     let v = x.h.run("xrefs", json!({"component": x.k1.hex()})).unwrap();
     let refs = v["references"].as_array().unwrap();
     assert_eq!(refs.len(), 10, "five poles to the coil and back: {v}");
-    assert!(refs.iter().any(|r| r["kind"] == "contact" && r["text"] == "100-B-3"));
+    assert!(refs.iter().any(|r| r["kind"] == "contact" && r["text"] == "100/C2"));
     assert!(refs.iter().any(|r| r["kind"] == "mirror"));
     // The index from the open matches a rebuild.
     index_matches(&mut x.h);
@@ -144,12 +144,12 @@ fn b_renumbering_a_page_changes_the_rows_that_name_it() {
     assert_eq!(x.h.head(), head + 1, "one transaction");
     let after_100 = drawn(&mut x.h, x.p100);
     let changed: Vec<_> = after_100.iter().filter(|a| !before_100.contains(a)).collect();
-    assert!(!changed.is_empty() && changed.iter().all(|(_, _, v)| v.starts_with("106-")), "{changed:?}");
+    assert!(!changed.is_empty() && changed.iter().all(|(_, _, v)| v.starts_with("106/")), "{changed:?}");
     // The contacts on 105 still show the coil on 100.
-    assert_eq!(contact_text(&mut x.h, x.p105, x.no).as_deref(), Some("100-B-3"));
+    assert_eq!(contact_text(&mut x.h, x.p105, x.no).as_deref(), Some("100/C2"));
     // -Q01's pair on that page reads 106 now.
     let q = drawn(&mut x.h, x.p105);
-    assert!(q.iter().any(|(r, i, v)| *r == x.q_nc && *i == 0 && v.starts_with("106-")), "{q:?}");
+    assert!(q.iter().any(|(r, i, v)| *r == x.q_nc && *i == 0 && v.starts_with("106/")), "{q:?}");
     index_matches(&mut x.h);
     x.h.run("u", json!({})).unwrap();
     assert_eq!(drawn(&mut x.h, x.p100), before_100);
@@ -269,7 +269,7 @@ fn g_hover_properties_and_go_to() {
         (v.uid.unwrap(), v.map.xref(x.no, 0).unwrap())
     });
     let lines = x.h.p(|p| ecad_cadcraft::interact::hover_lines(p, uid, text_handle)).unwrap();
-    assert!(lines.iter().any(|l| l.starts_with("Coil: 100-B-3") && l.contains("page 100 \"Supply\"")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.starts_with("Coil: 100/C2") && l.contains("page 100 \"Supply\"")), "{lines:?}");
     // Go to Reference from the NC: the coil's page, ringed and selected.
     let v = x.h.run("refgoto", json!({"source": x.nc.hex()})).unwrap();
     assert_eq!(v["page"], json!(x.p100.hex()));
@@ -282,7 +282,7 @@ fn g_hover_properties_and_go_to() {
     });
     let lines = x.h.p(|p| ecad_cadcraft::interact::hover_lines(p, uid, bar)).unwrap();
     assert!(lines[0].starts_with("Contacts: 5 drawn"), "{lines:?}");
-    assert!(lines.iter().any(|l| l.contains("13/14 NO aux 105-")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("13/14 NO aux 105/")), "{lines:?}");
     // And back from the coil to a given contact.
     let v = x.h.run("refgoto", json!({"source": x.coil.hex(), "target": x.no.hex()})).unwrap();
     assert_eq!(v["page"], json!(x.p105.hex()));

@@ -18,7 +18,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
     // Every sheet colour the shell knows, by its own name (a new one must be named here).
     let sheet = match t.shell.state.sheet {
         crate::canvas::Sheet::Paper => "Paper",
+        crate::canvas::Sheet::Follow => "Follow the theme",
         crate::canvas::Sheet::Dark => "Dark",
+    };
+    let theme = match t.shell.state.theme {
+        crate::shell::state::Theme::Dark => "Dark",
+        crate::shell::state::Theme::Light => "Light",
     };
     let grey = |s: &str| egui::RichText::new(s).color(ecad_ui::color(ecad_ui::SHELL.text_2));
     card(
@@ -26,7 +31,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
         "Appearance",
         |_| {},
         |ui| {
-            row(ui, "Theme", |ui| ui.label(grey("As the top bar's switch shows")));
+            row(ui, "Theme", |ui| ui.label(grey(theme)));
             row(ui, "Sheet colour", |ui| ui.label(grey(sheet)));
             ui.label(egui::RichText::new(WHERE).small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
         },

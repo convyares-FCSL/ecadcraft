@@ -7,21 +7,30 @@
 //!   and state read.
 //! - [`terminals`]: the terminal manager, mirrored (inside | strip | outside) on 036's row model.
 //! - [`plc`]: Lists ▸ PLC (brief 051; 045c's I/O list): rack chips, tiles, the channel table.
+//! - [`wires`], [`cables`]: UI rev 3's Project ▸ Wires and Cables over the report models
+//!   ([`report`]); [`reports`]: Project ▸ Reports' list round today's Reports window.
+//! - [`workspace`]: UI rev 3's Project workspace (boards 2.01–2.06): the tab strip, the head's
+//!   actions, each tab's body and the foot; [`detail`]: its right panel, the selected item.
 //!
-//! The shell (U2) places each view through [`show`], one call per tab. Until it lands, today's
-//! hosts call the same views: the Project panel's Checks and Devices tabs
-//! ([`crate::checks_panel`], [`crate::devices_panel`]) and Reports ▸ Terminals
-//! ([`crate::outputs_ui`]).
+//! The Project workspace ([`workspace`]) places each view; the Project panel's Checks and Devices
+//! tabs ([`crate::checks_panel`], [`crate::devices_panel`]) and Reports ▸ Terminals
+//! ([`crate::outputs_ui`]) call the same views.
 //!
 //! Each view keeps an update map (design §8): a full rebuild only on first show, reload or a feed
 //! that rolled over; otherwise only the keys a commit touched are patched.
 
+pub mod cables;
 pub mod checks;
+pub mod detail;
 pub mod devices;
 pub mod plc;
+pub mod report;
+pub mod reports;
 pub mod standards;
 pub mod style_catalogues;
 pub mod terminals;
+pub mod wires;
+pub mod workspace;
 
 use crate::project_panel::Action;
 

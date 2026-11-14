@@ -39,24 +39,34 @@ pub const CORE: ColumnId = ColumnId(11);
 pub const OUT_TARGET: ColumnId = ColumnId(12);
 pub const PLACE: ColumnId = ColumnId(13);
 
-/// The columns: strip, inside (right-aligned), the strip's own fields, outside (left-aligned),
-/// place.
+/// The columns, laid out as a terminal plan (UI rev 3, board 2.02): inside (read from the
+/// drawing, right-aligned towards the strip), the strip (what you set), outside (read, left-aligned
+/// away from it). Each strip is a group of rows (grouped by [`STRIP`], which is not a column).
 pub fn columns() -> Vec<Column> {
     vec![
-        Column::read(STRIP.0, "Strip", Width::Initial(56.0)).groupable(),
-        Column::read(IN_TARGET.0, "Inside target", Width::Initial(110.0)).align(Align::Right),
-        Column::read(IN_WIRE.0, "Inside wire", Width::Initial(80.0)).align(Align::Right),
-        Column::set(POSITION.0, "Position", Width::Initial(72.0)).align(Align::Center),
+        Column::read(PLACE.0, "Page", Width::Initial(90.0)),
+        Column::read(IN_TARGET.0, "From", Width::Initial(150.0)).align(Align::Right),
+        Column::read(IN_WIRE.0, "Wire", Width::Initial(100.0)).align(Align::Right),
+        Column::read(LINKS.0, "Link", Width::Initial(64.0)).unsorted(),
+        Column::set(POSITION.0, "Terminal", Width::Initial(80.0)).align(Align::Center),
         Column::set(LABEL.0, "Label", Width::Initial(72.0)).align(Align::Center),
         Column::read(LEVEL.0, "Level", Width::Initial(56.0)).align(Align::Center),
-        Column::read(TYPE.0, "Type", Width::Initial(96.0)).align(Align::Center).groupable(),
-        Column::set(RATING.0, "Rating", Width::Initial(64.0)).align(Align::Center),
-        Column::read(LINKS.0, "Links", Width::Initial(64.0)).unsorted(),
-        Column::read(OUT_WIRE.0, "Outside wire", Width::Initial(80.0)),
-        Column::read(CABLE.0, "Cable", Width::Initial(64.0)),
-        Column::read(CORE.0, "Core", Width::Initial(48.0)),
-        Column::read(OUT_TARGET.0, "Outside target", Width::Initial(110.0)),
-        Column::read(PLACE.0, "Place", Width::Remainder),
+        Column::read(TYPE.0, "Type and part", Width::Initial(170.0)).groupable(),
+        Column::set(RATING.0, "Rating", Width::Initial(90.0)).align(Align::Center),
+        Column::read(OUT_WIRE.0, "Wire", Width::Initial(100.0)),
+        Column::read(CABLE.0, "Cable", Width::Initial(90.0)),
+        Column::read(CORE.0, "Core", Width::Initial(80.0)),
+        Column::read(OUT_TARGET.0, "To", Width::Remainder),
+    ]
+}
+
+/// The band captions over the plan's three parts (board 2.02).
+pub fn bands() -> Vec<ecad_ui::table::Band> {
+    use ecad_ui::table::Band;
+    vec![
+        Band { caption: "Inside \u{b7} panel side \u{b7} read from the drawing", first: PLACE, last: LINKS },
+        Band { caption: "The strip \u{b7} what you set", first: POSITION, last: RATING },
+        Band { caption: "Outside \u{b7} field side \u{b7} read from the drawing", first: OUT_WIRE, last: OUT_TARGET },
     ]
 }
 
@@ -265,6 +275,9 @@ impl Default for TerminalsView {
     fn default() -> Self {
         let mut table = Table::new("ecad.terminals", "Terminals");
         table.empty = "No terminal strips yet.";
+        // UI rev 3: the plan's bands, a group of rows per strip.
+        table.bands = bands();
+        table.view.set_group(&TerminalsSource::default(), Some(STRIP));
         Self { source: TerminalsSource::default(), table, built: None, revision: 0, strips: BTreeMap::new(), pending: None, rebuilds: 0 }
     }
 }
