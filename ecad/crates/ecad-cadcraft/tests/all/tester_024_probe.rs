@@ -409,6 +409,95 @@ fn a_page_location_set_reaches_devices_on_that_page_with_none() {
     verify(&mut h, "undo");
 }
 
+// ------------------------------------------------- located tags on a device's other pages (QA gate)
+//
+// A device's location comes from its main symbol's context, and its symbols on other pages show it
+// as a tag prefix (design 024 §3.3). O1 (#75) redraws the shown page only when a commit touches
+// it, so each route that changes a device's location must touch the device's other pages too
+// (`project::located_tag_pages`). The harness compares the shown page with a fresh projection
+// after each command; a page not shown is projected again when it is shown. So the routes that
+// can leave a stale tag are those made while another page is shown (a page's location, a box
+// relabelled by `setprop`); the tests of the others guard the same rule.
+
+/// A coil on page 1 (its main symbol) and its contact on page 2: (harness, page 1, page 2, coil).
+fn two_page_device(seed: u64) -> (H, PageId, PageId, ComponentId) {
+    let mut h = H::new(seed);
+    let p1 = h.first_page();
+    let k = place(&mut h, "coil", (100.0, 100.0));
+    let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.activate(p2);
+    h.run("place", json!({"symbol": "no", "at": [100.0, 100.0], "device": k.hex()})).unwrap();
+    (h, p1, p2, k)
+}
+
+/// The long probe's failing steps (seed 0x240002, steps 20 to 22): a property, a contact joined on
+/// another page, then page 1's location, with page 2 shown: page 2 reads `+CP1-K01`.
+#[test]
+fn a_page_location_redraws_the_device_tags_on_its_other_pages() {
+    let (mut h, p1, _, k) = two_page_device(0x24_7104);
+    h.run("setprop", json!({"component": k.hex(), "key": "description", "value": "Pump"})).unwrap();
+    h.run("pageprops", json!({"page": p1.hex(), "location": "+CP1"})).unwrap();
+    verify(&mut h, "page 1's location set, page 2 shown");
+    h.run("u", Value::Null).unwrap();
+    verify(&mut h, "undo");
+}
+
+/// The project's location reaches a device that falls back to it, shown on a page of its own.
+#[test]
+fn a_project_location_redraws_the_device_tags_on_its_other_pages() {
+    let (mut h, _, p2, _) = two_page_device(0x24_7105);
+    h.run("pageprops", json!({"page": p2.hex(), "location": "+FIELD"})).unwrap();
+    h.run("projectprops", json!({"location": "+PROJ"})).unwrap();
+    verify(&mut h, "project location set, page 2 shown");
+    h.run("u", Value::Null).unwrap();
+    verify(&mut h, "undo");
+}
+
+/// The device's own location: its symbols' pages.
+#[test]
+fn a_device_location_redraws_its_tags_on_every_page() {
+    let (mut h, p1, _, k) = two_page_device(0x24_7106);
+    h.activate(p1);
+    h.run("setprop", json!({"component": k.hex(), "key": "location", "value": "+JB1"})).unwrap();
+    verify(&mut h, "own location set");
+}
+
+/// A location box round the main symbol relabelled while page 2 is shown (the long probe's step
+/// 155): page 2 reads `+JB1-K01`. Then moved off the coil and erased, on page 1.
+#[test]
+fn a_location_box_redraws_the_device_tags_on_its_other_pages() {
+    let (mut h, p1, p2, _) = two_page_device(0x24_7107);
+    h.activate(p1);
+    h.run("locationbox", json!({"location": "+CP1", "corners": [[80.0, 80.0], [130.0, 130.0]]})).unwrap();
+    verify(&mut h, "box drawn round the coil");
+    let (c, _, item, _) = boxes(&h.doc())[0];
+    h.activate(p2);
+    h.run("setprop", json!({"component": c.hex(), "key": "location", "value": "+JB1"})).unwrap();
+    verify(&mut h, "box relabelled, page 2 shown");
+    h.activate(p1);
+    let hd = h.handle_of(p1, item).hex();
+    h.run("move", json!({"handles": [hd], "delta": [100.0, 0.0]})).unwrap();
+    verify(&mut h, "box moved off the coil");
+    h.run("u", Value::Null).unwrap();
+    let hd = h.handle_of(p1, item).hex();
+    h.run("erase", json!({"handles": [hd]})).unwrap();
+    verify(&mut h, "box erased");
+}
+
+/// The main symbol moved into a location box: the device's location changes, and with it its tag
+/// on page 2.
+#[test]
+fn moving_the_main_symbol_into_a_box_redraws_its_tags_on_other_pages() {
+    let (mut h, p1, _, k) = two_page_device(0x24_7108);
+    h.activate(p1);
+    h.run("locationbox", json!({"location": "+CP1", "corners": [[180.0, 80.0], [230.0, 130.0]]})).unwrap();
+    let handles = h.rep_handles(p1, k);
+    h.run("move", json!({"handles": handles, "delta": [100.0, 0.0]})).unwrap();
+    verify(&mut h, "coil moved into the box");
+    h.run("u", Value::Null).unwrap();
+    verify(&mut h, "undo");
+}
+
 /// Moving a page in the book changes nothing in the kept models that a rebuild would not.
 #[test]
 fn moving_pages_and_folders_keeps_the_models_equal_to_a_rebuild() {
