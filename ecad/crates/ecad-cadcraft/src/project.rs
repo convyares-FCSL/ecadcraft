@@ -2351,6 +2351,8 @@ impl Project {
         };
         let (before, revision) = (sheets(&o), o.revision);
         o.update(doc, ops, scope);
+        // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
+        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, ops);
         if ecad_model::ledger::verify_mode()
             && let Some(line) = o.verify_strips(doc)
         {
@@ -2368,7 +2370,9 @@ impl Project {
             // Brief 045c: the I/O list when a card's rows changed.
             Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
             // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
-            Some(crate::generated::GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty(),
+            Some(crate::generated::GenKind::PlcRack) => {
+                !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || plc_places_moved
+            }
             _ => false,
         };
         let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();

@@ -86,6 +86,8 @@ pub const TABLE_DERIVED: &str = "The contact table is derived; move it with Move
 /// The refusal of an edit of a drawn cross-reference: the contact text's or the table's.
 pub fn refusal(doc: &Document, mapped: Option<crate::project::Mapped>) -> &'static str {
     match mapped {
+        // Brief 051 (review of #89, 2): a PLC card's frame.
+        Some(crate::project::Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => crate::plc::look::FRAME_DERIVED,
         Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Head) => TABLE_DERIVED,
         _ => TEXT_DERIVED,
     }

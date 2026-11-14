@@ -412,3 +412,75 @@ fn h_i_text_styles_and_name_block_lines() {
     let (_, t) = frame(&mut h, page);
     assert!(!t.iter().any(|x| x == "-A02"), "no frame: {t:?}");
 }
+
+// ---------------------------------------------------------------- review of #89
+
+/// Finding 1: a card body turned 90° makes no run, so it keeps its own tag.
+#[test]
+fn review_1_a_body_with_no_frame_keeps_its_tag() {
+    let mut h = H::new(5130);
+    placed(&mut h, "plccpu", 50.0, 400.0);
+    let v = h.run("place", json!({"symbol": "plcdi", "at": [150.0, 300.0], "rotation": 90.0})).unwrap();
+    let di: ComponentId = id(&v, "component");
+    let page = h.first_page();
+    let d = h.doc();
+    assert!(ecad_cadcraft::plc::look::runs_on_page(&d, page).iter().all(|r| r.card != di), "no run at 90°");
+    let tags: Vec<String> = ecad_cadcraft::devices::all_texts_on_page(&d, page)
+        .into_iter()
+        .filter(|t| t.text.of == ecad_cadcraft::devices::TextOf::Tag)
+        .map(|t| t.text.value)
+        .collect();
+    assert!(tags.iter().any(|t| t == "-A02"), "{tags:?}");
+}
+
+/// Finding 2: a click on the name block is the card's device; editing a frame part alone is
+/// refused in the card's words.
+#[test]
+fn review_2_the_frame_stands_for_the_card() {
+    let F { mut h, di, .. } = fixture(5131);
+    let page = h.first_page();
+    let d = h.doc();
+    let part = ecad_cadcraft::plc::look::parts_on_page(&d, page)
+        .into_iter()
+        .find(|p| matches!(&p.shape, ecad_cadcraft::xref::Shape::Text { value, .. } if value == "-A02"))
+        .expect("the name block's tag");
+    let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.xref(part.rep, part.index))).expect("mapped");
+    let u = h.s.state().unwrap().uid;
+    let t = h.p(|p| ecad_cadcraft::interact::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
+    assert_eq!(t.kind, ecad_cadcraft::actions::ObjectKind::Device, "{t:?}");
+    assert_eq!(t.component, Some(di));
+    let words = ecad_cadcraft::xref::refusal(&d, Some(ecad_cadcraft::project::Mapped::Xref(part.rep)));
+    assert_eq!(words, ecad_cadcraft::plc::look::FRAME_DERIVED);
+}
+
+/// Finding 3: a card's symbol moved or its page renumbered rewrites the rack sheet's places.
+#[test]
+fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
+    let F { mut h, ai, .. } = fixture(5132);
+    let sheet: PageId = id(&h.run("newpage", json!({"generated": "plcrack"})).unwrap(), "page");
+    let first = h.first_page();
+    let d = h.doc();
+    let plc = h.cfg(|p| p.outputs().plc.clone());
+    let renumber = vec![ecad_model::Op::SetProperty {
+        object: ecad_model::ObjectRef::Page(first),
+        key: ecad_model::book::NUMBER_KEY.into(),
+        before: None,
+        after: Some("7".into()),
+    }];
+    assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &renumber));
+    let empty = vec![ecad_model::Op::SetProperty {
+        object: ecad_model::ObjectRef::Page(sheet),
+        key: ecad_model::book::NUMBER_KEY.into(),
+        before: None,
+        after: Some("9".into()),
+    }];
+    assert!(!ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &empty), "a page with no PLC symbol");
+    let item = h.symbol_item(ai);
+    let it = d.items[&item].clone();
+    let moved = vec![ecad_model::Op::ModifyItem { id: item, before: it.clone(), after: it }];
+    assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &moved));
+    // Through the command path: the sheet's text follows the renumber.
+    h.run("pageprops", json!({"page": first.hex(), "number": "7"})).unwrap();
+    let t = texts(&mut h, sheet);
+    assert!(t.iter().any(|x| x.starts_with("\u{2192}7-")), "{t:?}");
+}

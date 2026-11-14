@@ -304,10 +304,20 @@ fn frame_parts(doc: &Document, run: &Run, out: &mut Vec<Part>) {
     }
 }
 
-/// Whether representation `r` of `c` is a PLC cell or card body whose run is framed: its own tag
-/// block and caption are then the frame's name block (design 051 §2.6, "tags once per card").
-pub fn framed(doc: &Document, c: ComponentId, r: &ecad_model::Representation) -> bool {
-    let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
-    let plc = crate::symbols::cell_shape(s.key).is_some() || CardType::of_body(s.key).is_some_and(|t| !t.is_rack());
-    plc && frame_shown(doc, c)
+/// The refusal of an edit of a frame part alone (review of #89, 2).
+pub const FRAME_DERIVED: &str = "The card's frame is derived; move the card's cells instead.";
+
+/// Whether representation `rid` is a PLC cell or card body (so a derived part mapped to it is a
+/// card frame's: a cell or body has no cross-reference parts of its own).
+pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
+    let Some(s) = doc.representations.get(&rid).and_then(|r| crate::devices::rep_starter(doc, r)) else { return false };
+    crate::symbols::cell_shape(s.key).is_some() || CardType::of_body(s.key).is_some_and(|t| !t.is_rack())
+}
+
+/// Whether representation `r` (id `rid`) of `c` is in a framed run that is drawn: its own tag
+/// block and caption are then the frame's name block (design 051 §2.6, "tags once per card"). A
+/// cell or body that makes no run (turned 90°, a cell whose channel cannot be read) keeps its
+/// ordinary tag block (review of #89, 1).
+pub fn framed(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::Representation) -> bool {
+    frame_shown(doc, c) && piece(doc, c, rid, r).is_some()
 }

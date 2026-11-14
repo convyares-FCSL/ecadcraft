@@ -385,3 +385,35 @@ pub(crate) fn rack_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks:
 
 /// What the `plcrack` page says when the project has no PLC racks or cards.
 pub const NO_RACKS: &str = "No PLC racks.";
+
+/// Whether `ops` (just committed; `doc` is after them) move a place the `plcrack` sheet prints
+/// (review of #89, 3): a PLC card's or rack's symbol moved, or a page holding one renumbered,
+/// resized, or any page moved in the book. Only the ops' own items and the pages they name are
+/// read.
+pub fn rack_places_touched(doc: &Document, plc: &Plc, ops: &[ecad_model::Op]) -> bool {
+    use ecad_model::{ObjectRef, Op, Subject};
+    let ours = |c: ecad_model::ComponentId| plc.cards.contains_key(&c) || plc.racks.contains_key(&c);
+    let page_holds = |p: PageId| doc.representations_on(p).any(|(_, r)| matches!(r.subject, Subject::Component(c) if ours(c)));
+    for op in ops {
+        match op {
+            Op::ModifyItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id)
+                    && let Subject::Component(c) = r.subject
+                    && ours(c)
+                {
+                    return true;
+                }
+            }
+            Op::SetProperty { object: ObjectRef::Page(p), key, .. }
+                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::book::FOLDER_KEY =>
+            {
+                if page_holds(*p) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    // A page moved in the book (rare): every place may change its page number.
+    ecad_model::book::moves_pages(ops) && !(plc.cards.is_empty() && plc.racks.is_empty())
+}

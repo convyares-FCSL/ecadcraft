@@ -1117,7 +1117,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         }
         // Brief 051 (design 051 §2.6): a framed PLC cell or body has its tag and caption in its
         // frame's name block, not beside it.
-        let framed = crate::plc::look::framed(doc, c, r);
+        let framed = crate::plc::look::framed(doc, c, rid, r);
         // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
         if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
             out.push(text);
