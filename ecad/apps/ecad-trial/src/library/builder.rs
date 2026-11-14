@@ -435,7 +435,13 @@ impl Builder {
     }
 
     /// The builder's keys while the pointer is over it and nothing is typed (design 048 §3.3).
-    fn keys(&mut self, ctx: &egui::Context) {
+    ///
+    /// Taken by the shell's key pass (`shell::keys`), which runs before CADCraft's hidden frame:
+    /// otherwise CADCraft's own Ctrl+Z and Ctrl+Y would take the keys first (tester 048b/c).
+    pub fn keys(&mut self, ctx: &egui::Context) {
+        if self.entry.is_some() || self.ask_version.is_some() {
+            return;
+        }
         let take = |m: egui::Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
         if take(egui::Modifiers::COMMAND, Key::Z) {
             self.draft.undo();
@@ -822,10 +828,6 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
     let pointer = resp.hover_pos();
     let raw = pointer.map(|q| b.to_mm(rect, q));
     b.cursor = raw.map(|r| if b.tool == Tool::Select { r } else { b.snap(r) });
-    let typing = ui.ctx().egui_wants_keyboard_input();
-    if resp.hovered() && !typing && b.entry.is_none() && b.ask_version.is_none() {
-        b.keys(ui.ctx());
-    }
     if b.ask_version.is_none() {
         if resp.clicked_by(egui::PointerButton::Primary)
             && let Some(r) = raw

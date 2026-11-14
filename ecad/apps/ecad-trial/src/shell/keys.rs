@@ -57,6 +57,15 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
     if typing {
         return;
     }
+    // Brief 048: the builder's keys (its tools, the draft's undo and redo) while the pointer is
+    // over it, before CADCraft's hidden frame can take Ctrl+Z or Ctrl+Y for the project.
+    if t.shell.state.workspace == Workspace::Library
+        && let Some(b) = t.library.builder.as_mut()
+        && ctx.pointer_hover_pos().is_some_and(|p| slots.main.contains(p))
+    {
+        b.keys(ctx);
+        return;
+    }
     let draw = t.shell.state.workspace == Workspace::Draw;
     if draw && take(Modifiers::NONE, Key::PageUp) {
         t.step_page(false);

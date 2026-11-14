@@ -1051,7 +1051,7 @@ fn run_makesymbol(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
 
 /// The refusal for item `i` of a selection that has a meaning (design 048 §9.5), naming its
 /// object: `Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.`
-fn not_plain(doc: &Document, i: ItemId) -> String {
+pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
         Some(Subject::Conductor(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Component(c)) => crate::devices::tag_words(doc, c),

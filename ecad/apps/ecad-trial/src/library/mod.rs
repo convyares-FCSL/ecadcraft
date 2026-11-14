@@ -240,6 +240,8 @@ impl Trial {
                             _ => return Err("Make symbol takes lines, arcs and text.".into()),
                         }
                     }
+                    // The same words as `makesymbol`'s refusal, naming the object (design 048 §9.5).
+                    Some(ecad_cadcraft::project::Mapped::Item(i)) => return Err(ecad_cadcraft::symbol_cmds::not_plain(doc, i)),
                     Some(_) => return Err("Make symbol takes lines, arcs and text; part of the selection already has a meaning.".into()),
                     None => return Err("The selection holds an object this page does not know.".into()),
                 }

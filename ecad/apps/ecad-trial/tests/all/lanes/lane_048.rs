@@ -341,6 +341,56 @@ fn editing_a_built_in_from_the_browser_saves_a_copy_that_remembers_it() {
     assert_eq!(from.definition, symbols::by_key("coil").unwrap().id);
 }
 
+/// Tester 048b/c: Ctrl+Z and Ctrl+Y in the builder step the draft only, never the project.
+#[test]
+fn ctrl_z_in_the_builder_undoes_the_draft_step_not_the_project() {
+    let mut h = shell(None);
+    h.state_mut().new_symbol();
+    h.run_steps(4);
+    let main = h.state().shell.slots.unwrap().main;
+    h.event(Event::PointerMoved(main.center()));
+    h.run_steps(1);
+    tool(&mut h, Tool::Line);
+    click_mm(&mut h, 0.0, 0.0);
+    click_mm(&mut h, 10.0, 0.0);
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().library.builder.as_ref().unwrap().draft.shape.graphics.len(), 1);
+    let before = head(&mut h);
+    h.event(Event::PointerMoved(main.center()));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run_steps(3);
+    assert!(h.state().library.builder.as_ref().unwrap().draft.shape.graphics.is_empty(), "Ctrl+Z undid the line");
+    assert_eq!(head(&mut h), before, "the project is not undone");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.run_steps(3);
+    assert_eq!(h.state().library.builder.as_ref().unwrap().draft.shape.graphics.len(), 1, "Ctrl+Y redid it");
+    assert_eq!(head(&mut h), before);
+}
+
+/// Tester 048b/c: Make symbol on a selection holding a wire refuses naming the wire, as
+/// `makesymbol` does, and opens no builder.
+#[test]
+fn make_symbol_on_a_wire_refuses_naming_it() {
+    let mut h = shell(None);
+    let mut hs = lines(&mut h);
+    let w = run(&mut h, "wire", json!({"points": [[400.0, 100.0], [450.0, 100.0]]}));
+    run(&mut h, "wirenumber", json!({"conductor": w["conductor"], "value": "24V-05"}));
+    let d = doc(&mut h);
+    let c = ecad_model::ConductorId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    let page = d.page_order[0];
+    let route = d.representations_of(Subject::Conductor(c)).find(|(_, r)| r.page == page).and_then(|(_, r)| r.items.first().copied()).unwrap();
+    let handle = {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| p.pages.get(&page).and_then(|v| v.map.item(route))).unwrap().expect("its handle")
+    };
+    hs.push(handle);
+    h.state_mut().cad.session.set_selection(hs);
+    let e = h.state_mut().make_symbol(None).unwrap_err();
+    assert_eq!(e, "Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.");
+    assert!(h.state().library.builder.is_none());
+}
+
 #[test]
 fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     let mut h = shell(None);
