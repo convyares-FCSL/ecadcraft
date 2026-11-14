@@ -386,7 +386,8 @@ fn report(t: &Trial, k: usize) -> Option<Detail> {
     let r = t.reports.as_ref()?;
     let columns: Vec<(String, String)> =
         if rep.tab == Some(r.tab) { r.table().headers.iter().map(|h| ((*h).to_string(), "shown".to_string())).collect() } else { Vec::new() };
-    let flagged = if rep.tab == Some(r.tab) { r.table().flagged() } else { 0 };
+    // Counted when the copy is taken, not each frame.
+    let flagged = if rep.tab == Some(r.tab) { r.flagged } else { 0 };
     let checks =
         if flagged > 0 { vec![(format!("{flagged} cell{} marked ?", if flagged == 1 { "" } else { "s" }), Tone::Warning)] } else { Vec::new() };
     Some(Detail {
@@ -518,7 +519,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
         });
         return;
     };
-    let writable = t.project_open() && !t.header().read_only;
+    // Not while a revision is open: its edits would write to the live project behind it.
+    let writable = t.project_writable();
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
     crate::shell::in_rect(ui, rect.shrink2(vec2(space::L, space::M)), "ecad.project.detail", |ui| {

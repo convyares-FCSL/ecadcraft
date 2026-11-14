@@ -122,6 +122,8 @@ pub struct Reports {
     pub note: Option<String>,
     /// How many times the copy was taken (tests: only when the models changed).
     pub copies: u64,
+    /// The copy's cells marked `?`, counted when it is taken (Project ▸ Reports' right panel).
+    pub flagged: usize,
     pub rows_drawn: usize,
     /// The project folder and name, for the export path's default.
     pub stem: String,
@@ -235,6 +237,7 @@ impl Reports {
         }
         self.seen = Some(key);
         self.copies += 1;
+        self.flagged = self.table.flagged();
         self.filter();
     }
 

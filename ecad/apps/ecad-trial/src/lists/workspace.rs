@@ -167,7 +167,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 
 impl Trial {
     /// Whether the project can be written now (fixes and edits are offered).
-    fn project_writable(&mut self) -> bool {
+    pub(crate) fn project_writable(&mut self) -> bool {
         let h = self.header();
         h.name.is_some() && !h.read_only && self.panel.revision.is_none()
     }

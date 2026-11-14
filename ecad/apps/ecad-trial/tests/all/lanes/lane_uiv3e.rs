@@ -11,7 +11,7 @@ use ecad_trial::shell::{ListsView, Slots};
 use ecad_ui::table::TableSource;
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 
 use crate::mouse_tester::{Collect, Deltas};
 use crate::project_panel::{doc, ok, rev3_trial as trial};
@@ -223,5 +223,26 @@ fn screenshots_of_boards_2_01_to_2_06() {
     show(&mut h, ListsView::Reports);
     h.run_steps(10);
     shot(&h, "uiv3-E-2.06-ours.png");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review of #97, finding 1: with an issued revision open (read-only), the right panel's device
+/// editor offers no edits; with none open it does.
+#[test]
+fn the_device_editor_is_read_only_while_a_revision_is_open() {
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = harness(deltas);
+    let dir = std::env::temp_dir().join(format!("ecad-uiv3e-rev-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    project(&mut h, &dir);
+    show(&mut h, ListsView::Devices);
+    let c = doc(&mut h).components_tagged("-K01")[0];
+    h.state_mut().panel.devices.selected = Some(c);
+    h.state_mut().panel.devices.table.selection.set([c]);
+    h.run_steps(6);
+    assert!(!h.get_by_label("Tag field").accesskit_node().is_disabled(), "the live project: editable");
+    h.state_mut().panel.revision = Some("Rev A".into());
+    h.run_steps(6);
+    assert!(h.get_by_label("Tag field").accesskit_node().is_disabled(), "a revision is open: read only");
     let _ = std::fs::remove_dir_all(&dir);
 }
