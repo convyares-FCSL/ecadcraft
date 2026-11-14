@@ -655,6 +655,9 @@ fn hostile_documents_derive_without_panicking() {
             },
         );
     }
+    // As a file's document on open: the maps were set directly, so the index is built (brief
+    // 053: a page's markers read the page index).
+    doc.rebuild_index();
     let refs = cable_references(&doc);
     assert_eq!(refs.len(), 5);
     assert_eq!(refs[0].text, "1/F1 1/F2 1/F3 +1");
@@ -690,6 +693,7 @@ fn hostile_documents_derive_without_panicking() {
             },
         );
     }
+    two.rebuild_index();
     let refs = cable_references(&two);
     let on_lost = refs.iter().find(|r| r.page == lost_page).unwrap();
     assert_eq!((on_lost.position, on_lost.locator()), (None, "?".to_string()));
