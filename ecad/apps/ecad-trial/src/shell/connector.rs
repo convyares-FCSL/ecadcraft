@@ -54,10 +54,23 @@ const HALVES: [(&str, Option<&str>); 4] =
 pub struct State {
     /// Prompt label → the answer given (a keyword, or the default taken with Enter).
     pub answers: BTreeMap<String, String>,
-    /// The prompt shown last frame and its default.
+    /// The prompt shown last frame, its default and its keywords.
     last: Option<(String, Option<String>)>,
-    /// A keyword sent from the maker this frame (recorded as that prompt's answer).
-    sent: Option<(String, String)>,
+    keywords: Vec<String>,
+    /// A keyword sent from the maker or the intent line (recorded as that prompt's answer).
+    pub sent: Option<(String, String)>,
+    /// What was typed at the command line last frame, and at which prompt.
+    typed: Option<(String, String)>,
+}
+
+/// The Halves row for tag `t` and the Halves answer (`None`: not answered yet).
+pub fn halves_words(t: &str, halves: Option<&str>) -> String {
+    match halves {
+        Some("Socket") => format!("{t}.S socket"),
+        Some("Plug") => format!("{t}.P plug"),
+        Some(_) => format!("{t}.S socket, {t}.P plug"),
+        None => "set under Which halves".into(),
+    }
 }
 
 /// The section prompt `label` belongs to.
@@ -86,19 +99,22 @@ impl Trial {
         let label = prompt.as_ref().map(|p| p.message.trim().to_string()).unwrap_or_default();
         let default = prompt.as_ref().and_then(|p| p.default.clone());
         let keywords: Vec<String> = prompt.as_ref().map(|p| p.keywords.clone()).unwrap_or_default();
-        // A prompt that moved on was answered: with what the maker sent, else its default.
+        // A prompt that moved on was answered: with the keyword sent from the maker or the
+        // intent line, else with what was typed at the command line, else (Enter on an empty
+        // line) with its default.
+        let buffer = self.cad.cmd.buffer.trim().to_string();
         let st = &mut self.shell.tools.maker;
         if let Some((prev, prev_default)) = st.last.clone()
             && prev != label
         {
-            let answer = match st.sent.take() {
-                Some((l, a)) if l == prev => Some(a),
-                _ => prev_default,
-            };
-            if let Some(a) = answer {
-                st.answers.insert(prev, a);
+            let sent = st.sent.take().filter(|(l, _)| *l == prev).map(|(_, a)| a);
+            let typed = st.typed.take().filter(|(l, _)| *l == prev).map(|(_, a)| a);
+            if let Some(a) = sent.or(typed).or(prev_default) {
+                st.answers.insert(prev, keyword_of(&a, &st.keywords));
             }
         }
+        st.typed = (!buffer.is_empty()).then(|| (label.clone(), buffer));
+        st.keywords = keywords.clone();
         st.last = Some((label.clone(), default.clone()));
         let answers = st.answers.clone();
         let open = section_of(&label);
@@ -188,7 +204,7 @@ impl Trial {
                         });
                     }
                     row(ui, "Description", "Set it in the inspector after placing");
-                    row(ui, "Halves", &format!("{t}.S socket, {t}.P plug"));
+                    row(ui, "Halves", &halves_words(&t, answers.get("Halves").map(String::as_str)));
                     ui.horizontal(|ui| {
                         ui.allocate_ui(vec2(super::placing::WIDTH - 2.0 * space::L - 120.0, 32.0), |ui| {
                             ui.add(
@@ -229,6 +245,11 @@ fn summary(i: usize, prompts: &[&str], answers: &BTreeMap<String, String>, open:
         return given.join(" · ");
     }
     if open { "choose below".into() } else { "next".into() }
+}
+
+/// A typed answer as the prompt's keyword when it names one (`m12` is `M12`), else as typed.
+fn keyword_of(answer: &str, keywords: &[String]) -> String {
+    keywords.iter().find(|k| k.eq_ignore_ascii_case(answer)).cloned().unwrap_or_else(|| answer.to_string())
 }
 
 /// A form keyword in the board's words.
@@ -304,6 +325,15 @@ mod tests {
             assert!(section_of(p).is_some(), "{p}");
         }
         assert_eq!(section_of("Connector"), None, "the tag sits under the sections");
+    }
+
+    #[test]
+    fn the_halves_row_names_only_the_halves_chosen() {
+        assert_eq!(halves_words("-X10", Some("Socket")), "-X10.S socket");
+        assert_eq!(halves_words("-X10", Some("Plug")), "-X10.P plug");
+        assert_eq!(halves_words("-X10", Some("Both")), "-X10.S socket, -X10.P plug");
+        assert_eq!(halves_words("-X10", None), "set under Which halves");
+        assert_eq!(keyword_of("m12", &["Plain".into(), "M12".into()]), "M12");
     }
 
     #[test]

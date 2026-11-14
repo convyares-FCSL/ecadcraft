@@ -174,7 +174,7 @@ pub fn take_exact(ctx: &egui::Context, m: Modifiers, k: Key) -> bool {
 
 /// Whether the running command's prompt would take `letter`: it accepts text, or one of its
 /// keywords starts with it.
-fn prompt_takes(t: &Trial, letter: char) -> bool {
+pub(crate) fn prompt_takes(t: &Trial, letter: char) -> bool {
     t.cad
         .session
         .current_prompt()

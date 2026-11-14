@@ -54,6 +54,23 @@ pub struct State {
     choices: Option<((&'static str, u64), Vec<Choice>)>,
     /// How many times the second step was read from the project (tests).
     pub reads: u64,
+    /// What was typed at the command line last frame while the tool asked for a symbol: the
+    /// answer it took when the prompt moved on.
+    typed: Option<String>,
+}
+
+/// The built-in symbol a typed answer to "Enter symbol" names: its key, or the one symbol the
+/// text finds (as the tool takes one match). `None` for a device tag, a project symbol or an
+/// answer that matches several.
+pub fn typed_symbol(text: &str) -> Option<&'static str> {
+    let t = text.trim();
+    if let Some(s) = symbols::by_key(t) {
+        return Some(s.key);
+    }
+    match symbols::search(t).as_slice() {
+        [one] => Some(one.key),
+        _ => None,
+    }
 }
 
 /// What the picker shows this frame.
@@ -103,14 +120,27 @@ impl Trial {
         }
         let Some(canvas) = self.shell.page_rect else { return };
         let at = canvas.min + vec2(space::M, space::M);
-        // Remember the default the tool offers while it asks for a symbol: a click takes it.
-        if let Some(p) = self.cad.session.current_prompt()
-            && p.message.starts_with("Enter symbol")
-            && self.shell.tools.placing.symbol.is_none()
-        {
-            self.shell.tools.placing.symbol = p.default.as_deref().and_then(symbols::by_key).map(|s| s.key);
+        // Which symbol is being placed: while the tool asks for one, the default it offers (a
+        // click takes it); once it moved on, what was typed if anything was (a tile or Find
+        // symbol set it already, through `start_pick`).
+        let asks_symbol = self.cad.session.current_prompt().filter(|p| p.message.starts_with("Enter symbol"));
+        let buffer = self.cad.cmd.buffer.trim().to_string();
+        let st = &mut self.shell.tools.placing;
+        match asks_symbol {
+            Some(p) => {
+                st.symbol = p.default.as_deref().and_then(symbols::by_key).map(|s| s.key);
+                st.typed = (!buffer.is_empty()).then_some(buffer);
+            }
+            None => {
+                if let Some(t) = st.typed.take() {
+                    st.symbol = typed_symbol(&t);
+                }
+            }
         }
-        let p_key = ui.ctx().input(|i| i.key_pressed(egui::Key::P) && i.modifiers.is_none()) && ui.ctx().memory(|m| m.focused().is_none());
+        // P opens the picker, unless the prompt takes the letter as text (a tag such as -P02).
+        let p_key = ui.ctx().input(|i| i.key_pressed(egui::Key::P) && i.modifiers.is_none())
+            && ui.ctx().memory(|m| m.focused().is_none())
+            && !super::keys::prompt_takes(self, 'P');
         match shown {
             Shown::Chip => {
                 if self.chip(ui, at) || p_key {
@@ -379,5 +409,11 @@ mod tests {
         assert_eq!(tag_in("Specify insertion point (new device -K02, rotation 0)").as_deref(), Some("-K02"));
         assert_eq!(tag_in("Specify insertion point (joins -K01 as 13/14, rotation 90)").as_deref(), Some("-K01"));
         assert_eq!(tag_in("Specify insertion point (rotation 0)"), None);
+    }
+
+    #[test]
+    fn a_typed_symbol_is_its_key_or_its_one_match() {
+        assert_eq!(typed_symbol(" lamp "), Some("lamp"));
+        assert_eq!(typed_symbol("-K01"), None, "a device tag names no symbol");
     }
 }
