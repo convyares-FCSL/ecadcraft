@@ -206,6 +206,28 @@ fn card_of(v: &Value) -> ComponentId {
     id(v, "card")
 }
 
+// ---------------------------------------------------------------- bug 5
+
+#[test]
+fn bug_5_a_card_drawn_in_several_calls_has_one_frame() {
+    let mut h = H::new(9105);
+    let page = h.first_page();
+    wires(&mut h, &[100.0, 120.0, 140.0, 160.0]);
+    let v = h.run("plcchannels", json!({"type": "DI", "first": 0, "from": [95, 200], "to": [125, 200]})).unwrap();
+    let card = card_of(&v);
+    h.run("plcchannels", json!({"card": card.hex(), "first": 3, "from": [155, 200], "to": [165, 200]})).unwrap();
+    h.run("place", json!({"symbol": "chdi", "at": [140, 200], "device": card.hex(), "channel": 2})).unwrap();
+    let runs = h.p(|p| ecad_cadcraft::plc::look::runs_of_card(p.ledger.document(), card, page));
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    assert_eq!(runs.first().map(|r| (r.first, r.last)), Some((Some(0), Some(3))));
+    // The placed cell's point is on the wire, on the line of the others.
+    let d = h.doc();
+    let ch2 = d.terminals_of(card).find(|(_, t)| t.key.as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
+    let at = h.terminal_pos(page, ch2);
+    assert!((at.y - 200.0).abs() < 1e-6 && (at.x - 140.0).abs() < 1e-6, "{at:?}");
+    assert!(!h.doc().ends_at(ch2).is_empty(), "channel 2 lands on its wire");
+}
+
 // ---------------------------------------------------------------- bug 7
 
 /// Each drawn channel's address text on `page`, read with the kept PLC model as the page draws it.
@@ -256,4 +278,87 @@ fn landed_on(h: &mut H, card: ComponentId, page: PageId, x: f64) -> Vec<String> 
         .filter(|(t, _)| (h.terminal_pos(page, *t).x - x).abs() < 1e-6)
         .filter_map(|(_, term)| term.key.clone())
         .collect()
+}
+
+// ---------------------------------------------------------------- bug 6
+
+#[test]
+fn bug_6_a_multi_point_cell_spans_its_own_wires() {
+    // (type, wires, the point keys landed on each wire left to right)
+    let cases: [(&str, Vec<f64>, Vec<&str>); 3] = [
+        ("AI", vec![100.0, 110.0], vec![".0.+", ".0.-"]),
+        ("RTD", vec![100.0, 110.0, 120.0, 130.0], vec![".0.I+", ".0.S+", ".0.S-", ".0.I-"]),
+        // Two channels: two pairs, one cell width apart.
+        ("AI", vec![100.0, 110.0, 120.0, 130.0], vec![".0.+", ".0.-", ".1.+", ".1.-"]),
+    ];
+    for (seed, (ty, xs, want)) in (9160..).zip(cases) {
+        let mut h = H::new(seed);
+        let page = h.first_page();
+        wires(&mut h, &xs);
+        let last = xs.last().copied().unwrap_or(0.0);
+        let v = h.run("plcchannels", json!({"type": ty, "from": [xs[0] - 3.0, 200.0], "to": [last + 3.0, 200.0]})).unwrap();
+        let card = card_of(&v);
+        let got: Vec<String> = xs.iter().flat_map(|x| landed_on(&mut h, card, page, *x)).collect();
+        assert_eq!(got, want, "{ty} over {xs:?}");
+        h.check();
+    }
+    // Spaced as cells, not as points: one cell per wire, as before.
+    let mut h = H::new(9169);
+    wires(&mut h, &[100.0, 120.0]);
+    let v = h.run("plcchannels", json!({"type": "AI", "from": [95, 200], "to": [125, 200]})).unwrap();
+    assert_eq!(v["channels"], json!([0, 1]));
+    // Pairs closer than a cell width are still refused.
+    let mut h = H::new(9168);
+    wires(&mut h, &[100.0, 110.0, 115.0, 125.0]);
+    assert!(h.run("plcchannels", json!({"type": "AI", "from": [95, 200], "to": [130, 200]})).is_err());
+}
+
+// ---------------------------------------------------------------- bug 8
+
+#[test]
+fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
+    let mut h = H::new(9108);
+    let page = h.first_page();
+    // Wires from y 230 down to 150; the fence just under their top.
+    for x in [100.0, 120.0] {
+        h.run("wire", json!({"points": crate::common::pts(&[(x, 230.0), (x, 150.0)])})).unwrap();
+    }
+    let v = h.run("plcchannels", json!({"type": "DQ", "from": [95, 228], "to": [125, 228]})).unwrap();
+    let card = card_of(&v);
+    let runs = h.p(|p| ecad_cadcraft::plc::look::runs_of_card(p.ledger.document(), card, page));
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    assert!(runs.iter().all(|r| r.dir > 0.0 && (r.top - 228.0).abs() < 1e-6), "the frame grows up from the points: {runs:?}");
+    for x in [100.0, 120.0] {
+        assert_eq!(landed_on(&mut h, card, page, x).len(), 1, "wire {x} lands");
+    }
+    // Wires running up (sensors above): not turned, as before.
+    let mut h = H::new(9109);
+    let page = h.first_page();
+    for x in [100.0, 120.0] {
+        h.run("wire", json!({"points": crate::common::pts(&[(x, 270.0), (x, 190.0)])})).unwrap();
+    }
+    let v = h.run("plcchannels", json!({"type": "DI", "from": [95, 192], "to": [125, 192]})).unwrap();
+    let runs = h.p(|p| ecad_cadcraft::plc::look::runs_of_card(p.ledger.document(), card_of(&v), page));
+    assert!(runs.iter().all(|r| r.dir < 0.0), "{runs:?}");
+}
+
+// ---------------------------------------------------------------- bug 10
+
+#[test]
+fn bug_10_an_io_link_port_lands_c_q_by_default_and_point_chooses() {
+    let mut h = H::new(9110);
+    let page = h.first_page();
+    wires(&mut h, &[100.0]);
+    let v = h.run("plcchannels", json!({"type": "IOL", "from": [94, 200], "to": [106, 200]})).unwrap();
+    assert_eq!(landed_on(&mut h, card_of(&v), page, 100.0), [".0.C/Q"]);
+    // `point` chooses.
+    let mut h = H::new(9111);
+    let page = h.first_page();
+    wires(&mut h, &[100.0]);
+    let v = h.run("plcchannels", json!({"type": "IOL", "point": "l+", "from": [94, 200], "to": [106, 200]})).unwrap();
+    assert_eq!(landed_on(&mut h, card_of(&v), page, 100.0), [".0.L+"]);
+    let mut h = H::new(9112);
+    wires(&mut h, &[100.0]);
+    let e = h.run("plcchannels", json!({"type": "IOL", "point": "Q", "from": [94, 200], "to": [106, 200]})).unwrap_err();
+    assert!(e.contains("L+, C/Q, L-"), "{e}");
 }

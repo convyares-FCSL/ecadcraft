@@ -333,6 +333,9 @@ fn pins_words(pins: &[String]) -> String {
     }
 }
 
+/// A cell placed this close to the line of its card's cells on the page goes onto it, mm.
+const SNAP_TO_LINE: f64 = 2.0 * crate::symbols::CELL_TOP;
+
 /// The world point of a cell's first point at `pl`.
 fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
     let def = s.definition().ok()?;
@@ -396,6 +399,19 @@ pub(crate) fn run_place_channel(
             join(doc, card, starter, named, &BTreeSet::new(), &BTreeSet::new())?
         };
         let mut pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        // Pack re-run, bug 5: a cell placed near the line of its card's cells on this page goes onto
+        // that line, so the card keeps one frame.
+        if !new && let Some(q) = first_point(starter, &pl) {
+            let dir = if (degrees.rem_euclid(360.0) - 180.0).abs() < 0.5 { 1.0 } else { -1.0 };
+            let line = super::look::runs_of_card(doc, card, page)
+                .iter()
+                .filter(|r| r.dir == dir && (r.top - q.y).abs() <= SNAP_TO_LINE)
+                .map(|r| r.top)
+                .min_by(|a, b| (a - q.y).abs().total_cmp(&(b - q.y).abs()));
+            if let Some(y) = line.filter(|y| y.is_finite()) {
+                pl.origin.y += y - q.y;
+            }
+        }
         // On a wire: its first point lands there (design 045 §4.4), the symbol shifted onto it.
         let landing = first_point(starter, &pl).and_then(|q| crate::terminal_cmds::landing_point(doc, page, q).map(|on| (q, on)));
         if let Some((q, on)) = &landing {
@@ -464,6 +480,7 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
     let rest = opt_typed(params, "rest", "true or false", Value::as_bool).map_err(err)?.unwrap_or(false);
     let first_named = channel_param(&json!({"channel": params.get("first").cloned().unwrap_or(Value::Null)})).map_err(err)?;
     let ty_word = opt_typed(params, "type", "a card type: DI, DQ, AI, AO, RTD or IOL", Value::as_str).map_err(err)?.map(str::to_string);
+    let point_word = opt_typed(params, "point", "a point's role, e.g. C/Q", Value::as_str).map_err(err)?.map(str::to_string);
     let bad = |q: Pt| !(q.x.abs() <= crate::interact::MAX_COORD && q.y.abs() <= crate::interact::MAX_COORD);
     let v = with_project(s, |p, pg, page| {
         let style = plain_style(p);
@@ -503,8 +520,14 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
             return Err("The line crosses no wire. Draw it across the wires to land.".into());
         }
         let starter = crate::symbols::by_key(t.cell()).ok_or("No channel symbol for that type.")?;
+        let point_role = match &point_word {
+            Some(w) => Some(role_named(starter, w)?),
+            None => None,
+        };
+        let landings = landings(doc, page, starter, &found.members, point_role);
         // Brief 051 (design 051 §2.2, Q1): cells are one width apart at least, or they overlap.
-        if let Some(e) = spacing_refusal(doc, starter, t, &found.members) {
+        let anchors: Vec<crate::slash::Crossing> = landings.iter().filter_map(|l| l.points.first().map(|x| x.1)).collect();
+        if let Some(e) = spacing_refusal(doc, starter, t, &anchors) {
             return Err(e);
         }
         let mut ops = Vec::new();
@@ -528,7 +551,8 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
         };
         let mut placed: Vec<u32> = Vec::new();
         let mut all_pins: Vec<String> = Vec::new();
-        for m in &found.members {
+        let def_terms = &starter.definition()?.terminals;
+        for l in &landings {
             while pts.contains_key(&next) && next < MAX_INDEX {
                 next += 1;
             }
@@ -537,13 +561,20 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
             }
             let pins = pins_for(doc, (!new).then_some(card), t, n, next, &roles, &mut used);
             let j = Join { index: next, pins: roles.iter().copied().zip(pins.clone()).collect() };
-            let local = starter.definition()?.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
-            let pl = Placement { origin: Pt::new(m.at.x - local.x, m.at.y - local.y), rotation: 0.0, mirror: false, scale: 1.0 };
+            // The cell's first landing point sits on its crossing, the cell turned as its wire runs.
+            let (role0, m0) = l.points.first().copied().ok_or("The channel symbol has no point.")?;
+            let local = role_at(def_terms, role0).ok_or("The channel symbol has no point for that role.")?;
+            let turn = Placement { origin: Pt::new(0.0, 0.0), rotation: l.rotation, mirror: false, scale: 1.0 }.apply(local);
+            let pl = Placement { origin: Pt::new(m0.at.x - turn.x, m0.at.y - turn.y), rotation: l.rotation, mirror: false, scale: 1.0 };
             let cell = plan_cell(&mut p.ids, page, style.clone(), def, starter, card, &j, pl, &mut ops)?;
-            let on = crate::terminal_cmds::on_wire_of(doc, page, m.conductor, m.at).ok_or("A crossed wire has no route here.")?;
-            let t0 = cell.terminals.first().map(|x| x.1).ok_or("The channel symbol has no point.")?;
-            let land = land_cell(doc, &mut p.ids, page, on, t0).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
-            ops.extend(land);
+            for (role, m) in &l.points {
+                let at = role_at(def_terms, role).map(|q| pl.apply(q)).ok_or("The channel symbol has no point for that role.")?;
+                let on = crate::terminal_cmds::on_wire_of(doc, page, m.conductor, at).ok_or("A crossed wire has no route here.")?;
+                let tid = cell.terminals.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or("The channel symbol has no point.")?;
+                let land =
+                    land_cell(doc, &mut p.ids, page, on, tid).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
+                ops.extend(land);
+            }
             placed.push(next);
             all_pins.extend(pins);
             next += 1;
@@ -568,6 +599,95 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
         s.echo(m.to_string());
     }
     Ok(v)
+}
+
+/// One cell the fence lands: its rotation (radians) and which of its points lands on which crossed
+/// wire, the first being the one the cell is placed by.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Landing {
+    pub rotation: f64,
+    pub points: Vec<(&'static str, crate::slash::Crossing)>,
+}
+
+/// The local place of point `role` in a channel symbol's definition terminals.
+fn role_at(terms: &[ecad_model::TerminalDef], role: &str) -> Option<Pt> {
+    terms.iter().find(|td| td.key.strip_prefix('.') == Some(role) || parse_legacy(&td.key).is_some_and(|x| x.1 == role)).map(|td| td.at)
+}
+
+/// The role `word` names among channel symbol `s`'s points (case ignored).
+///
+/// # Errors
+/// No such point, naming the cell's points.
+fn role_named(s: &Starter, word: &str) -> Result<&'static str, String> {
+    let roles = roles_of(s);
+    let w = word.trim();
+    roles
+        .iter()
+        .copied()
+        .find(|r| r.eq_ignore_ascii_case(w))
+        .ok_or_else(|| format!("A {} cell has no point \"{}\". Its points: {}.", s.key, w.chars().take(16).collect::<String>(), roles.join(", ")))
+}
+
+/// The point a cell lands on a single wire by default (pack re-run, bug 10): an IO-Link port's
+/// C/Q (its signal; L+ and L- are its supply), else its first point.
+pub fn landing_role(s: &Starter) -> Option<&'static str> {
+    let roles = roles_of(s);
+    if cell_type(s) == Some(CardType::Iol) && roles.contains(&"C/Q") {
+        return Some("C/Q");
+    }
+    roles.first().copied()
+}
+
+/// Whether the wire crossed at `m` runs mostly down from the crossing (pack re-run, bug 8): its
+/// route reaches further below than above. A cell on such a wire is turned 180°, its frame and
+/// texts above its points and clear of the wire, as Make Card Page draws outputs.
+fn runs_down(doc: &Document, page: PageId, m: &crate::slash::Crossing) -> bool {
+    let Some((_, _, v)) = crate::wires::route_vertices(doc, m.conductor, page) else { return false };
+    let up = v.iter().map(|p| p.y - m.at.y).fold(0.0, f64::max);
+    let down = v.iter().map(|p| m.at.y - p.y).fold(0.0, f64::max);
+    down > up + 1e-6
+}
+
+/// Points of one cell closer than this to its wires' spacing still match them, mm.
+const POINT_MATCH: f64 = 0.5;
+
+/// The cells a fence over `members` lands (in crossing order). A cell with more than one point
+/// (AI, AO, RTD, IO-Link) lands each point on its own wire when the crossings come in groups of
+/// its point count spaced as its points are (pack re-run, bug 6); otherwise, or when `role` names
+/// one point, one cell per wire with that point (else [`landing_role`]) on it. Each cell is turned
+/// 180° when its first wire runs down ([`runs_down`]).
+pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
+    let roles = roles_of(s);
+    let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
+    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { std::f64::consts::PI } else { 0.0 };
+    let n = roles.len();
+    if role.is_none() && n > 1 && members.len().is_multiple_of(n) {
+        let groups: Option<Vec<Landing>> = members
+            .chunks(n)
+            .map(|chunk| {
+                let mut chunk: Vec<crate::slash::Crossing> = chunk.to_vec();
+                chunk.sort_by(|a, b| a.at.x.total_cmp(&b.at.x));
+                let first = *chunk.first()?;
+                let rot = rotation(&first);
+                // The points as they lie left to right at that rotation.
+                let turn = Placement { origin: Pt::new(0.0, 0.0), rotation: rot, mirror: false, scale: 1.0 };
+                let mut lie: Vec<(&'static str, Pt)> = roles.iter().filter_map(|r| Some((*r, turn.apply(role_at(&terms, r)?)))).collect();
+                lie.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
+                let p0 = lie.first()?.1;
+                let fits = lie.len() == chunk.len()
+                    && lie
+                        .iter()
+                        .zip(&chunk)
+                        .all(|((_, p), m)| ((m.at.x - first.at.x) - (p.x - p0.x)).abs() <= POINT_MATCH && (m.at.y - first.at.y).abs() <= POINT_MATCH);
+                fits.then(|| Landing { rotation: rot, points: lie.iter().map(|(r, _)| *r).zip(chunk.iter().copied()).collect() })
+            })
+            .collect();
+        if let Some(g) = groups {
+            return g;
+        }
+    }
+    let Some(role) = role.or_else(|| landing_role(s)) else { return Vec::new() };
+    members.iter().map(|m| Landing { rotation: rotation(m), points: vec![(role, *m)] }).collect()
 }
 
 /// The ops landing a channel cell's point `t` on its wire at `on` (design 045 §4.5). The wire is
