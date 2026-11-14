@@ -503,6 +503,10 @@ pub(crate) fn run_plcchannels(s: &mut Session, params: &Value) -> cadcraft_engin
             return Err("The line crosses no wire. Draw it across the wires to land.".into());
         }
         let starter = crate::symbols::by_key(t.cell()).ok_or("No channel symbol for that type.")?;
+        // Brief 051 (design 051 §2.2, Q1): cells are one width apart at least, or they overlap.
+        if let Some(e) = spacing_refusal(doc, starter, t, &found.members) {
+            return Err(e);
+        }
         let mut ops = Vec::new();
         let def = crate::terminal_cmds::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let (card, tag, new) = match card {
@@ -833,6 +837,48 @@ pub fn is_channel_definition(doc: &Document, id: DefinitionId) -> bool {
 /// `-A02 channel 3`.
 pub fn channel_words(doc: &Document, c: ComponentId, i: u32) -> String {
     format!("{} channel {}", crate::devices::tag_words(doc, c), i + first_number(doc, c))
+}
+
+/// The fence's refusal when two crossed wires are closer than a cell is wide (brief 051, design
+/// 051 §2.2): `Wires 24V-12 and 24V-13 are 10 mm apart; a DI cell is 20 mm wide. Space the wires
+/// 20 mm apart, or place compact di symbols.` Wires exactly one width apart give abutting cells.
+fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::slash::Crossing]) -> Option<String> {
+    let (w, _) = crate::symbols::cell_shape(s.key)?;
+    let mut at: Vec<(f64, f64, ecad_model::ConductorId)> = members.iter().map(|m| (m.at.x, m.at.y, m.conductor)).collect();
+    at.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    for pair in at.windows(2) {
+        let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
+        let d = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        if d.is_finite() && d + 1e-6 < w {
+            let compact = match t {
+                CardType::Di => ", or place compact di symbols",
+                CardType::Dq => ", or place compact do symbols",
+                _ => "",
+            };
+            return Some(format!(
+                "Wires {} and {} are {} mm apart; a {} cell is {} mm wide. Space the wires {} mm apart{compact}.",
+                wire_words(doc, a.2),
+                wire_words(doc, b.2),
+                fmt_mm(d),
+                t.code(),
+                fmt_mm(w),
+                fmt_mm(w)
+            ));
+        }
+    }
+    None
+}
+
+/// `10`, `12.5`.
+fn fmt_mm(v: f64) -> String {
+    let r = (v * 10.0).round() / 10.0;
+    if (r - r.round()).abs() < 1e-9 { format!("{}", r.round() as i64) } else { format!("{r:.1}") }
+}
+
+/// A wire in a sentence that already says "Wires": its number, without a leading `wire `.
+fn wire_words(doc: &Document, c: ecad_model::ConductorId) -> String {
+    let n = crate::slash::wire_name(doc, c);
+    n.strip_prefix("wire ").map(str::to_string).unwrap_or(n)
 }
 
 #[cfg(test)]

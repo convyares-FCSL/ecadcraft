@@ -71,11 +71,12 @@ fn b7_channel_and_address_writes_by_the_agent_and_refused_with_writes_off() {
     by_agent(&mut c, "place", json!({"symbol": "plccpu", "at": [50, 300]}));
     let card = by_agent(&mut c, "place", json!({"symbol": "plcdi", "at": [100, 300]}));
     let card = card["component"].as_str().unwrap().to_string();
+    // Brief 051: the pack's 20 mm pitch.
     for i in 0..4 {
-        let x = 100 + 10 * i;
+        let x = 100 + 20 * i;
         by_agent(&mut c, "wire", json!({"points": [[x, 250], [x, 150]]}));
     }
-    let v = by_agent(&mut c, "plcchannels", json!({"card": card, "from": [95, 200], "to": [135, 200]}));
+    let v = by_agent(&mut c, "plcchannels", json!({"card": card, "from": [95, 200], "to": [175, 200]}));
     assert_eq!(v["channels"], json!([0, 1, 2, 3]), "{v}");
     by_agent(&mut c, "place", json!({"symbol": "chdi", "at": [200, 200], "device": card}));
     by_agent(&mut c, "plcchannel", json!({"card": card, "channel": 1, "text": "Door closed", "address": "I9.9"}));

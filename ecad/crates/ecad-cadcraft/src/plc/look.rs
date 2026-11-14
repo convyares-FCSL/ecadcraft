@@ -105,7 +105,9 @@ fn piece(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::
             return None;
         }
         let def = s.definition().ok()?;
-        let top: Vec<f64> = def.terminals.iter().filter(|t| t.at.y > 0.0).map(|t| t.at.x).collect();
+        // Its points' edge: the top one, else (a communication module) the bottom one.
+        let side = if def.terminals.iter().any(|t| t.at.y > 0.0) { 1.0 } else { -1.0 };
+        let top: Vec<f64> = def.terminals.iter().filter(|t| t.at.y * side > 0.0).map(|t| t.at.x).collect();
         let lo = top.iter().copied().fold(f64::INFINITY, f64::min);
         let hi = top.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         if !(lo.is_finite() && hi.is_finite()) {
@@ -113,13 +115,15 @@ fn piece(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::
         }
         // As the body's graphics: its points' span plus 10, at least 20.
         let pad = ((20.0 - (hi - lo)) / 2.0).max(5.0);
-        let y = def.terminals.iter().find(|t| t.at.y > 0.0).map_or(25.0, |t| t.at.y);
+        let y = def.terminals.iter().find(|t| t.at.y * side > 0.0).map_or(25.0 * side, |t| t.at.y);
         (lo - pad, hi + pad, y, None)
     };
-    let sign = if up { -1.0 } else { 1.0 };
-    let top = pl.origin.y + sign * local_top * k;
+    // A body with its points on its bottom edge frames upwards, as a card at 180° does.
+    let turned = up;
+    let up = if local_top < 0.0 { !up } else { up };
+    let top = pl.origin.y + if turned { -local_top } else { local_top } * k;
     // At 180° the local x runs the other way.
-    let (left, right) = if up { (pl.origin.x - x1 * k, pl.origin.x - x0 * k) } else { (pl.origin.x + x0 * k, pl.origin.x + x1 * k) };
+    let (left, right) = if turned { (pl.origin.x - x1 * k, pl.origin.x - x0 * k) } else { (pl.origin.x + x0 * k, pl.origin.x + x1 * k) };
     let p = Piece { rep: rid, left, right, top, channel };
     Some((p, if up { 1.0 } else { -1.0 }))
 }
@@ -214,7 +218,8 @@ fn name_block(doc: &Document, c: ComponentId) -> Vec<(String, TextKind)> {
 pub fn type_text(doc: &Document, c: ComponentId) -> String {
     let Some(ty) = super::card_type_of(doc, c) else { return String::new() };
     let builtin = crate::symbols::by_key(ty.body()).map(|s| s.name);
-    let desc = doc.components.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let desc =
+        doc.components.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c, ty)),

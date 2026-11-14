@@ -27,11 +27,11 @@ fn fixture(seed: u64) -> F {
     let ai = placed(&mut h, "plcai", 140.0, 400.0);
     let dq = placed(&mut h, "plcdq", 180.0, 400.0);
     for i in 0..8 {
-        let x = 100.0 + 10.0 * f64::from(i);
+        let x = 100.0 + 20.0 * f64::from(i);
         placed(&mut h, "lamp", x, 260.0);
         h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
     }
-    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [175.0, 200.0]})).unwrap();
+    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [255.0, 200.0]})).unwrap();
     F { h, cpu, di, ai, dq }
 }
 
@@ -296,4 +296,119 @@ fn r_a_rack_of_many_tiles_wraps_and_continues_on_sheets() {
     let t = texts(&mut h, page);
     assert!(!t.is_empty());
     let _: Value = h.run("plcracks", json!({})).unwrap();
+}
+
+// ---------------------------------------------------------------- the card on the page (§2)
+
+/// The frame parts of `page`: (lines, texts).
+fn frame(h: &mut H, page: PageId) -> (Vec<(ecad_model::Pt, ecad_model::Pt)>, Vec<String>) {
+    let d = h.doc();
+    let mut lines = Vec::new();
+    let mut texts = Vec::new();
+    for p in ecad_cadcraft::plc::look::parts_on_page(&d, page) {
+        match p.shape {
+            ecad_cadcraft::xref::Shape::Line(a, b) => lines.push((a, b)),
+            ecad_cadcraft::xref::Shape::Text { value, .. } => texts.push(value),
+        }
+    }
+    (lines, texts)
+}
+
+/// Whether a line is slanted (a break edge).
+fn slanted(l: &(ecad_model::Pt, ecad_model::Pt)) -> bool {
+    (l.0.x - l.1.x).abs() > 1.0 && (l.0.y - l.1.y).abs() > 1.0
+}
+
+#[test]
+fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
+    let F { mut h, di, .. } = fixture(5120);
+    let page = h.first_page();
+    let runs = ecad_cadcraft::plc::look::runs_on_page(&h.doc(), page);
+    let di_runs: Vec<_> = runs.iter().filter(|r| r.card == di).collect();
+    assert_eq!(di_runs.len(), 2, "the fenced cells and the body elsewhere on the page");
+    let cells = di_runs.iter().find(|r| r.first == Some(0)).expect("the cells' run");
+    assert_eq!((cells.first, cells.last), (Some(0), Some(7)));
+    assert!((cells.right - cells.left - 160.0).abs() < 1e-6, "eight 20 mm cells abut");
+    let (lines, texts) = frame(&mut h, page);
+    assert!(lines.iter().filter(|l| slanted(l)).count() >= 1, "channels 8–15 and the body go on: a break edge");
+    assert!(texts.iter().any(|t| t == "-A02") && texts.iter().any(|t| t == "-A01 slot 1"), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "DI 16"), "{texts:?}");
+    // The rest drawn after the run, the body moved to its end: one run, straight sides.
+    h.run("plcchannels", json!({"card": di.hex(), "rest": true})).unwrap();
+    let d = h.doc();
+    let body = d
+        .representations_of(ecad_model::Subject::Component(di))
+        .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == "plcdi"))
+        .map(|(_, r)| r.items[0])
+        .unwrap();
+    // Cells' points are at y 200; the body's at its origin + 25; cell 15 ends at x 100 + 15·20 + 10.
+    let item = d.items[&body].clone();
+    let ecad_model::ItemKind::Symbol(mut s) = item.kind.clone() else { panic!() };
+    s.placement.origin = ecad_model::Pt::new(100.0 + 16.0 * 20.0, 200.0 - 25.0);
+    let after = ecad_model::Item { kind: ecad_model::ItemKind::Symbol(s), ..item.clone() };
+    h.cfg(|p| {
+        p.ledger.commit(ecad_model::Author::User, "move body", vec![ecad_model::Op::ModifyItem { id: body, before: item, after }]).unwrap();
+    });
+    let runs = ecad_cadcraft::plc::look::runs_on_page(&h.doc(), page);
+    let di_runs: Vec<_> = runs.iter().filter(|r| r.card == di).collect();
+    assert_eq!(di_runs.len(), 1, "{di_runs:?}");
+    assert!(!di_runs[0].right_cell, "the body is the run's power end");
+    let (lines, _) = frame(&mut h, page);
+    assert!(!lines.iter().any(slanted), "the whole card: straight sides");
+}
+
+#[test]
+fn b_a_fence_across_wires_closer_than_a_cell_is_refused() {
+    let mut h = H::new(5121);
+    let di = placed(&mut h, "plcdi", 100.0, 400.0);
+    for x in [100.0, 110.0] {
+        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+    }
+    let head = h.head();
+    let e = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap_err();
+    assert!(e.contains("are 10 mm apart; a DI cell is 20 mm wide. Space the wires 20 mm apart, or place compact di symbols."), "{e}");
+    assert!(!e.starts_with("Wires wire"), "{e}");
+    assert_eq!(h.head(), head, "nothing written");
+}
+
+#[test]
+fn f_a_card_at_180_keeps_its_name_block_upright_above() {
+    let F { mut h, dq, .. } = fixture(5122);
+    let v = h.run("plcpage", json!({"card": dq.hex()})).unwrap();
+    let page: PageId = id(&v, "page");
+    let runs = ecad_cadcraft::plc::look::runs_on_page(&h.doc(), page);
+    assert!(!runs.is_empty());
+    assert!(runs.iter().all(|r| r.dir > 0.0), "outputs at 180°: the frame above the points");
+    let d = h.doc();
+    let parts = ecad_cadcraft::plc::look::parts_on_page(&d, page);
+    let tag = parts
+        .iter()
+        .find_map(|p| match &p.shape {
+            ecad_cadcraft::xref::Shape::Text { value, at, valign, .. } if value == "-A04" => Some((*at, *valign)),
+            _ => None,
+        })
+        .expect("the tag in the name block");
+    assert_eq!(tag.1, cadcraft_engine::doc::VAlign::Top, "top left, under the far edge");
+    assert!(tag.0.y > runs[0].top, "above the points");
+}
+
+#[test]
+fn h_i_text_styles_and_name_block_lines() {
+    let F { mut h, di, .. } = fixture(5123);
+    let d = h.doc();
+    let ts = |k| ecad_cadcraft::text_style::text_style(&d, k).height;
+    assert_eq!((ts(ecad_cadcraft::text_style::TextKind::ChannelText), ts(ecad_cadcraft::text_style::TextKind::Address)), (2.5, 2.0));
+    let page = h.first_page();
+    h.run("setprop", json!({"component": di.hex(), "key": "maker", "value": "Maker A"})).unwrap();
+    h.run("setprop", json!({"component": di.hex(), "key": "part_number", "value": "DI-16"})).unwrap();
+    let (_, t) = frame(&mut h, page);
+    for w in ["-A02", "-A01 slot 1", "Maker A", "DI-16"] {
+        assert!(t.iter().any(|x| x == w), "{w}: {t:?}");
+    }
+    h.run("setdefault", json!({"key": "plc.text.caption.show", "level": "object", "component": di.hex(), "value": "off"})).unwrap();
+    let (_, t) = frame(&mut h, page);
+    assert!(!t.iter().any(|x| x == "-A01 slot 1"), "{t:?}");
+    h.run("setdefault", json!({"key": "plc.frame.show", "level": "object", "component": di.hex(), "value": "off"})).unwrap();
+    let (_, t) = frame(&mut h, page);
+    assert!(!t.iter().any(|x| x == "-A02"), "no frame: {t:?}");
 }

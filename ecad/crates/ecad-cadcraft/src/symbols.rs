@@ -1648,24 +1648,25 @@ mod tests {
         ("rj45", 50.0, 10.0, "1/2/3/4/5/6/7/8/SH"),
         ("usba", 30.0, 10.0, "1/2/3/4/SH"),
         ("usbb", 30.0, 10.0, "1/2/3/4/SH"),
-        ("plccpu", 30.0, 45.0, "L+/M"),
-        ("plcps", 30.0, 50.0, "L/N/PE/L+/M"),
-        ("plcdi", 30.0, 45.0, "L+/M"),
-        ("plcdq", 30.0, 45.0, "L+/M"),
-        ("plcai", 30.0, 45.0, "L+/M"),
-        ("plcao", 30.0, 45.0, "L+/M"),
-        ("plcrtd", 30.0, 45.0, "L+/M"),
-        ("plciol", 30.0, 45.0, "L+/M"),
+        // Brief 051 (design 051 §2.2, §2.4, FP3): cells at the pack's pitch, bodies as power ends.
+        ("plccpu", 20.0, 10.0, "L+/M"),
+        ("plcps", 25.0, 50.0, "L/N/PE/L+/M"),
+        ("plcdi", 20.0, 10.0, "L+/M"),
+        ("plcdq", 20.0, 10.0, "L+/M"),
+        ("plcai", 20.0, 10.0, "L+/M"),
+        ("plcao", 20.0, 10.0, "L+/M"),
+        ("plcrtd", 20.0, 10.0, "L+/M"),
+        ("plciol", 20.0, 10.0, "L+/M"),
         // Brief 045 (design 045 §3.1).
-        ("plcim", 30.0, 45.0, "L+/M"),
-        ("plcpm", 30.0, 45.0, "L+/M"),
-        ("plccm", 30.0, 45.0, "P1/P2"),
-        ("chdi", 10.0, 20.0, ".in"),
-        ("chdq", 10.0, 20.0, ".out"),
-        ("chai", 20.0, 20.0, ".+/.-"),
-        ("chao", 20.0, 20.0, ".+/.-"),
-        ("chrtd", 40.0, 20.0, ".I+/.S+/.S-/.I-"),
-        ("chiol", 30.0, 20.0, ".L+/.C/Q/.L-"),
+        ("plcim", 20.0, 10.0, "L+/M"),
+        ("plcpm", 20.0, 10.0, "L+/M"),
+        ("plccm", 20.0, 10.0, "P1/P2"),
+        ("chdi", 20.0, 19.0, ".in"),
+        ("chdq", 20.0, 19.0, ".out"),
+        ("chai", 20.0, 20.5, ".+/.-"),
+        ("chao", 20.0, 20.5, ".+/.-"),
+        ("chrtd", 40.0, 19.0, ".I+/.S+/.S-/.I-"),
+        ("chiol", 30.0, 19.0, ".L+/.C/Q/.L-"),
         // Brief 044 (design 044 §3.2): the definition keys are the side keys.
         ("pinpair", 3.0, 10.0, ".s/.p"),
         ("pins", 3.0, 5.0, ".s"),
@@ -1674,10 +1675,16 @@ mod tests {
 
     #[test]
     fn new_symbols_have_the_designed_box_and_labels() {
-        for (key, w, h, labels) in NEW {
+        let mut wrong = Vec::new();
+        for (key, w, h, _) in NEW {
+            let (sw, sh) = by_key(key).unwrap().size();
+            if (sw - w).abs() > 1e-6 || (sh - h).abs() > 1e-6 {
+                wrong.push(format!("{key}: box {sw}×{sh}, want {w}×{h}"));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        for (key, _, _, labels) in NEW {
             let s = by_key(key).unwrap();
-            let (sw, sh) = s.size();
-            assert!((sw - w).abs() < 1e-6 && (sh - h).abs() < 1e-6, "{key}: box {sw}×{sh}, want {w}×{h}");
             assert_eq!(s.labels().join("/"), *labels, "{key}");
         }
         assert_eq!(STARTERS.iter().filter(|s| s.family != Family::Basic).count(), NEW.len());

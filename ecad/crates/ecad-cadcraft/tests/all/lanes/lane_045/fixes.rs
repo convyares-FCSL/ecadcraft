@@ -72,7 +72,7 @@ fn wired_through_a_strip(seed: u64) -> (H, ComponentId, ComponentId, PageId) {
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
     let v = h.run("terminals", json!({"from": [95.0, 230.0], "to": [105.0, 230.0]})).unwrap();
     let strip: ComponentId = id(&v, "strip");
-    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [105.0, 200.0]})).unwrap();
+    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "iolist"})).unwrap(), "page");
     (h, di, strip, page)
 }
@@ -110,7 +110,7 @@ fn review_2_renaming_a_continuation_patches_the_cards_io_rows() {
     // Channel 0 on a wire ending at continuation A; a lamp wired to continuation B.
     h.run("place", json!({"symbol": "continuation", "at": [100, 250], "name": "A"})).unwrap();
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
-    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [105.0, 200.0]})).unwrap();
+    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let b = h.run("place", json!({"symbol": "continuation", "at": [300, 250], "name": "B"})).unwrap();
     let b: ComponentId = id(&b, "component");
     placed(&mut h, "lamp", 300.0, 160.0);
@@ -133,10 +133,10 @@ fn review_3_kept_model_paths_walk_no_project() {
     let di = placed(&mut h, "plcdi", 100.0, 400.0);
     placed(&mut h, "plcai", 140.0, 400.0);
     for i in 0..4 {
-        let x = 100.0 + 10.0 * f64::from(i);
+        let x = 100.0 + 20.0 * f64::from(i);
         h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
     }
-    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [135.0, 200.0]})).unwrap();
+    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [175.0, 200.0]})).unwrap();
     h.cfg(|p| {
         p.outputs();
     });

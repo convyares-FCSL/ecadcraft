@@ -22,11 +22,11 @@ fn fixture(seed: u64) -> F {
     placed(&mut h, "plcdq", 180.0, 400.0);
     let mut lamps = Vec::new();
     for i in 0..8 {
-        let x = 100.0 + 10.0 * f64::from(i);
+        let x = 100.0 + 20.0 * f64::from(i);
         lamps.push(placed(&mut h, "lamp", x, 260.0));
         h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
     }
-    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [175.0, 200.0]})).unwrap();
+    h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [255.0, 200.0]})).unwrap();
     F { h, di, lamps }
 }
 

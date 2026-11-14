@@ -263,7 +263,6 @@ fn screenshots_of_the_cards_on_the_page() {
     view(&mut h, 130.0, 90.0, 150.0);
     take(&h, &deltas, "051-di-card.png");
     h.state_mut().show_page(last).unwrap();
-    h.state_mut().zoom_to_drawing();
-    h.run_steps(6);
+    view(&mut h, 210.0, 150.0, 300.0);
     take(&h, &deltas, "051-dq-card.png");
 }

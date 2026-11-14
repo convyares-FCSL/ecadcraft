@@ -32,7 +32,7 @@ fn fixture(seed: u64) -> P {
     let dq = placed(&mut h, "plcdq", 260.0, 400.0);
     // Eight drops from lamps (so each channel is used once it lands).
     for i in 0..8 {
-        let x = 100.0 + 10.0 * f64::from(i);
+        let x = 100.0 + 20.0 * f64::from(i);
         placed(&mut h, "lamp", x, 260.0);
         h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
     }
@@ -40,7 +40,7 @@ fn fixture(seed: u64) -> P {
 }
 
 fn fence(h: &mut H, card: ComponentId) -> Value {
-    h.run("plcchannels", json!({"card": card.hex(), "from": [95.0, 200.0], "to": [175.0, 200.0]})).unwrap()
+    h.run("plcchannels", json!({"card": card.hex(), "from": [95.0, 200.0], "to": [255.0, 200.0]})).unwrap()
 }
 
 /// (key, label) of card `c`'s channel points, by key.
@@ -133,16 +133,17 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     let mut h = H::new(4532);
     let di = placed(&mut h, "plcdi", 100.0, 400.0);
     // A lamp's X2 is 10 mm below its origin, its X1 10 mm above.
-    for x in [100.0, 110.0, 120.0] {
+    // Brief 051: the pack's 20 mm pitch.
+    for x in [100.0, 120.0, 140.0] {
         placed(&mut h, "lamp", x, 260.0);
     }
-    placed(&mut h, "lamp", 120.0, 140.0);
+    placed(&mut h, "lamp", 140.0, 140.0);
     // From the lamp down to a loose end; drawn the other way, loose end first; lamp to lamp.
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(110.0, 150.0), (110.0, 250.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(120.0, 250.0), (120.0, 150.0)])})).unwrap();
+    h.run("wire", json!({"points": pts(&[(120.0, 150.0), (120.0, 250.0)])})).unwrap();
+    h.run("wire", json!({"points": pts(&[(140.0, 250.0), (140.0, 150.0)])})).unwrap();
     let wires = h.doc().conductors.len();
-    let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [125.0, 200.0]})).unwrap();
+    let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [155.0, 200.0]})).unwrap();
     assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
     let d = h.doc();
     assert_eq!(d.conductors.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
