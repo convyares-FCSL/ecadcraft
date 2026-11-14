@@ -240,21 +240,103 @@ fn fuse_inserts_count_per_fuse_and_uncovered_fuses_are_checked() {
     assert_eq!(c.len(), 1);
     assert_eq!(c[0]["which"], "8 fuses have no insert");
     same_as_built(&mut f.h);
-    // FP5 fallback: a strip line cannot name positions until renumbering keeps them; without
-    // `for` it is a line of the strip as a whole.
+    // A strip's line names its positions (FP5 landed); a position the strip lacks is refused.
     let head = f.h.head();
-    let e = f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-5T", "for": "1"}})).unwrap_err();
-    assert!(e.contains("-X05: a strip's part line cannot name positions with for yet"), "{e}");
+    let e = f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-6T", "for": "9"}})).unwrap_err();
+    assert!(e.contains("-X05 has no position 9."), "{e}");
     assert_eq!(f.h.head(), head);
+    f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-6T", "description": "Fuse 6A T 5x20", "for": "1, 5-6"}}))
+        .unwrap();
+    let r = row(&bom(&mut f.h, json!({})), "FU-6T").clone();
+    assert_eq!((r["qty"].clone(), r["tags"].clone()), (json!(3), json!("-X05:1, -X05:5, -X05:6")));
+    assert_eq!(checks(&mut f.h, "fuse-no-insert")[0]["which"], "5 fuses have no insert", "-X05's fuse positions are covered");
+    // Without `for` a line is of the strip as a whole.
     f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "MK-1", "description": "Marker set"}})).unwrap();
     let r = row(&bom(&mut f.h, json!({})), "MK-1").clone();
     assert_eq!((r["qty"].clone(), r["tags"].clone()), (json!(1), json!("-X05")));
     same_as_built(&mut f.h);
-    // `article` leaves strip parts alone and says so.
+    // `article` reaches a strip's terminal part as well as the fuse bank's line.
     f.h.run("setprop", json!({"component": f.x05.hex(), "key": "part_number", "value": "FU-5T"})).unwrap();
     assert!(bom(&mut f.h, json!({})).iter().any(|r| r["part_number"] == "FU-5T" && r["tags"] == "-X05"), "the strip's terminals use it");
     let v = f.h.run("article", json!({"part_number": "FU-5T", "article_number": "A-0400"})).unwrap();
-    assert!(v["message"].as_str().unwrap().contains("Strip terminal, accessory and jumper parts with this part number are not changed yet"), "{v}");
+    assert_eq!(v["message"], "Set A-0400 on 2 parts (1 line, 1 strip part).", "{v}");
+    assert_eq!(f.h.doc().components[&f.x05].properties.get("article_number").map(String::as_str), Some("A-0400"));
+    same_as_built(&mut f.h);
+}
+
+/// §12 10 (FP5): renumbering a strip's terminals rewrites the `for` of its part lines in the same
+/// transaction; nothing goes missing; `u` restores it.
+#[test]
+fn renumbering_a_strip_keeps_its_part_lines_for() {
+    let mut f = fixture(0x47_0a);
+    f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-6T", "description": "Fuse 6A T 5x20", "for": "1, 5-6"}}))
+        .unwrap();
+    let for_of = |h: &mut H| h.doc().components[&f.x05].properties.get("part.1.for").cloned();
+    let pv = f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3, "preview": true})).unwrap();
+    assert!(pv["accessories"].to_string().contains("-X05: part line 1 for 1, 5-6 \u{2192} 3, 7-8"), "{pv}");
+    let head = f.h.head();
+    f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3})).unwrap();
+    assert_eq!(f.h.head(), head + 1, "one transaction");
+    assert_eq!(for_of(&mut f.h).as_deref(), Some("3, 7-8"));
+    assert_eq!(row(&bom(&mut f.h, json!({})), "FU-6T")["tags"], "-X05:3, -X05:7, -X05:8");
+    assert!(checks(&mut f.h, "part-for-missing").is_empty());
+    same_as_built(&mut f.h);
+    f.h.cmdline("u");
+    assert_eq!(for_of(&mut f.h).as_deref(), Some("1, 5-6"));
+    same_as_built(&mut f.h);
+}
+
+/// §12 14 (FP5, design §5): strip parts take article numbers at the level their part number comes
+/// from; `article` writes there; the project's never shows on a strip's own part.
+#[test]
+fn strip_parts_take_article_numbers_from_their_own_level() {
+    let mut f = fixture(0x47_0e);
+    f.h.run("setdefault", json!({"key": "bom.column.article", "level": "project", "value": "on"})).unwrap();
+    let set = |h: &mut H, c: ComponentId, key: &str, value: &str| {
+        h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap();
+    };
+    set(&mut f.h, f.x05, "part_number", "TB-4");
+    set(&mut f.h, f.x05, "article_number", "A-0200");
+    set(&mut f.h, f.x05, "acc.end", "end_plate");
+    let x06 = place(&mut f.h, json!({"symbol": "terminal", "at": [250, 260], "tag": "X06"}));
+    place(&mut f.h, json!({"symbol": "terminal", "at": [270, 260], "device": x06.hex()}));
+    set(&mut f.h, x06, "acc.end", "end_plate");
+    set(&mut f.h, x06, "end_plate.part_number", "EP-2");
+    f.h.run(
+        "projectprops",
+        json!({"props": {"strip_end_plate_part_number": "EP-1", "strip_end_plate_article_number": "A-0201", "strip_ft_article_number": "A-0299"}}),
+    )
+    .unwrap();
+    let rows = bom(&mut f.h, json!({}));
+    let tb = rows.iter().find(|r| r["part_number"] == "TB-4").unwrap();
+    assert_eq!(tb["article_number"], "A-0200", "the strip's own terminal part: {tb}");
+    assert_eq!(row(&rows, "EP-1")["article_number"], "A-0201", "the project's end plate");
+    assert_eq!(row(&rows, "EP-2")["article_number"], "", "a strip's own end plate never shows the project's");
+    assert!(!rows.iter().any(|r| r["article_number"] == "A-0299"), "no project part number, no project article number");
+    same_as_built(&mut f.h);
+    // The strip's own article key, a link's own part.
+    set(&mut f.h, x06, "end_plate.article_number", "A-0202");
+    set(&mut f.h, f.x05, "link.1", "2-3");
+    set(&mut f.h, f.x05, "link.1.part_number", "JB-1");
+    set(&mut f.h, f.x05, "link.1.article_number", "A-0300");
+    let rows = bom(&mut f.h, json!({}));
+    assert_eq!(row(&rows, "EP-2")["article_number"], "A-0202");
+    assert_eq!(row(&rows, "JB-1")["article_number"], "A-0300");
+    let e = f.h.run("setprop", json!({"component": f.x05.hex(), "key": "link.1.article_number", "value": "x".repeat(65)})).unwrap_err();
+    assert!(e.contains("at most 64 characters"), "{e}");
+    same_as_built(&mut f.h);
+    // `article` writes where each part number lives: the project's default, a strip's own key.
+    let head = f.h.head();
+    let v = f.h.run("article", json!({"part_number": "EP-1", "article_number": "A-0210"})).unwrap();
+    assert_eq!(f.h.head(), head + 1);
+    assert_eq!(v["message"], "Set A-0210 on 1 part (1 strip part).", "{v}");
+    assert_eq!(f.h.doc().properties.get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
+    f.h.run("article", json!({"part_number": "jb-1", "article_number": "A-0310"})).unwrap();
+    assert_eq!(f.h.doc().components[&f.x05].properties.get("link.1.article_number").map(String::as_str), Some("A-0310"));
+    let rows = bom(&mut f.h, json!({}));
+    assert_eq!(row(&rows, "EP-1")["article_number"], "A-0210");
+    assert_eq!(row(&rows, "JB-1")["article_number"], "A-0310");
+    same_as_built(&mut f.h);
 }
 
 /// §12 6 and 7, §4.3: the article column off by default, on by the registry; `article` sets

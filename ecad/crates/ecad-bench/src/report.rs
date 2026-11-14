@@ -34,7 +34,7 @@ pub struct Row {
 }
 
 /// The measured columns: JSON key, table heading.
-const COLUMNS: [(&str, &str); 42] = [
+const COLUMNS: [(&str, &str); 41] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
     ("xref_ms", "xref ms"),
@@ -72,14 +72,13 @@ const COLUMNS: [(&str, &str); 42] = [
     ("xmove_ms", "xmove ms"),
     ("xrenum_ms", "xrenum ms"),
     ("xmirror_ms", "xmirror ms"),
-    ("convert_ms", "v2 convert ms"),
     ("v2_open_ms", "v2 open ms"),
     ("v2_save_ms", "v2 save ms"),
     ("v2_crash_open_ms", "v2 crash open ms"),
     ("v2_open_x10_ms", "v2 open x10 ms"),
 ];
 
-fn values(r: &Row) -> [Option<f64>; 42] {
+fn values(r: &Row) -> [Option<f64>; 41] {
     let m = &r.measured;
     let v = r.v2.as_ref();
     [
@@ -120,7 +119,6 @@ fn values(r: &Row) -> [Option<f64>; 42] {
         Some(m.xmove_ms),
         Some(m.xrenum_ms),
         Some(m.xmirror_ms),
-        v.map(|v| v.convert_ms),
         v.map(|v| v.open_ms),
         v.map(|v| v.save_ms),
         v.map(|v| v.crash_open_ms),
@@ -252,18 +250,16 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
          targets renumbered; xmirror: a page with 10 tables brought to the front (compare with switch).\n",
     );
     out.push_str(&format!(
-        "\nContainer version 2 (brief 021):\n{:<8} {:<8} {:>9} {:>11} {:>11} {:>11} {:>14} {:>15} {:>11}\n",
-        "tier", "history", "v1 MB", "v2 MB", "convert ms", "v2 open ms", "v2 save ms", "crash open ms", "open x10 ms"
+        "\nContainer version 2 (brief 021):\n{:<8} {:<8} {:>9} {:>11} {:>14} {:>15} {:>11}\n",
+        "tier", "history", "v2 MB", "v2 open ms", "v2 save ms", "crash open ms", "open x10 ms"
     ));
     for r in rows {
         let Some(v) = &r.v2 else { continue };
         out.push_str(&format!(
-            "{:<8} {:<8} {:>9.2} {:>11.2} {:>11.0} {:>11.1} {:>14.2} {:>15.1} {:>11.1}   (x10: {:.2} MB, {:.2} MB stored, {:.2} MB compacted; undo {:.2} ms, first past 1 024: {:.1} ms)\n",
+            "{:<8} {:<8} {:>9.2} {:>11.1} {:>14.2} {:>15.1} {:>11.1}   (x10: {:.2} MB, {:.2} MB stored, {:.2} MB compacted; undo {:.2} ms, first past 1 024: {:.1} ms)\n",
             r.tier,
             r.variant,
-            mb(r.measured.bytes),
             mb(v.bytes),
-            v.convert_ms,
             v.open_ms,
             v.save_ms,
             v.crash_open_ms,
@@ -575,7 +571,6 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             }
             let v2 = json!({
                 "v2_bytes": r.v2.as_ref().map(|v| v.bytes),
-                "convert_ms": r.v2.as_ref().map(|v| v.convert_ms),
                 "v2_open_ms": r.v2.as_ref().map(|v| v.open_ms),
                 "v2_save_ms": r.v2.as_ref().map(|v| v.save_ms),
                 "v2_crash_open_ms": r.v2.as_ref().map(|v| v.crash_open_ms),

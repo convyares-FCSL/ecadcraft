@@ -2076,6 +2076,7 @@ impl Outputs {
                 description: Some(t.description.clone()),
                 maker: t.maker.clone(),
                 part_number: t.part_number.clone(),
+                article_number: t.article_number.clone(),
                 ..BomRow::default()
             });
         }
@@ -2089,6 +2090,7 @@ impl Outputs {
                 description: Some(a.description.clone()),
                 maker: a.maker.clone(),
                 part_number: a.part_number.clone(),
+                article_number: a.article_number.clone(),
                 accessory: Some(a.accessory),
                 ..BomRow::default()
             });
