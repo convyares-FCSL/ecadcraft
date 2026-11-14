@@ -92,7 +92,16 @@ impl LeftTab {
 /// The Book panel's name on the strip (UI rev 3; the Project panel's Pages tab).
 pub const BOOK: &str = "Book";
 
-/// The panel slot's state: which panel the strip opened, if any.
+/// How the Book panel shows its pages (UI rev 3, board 1.02): a thumbnail beside each row, or
+/// plain rows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BookView {
+    #[default]
+    Thumbnails,
+    List,
+}
+
+/// The panel slot's state: which panel the strip opened, if any, and which panel is pinned.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LeftState {
@@ -101,11 +110,30 @@ pub struct LeftState {
     pub collapsed: bool,
     /// The width of each tab, in [`LeftTab::index`] order.
     pub width_per_tab: [f32; 3],
+    /// The one pinned panel (UI rev 3, "Panels: pin or let it close"): it docks and the drawing
+    /// moves over for it. Any other panel floats over the drawing and closes when drawing starts.
+    /// Pinning another unpins this one. Book starts pinned.
+    pub pinned: Option<LeftTab>,
+    /// Book's thumbnails or list.
+    pub book_view: BookView,
 }
 
 impl Default for LeftState {
     fn default() -> Self {
-        LeftState { tab: LeftTab::Pages, collapsed: true, width_per_tab: LeftTab::ALL.map(super::layout::default_width) }
+        LeftState {
+            tab: LeftTab::Pages,
+            collapsed: true,
+            width_per_tab: LeftTab::ALL.map(super::layout::default_width),
+            pinned: Some(LeftTab::Pages),
+            book_view: BookView::Thumbnails,
+        }
+    }
+}
+
+impl LeftState {
+    /// The open panel floats over the drawing (it is not the pinned one).
+    pub fn floats(&self) -> bool {
+        !self.collapsed && self.pinned != Some(self.tab)
     }
 }
 
