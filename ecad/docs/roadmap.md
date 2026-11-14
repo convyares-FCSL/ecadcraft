@@ -5,14 +5,18 @@ and [`discussions/roadmap-review-2026-11.md`](discussions/roadmap-review-2026-11
 history and the reasoning. Near releases are firm; later ones are headlines and will change as we
 learn.
 
-**How we work.** Each feature is a brief with a design, built on its own branch and merged into
-`dev` after one review and one fix round. A release is a QA gate from `dev` to `main`: the full
-suite, the slow tests, the full bench and an owner trial. Every visible change is checked side by
+**How we work.** Each feature has a design and its own long-lived `feature/<name>` branch; its
+briefs are steps on that branch, not separate PRs. The whole feature reaches `dev` by one PR after
+one review and one fix round. A release is a QA gate from `dev` to `main`: the full suite, the slow
+tests, the full bench and an owner trial. `dev` carries the next version with `-dev` (now
+`0.3.0-dev`); the gate drops the suffix and the `ecad-v…` tag follows. Every visible change is checked side by
 side against the UI design boards.
 
 ## Released
 
 ### v0.2.0, 14 November 2026
+
+Tagged `ecad-v0.2.0` on `main`. That build still reports `0.1.0-dev`; versions follow the tag from 0.3.0.
 
 M1 and UI rev 3:
 
@@ -39,8 +43,6 @@ arrives in 0.4.0.
   The project keeps one list of functions and locations, with rename and merge.
 - **Performance.** The BOM column change, strip build and PLC rack drop under their targets.
 - **CI.** The full suite runs in parallel (nextest and sharded slow tests).
-- **A faster dev harness** in the style of SolidCraft's testing, started now because it speeds up
-  everything after it.
 
 ### 0.2.2: pages, title blocks, PLC signals, ratings
 

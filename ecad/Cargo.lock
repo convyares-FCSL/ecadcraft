@@ -1337,7 +1337,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "ecad-bench"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
  "ecad-cadcraft",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-cadcraft"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
  "cadcraft-io",
@@ -1369,7 +1369,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-cli"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "ecad-file",
  "ecad-model",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-file"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "ecad-model",
  "ecad-store",
@@ -1394,7 +1394,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-inspect"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "ecad-model",
  "serde",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-inspector"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "ecad-file",
  "ecad-model",
@@ -1416,7 +1416,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-mcp"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
  "cadcraft-mcp",
@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-model"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "ecad-model",
  "serde",
@@ -1438,7 +1438,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-store"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "redb",
  "same-file",
@@ -1446,11 +1446,11 @@ dependencies = [
 
 [[package]]
 name = "ecad-tokens"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 
 [[package]]
 name = "ecad-trial"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
  "cadcraft-mcp",
@@ -1474,7 +1474,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-ui"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "ecad-tokens",
  "egui",
@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "ecad-xtask"
-version = "0.1.0-dev"
+version = "0.3.0-dev"
 dependencies = [
  "serde_json",
 ]

@@ -171,7 +171,8 @@ cargo xtask patches               # only when files outside ecad/ changed
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items
   document `# Semantics`, `# Errors`, `# Example` where useful; contract tests are table-driven in
   `tests/all/<area>_contracts.rs`.
-- Versions: product `0.1.0-dev`, release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format
+- Versions: product `0.3.0-dev` (`dev` carries the next release with `-dev`; the QA gate drops
+  the suffix and the tag follows), release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format
   versions independent of the product version.
 
 ## Working home and platforms (owner decision, 2026-10-31)
