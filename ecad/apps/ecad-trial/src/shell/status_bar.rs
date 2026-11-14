@@ -7,7 +7,8 @@
 //!   `« ‹` and `› »`, a divider either side; the groups before and the open group's pages left of
 //!   it, the groups after (folded to a folder, a count and a ›) and + right of it. A page button's
 //!   right-click opens the page wheel, as a page row in Book does.
-//! - The view: standard · sheet size · sheet colour, then Fit, zoom out, zoom %, zoom in.
+//! - The view: standard (its name, brief 050a; opens Settings ▸ Standards) · sheet size · sheet
+//!   colour, then Fit, zoom out, zoom %, zoom in.
 //!
 //! In Project, Library and Publish the well and the view groups are hidden; the status stays.
 //!
@@ -287,7 +288,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
         crate::canvas::Sheet::Paper => PAPER,
         crate::canvas::Sheet::Dark => DARK,
     };
-    let std_w = bar::text_width(ui, "IEC", ui_type::SMALL) + 2.0 * space::S;
+    // Brief 050a: the standard's name (IEC when built in); its label is `Standard: <name>`.
+    let standard = t.standard_words();
+    let std_text = standard.trim_start_matches("Standard: ").trim_end_matches(" (built in)").to_string();
+    let std_w = bar::text_width(ui, &std_text, ui_type::SMALL) + 2.0 * space::S;
     let size_text = if t.project_open() { t.shell.well.sheet.clone() } else { "–".to_string() };
     let size_w = bar::text_width(ui, &size_text, ui_type::SMALL) + 2.0 * space::S;
     let col_w = 12.0 + space::XS + bar::text_width(ui, sheet_word, ui_type::SMALL) + space::XS + 10.0 + 2.0 * space::S;
@@ -296,8 +300,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     bar::pill(ui, vp);
     let mut x = vp.left() + space::XS;
     let std_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(std_w, BTN));
-    let standards = bar::hit(ui, std_r, STANDARD, false, false, true).on_hover_text("Settings ▸ Standards").clicked();
-    ui.painter().text(std_r.center(), egui::Align2::CENTER_CENTER, "IEC", bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
+    let standards = bar::hit(ui, std_r, &standard, false, false, true).on_hover_text("Settings ▸ Standards").clicked();
+    ui.painter().text(std_r.center(), egui::Align2::CENTER_CENTER, &std_text, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
     x = std_r.right();
     let size_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(size_w, BTN));
     let sr = ui.interact(size_r, egui::Id::unique(SHEET_SIZE), egui::Sense::hover());
@@ -601,6 +605,16 @@ fn clip(ui: &egui::Ui, text: &str, room: f32) -> String {
 }
 
 impl Trial {
+    /// `Standard: <name>` (brief 050a), or [`STANDARD`] with IEC (built in) or no project. One
+    /// field read, no copy of the project.
+    pub fn standard_words(&mut self) -> String {
+        let name = self
+            .project
+            .clone()
+            .and_then(|p| p.read(&mut self.cad.session, |p, _| p.ledger.document().standard.as_ref().map(|s| s.header.name.clone())).ok().flatten());
+        name.map_or_else(|| STANDARD.to_string(), |n| format!("Standard: {n}"))
+    }
+
     /// "Saved", "Unsaved changes", "Read-only", or "No project".
     pub fn save_state(&mut self) -> String {
         let state = match self.status() {

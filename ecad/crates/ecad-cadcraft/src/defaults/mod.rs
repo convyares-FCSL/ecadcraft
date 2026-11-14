@@ -17,9 +17,11 @@
 //!
 //! Narrowest level first, only the levels the entry allows: object (a symbol's
 //! `text.<rep>.<rest>` key on its component, then the component's or conductor's own `key`) →
-//! page → project (the project property `key`, or [`ProjectSource::Settings`]) → standard
-//! (reserved: no source yet) → the built-in. A stored value that does not parse or is out of
-//! range counts as absent, so a hostile file never gives a value outside the entry's range.
+//! page → project (the project property `key`, or [`ProjectSource::Settings`]) → standard (the
+//! project's standard's values, brief 050a) → the built-in. A stored value that does not parse or
+//! is out of range counts as absent, so a hostile file never gives a value outside the entry's
+//! range. A style choice ([`Kind::Style`]) also counts as absent when no style of that ID exists
+//! in its catalogue.
 
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
@@ -43,6 +45,7 @@ pub const AREAS: &[&str] = &[
     "connector",
     "strippage",
     "bom",
+    "location",
     "continuation",
     "plc",
 ];
@@ -53,6 +56,7 @@ pub mod continuations;
 pub mod plc;
 pub mod print;
 pub mod strip_pages;
+pub mod styles;
 pub mod symbols;
 pub mod terminals;
 pub mod text;
@@ -94,6 +98,9 @@ pub enum Kind {
     /// Text of 1 to `max_chars` characters, no control characters, that `parse` accepts (a
     /// declared parser, e.g. a tag prefix or a revision pattern).
     Parsed { max_chars: usize, parse: fn(&str) -> bool },
+    /// A style of this catalogue (brief 050a, design 050 §2.4): its ID, a built-in word or
+    /// `#<32 hex>`. A stored ID naming no style of the catalogue counts as absent.
+    Style(&'static str),
 }
 
 /// A value of an entry: its built-in, or a stored value that parsed.
@@ -111,7 +118,7 @@ pub enum Value<'a> {
 /// A level that may override an entry's built-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
-    /// A named drawing standard. Reserved: no source until the Standards brief.
+    /// The project's standard (brief 050a): its values, `Document.standard.values`.
     Standard,
     Project,
     Page,
@@ -258,32 +265,40 @@ impl Entry {
     /// Parse a stored value for this entry. Anything that does not parse, is not finite, is out of
     /// range, is an unknown word, is empty or too long, or holds a control character is `None`.
     pub fn parse<'a>(&self, stored: &'a str) -> Option<Value<'a>> {
-        let s = stored.trim();
-        match self.kind {
-            Kind::Length { min, max } => number_in(s, min, max).map(Value::Length),
-            Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
-            Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
-            Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
-            Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
-        }
+        parse_value(self.kind, stored)
+    }
+
+    /// [`Entry::parse`], and for a style choice only an ID that names a style of its catalogue in
+    /// `doc` (built in, the standard's or the project's).
+    pub fn parse_in<'a>(&self, doc: &Document, stored: &'a str) -> Option<Value<'a>> {
+        parse_value_in(doc, self.kind, stored)
     }
 
     /// Whether `value` is valid for this entry's kind (the check the registry tests run on every
     /// built-in).
     pub fn accepts(&self, value: &Value<'_>) -> bool {
-        match (self.kind, value) {
-            (Kind::Length { min, max }, Value::Length(x)) | (Kind::Number { min, max }, Value::Number(x)) => x.is_finite() && (min..=max).contains(x),
-            (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
-            (Kind::Text { .. } | Kind::Parsed { .. }, Value::Text(t)) => self.parse(t) == Some(Value::Text(t)),
-            _ => false,
-        }
+        accepts(self.kind, value)
     }
 
     /// Whether `level` may override this entry.
     pub fn allows(&self, level: Level) -> bool {
         self.levels.contains(&level)
     }
+}
 
+/// Whether `value` is valid for `kind` (what [`Entry::accepts`] checks; style fields use it too).
+pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
+    {
+        match (kind, value) {
+            (Kind::Length { min, max }, Value::Length(x)) | (Kind::Number { min, max }, Value::Number(x)) => x.is_finite() && (min..=max).contains(x),
+            (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
+            (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
+            _ => false,
+        }
+    }
+}
+
+impl Entry {
     /// The word for this entry's kind in `defaults`: `length`, `number`, `word` or `text`.
     pub fn kind_word(&self) -> &'static str {
         match self.kind {
@@ -291,7 +306,32 @@ impl Entry {
             Kind::Number { .. } => "number",
             Kind::Choice(_) => "choice",
             Kind::Text { .. } | Kind::Parsed { .. } => "text",
+            Kind::Style(_) => "style",
         }
+    }
+}
+
+/// Parse a stored value of `kind` (what [`Entry::parse`] does; style fields use it too). Anything
+/// that does not parse, is not finite, is out of range, is an unknown word, is empty or too long,
+/// or holds a control character is `None`.
+pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
+    let s = stored.trim();
+    match kind {
+        Kind::Length { min, max } => number_in(s, min, max).map(Value::Length),
+        Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
+        Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
+        Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
+        Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
+        Kind::Style(_) => ecad_model::StyleRef::parse(s).is_some().then_some(Value::Text(s)),
+    }
+}
+
+/// [`parse_value`], and for [`Kind::Style`] only an ID naming a style of its catalogue in `doc`.
+pub fn parse_value_in<'a>(doc: &Document, kind: Kind, stored: &'a str) -> Option<Value<'a>> {
+    let v = parse_value(kind, stored)?;
+    match (kind, v) {
+        (Kind::Style(cat), Value::Text(t)) => ecad_model::StyleRef::parse(t).filter(|id| crate::styles::exists(doc, cat, id)).map(|_| v),
+        _ => Some(v),
     }
 }
 
@@ -326,6 +366,7 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         connectors::ENTRIES,
         strip_pages::ENTRIES,
         bom::ENTRIES,
+        styles::ENTRIES,
         symbols::BUILDER_ENTRIES,
         continuations::ENTRIES,
         plc::ENTRIES,
@@ -343,7 +384,7 @@ pub fn find(key: &str) -> Option<&'static Entry> {
 /// The value of `entry` at `at` (see the module docs). Never fails; allocates at most the symbol
 /// key string.
 pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> {
-    let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse(v.as_str()));
+    let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
     if entry.allows(Level::Object) {
         if let Some(c) = at.component.and_then(|c| doc.components.get(&c)) {
             if let Some(value) = at.rep.and_then(|rep| stored(&c.properties, &symbol_key(entry.key, rep))) {
@@ -371,21 +412,32 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
             return Resolved { value, from: Source::Project };
         }
     }
-    // Level::Standard: reserved, no source until the Standards brief.
+    if entry.allows(Level::Standard)
+        && let Some(value) = standard_value(doc, entry)
+    {
+        return Resolved { value, from: Source::Standard };
+    }
     Resolved { value: entry.builtin, from: Source::Builtin }
+}
+
+/// The standard's valid value of `entry`, if the project has a standard that sets one (brief
+/// 050a, design 050 §2.4).
+pub fn standard_value<'a>(doc: &'a Document, entry: &Entry) -> Option<Value<'a>> {
+    doc.standard.as_ref()?.values.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
 
 /// The chain of `entry` at `at`, broadest first (brief 042, screen e): the built-in, then each
 /// level that holds a value at `at` or that the entry allows (push-back 8), with the value it holds
 /// there, if any. The standard (reserved: IEC, built in) holds none of its own yet. The object
 /// level is the symbol's own value when `at` names a representation and it holds one, else the
-/// component's or conductor's. [`resolve`] uses the narrowest level that holds a valid value.
+/// component's or conductor's. [`resolve`] uses the narrowest level that holds a valid value. The
+/// standard's value is its own (brief 050a), when the project has a standard.
 /// Read only; allocates the list and at most one symbol key.
 pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Option<Value<'a>>)> {
-    let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse(v.as_str()));
+    let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
     let mut out = vec![(Source::Builtin, Some(entry.builtin))];
     if entry.allows(Level::Standard) {
-        out.push((Source::Standard, None));
+        out.push((Source::Standard, standard_value(doc, entry)));
     }
     let project = match entry.project {
         ProjectSource::Property => stored(&doc.properties, entry.key),
@@ -445,6 +497,13 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
             })
             .count();
     }
+    // A style choice (brief 050a): the users of the style the project resolves to.
+    if let Kind::Style(cat) = entry.kind
+        && let Some(id) = ecad_model::StyleRef::parse(&resolve(doc, entry, Scope::project()).text())
+    {
+        let c = crate::styles::users(doc, cat, &id);
+        return c.explicit + c.implicit;
+    }
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
         "devices" => doc.components.values().filter(|c| !own(&c.properties)).count(),
@@ -488,7 +547,7 @@ mod tests {
 
     #[test]
     fn hostile_stored_values_fall_through_to_the_next_level() {
-        let tag = &text::TAG_HEIGHT;
+        let tag = &text::WIRE_LABEL_HEIGHT;
         let font = &text::FONT;
         let show = &text::TAG_SHOW;
         let long = "x".repeat(10_000);
@@ -542,7 +601,7 @@ mod tests {
         // The project-only scope still sees only the project.
         assert_eq!(resolve(&doc, show, Scope::project()).from, Source::Project);
         // An entry that does not allow the page level ignores a page value.
-        let h = &text::TAG_HEIGHT;
+        let h = &text::RUN_ALIGN;
         doc.pages.get_mut(&page).map(|p| p.properties.insert(h.key.into(), "4".into()));
         assert_eq!(resolve(&doc, h, at).from, Source::Builtin);
     }

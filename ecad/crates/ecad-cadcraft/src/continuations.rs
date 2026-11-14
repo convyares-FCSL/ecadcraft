@@ -563,10 +563,19 @@ pub fn names_on(doc: &Document, idx: &RefIndex, page: PageId) -> BTreeSet<String
         .collect()
 }
 
-/// Whether a project key redraws every page with an arrow: this area's keys, and the reference
-/// and caption texts' styles and the project font.
+/// Whether a project key redraws every page with an arrow: this area's keys, the reference and
+/// caption texts' style choices (`text.reference.style`, `text.continuation_caption.style`) and
+/// the project font. A change inside those text styles is [`is_wide_style`].
 pub fn is_wide_key(key: &str) -> bool {
     key.starts_with("continuation.") || key.starts_with("text.reference.") || key.starts_with("text.continuation_caption.") || key == "text.font"
+}
+
+/// Brief 050a: whether a change of text style `id` redraws every page with an arrow: it is the
+/// style the reference or the caption text uses.
+pub fn is_wide_style(doc: &Document, catalogue: &str, id: &ecad_model::StyleRef) -> bool {
+    use crate::text_style::{TextKind, style_of};
+    let at = crate::defaults::Scope::project();
+    catalogue == "text" && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
 }
 
 // ---------------------------------------------------------------- captions (design 049 §3.1)

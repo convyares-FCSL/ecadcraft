@@ -248,6 +248,14 @@ pub struct WireRow {
     /// The colour as stored (IEC code or free text); the table writes it in the colour style.
     pub colour: Option<String>,
     pub potential: Option<String>,
+    /// Brief 050b: its wire category (ID and name), and whether its colour and cross-section are
+    /// its own (overriding the category's).
+    pub category: Option<(ecad_model::StyleRef, String)>,
+    pub colour_own: bool,
+    pub cross_section_own: bool,
+    /// Brief 050b (design 050 §5.6): the category's BOM part (part number, maker, description,
+    /// allowance in metres per wire), when the category has a part number.
+    pub part: Option<(String, Option<String>, Option<String>, f64)>,
     pub cable: String,
     /// Where its first route's midpoint is; the table writes it in the reference style.
     pub page: Option<ecad_model::derive::Place>,
@@ -344,7 +352,19 @@ pub struct BomRow {
 impl BomRow {
     /// The Qty cell as the window and the BOM page show it: `4`, `5.6 m`.
     pub fn qty_text(&self) -> String {
-        if self.metres { format!("{} m", self.qty) } else { self.qty.to_string() }
+        if self.no_qty() {
+            String::new()
+        } else if self.metres {
+            format!("{} m", self.qty)
+        } else {
+            self.qty.to_string()
+        }
+    }
+
+    /// Brief 050b (design 050 §5.6): a wire row whose category has no allowance has no Qty (an
+    /// empty cell, never "0 m"); its note gives the count of wires.
+    pub fn no_qty(&self) -> bool {
+        self.metres && self.qty.0 == 0 && self.tags.is_empty() && self.devices.is_empty()
     }
 
     /// The Description as shown: a nested line indented with `\u{21b3}` and its kit.
@@ -426,6 +446,9 @@ pub struct Scope {
     connector_keys: BTreeSet<String>,
     /// Brief 047: a `bom.*` report setting changed (no row work: the view is re-read).
     bom_view: bool,
+    /// Brief 050b: the project's or standard's wire category choice, or a category it resolves
+    /// to, changed: every wire row.
+    all_wires: bool,
 }
 
 impl Scope {
@@ -443,6 +466,7 @@ impl Scope {
             && self.strip_keys.is_empty()
             && self.connector_keys.is_empty()
             && !self.bom_view
+            && !self.all_wires
     }
 
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
@@ -504,7 +528,12 @@ impl Scope {
                         self.route_pages.insert(*p);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+                // Brief 050a: a standard's value of a registry key reaches the same views.
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                    // Brief 050b: the project's or standard's wire category reaches every wire row.
+                    if key == ecad_model::wiring::WIRE_CATEGORY {
+                        self.all_wires = true;
+                    }
                     if key == LOCATION_KEY {
                         self.project_location = true;
                     }
@@ -521,6 +550,29 @@ impl Scope {
                         self.bom_view = true;
                     }
                 }
+                // Brief 050b (design 050 §10): a wire category reaches the rows of the conductors
+                // resolving to it: its explicit users, the wires of the potentials it names (before
+                // and after), and every wire when it is the project's or standard's choice.
+                Op::SetStyle { catalogue, id, before, after, .. } if catalogue == "wire" => {
+                    for (_, o) in crate::styles::explicit_users(doc, "wire", id) {
+                        if let ObjectRef::Conductor(c) = o {
+                            self.conductors.insert(c);
+                        }
+                    }
+                    for r in [before, after].into_iter().flatten() {
+                        if let Some(pot) = r.fields.get("potential") {
+                            self.potentials.insert(pot.trim().to_lowercase());
+                        }
+                    }
+                    if let Some(r) = crate::styles::field_of(doc, "wire", id, "potential", None) {
+                        self.potentials.insert(r.text().trim().to_lowercase());
+                    }
+                    if crate::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, crate::defaults::Scope::project()) == *id {
+                        self.all_wires = true;
+                    }
+                }
+                // Other style records and the standard header change no report row.
+                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.devices.insert(terminal.component);
                     // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
@@ -775,6 +827,7 @@ impl Outputs {
                 (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
                     || key == crate::defaults::strip_pages::STYLE.key
             }
+            Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
             Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
             _ => false,
         })
@@ -880,6 +933,9 @@ impl Outputs {
         }
         for k in &scope.potentials {
             scope.conductors.extend(self.by_potential.get(k).into_iter().flatten().copied());
+        }
+        if scope.all_wires {
+            scope.conductors.extend(self.wires.keys().copied());
         }
         if scope.sheet {
             let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.properties.contains_key(ecad_model::sheet::SHEET_KEY));
@@ -1448,9 +1504,22 @@ impl Outputs {
         let conn = doc.connectivity();
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::wiring::net_potential(doc, n));
-        let stored = |k: &str| clean(cond.properties.get(k));
-        let cross_section = stored(ecad_model::wiring::CROSS_SECTION).or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour = stored(ecad_model::wiring::COLOUR).or_else(|| pot.as_ref().and_then(|p| p.colour.clone()));
+        // Brief 050b: the wire's category gives what the wire has none of its own.
+        let look = crate::styles::wire::wire_look(doc, w);
+        let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
+        let colour = look.colour.as_ref().map(|v| v.0.clone());
+        let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let category = look.category.clone().map(|id| {
+            let n = crate::styles::name(doc, "wire", &id);
+            (id, n)
+        });
+        let part = look.category.as_ref().and_then(|id| {
+            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).and_then(|r| crate::styles::wire::filled(&r));
+            let pn = f("part_number")?;
+            let allowance = crate::styles::field_of(doc, "wire", id, "allowance", None).map_or(0.0, |r| r.number());
+            Some((pn, f("maker"), f("description"), allowance))
+        });
         let cable = doc
             .cables_of(w)
             .into_iter()
@@ -1481,6 +1550,10 @@ impl Outputs {
                 cross_section,
                 colour,
                 potential,
+                category,
+                colour_own,
+                cross_section_own,
+                part,
                 cable,
                 page,
                 go: mid,
@@ -2139,8 +2212,62 @@ impl Outputs {
         self.bom_with(group, self.view.nested)
     }
 
+    /// Brief 050b (design 050 §5.6): one wire row per distinct (part number, colour,
+    /// cross-section) among wires whose category has a part number; Qty in metres, the wires ×
+    /// the category's allowance rounded up to 0.5 m (an estimate); with no allowance, no Qty.
+    pub fn wire_bom(&self) -> Vec<BomRow> {
+        let mut groups: BTreeMap<(String, String, String), (usize, f64, Option<String>, Option<String>)> = BTreeMap::new();
+        for w in self.wires.values() {
+            let Some((pn, maker, description, allowance)) = &w.part else { continue };
+            let key = (pn.clone(), w.colour.clone().unwrap_or_default(), w.cross_section.clone().unwrap_or_default());
+            let g = groups.entry(key).or_insert((0, *allowance, maker.clone(), description.clone()));
+            g.0 += 1;
+        }
+        groups
+            .into_iter()
+            .map(|((pn, colour, cs), (n, allowance, maker, description))| {
+                let metres = (n as f64 * allowance * 2.0).ceil() / 2.0;
+                let qty = if metres.is_finite() && metres > 0.0 { Qty((metres * 1000.0).round().min(u64::MAX as f64 / 2.0) as u64) } else { Qty(0) };
+                let what = [
+                    Some(description.unwrap_or_else(|| "Wire".into())),
+                    (!cs.is_empty()).then_some(cs),
+                    (!colour.is_empty()).then(|| ecad_model::wiring::colour_text(self.colour_style, &colour)),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" ");
+                let note = if qty.0 == 0 { format!("{n} wires, no allowance") } else { format!("{n} wires, estimate") };
+                BomRow {
+                    location: None,
+                    qty,
+                    metres: true,
+                    overflow: false,
+                    tags: Vec::new(),
+                    devices: Vec::new(),
+                    description: Some(format!("{what} ({note})")),
+                    maker,
+                    part_number: Some(pn),
+                    article_number: None,
+                    article_flag: None,
+                    entries: Vec::new(),
+                    item: true,
+                    line: None,
+                    kit: None,
+                    accessory: None,
+                }
+            })
+            .collect()
+    }
+
     /// The BOM rows in the flat or nested layout (nested is By location only).
     pub fn bom_with(&self, group: Group, nested: bool) -> Vec<BomRow> {
+        let mut rows = self.bom_rows_with(group, nested);
+        rows.extend(self.wire_bom());
+        rows
+    }
+
+    fn bom_rows_with(&self, group: Group, nested: bool) -> Vec<BomRow> {
         match group {
             Group::Location => {
                 let index = if nested { &self.nested } else { &self.by_location };
@@ -2286,7 +2413,13 @@ impl Outputs {
         for r in self.bom_with(group, nested) {
             let who = self.row_who(&r);
             let mut cells = vec![Cell::opt(&r.location, || format!("{who} has no location."))];
-            let qty = if csv { r.qty.to_string() } else { r.qty_text() };
+            let qty = if r.no_qty() {
+                String::new()
+            } else if csv {
+                r.qty.to_string()
+            } else {
+                r.qty_text()
+            };
             cells.push(if r.overflow { Cell { text: qty, flag: Some("The quantity is too large to add up.".into()) } } else { Cell::ok(qty) });
             if csv {
                 cells.push(Cell::ok(if r.metres { "m" } else { "pcs" }));
@@ -2333,7 +2466,19 @@ impl Outputs {
     /// The wire report as a table.
     pub fn wire_table(&self) -> Table {
         let mut t = Table {
-            headers: vec!["Wire number", "From", "From location", "To", "To location", "Cross-section", "Colour", "Potential", "Cable", "Page"],
+            headers: vec![
+                "Wire number",
+                "From",
+                "From location",
+                "To",
+                "To location",
+                "Cross-section",
+                "Colour",
+                "Potential",
+                "Category",
+                "Cable",
+                "Page",
+            ],
             rows: Vec::new(),
         };
         for r in self.wires() {
@@ -2349,11 +2494,13 @@ impl Outputs {
                 end_loc(&r.from),
                 Cell::opt(&r.to.text(style), || "Loose end.".into()),
                 end_loc(&r.to),
-                Cell::opt(&r.cross_section, || "No cross-section, and its potential gives none.".into()),
+                // Brief 050b (design 050 §5.6): the wire's own value or its category's.
+                Cell::opt(&r.cross_section, || "No cross-section, and its category gives none.".into()),
                 Cell::opt(&r.colour.as_deref().map(|c| ecad_model::wiring::colour_text(self.colour_style, c)), || {
-                    "No colour, and its potential gives none.".into()
+                    "No colour, and its category gives none.".into()
                 }),
                 Cell::ok(r.potential.clone().unwrap_or_default()),
+                Cell::ok(r.category.as_ref().map(|c| c.1.clone()).unwrap_or_default()),
                 Cell::ok(r.cable.clone()),
                 Cell::opt(&r.page.as_ref().map(|p| p.text(style)), || "The wire has no route.".into()),
             ]);

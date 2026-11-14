@@ -227,7 +227,7 @@ fn run_wirelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         let ids: Vec<Value> = o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect();
         report_result(
             &t,
-            &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "cable", "page"],
+            &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"],
             &ids,
             &pg,
             "wire",

@@ -82,6 +82,8 @@ pub struct Touched {
     pub folders: BTreeSet<FolderId>,
     /// Pages whose properties changed (only I21 depends on them).
     pub page_properties: BTreeSet<PageId>,
+    /// The standard or a style record changed (brief 050a): the style invariants are checked.
+    pub styles: bool,
 }
 
 impl Touched {
@@ -141,7 +143,7 @@ impl Touched {
                 ObjectRef::Page(id) => {
                     self.page_properties.insert(*id);
                 }
-                ObjectRef::Project => {}
+                ObjectRef::Project | ObjectRef::Standard => {}
             },
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                 self.definitions.insert(*id);
@@ -154,6 +156,7 @@ impl Touched {
             Op::ModifyFolder { id, .. } => {
                 self.folders.insert(*id);
             }
+            Op::SetStyle { .. } | Op::SetStandard { .. } => self.styles = true,
         }
     }
 }
@@ -201,6 +204,25 @@ impl Document {
         }
         for id in self.pages.keys() {
             self.check_page_folder(*id)?;
+        }
+        self.check_styles()?;
+        Ok(())
+    }
+
+    /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
+    /// standard-layer record exists without a standard (the op refuses that, so this holds by
+    /// construction). A dangling style reference is not a breach: it falls through.
+    fn check_styles(&self) -> Result<()> {
+        let layers = std::iter::once(&self.styles).chain(self.standard.as_ref().map(|s| &s.styles));
+        for cats in layers {
+            for (word, styles) in cats {
+                if !crate::style::is_word(word) {
+                    return bad(format!("style catalogue word {word:?} is not 1-32 characters of a-z, 0-9 and _"));
+                }
+                if styles.is_empty() {
+                    return bad(format!("style catalogue {word} is listed with no styles"));
+                }
+            }
         }
         Ok(())
     }
@@ -341,6 +363,9 @@ impl Document {
             if self.pages.contains_key(id) {
                 self.check_page_folder(*id)?;
             }
+        }
+        if touched.styles {
+            self.check_styles()?;
         }
         Ok(())
     }

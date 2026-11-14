@@ -91,6 +91,30 @@ pub(crate) fn colour_routes(
     ents.extend(dashes);
 }
 
+/// Brief 050b (design 050 §5.5): draw `page`'s wire routes in their category's line type and
+/// weight where these differ from the built-in (continuous, 0.25 mm), on screen and in print (a
+/// mono print keeps them: they are not colour). `item_handle` finds a route item's entity.
+pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], item_handle: impl Fn(ItemId) -> Option<Handle>) {
+    let looks = crate::styles::wire::WireLooks::new(doc);
+    let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
+    for (_, r) in doc.representations_on(page) {
+        let Subject::Conductor(c) = r.subject else { continue };
+        if r.form != Form::Drawn {
+            continue;
+        }
+        let look = looks.look(doc, c);
+        let weight = (look.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
+        if look.line_type == "continuous" && weight == crate::look::WIRE_WEIGHT {
+            continue;
+        }
+        let Some(e) = r.items.first().and_then(|i| item_handle(*i)).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
+        if look.line_type != "continuous" {
+            e.common.linetype = crate::styles::wire::linetype(look.line_type).into();
+        }
+        e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(weight);
+    }
+}
+
 /// The dash entities of a two-colour route (handles unset): the second colour's 2 mm on / 2 mm
 /// off lines on [`DASH_LAYER`], with the route entity's `common` otherwise (its lineweight).
 /// None for a one-colour route. Also what the page check expects ([`crate::verify`]).
@@ -174,6 +198,9 @@ pub struct WireLabel {
     /// Brief 032 fix round: its text width as the project's font draws it (lane T's
     /// `text_style::width_in`), which placement keeps clear.
     pub width: f64,
+    /// Brief 050a: the conductor's own wire label style (its `text.wire_label.style`), else the
+    /// project's.
+    pub own: Option<crate::text_style::OwnStyle>,
 }
 
 /// The vertices of a route path.
@@ -329,28 +356,62 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
     let conn = doc.connectivity();
     let mut routes_in: Vec<LabelCandidate> = Vec::new();
     let mut texts: Vec<(usize, ecad_model::wiring::Label)> = Vec::new();
+    // Brief 050b (design 050 §5.5): each wire's category gives its label's cross-section and
+    // colour and its label rule.
+    let looks = crate::styles::wire::WireLooks::new(doc);
+    let mut rules: Vec<String> = Vec::new();
     for (i, (rid, c, v)) in routes.iter().enumerate() {
         let Some((a, b)) = longest_segment(v) else { continue };
-        let Some(label) = ecad_model::wiring::label(doc, *c) else { continue };
+        let look = looks.look(doc, *c);
+        if look.label_rule == "none" {
+            continue;
+        }
+        let Some(label) = ecad_model::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0)) else { continue };
         let target = crate::text_style::TextTarget::conductor(*c, Some(page));
         if crate::text_style::text_shown(doc, target, crate::text_style::TextKind::WireLabel) == crate::text_style::Shown::Off {
             continue;
         }
         routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
         texts.push((i, label));
+        rules.push(look.label_rule);
     }
-    let chosen: Vec<(usize, ecad_model::wiring::Label)> =
-        labelled(&routes_in, label_rule(doc)).into_iter().filter_map(|k| texts.get(k).cloned()).collect();
+    // One pass per rule over the candidates that follow it (the project's rule for most).
+    let mut chosen_ix: Vec<usize> = Vec::new();
+    let project_rule = label_rule(doc);
+    for rule in rules.iter().collect::<std::collections::BTreeSet<_>>() {
+        let keep: Vec<usize> = (0..routes_in.len()).filter(|k| rules.get(*k) == Some(rule)).collect();
+        let subset: Vec<LabelCandidate> = keep.iter().filter_map(|k| routes_in.get(*k).cloned()).collect();
+        let r = match rule.as_str() {
+            ecad_model::wiring::LABEL_RULE_EACH => LabelRule::Each(label_min_length(doc)),
+            ecad_model::wiring::LABEL_RULE_NET => LabelRule::Net,
+            _ => project_rule,
+        };
+        chosen_ix.extend(labelled(&subset, r).into_iter().filter_map(|j| keep.get(j).copied()));
+    }
+    chosen_ix.sort_unstable();
+    let chosen: Vec<(usize, ecad_model::wiring::Label)> = chosen_ix.into_iter().filter_map(|k| texts.get(k).cloned()).collect();
     let mut placed: Vec<Bbox> = Vec::new();
     let mut out = Vec::new();
     for (i, label) in chosen {
         let Some((rid, c, v)) = routes.get(i) else { continue };
+        // Brief 050a: a conductor's own wire label style (height, weight, colour, font).
+        let own = doc.conductors.get(c).and_then(|x| {
+            let at = crate::defaults::Scope { conductor: Some(*c), ..crate::defaults::Scope::project() };
+            crate::text_style::own_style(doc, crate::text_style::TextKind::WireLabel, at, &x.properties)
+        });
+        let h = own.as_ref().map_or(h, |o| o.style.height);
         let Some((a, b)) = longest_segment(v) else { continue };
         let theta = reading_angle(a, b);
         if !theta.is_finite() {
             continue;
         }
-        let w = crate::text_style::width_in(&fonts, style, &label.text);
+        let w = match &own {
+            Some(o) => {
+                let f = o.family.as_ref().map_or_else(|| fonts.clone(), |fam| crate::text_style::Fonts::for_family(doc, fam.clone()));
+                crate::text_style::width_in(&f, o.style, &label.text)
+            }
+            None => crate::text_style::width_in(&fonts, style, &label.text),
+        };
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
         let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
         let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h).into_iter().filter(|p| p.is_finite()).map(|p| (p, text_box(p, theta, w, h))).collect();
@@ -378,6 +439,7 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
             error: label.error,
             provisional: label.provisional,
             width: w,
+            own,
         });
     }
     out
@@ -412,7 +474,14 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
             valign: VAlign::Bottom,
         }),
     };
-    look.apply(&mut e, crate::text_style::TextKind::WireLabel);
+    match &l.own {
+        Some(o) => look.apply_own(&mut e, crate::text_style::TextKind::WireLabel, o),
+        None => look.apply(&mut e, crate::text_style::TextKind::WireLabel),
+    }
+    // Brief 050a: an error or provisional label keeps its own colour over the style's.
+    if l.error || l.provisional {
+        e.common.color = color;
+    }
     e
 }
 
@@ -440,6 +509,7 @@ pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId,
         halign: HAlign::Left,
         valign: VAlign::Bottom,
         aci: None,
+        own: None,
     });
     Some(out)
 }
@@ -724,7 +794,9 @@ pub fn hover_lines(doc: &Document, w: ConductorId) -> Vec<String> {
     let mut lines = Vec::new();
     let conn = doc.connectivity();
     let Some(net) = conn.net_of_conductor(w).and_then(|id| conn.net(id)) else { return lines };
-    let Some(cond) = doc.conductors.get(&w) else { return lines };
+    if !doc.conductors.contains_key(&w) {
+        return lines;
+    }
     let number = ecad_model::wiring::net_number(doc, net).unwrap_or_else(|| "? (no number yet)".into());
     let fixed = if ecad_model::wiring::net_fixed(net) { " (fixed)" } else { "" };
     lines.push(format!("Wire number {number}{fixed}"));
@@ -733,20 +805,24 @@ pub fn hover_lines(doc: &Document, w: ConductorId) -> Vec<String> {
         let from = if pot.from_continuation { " (continuation)" } else { "" };
         lines.push(format!("Potential {p}{from}"));
     }
+    // Brief 050b: the wire's own values, else its category's (named).
+    let look = crate::styles::wire::wire_look(doc, w);
     let w = &doc.settings.wiring;
-    let shown = |key: &str, default: &Option<String>| {
+    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
-        match (cond.properties.get(key), default, &pot.name) {
-            (Some(v), _, _) => Some(text(v)),
-            (None, Some(d), Some(p)) => Some(format!("{} ({p})", text(d))),
-            _ => None,
+        match (v, &cat) {
+            (Some((v, crate::defaults::Source::Object)), _) => Some(text(v)),
+            (Some((v, _)), Some(n)) => Some(format!("{} ({n})", text(v))),
+            (Some((v, _)), None) => Some(text(v)),
+            (None, _) => None,
         }
     };
     let mut values = Vec::new();
-    if let Some(v) = shown(ecad_model::wiring::CROSS_SECTION, &pot.cross_section) {
+    if let Some(v) = shown(ecad_model::wiring::CROSS_SECTION, &look.cross_section) {
         values.push(format!("Cross-section {v}"));
     }
-    if let Some(v) = shown(ecad_model::wiring::COLOUR, &pot.colour) {
+    if let Some(v) = shown(ecad_model::wiring::COLOUR, &look.colour) {
         values.push(format!("Colour {v}"));
     }
     if !values.is_empty() {

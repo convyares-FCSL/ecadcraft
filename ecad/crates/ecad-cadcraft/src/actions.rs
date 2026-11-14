@@ -856,6 +856,13 @@ const fn search_only(
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("setdefault", "Settings ▸ Standards (U4c)"),
+    // Brief 050a: the standard header and the style detail on Settings ▸ Standards.
+    ("standard", "Settings ▸ Standards: the standard header"),
+    ("setstyle", "Settings ▸ Standards: a style's detail"),
+    ("deletestyle", "Settings ▸ Standards: a style's Delete…"),
+    ("promote", "Settings ▸ Standards: Promote to standard"),
+    ("styles", "a read; Settings ▸ Standards shows the catalogues"),
+    ("category", "the wire inspector's Category row (brief 050b)"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),
@@ -902,8 +909,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("pagetexts", "a read for agents"),
     ("defaults", "Settings ▸ Standards (U4c)"),
     ("xrefs", "a read for agents"),
-    ("plcracks", "a read; the PLC manager (2.8) draws it"),
-    ("iolist", "a read; Lists ▸ I/O shows it"),
+    ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
+    ("iolist", "a read; Lists ▸ PLC shows it"),
+    // Brief 051 (design 051 §3.6).
+    ("plcpage", "Lists ▸ PLC ▸ a tile's Make its page"),
     // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),

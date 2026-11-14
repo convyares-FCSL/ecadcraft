@@ -567,6 +567,12 @@ pub struct Document {
     /// Every folder once; siblings are ordered as they appear here.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub folder_order: Vec<FolderId>,
+    /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub standard: Option<crate::style::Standard>,
+    /// The project layer of style records (brief 050a, FP2).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub styles: crate::style::StyleCatalogues,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
@@ -596,6 +602,10 @@ struct DocumentData {
     folders: BTreeMap<FolderId, Folder>,
     #[serde(default)]
     folder_order: Vec<FolderId>,
+    #[serde(default)]
+    standard: Option<crate::style::Standard>,
+    #[serde(default)]
+    styles: crate::style::StyleCatalogues,
 }
 
 impl From<DocumentData> for Document {
@@ -616,6 +626,8 @@ impl From<DocumentData> for Document {
             properties,
             folders,
             folder_order,
+            standard,
+            styles,
         } = d;
         let mut doc = Document {
             pages,
@@ -633,6 +645,8 @@ impl From<DocumentData> for Document {
             properties,
             folders,
             folder_order,
+            standard,
+            styles,
             index: Index::default(),
             conn: crate::connectivity::Connectivity::default(),
         };
@@ -660,6 +674,8 @@ impl PartialEq for Document {
             properties,
             folders,
             folder_order,
+            standard,
+            styles,
             index: _,
             conn: _,
         } = self;
@@ -678,6 +694,8 @@ impl PartialEq for Document {
             && *properties == other.properties
             && *folders == other.folders
             && *folder_order == other.folder_order
+            && *standard == other.standard
+            && *styles == other.styles
     }
 }
 
@@ -832,6 +850,29 @@ impl Document {
     /// Folders whose parent is `folder`, in ID order (through the folder index).
     pub fn subfolders(&self, folder: FolderId) -> Vec<FolderId> {
         referrers(&self.index.folder_children, &folder).collect()
+    }
+
+    /// Objects whose own style choice `key` names the stored style ID `value` (brief 050a, the
+    /// style's explicit users), in order, through the index: no scan of the project.
+    pub fn style_users(&self, key: &str, value: &str) -> impl Iterator<Item = crate::op::ObjectRef> + '_ {
+        referrers(&self.index.style_users, &(value.trim().to_string(), key.to_string()))
+    }
+
+    /// Every style choice an object holds, through the index (brief 050a): (stored style ID,
+    /// choice key, object), by ID then key.
+    pub fn style_choices(&self) -> impl Iterator<Item = (&str, &str, crate::op::ObjectRef)> + '_ {
+        self.index.style_users.iter().flat_map(|((v, k), objs)| objs.keys().map(move |o| (v.as_str(), k.as_str(), *o)))
+    }
+
+    /// Every (stored style ID, choice key) with at least one explicit user, and its users, from
+    /// `value` on (brief 050a), through the index.
+    pub fn style_users_of(&self, value: &str) -> impl Iterator<Item = (&str, crate::op::ObjectRef)> + '_ {
+        let v = value.trim().to_string();
+        self.index
+            .style_users
+            .range((v.clone(), String::new())..)
+            .take_while(move |((sv, _), _)| *sv == v)
+            .flat_map(|((_, k), objs)| objs.keys().map(move |o| (k.as_str(), *o)))
     }
 
     /// Cables `conductor` is a member of, in ID order.

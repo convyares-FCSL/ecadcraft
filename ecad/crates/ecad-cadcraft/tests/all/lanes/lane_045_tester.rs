@@ -156,7 +156,14 @@ pub(crate) fn page_texts(h: &mut H, page: PageId) -> Vec<Value> {
 }
 
 pub(crate) fn text_values(h: &mut H, page: PageId) -> Vec<String> {
-    page_texts(h, page).iter().map(|r| s(&r["value"])).collect()
+    let mut v: Vec<String> = page_texts(h, page).iter().map(|r| s(&r["value"])).collect();
+    // Brief 051 (design 051 §2.6): a framed card's tag and caption are in its frame's name block.
+    let d = h.doc();
+    v.extend(ecad_cadcraft::plc::look::parts_on_page(&d, page).into_iter().filter_map(|p| match p.shape {
+        ecad_cadcraft::xref::Shape::Text { value, .. } => Some(value),
+        ecad_cadcraft::xref::Shape::Line(..) => None,
+    }));
+    v
 }
 
 /// The text row whose value is `v`.
@@ -256,8 +263,9 @@ pub(crate) fn drops(h: &mut H, xs: &[f64]) {
 
 // ------------------------------------------------------------------------------- fixture P
 
-pub(crate) const IN_XS: [f64; 8] = [100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0];
-pub(crate) const OUT_XS: [f64; 6] = [100.0, 110.0, 120.0, 130.0, 140.0, 150.0];
+// Brief 051 (design 051 §2.2, FP3): the pack's 20 mm pitch; a fence across closer wires is refused.
+pub(crate) const IN_XS: [f64; 8] = [100.0, 120.0, 140.0, 160.0, 180.0, 200.0, 220.0, 240.0];
+pub(crate) const OUT_XS: [f64; 6] = [100.0, 120.0, 140.0, 160.0, 180.0, 200.0];
 
 /// Fixture P (design §13), simplified. Page 1 "PLC CPU": `plccpu` `-A01` at (100, 200). Page 2
 /// "Inputs": eight drops 10 mm apart (x 100…170, y 250→150) through a terminal strip `-X01` at
@@ -282,12 +290,12 @@ pub(crate) fn fixture_p(seed: u64) -> P {
     let inputs: PageId = id(&h.run("newpage", json!({"title": "Inputs"})).unwrap(), "page");
     h.activate(inputs);
     drops(&mut h, &IN_XS);
-    h.run("terminals", json!({"strip": null, "from": [90, 160], "to": [180, 160]})).unwrap();
+    h.run("terminals", json!({"strip": null, "from": [90, 160], "to": [260, 160]})).unwrap();
     let analogue: PageId = id(&h.run("newpage", json!({"title": "Analogue"})).unwrap(), "page");
     let outputs: PageId = id(&h.run("newpage", json!({"title": "Outputs"})).unwrap(), "page");
     h.activate(outputs);
     drops(&mut h, &OUT_XS);
-    h.run("terminals", json!({"strip": null, "from": [90, 160], "to": [160, 160]})).unwrap();
+    h.run("terminals", json!({"strip": null, "from": [90, 160], "to": [210, 160]})).unwrap();
     let iolink: PageId = id(&h.run("newpage", json!({"title": "IO-Link"})).unwrap(), "page");
     h.activate(cpu_page);
     P { h, cpu_page, inputs, analogue, outputs, iolink, rack }
@@ -324,5 +332,5 @@ pub(crate) fn with_cards(seed: u64) -> (P, BTreeMap<&'static str, ComponentId>) 
 /// The DI fence of check F: card `-A03` across the eight input drops at y 200.
 pub(crate) fn fence_inputs(p: &mut P, card: ComponentId) -> Value {
     p.h.activate(p.inputs);
-    p.h.run("plcchannels", json!({"card": card.hex(), "from": [90, 200], "to": [180, 200]})).unwrap_or_else(|e| panic!("plcchannels fence: {e}"))
+    p.h.run("plcchannels", json!({"card": card.hex(), "from": [90, 200], "to": [260, 200]})).unwrap_or_else(|e| panic!("plcchannels fence: {e}"))
 }

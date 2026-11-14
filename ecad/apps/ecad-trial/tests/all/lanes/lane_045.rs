@@ -16,7 +16,7 @@ fn sync(view: &mut IoView, s: &mut Session, p: &ProjectHandle) {
     p.configure(s, |p| {
         p.outputs();
         if let Some(o) = p.outputs.as_ref() {
-            view.sync(1, p.ledger.document(), o);
+            view.sync(1, p.ledger.document(), o, true);
         }
     })
     .unwrap();
@@ -31,7 +31,9 @@ fn lists_io_shows_every_channel_and_patches_only_the_touched_card() {
     let di = run(&mut s, "place", json!({"symbol": "plcdi", "at": [100, 400]}));
     run(&mut s, "place", json!({"symbol": "plcai", "at": [140, 400]}));
     let di = di["component"].as_str().unwrap().to_string();
+    // Brief 051: Lists ▸ PLC opens on the first card; every card here.
     let mut view = IoView::default();
+    view.all_cards = true;
     sync(&mut view, &mut s, &p);
     assert_eq!(view.source.keys().len(), 16 + 4);
     assert_eq!(view.rebuilds, 1);

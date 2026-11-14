@@ -406,6 +406,12 @@ PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.
 ",
             r.tier, r.variant, t.racks, t.cards, t.plcbuild_ms, t.slotmove_ms, t.work, t.chfence_ms, t.plcstyle_ms, t.iolist_ms, t.rows, t.iolistupd_ms
         ));
+        // Brief 051 (design 051 §9.4).
+        out.push_str(&format!(
+            "PLC look on {} {}: plcframe {:.2} ms (< 8), plcframe upd {:.2} ms (< 4), plcstrip {:.2} ms (< 10), plcrack {:.2} ms (< 30)
+",
+            r.tier, r.variant, t.plcframe_ms, t.plcframeupd_ms, t.plcstrip_ms, t.plcrack_ms
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -632,7 +638,8 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             row["plc"] = r.plc.as_ref().map_or(Value::Null, |t| {
                 json!({"plcbuild_ms": t.plcbuild_ms, "slotmove_ms": t.slotmove_ms, "racks": t.racks, "cards": t.cards, "work": t.work,
                     "chfence_ms": t.chfence_ms, "plcstyle_ms": t.plcstyle_ms,
-                    "iolist_ms": t.iolist_ms, "iolistupd_ms": t.iolistupd_ms, "rows": t.rows})
+                    "iolist_ms": t.iolist_ms, "iolistupd_ms": t.iolistupd_ms, "rows": t.rows,
+                    "plcframe_ms": t.plcframe_ms, "plcframeupd_ms": t.plcframeupd_ms, "plcstrip_ms": t.plcstrip_ms, "plcrack_ms": t.plcrack_ms})
             });
             // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
             row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {

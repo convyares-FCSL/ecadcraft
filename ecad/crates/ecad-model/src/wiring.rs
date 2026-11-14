@@ -84,9 +84,22 @@ pub struct PotentialDef {
     /// `false`: every net of this potential is numbered with the prefix alone, shared and exempt
     /// from the duplicate check (`PE`).
     pub numbered: bool,
-    pub colour: String,
-    pub cross_section: String,
+    /// Brief 050b (FP6): a colour an older build stored on the row. Never read for drawing or
+    /// labels (wire categories give colours now); kept so Checks can say it is ignored, and
+    /// cleared when the table is written again.
+    ///
+    /// Stored under its pre-050b name `colour`: a version 2 project chunk serialises this struct,
+    /// so an older chunk's value is read here and an unchanged table keeps its bytes.
+    #[serde(rename = "colour", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_colour: Option<String>,
+    /// Brief 050b (FP6): as [`PotentialDef::legacy_colour`], for a cross-section (stored as
+    /// `cross_section`).
+    #[serde(rename = "cross_section", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_cross_section: Option<String>,
 }
+
+/// The conductor property naming its wire category (brief 050b, FP5).
+pub const WIRE_CATEGORY: &str = "wire.category";
 
 /// How colours are written on labels (owner, 2026-11-09).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -195,21 +208,22 @@ pub const DEFAULT_DIGITS: u8 = 2;
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
-fn row(name: &str, prefix: &str, numbered: bool, colour: &str, cross_section: &str) -> PotentialDef {
-    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, colour: colour.into(), cross_section: cross_section.into() }
+fn row(name: &str, prefix: &str, numbered: bool) -> PotentialDef {
+    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, legacy_colour: None, legacy_cross_section: None }
 }
 
-/// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10).
+/// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10). Brief 050b
+/// (FP6): their colours and cross-sections are the built-in wire categories' now.
 pub fn default_potentials() -> Vec<PotentialDef> {
     vec![
-        row("L", "L-", true, "BN", "2.5"),
-        row("L1", "L1-", true, "BN", "2.5"),
-        row("L2", "L2-", true, "BK", "2.5"),
-        row("L3", "L3-", true, "GY", "2.5"),
-        row("N", "N-", true, "BU", "2.5"),
-        row("PE", "PE", false, "GNYE", "2.5"),
-        row("24V", "24V-", true, "BU", "0.5"),
-        row("0V", "0V-", true, "BU", "0.5"),
+        row("L", "L-", true),
+        row("L1", "L1-", true),
+        row("L2", "L2-", true),
+        row("L3", "L3-", true),
+        row("N", "N-", true),
+        row("PE", "PE", false),
+        row("24V", "24V-", true),
+        row("0V", "0V-", true),
     ]
 }
 
@@ -265,8 +279,6 @@ pub struct NetPotential {
     pub prefix: String,
     /// `false` for an unnumbered potential (`PE`).
     pub numbered: bool,
-    pub colour: Option<String>,
-    pub cross_section: Option<String>,
 }
 
 /// The potential of `net` (design 022 §6), first match wins: the potential its conductors carry
@@ -289,15 +301,7 @@ pub fn net_potential(doc: &Document, net: &NetData) -> NetPotential {
         (Some(n), None) => format!("{n}-"),
         (None, None) => w.unclassified_prefix.clone(),
     };
-    NetPotential {
-        numbered: row.is_none_or(|r| r.numbered),
-        colour: row.map(|r| r.colour.clone()).filter(|c| !c.is_empty()),
-        cross_section: row.map(|r| r.cross_section.clone()).filter(|c| !c.is_empty()),
-        name,
-        from_continuation,
-        mixed,
-        prefix,
-    }
+    NetPotential { numbered: row.is_none_or(|r| r.numbered), name, from_continuation, mixed, prefix }
 }
 
 /// The number a net shows (design 022 §5.2, §7): its one fixed number; with two different fixed
@@ -690,9 +694,17 @@ pub struct Label {
     pub provisional: bool,
 }
 
-/// The label of conductor `c`: its net's number, then its own cross-section and colour or its
-/// potential's defaults. A cable core shows its number only.
+/// The label of conductor `c`: its net's number, then its own cross-section and colour. A cable
+/// core shows its number only. Brief 050b: the app labels with [`label_with`] and the wire's
+/// category (its colour and cross-section when the conductor has none of its own).
 pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
+    let own = |k: &str| doc.conductors.get(&c).and_then(|x| x.properties.get(k)).cloned();
+    label_with(doc, c, own(CROSS_SECTION), own(COLOUR))
+}
+
+/// [`label`] with the cross-section and colour (a colour code, written in the project's colour
+/// style) given by the caller, which resolves them (brief 050b: the wire category's).
+pub fn label_with(doc: &Document, c: ConductorId, cross_section: Option<String>, colour: Option<String>) -> Option<Label> {
     let cond = doc.conductors.get(&c)?;
     let conn = doc.connectivity();
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id).map(|n| (id, n)));
@@ -708,12 +720,9 @@ pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
     };
     let mut words = vec![number.clone().unwrap_or(unnumbered)];
     if doc.cables_of(c).is_empty() {
-        let pot = net.map(|(_, n)| net_potential(doc, n));
-        let cs = cond.properties.get(CROSS_SECTION).cloned().or_else(|| pot.as_ref().and_then(|p| p.cross_section.clone()));
-        let colour =
-            cond.properties.get(COLOUR).cloned().or_else(|| pot.as_ref().and_then(|p| p.colour.clone())).map(|c| doc.settings.wiring.colour(&c));
-        words.extend(cs);
-        words.extend(colour);
+        let _ = cond;
+        words.extend(cross_section.filter(|v| !v.trim().is_empty()));
+        words.extend(colour.filter(|v| !v.trim().is_empty()).map(|c| doc.settings.wiring.colour(&c)));
     }
     let error = match (net, number.as_deref()) {
         (Some((id, n)), Some(num)) => number_error(doc, id, n, num),

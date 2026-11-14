@@ -867,6 +867,9 @@ pub struct DerivedText {
     pub valign: VAlign,
     /// A colour of its own (ACI), else ByLayer.
     pub aci: Option<u8>,
+    /// Brief 050a: the object's own text style (its `text.<kind>.style`), drawn instead of the
+    /// kind's project style; `None` for the kind's.
+    pub own: Option<crate::text_style::OwnStyle>,
 }
 
 /// The page box of a placed definition.
@@ -915,8 +918,13 @@ pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
         TextOf::Terminal(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
-        TextOf::Description | TextOf::Caption | TextOf::ChannelText { .. } => TextKind::Description,
-        TextOf::ChannelNo | TextOf::Address => TextKind::PointLabel,
+        TextOf::Description => TextKind::Description,
+        // Brief 051 (design 051 §5): the card's caption is a name-block line; channel functions
+        // and addresses have text styles of their own.
+        TextOf::Caption => TextKind::PartNumber,
+        TextOf::ChannelText { .. } => TextKind::ChannelText,
+        TextOf::Address => TextKind::Address,
+        TextOf::ChannelNo => TextKind::PointLabel,
         TextOf::PartNumber => TextKind::PartNumber,
         TextOf::Slot(_) => TextKind::Description,
     }
@@ -1048,6 +1056,13 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
     }
     let mut pending: Vec<Pending> = Vec::new();
     let mut fixed: Vec<crate::text_style::TextBox> = Vec::new();
+    // Brief 050a (design 050 §4.1): a device's own text style for a kind (its
+    // `text.<kind>.style`), else `None` (the kind's project style).
+    let own = |c: ComponentId, kind: TextKind| -> Option<crate::text_style::OwnStyle> {
+        let props = &doc.components.get(&c)?.properties;
+        crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), props)
+    };
+    let height_of = |c: ComponentId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
     for (rid, r) in doc.representations_on(page) {
         let Subject::Component(c) = r.subject else { continue };
         if r.form != Form::Symbol {
@@ -1068,7 +1083,8 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         // and visibility come from the style table (design 031 §7.1): restyled here, by kind.
         if let Some(texts) = crate::wires::continuation_texts(doc, c, rid, &pl) {
             out.extend(texts.into_iter().map(|mut t| {
-                t.height = text_style(doc, kind_of(t.of)).height;
+                t.height = height_of(c, kind_of(t.of), text_style(doc, kind_of(t.of)).height);
+                t.own = own(c, kind_of(t.of));
                 let shown = shown(kind_of(t.of));
                 PageText { text: t, shown, moved: false, overlaps: false }
             }));
@@ -1079,6 +1095,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         let label_style = text_style(doc, TextKind::PointLabel);
         let props = doc.components.get(&c).map(|x| &x.properties);
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
+            let height = height_of(c, kind_of(of), height);
             let (mut at, mut halign, mut valign, mut moved) = (at, halign, valign, false);
             if let TextOf::Terminal(t) = of
                 && let Some((p, h, v)) = props
@@ -1094,18 +1111,24 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
                 fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
-                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None },
+                text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None, own: own(c, kind_of(of)) },
                 shown: labels_shown,
                 moved,
                 overlaps: false,
             });
         }
+        // Brief 051 (design 051 §2.6): a framed PLC cell or body has its tag and caption in its
+        // frame's name block, not beside it.
+        let framed = crate::plc::look::framed(doc, c, rid, r);
         // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
-        if let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
+        if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
             out.push(text);
         }
         // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
         out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
+        if framed {
+            continue;
+        }
         // Brief 048 (design 048 §2.3): a symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {
@@ -1124,7 +1147,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
             None => tag_of(doc, c).map(str::to_string),
         };
         if let Some(t) = tag_text.map(|t| crate::locations::shown_tag(doc, c, r, &t, &mut boxes)) {
-            lines.push((TextOf::Tag, t, sizes.tag, shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
+            lines.push((TextOf::Tag, t, height_of(c, TextKind::Tag, sizes.tag), shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
         }
         for (of, key, kind) in
             [(TextOf::Description, "description", TextKind::Description), (TextOf::PartNumber, "part_number", TextKind::PartNumber)]
@@ -1135,7 +1158,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
                 None => props.and_then(|p| p.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             };
             if let Some(v) = value {
-                lines.push((of, v, text_style(doc, kind).height, shown(kind), None));
+                lines.push((of, v, height_of(c, kind, text_style(doc, kind).height), shown(kind), None));
             }
         }
         if lines.is_empty() {
@@ -1171,7 +1194,17 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         for (of, value, height, shown, aci) in p.lines {
             let at = place.line_at(top);
             out.push(PageText {
-                text: DerivedText { rep: p.block.rep, of, value, at, height, halign: place.halign, valign: VAlign::Top, aci },
+                text: DerivedText {
+                    rep: p.block.rep,
+                    of,
+                    value,
+                    at,
+                    height,
+                    halign: place.halign,
+                    valign: VAlign::Top,
+                    aci,
+                    own: own(p.block.component, kind_of(of)),
+                },
                 shown,
                 moved: place.moved,
                 overlaps: place.overlaps && shown,
@@ -1219,7 +1252,13 @@ fn slot_texts(
         };
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
-        let height = if of == TextOf::Tag { sizes.tag } else { style.height };
+        // Brief 050a: the device's own text style of this kind, font included.
+        let own = doc.components.get(&c).and_then(|x| crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
+        let height = match &own {
+            Some(o) => o.style.height,
+            None if of == TextOf::Tag => sizes.tag,
+            None => style.height,
+        };
         let on = if of == TextOf::Tag { shown(kind) } else { true };
         let at = pl.apply(slot.at);
         if !at.is_finite() {
@@ -1231,7 +1270,7 @@ fn slot_texts(
             fixed.push(crate::text_style::text_box(w, height, at, ha, va));
         }
         out.push(PageText {
-            text: DerivedText { rep: rid, of, value, at, height, halign: ha, valign: va, aci },
+            text: DerivedText { rep: rid, of, value, at, height, halign: ha, valign: va, aci, own },
             shown: on,
             moved: false,
             overlaps: false,
@@ -1252,7 +1291,11 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
 pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
-    look.apply(&mut e, kind_of(t.of));
+    match &t.own {
+        // Brief 050a: the device's own text style (its height is already the text's).
+        Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
+        None => look.apply(&mut e, kind_of(t.of)),
+    }
     // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
     if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
         x.rotation = std::f64::consts::FRAC_PI_2;
