@@ -62,9 +62,15 @@ fn c32(c: ecad_ui::tokens::Color) -> Color32 {
     ecad_ui::color(c)
 }
 
+/// A section's title (UI rev 3: a hairline, then the title in the panel's text).
 fn section(ui: &mut egui::Ui, title: &str) {
+    let s = ecad_ui::SHELL;
     ui.add_space(space::M);
-    ecad_ui::prim::read_value(ui, title);
+    let (r, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter().hline(r.x_range(), r.center().y, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line)));
+    ui.add_space(space::S);
+    ui.label(RichText::new(title).strong().color(c32(s.text)));
+    ui.add_space(space::XS);
 }
 
 /// One labelled text field; focused when the Missing list asked for it.
@@ -124,6 +130,13 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
     let s = ecad_ui::SHELL;
     let mut acts = Vec::new();
     let fixed = b.draft.fixed_drawing();
+    // The panel's title (rev 3): what is being made.
+    let title = match &b.draft.source {
+        Source::New => "New symbol".to_string(),
+        Source::Make { .. } | Source::Promote { .. } => "Make symbol from selection".to_string(),
+        Source::Edit { .. } => b.draft.shown_name().to_string(),
+    };
+    ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)).color(c32(s.text)));
     if matches!(b.draft.source, Source::Edit { builtin: true, .. }) {
         egui::Frame::new().fill(c32(s.accent_soft)).inner_margin(space::S).corner_radius(4.0).show(ui, |ui| {
             ui.label(RichText::new(BUILTIN_BANNER).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, BANNER));
@@ -133,14 +146,14 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
     if let Some(v) = &info.versions {
         ui.label(RichText::new(v).small().color(c32(s.text_3)));
     }
-    ui.add_space(space::S);
+    section(ui, "Symbol");
     field(ui, b, "Name", NAME, 0, draft::NEW_NAME, false);
     field(ui, b, "Key (what Place and agents call it)", KEY, 1, "for example float1", false);
     if let Some(m) = info.missing.iter().find(|m| m.item == "key" && !b.draft.key.trim().is_empty()) {
         ui.label(RichText::new(&m.text).small().color(c32(s.error)));
     }
 
-    section(ui, "DEFAULTS");
+    section(ui, "Defaults");
     let mut join = usize::from(b.draft.part);
     let r = ui.horizontal(|ui| ecad_ui::prim::segmented(ui, &mut join, &["A device of its own", "Part of a device"])).inner;
     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, JOIN));
@@ -161,7 +174,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         }
     }
 
-    section(ui, "CONNECTION POINTS");
+    section(ui, "Connection points");
     if b.draft.shape.points.is_empty() {
         ui.label(RichText::new("None yet. Connection point (C) adds one.").small().color(c32(s.text_3)));
     }
@@ -187,7 +200,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         r.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Row, true, &name));
     }
 
-    section(ui, "TEXT SLOTS");
+    section(ui, "Text slots");
     if b.draft.shape.slots.is_empty() {
         ui.label(RichText::new("None yet. Text slot (S) adds one.").small().color(c32(s.text_3)));
     }
@@ -214,7 +227,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
 
     // Make symbol's offers (screen j): one decision per row, nothing applied until accepted.
     if !b.draft.shape.offers.is_empty() {
-        section(ui, "OFFERED, NOT APPLIED YET");
+        section(ui, "Offered, not applied yet");
         let mut act: Option<(usize, bool)> = None;
         let next = b.draft.next_point_key();
         for (i, o) in b.draft.shape.offers.iter().enumerate() {
@@ -259,7 +272,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
     }
 
     // Before it can be placed (screen g): the rules' Missing list as a checklist.
-    section(ui, "BEFORE IT CAN BE PLACED");
+    section(ui, "Before it can be placed");
     let has = |item: &str| info.missing.iter().any(|m| m.item == item);
     let points = b.draft.shape.points.len();
     let mut go: Option<&'static str> = None;

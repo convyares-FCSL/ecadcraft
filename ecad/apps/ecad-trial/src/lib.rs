@@ -64,6 +64,7 @@ pub mod merge_dialog;
 pub mod outputs_ui;
 pub mod preview;
 pub mod project_panel;
+pub mod publish;
 pub mod release_ui;
 pub mod renumber_dialog;
 pub mod search;
@@ -388,6 +389,8 @@ pub struct Trial {
     pub print_book: Option<outputs_ui::PrintBook>,
     /// Brief 027: the Release dialog.
     pub release: Option<release_ui::ReleaseDialog>,
+    /// UI rev 3: the Publish workspace (board 4.01).
+    pub publish: publish::Publish,
 
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
     pub props: sheets_ui::Shared,
@@ -555,6 +558,7 @@ impl Trial {
             reports: None,
             print_book: None,
             release: None,
+            publish: publish::Publish::default(),
 
             props,
             props_seen: None,
@@ -1468,7 +1472,6 @@ impl Trial {
         self.sheet_windows(ui.ctx());
         self.host_windows();
         self.output_windows(ui.ctx());
-        self.publish_header(ui);
         self.merge_windows(ui.ctx());
         self.renumber_window(ui.ctx());
         self.issue_prompt_window(ui.ctx());
@@ -2534,7 +2537,12 @@ impl Trial {
     pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
         self.fill_project_props(popout);
         if self.project_props.is_some() {
-            self.open_settings(settings::Section::Project);
+            // UI rev 3: Project info, or Pages and sheets for the project's settings.
+            let section = match popout {
+                sheets_ui::Popout::Info => settings::Section::Project,
+                sheets_ui::Popout::Settings => settings::Section::Pages,
+            };
+            self.open_settings(section);
         }
     }
 

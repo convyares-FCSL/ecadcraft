@@ -286,18 +286,13 @@ impl Trial {
         self.enter_workspace();
     }
 
-    /// What the workspace shown needs open: Reports in Lists; Release and Print Book in Publish.
+    /// What the workspace shown needs open: Reports in Lists; Print Book's choices in Publish.
     fn enter_workspace(&mut self) {
         match self.shell.state.workspace {
             Workspace::Lists if self.project_open() => self.open_reports(),
-            Workspace::Publish if self.project_open() => {
-                if self.print_book.is_none() {
-                    self.open_print_book(None);
-                }
-                if self.release.is_none() {
-                    self.open_release(None);
-                }
-            }
+            // UI rev 3 (board 4.01): Publish shows Print Book's choices as its own view; Release
+            // opens from its button (and History), floating.
+            Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
             _ => {}
         }
     }
@@ -352,7 +347,12 @@ impl Trial {
         self.history_agent_sync();
         status_bar::show(self, ui, slots.status);
         left::show(self, ui, &slots);
-        right::show(self, ui, &slots);
+        // UI rev 3: Library and Publish draw their own right column (no inspector rail).
+        match self.shell.state.workspace {
+            Workspace::Library if !self.shell.state.text_panel => self.library_panel(ui, slots.right),
+            Workspace::Publish if !self.shell.state.text_panel => self.publish_right(ui, slots.right),
+            _ => right::show(self, ui, &slots),
+        }
         drawer::show(self, ui, &slots);
         if let Some(r) = slots.tool_strip {
             match self.library.builder.as_mut().filter(|_| self.shell.state.workspace == Workspace::Library) {
@@ -408,6 +408,9 @@ impl Trial {
         }
         if self.shell.state.workspace == Workspace::Library {
             self.library_view(ui, slots.main);
+        }
+        if self.shell.state.workspace == Workspace::Publish {
+            self.publish_main(ui, slots.main);
         }
     }
 
@@ -609,47 +612,16 @@ impl Trial {
         if w != Workspace::Library && std::mem::take(&mut self.shell.search_from_library) {
             self.search.open = false;
         }
-        let body = Rect::from_min_max(slots.main.min + egui::vec2(0.0, ecad_ui::tokens::size::PANEL_HEADER), slots.main.max);
+        // UI rev 3: Release floats over Publish; Print Book's dialog is never drawn, Publish's
+        // own view sets its choices ([`crate::publish`]).
         if let Some(d) = &mut self.release {
-            d.host = (w == Workspace::Publish && self.shell.publish == PublishTab::Release).then_some(body);
-            d.hidden = d.host.is_none();
+            d.host = None;
+            d.hidden = w != Workspace::Publish;
         }
         if let Some(d) = &mut self.print_book {
-            d.host = (w == Workspace::Publish && self.shell.publish == PublishTab::PrintBook).then_some(body);
-            d.hidden = d.host.is_none();
+            d.host = None;
+            d.hidden = true;
         }
-    }
-
-    /// Publish's header row (Release | Print Book), drawn after the hosted window so it sits
-    /// above the body.
-    pub(crate) fn publish_header(&mut self, ui: &mut egui::Ui) {
-        let Some(slots) = self.shell.slots else { return };
-        if self.shell.state.workspace != Workspace::Publish {
-            return;
-        }
-        let head = Rect::from_min_size(slots.main.min, egui::vec2(slots.main.width(), ecad_ui::tokens::size::PANEL_HEADER));
-        fill(ui, head, ecad_ui::SHELL.panel);
-        let mut i = match self.shell.publish {
-            PublishTab::Release => 0,
-            PublishTab::PrintBook => 1,
-        };
-        let project = self.project_open();
-        let no_release = project && i == 0 && self.release.is_none();
-        let mut open_release = false;
-        in_rect(ui, head.shrink(ecad_ui::tokens::space::XS), "ecad.shell.publish", |ui| {
-            ui.horizontal(|ui| {
-                ecad_ui::prim::segmented(ui, &mut i, &[PUBLISH_RELEASE, PUBLISH_PRINT]);
-                if !project {
-                    ecad_ui::prim::read_value(ui, "No project is open.");
-                } else if no_release {
-                    open_release = ui.add(ecad_ui::prim::Button::new(RELEASE_PENDING).small()).clicked();
-                }
-            });
-        });
-        if open_release {
-            self.open_release(None);
-        }
-        self.shell.publish = if i == 0 { PublishTab::Release } else { PublishTab::PrintBook };
     }
 
     /// The dots on pages changed while another page was shown (design §8.2, Pages): from the

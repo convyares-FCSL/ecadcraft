@@ -230,8 +230,12 @@ fn c32(c: ecad_ui::tokens::Color) -> Color32 {
 pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
     let shell = ecad_ui::SHELL;
     let mut acts = Vec::new();
+    // UI rev 3 (board 3.04): "Before saving", what the edit reaches, and the choice with Save at
+    // the right of the same line.
     ui.horizontal(|ui| {
-        ui.label(RichText::new(r.header()).strong()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEADER));
+        let title = if r.compare { "Compare" } else { "Before saving" };
+        ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)).color(c32(shell.text)));
+        ui.label(RichText::new(r.header()).color(c32(shell.text_2))).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEADER));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if r.compare {
                 let c = ui.add(ecad_ui::prim::Button::new("Close").kind(ecad_ui::prim::Kind::Quiet).small());
@@ -239,9 +243,12 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
                 if c.clicked() {
                     acts.push(Act::Close);
                 }
+            } else {
+                choice_row(ui, r, writable, &mut acts);
             }
         });
     });
+    ui.add_space(ecad_ui::tokens::space::S);
     if let Some(e) = &r.refusal {
         ui.label(RichText::new(e).color(c32(shell.error)).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, REFUSAL));
     }
@@ -256,12 +263,12 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
     let error = c32(shell.error);
     let choice = r.choice;
     let rows: Vec<(usize, Row)> = r.rows.iter().cloned().enumerate().collect();
-    let table_h = (ui.available_height() - if r.compare { 0.0 } else { 34.0 }).max(40.0);
+    let table_h = (ui.available_height() - if r.compare { 0.0 } else { 26.0 }).max(40.0);
     egui::ScrollArea::vertical().id_salt("drawer.symbol-review.scroll").max_height(table_h).auto_shrink([false, true]).show(ui, |ui| {
         egui::Grid::new("drawer.symbol-review.grid").num_columns(5).striped(true).spacing([16.0, 4.0]).show(ui, |ui| {
             ui.label("");
-            for h in ["Placed symbol", "Page", "What changes there", "Outcome"] {
-                ui.label(RichText::new(h).small().strong().color(weak));
+            for h in ["Device", "Page", "What changes there", "Outcome"] {
+                ui.label(RichText::new(h).small().color(weak));
             }
             ui.end_row();
             for (i, row) in rows {
@@ -283,7 +290,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
                     }
                 }
                 let shown = if row.description.is_empty() { row.tag.clone() } else { format!("{} {}", row.tag, row.description) };
-                let tag = ui.add(egui::Label::new(RichText::new(shown).small()).sense(egui::Sense::click()));
+                let tag = ui.add(egui::Label::new(RichText::new(shown).strong()).sense(egui::Sense::click()));
                 tag.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, &name));
                 if tag.clicked() {
                     acts.push(Act::GoTo(row.rep.clone()));
@@ -314,44 +321,53 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
         });
     });
     if !r.compare {
-        // The choice (design 048 §6.1), as screen k's pills, then Save and Back.
-        ui.horizontal(|ui| {
-            let n = r.rows.len();
-            let picked = r.rows.iter().filter(|x| x.checked && x.clash.is_none()).count();
-            for (c, label) in [
-                (Choice::All, format!("Update all {n}")),
-                (Choice::Selected, format!("Update selected, {picked}")),
-                (Choice::New, "Save as a new symbol".to_string()),
-            ] {
-                let off = c == Choice::All && r.clashes() > 0;
-                let resp = ui.add_enabled_ui(!off, |ui| ecad_ui::prim::Chip::new(&label).selected(r.choice == c).show(ui).response).inner;
-                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, !off, r.choice == c, format!("{BODY}.choice.{}", c.word())));
-                if resp.clicked() && !off {
-                    r.choice = c;
-                }
-            }
-            ui.add_space(24.0);
-            let why = if writable { r.save_refusal() } else { Some("Writes are off for this project.".to_string()) };
-            let mut save = ecad_ui::prim::Button::new("Save").kind(ecad_ui::prim::Kind::Primary).small();
-            if let Some(w) = &why {
-                save = save.disabled(w);
-            }
-            let s = ui.add(save);
-            s.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, why.is_none(), SAVE));
-            if s.clicked() && why.is_none() {
-                acts.push(Act::Save);
-            }
-            let back = ui.add(ecad_ui::prim::Button::new("Back to the drawing").kind(ecad_ui::prim::Kind::Quiet).small());
-            back.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, BACK));
-            if back.clicked() {
-                acts.push(Act::Back);
-            }
-            if r.choice == Choice::New {
-                ui.label(RichText::new("A new symbol needs a key of its own: change it in Details first.").small().color(c32(ecad_ui::SHELL.text_3)));
-            }
-        });
+        let note = if r.choice == Choice::New {
+            "A new symbol needs a key of its own: change it in Details first."
+        } else {
+            "A placed symbol that is not updated keeps the old version and says \"update available\" until you update it or keep it."
+        };
+        ui.label(RichText::new(note).small().color(c32(ecad_ui::SHELL.text_3)));
     }
     acts
+}
+
+/// The choice (design 048 §6.1) as one pill of three, then Back and Save, laid out right to left.
+fn choice_row(ui: &mut egui::Ui, r: &mut Review, writable: bool, acts: &mut Vec<Act>) {
+    let why = if writable { r.save_refusal() } else { Some("Writes are off for this project.".to_string()) };
+    let n = r.rows.len();
+    let picked = r.rows.iter().filter(|x| x.checked && x.clash.is_none()).count();
+    let words = match r.choice {
+        Choice::All => format!("Save and update {n}"),
+        Choice::Selected => format!("Save and update {picked}"),
+        Choice::New => "Save as a new symbol".to_string(),
+    };
+    let mut save = ecad_ui::prim::Button::new(&words).kind(ecad_ui::prim::Kind::Primary).small();
+    if let Some(w) = &why {
+        save = save.disabled(w);
+    }
+    let sv = ui.add(save);
+    sv.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, why.is_none(), SAVE));
+    if sv.clicked() && why.is_none() {
+        acts.push(Act::Save);
+    }
+    let back = ui.add(ecad_ui::prim::Button::new("Back to the drawing").kind(ecad_ui::prim::Kind::Quiet).small());
+    back.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, BACK));
+    if back.clicked() {
+        acts.push(Act::Back);
+    }
+    ui.add_space(ecad_ui::tokens::space::M);
+    for (c, label) in [
+        (Choice::New, "Save as a new symbol".to_string()),
+        (Choice::Selected, format!("Update selected, {picked}")),
+        (Choice::All, format!("Update all {n}")),
+    ] {
+        let off = c == Choice::All && r.clashes() > 0;
+        let resp = ui.add_enabled_ui(!off, |ui| ecad_ui::prim::Chip::new(&label).selected(r.choice == c).show(ui).response).inner;
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, !off, r.choice == c, format!("{BODY}.choice.{}", c.word())));
+        if resp.clicked() && !off {
+            r.choice = c;
+        }
+    }
 }
 
 #[cfg(test)]

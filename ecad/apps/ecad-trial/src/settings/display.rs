@@ -1,14 +1,34 @@
-//! Settings ▸ Display. The canvas lane (brief 040, U4a) adds the sheet's look here (paper or dark
-//! sheet) once it is in `dev`; until then the section says so (brief 042 §0).
+//! Settings ▸ Appearance (UI rev 3; was Display): the interface theme and the sheet colour, which
+//! the bottom bar's sheet colour menu sets today (Paper, Follow, Dark); the light interface comes
+//! with board 1.17. Under it, the developer switch ([`super::developer`]).
 
+use ecad_ui::tokens::space;
 use eframe::egui;
 
+use super::{card, later_row, row};
 use crate::Trial;
 
-/// What the section says until the canvas lane lands.
-pub const LATER: &str = "The page's look (paper or dark sheet) is chosen here once the new canvas is in.";
+/// What the section says about the sheet colour.
+pub const LATER: &str = "The sheet colour is chosen in the bottom bar (Paper or Dark). The light interface comes later.";
 
 /// Draw the section.
-pub fn show(_t: &mut Trial, ui: &mut egui::Ui) {
-    ecad_ui::prim::read_value(ui, LATER);
+pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
+    ui.set_max_width(760.0);
+    let sheet = match t.shell.state.sheet {
+        crate::canvas::Sheet::Paper => "Paper",
+        crate::canvas::Sheet::Dark => "Dark",
+    };
+    card(
+        ui,
+        "Appearance",
+        |_| {},
+        |ui| {
+            row(ui, "Interface", |ui| ui.label("Dark"));
+            row(ui, "Sheet colour", |ui| ui.label(sheet));
+            later_row(ui, "Light interface", "Comes with the light theme");
+            ecad_ui::prim::read_value(ui, LATER);
+        },
+    );
+    ui.add_space(space::L);
+    card(ui, "Developer", |_| {}, |ui| super::developer::show(t, ui));
 }

@@ -21,6 +21,8 @@ use eframe::egui::{self, RichText};
 use crate::Trial;
 use crate::lists::standards::{DefaultsSource, source_tone, source_word, value_text};
 use crate::lists::style_catalogues::{self as sc, CatalogueSource, DetailState};
+use crate::shell::bar;
+use ecad_ui::tokens::{space, ui_type};
 
 /// Accessible names.
 pub const STANDARD_LINE: &str = "ecad.standards.standard";
@@ -36,6 +38,11 @@ pub const RESET: &str = "ecad.standards.reset";
 pub const CONSEQUENCE: &str = "ecad.standards.consequence";
 pub const ERROR: &str = "ecad.standards.error";
 pub const IN_USE: &str = "In use";
+/// The catalogue list's width and the detail's (board 5.02).
+pub const CATALOGUE_LIST_W: f32 = 232.0;
+pub const DETAIL_W: f32 = 420.0;
+/// The standards cards (board 5.02): IEC in use; US and another standard come later.
+pub const CARD_IEC: &str = "ecad.standards.card.iec";
 /// Brief 050a (design 050 §9): the standard header and its parts.
 pub const HEADER: &str = "ecad.standards.header";
 pub const MAKE: &str = "ecad.standards.header.make";
@@ -279,38 +286,77 @@ fn level_words(s: Source) -> String {
 pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
     sync(t);
     let writable = t.project_open() && !t.header().read_only;
-    header_ui(t, ui, writable);
-    ui.horizontal(|ui| {
-        let mut tabs: Vec<(String, &str)> = vec![("Defaults".into(), CATALOGUE_DEFAULTS)];
-        for (w, name, _) in CATALOGUES {
-            if let Some(c) = ecad_cadcraft::styles::catalogue(w) {
-                tabs.push((c.plural.to_string(), name));
-            }
-        }
-        for (i, (label, name)) in tabs.into_iter().enumerate() {
-            let on = t.settings.standards.catalogue == i;
-            let r = ui.selectable_label(on, label);
-            r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, name));
-            // 042's names stay as aliases over the same tab.
-            let alias =
-                [(CATALOGUE_DEFAULTS, ALIAS_DEFAULTS), (CATALOGUE_STYLES, ALIAS_TEXT_STYLES)].iter().find(|(n, _)| *n == name).map(|(_, a)| *a);
-            let mut clicked = r.clicked();
-            if let Some(a) = alias {
-                let ar = ui.interact(r.rect, egui::Id::unique(("ecad.standards.alias", a)), egui::Sense::click());
-                ar.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, a));
-                clicked |= ar.clicked();
-            }
-            if clicked && !on {
-                t.settings.standards.catalogue = i;
-                t.settings.standards.style_focus = None;
-                t.settings.standards.style_detail = DetailState::default();
-            }
-        }
+    // UI rev 3 (board 5.02): the standards as cards across the top, the standard header's actions
+    // under them, then the catalogues as a list at the left, the table, and the detail at the
+    // right.
+    let full = ui.max_rect();
+    let pad = space::XL + space::S;
+    let top = egui::Rect::from_min_max(egui::pos2(full.left() + pad, full.top() + space::L), egui::pos2(full.right() - pad, full.bottom()));
+    let used = super::in_rect(ui, top, "ecad.standards.top", |ui| {
+        standard_cards(ui);
+        ui.add_space(space::S);
+        header_ui(t, ui, writable);
+        ui.add_space(space::M);
+        ui.min_rect().bottom()
     });
-    let avail = ui.available_rect_before_wrap();
-    let split = (avail.width() - 380.0).max(avail.width() * 0.55);
-    let left = egui::Rect::from_min_max(avail.min, egui::pos2(avail.left() + split, avail.bottom()));
-    let right = egui::Rect::from_min_max(egui::pos2(left.right() + ecad_ui::tokens::space::L, avail.top()), avail.max);
+    let s = ecad_ui::SHELL;
+    let line = egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line));
+    let below = egui::Rect::from_min_max(egui::pos2(full.left(), used), full.max);
+    ui.painter().hline(below.x_range(), below.top() + 0.5, line);
+    let list = egui::Rect::from_min_max(below.min, egui::pos2(below.left() + CATALOGUE_LIST_W, below.bottom()));
+    ui.painter().vline(list.right() - 0.5, list.y_range(), line);
+    let mut tabs: Vec<(String, &str)> = vec![("All defaults".into(), CATALOGUE_DEFAULTS)];
+    for (w, name, _) in CATALOGUES {
+        if let Some(c) = ecad_cadcraft::styles::catalogue(w) {
+            tabs.push((c.plural.to_string(), name));
+        }
+    }
+    let defaults_n = ecad_cadcraft::defaults::all().count();
+    let mut choose = None;
+    let mut y = list.top() + space::S;
+    for (i, (label, name)) in tabs.into_iter().enumerate() {
+        let r = egui::Rect::from_min_size(egui::pos2(list.left(), y), egui::vec2(list.width() - 1.0, 30.0));
+        y += 30.0;
+        let on = t.settings.standards.catalogue == i;
+        let resp = ui.interact(r, egui::Id::unique(("ecad.standards.catalogue", name)), egui::Sense::click());
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, name));
+        // 042's names stay as aliases over the same tab.
+        let alias = [(CATALOGUE_DEFAULTS, ALIAS_DEFAULTS), (CATALOGUE_STYLES, ALIAS_TEXT_STYLES)].iter().find(|(n, _)| *n == name).map(|(_, a)| *a);
+        let mut clicked = resp.clicked();
+        if let Some(a) = alias {
+            let ar = ui.interact(r, egui::Id::unique(("ecad.standards.alias", a)), egui::Sense::click());
+            ar.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, a));
+            clicked |= ar.clicked();
+        }
+        if on {
+            ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.accent_soft));
+        } else if resp.hovered() {
+            ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.hover));
+        }
+        bar::text_at(ui, r.left() + space::L, r.center().y, &label, ui_type::BODY, ecad_ui::color(if on { s.text } else { s.text_2 }));
+        if i == 0 {
+            ui.painter().text(
+                egui::pos2(r.right() - space::L, r.center().y),
+                egui::Align2::RIGHT_CENTER,
+                defaults_n.to_string(),
+                bar::font(ui, ui_type::SMALL),
+                ecad_ui::color(s.text_3),
+            );
+        }
+        if clicked && !on {
+            choose = Some(i);
+        }
+    }
+    if let Some(i) = choose {
+        t.settings.standards.catalogue = i;
+        t.settings.standards.style_focus = None;
+        t.settings.standards.style_detail = DetailState::default();
+    }
+    let rest = egui::Rect::from_min_max(egui::pos2(list.right(), below.top()), below.max);
+    let right = egui::Rect::from_min_max(egui::pos2(rest.right() - DETAIL_W, rest.top()), rest.max);
+    ui.painter().vline(right.left() + 0.5, right.y_range(), line);
+    let left = egui::Rect::from_min_max(rest.min, egui::pos2(right.left(), rest.bottom())).shrink2(egui::vec2(space::S, 0.0));
+    let right = right.shrink2(egui::vec2(space::L, space::L));
     let catalogue = t.settings.standards.catalogue;
     let events = super::in_rect(ui, left, "ecad.standards.table", |ui| {
         let v = &mut t.settings.standards;
@@ -339,6 +385,50 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
         return;
     }
     super::in_rect(ui, right, "ecad.standards.detail", |ui| detail_ui(t, ui, writable));
+}
+
+/// The standards as three cards (board 5.02): IEC, in use; US and another standard, which come
+/// with named standards (roadmap 1.13(a)).
+fn standard_cards(ui: &mut egui::Ui) {
+    let s = ecad_ui::SHELL;
+    let gap = space::L;
+    let w = ((ui.available_width() - 2.0 * gap) / 3.0).max(120.0);
+    let cards = [
+        ("IEC", "Tags -K01, +CAB1, =PUMP. Connection points -K01:A1. IEC 60617 symbols, IEC 60757 colour codes, A-series sheets."),
+        ("US", "Tags CR1, M1, TB1. NFPA 79 wire colours, NEMA and JIC symbols, AWG sizes, ANSI sheets. Comes later."),
+        ("Another standard", "Open a standard from an .ecadlib file, or save this project's values as your own house standard (Make a standard…)."),
+    ];
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = gap;
+        for (i, (title, body)) in cards.iter().enumerate() {
+            let on = i == 0;
+            let (r, resp) = ui.allocate_exact_size(egui::vec2(w, 84.0), egui::Sense::hover());
+            if on {
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, true, CARD_IEC));
+            } else {
+                resp.on_hover_text("Named standards come later");
+            }
+            let p = ui.painter();
+            let corner = ecad_ui::style::corner(8.0);
+            p.rect_filled(r, corner, ecad_ui::color(if on { s.accent_soft } else { s.panel }));
+            let edge = egui::Stroke::new(if on { 1.5 } else { 1.0 }, ecad_ui::color(if on { s.accent } else { s.line }));
+            p.rect_stroke(r, corner, edge, egui::StrokeKind::Inside);
+            let dot = egui::pos2(r.left() + 20.0, r.top() + 22.0);
+            p.circle_stroke(dot, 7.0, egui::Stroke::new(1.5, ecad_ui::color(if on { s.accent } else { s.text_3 })));
+            if on {
+                p.circle_filled(dot, 3.5, ecad_ui::color(s.accent));
+            }
+            let ink = ecad_ui::color(if on { s.text } else { s.text_2 });
+            p.text(egui::pos2(dot.x + 14.0, dot.y), egui::Align2::LEFT_CENTER, *title, egui::FontId::proportional(15.0), ink);
+            if on {
+                let tag = egui::Rect::from_min_size(egui::pos2(r.right() - 64.0, r.top() + 12.0), egui::vec2(52.0, 20.0));
+                p.rect_stroke(tag, ecad_ui::style::corner(4.0), egui::Stroke::new(1.0, ecad_ui::color(s.accent)), egui::StrokeKind::Inside);
+                p.text(tag.center(), egui::Align2::CENTER_CENTER, "in use", bar::font(ui, ui_type::SMALL), ecad_ui::color(s.accent_text));
+            }
+            let g = p.layout(body.to_string(), bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2), r.width() - 32.0);
+            p.with_clip_rect(r.shrink(2.0)).galley(egui::pos2(r.left() + 16.0, r.top() + 40.0), g, ecad_ui::color(s.text_2));
+        }
+    });
 }
 
 fn detail_ui(t: &mut Trial, ui: &mut egui::Ui, writable: bool) {

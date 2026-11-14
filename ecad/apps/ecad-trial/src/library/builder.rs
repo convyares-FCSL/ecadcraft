@@ -715,6 +715,15 @@ fn dashed_ring(p: &egui::Painter, c: Pos2, r: f32, stroke: Stroke) {
 }
 
 /// Draw the builder in `rect` and act on its input; what it asks of the window.
+/// The paper square the symbol is drawn on, centred in the canvas `rect` (boards 3.02–3.04).
+pub fn paper_rect(rect: Rect) -> Rect {
+    let side = (rect.width().min(rect.height()) - 2.0 * PAPER_MARGIN).max(160.0);
+    Rect::from_center_size(rect.center(), vec2(side, side))
+}
+
+/// The dark canvas round the paper square, px.
+pub const PAPER_MARGIN: f32 = 110.0;
+
 pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tokens::Sheet, writable: bool) -> Vec<Act> {
     let _ = writable;
     let mut acts = Vec::new();
@@ -723,7 +732,10 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
     }
     let p = ui.painter_at(rect);
     let shell = ecad_ui::SHELL;
-    p.rect_filled(rect, 0.0, c32(sheet.sheet));
+    // UI rev 3 (boards 3.02–3.04): the drawing area is a sheet of paper on the dark canvas.
+    p.rect_filled(rect, 0.0, c32(shell.bg));
+    let paper = paper_rect(rect);
+    p.rect_filled(paper, 0.0, c32(sheet.sheet));
     let resp = ui.interact(rect, egui::Id::unique(CANVAS), egui::Sense::click_and_drag());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Canvas, true, CANVAS));
 
@@ -755,7 +767,10 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
             for j in j0..=j1 {
                 let q = Pt::new(i as f64 * step, j as f64 * step);
                 let major = draft::on_point_grid(q);
-                p.circle_filled(b.to_screen(rect, q), if major { 1.25 } else { 0.6 }, grid);
+                let at = b.to_screen(rect, q);
+                if paper.contains(at) {
+                    p.circle_filled(at, if major { 1.25 } else { 0.6 }, grid);
+                }
             }
         }
     }
@@ -914,29 +929,64 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
         p.galley(q, galley, c32(shell.text));
     }
 
-    // Breadcrumb, Back, the empty state's hint.
-    let crumb = match &b.draft.source {
-        draft::Source::Edit { version, .. } => format!("Library ▸ {} v{version}", b.draft.shown_name()),
-        draft::Source::Make { page_number, .. } => format!("Library ▸ Make symbol from page {page_number}"),
-        draft::Source::Promote { tag, .. } => format!("Library ▸ Make symbol of {tag}"),
-        draft::Source::New => format!("Library ▸ {}", b.draft.shown_name()),
+    // The card at the top left (rev 3): what is being made, where from, and Back.
+    let (title, crumb) = match &b.draft.source {
+        draft::Source::Edit { version, builtin, .. } => (
+            format!("Editing {}", b.draft.shown_name()),
+            if *builtin {
+                "A built-in: your edit is saved as a project copy that remembers where it came from.".to_string()
+            } else {
+                format!("Library ▸ {} v{version}", b.draft.shown_name())
+            },
+        ),
+        draft::Source::Make { page_number, .. } => {
+            ("Make symbol from a selection".to_string(), format!("From page {page_number}. Nothing is applied until you save."))
+        }
+        draft::Source::Promote { tag, .. } => ("Make symbol".to_string(), format!("From the drawing of {tag}; its IDs and wires are kept.")),
+        draft::Source::New => ("New symbol".to_string(), format!("Library ▸ {}", b.draft.shown_name())),
     };
-    let head = Rect::from_min_size(rect.min + vec2(space::L, space::M), vec2(rect.width() - 2.0 * space::L, 24.0));
     let back = matches!(b.draft.source, draft::Source::Make { .. } | draft::Source::Promote { .. })
         || matches!(&b.draft.source, draft::Source::Edit { rep: Some(_), .. });
-    ui.scope_builder(egui::UiBuilder::new().max_rect(head), |ui| {
-        ui.horizontal(|ui| {
-            if back {
-                let r = ui.add(ecad_ui::prim::Button::new("Back").kind(ecad_ui::prim::Kind::Quiet).small());
-                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, BACK));
-                if r.clicked() {
-                    acts.push(Act::Back);
-                }
-            }
-            let r = ui.label(egui::RichText::new(&crumb).color(c32(shell.text_2)));
-            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, BREADCRUMB));
-        });
+    let card = Rect::from_min_size(rect.min + vec2(space::L, space::L), vec2(400.0_f32.min(rect.width() - 2.0 * space::L), 80.0));
+    let card_resp = ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
+        egui::Frame::new()
+            .fill(c32(shell.panel))
+            .stroke(Stroke::new(1.0, c32(shell.line)))
+            .corner_radius(8.0)
+            .inner_margin(egui::Margin::same(space::M as i8))
+            .show(ui, |ui| {
+                ui.set_width(card.width() - 2.0 * space::M);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(&title).font(FontId::proportional(15.0)).strong().color(c32(shell.text)));
+                    if back {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let r = ui.add(ecad_ui::prim::Button::new("Back to the page").kind(ecad_ui::prim::Kind::Quiet).small());
+                            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, BACK));
+                            if r.clicked() {
+                                acts.push(Act::Back);
+                            }
+                        });
+                    }
+                });
+                let r = ui.label(egui::RichText::new(&crumb).color(c32(shell.text_2)));
+                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, BREADCRUMB));
+            })
+            .response
+            .rect
     });
+    let head = Rect::from_min_size(pos2(card.left(), card_resp.inner.bottom() + space::XS), vec2(card.width(), 0.0));
+    // The grid's words at the top right.
+    let words = format!("Grid {GRID_MM} mm · drawn at print size, so 1 square is {GRID_MM} mm on paper");
+    let g = p.layout_no_wrap(words, FontId::proportional(12.0), c32(shell.text_2));
+    let pill = Rect::from_min_size(
+        pos2(rect.right() - space::L - g.size().x - 2.0 * space::M, rect.top() + space::L),
+        vec2(g.size().x + 2.0 * space::M, 28.0),
+    );
+    if pill.left() > card.right() + space::M {
+        p.rect_filled(pill, 6.0, c32(shell.panel));
+        p.rect_stroke(pill, 6.0, Stroke::new(1.0, c32(shell.line)), egui::StrokeKind::Inside);
+        p.galley(pos2(pill.left() + space::M, pill.center().y - g.size().y / 2.0), g, c32(shell.text_2));
+    }
     if b.tool == Tool::Slot {
         let chips = Rect::from_min_size(head.left_bottom() + vec2(0.0, space::XS), vec2(head.width(), 28.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(chips), |ui| {
@@ -1047,9 +1097,13 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
 
     // The intent line along the bottom.
     b.intent = b.intent_text();
-    let line = Rect::from_min_max(pos2(rect.left(), rect.bottom() - size::STATUS_BAR), rect.max);
-    p.rect_filled(line, 0.0, c32(shell.panel).gamma_multiply(0.9));
-    let r = p.text(line.left_center() + vec2(space::L, 0.0), Align2::LEFT_CENTER, &b.intent, FontId::proportional(12.0), c32(shell.text_2));
+    // Rev 3: a pill centred near the canvas's foot.
+    let g = p.layout_no_wrap(b.intent.clone(), FontId::proportional(13.0), c32(shell.text));
+    let w = (g.size().x + 2.0 * space::L).min(rect.width() - 2.0 * space::L);
+    let line = Rect::from_center_size(pos2(rect.center().x, rect.bottom() - space::L - 20.0), vec2(w, 40.0));
+    p.rect_filled(line, 8.0, c32(shell.panel));
+    p.rect_stroke(line, 8.0, Stroke::new(1.0, c32(shell.line)), egui::StrokeKind::Inside);
+    let r = p.text(line.left_center() + vec2(space::L, 0.0), Align2::LEFT_CENTER, &b.intent, FontId::proportional(13.0), c32(shell.text));
     ui.interact(r, egui::Id::unique(INTENT), egui::Sense::hover())
         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, b.intent.clone()));
     acts
@@ -1059,18 +1113,28 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
 pub fn strip(ui: &mut egui::Ui, rect: Rect, b: &mut Builder) {
     let shell = ecad_ui::SHELL;
     ui.painter().rect_filled(rect, 0.0, c32(shell.panel));
-    let x = rect.center().x - size::TOOL_BUTTON / 2.0;
+    ui.painter().vline(rect.right() - 0.5, rect.y_range(), Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(shell.line)));
+    // UI rev 3: 54 × 44 buttons, an 18 px icon over a 10 px label, as Draw's strip.
+    let x = rect.center().x - size::TOOL_BUTTON_W / 2.0;
     let mut y = rect.top() + space::S;
     let tools = [Tool::Select, b.draw_tool, Tool::Text, Tool::Point, Tool::Slot, Tool::Origin];
+    let words = ["Select", "Draw", "Text", "Point", "Slot", "Origin"];
     let mut over_flyout = false;
-    for (sb, tool) in STRIP.iter().zip(tools) {
-        let r = Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON, size::TOOL_BUTTON));
+    for (i, (sb, tool)) in STRIP.iter().zip(tools).enumerate() {
+        if i == 3 {
+            let d = y + space::XS;
+            ui.painter().hline((rect.left() + space::M)..=(rect.right() - space::M), d.round() + 0.5, Stroke::new(1.0, c32(shell.line_strong)));
+            y += 2.0 * space::S;
+        }
+        let r = Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON_W, size::TOOL_BUTTON));
         y += size::TOOL_BUTTON + space::XS;
         let on = if tool.is_draw() { b.tool.is_draw() } else { b.tool == tool };
-        let resp = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(r), |ui| ui.add(ecad_ui::prim::IconButton::new(tool.icon(), sb.tip).tool().selected(on)))
-            .inner;
-        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, sb.name));
+        let resp = strip_button(ui, r, tool.icon(), words.get(i).copied().unwrap_or(""), sb.name, on);
+        if tool.is_draw() {
+            let c = if on { egui::Color32::WHITE } else { c32(shell.text_3) };
+            let (cx, cy) = (r.right() - 3.0, r.bottom() - 3.0);
+            ui.painter().add(egui::Shape::convex_polygon(vec![pos2(cx, cy - 4.0), pos2(cx, cy), pos2(cx - 4.0, cy)], c, Stroke::NONE));
+        }
         let resp = resp.on_hover_text(if tool.is_draw() { format!("Draw (D): {}", tool.label()) } else { sb.tip.to_string() });
         if resp.clicked() {
             b.set_tool(tool);
@@ -1108,4 +1172,56 @@ pub fn strip(ui: &mut egui::Ui, rect: Rect, b: &mut Builder) {
     if !over_flyout {
         b.flyout = false;
     }
+    // The foot: Snap, Grid and Ortho, as Draw's. The builder always snaps to its grid, so they
+    // show as on and say so.
+    let foot = [("Snap", Icon::Snap), ("Grid", Icon::Grid), ("Ortho", Icon::Ortho)];
+    let mut y = rect.bottom() - space::S - foot.len() as f32 * (size::TOOL_BUTTON + space::XS) + space::XS;
+    ui.painter().hline((rect.left() + space::M)..=(rect.right() - space::M), (y - space::S).round() + 0.5, Stroke::new(1.0, c32(shell.line_strong)));
+    for (label, icon) in foot {
+        let r = Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON_W, size::TOOL_BUTTON));
+        y += size::TOOL_BUTTON + space::XS;
+        ui.painter().rect_filled(r, ecad_ui::style::corner(ecad_ui::tokens::radius::TOOL), c32(shell.accent_soft));
+        let ink = c32(shell.accent_text);
+        ecad_ui::icons::paint(
+            ui.painter(),
+            Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON)),
+            icon,
+            ink,
+        );
+        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, label, FontId::proportional(size::TOOL_LABEL), ink);
+        ui.interact(r, egui::Id::unique(("library.builder.foot", label)), egui::Sense::hover())
+            .on_hover_text(format!("{label}: the builder always draws on its {GRID_MM} mm grid"));
+    }
+}
+
+/// One builder strip button: the icon over its label, lit while its tool is on.
+fn strip_button(ui: &mut egui::Ui, r: Rect, icon: Icon, text: &str, name: &str, on: bool) -> egui::Response {
+    let s = ecad_ui::SHELL;
+    let resp = ui.interact(r, egui::Id::unique(("library.builder.strip", name)), egui::Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, name));
+    let fill = if on {
+        Some(s.accent)
+    } else if resp.hovered() {
+        Some(s.hover)
+    } else {
+        None
+    };
+    if let Some(f) = fill {
+        ui.painter().rect_filled(r, ecad_ui::style::corner(ecad_ui::tokens::radius::TOOL), c32(f));
+    }
+    let ink = if on {
+        egui::Color32::WHITE
+    } else if resp.hovered() {
+        c32(s.text)
+    } else {
+        c32(s.text_2)
+    };
+    ecad_ui::icons::paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON)),
+        icon,
+        ink,
+    );
+    ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, text, FontId::proportional(size::TOOL_LABEL), ink);
+    resp
 }

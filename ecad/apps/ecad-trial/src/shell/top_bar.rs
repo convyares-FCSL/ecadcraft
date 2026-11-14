@@ -70,6 +70,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let project = pill_rect(rect.left() + space::M, name_w + 2.0 * space::L + size::ICON);
     bar::pill(ui, project);
     let menu = bar::hit(ui, project.shrink(1.0), PROJECT_MENU, t.shell.settings_open, false, true);
+    if t.shell.settings_open {
+        let st = egui::Stroke::new(1.5, ecad_ui::color(s.accent));
+        ui.painter().rect_stroke(project, ecad_ui::style::corner(ecad_ui::tokens::radius::CHIP), st, egui::StrokeKind::Inside);
+    }
     bar::text_at(ui, project.left() + space::L, y, &name, ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
     let chevron = Rect::from_center_size(pos2(project.right() - space::M - size::ICON / 2.0 + 2.0, y), vec2(12.0, 12.0));
     ecad_ui::icons::paint(ui.painter(), chevron, Icon::ChevronDown, ecad_ui::color(s.text_2));
@@ -108,7 +112,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let mut x = switch.left() + space::XS;
     for (w, width) in Workspace::ALL.iter().zip(&widths) {
         let r = Rect::from_min_size(pos2(x, switch.top() + space::XS / 2.0 + 1.0), vec2(*width, PILL_H - space::XS - 2.0));
-        let on = t.shell.state.workspace == *w;
+        // While Settings is open the project pill is the active one, not a workspace (board 5.01).
+        let on = t.shell.state.workspace == *w && !t.shell.settings_open;
         let resp = bar::text_button(ui, r, w.label(), w.label(), on, true);
         // A tab for screen readers and tests (the switch used to be a segmented control).
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, on, w.label()));
