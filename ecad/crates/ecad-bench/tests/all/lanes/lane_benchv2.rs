@@ -111,12 +111,18 @@ fn writing_over_a_stale_file_regenerates_it() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+// One test per tier (owner, 2026-11-14), so the QA gate's nextest jobs run them at the same time:
+// together they took 24 min on CI, nearly all of it the medium tier.
 #[test]
-#[ignore = "slow: generates the small and medium tiers and converts them the old way"]
-fn the_small_and_medium_tiers_are_the_same_both_ways() {
-    for name in ["small", "medium"] {
-        same_both_ways(tier(name).unwrap(), name);
-    }
+#[ignore = "slow: generates the small tier and converts it the old way"]
+fn the_small_tier_is_the_same_both_ways() {
+    same_both_ways(tier("small").unwrap(), "small");
+}
+
+#[test]
+#[ignore = "slow: generates the medium tier and converts it the old way, about 20 min on CI"]
+fn the_medium_tier_is_the_same_both_ways() {
+    same_both_ways(tier("medium").unwrap(), "medium");
 }
 
 /// The ccont row's own cable must not share a tag with a generated cable: on large, `-W932` was

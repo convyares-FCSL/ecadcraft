@@ -546,27 +546,38 @@ fn deny_warnings(encoded: Option<&str>, plain: Option<&str>) -> (&'static str, S
     ("RUSTFLAGS", if p.is_empty() { "-D warnings".to_string() } else { format!("{p} -D warnings") })
 }
 
-fn ci() -> Result<(), String> {
+/// Every check of [`ci`] except the tests: formatting, clippy with all targets and features and
+/// with the default ones, layers, the patch guard and wasm. The QA gate's CI runs this in one job
+/// and the tests in sharded nextest jobs (`.github/workflows/ci.yml`), so a check added here
+/// reaches CI without a workflow change.
+fn lint() -> Result<(), String> {
     let root = ecad_root();
     let cargo = env!("CARGO");
     run(Command::new(cargo).args(["fmt", "--all", "--check"]).current_dir(&root))?;
     run(Command::new(cargo).args(["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]).current_dir(&root))?;
-    // All features: the fault-injection containment tests run in CI, never in normal builds.
-    // The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
-    run(Command::new(cargo).args(["test", "--workspace", "--all-features", "--", "--include-ignored"]).current_dir(&root))?;
     run(Command::new(cargo).args(["clippy", "--workspace", "--", "-D", "warnings"]).current_dir(&root))?;
     layers()?;
     patches()?;
     wasm()
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|ci|bench|demo|test-changed|clean-builds>
+fn ci() -> Result<(), String> {
+    lint()?;
+    // All features: the fault-injection containment tests run in CI, never in normal builds.
+    // The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
+    run(Command::new(env!("CARGO")).args(["test", "--workspace", "--all-features", "--", "--include-ignored"]).current_dir(ecad_root()))
+}
+
+const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|lint|ci|bench|demo|test-changed|clean-builds>
   test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default: the branch's upstream, so what
         was not pushed yet; for a branch never pushed, since its merge base with origin/dev;
         committed or not); never the slow set (#[ignore = \"slow: …\"]), which runs at the QA
         gate; --with-dependents also tests every crate that depends on them (CI runs that on
         pull requests into dev, so workers leave it off); --dry-run only names the crates
+  lint
+        every check of ci except the tests: fmt, clippy (all features and default), layers,
+        patches, wasm
   wasm
         build the ECAD library crates for wasm32-unknown-unknown, warnings as errors (as CI)
   clean-builds --root <folder> [--dry-run]
@@ -780,6 +791,7 @@ fn main() -> ExitCode {
         "layers" => layers(),
         "patches" => patches(),
         "wasm" => wasm(),
+        "lint" => lint(),
         "ci" => ci(),
         "bench" => bench(rest),
         "demo" => demo(rest),
