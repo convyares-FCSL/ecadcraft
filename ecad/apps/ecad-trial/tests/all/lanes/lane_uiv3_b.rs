@@ -238,5 +238,21 @@ fn placing_a_coil_shows_the_device_about_to_be_placed() {
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     assert!(h.query_by_label(right::CHANGES).is_none());
+
+/// Review of #91, 1: while an old revision is shown read-only, a check's fix would write the live
+/// project behind it, so the fix buttons are off (the guard the drawer's list had).
+#[test]
+fn check_fixes_are_off_while_an_old_revision_is_shown() {
+    let (mut h, dir, _one) = harness(None);
+    h.state_mut().open_inspector(RightTab::Checks);
+    h.state_mut().settings.inspector.checks_project = true;
+    h.run_steps(3);
+    let rows = h.state().panel.checks.rows().to_vec();
+    let fixable = rows.iter().find_map(|r| r.check.fix).expect("the demo has a check with a fix");
+    let name = ecad_trial::lists::checks::fix_names(fixable).first().copied().unwrap();
+    assert!(!h.get_all_by_label(name).next().unwrap().accesskit_node().is_disabled(), "live: the fix runs");
+    h.state_mut().panel.revision = Some("Rev A, 2026-11-14: read-only".into());
+    h.run_steps(3);
+    assert!(h.get_all_by_label(name).all(|n| n.accesskit_node().is_disabled()), "a revision is shown: no fix runs");
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -147,7 +147,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
         let words = super::checks_tab::count_words(e, own.len().saturating_sub(e));
         w::status_pill(ui, false, &format!("{words} on {}", d.tag), "only this device's own", OWN_CHECKS);
         for r in own {
-            super::checks_tab::card(ui, r, cx.writable, &mut cx.panel_out);
+            super::checks_tab::card(ui, r, cx.fixes, &mut cx.panel_out);
         }
     }
     ui.add_space(space::XS);
@@ -181,8 +181,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
     });
     // Parts.
     let parts = insp.parts.clone();
-    let summary =
-        if parts.is_empty() { "none yet".to_string() } else { format!("{} line{} \u{b7} qty", parts.len(), if parts.len() == 1 { "" } else { "s" }) };
+    let summary = parts_summary(parts.len(), find(s, "maker").map(|r| r.value.as_str()), find(s, "part_number").map(|r| r.value.as_str()));
     w::section(ui, &mut folded, full, "parts", "Parts", &summary, false, |ui| {
         if !parts.is_empty() {
             ui.scope(|ui| {
@@ -248,6 +247,16 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
         insp.show_connector(ui, cx.writable, out);
     });
     insp.folded = folded;
+}
+
+/// The folded Parts section's summary: its part lines, else the main part's maker and number
+/// (a device with only a main part has a part), else `none yet`.
+pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str>) -> String {
+    if lines > 0 {
+        return format!("{lines} line{} \u{b7} qty", if lines == 1 { "" } else { "s" });
+    }
+    let main: Vec<&str> = [maker, part_number].into_iter().flatten().map(str::trim).filter(|v| !v.is_empty() && *v != "*varies*").collect();
+    if main.is_empty() { "none yet".to_string() } else { main.join(" \u{b7} ") }
 }
 
 /// A part line as a card: a dot (blue for the main part), its words, its maker and number, and
@@ -354,4 +363,18 @@ fn connection_row(ui: &mut egui::Ui, c: &super::details::ConnRow, i: usize) {
         w::font(ui, ui_type::BODY),
         w::text_2(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parts_summary;
+
+    /// Review of #91, 3: a device with only its main part has a part.
+    #[test]
+    fn the_folded_parts_summary_counts_the_main_part() {
+        assert_eq!(parts_summary(0, Some("Generic"), Some("CT-9A-24VDC")), "Generic \u{b7} CT-9A-24VDC");
+        assert_eq!(parts_summary(0, Some(""), Some("PSU-24V")), "PSU-24V");
+        assert_eq!(parts_summary(0, None, Some(" ")), "none yet");
+        assert_eq!(parts_summary(3, None, None), "3 lines \u{b7} qty");
+    }
 }
