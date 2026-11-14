@@ -1058,6 +1058,12 @@ pub fn project_page_kept(
         ents.push(xref_entity(&part, h));
         map.insert_xref(part.rep, part.index, h);
     }
+    // PLC card frames (brief 051): derived on every draw, never stored; mapped like 025's parts.
+    for part in crate::plc::look::parts_on_page(doc, page) {
+        let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
+        ents.push(xref_entity(&part, h));
+        map.insert_xref(part.rep, part.index, h);
+    }
     // Link lines (brief 030): derived on every draw, never stored.
     let mut seen: BTreeMap<(ComponentId, u32), u32> = BTreeMap::new();
     for part in crate::link_lines::parts_on_page(doc, page) {

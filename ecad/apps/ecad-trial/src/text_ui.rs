@@ -72,6 +72,8 @@ fn label_of(k: TextKind) -> &'static str {
         TextKind::TitleRev => "Revision box",
         TextKind::TableHeading => "Table heading",
         TextKind::Cover => "Cover title",
+        TextKind::ChannelText => "PLC channel text",
+        TextKind::Address => "PLC address",
     }
 }
 

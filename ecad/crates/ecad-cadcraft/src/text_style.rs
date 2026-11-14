@@ -97,11 +97,15 @@ pub enum TextKind {
     TableHeading,
     /// Cover lines (lane P scales them from this height).
     Cover,
+    /// Brief 051 (FP1): a PLC channel's function, outside its card (`Pump 1 run`, `Spare`).
+    ChannelText,
+    /// Brief 051 (FP1): a PLC channel's address inside its cell (`I0.3`).
+    Address,
 }
 
 impl TextKind {
     /// Every kind, in the order of the style table.
-    pub const ALL: [TextKind; 20] = [
+    pub const ALL: [TextKind; 22] = [
         TextKind::Tag,
         TextKind::PointLabel,
         TextKind::Description,
@@ -122,6 +126,8 @@ impl TextKind {
         TextKind::TitleRev,
         TextKind::TableHeading,
         TextKind::Cover,
+        TextKind::ChannelText,
+        TextKind::Address,
     ];
 
     /// The key word (`tag`, `point_label`…), as in `text.<word>.height` and the commands.
@@ -147,6 +153,8 @@ impl TextKind {
             TextKind::TitleRev => "title_rev",
             TextKind::TableHeading => "table_heading",
             TextKind::Cover => "cover",
+            TextKind::ChannelText => "channel_text",
+            TextKind::Address => "address",
         }
     }
 
@@ -288,6 +296,8 @@ const KIND_STYLES: [(&str, &str); TextKind::ALL.len()] = [
     ("ECAD-TITLE-REV", "ECAD-TITLE-REV-BOLD"),
     ("ECAD-TABLE-HEADING", "ECAD-TABLE-HEADING-BOLD"),
     ("ECAD-COVER", "ECAD-COVER-BOLD"),
+    ("ECAD-CHANNEL-TEXT", "ECAD-CHANNEL-TEXT-BOLD"),
+    ("ECAD-ADDRESS", "ECAD-ADDRESS-BOLD"),
 ];
 
 /// The style a kind with its own font names, for `weight`.
@@ -1186,7 +1196,7 @@ mod tests {
     use ecad_model::{Component, LengthUnit, Page, Representation};
 
     /// Design 031 §3.2, written out here so a reader and its entry cannot drift.
-    const TABLE: [(TextKind, f64, Weight); 20] = [
+    const TABLE: [(TextKind, f64, Weight); 22] = [
         (TextKind::Tag, 2.5, Weight::Bold),
         (TextKind::PointLabel, 1.5, Weight::Regular),
         (TextKind::Description, 1.6, Weight::Regular),
@@ -1207,6 +1217,9 @@ mod tests {
         (TextKind::TitleRev, 5.0, Weight::Regular),
         (TextKind::TableHeading, 3.5, Weight::Regular),
         (TextKind::Cover, 10.0, Weight::Regular),
+        // Brief 051 (design 051 §5).
+        (TextKind::ChannelText, 2.5, Weight::Regular),
+        (TextKind::Address, 2.0, Weight::Regular),
     ];
 
     #[test]

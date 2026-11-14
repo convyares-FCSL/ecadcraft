@@ -138,6 +138,10 @@ pub fn verify_page_pending(
     for part in crate::xref::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
     }
+    // PLC card frames (brief 051), derived the same way.
+    for part in crate::plc::look::parts_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
+    }
     // Link lines (brief 030), derived the same way.
     for part in crate::link_lines::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;

@@ -236,3 +236,34 @@ fn screenshots_of_the_io_and_rack_sheets() {
     h.run_steps(6);
     take(&h, &deltas, "051-iolist-sheet-zoom.png");
 }
+
+/// Screenshots of the cards on the page (only with `ECAD_TESTER_SHOTS`): `051-di-card.png` (the DI
+/// card fenced on eight wires 20 mm apart, its body moved to the run's end) and `051-dq-card.png`
+/// (the DQ card's own page, at 180°).
+#[test]
+fn screenshots_of_the_cards_on_the_page() {
+    let Some(_) = crate::project_panel::shots() else { return };
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = harness(deltas.clone());
+    fixture(&mut h);
+    let di = tagged(&mut h, "-A02").hex();
+    ok(&mut h, &format!(r#"setprop {{"component":"{di}","key":"part_number","value":"DI-16-24V"}}"#));
+    ok(&mut h, &format!(r#"setprop {{"component":"{di}","key":"maker","value":"Maker A"}}"#));
+    ok(&mut h, r#"plcpage {"card":"-A03"}"#);
+    let d = doc(&mut h);
+    let (first, last) = (d.page_order[0], *d.page_order.last().unwrap());
+    let view = |h: &mut H, x: f64, y: f64, height: f64| {
+        if let Ok(st) = h.state_mut().cad.session.state_mut() {
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(x, y), height, twist: 0.0 });
+        }
+        h.run_steps(6);
+    };
+    h.state_mut().set_workspace(Workspace::Draw);
+    h.state_mut().show_page(first).unwrap();
+    view(&mut h, 130.0, 90.0, 150.0);
+    take(&h, &deltas, "051-di-card.png");
+    h.state_mut().show_page(last).unwrap();
+    h.state_mut().zoom_to_drawing();
+    h.run_steps(6);
+    take(&h, &deltas, "051-dq-card.png");
+}

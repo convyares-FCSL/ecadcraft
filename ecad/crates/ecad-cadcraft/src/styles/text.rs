@@ -52,6 +52,10 @@ static BUILTINS: &[Builtin] = &[
     style("title_rev", "Title block revision", &[("height", Value::Length(5.0)), ("weight", R)]),
     style("table_heading", "Table heading", &[("height", Value::Length(3.5)), ("weight", R)]),
     style("cover", "Cover title", &[("height", Value::Length(10.0)), ("weight", R)]),
+    // Brief 051 (design 051 §5, FP1): the pack writes channel functions at about the tag's size
+    // and addresses between pin and tag size.
+    style("channel_text", "PLC channel text", &[("height", Value::Length(2.5)), ("weight", R)]),
+    style("address", "PLC address", &[("height", Value::Length(2.0)), ("weight", R)]),
 ];
 
 /// The wire label style's height at project level: `settings.wiring.label_height` (031 §3.4),
@@ -89,7 +93,7 @@ pub enum Noun {
 /// What objects choice `key` (`text.<kind>.style`) styles.
 pub fn noun(key: &str) -> Noun {
     match key.strip_prefix("text.").and_then(|k| k.strip_suffix(".style")) {
-        Some("tag" | "point_label" | "description" | "part_number" | "continuation_name") => Noun::Devices,
+        Some("tag" | "point_label" | "description" | "part_number" | "continuation_name" | "channel_text" | "address") => Noun::Devices,
         Some("wire_label") => Noun::Wires,
         _ => Noun::Pages,
     }

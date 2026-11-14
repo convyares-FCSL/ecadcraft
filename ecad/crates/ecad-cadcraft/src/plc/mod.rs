@@ -13,6 +13,7 @@
 pub mod address;
 pub mod channels;
 pub mod iolist;
+pub mod look;
 pub mod overview;
 pub mod page;
 pub mod rack;
@@ -1211,7 +1212,11 @@ pub fn channel_texts(
     let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).word() == "90";
     let anchors = crate::symbols::anchors(s);
     let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
-    let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Description).height;
+    // Brief 051 (design 051 §5): the two text styles of their own.
+    let addr_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Address).height;
+    let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::ChannelText).height;
+    // Brief 051 (design 051 §2.7): a cell at 180° keeps its texts upright and in their bands.
+    let upside = pl.rotation.is_finite() && (pl.rotation.to_degrees().rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();
     let mut push = |role: TextRole, of: TextOf, value: String, height: f64, shown: bool, horizontal: bool| {
         let Some(a) = anchors.iter().find(|x| x.role == role) else { return };
@@ -1220,7 +1225,24 @@ pub fn channel_texts(
             return;
         }
         let (h, v) = if horizontal && role == TextRole::ChannelText {
-            (cadcraft_engine::doc::HAlign::Center, cadcraft_engine::doc::VAlign::Top)
+            let v = if upside { cadcraft_engine::doc::VAlign::Bottom } else { cadcraft_engine::doc::VAlign::Top };
+            (cadcraft_engine::doc::HAlign::Center, v)
+        } else if upside && role == TextRole::ChannelText {
+            // Above the card, reading upwards from 2 over its frame.
+            (cadcraft_engine::doc::HAlign::Left, cadcraft_engine::doc::VAlign::Middle)
+        } else if upside {
+            // Turned with the cell, the anchor's sides swap: swap the alignment back.
+            let h = match a.h {
+                crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Right,
+                crate::symbols::HAlign::Centre => cadcraft_engine::doc::HAlign::Center,
+                crate::symbols::HAlign::Right => cadcraft_engine::doc::HAlign::Left,
+            };
+            let v = match a.v {
+                crate::symbols::VAlign::Bottom => cadcraft_engine::doc::VAlign::Top,
+                crate::symbols::VAlign::Middle => cadcraft_engine::doc::VAlign::Middle,
+                crate::symbols::VAlign::Top => cadcraft_engine::doc::VAlign::Bottom,
+            };
+            (h, v)
         } else {
             let h = match a.h {
                 crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Left,
@@ -1243,7 +1265,7 @@ pub fn channel_texts(
     };
     push(TextRole::ChannelNo, TextOf::ChannelNo, (i + first).to_string(), label, on(&crate::defaults::plc::CHANNEL_SHOW), false);
     if let Some(a) = addr {
-        push(TextRole::Address, TextOf::Address, a, label, on(&crate::defaults::plc::ADDRESS_SHOW), false);
+        push(TextRole::Address, TextOf::Address, a, addr_h, on(&crate::defaults::plc::ADDRESS_SHOW), false);
     }
     if let Some(d) = description {
         push(TextRole::ChannelText, TextOf::ChannelText { rotated }, d, desc_h, true, !rotated);
