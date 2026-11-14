@@ -339,7 +339,7 @@ const MIN_WIDTH_FACTOR: f64 = 0.6;
 
 /// `value` fitted in `room` mm at `height` (design 019 §4): narrowed down to
 /// [`MIN_WIDTH_FACTOR`], then cut with `…`.
-pub(crate) fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
+pub fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     let Some(room) = room.filter(|r| *r > 0.0) else { return (value.to_string(), 1.0) };
     let n = value.chars().count() as f64;
     let wide = n * height * CHAR_WIDTH;

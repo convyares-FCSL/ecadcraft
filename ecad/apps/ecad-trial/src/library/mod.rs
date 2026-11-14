@@ -42,6 +42,8 @@ pub struct Library {
     pub back_to_page: bool,
     /// The browser's listing last frame (the right panel draws the selected tile's details).
     pub listing: browser::Listing,
+    /// Brief 055: Library ▸ Title blocks, the title block and frame editor.
+    pub tb: title_blocks::Editor,
 }
 
 impl Library {
