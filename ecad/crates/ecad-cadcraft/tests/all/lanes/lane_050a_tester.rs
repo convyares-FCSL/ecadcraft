@@ -264,13 +264,15 @@ pub(crate) fn find_obj_mut<'a>(v: &'a mut Value, k: &str) -> Option<&'a mut serd
 
 /// The 031/040 built-in text sizes (cap height, weight) of every kind, from `dev` before 050a
 /// (`defaults/text.rs`); the built-in text styles must carry them exactly (design §4.1).
-pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 20] = [
+pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 21] = [
     ("tag", 2.5, "bold"),
     ("point_label", 1.5, "regular"),
     ("description", 1.6, "regular"),
     ("part_number", 1.6, "regular"),
     ("continuation_name", 2.0, "regular"),
     ("reference", 2.0, "regular"),
+    // Brief 049's continuation caption (merged after 050a).
+    ("continuation_caption", 2.5, "regular"),
     ("wire_label", 1.6, "regular"),
     ("cable_text", 1.6, "regular"),
     ("location", 1.6, "regular"),
@@ -311,7 +313,7 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
     let d = h.doc();
     assert!(d.standard.is_none() && d.styles.is_empty(), "FP1/FP2: nothing stored for a new project");
     let rows = styles(&mut h, "text");
-    assert_eq!(rows.len(), 20, "{rows:?}");
+    assert_eq!(rows.len(), 21, "{rows:?}");
     for (word, height, weight) in BUILTIN_TEXT {
         let r = rows.iter().find(|r| s(&r["id"]) == word).unwrap_or_else(|| panic!("built-in text style {word}"));
         assert_eq!(s(&r["layer"]), "builtin", "{word}");

@@ -60,7 +60,7 @@ fn the_style_commands_record_one_transaction_by_the_agent() {
     // The reads record nothing.
     let n = c.log().len();
     assert_eq!(c.exec("standard", json!({}))["name"], json!("IEC (built in)"));
-    assert!(c.exec("styles", json!({"catalogue": "text", "users": true}))["styles"].as_array().is_some_and(|a| a.len() == 20));
+    assert!(c.exec("styles", json!({"catalogue": "text", "users": true}))["styles"].as_array().is_some_and(|a| a.len() == 21));
     assert_eq!(c.log().len(), n);
     // Another project file is not the agent's to read.
     let m = c.refused("execute", json!({"command": "standard", "params": {"from": "other.ecad"}}));

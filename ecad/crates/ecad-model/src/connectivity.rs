@@ -586,6 +586,7 @@ impl Connectivity {
     /// | `SetProperty` component `kind` or `name` | cut from the old name group, joined to the new |
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
+    /// | `SetComponentDefinition` (brief 048) | its terminals cut, then joined under the new definition |
     /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
     /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges (brief 036, FP8a; items: brief 044) | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
@@ -600,7 +601,8 @@ impl Connectivity {
                 self.cut(&Node::Terminal(*t));
             }
             Op::RemoveTerminal { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
-            Op::DeleteComponent { id, .. } => {
+            // Brief 048 (FP5): another definition may bridge other points.
+            Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
                     self.cut_around(doc, &t);
                 }
@@ -676,6 +678,11 @@ impl Connectivity {
                     for t in Self::terminals_of(doc, *id) {
                         self.ensure(doc, t);
                     }
+                }
+            }
+            Op::SetComponentDefinition { id, .. } => {
+                for t in Self::terminals_of(doc, *id) {
+                    self.ensure(doc, t);
                 }
             }
             Op::SetProperty { object: ObjectRef::Component(id), key, before, after } if key == KIND || key == NAME => {

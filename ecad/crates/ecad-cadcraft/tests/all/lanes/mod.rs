@@ -18,4 +18,6 @@ mod lane_047;
 mod lane_050a_tester;
 // mod lane_050b_tester; // tester 050: compiled once 050b (wire_look) lands
 mod lane_050;
+mod lane_048;
+mod lane_049;
 mod lane_o1;

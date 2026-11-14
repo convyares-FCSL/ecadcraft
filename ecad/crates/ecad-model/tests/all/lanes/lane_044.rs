@@ -10,6 +10,7 @@ fn def(bridges: &[&[&str]]) -> Definition {
         graphics: Vec::new(),
         terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
         bridges: bridges.iter().map(|g| g.iter().map(|k| k.to_string()).collect()).collect(),
+        ..Default::default()
     }
 }
 

@@ -105,11 +105,20 @@ pub enum Icon {
     // 044
     /// Connector: a socket's cup over a plug's pin.
     Connector,
+    // 048
+    /// New symbol: a symbol box with a plus at its corner.
+    NewSymbol,
+    /// Connection point (the builder's C tool): a ring on a lead.
+    ConnectionPoint,
+    /// Text slot (the builder's S tool): a dashed box with an anchor dot.
+    TextSlot,
+    /// Origin (the builder's O tool): a cross in a ring.
+    Origin,
 }
 
 impl Icon {
     /// Every icon, in declaration order.
-    pub const ALL: [Icon; 47] = [
+    pub const ALL: [Icon; 51] = [
         Icon::Select,
         Icon::Wire,
         Icon::Place,
@@ -159,6 +168,11 @@ impl Icon {
         Icon::Eye,
         // 044
         Icon::Connector,
+        // 048
+        Icon::NewSymbol,
+        Icon::ConnectionPoint,
+        Icon::TextSlot,
+        Icon::Origin,
     ];
 
     /// A readable name, used as the accessible label of an icon with no label of its own.
@@ -213,6 +227,11 @@ impl Icon {
             Icon::Eye => "Show or hide",
             // 044
             Icon::Connector => "Connector",
+            // 048
+            Icon::NewSymbol => "New symbol",
+            Icon::ConnectionPoint => "Connection point",
+            Icon::TextSlot => "Text slot",
+            Icon::Origin => "Origin",
         }
     }
 }

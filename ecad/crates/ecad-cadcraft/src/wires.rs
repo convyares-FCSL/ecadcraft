@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 
 use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME, name_key};
+use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
 use ecad_model::{
     Component, ComponentId, Conductor, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement,
     Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
@@ -143,8 +143,6 @@ pub const LABEL_ACI: u8 = 7;
 pub const ON_WIRE: f64 = 0.5;
 /// Most characters of a continuation name.
 pub const MAX_NAME_CHARS: usize = 16;
-/// Other places a continuation lists before `+n`.
-pub const MAX_PLACES: usize = 3;
 
 /// Why a conductor label alone cannot be edited.
 pub const LABEL_DERIVED: &str = "The wire label is derived; change the number with Fix Wire Number, or the wire's cross-section and colour.";
@@ -489,40 +487,9 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
 
 // ---------------------------------------------------------------- continuation texts (§3.2)
 
-/// Where a continuation is (its symbol on its first page), as references name it (`2-A-6`), with
-/// a sort key (page position, column, row).
-fn place_of(doc: &Document, c: ComponentId) -> Option<((usize, u32, u32), String)> {
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
-    let style = doc.settings.reference_style;
-    doc.representations_of(Subject::Component(c))
-        .filter_map(|(_, r)| {
-            let n = *order.get(&r.page)?;
-            let ItemKind::Symbol(s) = &doc.items.get(r.items.first()?)?.kind else { return None };
-            let p = ecad_model::wiring::place(doc, r.page, s.placement.origin)?;
-            Some(((n, p.column, p.row), p.text(style)))
-        })
-        .min()
-}
-
-/// The other places of continuation `c` (same name), in book order, as its text shows them
-/// (`/2.1 /3.1`, more than [`MAX_PLACES`] as `+n`), and their components.
-pub fn other_places(doc: &Document, c: ComponentId) -> (String, Vec<ComponentId>) {
-    let Some(key) = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).map(|n| name_key(n)) else {
-        return (String::new(), Vec::new());
-    };
-    let mut others: Vec<(((usize, u32, u32), String), ComponentId)> =
-        doc.continuations_named(&key).into_iter().filter(|o| *o != c).filter_map(|o| place_of(doc, o).map(|p| (p, o))).collect();
-    others.sort();
-    let ids = others.iter().map(|(_, o)| *o).collect();
-    let mut words: Vec<String> = others.iter().take(MAX_PLACES).map(|((_, w), _)| w.clone()).collect();
-    if others.len() > MAX_PLACES {
-        words.push(format!("+{}", others.len() - MAX_PLACES));
-    }
-    (words.join(" "), ids)
-}
-
-/// The texts beside a continuation symbol (design 022 §3.2): its name, and its other places
-/// under it; `None` when `c` is not a continuation.
+/// The text beside a continuation symbol (design 022 §3.2): its name; `None` when `c` is not a
+/// continuation. Its other ends' places are reference parts since brief 049
+/// ([`crate::continuations`]).
 pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
     if kind_of(doc, c) != Some(CONTINUATION) {
         return None;
@@ -544,20 +511,6 @@ pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId,
         aci: None,
         own: None,
     });
-    let (places, _) = other_places(doc, c);
-    if !places.is_empty() {
-        out.push(DerivedText {
-            rep,
-            of: TextOf::Places,
-            value: places,
-            at: Pt::new(at.x, at.y - 1.0),
-            height: crate::references::TEXT_HEIGHT_MM,
-            halign: HAlign::Left,
-            valign: VAlign::Top,
-            aci: Some(crate::references::REFERENCE_ACI),
-            own: None,
-        });
-    }
     Some(out)
 }
 

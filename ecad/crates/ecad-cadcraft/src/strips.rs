@@ -668,6 +668,8 @@ pub struct TypeCount {
     pub spare: usize,
     pub part_number: Option<String>,
     pub maker: Option<String>,
+    /// Brief 047 (design 047 §5): read at the level its part number came from.
+    pub article_number: Option<String>,
     pub description: String,
 }
 
@@ -1540,8 +1542,12 @@ fn type_parts(
         inherits.insert(pk.clone());
         clean(doc.properties.get(&pk))
     };
+    let own_part = clean(props.get(&type_key(ty, "part_number"))).is_some();
     let part_number = get("part_number");
     let maker = get("maker");
+    // Brief 047 (design 047 §5): a strip's own part number never shows the project's article number.
+    let article_number =
+        if own_part || part_number.is_none() { clean(props.get(&type_key(ty, crate::bom::ARTICLE_KEY))) } else { get(crate::bom::ARTICLE_KEY) };
     let own_description = get("description").or_else(|| if ty.code == "ft" { clean(props.get("description")) } else { None });
     let description = own_description.unwrap_or_else(|| {
         let e = crate::defaults::terminals::description_entry(ty.code);
@@ -1550,7 +1556,7 @@ fn type_parts(
         }
         e.map_or_else(|| ty.name.to_string(), |e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).text())
     });
-    TypeCount { ty, drawn, spare, part_number, maker, description }
+    TypeCount { ty, drawn, spare, part_number, maker, article_number, description }
 }
 
 impl StripData {

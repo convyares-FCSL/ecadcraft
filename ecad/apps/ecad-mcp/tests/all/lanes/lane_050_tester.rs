@@ -102,7 +102,7 @@ fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
         let n = c.log().len();
         let r = c.exec("standard", json!({}));
         assert_eq!(s(&r["name"]), "IEC (built in)");
-        assert_eq!(styles(&mut c, "text").len(), 20);
+        assert_eq!(styles(&mut c, "text").len(), 21);
         assert_eq!(c.log().len(), n, "reads record nothing");
 
         let (_, ops) = one_by_agent_then_undo(&mut c, "standard", json!({"new": "House"}));

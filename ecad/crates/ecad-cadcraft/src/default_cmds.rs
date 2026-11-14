@@ -218,7 +218,10 @@ pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> Str
 /// `setdefault {key, level, page?, component?, conductor?, representation?, value | reset: true}`.
 fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let key = params.get("key").and_then(Value::as_str).map(str::trim).ok_or_else(|| err("`key` (a default's key, see `defaults`) is required."))?;
-    let entry = defaults::find(key).ok_or_else(|| err(format!("No default \"{key}\".")))?;
+    let Some(entry) = defaults::find(key) else {
+        // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>`.
+        return crate::symbol_cmds::run_set_family(s, params, key)?.ok_or_else(|| err(format!("No default \"{key}\".")));
+    };
     let level = match params.get("level").and_then(Value::as_str) {
         Some(w) => level_of(w).ok_or_else(|| err(format!("Unknown level \"{w}\". Levels: standard, project, page, object.")))?,
         None => Level::Project,

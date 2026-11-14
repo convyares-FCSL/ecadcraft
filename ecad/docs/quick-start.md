@@ -1573,12 +1573,12 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 **Container version 2 (brief 021).** The generated version 1 file is converted to a version 2 file
 (`<tier>-<history>.v2.ecad`), and since the app opens only version 2, every column from **1st
 page** on is timed on the version 2 file; **open**, **edit** and **save** above stay the version 1
-timings, for comparison. A second table follows:
+timings. A second table follows. It reports the version 2 file only, against the targets in the
+specification; it does not compare it with the version 1 file:
 
 | Column | What it times |
 | --- | --- |
-| v1 MB, v2 MB | The version 1 file and the converted version 2 file. |
-| convert ms | `ecad upgrade`: convert, write and verify by replaying both. |
+| v2 MB | The converted version 2 file. |
 | v2 open ms | Open the version 2 file as the app does: the latest snapshot and the transactions after it. Target (EEP-0005): about 100 ms or less on large. |
 | v2 save ms | Save one new wire: one redb write transaction, durable before it returns. Target: about 1–1.4 ms on large (the bake-off's redb range). |
 | crash open ms | Open the file after a process saved and exited without closing it (as a killed app leaves it), with redb's quick repair. |

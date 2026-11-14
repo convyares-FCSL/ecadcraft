@@ -87,6 +87,7 @@ pub const TABLE_DERIVED: &str = "The contact table is derived; move it with Move
 pub fn refusal(doc: &Document, mapped: Option<crate::project::Mapped>) -> &'static str {
     match mapped {
         Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Head) => TABLE_DERIVED,
+        Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Arrow) => crate::continuations::TEXT_DERIVED,
         _ => TEXT_DERIVED,
     }
 }
@@ -309,6 +310,9 @@ pub fn placement_of(doc: &Document, c: ComponentId) -> (Placement, bool) {
 pub enum Group {
     Cable(CableId),
     Device(ComponentId),
+    /// Brief 049 (FP4): the continuation arrows of one name, keyed by the lowest component ID
+    /// among them. Its edges are implicit: every member shows every other.
+    Continuation(ComponentId),
 }
 
 /// What a member of a group is.
@@ -325,6 +329,8 @@ pub enum Class {
     Half(crate::symbols::Side),
     /// Brief 044: any other connector symbol, by the side it draws.
     Pin(crate::symbols::Side),
+    /// Brief 049: a continuation arrow's symbol.
+    Arrow,
     /// Anything else (no edges).
     Other,
 }
@@ -451,6 +457,10 @@ pub fn device(doc: &Document, c: ComponentId) -> Device {
 /// The class of member `rid` of its group, as the index keeps it.
 pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)> {
     let r = doc.representations.get(&rid)?;
+    // Brief 049: a continuation arrow's symbol.
+    if let Some(g) = crate::continuations::group_of_rep(doc, r) {
+        return Some((g, Class::Arrow));
+    }
     // Brief 044: a connector's members.
     if let Subject::Component(c) = r.subject
         && crate::connectors::is_connector(doc, c)
@@ -514,6 +524,22 @@ impl<'a> Places<'a> {
     /// The page's shown number.
     pub fn number(&mut self, page: PageId) -> String {
         self.page(page).1.clone()
+    }
+
+    /// Brief 049 (design 049 §2.2): where `at` on `page` sorts, by book position, then column,
+    /// then row, and its text; `None` (shown `?`, sorted last) when it cannot be located. The book
+    /// is built at most once per `Places`.
+    pub fn sorted(&mut self, page: PageId, at: Option<Pt>) -> Option<((usize, u32, u32), String)> {
+        let at = at?;
+        let style = self.doc.settings.reference_style;
+        let doc = self.doc;
+        let position = self.book.get_or_insert_with(|| ecad_model::book::Book::of(doc)).position(page)?;
+        let (grid, number, located) = self.page(page);
+        if !*located {
+            return None;
+        }
+        let p = ecad_model::derive::place_on(grid, number, at)?;
+        Some(((position, p.column, p.row), p.text(style)))
     }
 }
 
@@ -685,7 +711,15 @@ pub fn over_line(doc: &Document, c: ComponentId, labels: &[String], make: bool) 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     Line(Pt, Pt),
-    Text { at: Pt, value: String, height: f64, halign: HAlign, valign: VAlign },
+    /// `rotation` in radians (brief 049, FP3): 0 for every text but a continuation's reference.
+    Text {
+        at: Pt,
+        value: String,
+        height: f64,
+        halign: HAlign,
+        valign: VAlign,
+        rotation: f64,
+    },
 }
 
 /// One part of a contact's text or a head's table.
@@ -745,7 +779,7 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     at.is_finite().then_some(Part {
         rep,
         index: 0,
-        shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign, valign: VAlign::Top },
+        shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign, valign: VAlign::Top, rotation: 0.0 },
         aci: None,
         row: None,
         bar: false,
@@ -966,8 +1000,14 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
             State::Spare => Some(SPARE_ACI),
             State::Over => Some(OVER_ACI),
         };
-        let text =
-            |x: f64, value: &str, halign: HAlign| Shape::Text { at: at(x, y), value: value.to_string(), height: h, halign, valign: VAlign::Middle };
+        let text = |x: f64, value: &str, halign: HAlign| Shape::Text {
+            at: at(x, y),
+            value: value.to_string(),
+            height: h,
+            halign,
+            valign: VAlign::Middle,
+            rotation: 0.0,
+        };
         push(text(-5.0, &r.labels[0], HAlign::Right), aci, Some(i), false);
         let line = |a: (f64, f64), b: (f64, f64)| Shape::Line(at(a.0, y + a.1), at(b.0, y + b.1));
         push(line((-4.0, 0.0), (-1.5, 0.0)), aci, Some(i), false);
@@ -1026,7 +1066,7 @@ pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) 
             Part {
                 rep: rid,
                 index: 0,
-                shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign: HAlign::Center, valign: VAlign::Top },
+                shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign: HAlign::Center, valign: VAlign::Top, rotation: 0.0 },
                 aci: None,
                 row: None,
                 bar: false,
@@ -1068,6 +1108,8 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
             out.extend(t.parts);
         }
     }
+    // Brief 049 (design 049 §4): continuation arrows' other ends, brackets and captions.
+    out.extend(crate::continuations::parts_on_page(doc, &mut places, page));
     out
 }
 
@@ -1138,6 +1180,13 @@ impl RefIndex {
                 idx.insert_connector(doc, *c);
             }
         }
+        // Brief 049 (FP4): one group per continuation name, one pass over the name index.
+        let names: BTreeSet<&str> = doc.continuation_names().map(|(k, _)| k).collect();
+        for k in names {
+            if let Some((g, list)) = crate::continuations::group_named(doc, k) {
+                idx.insert_group(g, list.into_iter().map(|r| (r, Class::Arrow)).collect());
+            }
+        }
         idx
     }
 
@@ -1159,8 +1208,8 @@ impl RefIndex {
         }
     }
 
-    /// Make group `g` again from `doc`: its members, classes and edges. O(group).
-    fn make(&mut self, doc: &Document, g: Group) {
+    /// Take group `g` out: its members, classes and edges. O(group).
+    fn remove(&mut self, g: Group) {
         if let Some(old) = self.members.remove(&g) {
             for r in old {
                 self.member.remove(&r);
@@ -1181,6 +1230,21 @@ impl RefIndex {
                     }
                 }
             }
+        }
+    }
+
+    /// Put group `g` back from `doc` (after [`RefIndex::remove`]): its members, classes and edges.
+    /// O(group).
+    fn make(&mut self, doc: &Document, g: Group) {
+        // Brief 049: a continuation group is made from its name; its key may have changed (the
+        // lowest arrow deleted or renamed), so it goes in under the key `doc` gives it.
+        if let Group::Continuation(c) = g {
+            let Some(name) = crate::continuations::name_of(doc, c) else { return };
+            if let Some((key, list)) = crate::continuations::group_named(doc, &name) {
+                self.remove(key);
+                self.insert_group(key, list.into_iter().map(|r| (r, Class::Arrow)).collect());
+            }
+            return;
         }
         if let Group::Device(c) = g
             && crate::connectors::is_connector(doc, c)
@@ -1208,6 +1272,7 @@ impl RefIndex {
                     })
                     .collect()
             }
+            Group::Continuation(_) => Vec::new(),
         };
         self.insert_group(g, list);
     }
@@ -1236,6 +1301,8 @@ impl RefIndex {
                     }
                 }
             }
+            // Brief 049 (FP4): implicit, never stored ([`RefIndex::targets`]).
+            Group::Continuation(_) => {}
         }
         for (r, c) in &list {
             self.member.insert(*r, (g, *c));
@@ -1247,8 +1314,12 @@ impl RefIndex {
         }
     }
 
-    /// Make the groups `groups` again from `doc` (after a commit).
+    /// Make the groups `groups` again from `doc` (after a commit): all of them out first, then
+    /// back, so a continuation group whose key changed is never removed after it was remade.
     pub fn refresh(&mut self, doc: &Document, groups: &BTreeSet<Group>) {
+        for g in groups {
+            self.remove(*g);
+        }
         for g in groups {
             self.make(doc, *g);
         }
@@ -1264,6 +1335,8 @@ impl RefIndex {
             }
             Subject::Component(c) => {
                 out.insert(Group::Device(c));
+                // Brief 049: an arrow's name group.
+                out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
             }
             Subject::Conductor(_) => {}
         };
@@ -1280,7 +1353,7 @@ impl RefIndex {
                         of(r, &mut out);
                     }
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     out.insert(Group::Device(*id));
                 }
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
@@ -1291,6 +1364,10 @@ impl RefIndex {
                 }
                 _ => {}
             }
+        }
+        // Brief 049 (design 049 §8.1): the name groups the ops name, as `doc` keys them.
+        for n in crate::continuations::names_named(doc, ops) {
+            out.extend(crate::continuations::group_key(doc, &n));
         }
         out
     }
@@ -1305,14 +1382,28 @@ impl RefIndex {
         self.members.get(&g).into_iter().flatten().copied()
     }
 
+    /// The other members of `r`'s continuation group (brief 049: its implicit edges, both ways).
+    fn implicit(&self, r: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
+        let group = match self.member.get(&r) {
+            Some((g @ Group::Continuation(_), _)) => self.members.get(g),
+            _ => None,
+        };
+        group.into_iter().flatten().copied().filter(move |x| *x != r)
+    }
+
     /// What source `s` shows.
     pub fn targets(&self, s: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
-        self.targets.get(&s).into_iter().flatten().copied()
+        self.targets.get(&s).into_iter().flatten().copied().chain(self.implicit(s))
     }
 
     /// Who shows target `t`.
     pub fn sources(&self, t: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
-        self.sources.get(&t).into_iter().flatten().copied()
+        self.sources.get(&t).into_iter().flatten().copied().chain(self.implicit(t))
+    }
+
+    /// How many members group `g` has (O(1)).
+    pub fn group_len(&self, g: Group) -> usize {
+        self.members.get(&g).map_or(0, BTreeSet::len)
     }
 
     /// Every group.
@@ -1320,9 +1411,26 @@ impl RefIndex {
         self.members.keys().copied()
     }
 
-    /// How many members, groups and edges.
+    /// How many members, groups and edges (a continuation group's m(m−1) implicit edges counted,
+    /// not stored).
     pub fn sizes(&self) -> (usize, usize, usize) {
-        (self.member.len(), self.members.len(), self.targets.values().map(BTreeSet::len).sum())
+        let implicit: usize = self
+            .members
+            .iter()
+            .filter(|(g, _)| matches!(g, Group::Continuation(_)))
+            .map(|(_, m)| m.len().saturating_mul(m.len().saturating_sub(1)))
+            .fold(0, usize::saturating_add);
+        (self.member.len(), self.members.len(), self.targets.values().map(BTreeSet::len).sum::<usize>().saturating_add(implicit))
+    }
+
+    /// The pages that hold a continuation arrow (brief 049: the wide case's pages).
+    pub fn arrow_pages(&self, doc: &Document) -> BTreeSet<PageId> {
+        self.members
+            .iter()
+            .filter(|(g, _)| matches!(g, Group::Continuation(_)))
+            .flat_map(|(_, m)| m.iter())
+            .filter_map(|r| doc.representations.get(r).map(|x| x.page))
+            .collect()
     }
 
     /// The pages that hold a member of a device group (the wide case's pages).
@@ -1375,6 +1483,10 @@ impl RefIndex {
 struct Scope {
     devices: BTreeSet<ComponentId>,
     wide: bool,
+    /// Brief 049 (design 049 §8.1): the continuation names whose arrows' texts and caption runs
+    /// are compared, or every page with an arrow (`arrows_wide`).
+    names: BTreeSet<String>,
+    arrows_wide: bool,
 }
 
 impl Scope {
@@ -1427,7 +1539,7 @@ impl Scope {
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
                     self.devices.insert(terminal.component);
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                     self.devices.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
@@ -1468,7 +1580,28 @@ impl Scope {
                 }
                 _ => {}
             }
+            // Brief 049: what continuation arrows the op could change.
+            match op {
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. }
+                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+                {
+                    self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                }
+                Op::SetProjectSettings { before, after }
+                    if before.reference_style != after.reference_style || before.sheet != after.sheet || before.length_unit != after.length_unit =>
+                {
+                    self.arrows_wide = true;
+                }
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key) => {
+                    self.arrows_wide = true;
+                }
+                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, catalogue, id) => {
+                    self.arrows_wide = true;
+                }
+                _ => {}
+            }
         }
+        self.names.extend(crate::continuations::names_named(doc, ops));
     }
 
     fn moved(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op], done: &mut bool) {
@@ -1477,6 +1610,7 @@ impl Scope {
         }
         for p in ecad_model::book::positions_changed(doc, ops) {
             self.devices.extend(idx.devices_on(doc, p));
+            self.names.extend(crate::continuations::names_on(doc, idx, p));
         }
     }
 }
@@ -1492,6 +1626,10 @@ pub struct Watch {
     before: BTreeMap<ComponentId, BTreeMap<PageId, Vec<Part>>>,
     /// The pages with a device member before (only in the wide case).
     wide_pages: BTreeSet<PageId>,
+    /// Brief 049: what the named continuations showed before, by page, and the pages with an
+    /// arrow before (the wide case).
+    before_names: BTreeMap<PageId, Vec<Part>>,
+    arrow_pages: BTreeSet<PageId>,
     groups: BTreeSet<Group>,
     /// What verify mode found wrong (bugs), for the caller to record.
     problems: Vec<String>,
@@ -1548,7 +1686,12 @@ impl Watch {
                 .collect()
         };
         let wide_pages = if scope.wide { idx.device_pages(doc) } else { BTreeSet::new() };
-        Watch { cable_scope, cables, scope, before, wide_pages, groups: RefIndex::groups_named(doc, ops), problems }
+        let (before_names, arrow_pages) = if scope.arrows_wide {
+            (BTreeMap::new(), idx.arrow_pages(doc))
+        } else {
+            (crate::continuations::shown(doc, &mut places, &scope.names), BTreeSet::new())
+        };
+        Watch { cable_scope, cables, scope, before, wide_pages, before_names, arrow_pages, groups: RefIndex::groups_named(doc, ops), problems }
     }
 
     /// After the commit: `doc` is the state after it and `ops` its ops as recorded (with any pass
@@ -1589,6 +1732,20 @@ impl Watch {
         };
         if let Some(p) = &mut pages {
             p.extend(device_pages);
+            // Brief 049 (design 049 §8.1): the pages whose continuation texts or caption runs
+            // changed, or every page with an arrow before and after.
+            if self.scope.arrows_wide {
+                p.extend(std::mem::take(&mut self.arrow_pages));
+                p.extend(idx.arrow_pages(doc));
+            } else if !self.scope.names.is_empty() {
+                let mut places = Places::new(doc);
+                let after = crate::continuations::shown(doc, &mut places, &self.scope.names);
+                for page in self.before_names.keys().chain(after.keys()) {
+                    if self.before_names.get(page) != after.get(page) {
+                        p.insert(*page);
+                    }
+                }
+            }
         }
         Outcome { pages, orphaned, shown: shown_after, problems: self.problems }
     }
@@ -1603,7 +1760,8 @@ pub struct Reference {
     pub source_page: PageId,
     pub target: RepresentationId,
     pub target_page: PageId,
-    /// `cable`, `contact` (a contact shows its coil) or `mirror` (a table row shows a contact).
+    /// `cable`, `contact` (a contact shows its coil), `mirror` (a table row shows a contact) or
+    /// `continuation` (an arrow shows another arrow of its name, brief 049).
     pub kind: &'static str,
     /// The contact pole it is about (`13/14`), for device references: one per pole.
     pub labels: Option<String>,
@@ -1623,7 +1781,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
         }
         let dev = match g {
             Group::Device(c) => Some(device(doc, *c)),
-            Group::Cable(_) => None,
+            Group::Cable(_) | Group::Continuation(_) => None,
         };
         for s in idx.members(*g) {
             for t in idx.targets(s) {
@@ -1636,6 +1794,8 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
                 };
                 match (g, idx.member(s).map(|(_, c)| c)) {
                     (Group::Cable(_), _) => out.push(r("cable", None, cable_texts.get(&s).cloned().unwrap_or_default())),
+                    // Brief 049 (design 049 §5.5): an arrow shows each other end's place.
+                    (Group::Continuation(_), _) => out.push(r("continuation", None, places.text(tr.page, anchor(doc, tr)))),
                     // Brief 044 (tester D2): a connector half shows its mate half's place, a pin its
                     // mate pin's (labelled with the pin name).
                     (Group::Device(_), Some(Class::Half(_))) => out.push(r("half", None, places.text(tr.page, anchor(doc, tr)))),
@@ -1660,6 +1820,11 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 
 /// `xrefs {component?, cable?, page?, limit?, after?}`'s result (design 025 §5.4).
 ///
+/// Continuation rows (brief 049) come after the others, one per (arrow, other end), made only for
+/// the window asked for: with `component`, that arrow's; with `page`, those of the arrows on the
+/// page (a row whose source is elsewhere is listed from its source). O(arrows listed + rows
+/// returned), never O(m²) for a name of m arrows.
+///
 /// # Errors
 /// Unknown component, cable or page.
 pub fn xrefs_json(
@@ -1670,7 +1835,11 @@ pub fn xrefs_json(
             if !doc.components.contains_key(&c) {
                 return Err("no such component".into());
             }
-            BTreeSet::from([Group::Device(c)])
+            // Brief 049 (design 049 §5.5): an arrow lists its other ends.
+            match crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)) {
+                Some(g) => BTreeSet::from([g]),
+                None => BTreeSet::from([Group::Device(c)]),
+            }
         }
         (None, Some(k)) => {
             if !doc.cables.contains_key(&k) {
@@ -1688,23 +1857,67 @@ pub fn xrefs_json(
             None => idx.groups().collect(),
         },
     };
+    // Brief 049 (review of #85, 2): continuation rows are made per source and only for the
+    // window asked for, never all m(m−1) of a name; the other groups' rows as before.
+    let (cont, other): (BTreeSet<Group>, BTreeSet<Group>) = groups.into_iter().partition(|g| matches!(g, Group::Continuation(_)));
     let all: Vec<Reference> =
-        references(doc, idx, &groups).into_iter().filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p)).collect();
-    let list: Vec<Value> = all
-        .iter()
-        .skip(after)
-        .take(limit)
-        .map(|r| {
-            json!({
-                "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
-                "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
-                "kind": r.kind, "labels": r.labels, "text": r.text,
-            })
+        references(doc, idx, &other).into_iter().filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p)).collect();
+    // The arrows whose rows are listed: the given arrow's, the arrows on `page`, or every arrow.
+    let sources: Vec<(RepresentationId, usize)> = match (component, page) {
+        (Some(c), _) => doc.representations_of(Subject::Component(c)).map(|(r, _)| r).collect::<Vec<_>>(),
+        (None, Some(p)) => doc.representations_on(p).map(|(r, _)| r).collect(),
+        (None, None) => cont.iter().flat_map(|g| idx.members(*g)).collect(),
+    }
+    .into_iter()
+    .filter_map(|r| match idx.member(r) {
+        Some((g @ Group::Continuation(_), _)) if cont.contains(&g) => Some((r, idx.group_len(g).saturating_sub(1))),
+        _ => None,
+    })
+    .collect();
+    let total = sources.iter().fold(all.len(), |n, (_, k)| n.saturating_add(*k));
+    let row = |r: &Reference| {
+        json!({
+            "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
+            "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
+            "kind": r.kind, "labels": r.labels, "text": r.text,
         })
-        .collect();
+    };
+    let end = after.saturating_add(limit);
+    let mut list: Vec<Value> = all.iter().skip(after).take(limit).map(row).collect();
+    // Walk the sources, making rows only for those that overlap [after, end).
+    let mut at = all.len();
+    let mut places = Places::new(doc);
+    let mut ends: BTreeMap<String, Vec<crate::continuations::End>> = BTreeMap::new();
+    for (s, k) in &sources {
+        if at >= end {
+            break;
+        }
+        let next = at.saturating_add(*k);
+        if next > after
+            && let Some(sr) = doc.representations.get(s)
+            && let Subject::Component(c) = sr.subject
+            && let Some(name) = crate::continuations::name_of(doc, c)
+        {
+            let sorted = ends.entry(name.clone()).or_insert_with(|| crate::continuations::ends_named(doc, &mut places, &name));
+            let skip = after.saturating_sub(at);
+            let take = end.saturating_sub(at.max(after));
+            for e in sorted.iter().filter(|e| e.rep != *s).skip(skip).take(take) {
+                list.push(row(&Reference {
+                    source: *s,
+                    source_page: sr.page,
+                    target: e.rep,
+                    target_page: e.page,
+                    kind: "continuation",
+                    labels: None,
+                    text: e.text.clone(),
+                }));
+            }
+        }
+        at = next;
+    }
     let mut v = json!({ "references": list });
-    if after + limit < all.len() {
-        v["next"] = json!(after + limit);
+    if end < total {
+        v["next"] = json!(end);
     }
     Ok(v)
 }

@@ -596,6 +596,8 @@ pub struct Project {
     pub(crate) last_placed: Option<(String, ComponentId)>,
     /// The last continuation name placed in this session, the prompt's default (design 022 §3.2).
     pub(crate) last_continuation: Option<String>,
+    /// Brief 049: the last caption given in this session, Caption Continuations' default.
+    pub(crate) last_caption: Option<String>,
     /// The Wire tool's potential for new wires in this session; `None` is `auto` (design 022 §6).
     pub wire_potential: Option<String>,
     /// The Checks list (design 022 §8), built on its first show and then kept from each change's
@@ -761,8 +763,14 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
 /// line (the table's bar at the wire lineweight).
 pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
     let mut e = match &part.shape {
-        crate::xref::Shape::Text { at, value, height, halign, valign } => {
-            crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER)
+        crate::xref::Shape::Text { at, value, height, halign, valign, rotation } => {
+            let mut e = crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER);
+            // Brief 049 (FP3): a continuation's reference reads along its wire; every other part
+            // keeps 0, so its entity is unchanged.
+            if let EntityKind::Text(t) = &mut e.kind {
+                t.rotation = *rotation;
+            }
+            e
         }
         crate::xref::Shape::Line(a, b) => Entity {
             handle,
@@ -1059,7 +1067,10 @@ pub fn project_page_kept(
     // on every draw of the page, never stored.
     for part in crate::xref::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
-        ents.push(xref_entity(&part, h));
+        let mut e = xref_entity(&part, h);
+        // Brief 049 (review of #85, 3): a continuation's other-end text in the sheet's Ink 2.
+        crate::continuations::colour(doc, &part, &mut e);
+        ents.push(e);
         map.insert_xref(part.rep, part.index, h);
     }
     // Link lines (brief 030): derived on every draw, never stored.
@@ -1186,6 +1197,7 @@ impl Project {
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
+            last_caption: None,
             wire_potential: None,
             checks: None,
             xref,
@@ -1279,6 +1291,7 @@ impl Project {
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
+            last_caption: None,
             wire_potential: None,
             checks: None,
             xref,
@@ -1413,6 +1426,7 @@ impl Project {
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
+            last_caption: None,
             wire_potential: None,
             checks: None,
             xref,
@@ -2894,6 +2908,29 @@ impl Project {
     }
 }
 
+/// Whether definition `id` is used by nothing once `ops` are applied to `doc`: every item and
+/// component using it now is removed or moved off it by `ops` (brief 048, FP8's removal of a
+/// superseded version in the update's own transaction).
+fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &[Op]) -> bool {
+    let items = doc.items_using(id);
+    let comps = doc.components_using(id);
+    let item_left = |i: &ecad_model::ItemId| {
+        !ops.iter().any(|o| match o {
+            Op::RemoveItem { id: x, .. } => x == i,
+            Op::ModifyItem { id: x, after, .. } => x == i && !matches!(&after.kind, ecad_model::ItemKind::Symbol(sym) if sym.definition == id),
+            _ => false,
+        })
+    };
+    let comp_left = |c: &ecad_model::ComponentId| {
+        !ops.iter().any(|o| match o {
+            Op::DeleteComponent { id: x, .. } => x == c,
+            Op::SetComponentDefinition { id: x, after, .. } => x == c && *after != Some(id),
+            _ => false,
+        })
+    };
+    !items.iter().any(item_left) && !comps.iter().any(comp_left)
+}
+
 /// The pages whose drawing `ops` could change directly (their items and representations, and the
 /// pages a conductor whose ends they attach is routed on), worked out on the document before them;
 /// `None` when that could be any page (op kinds other than item, representation, attachment and
@@ -2920,12 +2957,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::AttachEnd { conductor, .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*conductor)).map(|(_, r)| r.page));
             }
-            // A continuation's partners list it on their pages (brief 022): any page.
+            // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
+            // pages come from the reference index's watch (`xref::Watch`), and its own pages from
+            // its representation ops.
             Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. }
-                if ecad_model::connectivity::continuation_key(&component.properties).is_some() =>
-            {
-                return None;
-            }
+                if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
             // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
             // same transaction (the invariant requires it), and those ops name its pages.
@@ -2954,8 +2990,15 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                     }
                 }
             }
-            // A device's tag is drawn beside each of its symbols (brief 018): their pages. A
-            // continuation's name is drawn beside its partners too (brief 022): any page.
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
+            // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
+            // partners' pages come from the reference index's watch.
+            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, .. }
+                if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
+                    && crate::continuations::is_continuation(doc, *c) =>
+            {
+                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
             Op::SetProperty { object: ecad_model::ObjectRef::Component(_), key, .. }
                 if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
             {
@@ -2967,6 +3010,13 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 // card's slot or size moves the addresses of the cards after it.
                 out.extend(crate::plc::pages_touched(doc, plc, *c, key, after.as_deref()));
             }
+            Op::SetComponentDefinition { id: c, .. } => {
+                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            }
+            // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
+            // nowhere. Its last copies move off it in the same transaction (review of PR #86,
+            // finding 1), and their own ops name their pages; the document here is the one before.
+            Op::RemoveDefinition { id, .. } if unused_after(doc, *id, ops) => {}
             // A conductor's label shows its properties (brief 022): its pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
                 out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));

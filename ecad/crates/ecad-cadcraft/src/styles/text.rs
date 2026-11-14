@@ -38,6 +38,8 @@ static BUILTINS: &[Builtin] = &[
     style("part_number", "Part number", &[("height", Value::Length(1.6)), ("weight", R)]),
     style("continuation_name", "Continuation name", &[("height", Value::Length(2.0)), ("weight", R)]),
     style("reference", "Reference", &[("height", Value::Length(2.0)), ("weight", R)]),
+    // Brief 049 (design 049 §7).
+    style("continuation_caption", "Continuation caption", &[("height", Value::Length(2.5)), ("weight", R)]),
     style("wire_label", "Wire label", &[("height", Value::Length(ecad_model::wiring::DEFAULT_LABEL_HEIGHT)), ("weight", R)]),
     style("cable_text", "Cable text", &[("height", Value::Length(1.6)), ("weight", R)]),
     style("location", "Location label", &[("height", Value::Length(1.6)), ("weight", R)]),

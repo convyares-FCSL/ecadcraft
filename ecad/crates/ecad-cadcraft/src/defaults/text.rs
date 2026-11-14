@@ -73,6 +73,7 @@ pub static DESCRIPTION_SHOW: Entry = entry("text.description.show", "Description
 pub static PART_NUMBER_SHOW: Entry = entry("text.part_number.show", "Part number shown", SHOW, Value::Choice("off"), SPGO);
 pub static CONTINUATION_NAME_SHOW: Entry = entry("text.continuation_name.show", "Continuation name shown", SHOW, Value::Choice("off"), SPGO);
 pub static REFERENCE_SHOW: Entry = entry("text.reference.show", "References shown", SHOW, Value::Choice("on"), SPG);
+pub static CONTINUATION_CAPTION_SHOW: Entry = entry("text.continuation_caption.show", "Continuation captions shown", SHOW, Value::Choice("on"), SPG);
 pub static LOCATION_SHOW: Entry = entry("text.location.show", "Location labels shown", SHOW, Value::Choice("on"), SPG);
 /// Read by lane W (conductor, page, project).
 pub static WIRE_LABEL_SHOW: Entry = entry("text.wire_label.show", "Wire labels shown", SHOW, Value::Choice("on"), SPGO);
@@ -105,6 +106,7 @@ pub static ENTRIES: &[&Entry] = &[
     &PART_NUMBER_SHOW,
     &CONTINUATION_NAME_SHOW,
     &REFERENCE_SHOW,
+    &CONTINUATION_CAPTION_SHOW,
     &LOCATION_SHOW,
     &WIRE_LABEL_SHOW,
     &RUN_ALIGN,

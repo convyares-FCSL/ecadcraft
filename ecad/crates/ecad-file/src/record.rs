@@ -139,6 +139,7 @@ pub const OP_NAMES: &[&str] = &[
     "RemoveItem",
     "CreateComponent",
     "DeleteComponent",
+    "SetComponentDefinition",
     "AddTerminal",
     "RemoveTerminal",
     "LinkRepresentation",

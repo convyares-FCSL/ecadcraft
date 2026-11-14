@@ -39,7 +39,7 @@ fn a_new_project_uses_iec_and_lists_the_built_in_styles() {
     let (mut h, ..) = fixture();
     assert_eq!(h.run("standard", json!({})).unwrap(), json!({"name": "IEC (built in)", "id": null}));
     let text = h.run("styles", json!({"catalogue": "text"})).unwrap();
-    assert_eq!(text["styles"].as_array().unwrap().len(), 20, "one built-in style per 031 kind");
+    assert_eq!(text["styles"].as_array().unwrap().len(), 21, "one built-in style per 031/049 kind");
     let tag = &text["styles"][0];
     assert_eq!((tag["id"].as_str(), tag["layer"].as_str()), (Some("tag"), Some("builtin")));
     assert_eq!(tag["fields"]["height"]["value"], json!(2.5));

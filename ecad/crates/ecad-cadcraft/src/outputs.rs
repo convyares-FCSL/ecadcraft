@@ -485,6 +485,13 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
+                Op::SetComponentDefinition { id, .. } => {
+                    if locations::is_box(doc, *id) {
+                        self.pages.extend(doc.representations_of(Subject::Component(*id)).map(|(_, r)| r.page));
+                    } else {
+                        self.devices.insert(*id);
+                    }
+                }
                 Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
@@ -2076,6 +2083,7 @@ impl Outputs {
                 description: Some(t.description.clone()),
                 maker: t.maker.clone(),
                 part_number: t.part_number.clone(),
+                article_number: t.article_number.clone(),
                 ..BomRow::default()
             });
         }
@@ -2089,6 +2097,7 @@ impl Outputs {
                 description: Some(a.description.clone()),
                 maker: a.maker.clone(),
                 part_number: a.part_number.clone(),
+                article_number: a.article_number.clone(),
                 accessory: Some(a.accessory),
                 ..BomRow::default()
             });

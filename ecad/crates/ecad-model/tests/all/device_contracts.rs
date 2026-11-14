@@ -27,6 +27,7 @@ fn def(name: &str, keys: [&str; 2]) -> Definition {
             TerminalDef { key: keys[0].into(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0) },
             TerminalDef { key: keys[1].into(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0) },
         ],
+        ..Default::default()
     }
 }
 

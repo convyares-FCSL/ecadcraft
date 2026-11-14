@@ -66,7 +66,7 @@ fn a_style_field_applies_in_one_transaction_and_patches_one_row() {
     let (text, _) = &v.cats[0];
     let tag = text.key_of(&StyleRef::Builtin("tag".into())).unwrap();
     let rows = ecad_ui::table::TableSource::keys(text).len();
-    assert_eq!(rows, 20, "one row per text style");
+    assert_eq!(rows, 21, "one row per text style");
     h.state_mut().settings.standards.style_focus = Some(tag);
     h.run_steps(3);
     assert!(h.query_by_label("ecad.standards.style.field.colour").is_some());

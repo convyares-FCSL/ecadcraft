@@ -4,7 +4,7 @@
 
 use ecad_bench::generate::{Variant, generate, tier};
 use ecad_bench::measure::Measured;
-use ecad_bench::report::{Row, compare, json};
+use ecad_bench::report::{Row, compare, json, table};
 use ecad_bench::{TIERS, parse};
 use ecad_file::{Outcome, open_project};
 
@@ -116,4 +116,21 @@ fn compare_prints_the_change_per_row_and_refuses_a_foreign_file() {
     assert!(text.contains("10.0 → 15.0 (+50%)"), "{text}");
     assert!(text.contains("(not in the earlier run)"), "{text}");
     assert!(compare(&[row("lean", 1.0)], &serde_json::json!({"hello": 1})).is_err());
+}
+
+/// The report compares the version 2 container with its targets only, never with the version 1
+/// file it was converted from (owner, 2026-11-13): no `v1 MB` or `convert ms` column, no
+/// `convert_ms` in the JSON or in `--compare`.
+#[test]
+fn the_report_has_no_version_1_comparison() {
+    let rows = [row("lean", 10.0)];
+    let t = table(&rows, 5, None);
+    assert!(t.contains("Container version 2"), "{t}");
+    for gone in ["v1 MB", "convert ms"] {
+        assert!(!t.contains(gone), "{gone}: {t}");
+    }
+    let j = json(&rows, 5, "abc1234", "2026-11-13T00:00:00Z", None);
+    assert!(j["rows"][0].get("convert_ms").is_none(), "{j}");
+    let c = compare(&rows, &j).unwrap();
+    assert!(!c.contains("convert"), "{c}");
 }

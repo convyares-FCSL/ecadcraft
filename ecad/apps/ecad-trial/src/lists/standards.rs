@@ -29,13 +29,15 @@ pub fn source_word(s: Source) -> &'static str {
         Source::Page => "Page",
         Source::Object => "Object",
         Source::Symbol => "Symbol",
+        // Brief 048 (FP6): a project symbol's own value, from its definition.
+        Source::Definition => "Definition",
     }
 }
 
 /// A badge's tone: the built-in and the standard are quiet, the overrides stand out.
 pub fn source_tone(s: Source) -> Tone {
     match s {
-        Source::Builtin | Source::Standard => Tone::Neutral,
+        Source::Builtin | Source::Standard | Source::Definition => Tone::Neutral,
         Source::Project | Source::Page => Tone::Ok,
         Source::Object | Source::Symbol => Tone::Provisional,
     }

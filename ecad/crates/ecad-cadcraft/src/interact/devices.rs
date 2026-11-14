@@ -62,6 +62,7 @@ pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
         last: None,
         rack: None,
         slot: None,
+        project: None,
     })))
 }
 
@@ -104,11 +105,39 @@ struct Place {
     rack: Option<Option<ComponentId>>,
     /// The slot answered for it (`None`: the next free one).
     slot: Option<u32>,
+    /// Brief 048: a project symbol typed by its key (its newest version), placed instead of a
+    /// starter: `place {symbol: key}` resolves it the same way.
+    project: Option<ProjectPick>,
+}
+
+/// Why a project symbol is not added to a device by hand (its `join` default says how it joins).
+const PROJECT_JOINS: &str = "A project symbol joins devices as its own Join setting says; place it as a new device.";
+
+/// A project symbol chosen at Place Symbol's first prompt (brief 048, design 048 §8.2).
+#[derive(Debug, Clone)]
+struct ProjectPick {
+    key: String,
+    name: String,
+    def: ecad_model::Definition,
 }
 
 impl Place {
     fn symbol(&self) -> &'static Starter {
         self.symbol.unwrap_or(self.default)
+    }
+
+    /// Take the default (starter) symbol, leaving any project symbol chosen before.
+    fn take_default(&mut self) {
+        self.symbol = Some(self.default);
+        self.project = None;
+    }
+
+    /// The definition the next click places: the project symbol's, else the starter's.
+    fn definition(&self) -> Option<&ecad_model::Definition> {
+        match &self.project {
+            Some(p) => Some(&p.def),
+            None => self.symbol().definition().ok(),
+        }
     }
 
     /// Brief 045 (design 045 §2.4): whether the next placement is a new card that still needs its
@@ -173,6 +202,9 @@ impl Place {
     /// What the next click makes: `new device -K03` or `joins -K01 as 13/14`, with the tag and
     /// labels it will draw.
     fn outcome(&self, s: &Session) -> Option<(String, String, Vec<String>)> {
+        if self.project.is_some() {
+            return None;
+        }
         let sym = self.symbol();
         read(s, |p, _| {
             let doc = p.ledger.document();
@@ -207,6 +239,19 @@ impl Place {
             && let Some(c) = device
         {
             self.stage = Stage::DeviceSymbol(c);
+            return Ok(Step::Continue);
+        }
+        self.project = None;
+        // Brief 048: a project symbol's key (its newest version), before the starters'.
+        let project = read(s, |p, _| {
+            Ok(symbols::project_by_key(p.ledger.document(), t)
+                .and_then(|v| Some(ProjectPick { key: v.key()?.to_string(), name: v.def.name.clone(), def: v.def.clone() })))
+        })
+        .ok()
+        .flatten();
+        if let Some(pick) = project {
+            self.symbol = Some(self.default);
+            self.project = Some(pick);
             return Ok(Step::Continue);
         }
         let found = match symbols::by_key(t) {
@@ -244,8 +289,10 @@ impl Place {
             return Err(other(OUT_OF_RANGE));
         }
         let sym = self.symbol();
+        let key = self.project.as_ref().map_or(sym.key, |p| p.key.as_str());
+        let name = self.project.as_ref().map_or(sym.name, |p| p.name.as_str()).to_string();
         let mut params = json!({
-            "symbol": sym.key, "at": [at.x, at.y], "rotation": f64::from(self.rotation), "mirror": self.mirror,
+            "symbol": key, "at": [at.x, at.y], "rotation": f64::from(self.rotation), "mirror": self.mirror,
         });
         if let Some(c) = self.join {
             params["device"] = Value::String(c.hex());
@@ -279,10 +326,10 @@ impl Place {
             let pages: Vec<String> =
                 r.get("pages").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_u64).map(|n| n.to_string()).collect();
             let pages = if pages.len() == 1 { format!("page {}", pages.join(", ")) } else { format!("pages {}", pages.join(", ")) };
-            s.echo(format!("Added {} {} to {tag} (now on {pages}).", sym.name, labels.join("/")));
+            s.echo(format!("Added {name} {} to {tag} (now on {pages}).", labels.join("/")));
             self.join = component;
         } else if !card_placed {
-            s.echo(format!("Placed {tag} ({}) with connection points {}.", sym.name, labels.join(", ")));
+            s.echo(format!("Placed {tag} ({name}) with connection points {}.", labels.join(", ")));
         }
         // A typed tag names one device; the next click makes a new one with the next number.
         self.tag = None;
@@ -331,12 +378,12 @@ impl Place {
                         } else {
                             self.mirror = !self.mirror;
                         }
-                        self.symbol = Some(self.default);
+                        self.take_default();
                         self.go_to_point(s);
                         Ok(Step::Continue)
                     }
                     Input::Enter => {
-                        self.symbol = Some(self.default);
+                        self.take_default();
                         self.join = device;
                         self.go_to_point(s);
                         Ok(Step::Continue)
@@ -345,6 +392,9 @@ impl Place {
                         self.choose(s, &t)?;
                         if self.symbol.is_some() && matches!(self.stage, Stage::Symbol | Stage::DeviceSymbol(_)) {
                             if let Some(c) = device {
+                                if self.project.is_some() {
+                                    return Err(other(PROJECT_JOINS));
+                                }
                                 read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())).map_err(other)?;
                                 self.join = Some(c);
                             }
@@ -354,7 +404,7 @@ impl Place {
                     }
                     // A click takes the default symbol and places it there (click-first, design 008).
                     Input::Point(p) if device.is_none() => {
-                        self.symbol = Some(self.default);
+                        self.take_default();
                         self.go_to_point(s);
                         self.place_at(s, p)
                     }
@@ -371,6 +421,9 @@ impl Place {
                     Ok(Step::Continue)
                 }
                 Input::Keyword(k) if k == "Device" => {
+                    if self.project.is_some() {
+                        return Err(other(PROJECT_JOINS));
+                    }
                     self.stage = Stage::Device;
                     Ok(Step::Continue)
                 }
@@ -593,7 +646,7 @@ impl Interactive for Place {
             return Vec::new();
         }
         let pl = self.placement(cursor);
-        let Ok(def) = self.symbol().definition() else { return Vec::new() };
+        let Some(def) = self.definition() else { return Vec::new() };
         def.graphics.iter().filter_map(|g| super::forms::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
     }
     /// Its terminal rings, tag and terminal labels at their would-be positions.
@@ -603,7 +656,7 @@ impl Interactive for Place {
         }
         let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
         let pl = self.placement(cursor);
-        let Ok(def) = self.symbol().definition() else { return Vec::new() };
+        let Some(def) = self.definition() else { return Vec::new() };
         let mut out: Vec<Entity> =
             def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI)).collect();
         if let Some((_, tag, labels)) = self.outcome(s) {
