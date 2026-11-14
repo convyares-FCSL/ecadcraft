@@ -1,6 +1,7 @@
 # Brief 054: Page types, Settings ▸ Pages and sheets, and generated front pages
 
-Status: Draft
+Status: Draft (FP1–FP6 approved by the overseer, 2026-11-14; tester for 054a confirmed; design §14
+Q1–Q15 await the owner)
 Branch: `feature/page-types`, from `origin/dev` `8b6c2ccd`
 Designer: **yes** (`docs/design/054.md`) · Size: L (split in two, design §15)
 Roadmap: UI rev 4, release **0.2.2** (with 055 title block editor, the PLC signal list and sync,
@@ -73,7 +74,7 @@ that omit the zone on a zoneless page.
 
 ## Format and ops
 
-No new op. Design §11, FP1–FP6, for the overseer:
+No new op. Design §11, FP1–FP6, **approved by the overseer** (2026-11-14):
 
 - FP1 a style catalogue word `page` (records through `SetStyle`);
 - FP2 page property `page.type` (a registry choice at page level);
