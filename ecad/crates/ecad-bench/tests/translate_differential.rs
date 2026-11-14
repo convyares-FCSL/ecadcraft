@@ -218,11 +218,9 @@ fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
     let g = generate(tier("small").unwrap(), Variant::Lean).unwrap();
     let dir = std::env::temp_dir().join(format!("ecad-014-differential-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("small-lean.ecad");
-    std::fs::write(&path, g.file_bytes().unwrap()).unwrap();
-    // The app opens version 2 files for editing (brief 021): convert the generated one first.
-    let v2 = dir.join("small-lean.v2.ecad");
-    ecad_bench::v2::convert(&path, &v2).unwrap();
+    // Written straight in the version 2 format the app opens.
+    let v2 = dir.join("small-lean.ecad");
+    ecad_bench::v2::write(&g, &v2).unwrap();
 
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
