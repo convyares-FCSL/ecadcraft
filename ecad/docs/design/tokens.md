@@ -156,13 +156,16 @@ px at 100 % UI scale (`ecad_tokens::space`, `ecad_tokens::size`).
 | `size.row_list` | `28 px` | List row |
 | `size.row_table` | `30 px` | Table row |
 | `size.row_group` | `32 px` | Group row |
-| `size.top_bar` | `44 px` | Top bar |
+| `size.top_bar` | `40 px` | Top bar (UI rev 3) |
 | `size.panel_header` | `36 px` | Panel header |
 | `size.agent_banner` | `32 px` | Agent banner |
-| `size.status_bar` | `26 px` | Status bar |
-| `size.tool_button` | `36 px` | Tool button, square |
-| `size.tool_strip` | `48 px` | Tool strip width |
-| `size.tool_icon` | `20 px` | Icon in a tool button |
+| `size.status_bar` | `32 px` | Bottom bar: status, page well, view (UI rev 3) |
+| `size.tool_button` | `44 px` | Tool button height |
+| `size.tool_button_w` | `54 px` | Tool button width: an icon over a label (UI rev 3) |
+| `size.tool_strip` | `56 px` | Tool strip width; the inspector's collapsed rail |
+| `size.tool_icon` | `18 px` | Icon in a tool button |
+| `size.tool_label` | `10 px` | Label under a tool button's icon |
+| `size.page_well` | `880 px` | The bottom bar's page well |
 | `size.icon_button` | `28 px` | Icon button outside the tool strip |
 | `size.icon` | `16 px` | Icon grid |
 
@@ -280,6 +283,27 @@ Tool icons echo the schematic.
 | `icon.cloud` | Revision cloud | Scallops round a box (041: an action) |
 | `icon.eye` | Show or hide | An eye (041: an action) |
 | `icon.connector` | Connector | A socket's cup over a plug's pin, each on its lead (044: Place ▸ Connector) |
+| `icon.book` | Book | An open book (UI rev 3: the Book panel) |
+| `icon.plc` | PLC | A card with a grid of six channels (UI rev 3: the PLC group) |
+| `icon.snap` | Snap | A cross hair on a dot (UI rev 3: the Snap toggle) |
+| `icon.grid` | Grid | A hash of four lines (UI rev 3: the Grid toggle) |
+| `icon.ortho` | Ortho | A right angle with a square corner mark (UI rev 3: the Ortho toggle) |
+| `icon.moon` | Dark theme | A crescent (UI rev 3: the light/dark switch) |
+| `icon.sun` | Light theme | A ring with eight rays (UI rev 3: the light/dark switch) |
+| `icon.help` | Help | A question mark in a ring (UI rev 3: the top bar) |
+| `icon.folder` | Page group | A folder with a tab (UI rev 3: a page group in the well) |
+| `icon.chevrons_left` | Previous group | Two chevrons (UI rev 3: the page well) |
+| `icon.chevrons_right` | Next group | Two chevrons (UI rev 3: the page well) |
+| `icon.fit` | Fit | Four corner marks (UI rev 3: the view group) |
+| `icon.minus` | Zoom out | A dash (UI rev 3: the view group) |
+| `icon.plus` | Zoom in | A plus (UI rev 3: the view group) |
+| `icon.pencil` | Draw tools | A pencil (UI rev 3: the Draw group) |
+| `icon.pin` | Device tools | A body on a lead (UI rev 3: the Device group) |
+| `icon.terminal_pin` | Terminal tools | A lead through a ring with a slash (UI rev 3: the Terminal group) |
+| `icon.wire_bend` | Wire tools | A wire bending up from one end ring to another (UI rev 3: the Wire group) |
+| `icon.cable_bundle` | Cable tools | Three leads tied by two strokes (UI rev 3: the Cable group) |
+| `icon.location_box` | Location tools | A dashed box with a marked corner (UI rev 3: the Location group) |
+| `icon.device_grid` | Devices panel | Three squares and a plus (UI rev 3: the Devices panel) |
 
 # Canvas tokens in use until U4a (`ecad.*`)
 

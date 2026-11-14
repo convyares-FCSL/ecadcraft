@@ -105,11 +105,54 @@ pub enum Icon {
     // 044
     /// Connector: a socket's cup over a plug's pin.
     Connector,
+    // UI rev 3
+    /// Book: an open book (UI rev 3: the Book panel).
+    Book,
+    /// PLC: a rack with three cards (UI rev 3: the PLC group).
+    Plc,
+    /// Snap: a cross hair on a dot (UI rev 3: the Snap toggle).
+    Snap,
+    /// Grid: a hash of four lines (UI rev 3: the Grid toggle).
+    Grid,
+    /// Ortho: a right angle with a square corner mark (UI rev 3: the Ortho toggle).
+    Ortho,
+    /// Dark theme: a crescent (UI rev 3: the light/dark switch).
+    Moon,
+    /// Light theme: a ring with eight rays (UI rev 3: the light/dark switch).
+    Sun,
+    /// Help: a question mark in a ring (UI rev 3: the top bar).
+    Help,
+    /// Page group: a folder with a tab (UI rev 3: a page group in the well).
+    Folder,
+    /// Previous group: two chevrons (UI rev 3: the page well).
+    ChevronsLeft,
+    /// Next group: two chevrons (UI rev 3: the page well).
+    ChevronsRight,
+    /// Fit: four corner marks (UI rev 3: the view group).
+    Fit,
+    /// Zoom out: a dash (UI rev 3: the view group).
+    Minus,
+    /// Zoom in: a plus (UI rev 3: the view group).
+    Plus,
+    /// Draw tools: a pencil (UI rev 3: the Draw group).
+    Pencil,
+    /// Device tools: a body on a lead, a connection point at each end (UI rev 3: the Device group).
+    Pin,
+    /// Terminal tools: a lead through a ring with a slash (UI rev 3: the Terminal group).
+    TerminalPin,
+    /// Wire tools: a wire bending up from one end ring to another (UI rev 3: the Wire group).
+    WireBend,
+    /// Cable tools: three leads tied by two strokes (UI rev 3: the Cable group).
+    CableBundle,
+    /// Location tools: a dashed box with a marked corner (UI rev 3: the Location group).
+    LocationBox,
+    /// Devices panel: three squares and a plus (UI rev 3: the Devices panel).
+    DeviceGrid,
 }
 
 impl Icon {
     /// Every icon, in declaration order.
-    pub const ALL: [Icon; 47] = [
+    pub const ALL: [Icon; 68] = [
         Icon::Select,
         Icon::Wire,
         Icon::Place,
@@ -159,6 +202,28 @@ impl Icon {
         Icon::Eye,
         // 044
         Icon::Connector,
+        // UI rev 3
+        Icon::Book,
+        Icon::Plc,
+        Icon::Snap,
+        Icon::Grid,
+        Icon::Ortho,
+        Icon::Moon,
+        Icon::Sun,
+        Icon::Help,
+        Icon::Folder,
+        Icon::ChevronsLeft,
+        Icon::ChevronsRight,
+        Icon::Fit,
+        Icon::Minus,
+        Icon::Plus,
+        Icon::Pencil,
+        Icon::Pin,
+        Icon::TerminalPin,
+        Icon::WireBend,
+        Icon::CableBundle,
+        Icon::LocationBox,
+        Icon::DeviceGrid,
     ];
 
     /// A readable name, used as the accessible label of an icon with no label of its own.
@@ -213,6 +278,28 @@ impl Icon {
             Icon::Eye => "Show or hide",
             // 044
             Icon::Connector => "Connector",
+            // UI rev 3
+            Icon::Book => "Book",
+            Icon::Plc => "PLC",
+            Icon::Snap => "Snap",
+            Icon::Grid => "Grid",
+            Icon::Ortho => "Ortho",
+            Icon::Moon => "Dark theme",
+            Icon::Sun => "Light theme",
+            Icon::Help => "Help",
+            Icon::Folder => "Page group",
+            Icon::ChevronsLeft => "Previous group",
+            Icon::ChevronsRight => "Next group",
+            Icon::Fit => "Fit",
+            Icon::Minus => "Zoom out",
+            Icon::Plus => "Zoom in",
+            Icon::Pencil => "Draw tools",
+            Icon::Pin => "Device tools",
+            Icon::TerminalPin => "Terminal tools",
+            Icon::WireBend => "Wire tools",
+            Icon::CableBundle => "Cable tools",
+            Icon::LocationBox => "Location tools",
+            Icon::DeviceGrid => "Devices panel",
         }
     }
 }

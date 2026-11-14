@@ -6,6 +6,7 @@
 //! egui strokes have no cap style; ends are butt-ended at 1.5 px, which reads the same as round
 //! at this size.
 
+pub mod rev3;
 pub mod shell;
 pub mod tools;
 pub mod workspaces;
@@ -72,6 +73,28 @@ pub fn shapes(rect: Rect, icon: Icon, ink: Color32) -> Vec<Shape> {
         Icon::Eye => tools::eye(&mut pen),
         // 044
         Icon::Connector => tools::connector(&mut pen),
+        // UI rev 3
+        Icon::Book => rev3::book(&mut pen),
+        Icon::Plc => rev3::plc(&mut pen),
+        Icon::Snap => rev3::snap(&mut pen),
+        Icon::Grid => rev3::grid(&mut pen),
+        Icon::Ortho => rev3::ortho(&mut pen),
+        Icon::Moon => rev3::moon(&mut pen),
+        Icon::Sun => rev3::sun(&mut pen),
+        Icon::Help => rev3::help(&mut pen),
+        Icon::Folder => rev3::folder(&mut pen),
+        Icon::ChevronsLeft => rev3::chevrons_left(&mut pen),
+        Icon::ChevronsRight => rev3::chevrons_right(&mut pen),
+        Icon::Fit => rev3::fit(&mut pen),
+        Icon::Minus => rev3::minus(&mut pen),
+        Icon::Plus => rev3::plus(&mut pen),
+        Icon::Pencil => rev3::pencil(&mut pen),
+        Icon::Pin => rev3::pin(&mut pen),
+        Icon::TerminalPin => rev3::terminal_pin(&mut pen),
+        Icon::WireBend => rev3::wire_bend(&mut pen),
+        Icon::CableBundle => rev3::cable_bundle(&mut pen),
+        Icon::LocationBox => rev3::location_box(&mut pen),
+        Icon::DeviceGrid => rev3::device_grid(&mut pen),
     }
     pen.out
 }

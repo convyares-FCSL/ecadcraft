@@ -7,8 +7,9 @@
 //! command appears in an action or in [`PROGRAMMATIC_ONLY`].
 //!
 //! # Semantics
-//! - **Tool groups** (V W P C D B T) are the actions with a `group`, in order; a tool whose
-//!   command does not exist yet is not listed. The group's key picks its last-used tool and steps.
+//! - **Tool groups** (UI rev 3: Select, Draw, Text | Device, Terminal, PLC | Wire, Cable |
+//!   Location) are the actions with a `group`, in order; a tool whose command does not exist yet
+//!   is not listed. A group with a key (V D T W C) picks its last-used tool and steps.
 //! - **The wheel** of a kind is the actions naming that kind in `wheel`, at their slot. Slots mean
 //!   the same on every wheel (spec §5): [`Slot::Bottom`] deletes, [`Slot::Right`] goes to what the
 //!   object relates to, [`Slot::BottomRight`] shows its row; the three on the left copy, turn or
@@ -107,45 +108,63 @@ impl Slot {
     }
 }
 
-/// The seven tool groups of the Draw workspace (spec §2), in strip order.
+/// The tool groups of the Draw workspace (UI rev 3, "Tool strip"), in strip order. Dividers sit
+/// between Text and Device, PLC and Wire, and Cable and Location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ToolGroup {
     Select,
-    Wire,
-    Place,
-    Cable,
     Draw,
-    Box,
     Text,
+    /// Place a symbol or a connector.
+    Device,
+    Terminal,
+    Plc,
+    /// Wire (and, later, bridge and continuation).
+    Wire,
+    Cable,
+    /// Location box (and, later, function box and device or PLC outline).
+    Location,
 }
 
 impl ToolGroup {
-    pub const ALL: [ToolGroup; 7] =
-        [ToolGroup::Select, ToolGroup::Wire, ToolGroup::Place, ToolGroup::Cable, ToolGroup::Draw, ToolGroup::Box, ToolGroup::Text];
+    pub const ALL: [ToolGroup; 9] = [
+        ToolGroup::Select,
+        ToolGroup::Draw,
+        ToolGroup::Text,
+        ToolGroup::Device,
+        ToolGroup::Terminal,
+        ToolGroup::Plc,
+        ToolGroup::Wire,
+        ToolGroup::Cable,
+        ToolGroup::Location,
+    ];
 
-    /// Its key (spec §5, owner answer 7).
-    pub const fn letter(self) -> char {
+    /// Its key, if it keeps one. UI rev 3 keeps a key only where a group of 041's survives
+    /// (Select V, Draw D, Text T, Wire W, Cable C); Device, Terminal, PLC and Location have none
+    /// (P now reopens the symbol picker while placing).
+    pub const fn letter(self) -> Option<char> {
         match self {
-            ToolGroup::Select => 'V',
-            ToolGroup::Wire => 'W',
-            ToolGroup::Place => 'P',
-            ToolGroup::Cable => 'C',
-            ToolGroup::Draw => 'D',
-            ToolGroup::Box => 'B',
-            ToolGroup::Text => 'T',
+            ToolGroup::Select => Some('V'),
+            ToolGroup::Draw => Some('D'),
+            ToolGroup::Text => Some('T'),
+            ToolGroup::Wire => Some('W'),
+            ToolGroup::Cable => Some('C'),
+            ToolGroup::Device | ToolGroup::Terminal | ToolGroup::Plc | ToolGroup::Location => None,
         }
     }
 
-    /// Its name.
+    /// Its name, the label under its button.
     pub const fn name(self) -> &'static str {
         match self {
             ToolGroup::Select => "Select",
-            ToolGroup::Wire => "Wire",
-            ToolGroup::Place => "Place",
-            ToolGroup::Cable => "Cable",
             ToolGroup::Draw => "Draw",
-            ToolGroup::Box => "Box",
             ToolGroup::Text => "Text",
+            ToolGroup::Device => "Device",
+            ToolGroup::Terminal => "Terminal",
+            ToolGroup::Plc => "PLC",
+            ToolGroup::Wire => "Wire",
+            ToolGroup::Cable => "Cable",
+            ToolGroup::Location => "Location",
         }
     }
 
@@ -153,13 +172,20 @@ impl ToolGroup {
     pub const fn icon(self) -> Icon {
         match self {
             ToolGroup::Select => Icon::Select,
-            ToolGroup::Wire => Icon::Wire,
-            ToolGroup::Place => Icon::Place,
-            ToolGroup::Cable => Icon::Cable,
-            ToolGroup::Draw => Icon::Draw,
-            ToolGroup::Box => Icon::Box,
+            ToolGroup::Draw => Icon::Pencil,
             ToolGroup::Text => Icon::Text,
+            ToolGroup::Device => Icon::Pin,
+            ToolGroup::Terminal => Icon::TerminalPin,
+            ToolGroup::Plc => Icon::Plc,
+            ToolGroup::Wire => Icon::WireBend,
+            ToolGroup::Cable => Icon::CableBundle,
+            ToolGroup::Location => Icon::LocationBox,
         }
+    }
+
+    /// Whether a divider follows it on the strip.
+    pub const fn divider_after(self) -> bool {
+        matches!(self, ToolGroup::Text | ToolGroup::Plc | ToolGroup::Cable)
     }
 
     /// Its tools, in flyout order.
@@ -184,10 +210,10 @@ pub enum Key {
     CtrlY,
 }
 
-/// The keys the shell itself takes (group letters, Esc, F, PgUp/PgDn, Ctrl+1–4, Ctrl+K, Ctrl+/,
+/// The keys the shell itself takes (group letters, Esc, F, `]`, PgUp/PgDn, Ctrl+1–4, Ctrl+K, Ctrl+/,
 /// Alt+Left/Right), in words: an action may not use them.
 pub const SHELL_KEYS: &[&str] =
-    &["V", "W", "P", "C", "D", "B", "T", "F", "Esc", "PgUp", "PgDn", "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+K", "Ctrl+/"];
+    &["V", "D", "T", "W", "C", "F", "]", "Esc", "PgUp", "PgDn", "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+K", "Ctrl+/"];
 
 impl Key {
     /// Its name as a key cap shows it.
@@ -455,8 +481,9 @@ use Slot as S;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[
-    // ---- Tool groups (spec §2). Lasso, Branch, Potential or bus line, Jump, Continuation
-    // arrow, Function box and Device or PLC outline have no command yet.
+    // ---- Tool groups (UI rev 3). Lasso, Branch, Potential or bus line, Jump, Continuation
+    // arrow, Function box, Device or PLC outline and PLC's rack, detail page, card and channel
+    // tools have no command yet; PLC's group is empty until they do.
     Action {
         id: "select",
         command: "",
@@ -471,16 +498,16 @@ pub const ACTIONS: &[Action] = &[
         enabled: ok,
     },
     tool("wire.tool", "wire", "Wire", Icon::Wire, ToolGroup::Wire, 0, &["draw wire", "conductor"]),
-    tool("place.symbol", "place", "Symbol", Icon::Place, ToolGroup::Place, 0, &["place symbol", "device", "coil", "contact"]),
-    tool("place.terminal", "terminals", "Terminal", Icon::Terminal, ToolGroup::Place, 1, &["place terminals", "strip"]),
-    // Brief 044 (design 044 §4.1): Place ▸ Connector.
+    tool("place.symbol", "place", "Symbol", Icon::Place, ToolGroup::Device, 0, &["place symbol", "device", "coil", "contact"]),
+    tool("place.terminal", "terminals", "Terminal", Icon::Terminal, ToolGroup::Terminal, 0, &["place terminals", "strip"]),
+    // Brief 044 (design 044 §4.1): Place ▸ Connector; UI rev 3: Device ▸ Connector.
     tool(
         "place.connector",
         "connector",
         "Connector",
         Icon::Connector,
-        ToolGroup::Place,
-        2,
+        ToolGroup::Device,
+        1,
         &["connector", "plug", "socket", "d-sub", "m12", "mated"],
     ),
     tool("cable.slash", "cableslash", "Cable slash", Icon::Cable, ToolGroup::Cable, 0, &["new cable"]),
@@ -490,7 +517,7 @@ pub const ACTIONS: &[Action] = &[
     tool("draw.rectangle", "rectang", "Rectangle", Icon::Rectangle, ToolGroup::Draw, 2, &["geometry"]),
     tool("draw.circle", "circle", "Circle", Icon::Circle, ToolGroup::Draw, 3, &["geometry"]),
     tool("draw.arc", "arc", "Arc", Icon::Arc, ToolGroup::Draw, 4, &["geometry"]),
-    tool("box.location", "locationbox", "Location box", Icon::Box, ToolGroup::Box, 0, &["location", "+"]),
+    tool("box.location", "locationbox", "Location box", Icon::Box, ToolGroup::Location, 0, &["location", "+"]),
     tool("text.text", "text", "Text", Icon::Text, ToolGroup::Text, 0, &["free text"]),
     tool("text.note", "mtext", "Note", Icon::Properties, ToolGroup::Text, 1, &["multiline text"]),
     tool("text.cloud", "revcloud", "Revision cloud", Icon::Cloud, ToolGroup::Text, 2, &["revision"]),
