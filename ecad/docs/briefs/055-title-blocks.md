@@ -172,7 +172,7 @@ maps, bench (§7–§9).
 and built-in `house`; FD3 the page's `title_block` names a block, with no fallback to the frame; FD4
 the element body replacing 055a's items; FD5 frames carry no body; FD6 `checked_date` and
 `approved_date` revision fields. No new op. **Approved (overseer, 2026-11-14): FD1–FD6**, FD4 as
-amended by the owner's Q3 and Q9 answers; FD4 and FD5 amended again by Q8 (no stretch, `bottom_full` retired, keep-out is the block's rectangle), back with the overseer.
+amended by the owner's Q3 and Q9 answers; FD4 and FD5 amended again by Q8 (no stretch, `bottom_full` retired, keep-out is the block's rectangle), approved by the overseer (2026-11-14).
 
 **Parts.** 055c-1 model and drawing (M), 055c-2 title block editor (M–L), 055c-3 frame editor (S–M).
 
