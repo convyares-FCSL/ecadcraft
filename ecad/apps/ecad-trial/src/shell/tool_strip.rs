@@ -134,6 +134,12 @@ impl Trial {
         self.group_running(gi)
     }
 
+    /// The one group lit for the running tool: the group whose last-used tool it is, else the
+    /// first group that lists it (Bridge is in Terminal and Wire; only one lights).
+    pub fn lit_group(&self) -> Option<usize> {
+        (0..GROUPS.len()).find(|gi| self.group_running(*gi)).or_else(|| GROUPS.iter().position(|g| self.group_has_running(&g.tools())))
+    }
+
     /// Whether the running command is one of `tools` (a tool, not a window action).
     fn group_has_running(&self, tools: &[&'static Action]) -> bool {
         let Some(r) = self.cad.session.running.as_ref() else { return false };
@@ -269,6 +275,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let mut hovered_any = false;
     let running = t.cad.session.running.is_some();
     let writable = t.writable();
+    let lit = t.lit_group();
     for (gi, g) in GROUPS.iter().enumerate() {
         let tools = g.tools();
         let r = at(y);
@@ -276,7 +283,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
         let last = t.shell.tools.last.get(gi).copied().unwrap_or(0);
         let current = tools.get(last).or(tools.first()).copied();
         // Select is current while nothing runs; a group while one of its tools runs.
-        let is_current = if g.group == ToolGroup::Select { !running } else { t.group_running(gi) || t.group_has_running(&tools) };
+        let is_current = if g.group == ToolGroup::Select { !running } else { lit == Some(gi) };
         let look = if is_current {
             Look::Current
         } else if t.shell.tools.flyout == Some(gi) {

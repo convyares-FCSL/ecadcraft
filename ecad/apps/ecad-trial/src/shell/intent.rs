@@ -145,6 +145,9 @@ impl Trial {
         );
         self.shell.tools.intent_text = text;
         if let Some(k) = keyword {
+            if let Some(p) = self.cad.session.current_prompt() {
+                self.shell.tools.maker.sent = Some((p.message.trim().to_string(), k.clone()));
+            }
             let _ = self.cad.session.input(Input::Keyword(k));
             self.after_logic();
         }

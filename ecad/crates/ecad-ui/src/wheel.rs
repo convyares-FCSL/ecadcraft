@@ -288,7 +288,6 @@ fn tip_rect(ctx: &Context, center: Pos2, i: usize, sp: &SlotSpec) -> Rect {
     };
     let right = c.x >= center.x - 1.0;
     let x = if right { center.x + wheel::OUTER_RADIUS + space::S } else { center.x - wheel::OUTER_RADIUS - space::S - w };
-    let x = if i == 0 || i == 4 { c.x + space::XXL } else { x };
     Rect::from_min_size(pos2(x, c.y - 15.0), vec2(w, h))
 }
 
@@ -331,4 +330,30 @@ fn ring(center: Pos2, a0: f32, a1: f32, fill: Color32) -> Shape {
         mesh.add_triangle(b + 1, b + 3, b + 2);
     }
     Shape::mesh(mesh)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Board 1.14: a slot's tooltip clears the ring, so it never covers another slot's icon (the
+    /// top slot's used to sit on the top-right one).
+    #[test]
+    fn no_tooltip_covers_a_slot_icon() {
+        let ctx = Context::default();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
+        out.textures_delta.clear();
+        let c = pos2(500.0, 400.0);
+        for i in 0..wheel::SLOTS {
+            for greyed in [None, Some("A reason that takes a couple of lines to say, with a way forward.".to_string())] {
+                let mut sp = SlotSpec::new("Edit tag", Icon::Edit);
+                sp.greyed = greyed;
+                let tip = tip_rect(&ctx, c, i, &sp);
+                for j in 0..wheel::SLOTS {
+                    let icon = Rect::from_center_size(slot_center(c, j), vec2(24.0, 24.0));
+                    assert!(!tip.intersects(icon), "slot {i}'s tooltip covers slot {j}'s icon");
+                }
+            }
+        }
+    }
 }

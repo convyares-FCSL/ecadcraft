@@ -291,3 +291,97 @@ fn screenshots_of_boards_1_09_to_1_14() {
     shot(&h, "uiv3-C-popout-ortho.png");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Type `text` at the command line and press Enter, as CADCraft's command line does: the text
+/// sits in the buffer for a frame, then goes to the prompt.
+fn type_answer(h: &mut H, text: &str) {
+    h.state_mut().cad.cmd.buffer = text.to_string();
+    h.run_steps(1);
+    h.state_mut().cad.session.input(cadcraft_engine::Input::Text(text.to_string())).unwrap();
+    h.state_mut().cad.cmd.buffer.clear();
+    h.run_steps(2);
+}
+
+/// Review of #94, finding 1: P while a prompt takes text (a tag such as -P02) is that text, not
+/// the picker.
+#[test]
+fn p_does_not_open_the_picker_while_a_tag_is_being_typed() {
+    use ecad_trial::shell::placing::Shown;
+    let dir = temp("ptag");
+    let mut h = window(None);
+    demo(&mut h, &dir);
+    h.state_mut().start_pick(ecad_trial::search::Pick::Symbol("lamp")).unwrap();
+    h.run_steps(3);
+    h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword("Tag".into())).unwrap();
+    h.run_steps(2);
+    assert!(h.state().cad.session.current_prompt().unwrap().message.starts_with("Enter tag"));
+    hover(&mut h, Pos2::new(1100.0, 400.0));
+    h.key_press(eframe::egui::Key::P);
+    h.run_steps(3);
+    assert_eq!(h.state().picker_shown(), Shown::Chip, "P is part of the tag");
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review of #94, finding 3: a symbol typed at the command line is the one the chip names.
+#[test]
+fn the_chip_names_a_symbol_typed_at_the_command_line() {
+    let dir = temp("typedsym");
+    let mut h = window(None);
+    demo(&mut h, &dir);
+    h.state_mut().start_tool(ecad_cadcraft::actions::find("place.symbol").unwrap());
+    h.run_steps(3);
+    type_answer(&mut h, "lamp");
+    assert_eq!(h.state().shell.tools.placing.symbol, Some("lamp"));
+    let chip = h.state().shell.tools.chip_text.clone();
+    assert!(chip.starts_with("Indicator lamp as -"), "{chip}");
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review of #94, finding 2: the maker's folded sections say what the form took, typed answers
+/// included, and never a default that was not taken.
+#[test]
+fn the_maker_records_answers_typed_at_the_command_line() {
+    let dir = temp("makertyped");
+    let mut h = window(None);
+    demo(&mut h, &dir);
+    h.state_mut().start_tool(ecad_cadcraft::actions::find("place.connector").unwrap());
+    h.run_steps(3);
+    h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword("New".into())).unwrap();
+    h.run_steps(2);
+    type_answer(&mut h, "Socket");
+    type_answer(&mut h, "m12");
+    let answers = h.state().shell.tools.maker.answers.clone();
+    assert_eq!(answers.get("Halves").map(String::as_str), Some("Socket"));
+    assert_eq!(answers.get("Type").map(String::as_str), Some("M12"), "{answers:?}");
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review of #94, finding 4: one group lights for a tool two groups list (Bridge).
+#[test]
+fn one_group_lights_for_a_tool_in_two_groups() {
+    use ecad_cadcraft::actions::ToolGroup;
+    let gi = |g: ToolGroup| ecad_trial::shell::tool_strip::GROUPS.iter().position(|x| x.group == g);
+    let dir = temp("lit");
+    let mut h = window(None);
+    demo(&mut h, &dir);
+    h.state_mut().start_tool(ecad_cadcraft::actions::find("terminal.link").unwrap());
+    h.run_steps(2);
+    assert_eq!(h.state().lit_group(), gi(ToolGroup::Terminal));
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    // Chosen from Wire's flyout, Bridge becomes Wire's last-used tool: Wire lights, not Terminal.
+    open_flyout(&mut h, "Wire (W)");
+    h.get_by_label("Bridge").click();
+    h.run_steps(2);
+    assert_eq!(running(&h).as_deref(), Some("bridge"));
+    assert_eq!(h.state().lit_group(), gi(ToolGroup::Wire));
+    h.state_mut().cad.session.cancel();
+    h.run_steps(2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
