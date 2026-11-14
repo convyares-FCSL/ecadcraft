@@ -182,6 +182,28 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
     Ok(rows)
 }
 
+/// Measure one group of rows (`measure`, `outputs`, `strips`, `text`, `wires` or `plc`) on the
+/// written project at `path`, and return them as text.
+///
+/// # Errors
+/// An unknown group, or the measurement failed.
+pub fn measure_part(part: &str, path: &Path) -> Result<String, String> {
+    let scratch = measure::scratch_dir("part")?;
+    let runs = measure::RUNS;
+    let r = match part {
+        "measure" => measure::measure(path, runs, &scratch).map(|(m, _)| format!("{m:#?}")),
+        "outputs" => outputs::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        "strips" => strips::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        "text" => text::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        "wires" => wires_nets::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        "plc" => plc::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        other => Err(format!("unknown part {other}")),
+    };
+    measure::release_lock_file(path);
+    let _ = std::fs::remove_dir_all(&scratch);
+    r
+}
+
 /// Generate the 25-page project (lean), write it, and time Print Book and release on it.
 ///
 /// # Errors
