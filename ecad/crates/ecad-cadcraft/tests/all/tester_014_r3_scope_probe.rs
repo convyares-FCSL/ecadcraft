@@ -104,13 +104,18 @@ fn terminals_on(h: &mut H, page: PageId) -> Vec<Pt> {
     terminal_positions(&h.doc(), page).into_iter().map(|(_, _, p)| p).collect()
 }
 
-/// `page-column-row` (019's default, e.g. `2-A-6`), `/page.column` (the other style, e.g. `/105.C`),
-/// or `/?` for an orphan.
+/// `page/zone` (the default since UI rev 3 D, e.g. `2/F1`), `page-column-row` (019's, e.g.
+/// `2-A-6`), `/page.column` (e.g. `/105.C`), or `?` / `/?` for an orphan.
 fn well_formed(text: &str) -> bool {
     let digits = |s: &str| !s.is_empty() && s.chars().all(|x| x.is_ascii_digit());
     let column = |s: &str| !s.is_empty() && s.chars().all(|x| x.is_ascii_alphanumeric());
-    if text == "/?" {
+    if text == "/?" || text == "?" {
         return true;
+    }
+    if let Some((p, zone)) = text.split_once('/')
+        && !p.is_empty()
+    {
+        return digits(p) && column(zone);
     }
     if let Some(rest) = text.strip_prefix('/') {
         let mut parts = rest.split('.');
