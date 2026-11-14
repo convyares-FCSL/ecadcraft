@@ -39,7 +39,9 @@ fn the_regions_at_1920_by_1080_are_the_specs() {
         o.left.collapsed = false;
         let x = at(&o, 1920.0, 1080.0);
         assert_eq!(x.panel.map(|r| (r.left(), r.width())), Some((56.0, w)), "{tab:?}");
-        assert_eq!(x.main.left(), 56.0 + w);
+        // Section A: Book starts pinned (the drawing moves over); Devices and History float.
+        let docked = if tab == LeftTab::Pages { w } else { 0.0 };
+        assert_eq!(x.main.left(), 56.0 + docked);
     }
     // The inspector open: 320 in Draw, 340 in the other workspaces, which have no strip or panel.
     let open = ShellState { right_collapsed: false, ..s.clone() };

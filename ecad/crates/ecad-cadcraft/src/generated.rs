@@ -420,6 +420,11 @@ impl Draw {
         let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
         self.out.push(Part { kind, weight: Some(THIN_WEIGHT), aci: None, layer: LAYER });
     }
+    /// A line of weight `weight` (a heading's rule).
+    pub(crate) fn rule(&mut self, a: (f64, f64), b: (f64, f64), weight: u16) {
+        let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
+        self.out.push(Part { kind, weight: Some(weight), aci: None, layer: LAYER });
+    }
     /// A filled dot of `radius` millimetres (concentric circles, like the junction glyph).
     pub(crate) fn dot(&mut self, at: (f64, f64), radius: f64) {
         let center = self.p(at.0, at.1);
@@ -587,10 +592,12 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
             // Brief 047 (design 047 §6.3): an Article column when `bom.column.article` is on (the
             // others narrower, still 390 mm), Qty with its unit, nested lines indented.
             let article = outputs.is_some_and(|o| o.view.article);
+            // UI rev 3 (board 1.15): the tag first, then the description, its quantity (right
+            // aligned, [`BOM_QTY_COLUMN`]), maker and part number.
             let cols = if article {
-                vec![("Qty", 15.0), ("Tags", 60.0), ("Description", 120.0), ("Maker", 60.0), ("Part number", 85.0), ("Article", 50.0)]
+                vec![("Tags", 60.0), ("Description", 120.0), ("Qty", 15.0), ("Maker", 60.0), ("Part number", 85.0), ("Article", 50.0)]
             } else {
-                vec![("Qty", 15.0), ("Tags", 70.0), ("Description", 140.0), ("Maker", 70.0), ("Part number", 95.0)]
+                vec![("Tags", 70.0), ("Description", 140.0), ("Qty", 15.0), ("Maker", 70.0), ("Part number", 95.0)]
             };
             let Some(o) = outputs else { return (cols, Vec::new()) };
             let mut rows = Vec::new();
@@ -601,7 +608,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
                     rows.push(TRow { cells: vec![q(&r.location)], heading: true, ..TRow::default() });
                     last = Some(r.location.clone());
                 }
-                let mut cells = vec![r.qty_text(), r.tags.join(", "), q(&r.description_text()), q(&r.maker), q(&r.part_number)];
+                let mut cells = vec![r.tags.join(", "), q(&r.description_text()), r.qty_text(), q(&r.maker), q(&r.part_number)];
                 if article {
                     cells.push(r.article_number.clone().unwrap_or_default());
                 }
@@ -669,6 +676,9 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
         }
     }
 }
+
+/// The BOM page's Qty column, drawn right aligned (UI rev 3, board 1.15).
+const BOM_QTY_COLUMN: usize = 2;
 
 /// The terminal plan's columns with their A3 widths (design 028 §5.3).
 const TERMINAL_COLUMNS: [(&str, f64); 9] = [
@@ -870,10 +880,18 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
+    // UI rev 3 (board 1.15): the BOM's Qty column is right aligned, and each location heading is
+    // ruled off with the frame's weight.
+    let bom = kind == GenKind::BomLocation;
+    let right = |c: usize| bom && c == BOM_QTY_COLUMN;
     // Header.
     let mut x = l;
-    for ((name, _), w) in cols.iter().zip(&widths) {
-        d.text((x + 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+    for (c, ((name, _), w)) in cols.iter().zip(&widths).enumerate() {
+        if right(c) {
+            d.text((x + w - 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Right, Some(LABEL_ACI), Some(w - 2.0));
+        } else {
+            d.text((x + 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+        }
         x += w;
     }
     y -= HEADER_MM;
@@ -908,6 +926,8 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
                     d.line((cx + 3.0, mid + 2.0), (cx - 3.0, mid + 2.0));
                     d.line((cx - 3.0, mid + 2.0), (cx - 3.0, mid - 2.0));
                     d.text((cx, mid), cell_look, cell, HAlign::Center, aci, Some(*w - 2.0));
+                } else if right(c) {
+                    d.text((x + w - 1.0, mid), cell_look, cell, HAlign::Right, aci, Some(w - 2.0));
                 } else {
                     d.text((x + 1.0, mid), cell_look, cell, HAlign::Left, aci, Some(w - 2.0));
                 }
@@ -933,7 +953,11 @@ fn content(doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: u
         if y < b {
             break;
         }
-        d.line((l, y), (r, y));
+        if bom && row.heading {
+            d.rule((l, y), (r, y), input.look.border);
+        } else {
+            d.line((l, y), (r, y));
+        }
     }
     d.out
 }

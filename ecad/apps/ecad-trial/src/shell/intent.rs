@@ -69,47 +69,85 @@ impl Trial {
             self.shell.tools.intent_text.clear();
             return;
         }
-        super::fill(ui, rect, ecad_ui::SHELL.panel);
-        ui.painter().hline(rect.x_range(), rect.bottom(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.line)));
         let refusal = self.shell.tools.intent.refusal.clone();
         let note = self.shell.tools.intent.note.clone();
+        let (icon, title) = self.intent_title();
         let mut keyword = None;
         let (mut show_it, mut dismiss) = (false, false);
         let mut text = String::new();
-        super::in_rect(ui, rect.shrink2(egui::vec2(space::M, 2.0)), LINE, |ui| {
-            ui.horizontal_centered(|ui| {
-                let r = ui.label("");
-                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, LINE));
-                if let Some(rf) = &refusal {
-                    prim::pill(ui, &rf.what, if rf.refused { Tone::Error } else { Tone::Neutral });
-                    prim::read_value(ui, &rf.why);
-                    text = format!("{}: {}", rf.what, rf.why);
-                    show_it = ui.add(prim::Button::new(SHOW_IT).small()).clicked();
-                    dismiss = ui.add(prim::Button::new(DISMISS).kind(prim::Kind::Quiet).small()).clicked();
-                    return;
-                }
-                if parts.is_empty() {
-                    let t = note.clone().unwrap_or_default();
-                    prim::read_value(ui, &t);
-                    text = t;
-                    return;
-                }
-                for p in &parts {
-                    prim::read_value(ui, p);
-                }
-                for k in &keywords {
-                    if prim::Chip::new(k).show(ui).response.clicked() {
-                        keyword = Some(k.clone());
-                    }
-                }
-                if let Some(s) = &sentence {
-                    prim::pill(ui, s, Tone::Ok);
-                }
-                text = [parts.join(" "), keywords.join(" "), sentence.clone().unwrap_or_default()].join(" ");
-            });
-        });
+        // UI rev 3 (boards 1.11 to 1.13): a floating line centred at the top of the canvas, as
+        // wide as what it says, so it never covers the title block.
+        let s = ecad_ui::SHELL;
+        let frame = egui::Frame::new()
+            .fill(ecad_ui::color(s.panel))
+            .stroke(egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line_strong)))
+            .corner_radius(ecad_ui::style::corner(ecad_ui::tokens::radius::POPOVER))
+            .shadow(ecad_ui::style::shadow())
+            .inner_margin(egui::Margin::symmetric(space::L as i8, space::S as i8));
+        // Beside the picker, its chip or the connector maker when one shows (boards 1.11, 1.12).
+        let left = self.shell.tools.panel_right.map_or(rect.left() + space::XXL, |r| r + space::XL);
+        let max_w = (rect.right() - space::XXL - left).max(200.0);
+        let last_w = ui.ctx().memory(|m| m.area_rect(egui::Id::unique("ecad.shell.intent"))).map_or(max_w, |r| r.width());
+        let x = (rect.center().x - last_w / 2.0).max(left);
+        egui::Area::new(egui::Id::unique("ecad.shell.intent")).order(egui::Order::Foreground).fixed_pos(egui::pos2(x, rect.top() + space::L)).show(
+            ui.ctx(),
+            |ui| {
+                frame.show(ui, |ui| {
+                    ui.set_max_width(max_w);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = space::M;
+                        let r = ui.label("");
+                        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, LINE));
+                        if let Some(rf) = &refusal {
+                            prim::pill(ui, &rf.what, if rf.refused { Tone::Error } else { Tone::Neutral });
+                            prim::read_value(ui, &rf.why);
+                            text = format!("{}: {}", rf.what, rf.why);
+                            show_it = ui.add(prim::Button::new(SHOW_IT).small()).clicked();
+                            dismiss = ui.add(prim::Button::new(DISMISS).kind(prim::Kind::Quiet).small()).clicked();
+                            return;
+                        }
+                        if parts.is_empty() {
+                            let t = note.clone().unwrap_or_default();
+                            prim::read_value(ui, &t);
+                            text = t;
+                            return;
+                        }
+                        // The tool's icon and name, a divider, then what the click will do.
+                        let (ir, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                        ecad_ui::icons::paint(ui.painter(), ir, icon, ecad_ui::color(s.accent_text));
+                        ui.label(
+                            egui::RichText::new(&title)
+                                .font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY_EMPHASIS))
+                                .color(ecad_ui::color(s.text)),
+                        );
+                        ui.separator();
+                        for p in parts.iter().skip(1) {
+                            prim::read_value(ui, p);
+                        }
+                        if let Some(sn) = &sentence {
+                            ui.label(
+                                egui::RichText::new(sn)
+                                    .font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY))
+                                    .color(ecad_ui::color(s.accent_text)),
+                            );
+                        }
+                        for k in &keywords {
+                            if prim::Chip::new(k).show(ui).response.clicked() {
+                                keyword = Some(k.clone());
+                            }
+                        }
+                        prim::keycap(ui, "Esc");
+                        prim::read_value(ui, "finish");
+                        text = [parts.join(" "), keywords.join(" "), sentence.clone().unwrap_or_default()].join(" ");
+                    });
+                });
+            },
+        );
         self.shell.tools.intent_text = text;
         if let Some(k) = keyword {
+            if let Some(p) = self.cad.session.current_prompt() {
+                self.shell.tools.maker.sent = Some((p.message.trim().to_string(), k.clone()));
+            }
             let _ = self.cad.session.input(Input::Keyword(k));
             self.after_logic();
         }
@@ -118,6 +156,28 @@ impl Trial {
         }
         if show_it && let Some(rf) = refusal {
             self.show_refusal(&rf);
+        }
+    }
+
+    /// The running tool's icon and name for the intent line: the symbol being placed, or the
+    /// tool's label in the action table, or the command's own name.
+    fn intent_title(&self) -> (ecad_ui::tokens::Icon, String) {
+        let tool = self.cad.session.running.as_ref().map(|r| r.id.to_lowercase()).unwrap_or_default();
+        if tool == "place"
+            && let Some(sym) = self.shell.tools.placing.symbol.and_then(ecad_cadcraft::symbols::by_key)
+        {
+            return (ecad_ui::tokens::Icon::Pin, sym.name.to_string());
+        }
+        let a = ecad_cadcraft::actions::ACTIONS.iter().find(|a| a.group.is_some() && a.command.eq_ignore_ascii_case(&tool));
+        match a {
+            Some(a) => (a.icon, a.label.to_string()),
+            None => {
+                let mut t = tool.clone();
+                if let Some(c) = t.get_mut(..1) {
+                    c.make_ascii_uppercase();
+                }
+                (ecad_ui::tokens::Icon::Select, t)
+            }
         }
     }
 

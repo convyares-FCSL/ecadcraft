@@ -159,7 +159,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     click(t, 40.0, 5.0);
     assert!(t.cad.session.running.is_none());
     let said = t.cad.session.log.join("\n");
-    assert!(said.contains("Cable -C01 continued on page 2 with 3 wires; this end shows 1-B-6 and the end on page 1 now shows 2-A-6."), "{said}");
+    assert!(said.contains("Cable -C01 continued on page 2 with 3 wires; this end shows 1/F2 and the end on page 1 now shows 2/F1."), "{said}");
     assert!(said.contains("Connect each wire's free end to its connection point with Connect."));
     // Go to Reference with Field's reference point selected (pickfirst): lands on page 1 with
     // the other end's point selected.
@@ -184,7 +184,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     let shown = p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap();
     assert_eq!(shown, Some(doc(t).page_order[0]), "the other page is current");
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
-    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable -C01 (1-B-6)."));
+    assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable -C01 (1/F2)."));
 }
 
 /// The reference texts the active page draws now (the drawing as it is, not a fresh derivation),
@@ -211,7 +211,7 @@ fn drawn_ref_texts(t: &mut Trial) -> (Option<ecad_model::PageId>, Vec<String>) {
 /// Owner's two-page trial (brief 014 fix round) with one page window (brief 016): page 2's cable
 /// end is erased (page 1's marker becomes `?`), the owner clicks page 1 in the Project panel and
 /// types `u`: page 2, where the erase was, comes to the front with its end back (AC8), and page 1
-/// shows `2-A-6` when it is clicked again. Through undo and redo, the page shown always draws what
+/// shows `2/F1` when it is clicked again. Through undo and redo, the page shown always draws what
 /// the document says.
 #[test]
 fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
@@ -265,12 +265,12 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     assert_eq!(head(t), before + 2);
     let (shown, texts) = drawn_ref_texts(t);
     assert_eq!(shown, Some(page2), "the undo brought page 2 to the front");
-    assert!(texts.iter().any(|x| x == "1-B-6"), "{texts:?}");
+    assert!(texts.iter().any(|x| x == "1/F2"), "{texts:?}");
     assert!(t.cad.session.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."));
     h.get_by_label("Page 1: 1").click();
     h.run_steps(3);
     let (_, texts) = drawn_ref_texts(h.state_mut());
-    assert!(texts.iter().any(|x| x == "2-A-6"), "page 1 shows {texts:?}");
+    assert!(texts.iter().any(|x| x == "2/F1"), "page 1 shows {texts:?}");
     // Pressing `u` again and again, then redoing: the page shown always draws what the document
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut Trial, page: ecad_model::PageId| {

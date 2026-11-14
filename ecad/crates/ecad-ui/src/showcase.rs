@@ -2,7 +2,7 @@
 //! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The trial
 //! hosts it as a hidden developer page, `ui.primitives`.
 
-use ecad_tokens::{GRAPHITE, Icon, space, ui_type};
+use ecad_tokens::{Icon, space, ui_type};
 use egui::{Rect, RichText, ScrollArea, Sense, Ui, vec2};
 
 use crate::prim::{
@@ -41,17 +41,17 @@ impl Default for Showcase {
 
 fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(space::L);
-    ui.label(RichText::new(text).font(fonts::font(ui.ctx(), ui_type::TITLE)).color(color(GRAPHITE.text)));
+    ui.label(RichText::new(text).font(fonts::font(ui.ctx(), ui_type::TITLE)).color(color(crate::SHELL.text)));
     ui.add_space(space::XS);
 }
 
 fn caption(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).font(fonts::font(ui.ctx(), ui_type::CAPTION)).color(color(GRAPHITE.text_3)));
+    ui.label(RichText::new(text).font(fonts::font(ui.ctx(), ui_type::CAPTION)).color(color(crate::SHELL.text_3)));
 }
 
 /// Draw the showcase into `ui`.
 pub fn show(ui: &mut Ui, state: &mut Showcase) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let frame = egui::Frame::NONE.fill(color(s.panel)).inner_margin(space::PANEL_PADDING);
     frame.show(ui, |ui| {
         ScrollArea::vertical().id_salt(PAGE).auto_shrink([false, false]).show(ui, |ui| {

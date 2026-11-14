@@ -1,6 +1,6 @@
 //! egui's style from the tokens (design §3.2): visuals, spacing and text styles for **both** egui
-//! themes from the Graphite shell, so the shell has one appearance whatever the operating system
-//! prefers. Run [`apply`] once at start, and again when the host re-applies its own style (the
+//! themes from the shell in use ([`crate::set_theme`]: Graphite or light), so the shell has the
+//! appearance the person chose whatever the operating system prefers. Run [`apply`] once at start, and again when the host re-applies its own style (the
 //! trial does it when CADCraft's theme or language changes, until U2's `style` switch keeps
 //! CADCraft from touching the style at all).
 
@@ -36,11 +36,14 @@ fn widget(fill: ecad_tokens::Color, stroke: Stroke, text: ecad_tokens::Color) ->
     }
 }
 
-/// The shell's visuals (the same for egui's dark and light themes).
+/// The shell's visuals in the theme in use (the same for egui's dark and light themes).
 pub fn visuals() -> Visuals {
     let s = SHELL;
     let hair = |c| Stroke::new(line::HAIRLINE_PX, color(c));
-    let mut v = Visuals::dark();
+    let mut v = match crate::theme() {
+        crate::Theme::Dark => Visuals::dark(),
+        crate::Theme::Light => Visuals::light(),
+    };
     v.override_text_color = None;
     v.widgets.noninteractive = widget(s.panel, hair(s.line), s.text_2);
     v.widgets.inactive = widget(s.raised, Stroke::NONE, s.text);
@@ -64,6 +67,11 @@ pub fn visuals() -> Visuals {
     v.window_stroke = hair(s.line_strong);
     v.panel_fill = color(s.panel);
     v.text_cursor.stroke = Stroke::new(line::FOCUS_RING_PX, color(s.accent_text));
+    // On a light ground egui's weak text (secondary text at 60 %) falls below 4.5:1; the light
+    // shell names it `text_3` instead. Graphite keeps egui's own.
+    if crate::theme() == crate::Theme::Light {
+        v.weak_text_color = Some(color(s.text_3));
+    }
     v
 }
 

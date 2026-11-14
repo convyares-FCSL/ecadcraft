@@ -34,7 +34,7 @@ pub mod wire;
 
 pub use icon::Icon;
 pub use sheet::{Meaning, Sheet};
-pub use shell::{GRAPHITE, Shell};
+pub use shell::{GRAPHITE, LIGHT, Shell};
 
 /// An sRGB colour with straight (not premultiplied) alpha.
 ///

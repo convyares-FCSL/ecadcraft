@@ -21,6 +21,24 @@ fn every_text_colour_meets_4_5_to_1_on_its_background() {
     assert!(!pairs.iter().any(|(t, _, g, _)| *t == "text_3" && (*g == "hover" || *g == "active")));
 }
 
+/// UI rev 3 (board 1.17): the light shell's text colours reach 4.5:1 on their backgrounds too,
+/// and every token is a colour of its own set (none left at Graphite's dark value).
+#[test]
+fn the_light_shell_meets_4_5_to_1_on_its_backgrounds() {
+    let light = ecad_tokens::LIGHT;
+    let failing: Vec<String> = light
+        .text_pairs()
+        .iter()
+        .filter(|(_, t, _, g)| t.contrast(*g) < 4.5)
+        .map(|(tn, t, gn, g)| format!("{tn} on {gn}: {:.2}", t.contrast(*g)))
+        .collect();
+    assert!(failing.is_empty(), "below 4.5:1: {failing:?}");
+    assert!(light.text.contrast(light.panel) > 12.0, "dark text on a light panel");
+    for ((name, d), (_, l)) in GRAPHITE.rows().into_iter().zip(light.rows()) {
+        assert!(name == "shell.accent" || d != l, "{name} has a light value of its own");
+    }
+}
+
 /// `prints` is true exactly for ink, ink 2, cable, provisional, terminal link and the
 /// missing-data warning.
 #[test]

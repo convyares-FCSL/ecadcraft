@@ -65,6 +65,8 @@ pub struct SheetSpec {
 pub enum ReferenceStyle {
     PageColumnRow,
     PageColumn,
+    /// UI rev 3: `2/B5`, the default ([`default_style`]): left out of the file, never written.
+    PageZone,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -338,7 +340,10 @@ pub struct ProjectSettings {
     /// Brief 019 (decision FP2): left out at the default step 1.
     #[serde(default = "default_step", skip_serializing_if = "is_default_step")]
     pub page_number_step: u32,
-    /// Brief 019 (owner answer Q1): left out at the default `page_column_row`.
+    /// Brief 019 (owner answer Q1): left out at the default. UI rev 3: the default is
+    /// `page_zone` (`2/B5`), so a new project writes nothing and a reader that knows only the
+    /// older styles reads it back as `page_column_row`; an absent field reads as `page_zone`.
+    /// `page_zone` itself is never written.
     #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
     pub reference_style: ReferenceStyle,
     /// Brief 025 (FP3): left out at the default `auto`.
@@ -510,11 +515,11 @@ fn is_default_step(s: &u32) -> bool {
 }
 
 fn default_style() -> ReferenceStyle {
-    ReferenceStyle::PageColumnRow
+    ReferenceStyle::PageZone
 }
 
 fn is_default_style(s: &ReferenceStyle) -> bool {
-    *s == ReferenceStyle::PageColumnRow
+    *s == ReferenceStyle::PageZone
 }
 
 fn labels(l: m::GridLabels) -> GridLabels {
@@ -1095,6 +1100,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             reference_style: match s.reference_style {
                 m::ReferenceStyle::PageColumnRow => ReferenceStyle::PageColumnRow,
                 m::ReferenceStyle::PageColumn => ReferenceStyle::PageColumn,
+                m::ReferenceStyle::PageZone => ReferenceStyle::PageZone,
             },
             contact_mirror: match s.contact_mirror {
                 m::ContactMirror::Auto => ContactMirror::Auto,
@@ -1339,6 +1345,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
             reference_style: match s.reference_style {
                 ReferenceStyle::PageColumnRow => m::ReferenceStyle::PageColumnRow,
                 ReferenceStyle::PageColumn => m::ReferenceStyle::PageColumn,
+                ReferenceStyle::PageZone => m::ReferenceStyle::PageZone,
             },
             contact_mirror: match s.contact_mirror {
                 ContactMirror::Auto => m::ContactMirror::Auto,

@@ -119,10 +119,10 @@ fn the_demo_nets_and_wire_numbers() {
     assert_eq!(
         checks,
         [
-            "LonelyContinuation 2-C-4 L1",
-            "LonelyContinuation 2-C-4 L2",
-            "LonelyContinuation 2-C-4 L3",
-            "Unconnected 3-C-5 -M01:PE",
+            "LonelyContinuation 2/D3 L1",
+            "LonelyContinuation 2/D3 L2",
+            "LonelyContinuation 2/D3 L3",
+            "Unconnected 3/E3 -M01:PE",
             "NoPartNumber  7 devices have no part number"
         ],
         "{checks:#?}"

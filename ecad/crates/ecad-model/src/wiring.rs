@@ -347,9 +347,14 @@ pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate:
 }
 
 /// Where a net is, for the page schemes: the shown page number and the frame column label of its
-/// lowest-ID conductor's route start on its first page in page order (`1`, `A` when it has none).
+/// lowest-ID conductor's route start on its first page in page order (`1` and the first column's
+/// label when it has none).
 pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
-    let fallback = || ("1".to_string(), "A".to_string());
+    let first_column = |page: Option<PageId>| match page {
+        Some(p) => crate::sheet::Grid::of(doc, p).column_label(1),
+        None => doc.settings.sheet.column_labels.label(1),
+    };
+    let fallback = || ("1".to_string(), first_column(None));
     let Some(first) = net.first_conductor() else { return fallback() };
     let order: Option<(usize, PageId)> = doc
         .representations_of(Subject::Conductor(first))
@@ -358,7 +363,7 @@ pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     let Some((_, page)) = order else { return fallback() };
     match crate::derive::route_ends_on(doc, first, page).and_then(|(a, _)| place(doc, page, a)) {
         Some(p) => (p.page, p.column_label),
-        None => (crate::book::page_number(doc, page), "A".to_string()),
+        None => (crate::book::page_number(doc, page), first_column(Some(page))),
     }
 }
 
@@ -368,8 +373,15 @@ fn scope(doc: &Document, prefix: &str, page: &str, col: &str) -> String {
     match doc.settings.wiring.scheme {
         Scheme::Potential => prefix.to_string(),
         Scheme::Page => format!("{prefix}{page}."),
-        Scheme::PageColumn => format!("{prefix}{page}{col}."),
+        Scheme::PageColumn => page_column_scope(prefix, page, col),
     }
+}
+
+/// The page-column scheme's scope: `1A.` on a grid lettered across the top; `1.12.` when the
+/// columns are numbered (UI rev 3's default grid), so that page 1 column 12 and page 11 column 2
+/// never share a scope.
+fn page_column_scope(prefix: &str, page: &str, col: &str) -> String {
+    if col.chars().next().is_some_and(|c| c.is_ascii_digit()) { format!("{prefix}{page}.{col}.") } else { format!("{prefix}{page}{col}.") }
 }
 
 fn format_in(doc: &Document, scope: &str, n: u64) -> String {
@@ -769,4 +781,18 @@ pub fn joined_potentials(doc: &Document, net: &NetData) -> Vec<String> {
 /// For tests and debugging: [`connectivity::split_number`] re-exported.
 pub fn sequence_of(number: &str) -> Option<(&str, u64)> {
     connectivity::split_number(number)
+}
+
+#[cfg(test)]
+mod uiv3_tests {
+    use super::page_column_scope;
+
+    /// Review of PR #96, finding 1: numbered columns are separated from the page number.
+    #[test]
+    fn numbered_columns_get_a_scope_of_their_own() {
+        assert_ne!(page_column_scope("", "1", "12"), page_column_scope("", "11", "2"));
+        assert_eq!(page_column_scope("", "1", "12"), "1.12.");
+        assert_eq!(page_column_scope("L", "2", "3"), "L2.3.");
+        assert_eq!(page_column_scope("", "1", "A"), "1A.", "a lettered column keeps the old scope");
+    }
 }

@@ -9,7 +9,7 @@
 //! Tokens (design 051 §8, `ecad.plc.*` used generically here): tile width [`TILE_WIDTH`], mark
 //! [`MARK`], gap [`MARK_GAP`].
 
-use ecad_tokens::{GRAPHITE, line, radius, space, ui_type};
+use ecad_tokens::{line, radius, space, ui_type};
 use egui::{Id, Rect, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2};
 
 use super::cells;
@@ -121,7 +121,7 @@ fn tile_height(lines: usize, marks: usize, links: usize) -> f32 {
 
 /// Paint one mark at `r`.
 fn paint_mark(ui: &Ui, r: Rect, m: Mark) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let p = ui.painter();
     match m {
         Mark::On => p.rect_filled(r, corner(1.0), color(s.text_2)),
@@ -133,7 +133,7 @@ fn paint_mark(ui: &Ui, r: Rect, m: Mark) {
 
 /// The legend under the strip: each mark with its words.
 pub fn legend(ui: &mut Ui, items: &[(Mark, &str)]) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     ui.horizontal(|ui| {
         for (m, words) in items {
             let (r, _) = ui.allocate_exact_size(vec2(MARK, MARK), Sense::hover());
@@ -168,7 +168,7 @@ pub fn show(ui: &mut Ui, id: Id, tiles: &[Tile], selected: Option<usize>) -> Vec
 
 /// One tile.
 fn tile(ui: &mut Ui, id: Id, i: usize, t: &Tile, selected: bool, h: f32, out: &mut Vec<StripEvent>) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let (rect, resp) = ui.allocate_exact_size(vec2(TILE_WIDTH, h), Sense::click());
     let name = t.name.clone();
     resp.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &name));

@@ -84,7 +84,10 @@ fn settings_opens_from_the_menu_the_status_bar_and_a_badge_and_esc_returns() {
     assert_eq!((tag.from, tag.value.as_str(), tag.here), (Source::Builtin, "-K", None), "read here, not set");
     assert!(h.query_by_label("ecad.inspector.symbol.coil.prefix").is_some());
     save(&h, &deltas, "042-inspector.png");
-    // A badge opens Standards at that key (the Tag style row's, at the top of the rows).
+    // A badge opens Standards at that key (the Tag style row's; UI rev 3: on the Layout tab, under
+    // Text on the sheet).
+    h.state_mut().open_inspector(ecad_trial::shell::RightTab::Layout);
+    h.run_steps(3);
     click(&mut h, "ecad.origin.text.tag.style");
     assert_eq!((h.state().shell.settings_open, h.state().settings.section), (true, Section::Standards));
     let v = &h.state().settings.standards;
@@ -177,6 +180,9 @@ fn the_inspector_sets_a_symbols_tag_shown_and_resets_it() {
     assert_eq!(head(&mut h), before + 1);
     let row = h.state().settings.inspector.rows.iter().find(|r| r.key == "text.tag.show").cloned().unwrap();
     assert_eq!((row.from, row.value.as_str()), (Source::Symbol, "Hidden"));
+    // UI rev 3: the texts' rows are the Layout tab's.
+    h.state_mut().open_inspector(ecad_trial::shell::RightTab::Layout);
+    h.run_steps(3);
     h.get_by_label("ecad.inspector.reset.text.tag.show").scroll_to_me();
     h.run_steps(3);
     let r = h.get_by_label("ecad.inspector.reset.text.tag.show").rect();

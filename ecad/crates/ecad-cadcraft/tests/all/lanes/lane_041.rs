@@ -224,8 +224,8 @@ fn a_kind_with_fewer_actions_leaves_its_slots_empty() {
 }
 
 #[test]
-fn tool_groups_list_only_tools_that_start_a_command() {
-    // UI rev 3's strip order; PLC has no placing tool yet.
+fn tool_groups_list_tools_window_actions_and_greyed_placeholders() {
+    // UI rev 3's strip order and flyouts (boards 1.09, 1.10).
     let names: Vec<Vec<&str>> = ToolGroup::ALL.iter().map(|g| g.tools().iter().map(|a| a.label).collect()).collect();
     assert_eq!(
         names,
@@ -234,16 +234,20 @@ fn tool_groups_list_only_tools_that_start_a_command() {
             vec!["Line", "Polyline", "Rectangle", "Circle", "Arc"],
             vec!["Text", "Note", "Revision cloud"],
             vec!["Symbol", "Connector"],
-            vec!["Terminal"],
-            vec![],
-            vec!["Wire"],
+            vec!["Terminal", "Terminals across wires", "Draw a link (bridge)", "Swap top and bottom", "Reorder the strip…", "Renumber…"],
+            vec!["Rack overview", "Detail page…", "Card…", "Channel…"],
+            vec!["Wire", "Bridge", "Continuation"],
             vec!["Cable slash", "Continue cable"],
-            vec!["Location box"],
+            vec!["Location box", "Function box", "Function and location box", "Device or PLC outline"],
         ]
     );
+    // An item is a tool, a window action, or a placeholder that never runs (greyed in place).
+    let cx = actions::Context { target: None, writable: true };
     for g in ToolGroup::ALL {
         for a in g.tools() {
-            assert!(a.is_tool() || a.id == "select", "{} in {g:?} is not a tool", a.id);
+            let placeholder = a.params == Params::App(actions::App::Coming);
+            assert!(a.is_tool() || matches!(a.params, Params::App(_)), "{} in {g:?} is neither a tool nor a window action", a.id);
+            assert_eq!(placeholder, matches!((a.enabled)(&cx), actions::Enabled::Greyed { .. }), "{}: only a placeholder is greyed", a.id);
         }
     }
     // Rev 3 keeps a key only where a group of 041's survives.

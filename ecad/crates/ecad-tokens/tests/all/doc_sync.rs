@@ -86,10 +86,12 @@ fn constants() -> BTreeMap<String, Vec<String>> {
     let mut put = |name: String, cells: Vec<String>| {
         assert!(m.insert(name.clone(), cells).is_none(), "constant {name} listed twice");
     };
-    for (name, c) in ecad_tokens::GRAPHITE.rows() {
-        put(name.into(), vec![c.to_token()]);
+    // UI rev 3: each shell token's Graphite value, then its light value (board 1.17).
+    for ((name, c), (_, l)) in ecad_tokens::GRAPHITE.rows().into_iter().zip(ecad_tokens::LIGHT.rows()) {
+        put(name.into(), vec![c.to_token(), l.to_token()]);
     }
     put("shell.soft".into(), vec![format!("{} %", ecad_tokens::shell::SOFT_PERCENT)]);
+    put("shell.light_soft".into(), vec![format!("{} %", ecad_tokens::shell::LIGHT_SOFT_PERCENT)]);
     for meaning in Meaning::ALL {
         put(
             format!("sheet.{}", meaning.name()),

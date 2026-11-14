@@ -93,7 +93,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
             _ => None,
         })
         .collect();
-    assert_eq!(texts.iter().filter(|t| *t == "100-B-3").count(), 4, "{texts:?}");
+    assert_eq!(texts.iter().filter(|t| *t == "100/C2").count(), 4, "{texts:?}");
     save(&h, &deltas, "025-contacts.png");
 
     // Page 100: the table under the rail, with the spare row gone and one over row.

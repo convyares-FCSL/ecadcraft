@@ -21,39 +21,42 @@ still referred to as `cad.<token>` where a spec draws inside CADCraft's chrome.
 
 ## Shell colours
 
-The Graphite shell. It has one appearance and does not follow the operating system's light or
-dark setting. `ecad_tokens::GRAPHITE`.
+The Graphite shell, `ecad_tokens::GRAPHITE`, and the light shell, `ecad_tokens::LIGHT` (UI rev 3,
+board 1.17). The person picks one with the top bar's light/dark switch; neither follows the
+operating system's setting. Code reads the one in use through `ecad_ui::SHELL`.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `shell.bg` | `#131416` | Window ground, the desk behind the sheet |
-| `shell.panel` | `#1C1D20` | Panels, top bar, status bar |
-| `shell.raised` | `#25272B` | Fields, buttons, group rows, chips |
-| `shell.hover` | `#2D3035` | Hovered row or button |
-| `shell.active` | `#353941` | Pressed button, active mode, active side panel |
-| `shell.line` | `#32353B` | 1 px hairlines between regions and rows |
-| `shell.line_strong` | `#464A52` | Popover borders, key caps, badges |
-| `shell.text` | `#E8E9EB` | Primary text |
-| `shell.text_2` | `#A9ADB5` | Secondary text; values read from the drawing |
-| `shell.text_3` | `#8A8F98` | Field labels, placeholders (4.6:1 on `raised`; never text on `hover` or `active`) |
-| `shell.accent` | `#2F6BE0` | Primary button, active tool (white text 4.9:1) |
-| `shell.accent_text` | `#7FB0FF` | Selected outline, focus ring, links |
-| `shell.accent_soft` | `#2F6BE0 at 18 %` | Selected row |
-| `shell.ok` | `#55D68B` | Saved, check passed |
-| `shell.warning` | `#F2B84B` | Warning |
-| `shell.error` | `#FF6B5E` | Error, delete |
-| `shell.provisional` | `#FF7AB8` | Provisional and pending values |
-| `shell.agent` | `#B9E34A` | Agent presence and agent-made changes |
-| `shell.cable` | `#B48CFF` | Cable names in lists |
-| `shell.connect` | `#45CFD3` | Links and connection points in lists |
+| Token | Graphite | Light | Use |
+| --- | --- | --- | --- |
+| `shell.bg` | `#131416` | `#E6E8EB` | Window ground, the desk behind the sheet |
+| `shell.panel` | `#1C1D20` | `#F7F8F9` | Panels, top bar, status bar |
+| `shell.raised` | `#25272B` | `#FFFFFF` | Fields, buttons, group rows, chips |
+| `shell.hover` | `#2D3035` | `#EDEFF2` | Hovered row or button |
+| `shell.active` | `#353941` | `#E1E5EB` | Pressed button, active mode, active side panel |
+| `shell.line` | `#32353B` | `#D5D9DF` | 1 px hairlines between regions and rows |
+| `shell.line_strong` | `#464A52` | `#BCC3CC` | Popover borders, key caps, badges |
+| `shell.text` | `#E8E9EB` | `#16191D` | Primary text |
+| `shell.text_2` | `#A9ADB5` | `#474D56` | Secondary text; values read from the drawing |
+| `shell.text_3` | `#8A8F98` | `#5F6670` | Field labels, placeholders (4.6:1 on `raised`; never text on `hover` or `active`) |
+| `shell.accent` | `#2F6BE0` | `#2F6BE0` | Primary button, active tool (white text 4.9:1) |
+| `shell.accent_text` | `#7FB0FF` | `#1F5FCC` | Selected outline, focus ring, links |
+| `shell.accent_soft` | `#2F6BE0 at 18 %` | `#2F6BE0 at 12 %` | Selected row |
+| `shell.ok` | `#55D68B` | `#116E3E` | Saved, check passed |
+| `shell.warning` | `#F2B84B` | `#8A5200` | Warning |
+| `shell.error` | `#FF6B5E` | `#C4231A` | Error, delete |
+| `shell.provisional` | `#FF7AB8` | `#B0186A` | Provisional and pending values |
+| `shell.agent` | `#B9E34A` | `#4A7200` | Agent presence and agent-made changes |
+| `shell.cable` | `#B48CFF` | `#6A35C8` | Cable names in lists |
+| `shell.connect` | `#45CFD3` | `#066A6E` | Links and connection points in lists |
 
 | Token | Value | Use |
 | --- | --- | --- |
 | `shell.soft` | `18 %` | Opacity of a soft fill: `accent_soft`, and a pill's ground in a status tone |
+| `shell.light_soft` | `12 %` | The light shell's `accent_soft` (18 % reads too strong on a light ground) |
 
 Every text colour reaches 4.5:1 on the backgrounds it is used on (`Shell::text_pairs`, tested):
 `text`, `text_2` and `accent_text` on every ground; `text_3` on `bg`, `panel` and `raised`; the
-status and list colours on every ground but `active`; white on `accent`.
+status and list colours on every ground but `active`; white on `accent`. The same holds for the
+light shell (tested too); its status and list colours are darker than Graphite's for that reason.
 
 ## Sheet colours
 
@@ -219,11 +222,11 @@ sheet only (`ecad_tokens::shadow`).
 
 | Token | Value |
 | --- | --- |
-| `wheel.outer_radius` | `150 px` |
-| `wheel.inner_radius` | `54 px` |
+| `wheel.outer_radius` | `94 px` |
+| `wheel.inner_radius` | `32 px` |
 | `wheel.slots` | `8` |
-| `wheel.slot` | `41 deg` |
-| `wheel.gap` | `4 deg` |
+| `wheel.slot` | `43 deg` |
+| `wheel.gap` | `2 deg` |
 | `shadow.offset` | `0 8 px` |
 | `shadow.blur` | `24 px` |
 | `shadow.color` | `#000000 at 45 %` |
@@ -442,9 +445,10 @@ always carried to plots and exports). Thick is the cable section, thin the wire 
 
 ## Light theme
 
-The ECAD trial is used with CADCraft's dark theme. On the light theme, ACI cyan and green have poor
-contrast; until a spec says otherwise ECAD keeps the same ACI colours (as CADCraft does for drawing
-colours) and this is a known limitation.
+UI rev 3 (board 1.17) gives the shell a light set (Shell colours above). The sheet's colour is
+chosen apart from it (Paper, Follow, Dark: the bottom bar's sheet colour menu), so the canvas
+tokens below are unchanged. CADCraft's own ACI colours are not themed: on a light interface ACI
+cyan and green keep their poor contrast, a known limitation.
 
 
 ## History graph (020, `design/020.md` §11; in use since 020a)

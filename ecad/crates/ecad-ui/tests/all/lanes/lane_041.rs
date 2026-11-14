@@ -10,21 +10,23 @@ use egui_kittest::kittest::Queryable;
 const C: Pos2 = Pos2 { x: 450.0, y: 350.0 };
 
 #[test]
-fn slots_are_41_degrees_with_4_degree_gaps_between_the_radii() {
+fn slots_are_43_degrees_with_2_degree_gaps_between_the_radii() {
     for i in 0..wt::SLOTS {
         assert_eq!(slot_at(C, slot_center(C, i)), Some(i), "slot {i}'s middle");
     }
+    // UI rev 3 (board 1.14): about 190 px across.
+    assert!((180.0..=200.0).contains(&(2.0 * wt::OUTER_RADIUS)));
     // Top is up; right is slot 2 (clockwise).
-    assert_eq!(slot_at(C, C + vec2(0.0, -100.0)), Some(0));
-    assert_eq!(slot_at(C, C + vec2(100.0, 0.0)), Some(2));
-    assert_eq!(slot_at(C, C + vec2(0.0, 100.0)), Some(4));
+    assert_eq!(slot_at(C, C + vec2(0.0, -60.0)), Some(0));
+    assert_eq!(slot_at(C, C + vec2(60.0, 0.0)), Some(2));
+    assert_eq!(slot_at(C, C + vec2(0.0, 60.0)), Some(4));
     // The centre, beyond the rim and the gap at 22.5° are no slot.
-    assert_eq!(slot_at(C, C + vec2(0.0, -40.0)), None);
-    assert_eq!(slot_at(C, C + vec2(0.0, -160.0)), None);
+    assert_eq!(slot_at(C, C + vec2(0.0, -20.0)), None);
+    assert_eq!(slot_at(C, C + vec2(0.0, -110.0)), None);
     let gap = 22.5f32.to_radians();
-    assert_eq!(slot_at(C, C + vec2(100.0 * gap.sin(), -100.0 * gap.cos())), None);
-    let inside = 19.0f32.to_radians();
-    assert_eq!(slot_at(C, C + vec2(100.0 * inside.sin(), -100.0 * inside.cos())), Some(0));
+    assert_eq!(slot_at(C, C + vec2(60.0 * gap.sin(), -60.0 * gap.cos())), None);
+    let inside = 20.0f32.to_radians();
+    assert_eq!(slot_at(C, C + vec2(60.0 * inside.sin(), -60.0 * inside.cos())), Some(0));
 }
 
 struct S {
