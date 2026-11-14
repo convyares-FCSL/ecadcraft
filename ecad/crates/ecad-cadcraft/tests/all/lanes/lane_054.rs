@@ -40,7 +40,7 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     assert_eq!(look("front").holds, ptype::Holds::Front);
     assert!(!look("front").zones && look("schematic").zones && !look("panel").zones && !look("report").zones);
     assert_eq!(look("report").holds, ptype::Holds::Report);
-    assert_eq!((look("schematic").sheet, look("schematic").frame.clone(), look("schematic").title_block), (None, None, "frame"));
+    assert_eq!((look("schematic").sheet, look("schematic").frame.clone(), look("schematic").title_block), (None, None, None));
     let names: Vec<String> = ptype::ordered(&d).into_iter().map(|r| r.name).collect();
     assert_eq!(names, ["Front sheet", "Schematic", "Network", "Single-line", "Panel layout", "Report"]);
 }

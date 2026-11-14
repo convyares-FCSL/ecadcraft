@@ -972,6 +972,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("folderprops", "the Book: a folder row's Start number…"),
     ("renumberpages", "the Book: Renumber pages"),
     ("deletepage", "the Page tab's front page toggles, and the Book's Delete on generated pages"),
+    // Brief 055: Library ▸ Title blocks reads and writes them (the list, the editor's Save, Import DXF).
+    ("titleblocks", "a read; Library ▸ Title blocks lists them"),
+    ("titleblock", "Library ▸ Title blocks: + Title block and the editor's Save"),
+    ("titleblockimport", "Library ▸ Title blocks: Import DXF and the Logo tool"),
     ("category", "the wire inspector's Category row (brief 050b)"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),

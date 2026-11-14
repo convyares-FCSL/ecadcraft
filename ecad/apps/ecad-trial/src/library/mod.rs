@@ -12,6 +12,7 @@ pub mod builder;
 pub mod details;
 pub mod draft;
 pub mod review;
+pub mod title_blocks;
 pub mod view;
 
 use ecad_cadcraft::symbol_cmds::Content;
@@ -41,6 +42,8 @@ pub struct Library {
     pub back_to_page: bool,
     /// The browser's listing last frame (the right panel draws the selected tile's details).
     pub listing: browser::Listing,
+    /// Brief 055: Library ▸ Title blocks, the title block and frame editor.
+    pub tb: title_blocks::Editor,
 }
 
 impl Library {

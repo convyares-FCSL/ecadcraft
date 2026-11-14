@@ -47,7 +47,8 @@ pub struct TypeRow {
     pub sheet: Option<SheetSpec>,
     /// The sheet its pages are drawn on.
     pub shown: SheetSpec,
-    pub title_block: &'static str,
+    /// The frame style whose block the type borrows; `None`: its frame's own.
+    pub title_block: Option<StyleRef>,
     pub frame: Option<StyleRef>,
     pub zones: bool,
     /// Which generated kinds it holds (hidden; picks an own type's thumbnail).
@@ -123,7 +124,7 @@ pub fn read(t: &mut Trial) -> Option<Snapshot> {
                     overridden: r.overridden,
                     shown: look.sheet.unwrap_or(project_sheet),
                     sheet: look.sheet,
-                    title_block: look.title_block,
+                    title_block: look.title_block.clone(),
                     frame: look.frame,
                     zones: look.zones,
                     holds: look.holds,
@@ -478,12 +479,12 @@ fn table(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo
         let tb = chip(
             ui,
             tb_r,
-            &title_block_words(&row.shown),
+            &tb_shown(row, snap),
             egui::Id::unique(("ecad.settings.pages.titleblock", &id)),
             &format!("ecad.settings.pages.titleblock.{id}"),
             writable,
         );
-        egui::Popup::menu(&tb).show(|ui| title_block_menu(ui, row, todo));
+        egui::Popup::menu(&tb).show(|ui| title_block_menu(ui, row, snap, todo));
         // Zones.
         let z = ui.scope_builder(egui::UiBuilder::new().max_rect(Rect::from_min_size(pos2(col(r, 4), y - 9.0), vec2(40.0, 18.0))), |ui| {
             switch(ui, row.zones, writable, &format!("ecad.settings.pages.zones.{id}"))
@@ -530,13 +531,20 @@ fn sheet_menu(ui: &mut egui::Ui, row: &TypeRow, snap: &Snapshot, todo: &mut Vec<
     }
 }
 
-fn title_block_menu(ui: &mut egui::Ui, row: &TypeRow, todo: &mut Vec<Do>) {
-    let words = title_block_words(&row.shown);
-    if ui.button(format!("Frame's ({words})")).clicked() {
-        todo.push(Do::Set(row.id.clone(), vec![("title_block", Some("frame".into()))]));
+/// The Title block column: the borrowed frame's name, else the frame's own block for the sheet.
+fn tb_shown(row: &TypeRow, snap: &Snapshot) -> String {
+    row.title_block.as_ref().and_then(|f| snap.frames.iter().find(|(x, _)| x == f)).map_or_else(|| title_block_words(&row.shown), |(_, n)| n.clone())
+}
+
+fn title_block_menu(ui: &mut egui::Ui, row: &TypeRow, snap: &Snapshot, todo: &mut Vec<Do>) {
+    if ui.button(format!("Frame's ({})", title_block_words(&row.shown))).clicked() {
+        todo.push(Do::Set(row.id.clone(), vec![("title_block", Some(ptype::OWN_BLOCK.into()))]));
     }
-    if ui.button(words).clicked() {
-        todo.push(Do::Set(row.id.clone(), vec![("title_block", Some("standard".into()))]));
+    // Brief 055: a frame style's block, borrowed (the border stays the page's frame's).
+    for (f, name) in &snap.frames {
+        if ui.button(name).clicked() {
+            todo.push(Do::Set(row.id.clone(), vec![("title_block", Some(f.text()))]));
+        }
     }
 }
 
@@ -604,7 +612,7 @@ fn panel(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writa
     preview(ui.painter(), r, row);
     ui.add_space(space::L);
     let id = row.id.text();
-    let tb = title_block_words(&row.shown);
+    let tb = tb_shown(row, snap);
     let summary = format!("{} · {tb} · zones {}", sheet_words(&row.shown), if row.zones { "on" } else { "off" });
     section(ui, "sheet", "Sheet", &summary, |ui| {
         prow(ui, "Size", |ui| {
@@ -629,7 +637,7 @@ fn panel(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writa
         prow(ui, "Title block", |ui| {
             let r = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover()).0;
             let c = chip(ui, r, &tb, egui::Id::unique(("ecad.settings.pages.tb", &id)), "ecad.settings.pages.panel.titleblock", writable);
-            egui::Popup::menu(&c).show(|ui| title_block_menu(ui, row, todo));
+            egui::Popup::menu(&c).show(|ui| title_block_menu(ui, row, snap, todo));
         });
         prow(ui, "Frame style", |ui| {
             let r = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover()).0;

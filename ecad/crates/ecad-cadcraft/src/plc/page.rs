@@ -133,11 +133,13 @@ pub(crate) fn run_plcpage(s: &mut Session, params: &Value) -> cadcraft_engine::R
         // The drawing area, in model units.
         let spec = ecad_model::sheet::sheet_of(doc, id);
         let k = ecad_model::sheet::unit_scale(doc.settings.length_unit);
+        // Brief 055 (FP4): the frame's margins and its block's height.
+        let m = ecad_model::sheet::margins_of(doc, id);
         let (l, b, r, t) = (
-            ecad_model::sheet::MARGIN_MM + 5.0,
-            ecad_model::sheet::MARGIN_MM + ecad_model::sheet::TITLE_BLOCK_MM + 5.0,
-            f64::from(spec.width) - ecad_model::sheet::MARGIN_MM - 5.0,
-            f64::from(spec.height) - ecad_model::sheet::TOP_MARGIN_MM - 5.0,
+            m.left + 5.0,
+            m.bottom + ecad_model::sheet::keep_out(doc, id) + 5.0,
+            f64::from(spec.width) - m.right - 5.0,
+            f64::from(spec.height) - m.top - 5.0,
         );
         let output = super::address::shows_output(ty);
         let (y0, degrees) = if output { (b + 0.4 * (t - b), 180.0_f64) } else { (b + 0.6 * (t - b), 0.0) };

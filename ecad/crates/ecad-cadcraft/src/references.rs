@@ -511,6 +511,19 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
         Subject::Component(_) => {}
     };
     for op in ops {
+        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice
+        // or a frame's sheet, margins or block height reaches the cables on those pages.
+        match crate::title_block::frame_reach(doc, op) {
+            crate::title_block::Reach::NotFrame => {}
+            crate::title_block::Reach::Unchanged => continue,
+            crate::title_block::Reach::Pages(ps) => {
+                for p in ps {
+                    out.extend(cables_on(doc, p));
+                }
+                continue;
+            }
+            crate::title_block::Reach::Wide => return None,
+        }
         match op {
             Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {

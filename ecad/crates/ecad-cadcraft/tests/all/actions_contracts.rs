@@ -144,6 +144,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "folderprops",
     "renumberpages",
     "deletepage",
+    // Brief 055.
+    "titleblocks",
+    "titleblock",
+    "titleblockimport",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

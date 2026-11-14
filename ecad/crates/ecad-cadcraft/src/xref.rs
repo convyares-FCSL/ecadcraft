@@ -844,7 +844,7 @@ pub fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
     let g = ecad_model::sheet::Grid::of(doc, page);
     let k = unit(doc);
     let gap = crate::defaults::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, crate::defaults::Scope::project()).length(doc);
-    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * k + gap);
+    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::keep_out(doc, page) * k + gap);
     let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
     (lo, hi)
 }
@@ -857,7 +857,7 @@ fn inside(b: (Pt, Pt), free: (Pt, Pt)) -> bool {
 /// Whether the box `b` enters the title block of `page` (the user-placed check of design 033 §4.1).
 pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
     let g = ecad_model::sheet::Grid::of(doc, page);
-    let line = g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * unit(doc);
+    let line = g.frame_bottom() + ecad_model::sheet::keep_out(doc, page) * unit(doc);
     let (left, right) = (g.frame_left(), g.frame_left() + g.area_width());
     b.0.y < line && b.1.y > g.frame_bottom() && b.1.x > left && b.0.x < right
 }
@@ -1682,6 +1682,21 @@ impl Scope {
                     self.wide = true;
                 }
                 _ => {}
+            }
+            // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
+            // area above the block, so its pages' devices, tables and arrows follow it.
+            match crate::title_block::frame_reach(doc, op) {
+                crate::title_block::Reach::Pages(ps) => {
+                    for p in ps {
+                        self.devices.extend(idx.devices_on(doc, p));
+                        self.names.extend(crate::continuations::names_on(doc, idx, p));
+                    }
+                }
+                crate::title_block::Reach::Wide => {
+                    self.wide = true;
+                    self.arrows_wide = true;
+                }
+                crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
             }
             // Brief 049: what continuation arrows the op could change.
             match op {

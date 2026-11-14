@@ -65,7 +65,7 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     assert!(!ents.is_empty());
     assert!(ents.iter().all(|e| e.common.layer == frame::LAYER));
     let texts = frame_texts(&mut h, page);
-    for label in ["A", "B", "C", "D", "E", "F", "1", "2", "3", "4", "5", "6", "7", "8", "Page", "Total", "Rev"] {
+    for label in ["A", "B", "C", "D", "E", "F", "1", "2", "3", "4", "5", "6", "7", "8", "Page", "Of", "Rev"] {
         assert!(texts.iter().any(|t| t == label), "{label} in {texts:?}");
     }
     // The paper edge and the frame, at true size.

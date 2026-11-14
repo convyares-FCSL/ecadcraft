@@ -1305,6 +1305,7 @@ mod tests {
             let rec = ecad_model::StyleRecord {
                 name: String::new(),
                 fields: [("height".to_string(), bad.to_string()), ("weight".into(), "heavy".into())].into_iter().collect(),
+                body: None,
             };
             doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
             let want = TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None };
@@ -1327,6 +1328,7 @@ mod tests {
         let rec = ecad_model::StyleRecord {
             name: String::new(),
             fields: [("height".to_string(), "3".to_string()), ("weight".into(), "Regular".into())].into_iter().collect(),
+            body: None,
         };
         doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });

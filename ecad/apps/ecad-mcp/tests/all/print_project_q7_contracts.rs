@@ -146,10 +146,11 @@ fn ac10_revision_columns_and_custom_fields() {
     // Wide columns are narrowed, never refused.
     let v = c.exec("projectprops", json!({"revision_columns": "rev@100, description, date@100"}));
     assert_eq!(v["narrowed"], json!(ecad_cadcraft::revisions::NARROWED), "{v}");
-    // Cleared: the six built-ins again; the custom value is kept in the file.
+    // Cleared: the built-in columns again (brief 055, FP5: they hold ECR, so its value shows);
+    // the custom value is kept in the file.
     c.exec("projectprops", json!({"revision_columns": null}));
     let (texts, _) = frame_texts(&mut c);
-    assert!(texts.contains(&"Checked".to_string()) && !texts.contains(&"ECR-1".to_string()), "{texts:?}");
+    assert!(texts.contains(&"Checked".to_string()) && texts.contains(&"ECR-1".to_string()), "{texts:?}");
     assert_eq!(c.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
     // The revision list page shows the columns, then Version.
     c.exec("projectprops", json!({"revision_columns": "rev, ecr:ECR, description"}));

@@ -22,7 +22,7 @@ use ecad_model::sheet::{self as msheet, PROJECT_SHEET, SheetSpec};
 use ecad_model::{Document, PageId, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Scope, Value};
+use crate::defaults::{Kind, Value};
 use crate::generated::GenKind;
 
 /// The catalogue word.
@@ -36,9 +36,13 @@ fn is_frame(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case(PROJECT_SHEET) || StyleRef::parse(s).is_some()
 }
 
-/// The title block layouts a type may name: `frame` (the frame style's own), then the layouts
-/// (055 adds more).
-pub const TITLE_BLOCKS: &[&str] = &["frame", "standard"];
+/// The value a type's `title_block` holds to draw its frame's own block (brief 055: otherwise a
+/// frame style ID whose block the type's pages borrow).
+pub const OWN_BLOCK: &str = "frame";
+
+fn is_title_block(s: &str) -> bool {
+    s.trim().eq_ignore_ascii_case(OWN_BLOCK) || StyleRef::parse(s).is_some()
+}
 /// What generated kinds a type holds: none (drawn pages), the front kinds, the report kinds.
 pub const HOLDS: &[&str] = &["none", "front", "report"];
 
@@ -51,7 +55,13 @@ static FIELDS: &[Field] = &[
         builtin: Value::Text(PROJECT_SHEET),
         over: None,
     },
-    Field { key: "title_block", label: "Title block", kind: Kind::Choice(TITLE_BLOCKS), builtin: Value::Choice("frame"), over: None },
+    Field {
+        key: "title_block",
+        label: "Title block",
+        kind: Kind::Parsed { max_chars: 40, parse: is_title_block },
+        builtin: Value::Text(OWN_BLOCK),
+        over: None,
+    },
     Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
     // Not shown: copied with the type, so an own type holds what its source holds.
     Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), builtin: Value::Choice("none"), over: None },
@@ -120,8 +130,9 @@ pub struct TypeLook {
     pub sheet: Option<SheetSpec>,
     /// `None`: the `print.frame.style` choice, as before types.
     pub frame: Option<StyleRef>,
-    /// `frame` (the frame style's own) or a layout ID.
-    pub title_block: &'static str,
+
+    /// `None`: the frame's own block; else the frame style whose block the pages borrow.
+    pub title_block: Option<StyleRef>,
     pub zones: bool,
     pub holds: Holds,
 }
@@ -138,8 +149,11 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
         .filter(|f| super::exists(doc, "frame", f));
-    let title_block = field(doc, id, "title_block").map_or("frame", |r| r.word());
-    let title_block = if title_block.is_empty() { "frame" } else { title_block };
+    let title_block = field(doc, id, "title_block")
+        .map(|r| r.text())
+        .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
+        .and_then(|t| StyleRef::parse(&t))
+        .filter(|f| super::exists(doc, "frame", f));
     let zones = field(doc, id, "zones").is_none_or(|r| r.word() != "off");
     let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
     TypeLook { sheet, frame, title_block, zones, holds }
@@ -158,20 +172,10 @@ pub fn derived(kind: Option<GenKind>) -> StyleRef {
     StyleRef::Builtin(msheet::derived_page_type(kind.map(GenKind::value)).to_string())
 }
 
-/// The frame style `page` is drawn with (design 054 §3.2): its type's `frame` when it names an
-/// existing one, else the `print.frame.style` choice as before types.
+/// The frame style `page` is drawn with: `ecad_model::sheet::frame_style`, the one resolver (the
+/// page's own, its page type's, the project's, the standard's, the built-in; brief 055).
 pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
-    look_of(doc, &type_of(doc, page)).frame.unwrap_or_else(|| super::chosen(doc, &crate::defaults::styles::FRAME, Scope::page(page)))
-}
-
-/// `page`'s frame look: its frame style's, with grid labels only when its type has zones on.
-pub fn frame_look(doc: &Document, page: PageId) -> super::frame::FrameLook {
-    super::frame::look_of(doc, &frame_style(doc, page))
-}
-
-/// Whether `page`'s type draws zone ticks and labels (FP6).
-pub fn zones(doc: &Document, page: PageId) -> bool {
-    look_of(doc, &type_of(doc, page)).zones
+    msheet::frame_style(doc, page)
 }
 
 /// A built-in's fixed subtitle on the Settings table (design 054 §2.2); own types have none.

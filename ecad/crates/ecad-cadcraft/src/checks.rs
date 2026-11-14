@@ -219,10 +219,16 @@ pub enum Kind {
     CoverLegendCut,
     /// Brief 054b (design 054 §6.4): stored cover notes past the bounds, read cut.
     CoverNotesCut,
+    /// Brief 055 (design 055 §8): a bound value is cut in the title block on at least one page.
+    TitleValueCut,
+    /// Brief 055: a frame has fields this build cannot fill, or items past the bounds.
+    TitleBindingUnknown,
+    /// Brief 055: a page's own sheet differs from its frame's; the frame wins.
+    FrameSheetDiffers,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 78] = [
+    pub const ALL: [Kind; 81] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -301,6 +307,9 @@ impl Kind {
         Kind::FolderRunsOverlap,
         Kind::CoverLegendCut,
         Kind::CoverNotesCut,
+        Kind::TitleValueCut,
+        Kind::TitleBindingUnknown,
+        Kind::FrameSheetDiffers,
     ];
 
     /// The JSON name.
@@ -384,6 +393,9 @@ impl Kind {
             Kind::FolderRunsOverlap => "folder-runs-overlap",
             Kind::CoverLegendCut => "cover-legend-cut",
             Kind::CoverNotesCut => "cover-notes-cut",
+            Kind::TitleValueCut => "title-value-cut",
+            Kind::TitleBindingUnknown => "title-binding-unknown",
+            Kind::FrameSheetDiffers => "frame-sheet-differs",
         }
     }
 
@@ -473,6 +485,9 @@ impl Kind {
             Kind::FolderRunsOverlap => "A folder's page numbers run into another folder's",
             Kind::CoverLegendCut => "The cover's symbol legend does not show every symbol",
             Kind::CoverNotesCut => "The cover's notes are past 40 notes of 400 characters; the rest are not shown",
+            Kind::TitleValueCut => "A value is cut in the title block",
+            Kind::TitleBindingUnknown => "Title block fields this build cannot fill",
+            Kind::FrameSheetDiffers => "Page sheet differs from its frame's; the frame wins",
         }
     }
 
@@ -527,6 +542,7 @@ impl Kind {
             | Kind::PageTypeField
             | Kind::FolderRunsOverlap
             | Kind::CoverNotesCut
+            | Kind::FrameSheetDiffers
             | Kind::WireThroughCard => Severity::Warning,
             _ => Severity::Info,
         }
@@ -617,6 +633,10 @@ pub enum Fix {
     OpenStandards(&'static str),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
     Page(crate::page_types::PageFix),
+    /// Brief 055: **Edit block** opens Library ▸ Title blocks on the page's frame with item `n` selected.
+    EditTitleBlock(PageId, u16),
+    /// Brief 055: **Clear the page's sheet** (`setprop` page `sheet` null).
+    ClearPageSheet(PageId),
 }
 
 /// One row of the Checks list.
@@ -655,6 +675,9 @@ impl Check {
             | Kind::FolderStartUnknown
             | Kind::FolderRunsOverlap
             | Kind::CoverLegendCut
+            | Kind::TitleValueCut
+            | Kind::TitleBindingUnknown
+            | Kind::FrameSheetDiffers
                 if !self.which.is_empty() =>
             {
                 self.which.clone()
@@ -730,6 +753,8 @@ pub enum Key {
     Styles,
     /// Brief 054b: the cover's rows (legend cut, notes cut), refreshed when the cover changes.
     Cover,
+    /// Brief 055: the title block rows (cut values, unknown fields, sheets that differ).
+    TitleBlocks,
 }
 
 type Cell = (PageId, i64, i64);
@@ -1297,6 +1322,7 @@ impl Checks {
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
         ch.set(Key::Cover, crate::front::check_rows(doc));
+        ch.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1471,6 +1497,9 @@ impl Checks {
         if scope.styles {
             self.set(Key::Styles, crate::styles::checks::rows(doc));
         }
+        if scope.title_blocks {
+            self.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
+        }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
@@ -1497,6 +1526,8 @@ pub struct Scope {
     cables: BTreeSet<ecad_model::CableId>,
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
     styles: bool,
+    /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
+    title_blocks: bool,
 }
 
 impl Scope {
@@ -1515,6 +1546,7 @@ impl Scope {
         };
         for op in ops {
             self.styles |= crate::styles::checks::touches(op);
+            self.title_blocks |= crate::title_block::checks::touches(op);
             match op {
                 Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
                     self.conductors.insert(*id);

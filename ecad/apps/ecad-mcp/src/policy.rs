@@ -79,12 +79,23 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
+    // Brief 055: the title blocks' list reads the project.
+    "titleblocks",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
 /// `projectprops {}`; brief 026: `numbering {}`; brief 031: `textstyle {}`.
-const READ_WITHOUT_FIELDS: &[(&str, &[&str])] =
-    &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[]), ("textstyle", &[]), ("standard", &[]), ("folderprops", &["folder"])];
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
+    ("pageprops", &["page"]),
+    ("projectprops", &[]),
+    ("numbering", &[]),
+    ("textstyle", &[]),
+    ("standard", &[]),
+    // Brief 055: `titleblock {id, sheet?}` reads one frame and its block.
+    ("titleblock", &["id", "sheet"]),
+    // Brief 054: `folderprops {folder}` reads a folder's start number.
+    ("folderprops", &["folder"]),
+];
 
 /// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
 /// project file, which stays with the person who started the server).
