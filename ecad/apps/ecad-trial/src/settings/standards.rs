@@ -62,6 +62,8 @@ pub const CATALOGUES: &[(&str, &str, &str)] = &[
     ("location", "ecad.standards.catalogue.location", "standards.location"),
     ("frame", "ecad.standards.catalogue.frame", "standards.frame"),
     ("wire", "ecad.standards.catalogue.wire", "standards.wire"),
+    ("cable", "ecad.standards.catalogue.cable", "standards.cable"),
+    ("ratingtable", "ecad.standards.catalogue.ratingtable", "standards.ratingtable"),
 ];
 
 /// What the standard header is doing (design 050 §7.1).
@@ -682,6 +684,15 @@ fn header_ui(t: &mut Trial, ui: &mut egui::Ui, writable: bool) {
 fn style_detail_ui(t: &mut Trial, ui: &mut egui::Ui, writable: bool) {
     let catalogue = t.settings.standards.catalogue;
     let Some(i) = catalogue.checked_sub(1) else { return };
+    // Brief 057 (design 057 §5.3): cable types and rating tables have no built-in style to start
+    // from; rating tables show their rows, Import CSV… and Export CSV.
+    if let Some(word) = t.settings.standards.cats.get(i).map(|c| c.0.catalogue.word).filter(|w| matches!(*w, "cable" | "ratingtable")) {
+        let focus =
+            t.settings.standards.style_focus.and_then(|row| t.settings.standards.cats.get(i).and_then(|c| c.0.row(row)).map(|r| r.id.clone()));
+        if crate::lists::rating::catalogue_ui(t, ui, writable, word, focus) {
+            return;
+        }
+    }
     let (Some(cat), Some(row)) = (t.settings.standards.cats.get(i).map(|c| c.0.catalogue), t.settings.standards.style_focus) else {
         ecad_ui::prim::read_value(ui, "Choose a style to see its fields and who uses it.");
         return;

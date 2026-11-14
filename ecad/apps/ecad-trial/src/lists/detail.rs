@@ -95,6 +95,8 @@ struct Section {
     /// Greyed buttons with their reason.
     later: Vec<(&'static str, &'static str)>,
     note: Option<&'static str>,
+    /// Brief 057: the Rating section's result (drawn by [`super::rating`]).
+    rating: Option<super::rating::Panel>,
 }
 
 /// The panel's contents.
@@ -318,6 +320,7 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
                 ],
                 ..Section::default()
             },
+            rating_section(t, v.source.rating(k), &v.source.rating.methods),
             Section {
                 title: "Ends",
                 props: vec![later("Ferrules", CABLE_MANAGER_COMES), later("Marker", CABLE_MANAGER_COMES), later("Length", CABLE_MANAGER_COMES)],
@@ -325,6 +328,20 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
             },
         ],
     })
+}
+
+/// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
+/// result. A wire or cable with no rating data shows none, so a project that does not rate is
+/// not nagged.
+fn rating_section(_t: &Trial, r: Option<&ecad_cadcraft::rating::Rating>, methods: &[&'static str]) -> Section {
+    let Some(r) = r else { return Section::default() };
+    let methods = if methods.is_empty() { ecad_cadcraft::rating::dataset::METHODS.to_vec() } else { methods.to_vec() };
+    Section {
+        title: "Rating",
+        hint: r.summary(),
+        rating: Some(super::rating::Panel { rating: r.clone(), methods, writable: false }),
+        ..Section::default()
+    }
 }
 
 fn cable(t: &Trial, k: usize) -> Option<Detail> {
@@ -367,6 +384,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
                 ],
                 ..Section::default()
             },
+            rating_section(t, v.source.rating(k), &v.source.rating.methods),
             Section {
                 title: "Ends",
                 props: vec![
@@ -508,6 +526,8 @@ fn rule(ui: &mut egui::Ui) {
 enum Out {
     Go(Go),
     Panel(crate::project_panel::Action),
+    /// Brief 057: a `rating` call from the Rating section.
+    Run(&'static str, serde_json::Value),
 }
 
 /// Draw the right panel for the Project workspace in `rect`.
@@ -556,9 +576,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                 }
                 rule(ui);
             }
-            for sec in &d.sections {
+            for sec in d.sections.iter().filter(|s| !s.title.is_empty()) {
                 let id = egui::Id::unique(("ecad.project.detail", sec.title));
                 if section_head(ui, id, sec.title, &sec.hint) {
+                    if let Some(rp) = &sec.rating {
+                        let rp = super::rating::Panel { writable, ..rp.clone() };
+                        out.extend(super::rating::show(ui, &rp).into_iter().map(|(c, v)| Out::Run(c, v)));
+                    }
                     for p in &sec.props {
                         prop_row(ui, p);
                     }
@@ -593,6 +617,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             Out::Go(Go::Place(pg, at)) => t.goto_place(pg, at),
             Out::Go(Go::Page(pg, card)) => t.plc_action(super::ListAction::GoToCard(pg, card)),
             Out::Panel(a) => t.panel_action(a),
+            Out::Run(cmd, params) => {
+                let _ = t.run_value(cmd, params);
+            }
         }
     }
 }

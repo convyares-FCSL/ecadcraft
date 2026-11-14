@@ -1908,6 +1908,7 @@ impl Trial {
                 }
             }
             A::OpenStandards(word) => self.open_standards_at(word),
+            A::RatingFix(f) => self.rating_fix(f),
             A::ShowCables => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {

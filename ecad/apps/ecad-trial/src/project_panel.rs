@@ -204,6 +204,9 @@ pub enum Action {
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
+    /// Choose a table, Show the rated wires).
+    RatingFix(ecad_cadcraft::checks::Fix),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),

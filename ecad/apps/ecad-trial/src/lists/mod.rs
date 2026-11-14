@@ -24,6 +24,7 @@ pub mod checks;
 pub mod detail;
 pub mod devices;
 pub mod plc;
+pub mod rating;
 pub mod report;
 pub mod reports;
 pub mod standards;

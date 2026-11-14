@@ -47,11 +47,21 @@ pub fn columns() -> Vec<Column> {
 pub struct CablesSource {
     cols: Vec<Column>,
     pub rows: ReportRows,
+    /// Brief 057: each row's cable, and the rating results.
+    pub ids: Vec<CableId>,
+    pub rating: super::wires::RatingCopy,
 }
 
 impl Default for CablesSource {
     fn default() -> Self {
-        Self { cols: columns(), rows: ReportRows::default() }
+        Self { cols: columns(), rows: ReportRows::default(), ids: Vec::new(), rating: Default::default() }
+    }
+}
+
+impl CablesSource {
+    /// Brief 057: row `k`'s rating result.
+    pub fn rating(&self, k: usize) -> Option<&ecad_cadcraft::rating::Rating> {
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_cadcraft::rating::RatedSubject::Cable(*c)))
     }
 }
 
@@ -83,6 +93,12 @@ impl ReportColumns for CablesSource {
             USED => Cell::Text(format!("{} of {}", r.text(k, "Used"), r.text(k, "Cores"))),
             CHECKS => {
                 let spare = r.text(k, "Spare");
+                // Brief 057 (design 057 §2.2): a rating row comes first.
+                if let Some(rt) = self.rating(k)
+                    && let Some(w) = rt.status()
+                {
+                    return Cell::Badge(w, if rt.fails() { Tone::Error } else { Tone::Warning });
+                }
                 match r.flag(k) {
                     Some(_) => Cell::Badge("check".into(), Tone::Warning),
                     None if spare.parse::<u32>().is_ok_and(|n| n > 0) => {
@@ -233,6 +249,7 @@ impl CablesView {
             self.source.rows.take(o.cable_table());
             let rows = o.cables();
             self.ids = rows.iter().map(|r| r.cable).collect();
+            self.source.ids = self.ids.clone();
             self.gos = rows.iter().map(|r| r.go).collect();
             self.copies += 1;
             self.table.update(&self.source, Changed::All);
@@ -252,6 +269,27 @@ impl CablesView {
                 None => self.cores.rows = ReportRows::default(),
             }
             self.core_table.update(&self.cores, Changed::All);
+        }
+    }
+
+    /// Brief 057: bring the rating copy up to date and patch the Checks cells of the re-checked
+    /// cables only.
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_cadcraft::rating::Kept) {
+        match self.source.rating.sync(serial, kept) {
+            None => self.table.update(&self.source, Changed::All),
+            Some(v) if v.is_empty() => {}
+            Some(v) => {
+                let rows: Vec<usize> = self
+                    .ids
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| v.contains(&ecad_cadcraft::rating::RatedSubject::Cable(**c)))
+                    .map(|(k, _)| k)
+                    .collect();
+                if !rows.is_empty() {
+                    self.table.update(&self.source, Changed::Keys(rows));
+                }
+            }
         }
     }
 

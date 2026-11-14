@@ -86,6 +86,14 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::IgnoreConnector(..) => cp::IGNORE,
         Fix::UseArticle(..) => cp::USE_FOR_ALL,
         Fix::DropMissingFor(..) => cp::REMOVE,
+        // Brief 057 (design 057 §7).
+        Fix::ShowRating(_) => "Show rating",
+        Fix::UseSize(..) => "Use the larger size",
+        Fix::PickCableType(..) => "Change cable type\u{2026}",
+        Fix::SetBasis(..) => "Use Datasheet",
+        Fix::ClearProtectedBy(_) => "Clear Protected by",
+        Fix::ChooseRatingTable => "Go to Rating defaults",
+        Fix::ShowRatedWires => cp::SHOW,
     }]
 }
 

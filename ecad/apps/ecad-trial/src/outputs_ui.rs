@@ -178,6 +178,16 @@ impl Reports {
                 self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
         }
+        // Brief 057: the rating results the Wires and Cables tabs show (kept by the Checks list).
+        if self.wires_shown || self.cables_shown {
+            let kept = &p.checks().rating;
+            if self.wires_shown {
+                self.wires.sync_rating(serial, kept);
+            }
+            if self.cables_shown {
+                self.cables.sync_rating(serial, kept);
+            }
+        }
         let reference_style = p.ledger.document().settings.reference_style;
         let style = reference_style as u64;
         let o = p.outputs();

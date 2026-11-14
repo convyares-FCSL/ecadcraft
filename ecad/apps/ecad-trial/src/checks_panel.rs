@@ -230,6 +230,17 @@ impl ChecksPanel {
             (Fix::NextFreeCore(w), _) => Action::NextFreeCore(w),
             (Fix::ShowCables, _) => Action::ShowCables,
             (Fix::OpenStandards(w), _) => Action::OpenStandards(w),
+            // Brief 057.
+            (
+                Fix::ShowRating(_)
+                | Fix::UseSize(..)
+                | Fix::PickCableType(..)
+                | Fix::SetBasis(..)
+                | Fix::ClearProtectedBy(_)
+                | Fix::ChooseRatingTable
+                | Fix::ShowRatedWires,
+                _,
+            ) => Action::RatingFix(f),
             (
                 Fix::LinkOnNonStrip(_)
                 | Fix::MoveToNextFree(_)

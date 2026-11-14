@@ -13,6 +13,49 @@ use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSo
 
 use super::report::{From, ReportColumns, ReportRows};
 
+/// Brief 057: a copy of the kept rating results (`Checks::rating`), patched by subject: at the
+/// next epoch only the subjects the update re-checked are copied again (design 057 §10).
+#[derive(Debug, Default)]
+pub struct RatingCopy {
+    pub results: std::collections::BTreeMap<ecad_cadcraft::rating::RatedSubject, ecad_cadcraft::rating::Rating>,
+    seen: Option<(u64, u64)>,
+    /// Full copies and patches (tests: the update map).
+    pub copies: u64,
+    pub patches: u64,
+    /// The methods the project's rating table has rows for.
+    pub methods: Vec<&'static str>,
+}
+
+impl RatingCopy {
+    /// Bring the copy up to date. Returns the subjects copied again, or `None` for a full copy.
+    pub fn sync(&mut self, serial: u64, kept: &ecad_cadcraft::rating::Kept) -> Option<Vec<ecad_cadcraft::rating::RatedSubject>> {
+        if self.methods != kept.methods {
+            self.methods = kept.methods.clone();
+        }
+        match self.seen {
+            Some((s, e)) if s == serial && e == kept.epoch => Some(Vec::new()),
+            Some((s, e)) if s == serial && e + 1 == kept.epoch => {
+                self.seen = Some((serial, kept.epoch));
+                self.patches += 1;
+                let v: Vec<_> = kept.last.iter().copied().collect();
+                for subj in &v {
+                    match kept.results.get(subj) {
+                        Some(r) => self.results.insert(*subj, r.clone()),
+                        None => self.results.remove(subj),
+                    };
+                }
+                Some(v)
+            }
+            _ => {
+                self.seen = Some((serial, kept.epoch));
+                self.copies += 1;
+                self.results = kept.results.clone();
+                None
+            }
+        }
+    }
+}
+
 pub const WIRE: ColumnId = ColumnId(0);
 pub const FROM: ColumnId = ColumnId(1);
 pub const TO: ColumnId = ColumnId(2);
@@ -56,11 +99,14 @@ pub fn columns() -> Vec<Column> {
 pub struct WiresSource {
     cols: Vec<Column>,
     pub rows: ReportRows,
+    /// Brief 057: each row's conductor, and the rating results.
+    pub ids: Vec<ecad_model::ConductorId>,
+    pub rating: RatingCopy,
 }
 
 impl Default for WiresSource {
     fn default() -> Self {
-        Self { cols: columns(), rows: ReportRows::default() }
+        Self { cols: columns(), rows: ReportRows::default(), ids: Vec::new(), rating: RatingCopy::default() }
     }
 }
 
@@ -73,6 +119,11 @@ impl WiresSource {
     /// Whether row `k`'s number is provisional.
     pub fn provisional(&self, k: usize) -> bool {
         ecad_model::tag::is_provisional(&self.rows.text(k, "Wire number"))
+    }
+
+    /// Brief 057: row `k`'s rating result.
+    pub fn rating(&self, k: usize) -> Option<&ecad_cadcraft::rating::Rating> {
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_cadcraft::rating::RatedSubject::Conductor(*c)))
     }
 }
 
@@ -103,6 +154,10 @@ impl ReportColumns for WiresSource {
             WIRE if self.provisional(k) => Cell::Provisional(self.rows.text(k, "Wire number")),
             WIRE => self.rows.cell(k, "Wire number"),
             ON_PAGE => Cell::Text(page_of(&self.rows.text(k, "Page"))),
+            // Brief 057 (design 057 §2.1): the worst rating row in words.
+            STATUS if let Some((w, fails)) = self.rating(k).and_then(|r| r.status().map(|w| (w, r.fails()))) => {
+                Cell::Badge(w, if fails { Tone::Error } else { Tone::Warning })
+            }
             STATUS if self.provisional(k) => Cell::Badge(PROVISIONAL.into(), Tone::Provisional),
             STATUS if self.rows.flag(k).is_some() => Cell::Badge(CHECK.into(), Tone::Warning),
             STATUS => Cell::Badge(OK.into(), Tone::Ok),
@@ -160,9 +215,32 @@ impl WiresView {
         self.seen = Some(key);
         self.source.rows.take(o.wire_table());
         self.gos = o.wires().iter().map(|w| w.go).collect();
+        self.source.ids = o.wires().iter().map(|w| w.conductor).collect();
         self.copies += 1;
         self.table.update(&self.source, Changed::All);
         self.apply_group();
+    }
+
+    /// Brief 057: bring the rating copy up to date and patch the Status cells of the re-checked
+    /// wires only.
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_cadcraft::rating::Kept) {
+        match self.source.rating.sync(serial, kept) {
+            None => self.table.update(&self.source, Changed::All),
+            Some(v) if v.is_empty() => {}
+            Some(v) => {
+                let rows: Vec<usize> = self
+                    .source
+                    .ids
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| v.contains(&ecad_cadcraft::rating::RatedSubject::Conductor(**c)))
+                    .map(|(k, _)| k)
+                    .collect();
+                if !rows.is_empty() {
+                    self.table.update(&self.source, Changed::Keys(rows));
+                }
+            }
+        }
     }
 
     /// Forget the copy (shown again, reload).
