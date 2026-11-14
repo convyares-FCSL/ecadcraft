@@ -46,6 +46,15 @@ pub fn specs() -> Vec<CommandSpec> {
     #[cfg(not(target_arch = "wasm32"))]
     v.extend(crate::agent_access::specs());
     v.extend(crate::level_cmds::specs());
+    v.extend(crate::look::specs());
+    v.extend(crate::default_cmds::specs());
+    v.extend(crate::connector_cmds::specs());
+    v.extend(crate::plc::specs());
+    v.extend(crate::bom::specs());
+    v.extend(crate::symbol_cmds::specs());
+    v.extend(crate::continuation_cmds::specs());
+    v.extend(crate::style_cmds::specs());
+    v.extend(crate::plc::page::specs());
     for (_, lane) in crate::lanes::LANES {
         v.extend(lane());
     }
