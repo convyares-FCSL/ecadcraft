@@ -404,17 +404,17 @@ fn place_row(
         } else {
             Placement { origin, rotation: rot, mirror: false, scale: 1.0 }
         };
-        let (c, main) = match &made {
-            Some((c, _, _)) => (*c, false),
+        let c = match &made {
+            Some((c, _, _)) => *c,
             None => {
                 let pins_prop = Some(n);
                 let list = matches!(names, Names::List(_)).then_some(pin_names.as_slice());
                 let (c, tag) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, None, pins_prop, list, &mut ops)?;
                 made = Some((c, tag, true));
-                (c, true)
+                c
             }
         };
-        let (_, _, sh) = cn::symbol_ops(&mut p.ids, page, style.clone(), def, starter, c, &pin_names, placement, main, &mut ops)?;
+        let (_, _, sh) = cn::symbol_ops(&mut p.ids, page, style.clone(), def, starter, c, &pin_names, placement, &mut ops)?;
         shown.extend(sh);
     }
     let (component, tag, new) = made.ok_or("Nothing to place.")?;
@@ -538,7 +538,6 @@ fn place_pins(
             component,
             std::slice::from_ref(&name),
             placement,
-            new && i == 0,
             &mut ops,
         )?;
         let land = cn::land_pin(doc, &mut p.ids, page, on, &shown, placement)
@@ -643,7 +642,7 @@ pub(crate) fn run_place_half(
             _ => degrees.to_radians(),
         };
         let placement = Placement { origin, rotation, mirror, scale: 1.0 };
-        let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, new, &mut ops)?;
+        let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(cn::land_pin(doc, &mut p.ids, page, on, &shown, placement)?),
             None => None,

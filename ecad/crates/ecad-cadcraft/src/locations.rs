@@ -2,7 +2,8 @@
 //!
 //! # Semantics
 //! - A device's **location** (IEC 81346 `+` aspect) is its own `location` property when set,
-//!   else the **context** of its main symbol ([`main_rep`]): the innermost location box on that
+//!   else the **context** of its go-to symbol ([`main_rep`], [`crate::reps::goto`]: its head, else
+//!   its first symbol in book order; design 052 §4): the innermost location box on that
 //!   symbol's page whose outline holds the symbol's anchor, else the page's `location`, else the
 //!   project's. Nothing of this is stored: it is worked out from where symbols and boxes are.
 //! - A **location box** is a tagless component with property `kind: "location_box"` and its own
@@ -331,24 +332,12 @@ pub fn box_holding(doc: &Document, r: &Representation, cache: &mut BoxCache) -> 
     innermost(cache.on(doc, r.page), at).cloned()
 }
 
-/// A device's main representation (design 024 §3.2): role `main`; if none, the first in book
-/// order, then top-left to bottom-right.
+/// The representation a device's location is read from until it is stored (brief 052b): its
+/// go-to symbol ([`crate::reps::goto`]), its head, else its first in book order, then top-left.
+/// No role is read: a stored role `main` means nothing (design 052 §4).
 pub fn main_rep(doc: &Document, c: ComponentId) -> Option<(RepresentationId, &Representation)> {
-    let reps: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Component(c)).collect();
-    if let Some(m) = reps.iter().find(|(_, r)| r.role == "main") {
-        return Some(*m);
-    }
-    if let [one] = reps.as_slice() {
-        return Some(*one);
-    }
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    reps.into_iter().min_by(|(ia, a), (ib, b)| {
-        let pa = order.get(&a.page).copied().unwrap_or(usize::MAX);
-        let pb = order.get(&b.page).copied().unwrap_or(usize::MAX);
-        let qa = anchor(doc, a).unwrap_or(Pt::new(0.0, 0.0));
-        let qb = anchor(doc, b).unwrap_or(Pt::new(0.0, 0.0));
-        pa.cmp(&pb).then(qb.y.total_cmp(&qa.y)).then(qa.x.total_cmp(&qb.x)).then(ia.cmp(ib))
-    })
+    let rid = crate::reps::goto(doc, c, None)?;
+    doc.representations.get(&rid).map(|r| (rid, r))
 }
 
 /// Device `c`'s location (design 024 §3.2), with `cache` for the pages read.
@@ -370,7 +359,7 @@ pub fn resolve(doc: &Document, c: ComponentId) -> Located {
     resolve_with(doc, c, &mut BoxCache::default())
 }
 
-/// The box device `c`'s main symbol sits in when `c` has an own location that differs from it
+/// The box device `c`'s go-to symbol ([`main_rep`]) sits in when `c` has an own location that differs from it
 /// (design 024 §8.3): the box and its location.
 pub fn own_differs(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Option<LocBox> {
     let own = doc.components.get(&c)?.properties.get(LOCATION_KEY)?;

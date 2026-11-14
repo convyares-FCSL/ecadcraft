@@ -322,7 +322,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
                 }
             }
         }
-        // An inherited location (brief 024) reads the main symbol's page (its boxes and
+        // An inherited location (brief 024) reads the go-to symbol's page (its boxes and
         // `location`) and the project's.
         v.deps.insert(ObjectRef::Project);
         // Brief 045: a card's Rack row shows its rack's tag.

@@ -155,7 +155,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         }
         let (object, page, whose) = match o {
             ObjectRef::Component(c) => {
-                let page = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map(|(p, _)| p);
+                let page = crate::reps::goto_place(doc, c).map(|(p, _)| p);
                 (Object::Component(c), page, crate::devices::tag_words(doc, c))
             }
             ObjectRef::Conductor(c) => {

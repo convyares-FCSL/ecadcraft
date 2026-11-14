@@ -157,5 +157,5 @@ narrows a redraw map that once had a bug. The stored values change from codes to
 
 - Q1–Q9 were answered by the owner on 2026-11-14 (design §12.1).
 - FP1–FP6 were approved by the overseer on 2026-11-14 (design §11).
-- Open: FP7–FP9 for the overseer (design §11) and the new owner questions Q10–Q11 (design
-  §12.2).
+- FP7–FP9 were approved by the overseer on 2026-11-14 (design §11).
+- Open: the new owner questions Q10–Q11 (design §12.2).

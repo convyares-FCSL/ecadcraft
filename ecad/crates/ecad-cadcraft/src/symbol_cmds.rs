@@ -1237,7 +1237,7 @@ pub fn plan_place_project(
                     subject: Subject::Component(c),
                     page,
                     form: Form::Symbol,
-                    role: "main".into(),
+                    role: key.clone(),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },

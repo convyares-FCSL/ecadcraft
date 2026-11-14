@@ -251,8 +251,8 @@ fn halves_reference_each_other_across_pages() {
     h.activate(p2);
     row(&mut h, json!({"halves": "plug", "device": c.hex()}));
     let d = h.doc();
-    let s = connectors::main_symbol(&d, c, Side::Socket).unwrap();
-    let p = connectors::main_symbol(&d, c, Side::Plug).unwrap();
+    let s = connectors::half_goto(&d, c, Side::Socket).unwrap();
+    let p = connectors::half_goto(&d, c, Side::Plug).unwrap();
     let list = connectors::ref_classes(&d, c);
     let edges = connectors::ref_edges(&d, c, &list);
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)));

@@ -1117,7 +1117,7 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 && (ecad_model::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
             {
                 // Located only when there is a row to show (a build visits every device).
-                let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+                let (page, at) = crate::reps::goto_place(doc, c).map_or((None, None), |(p, a)| (Some(p), a));
                 if ecad_model::tag::is_provisional(t) {
                     out.push(Check {
                         kind: Kind::ProvisionalTag,

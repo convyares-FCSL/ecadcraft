@@ -289,23 +289,21 @@ impl<'a> Places<'a> {
         p.is_finite().then_some(p)
     }
 
-    /// The anchor of `subject`: a representation with role `main` when `prefer_main`, else the
-    /// first in drawing order.
-    fn anchor(&mut self, subject: Subject, prefer_main: bool) -> Option<(PageId, Pt, Order)> {
+    /// The anchor of `subject`: its representation of the lowest `rank`, the first in drawing
+    /// order among those (design 052 §4, FP6: the adapter supplies the rank, so this crate knows
+    /// nothing of symbol types).
+    fn anchor(&mut self, subject: Subject, rank: Rank<'_>) -> Option<(PageId, Pt, Order)> {
         let doc = self.doc;
-        let mut best: Option<(PageId, Pt, Order)> = None;
-        let mut main: Option<(PageId, Pt, Order)> = None;
+        let mut best: Option<(u8, PageId, Pt, Order)> = None;
         for (_, r) in doc.representations_of(subject) {
             let Some(at) = self.rep_point(r) else { continue };
             let o = self.order(r.page, at);
-            if prefer_main && r.role == "main" && main.as_ref().is_none_or(|m| o.cmp(&m.2).is_lt()) {
-                main = Some((r.page, at, o));
-            }
-            if best.as_ref().is_none_or(|b| o.cmp(&b.2).is_lt()) {
-                best = Some((r.page, at, o));
+            let k = rank(r);
+            if best.as_ref().is_none_or(|b| k.cmp(&b.0).then_with(|| o.cmp(&b.3)).is_lt()) {
+                best = Some((k, r.page, at, o));
             }
         }
-        main.or(best)
+        best.map(|(_, p, a, o)| (p, a, o))
     }
 
     /// The anchor of a net: its first conductor's route start, on its first page in drawing order.
@@ -342,19 +340,17 @@ impl<'a> Places<'a> {
     }
 }
 
-/// Where `subject` is shown, cheaply (for Checks rows): its `main` representation, else its
-/// lowest-ID one, and that representation's anchor point.
+/// Where `subject` is shown, cheaply (for Checks rows): its first representation in drawing order
+/// (book position, then top-left), and that representation's anchor point. A representation's
+/// role is not read (design 052 §4).
+///
+/// Cheap: the book order is built only when the subject is shown on more than one page.
 pub fn rep_anchor(doc: &Document, subject: Subject) -> Option<(PageId, Pt)> {
-    let places = Places { doc, book: Book::default(), grids: HashMap::new() };
-    let mut first = None;
-    for (_, r) in doc.representations_of(subject) {
-        let Some(at) = places.rep_point(r) else { continue };
-        if r.role == "main" {
-            return Some((r.page, at));
-        }
-        first.get_or_insert((r.page, at));
-    }
-    first
+    let mut pages = doc.representations_of(subject).map(|(_, r)| r.page);
+    let first = pages.next()?;
+    let book = if pages.any(|p| p != first) { Book::of(doc) } else { Book::default() };
+    let mut places = Places { doc, book, grids: HashMap::new() };
+    places.anchor(subject, &|_| 0).map(|(p, a, _)| (p, a))
 }
 
 /// Whether a project has provisional tags on (FP2).
@@ -413,6 +409,20 @@ struct Tagged {
 /// # Errors
 /// [`BAD_START`] or [`BAD_DIGITS`] for values out of range; an unknown folder.
 pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, String> {
+    plan_ranked(doc, req, high, &|_| 0)
+}
+
+/// How a device's representations rank as its numbering anchor: lowest first, then drawing order
+/// (design 052 §4, FP6). The adapter knows the symbol types; this crate does not.
+pub type Rank<'a> = &'a dyn Fn(&Representation) -> u8;
+
+/// As [`plan`], with devices anchored at their representation of the lowest `rank` (design 052
+/// §4): the adapter ranks a device's head first, so a device is numbered by its coil wherever its
+/// contacts are.
+///
+/// # Errors
+/// As [`plan`].
+pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'_>) -> Result<Plan, String> {
     if let Some(s) = req.start
         && !(1..=tag::MAX_TAG_NUMBER).contains(&s)
     {
@@ -437,7 +447,7 @@ pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, Str
     let mut rows = Vec::new();
     let mut ops = Vec::new();
     if req.kinds.contains(&Kind::Devices) || req.kinds.contains(&Kind::Cables) {
-        plan_tags(doc, req, high, &mut places, pages.as_ref(), &mut rows, &mut ops);
+        plan_tags(doc, req, high, rank, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
     if req.kinds.contains(&Kind::Wires) {
         plan_wires(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
@@ -461,7 +471,7 @@ fn object_hex(o: ObjectRef) -> u128 {
 
 #[allow(clippy::too_many_arguments)]
 fn plan_tags(
-    doc: &Document, req: &Request, high: &HighWater, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>,
+    doc: &Document, req: &Request, high: &HighWater, rank: Rank<'_>, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>,
     ops: &mut Vec<Op>,
 ) {
     // Every device (tagless junctions and continuations aside) and every tagged cable.
@@ -525,7 +535,7 @@ fn plan_tags(
                         ObjectRef::Cable(c) => Subject::Cable(c),
                         _ => continue,
                     };
-                    it.anchor = places.anchor(subject, it.kind == Kind::Devices);
+                    it.anchor = places.anchor(subject, if it.kind == Kind::Devices { rank } else { &|_| 0 });
                     it.anchor.as_ref().is_some_and(|(pg, _, _)| pages.is_some_and(|s| s.contains(pg)))
                 }
                 Scope::Provisional => prov.is_some(),
@@ -545,7 +555,7 @@ fn plan_tags(
                 ObjectRef::Cable(c) => Subject::Cable(c),
                 _ => continue,
             };
-            it.anchor = places.anchor(subject, it.kind == Kind::Devices);
+            it.anchor = places.anchor(subject, if it.kind == Kind::Devices { rank } else { &|_| 0 });
         }
         if in_scope && !numbered {
             let old = it.tag.clone().unwrap_or_else(|| "(no tag)".into());

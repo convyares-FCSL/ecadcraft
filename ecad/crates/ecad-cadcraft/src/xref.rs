@@ -362,10 +362,13 @@ pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
 }
 
 /// The class of a component representation by its symbol alone (a second head is made `Other`
-/// by [`device`]).
+/// by [`device`]): a head by its type ([`crate::reps::rep_type`]), a child when its symbol carries
+/// poles.
 fn raw_class(doc: &Document, r: &Representation) -> Class {
+    if crate::reps::rep_type(doc, r) == crate::reps::RepType::Head {
+        return Class::Head;
+    }
     match starter_of(doc, r) {
-        Some(s) if is_head(s) => Class::Head,
         Some(s) if !poles_of(s).is_empty() => Class::Child,
         _ => Class::Other,
     }
@@ -389,7 +392,8 @@ pub struct DrawnPole {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
     pub component: ComponentId,
-    /// Its head (the lowest-ID head symbol).
+    /// Its head ([`crate::reps::head`]: the first head symbol in book order, then top-left; never
+    /// by ID or placement order, design 052 §3.4).
     pub head: Option<RepresentationId>,
     /// Its children, in ID order.
     pub children: Vec<RepresentationId>,
@@ -435,12 +439,11 @@ pub fn terminal_points(doc: &Document, c: ComponentId, r: &Representation) -> Ve
 
 /// Device `c` as the reference rule sees it: O(its representations).
 pub fn device(doc: &Document, c: ComponentId) -> Device {
-    let mut head = None;
+    let head = crate::reps::head(doc, c);
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Component(c)) {
         match raw_class(doc, r) {
-            Class::Head if head.is_none() => head = Some(rid),
             Class::Child => {
                 children.push(rid);
                 let Some(s) = starter_of(doc, r) else { continue };
@@ -474,10 +477,7 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
         Subject::Component(c) => match raw_class(doc, r) {
-            Class::Head => {
-                let first = doc.representations_of(Subject::Component(c)).find(|(_, x)| raw_class(doc, x) == Class::Head).map(|(id, _)| id);
-                Some((Group::Device(c), if first == Some(rid) { Class::Head } else { Class::Other }))
-            }
+            Class::Head => Some((Group::Device(c), if crate::reps::head(doc, c) == Some(rid) { Class::Head } else { Class::Other })),
             Class::Child => Some((Group::Device(c), Class::Child)),
             _ => None,
         },

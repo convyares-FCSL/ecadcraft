@@ -361,7 +361,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                     subject: Subject::Component(c),
                     page,
                     form: Form::Symbol,
-                    role: "main".into(),
+                    role: "coil".into(),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
