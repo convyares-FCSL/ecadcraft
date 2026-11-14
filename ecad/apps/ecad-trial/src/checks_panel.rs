@@ -213,7 +213,7 @@ impl ChecksPanel {
     }
 
     /// Button `k` of row `r`'s fix `f`, as an action.
-    fn fix(r: &Row, f: Fix, k: usize) -> Option<Action> {
+    pub(crate) fn fix(r: &Row, f: Fix, k: usize) -> Option<Action> {
         if pair(f).is_some() {
             return Some(Action::AccessoryFix(f, k));
         }
