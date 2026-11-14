@@ -30,6 +30,11 @@ const CORES: usize = 50;
 /// Where the bench draws: right of an A3 sheet, clear of the generated pattern.
 const X0: f64 = 600.0;
 
+/// The bench cable's tag. The generator tags its cables `-W1` to `-W<cables>` (2,500 on large), so
+/// this stays above every tier's count: `-W932` was a cable of the large project, and continuing it
+/// was refused there.
+const CABLE: &str = "-W9932";
+
 /// What brief 032 measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredWires {
@@ -119,7 +124,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             run(&mut s, "place", json!({"symbol": "continuation", "at": [X0 + 100.0, y(i)], "name": format!("B{i}")}))?;
             run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;
         }
-        run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": "-W932"}))?;
+        run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CABLE}))?;
         let second: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032 b"}))?, "page")?;
         run(&mut s, "openpage", json!({"page": second.hex()}))?;
         for i in 0..CORES {
@@ -128,7 +133,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         }
         let mut ccont = Vec::new();
         for _ in 0..runs {
-            ccont.push(timed(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": "-W932"}))?);
+            ccont.push(timed(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CABLE}))?);
         }
         out.ccont_ms = median(&mut ccont);
         drop(project);
@@ -142,4 +147,16 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
 
 fn crate_hex<T: From<u128>>(v: &serde_json::Value, key: &str) -> Result<T, String> {
     v[key].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(T::from).ok_or_else(|| format!("no `{key}` in {v}"))
+}
+
+#[cfg(test)]
+mod tests {
+    /// The bench cable's tag is none of the cables any tier generates (`-W1` to `-W<cables>`).
+    #[test]
+    fn the_bench_cable_is_not_a_generated_one() {
+        let n: usize = super::CABLE.trim_start_matches("-W").parse().unwrap_or(0);
+        for t in crate::TIERS.iter().chain([&crate::PRINT_TIER]) {
+            assert!(n > t.cables, "{} is a cable of the {} tier ({} cables)", super::CABLE, t.name, t.cables);
+        }
+    }
 }
