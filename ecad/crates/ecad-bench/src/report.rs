@@ -229,8 +229,8 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
          pnum, frame, tbupd, gridchange and \
          revopen (brief 019): renumber page 2 with its references refreshed; work out one page's frame \
          and title block; change the project title; change the grid (A3 and A2 in turn); open Rev A \
-         read-only. Peak memory is not measured. Since brief 021 the app opens version 2 files: every \
-         column from 1st page on is measured on the version 2 file; open, edit and save are version 1.\n"
+         read-only. Peak memory is not measured. The projects are written as version 2 files, the \
+         format the app opens, and every column is measured on them.\n"
     ));
     out.push_str(&format!(
         "\nCross-references (brief 025):\n{:<8} {:<8} {:>10} {:>10} {:>10} {:>11}\n",
