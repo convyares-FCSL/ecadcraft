@@ -1,8 +1,9 @@
 //! Project ▸ Cables (UI rev 3, board 2.05): every cable with type, cores, length, ends, cores used
 //! and checks, as the one table over the cable report (`Outputs::cable_table`); under it the
-//! selected cable's core table (`Outputs::core_table`). The cable drawn end to end, the glands and
-//! the cores' colours belong to the cable manager (brief 2.7), not built yet: the drawing is a
-//! placeholder and the glands show a dash. Nothing here is set: a cable is changed on its page.
+//! selected cable's core table (`Outputs::core_table`). Brief 057 (board 2.06): the cable drawn end
+//! to end ([`super::cable_view`]) with each core in its cable type's colour; the glands' sizes come
+//! with the cable manager (2.7) and show a dash. Nothing here is set: a cable is changed on its
+//! page.
 //!
 //! **Update map:** see [`super::report`]: the cable copy is taken again only when the report
 //! models' revision changed, and only while the tab is shown; the core table also when another
@@ -25,8 +26,8 @@ pub const GLANDS: ColumnId = ColumnId(6);
 pub const USED: ColumnId = ColumnId(7);
 pub const CHECKS: ColumnId = ColumnId(8);
 
-/// The placeholder where the cable is drawn end to end.
-pub const DRAWING_COMES: &str = "The cable drawn end to end, with its glands and each core in its colours, comes with the cable manager.";
+/// The two views of the selected cable (board 2.06).
+pub const VIEWS: [&str; 2] = ["Cable view", "Cores only"];
 
 pub fn columns() -> Vec<Column> {
     vec![
@@ -140,6 +141,15 @@ pub const STATUS: ColumnId = ColumnId(5);
 pub struct CoresSource {
     cols: Vec<Column>,
     pub rows: ReportRows,
+    /// Brief 057: the selected cable's cable type colours, in core order.
+    pub colours: Vec<String>,
+}
+
+impl CoresSource {
+    /// Row `k`'s core colour (its label when that is a colour code, else the cable type's).
+    pub fn colour(&self, k: usize) -> Option<String> {
+        super::cable_view::core_colour(&self.rows.text(k, "Core"), k, &self.colours)
+    }
 }
 
 impl Default for CoresSource {
@@ -154,6 +164,7 @@ impl Default for CoresSource {
                 Column::read(STATUS.0, "Status", Width::Remainder),
             ],
             rows: ReportRows::default(),
+            colours: Vec::new(),
         }
     }
 }
@@ -168,7 +179,6 @@ impl ReportColumns for CoresSource {
     fn from(&self, col: ColumnId) -> From {
         match col {
             CORE => From::Header("Core"),
-            COLOUR => From::Placeholder,
             CABINET => From::Header("From"),
             WIRE => From::Header("Wire number"),
             FIELD => From::Header("To"),
@@ -177,6 +187,13 @@ impl ReportColumns for CoresSource {
     }
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         match (col, self.rows.text(k, "State").as_str()) {
+            (COLOUR, _) => match self.colour(k) {
+                Some(c) => Cell::Text(c),
+                None => Cell::read(super::report::DASH),
+            },
+            (STATUS, "used") if self.rows.text(k, "To").is_empty() || self.rows.text(k, "From").is_empty() => {
+                Cell::Badge("open end".into(), Tone::Error)
+            }
             (STATUS, "used") => Cell::Badge("connected".into(), Tone::Ok),
             (STATUS, "spare") => Cell::read("spare"),
             (STATUS, other) => Cell::Badge(other.to_string(), Tone::Warning),
@@ -215,6 +232,11 @@ pub struct CablesView {
     cores_of: Option<(CableId, (u64, u64))>,
     seen: Option<(u64, u64)>,
     pub copies: u64,
+    /// Brief 057 (board 2.06): Cable view (0) or Cores only (1), the ends swapped, and the
+    /// selected cable's colours as read at a change count.
+    pub view: usize,
+    pub swapped: bool,
+    colours_of: Option<(CableId, u64)>,
 }
 
 impl Default for CablesView {
@@ -235,6 +257,9 @@ impl Default for CablesView {
             cores_of: None,
             seen: None,
             copies: 0,
+            view: 0,
+            swapped: false,
+            colours_of: None,
         }
     }
 }
@@ -293,10 +318,45 @@ impl CablesView {
         }
     }
 
+    /// Brief 057: the selected cable's core colours, read again when the selection or the project
+    /// changed (one cable's type, never the project).
+    pub fn sync_colours(&mut self, doc: &ecad_model::Document, count: u64) {
+        let selected = self.selected().and_then(|k| self.ids.get(k).copied());
+        let want = selected.map(|c| (c, count));
+        if want == self.colours_of {
+            return;
+        }
+        self.colours_of = want;
+        self.cores.colours = selected.map(|c| ecad_cadcraft::styles::cable::core_colours(doc, c)).unwrap_or_default();
+        self.core_table.update(&self.cores, Changed::All);
+    }
+
+    /// The selected cable as drawn (board 2.06).
+    pub fn drawing(&self, k: usize) -> super::cable_view::Drawing {
+        let rows = &self.source.rows;
+        let words =
+            [rows.text(k, "Type"), rows.text(k, "Length")].into_iter().filter(|w| !w.is_empty() && w != "?").collect::<Vec<_>>().join(" \u{b7} ");
+        let c = &self.cores.rows;
+        let cores = c
+            .keys
+            .iter()
+            .map(|i| super::cable_view::Core {
+                label: c.text(*i, "Core"),
+                colour: self.cores.colour(*i),
+                wire: c.text(*i, "Wire number"),
+                from: Some(c.text(*i, "From")).filter(|f| f != "spare").unwrap_or_default(),
+                to: c.text(*i, "To"),
+                spare: c.text(*i, "State") == "spare",
+            })
+            .collect();
+        super::cable_view::Drawing { tag: rows.text(k, "Tag"), words, from: rows.text(k, "From"), to: rows.text(k, "To"), cores }
+    }
+
     /// Forget the copies.
     pub fn invalidate(&mut self) {
         self.seen = None;
         self.cores_of = None;
+        self.colours_of = None;
         self.table.reset();
         self.core_table.reset();
     }
@@ -338,11 +398,11 @@ impl CablesView {
     }
 }
 
-/// The Cables tab (board 2.05): the cable table, the selected cable's line and its drawing (a
-/// placeholder until the cable manager), then its cores. Returns where to go.
+/// The Cables tab (board 2.06): the cable table, the selected cable's line and its drawing, then
+/// its cores. Returns where to go.
 pub fn show_tab(t: &mut crate::Trial, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
-    use ecad_ui::tokens::{line, radius, size, space, ui_type};
-    use eframe::egui::{self, Sense, Stroke, pos2, vec2};
+    use ecad_ui::tokens::{size, space, ui_type};
+    use eframe::egui::{self, vec2};
     let s = ecad_ui::SHELL;
     let r = t.reports.as_mut()?;
     let v = &mut r.cables;
@@ -360,7 +420,6 @@ pub fn show_tab(t: &mut crate::Trial, ui: &mut eframe::egui::Ui) -> Option<(ecad
     let rows = &v.source.rows;
     let tag = rows.text(k, "Tag");
     let words = [rows.text(k, "Type"), rows.text(k, "Length")].into_iter().filter(|w| !w.is_empty() && w != "?").collect::<Vec<_>>().join(" \u{b7} ");
-    let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
     ui.add_space(space::M);
     ui.horizontal(|ui| {
         ui.add_space(space::L);
@@ -373,50 +432,18 @@ pub fn show_tab(t: &mut crate::Trial, ui: &mut eframe::egui::Ui) -> Option<(ecad
             {
                 go = Some(target);
             }
-            ui.add(ecad_ui::prim::Button::new("Swap ends").small().disabled("Comes with the cable manager."));
-            let mut view = 1;
-            ui.add_enabled_ui(false, |ui| ecad_ui::prim::segmented(ui, &mut view, &["Cable view", "Cores only"]))
-                .response
-                .on_disabled_hover_text("The cable view comes with the cable manager.");
+            if ui.add(ecad_ui::prim::Button::new("Swap ends").small()).clicked() {
+                v.swapped = !v.swapped;
+            }
+            ecad_ui::prim::segmented(ui, &mut v.view, &VIEWS);
         });
     });
     ui.add_space(space::S);
-    // The drawing's place: the two ends and the jacket, as a placeholder.
-    let (area, _) = ui.allocate_exact_size(vec2(ui.available_width(), 200.0), Sense::hover());
-    let area = area.shrink2(vec2(space::L, space::XS));
-    let p = ui.painter();
-    p.rect_stroke(area, ecad_ui::style::corner(radius::CARD), Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
-    let end_w = 240.0_f32.min(area.width() / 4.0);
-    let left = egui::Rect::from_min_size(area.min + vec2(space::XL, space::XL), vec2(end_w, area.height() - 2.0 * space::XL));
-    let right = egui::Rect::from_min_size(pos2(area.right() - space::XL - end_w, left.top()), left.size());
-    let dashed = Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line_strong));
-    for (r, title, what) in [(left, "Cabinet end", &from), (right, "Field end", &to)] {
-        p.add(egui::Shape::dashed_line(&[r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()], dashed, 4.0, 3.0));
-        let font = ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
-        p.text(r.left_top() + vec2(space::L, space::L), egui::Align2::LEFT_TOP, what.as_str(), font, ecad_ui::color(s.text));
-        let small = ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL);
-        p.text(r.left_top() + vec2(space::L, space::L + ui_type::BODY.line), egui::Align2::LEFT_TOP, title, small, ecad_ui::color(s.text_3));
+    // Brief 057 (board 2.06): the cable drawn end to end, unless Cores only.
+    if v.view == 0 {
+        let d = v.drawing(k);
+        super::cable_view::show(ui, &d, v.swapped);
     }
-    let jacket =
-        egui::Rect::from_min_max(pos2(left.right() + space::XXL, area.center().y - 36.0), pos2(right.left() - space::XXL, area.center().y + 36.0));
-    if jacket.width() > 40.0 {
-        p.add(egui::Shape::dashed_line(
-            &[jacket.left_top(), jacket.right_top(), jacket.right_bottom(), jacket.left_bottom(), jacket.left_top()],
-            dashed,
-            4.0,
-            3.0,
-        ));
-        let g = ecad_ui::table::cells::fitted(ui, DRAWING_COMES, ui_type::SMALL, ecad_ui::color(s.text_3), jacket.width() - 2.0 * space::L);
-        let at = jacket.center() - g.size() / 2.0;
-        ui.painter().galley(at, g, ecad_ui::color(s.text_3));
-    }
-    ui.painter().text(
-        pos2(jacket.center().x, jacket.top() - space::M),
-        egui::Align2::CENTER_BOTTOM,
-        format!("{tag} \u{b7} {words}"),
-        ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL),
-        ecad_ui::color(s.accent_text),
-    );
     ui.add_space(space::M);
     v.show_cores(ui);
     go

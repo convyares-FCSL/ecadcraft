@@ -113,3 +113,41 @@ fn the_rating_sections_show_boards_2_05_and_2_06() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Board 2.06's drawn cable (owner, added to 057): each core in its cable type's colour, the
+/// Colour column filled, Cores only hides the drawing, Swap ends mirrors it.
+#[test]
+fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = harness(deltas.clone());
+    let dir = std::env::temp_dir().join(format!("ecad-057-cable-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (_, w01) = rated(&mut h, &dir);
+    ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"cross_section":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
+    let d = doc(&mut h);
+    let ty = ecad_cadcraft::styles::rows(&d, &ecad_cadcraft::styles::cable::CATALOGUE)[0].id.text();
+    ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));
+    show(&mut h, ListsView::Cables);
+    let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
+    h.state_mut().reports.as_mut().unwrap().cables.table.selection.set([k]);
+    h.run_steps(8);
+    assert!(h.query_by_label_contains("-W01 drawn end to end, 4 cores").is_some(), "the drawing");
+    let r = h.state().reports.as_ref().unwrap();
+    let colours: Vec<Option<String>> = r.cables.cores.rows.keys.iter().map(|i| r.cables.cores.colour(*i)).collect();
+    assert_eq!(colours, ["BN", "BK", "GY", "GNYE"].map(|c| Some(c.to_string())).to_vec());
+    let drawing = r.cables.drawing(k);
+    assert_eq!(drawing.cores.iter().map(|c| c.colour.clone().unwrap_or_default()).collect::<Vec<_>>(), ["BN", "BK", "GY", "GNYE"]);
+    if let Some(out) = crate::project_panel::shots() {
+        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view.png"));
+    }
+    // Cores only hides it; Swap ends keeps it, mirrored.
+    h.get_by_label("Cores only").click();
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("drawn end to end").is_none());
+    h.get_by_label("Cable view").click();
+    h.get_by_label("Swap ends").click();
+    h.run_steps(4);
+    assert!(h.state().reports.as_ref().unwrap().cables.swapped);
+    assert!(h.query_by_label_contains("drawn end to end").is_some());
+    let _ = std::fs::remove_dir_all(&dir);
+}

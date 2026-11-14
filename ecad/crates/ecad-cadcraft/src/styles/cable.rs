@@ -24,6 +24,21 @@ fn any_text(_: &str) -> bool {
 
 const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
+/// The field naming the cores' colours, in core order (`BN,BK,GY,GNYE`): board 2.06's drawn cable.
+pub const CORE_COLOURS: &str = "core_colours";
+/// Most cores a colour list names (the core offer's own bound).
+pub const MAX_COLOURS: usize = 64;
+
+/// A comma-separated list of IEC 60757 colour codes, 1 to [`MAX_COLOURS`] of them.
+pub fn colour_list(s: &str) -> Option<Vec<String>> {
+    let v: Vec<String> = s.split(',').map(|c| c.trim().to_ascii_uppercase()).collect();
+    (!v.is_empty() && v.len() <= MAX_COLOURS && v.iter().all(|c| crate::look::colour_code(c).is_some())).then_some(v)
+}
+
+fn is_colour_list(s: &str) -> bool {
+    colour_list(s).is_some()
+}
+
 static FIELDS: &[Field] = &[
     fields::CROSS_SECTION,
     fields::MATERIAL,
@@ -31,6 +46,13 @@ static FIELDS: &[Field] = &[
     fields::CONDUCTOR_CLASS,
     fields::RATED_CURRENT,
     fields::RATED_AT,
+    Field {
+        key: CORE_COLOURS,
+        label: "Core colours",
+        kind: Kind::Parsed { max_chars: 256, parse: is_colour_list },
+        builtin: Value::Text(""),
+        over: None,
+    },
     Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(""), over: None },
@@ -48,6 +70,12 @@ pub static CATALOGUE: Catalogue =
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
     let v = doc.cables.get(&k)?.properties.get(CABLE_TYPE)?;
     StyleRef::parse(v).filter(|id| super::exists(doc, WORD, id))
+}
+
+/// The core colours of cable `k`'s cable type, in core order; empty when it has no type or no
+/// colours.
+pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
+    of(doc, k).and_then(|id| super::field_of(doc, WORD, &id, CORE_COLOURS, None)).and_then(|r| colour_list(&r.text())).unwrap_or_default()
 }
 
 /// The cables that name cable type `id` (one pass over the cables, asked for one type at a time).
