@@ -1,9 +1,8 @@
 # Brief 051: PLC visuals and the rack overview
 
 Part of the [quick start](../quick-start.md). Design: `docs/design/051.md`; built on
-`feature/plc-visuals`. This file covers the first part (independent of the style model, brief 050);
-the card look on the page (cells 20 mm wide, one frame per card, the power end, break edges, the
-two new text styles) follows when 050 lands and is added here then.
+`feature/plc-visuals`, merged with 050a's style model (`feature/style-model`) and the small fixes
+(`fix/m1-small-fixes`).
 
 ## What this part changed
 
@@ -16,6 +15,17 @@ two new text styles) follows when 050 lands and is added here then.
 | The I/O list sheet | One ruled table per card (outer box, every row and column line), its heading above it: `-A01 slot 2 · -A03 · DQ 16 · <part number> · 9 used, 1 reserved, 6 spare`. Slot and Card are no longer columns. Cards follow each other on a sheet; a card that does not fit goes to the next sheet; a card longer than a sheet continues with `(continued)` |
 | PLC racks sheet | New page kind (New page ▸ PLC racks, or `newpage {"generated":"plcrack"}`): per rack a heading and its tiles in ink, 9 a row on A3, squares, and each card's place (`→108-B-2`) or `not drawn`. Without PLC cards it says `No PLC racks.` |
 | `plcracks` | Each card also gives `pages`, `checks` and `range {inputs, outputs}` |
+
+## The card on the page
+
+| Where | What is there now |
+| --- | --- |
+| Channel cells | DI and DQ cells are 20 mm wide (the pack's pitch; AI/AO 20, RTD 40, IO-Link 30). A cell is its share of the card's top edge through its points, two short dividers and a small mark; no box of its own. Cells drawn by 045 10 mm apart now overlap: draw them again |
+| Place Channels | Wires closer than a cell is wide are refused before anything is written: `Wires 01 and 02 are 10 mm apart; a DI cell is 20 mm wide. Space the wires 20 mm apart, or place compact di symbols.` A wire whose lower half ends nowhere ends at the cell's point (the small fixes) |
+| The frame | Cells of one card that abut form one box: sides, bottom edge, and inside it bottom left the name block (tag, caption `-A01 slot 2`, maker, part number), bottom right `DI 16` or the card's own description. Where the card goes on (channels before or after, or its body elsewhere) the side is slanted. Settings ▸ Standards ▸ PLC: **Draw a frame around a card's cells** |
+| Card bodies | A card body is now one 20 mm power cell with `L+` and `M` on its top edge; put it at the end of the card's cells and it closes the box |
+| Outputs at 180° | Make its page draws output cards upside down: points on the bottom edge, channel texts above reading upwards, name block top left |
+| Text styles | Settings ▸ Standards ▸ Text styles has two more: **PLC channel text** (2.5) and **PLC address** (2.0) |
 
 ## Try it
 
@@ -31,9 +41,15 @@ two new text styles) follows when 050 lands and is added here then.
 5. Click **Make its page** on the DQ tile. Expected: a new page `-A03 DQ 16` with sixteen cells;
    the tile now reads `page n`. U removes the page.
 6. Add pages of kind **PLC racks** and **I/O list** and look at them.
+7. On a page, draw eight wires 20 mm apart and **Place Channels** across them. Expected: one box
+   with the wires ending on its top edge, `-A02` and its caption bottom left, `DI 16` bottom right,
+   the right side slanted. Try wires 10 mm apart: refused with the sentence above.
 
-## Limitations of this part
+## Limitations
 
 - **Place a card…** starts Place Symbol and says which slot the card will take; it does not yet
   fill the search with `card` or preset the Rack and Slot prompts.
 - The squares' hover names channel and state, not yet the address and what it is wired to.
+- The Checks rows `wire-through-card` and `plc-text-wide` (design 051 §2.5, §2.8) are not built
+  yet; a wire attached at both ends still runs through the card.
+- The PLC racks sheet has no release slot: the page says `No PLC racks.`, the release does not.
