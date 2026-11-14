@@ -213,9 +213,10 @@ impl Plan {
     }
 }
 
-/// The drawing-order key: (has no anchor, book position, column, row, −y, x).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-struct Order {
+/// The drawing-order key: (has no anchor, book position, zone column, zone row, −y, x). The one
+/// "first in drawing order" of numbering, go-to and a device's head (design 052 §3.4).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Order {
     none: bool,
     page: usize,
     column: u32,
@@ -225,6 +226,13 @@ struct Order {
 }
 
 impl Order {
+    /// The key of something with no anchor: after everything that has one.
+    pub fn unplaced() -> Order {
+        Order { none: true, page: usize::MAX, column: u32::MAX, row: u32::MAX, ny: 0.0, x: 0.0 }
+    }
+}
+
+impl Ord for Order {
     fn cmp(&self, o: &Order) -> std::cmp::Ordering {
         (self.none, self.page, self.column, self.row)
             .cmp(&(o.none, o.page, o.column, o.row))
@@ -232,6 +240,20 @@ impl Order {
             .then(self.x.total_cmp(&o.x))
     }
 }
+
+impl PartialOrd for Order {
+    fn partial_cmp(&self, o: &Order) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+
+impl PartialEq for Order {
+    fn eq(&self, o: &Order) -> bool {
+        self.cmp(o).is_eq()
+    }
+}
+
+impl Eq for Order {}
 
 /// Most numbers a run hands out per prefix before it gives up (bounded skipping of taken numbers).
 const MAX_SKIPS: u64 = 1_000_000;
@@ -241,17 +263,28 @@ pub const BAD_START: &str = "Start is a whole number from 1.";
 /// Refusal of digits out of range.
 pub const BAD_DIGITS: &str = "Digits is a whole number from 1 to 6.";
 
-/// What reads the drawing order: the book order and each page's grid, built once per plan.
+/// What reads the drawing order: the book order and each page's grid, each built once, when first
+/// needed. Share one across a pass (a plan, a Checks build) so the book is built at most once.
 pub struct Places<'a> {
     doc: &'a Document,
-    book: Book,
+    book: Option<Book>,
     grids: HashMap<PageId, Grid>,
 }
 
 impl<'a> Places<'a> {
-    /// The places of `doc`.
+    /// The places of `doc`. Builds nothing yet.
     pub fn new(doc: &'a Document) -> Self {
-        Places { doc, book: Book::of(doc), grids: HashMap::new() }
+        Places { doc, book: None, grids: HashMap::new() }
+    }
+
+    /// The document read.
+    pub fn doc(&self) -> &'a Document {
+        self.doc
+    }
+
+    fn book(&mut self) -> &Book {
+        let doc = self.doc;
+        self.book.get_or_insert_with(|| Book::of(doc))
     }
 
     fn grid(&mut self, page: PageId) -> &Grid {
@@ -259,8 +292,19 @@ impl<'a> Places<'a> {
         self.grids.entry(page).or_insert_with(|| Grid::of(doc, page))
     }
 
-    fn order(&mut self, page: PageId, at: Pt) -> Order {
-        let pos = self.book.position(page).unwrap_or(usize::MAX);
+    /// The drawing-order key of `at` on `page` (builds the book once).
+    pub fn order(&mut self, page: PageId, at: Pt) -> Order {
+        let pos = self.book().position(page).unwrap_or(usize::MAX);
+        self.order_on_page(pos, page, at)
+    }
+
+    /// The key of `at` on `page` when everything compared is on that one page: the book is not
+    /// needed.
+    pub fn order_on_one_page(&mut self, page: PageId, at: Pt) -> Order {
+        self.order_on_page(0, page, at)
+    }
+
+    fn order_on_page(&mut self, pos: usize, page: PageId, at: Pt) -> Order {
         let g = self.grid(page);
         let (column, row) = (g.column_of(at.x).unwrap_or(u32::MAX), g.row_of(at.y).unwrap_or(u32::MAX));
         Order { none: false, page: pos, column, row, ny: -at.y, x: at.x }
@@ -268,14 +312,15 @@ impl<'a> Places<'a> {
 
     /// `101-A-2` for `at` on `page`, in the project's reference style.
     pub fn text(&mut self, page: PageId, at: Pt) -> String {
-        let label = self.book.number(self.doc, page);
+        let doc = self.doc;
+        let label = self.book().number(doc, page);
         let style = self.doc.settings.reference_style;
         let g = self.grid(page);
         crate::derive::place_on(g, &label, at).map_or(label, |p| p.text(style))
     }
 
     /// The anchor of a representation: its symbol's origin, its path's midpoint, its point.
-    fn rep_point(&self, r: &Representation) -> Option<Pt> {
+    pub fn rep_point(&self, r: &Representation) -> Option<Pt> {
         let item = self.doc.items.get(r.items.first()?)?;
         let p = match &item.kind {
             ItemKind::Symbol(s) => s.placement.origin,
@@ -292,18 +337,30 @@ impl<'a> Places<'a> {
     /// The anchor of `subject`: its representation of the lowest `rank`, the first in drawing
     /// order among those (design 052 §4, FP6: the adapter supplies the rank, so this crate knows
     /// nothing of symbol types).
+    ///
+    /// The book is read only when the representations lie on more than one page.
     fn anchor(&mut self, subject: Subject, rank: Rank<'_>) -> Option<(PageId, Pt, Order)> {
+        // The pick may use a one-page key; the key returned is compared with other subjects', so
+        // it is always the full one.
+        let (page, at) = self.pick(subject, rank)?;
+        Some((page, at, self.order(page, at)))
+    }
+
+    /// The page and point of `subject`'s anchor (as [`Places::anchor`]), reading the book only
+    /// when its representations lie on more than one page.
+    fn pick(&mut self, subject: Subject, rank: Rank<'_>) -> Option<(PageId, Pt)> {
         let doc = self.doc;
+        let found: Vec<(u8, PageId, Pt)> =
+            doc.representations_of(subject).filter_map(|(_, r)| self.rep_point(r).map(|at| (rank(r), r.page, at))).collect();
+        let one_page = found.first().is_none_or(|f| found.iter().all(|x| x.1 == f.1));
         let mut best: Option<(u8, PageId, Pt, Order)> = None;
-        for (_, r) in doc.representations_of(subject) {
-            let Some(at) = self.rep_point(r) else { continue };
-            let o = self.order(r.page, at);
-            let k = rank(r);
+        for (k, page, at) in found {
+            let o = if one_page { self.order_on_one_page(page, at) } else { self.order(page, at) };
             if best.as_ref().is_none_or(|b| k.cmp(&b.0).then_with(|| o.cmp(&b.3)).is_lt()) {
-                best = Some((k, r.page, at, o));
+                best = Some((k, page, at, o));
             }
         }
-        best.map(|(_, p, a, o)| (p, a, o))
+        best.map(|(_, p, a, _)| (p, a))
     }
 
     /// The anchor of a net: its first conductor's route start, on its first page in drawing order.
@@ -344,13 +401,15 @@ impl<'a> Places<'a> {
 /// (book position, then top-left), and that representation's anchor point. A representation's
 /// role is not read (design 052 §4).
 ///
-/// Cheap: the book order is built only when the subject is shown on more than one page.
+/// The book is built only when the subject is shown on more than one page; a pass over many
+/// subjects shares one [`Places`] through [`rep_anchor_in`], so it is built at most once.
 pub fn rep_anchor(doc: &Document, subject: Subject) -> Option<(PageId, Pt)> {
-    let mut pages = doc.representations_of(subject).map(|(_, r)| r.page);
-    let first = pages.next()?;
-    let book = if pages.any(|p| p != first) { Book::of(doc) } else { Book::default() };
-    let mut places = Places { doc, book, grids: HashMap::new() };
-    places.anchor(subject, &|_| 0).map(|(p, a, _)| (p, a))
+    rep_anchor_in(&mut Places::new(doc), subject)
+}
+
+/// As [`rep_anchor`], reading the book and grids through `places`.
+pub fn rep_anchor_in(places: &mut Places<'_>, subject: Subject) -> Option<(PageId, Pt)> {
+    places.pick(subject, &|_| 0)
 }
 
 /// Whether a project has provisional tags on (FP2).

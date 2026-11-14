@@ -28,6 +28,7 @@
 //!
 //! This module reads the document; it changes nothing.
 
+use ecad_model::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
@@ -1093,6 +1094,13 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
 /// The checks of component `c`: a junction with fewer than three wires, a continuation with no
 /// partner.
 pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
+    component_checks_in(&mut Places::new(doc), c)
+}
+
+/// As [`component_checks`], reading the book and grids through `places`, shared across a Checks
+/// pass so the book is built at most once (review of #105, 1).
+pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId) -> Vec<Check> {
+    let doc = places.doc();
     let mut out = Vec::new();
     let place = || doc.terminals_of(c).next().map_or((None, None), |(t, _)| terminal_place(doc, t));
     match kind_of(doc, c) {
@@ -1117,7 +1125,7 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 && (ecad_model::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
             {
                 // Located only when there is a row to show (a build visits every device).
-                let (page, at) = crate::reps::goto_place(doc, c).map_or((None, None), |(p, a)| (Some(p), a));
+                let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
                 if ecad_model::tag::is_provisional(t) {
                     out.push(Check {
                         kind: Kind::ProvisionalTag,
@@ -1176,12 +1184,18 @@ pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
 
 /// The checks of cable `k` (brief 026): a provisional tag; a tag another cable or a device holds.
 pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
+    cable_checks_in(&mut Places::new(doc), k)
+}
+
+/// As [`cable_checks`], reading the book and grids through `places`.
+pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<Check> {
+    let doc = places.doc();
     let mut out = Vec::new();
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
     if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
     }
-    let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+    let (page, at) = ecad_model::numbering::rep_anchor_in(places, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
     if ecad_model::tag::is_provisional(t) {
         out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.to_string(), fix: Some(Fix::Finalise) });
     }
@@ -1233,12 +1247,14 @@ impl Checks {
         for t in doc.terminals.keys() {
             ch.set(Key::Terminal(*t), terminal_checks(doc, *t));
         }
+        // One drawing order for the pass: the book is built at most once (review of #105, 1).
+        let mut places = Places::new(doc);
         for c in doc.components.keys() {
-            ch.set(Key::Component(*c), component_checks(doc, *c));
+            ch.set(Key::Component(*c), component_checks_in(&mut places, *c));
         }
         for k in doc.cables.keys() {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
-            ch.set(Key::Cable(*k), cable_checks(doc, *k));
+            ch.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
         }
         for page in doc.pages.keys() {
             ch.set(Key::Page(*page), page_checks(doc, *page));
@@ -1390,14 +1406,15 @@ impl Checks {
         for t in &scope.terminals {
             self.set(Key::Terminal(*t), terminal_checks(doc, *t));
         }
+        let mut places = Places::new(doc);
         for c in &scope.components {
-            self.set(Key::Component(*c), component_checks(doc, *c));
+            self.set(Key::Component(*c), component_checks_in(&mut places, *c));
         }
         for k in &scope.cable_references {
             self.set(Key::CableReferences(*k), reference_checks(doc, *k));
         }
         for k in &scope.cables {
-            self.set(Key::Cable(*k), cable_checks(doc, *k));
+            self.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
         }
         // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
         // that had a row (a wire removed or recoloured there).

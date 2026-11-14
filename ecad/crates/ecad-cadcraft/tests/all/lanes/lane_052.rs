@@ -226,3 +226,33 @@ fn a_stored_main_role_means_nothing() {
     assert_eq!(format!("{:?}", plan(&plain)), format!("{:?}", plan(&edited)));
     assert_eq!(ecad_model::numbering::rep_anchor(&plain, Subject::Component(k)), ecad_model::numbering::rep_anchor(&edited, Subject::Component(k)));
 }
+
+/// Review of #105, 2: go-to, the head and numbering share one drawing order (book, zone column
+/// and row, then top-left). A headless device with A high on the right and B low on the left is
+/// anchored at B by all of them.
+#[test]
+fn go_to_and_numbering_share_one_drawing_order() {
+    let mut h = H::new(SEED);
+    let a = h.run("place", json!({"symbol": "no", "at": [300, 200]})).unwrap();
+    let k: ComponentId = id(&a, "component");
+    let b = rep(&h.run("place", json!({"symbol": "no", "at": [50, 100], "device": k.hex()})).unwrap());
+    let d = h.doc();
+    assert_eq!(reps::head(&d, k), None, "two contacts, no head");
+    assert_eq!(reps::goto(&d, k, None), Some(b), "B is in the first zone column");
+    let anchor = ecad_model::numbering::rep_anchor(&d, Subject::Component(k)).map(|(p, _)| p);
+    assert_eq!(reps::goto_place(&d, k).map(|(p, _)| p), anchor);
+    let mut places = ecad_model::numbering::Places::new(&d);
+    assert_eq!(reps::goto_in(&mut places, k, None), Some(b), "a shared Places gives the same answer");
+    assert_eq!(locations::main_rep(&d, k).map(|(r, _)| r), Some(b));
+    // Two heads on one page: the head is the one numbering would anchor at.
+    let c1 = h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap();
+    let q: ComponentId = id(&c1, "component");
+    let c2 = h.run("place", json!({"symbol": "coil", "at": [50, 100]})).unwrap();
+    let mut d = h.doc();
+    if let Some(r) = d.representations.get_mut(&rep(&c2)) {
+        r.subject = Subject::Component(q);
+    }
+    d.rebuild_index();
+    assert_eq!(reps::head(&d, q), Some(rep(&c2)));
+    assert_eq!(xref::device(&d, q).head, Some(rep(&c2)));
+}

@@ -11,16 +11,15 @@
 //!   adds a variant and its source; [`views`] is ready for it.
 //! - Relations are derived within one device, never stored (FP5): [`parent`], [`children`],
 //!   [`siblings`], [`views`]. Each is O(the device's representations).
-//! - Ties go by **book order, then top-left** (greatest y, then least x), then ID, which is stable
-//!   under random IDs ([`in_book_order`]). The book is built only when the candidates lie on more
+//! - Ties go by **drawing order**, the one numbering uses: book position, zone column and row,
+//!   then top-left (greatest y, then least x), then ID, which is stable under random IDs
+//!   ([`in_book_order`]). The book is built only when the candidates lie on more
 //!   than one page.
 //!
 //! Excludes: locations (`crate::locations`), the reference rule's poles and texts
 //! (`crate::xref`), and anything stored. This module only reads.
 
-use std::collections::BTreeSet;
-
-use ecad_model::book::Book;
+use ecad_model::numbering::{Order, Places};
 use ecad_model::{ComponentId, Document, Pt, Representation, RepresentationId, Subject};
 
 use crate::symbols::{Kind, Side};
@@ -153,32 +152,45 @@ pub fn numbering_rank(doc: &Document, r: &Representation) -> u8 {
 
 // ---------------------------------------------------------------- order
 
-/// `reps` sorted by book order, then top-left (greatest y, then least x; no anchor last), then
-/// ID. The book is built only when they lie on more than one page.
+/// `reps` in drawing order ([`ecad_model::numbering::Order`]: book position, zone column, zone
+/// row, then top-left; no anchor last), then ID: the same order numbering uses (design 052 §3.4).
+/// The book is built only when they lie on more than one page.
 pub fn in_book_order(doc: &Document, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
+    in_book_order_in(&mut Places::new(doc), reps)
+}
+
+/// As [`in_book_order`], reading the book and grids through `places`, shared across a pass (a
+/// Checks build) so the book is built at most once.
+pub fn in_book_order_in(places: &mut Places<'_>, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
     if reps.len() < 2 {
         return reps.into_iter().map(|(id, _)| id).collect();
     }
-    let pages: BTreeSet<_> = reps.iter().map(|(_, r)| r.page).collect();
-    let book = (pages.len() > 1).then(|| Book::of(doc));
-    let mut keyed: Vec<(usize, bool, f64, f64, RepresentationId)> = reps
+    let one_page = reps.iter().all(|(_, r)| reps.first().is_some_and(|(_, f)| f.page == r.page));
+    let mut keyed: Vec<(Order, RepresentationId)> = reps
         .into_iter()
         .map(|(id, r)| {
-            let pos = book.as_ref().map_or(0, |b| b.position(r.page).unwrap_or(usize::MAX));
-            let at: Option<Pt> = crate::xref::anchor(doc, r);
-            let (ny, x) = at.map_or((0.0, 0.0), |p| (-p.y, p.x));
-            (pos, at.is_none(), ny, x, id)
+            let o = match places.rep_point(r) {
+                Some(at) if one_page => places.order_on_one_page(r.page, at),
+                Some(at) => places.order(r.page, at),
+                None => Order::unplaced(),
+            };
+            (o, id)
         })
         .collect();
-    keyed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.total_cmp(&b.2)).then(a.3.total_cmp(&b.3)).then(a.4.cmp(&b.4)));
-    keyed.into_iter().map(|k| k.4).collect()
+    keyed.sort();
+    keyed.into_iter().map(|(_, id)| id).collect()
 }
 
-/// Device `c`'s representations in `view` that pass `keep`, in book order.
-fn of_device<'a>(doc: &'a Document, c: ComponentId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
-    let reps: Vec<(RepresentationId, &'a Representation)> =
+/// Device `c`'s representations in `view` that pass `keep`, in drawing order.
+fn of_device(doc: &Document, c: ComponentId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
+    of_device_in(&mut Places::new(doc), c, v, keep)
+}
+
+fn of_device_in(places: &mut Places<'_>, c: ComponentId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
+    let doc = places.doc();
+    let reps: Vec<(RepresentationId, &Representation)> =
         doc.representations_of(Subject::Component(c)).filter(|(_, r)| view(doc, r) == v && keep(r)).collect();
-    in_book_order(doc, reps)
+    in_book_order_in(places, reps)
 }
 
 fn device_of(r: &Representation) -> Option<ComponentId> {
@@ -264,22 +276,37 @@ pub fn views(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
 /// else its first representation in book order. For a connector half: its whole-half symbol,
 /// else its first pin of that side in book order.
 pub fn goto(doc: &Document, c: ComponentId, side: Option<Side>) -> Option<RepresentationId> {
+    goto_in(&mut Places::new(doc), c, side)
+}
+
+/// As [`goto`], reading the book and grids through `places`.
+pub fn goto_in(places: &mut Places<'_>, c: ComponentId, side: Option<Side>) -> Option<RepresentationId> {
+    let doc = places.doc();
     match side {
-        None => head(doc, c).or_else(|| of_device(doc, c, View::Schematic, |_| true).into_iter().next()),
+        None => of_device_in(places, c, View::Schematic, |r| rep_type(doc, r) == RepType::Head)
+            .into_iter()
+            .next()
+            .or_else(|| of_device_in(places, c, View::Schematic, |_| true).into_iter().next()),
         Some(side) => {
             let on_side = |r: &Representation| crate::connectors::rep_side(doc, r).is_some_and(|s| s == side || s == Side::Both);
-            let whole = of_device(doc, c, View::Schematic, |r| rep_type(doc, r) == RepType::Half && on_side(r));
+            let whole = of_device_in(places, c, View::Schematic, |r| rep_type(doc, r) == RepType::Half && on_side(r));
             whole
                 .into_iter()
                 .next()
-                .or_else(|| of_device(doc, c, View::Schematic, |r| rep_type(doc, r) == RepType::Pin && on_side(r)).into_iter().next())
+                .or_else(|| of_device_in(places, c, View::Schematic, |r| rep_type(doc, r) == RepType::Pin && on_side(r)).into_iter().next())
         }
     }
 }
 
 /// The page and anchor go-to lands on for device `c` ([`goto`]), for Checks rows.
 pub fn goto_place(doc: &Document, c: ComponentId) -> Option<(ecad_model::PageId, Option<Pt>)> {
-    let r = doc.representations.get(&goto(doc, c, None)?)?;
+    goto_place_in(&mut Places::new(doc), c)
+}
+
+/// As [`goto_place`], reading the book and grids through `places`, shared across a Checks build.
+pub fn goto_place_in(places: &mut Places<'_>, c: ComponentId) -> Option<(ecad_model::PageId, Option<Pt>)> {
+    let doc = places.doc();
+    let r = doc.representations.get(&goto_in(places, c, None)?)?;
     Some((r.page, crate::xref::anchor(doc, r)))
 }
 
