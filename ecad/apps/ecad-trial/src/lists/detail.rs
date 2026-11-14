@@ -22,6 +22,8 @@ pub enum Selected {
     Device(ComponentId),
     Terminal(super::terminals::TermKey),
     Card(usize),
+    /// Brief 056 (design 056 §5): a channel row of Project ▸ PLC.
+    Channel(super::plc::IoKey),
     Wire(usize),
     Cable(usize),
     Report(usize),
@@ -43,7 +45,11 @@ pub fn selected_key(t: &Trial) -> Option<Selected> {
     match t.shell.lists {
         ListsView::Devices => t.panel.devices.selected.map(Selected::Device),
         ListsView::Terminals => r.and_then(|r| first(&r.terminals.table)).map(Selected::Terminal),
-        ListsView::Plc => r.and_then(|r| r.io.selected).map(Selected::Card),
+        ListsView::Plc => r.and_then(|r| {
+            // A channel row selected shows the channel; else the selected tile's card.
+            let row = (r.io.compare.is_none()).then(|| first(&r.io.table)).flatten().filter(|k| r.io.source.row(*k).is_some());
+            row.map(Selected::Channel).or_else(|| r.io.selected.map(Selected::Card))
+        }),
         ListsView::Wires => r.and_then(|r| r.wires.selected()).map(Selected::Wire),
         ListsView::Cables => r.and_then(|r| r.cables.selected()).map(Selected::Cable),
         ListsView::Reports => r.and_then(|r| first(&r.list.table)).map(Selected::Report),
@@ -257,10 +263,26 @@ fn card(t: &Trial, i: usize) -> Option<Detail> {
     }
     let used = tile.squares.iter().filter(|s| **s != ecad_cadcraft::plc::overview::Square::Spare).count();
     let go = tile.pages.first().map(|p| ("Page".to_string(), Go::Page(*p, tile.card())));
+    // Brief 056 (design 056 §5): `Output card, 16 outputs · rack 1, slot 2`, and the PLC sync line.
+    let rack = r.io.rack_title.to_lowercase();
+    let slot = tile.slot.map(|s| format!(", slot {s}")).unwrap_or_default();
+    let sync = r.io.head.as_ref().filter(|h| h.card == tile.card()).map(|h| h.chip.clone());
+    let mut sections = Vec::new();
+    if let Some(chip) = sync {
+        sections.push(Section {
+            title: "PLC sync",
+            lines: vec![(chip.trim_start_matches("\u{26a0} ").replace("PLC: ", ""), "Compare in the card header".into())],
+            ..Section::default()
+        });
+    }
     Some(Detail {
         title: tile.tag.clone(),
         provisional: false,
-        subtitle: format!("{} \u{b7} {}", tile.what, tile.head),
+        subtitle: if tile.kind_words.is_empty() {
+            format!("{} \u{b7} {}", tile.what, tile.head)
+        } else {
+            format!("{}, {} \u{b7} {rack}{slot}", tile.title, tile.kind_words)
+        },
         go,
         checks,
         editor: false,
@@ -278,6 +300,80 @@ fn card(t: &Trial, i: usize) -> Option<Detail> {
                 note: Some("A card can be drawn across several pages. Each channel remembers which."),
                 ..Section::default()
             },
+        ]
+        .into_iter()
+        .chain(sections)
+        .collect(),
+    })
+}
+
+/// Brief 056 (design 056 §5): a channel row: its signal, where it is drawn, the PLC's side and its
+/// test.
+fn channel(t: &Trial, k: super::plc::IoKey) -> Option<Detail> {
+    use ecad_cadcraft::plc::{signals, sync::State};
+    let r = t.reports.as_ref()?;
+    let row = r.io.source.row(k)?;
+    let st = r.io.source.state(k);
+    let addr = row.address.clone().unwrap_or_default();
+    let mut subtitle = vec![addr.clone(), row.ty.to_string()];
+    if let Some(tag) = &row.tag {
+        subtitle.push(tag.clone());
+    }
+    let go = row.page.zip(row.at).map(|(pg, at)| (row.place.clone().unwrap_or_else(|| "Page".into()), Go::Place(pg, at)));
+    let mut checks = Vec::new();
+    match &st {
+        State::NotInPlc => checks.push(("Not in the PLC project.".to_string(), Tone::Error)),
+        s if s.counted() => checks.push((format!("PLC: {}", s.words()), Tone::Warning)),
+        _ => {}
+    }
+    let safe = match row.safe_shown() {
+        Some((s, true)) => set("Safe", signals::safe_words(s), "default"),
+        Some((s, false)) => set("Safe", signals::safe_words(s), "set here"),
+        None => read("Safe", super::report::DASH),
+    };
+    let (drives, through) = signals::drives(&row.targets);
+    let mut drawn: Vec<(String, String)> =
+        drives.iter().map(|d| (format!("{}:{}{}", d.device, d.point, if through { " (passes through)" } else { "" }), d.place.clone())).collect();
+    if drawn.is_empty() {
+        drawn.push(("Drives".into(), super::report::DASH.into()));
+    }
+    let plc_lines = match (&st, r.io.source.state(k)) {
+        (State::Nothing, _) => vec![("Not imported yet".to_string(), "Import tags in the tab bar".to_string())],
+        (State::InSync, _) => vec![("In sync".to_string(), row.tag.clone().unwrap_or_default())],
+        (s, _) => vec![(s.words(), "Use PLC's in Compare, or export tags and import them in the PLC project".to_string())],
+    };
+    Some(Detail {
+        title: format!("{} channel {}", row.card_tag, row.channel),
+        provisional: false,
+        subtitle: subtitle.join(" \u{b7} "),
+        go,
+        checks,
+        editor: false,
+        sections: vec![
+            Section {
+                title: "Signal",
+                hint: "set in the table".into(),
+                props: vec![
+                    set("PLC tag", nonempty(row.tag.as_deref().unwrap_or_default()), ""),
+                    set("Description", nonempty(row.text.as_deref().unwrap_or_default()), ""),
+                    safe,
+                    set("Address", nonempty(&ecad_cadcraft::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
+                    set("Pins", nonempty(&ecad_cadcraft::plc::iolist::pins_words(&row.pins)), ""),
+                ],
+                ..Section::default()
+            },
+            Section {
+                title: "Drawn",
+                hint: "read from the drawing".into(),
+                props: vec![
+                    read("Place", nonempty(row.place.as_deref().unwrap_or_default())),
+                    read("Wire", nonempty(row.wire.as_deref().unwrap_or_default())),
+                ],
+                lines: drawn,
+                ..Section::default()
+            },
+            Section { title: "PLC", lines: plc_lines, ..Section::default() },
+            Section { title: "Test", lines: vec![("No tests yet.".into(), String::new())], ..Section::default() },
         ],
     })
 }
@@ -429,6 +525,7 @@ fn detail(t: &Trial) -> Option<Detail> {
         Selected::Device(c) => device(t, c),
         Selected::Terminal(k) => terminal(t, k),
         Selected::Card(i) => card(t, i),
+        Selected::Channel(k) => channel(t, k),
         Selected::Wire(k) => wire(t, k),
         Selected::Cable(k) => cable(t, k),
         Selected::Report(k) => report(t, k),

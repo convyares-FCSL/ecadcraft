@@ -412,6 +412,11 @@ PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.
 ",
             r.tier, r.variant, t.plcframe_ms, t.plcframeupd_ms, t.plcstrip_ms, t.plcrack_ms
         ));
+        // Brief 056 (design 056 §12.4).
+        out.push_str(&format!(
+            "PLC sync on {} {}: plcsync build {:.2} ms (< 40), plcsync upd {:.2} ms (the commit; its sync update {:.3} ms, < 1), plcimport {:.2} ms (< 60), plcexport {:.2} ms (< 30), drives {:.2} ms (< 20)\n",
+            r.tier, r.variant, t.plcsync_build_ms, t.plcsync_upd_ms, t.plcsync_card_ms, t.plcimport_ms, t.plcexport_ms, t.drives_ms
+        ));
     }
     for r in rows {
         let Some(o) = &r.release else { continue };
@@ -639,7 +644,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 json!({"plcbuild_ms": t.plcbuild_ms, "slotmove_ms": t.slotmove_ms, "racks": t.racks, "cards": t.cards, "work": t.work,
                     "chfence_ms": t.chfence_ms, "plcstyle_ms": t.plcstyle_ms,
                     "iolist_ms": t.iolist_ms, "iolistupd_ms": t.iolistupd_ms, "rows": t.rows,
-                    "plcframe_ms": t.plcframe_ms, "plcframeupd_ms": t.plcframeupd_ms, "plcstrip_ms": t.plcstrip_ms, "plcrack_ms": t.plcrack_ms})
+                    "plcframe_ms": t.plcframe_ms, "plcframeupd_ms": t.plcframeupd_ms, "plcstrip_ms": t.plcstrip_ms, "plcrack_ms": t.plcrack_ms,
+                    "plcsync_build_ms": t.plcsync_build_ms, "plcsync_upd_ms": t.plcsync_upd_ms, "plcsync_card_ms": t.plcsync_card_ms, "plcimport_ms": t.plcimport_ms,
+                    "plcexport_ms": t.plcexport_ms, "drives_ms": t.drives_ms})
             });
             // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
             row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {

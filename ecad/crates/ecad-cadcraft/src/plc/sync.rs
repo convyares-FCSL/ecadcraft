@@ -175,13 +175,38 @@ impl PartialEq for Sync {
     }
 }
 
+/// The normalised addresses of card `card`'s channels `idx`, with the rack's style and the card's
+/// word size read once per card (not once per channel).
+fn card_addresses(doc: &Document, plc: &Plc, card: &CardData, idx: &[u32]) -> Vec<Option<String>> {
+    use super::address;
+    let auto: Option<(address::Style, &address::Block, u32, u32)> = match (card.rack, plc.blocks.get(&card.id), card.slot) {
+        (super::rack::RackRef::Rack(r), Some(b), Some(slot)) => {
+            Some((address::Style::of(doc, r), b, slot, address::word_size(doc, card.id, card.ty)))
+        }
+        _ => None,
+    };
+    let output = address::shows_output(card.ty);
+    idx.iter()
+        .map(|i| {
+            let a = match card.chans.get(i).and_then(|c| c.typed.clone()) {
+                Some(t) => Some(t),
+                None => auto.as_ref().and_then(|(style, b, slot, word)| {
+                    address::automatic(*style, card.ty, b, *slot, *i, i.saturating_add(card.first), *word, output)
+                }),
+            };
+            a.and_then(|a| tagtable::key_of(&a))
+        })
+        .collect()
+}
+
 /// The facts of card `card`'s channels.
 fn facts_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<(u32, Facts)> {
-    iolist::indexes(card)
-        .into_iter()
-        .map(|i| {
+    let idx = iolist::indexes(card);
+    let addrs = card_addresses(doc, plc, card, &idx);
+    idx.into_iter()
+        .zip(addrs)
+        .map(|(i, address)| {
             let ch = card.chans.get(&i);
-            let address = plc.address_of(doc, card.id, i).0.and_then(|a| tagtable::key_of(&a));
             let tag = ch.and_then(|c| c.tag.clone());
             // Design 056 §6.3: *not in PLC* is for used or tagged channels; one with only a
             // description is free here.
@@ -381,13 +406,20 @@ pub fn compare_rows(doc: &Document, plc: &Plc, sync: &Sync, cards: Option<&[Comp
         if cards.is_some_and(|cs| !cs.contains(&card.id)) {
             continue;
         }
-        for i in iolist::indexes(card) {
+        let idx = iolist::indexes(card);
+        if !idx.iter().any(|i| {
+            let st = sync.state(card.id, *i);
+            st.counted() || (all && !matches!(st, State::Free | State::Nothing))
+        }) {
+            continue;
+        }
+        let addrs = card_addresses(doc, plc, card, &idx);
+        for (i, addr) in idx.into_iter().zip(addrs) {
             let st = sync.state(card.id, i);
             if !(st.counted() || (all && !matches!(st, State::Free | State::Nothing))) {
                 continue;
             }
             let ch = card.chans.get(&i);
-            let addr = plc.address_of(doc, card.id, i).0.and_then(|a| tagtable::key_of(&a));
             let plc_row = match &st {
                 State::Moved(a) => snap.at_address(a).cloned(),
                 _ => addr.as_deref().and_then(|a| snap.at_address(a)).cloned(),

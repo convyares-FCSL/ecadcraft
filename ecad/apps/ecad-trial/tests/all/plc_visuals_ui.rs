@@ -78,8 +78,11 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     assert_eq!(v.totals, "48 channels, 8 in use", "16 + 16 + 4 + 4 + 4 + 4 channels");
     // The first card is selected: its 16 rows, without Slot, Rack, Card and Type.
     assert_eq!(v.source.only(), Some(di));
-    assert_eq!(v.source.keys().len(), 16);
-    assert_eq!(v.source.columns().len(), 8);
+    // Brief 056 (design 056 §4.2): 8 used and the first free channel shown, 7 folded; the
+    // signal columns.
+    assert_eq!(v.source.keys().len(), 9);
+    assert_eq!(v.source.folded, 7);
+    assert_eq!(v.source.columns().len(), 10);
     // Squares: in use, reserved, a check.
     let dq_tile = &v.strip[2];
     assert_eq!(dq_tile.marks.iter().filter(|m| **m == ecad_ui::table::strip::Mark::Soft).count(), 3);
@@ -105,22 +108,24 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
         let t = h.state_mut();
         let io = &mut t.reports.as_mut().unwrap().io;
         io.table.cursor_col = Some(plc::TEXT);
-        io.table.selection.click((di, 9));
+        // Brief 056: channel 8 is the first free channel shown (9 to 15 are folded).
+        io.table.selection.click((di, 8));
     }
     h.state_mut().cad.session.cancel();
     edit(&mut h, "Edit Description", "Spare sensor");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let v = view(&h);
-    assert_eq!(v.source.row((di, 9)).and_then(|r| r.text.clone()).as_deref(), Some("Spare sensor"));
+    assert_eq!(v.source.row((di, 8)).and_then(|r| r.text.clone()).as_deref(), Some("Spare sensor"));
     assert_eq!(v.strip_builds, builds, "no strip rebuild");
     assert!(v.tiles_patched > patched, "the DI tile patched");
-    assert_eq!(v.strip[1].marks[9], ecad_ui::table::strip::Mark::Soft);
+    assert_eq!(v.strip[1].marks[8], ecad_ui::table::strip::Mark::Soft);
     // Too long: refused on the cell, nothing written.
     let before = head(&mut h);
     {
         let io = &mut h.state_mut().reports.as_mut().unwrap().io;
         io.table.cursor_col = Some(plc::TEXT);
-        io.table.selection.click((di, 10));
+        // Channel 9 is now the first free channel shown.
+        io.table.selection.click((di, 9));
     }
     edit(&mut h, "Edit Description", &"x".repeat(81));
     assert_eq!(head(&mut h), before);
