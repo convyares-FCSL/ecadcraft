@@ -18,9 +18,13 @@ and the CSV) is in [024-outputs.md](024-outputs.md).
 | BOM-by-location page | Qty with its unit (`2.5 m`), an **Article** column when the column is on (the others narrower), nested lines under their device. This branch carries brief 046 (strip pages) until 046's pull request merges |
 | Checks | `5 devices and 3 part lines have no part number`, `2 items have no part number`, `6 fuses have no insert` (only once the project lists any insert), `AB-1NO has two article numbers` (**Use … for all**), a `for` naming a fuse the device lacks (**Remove 9**), and a `part.` key ECAD does not read |
 
-Not in 047 (a follow-up after brief 045): article numbers on strip parts (terminal types,
-accessories, jumpers) and renumbering keeping a strip line's `for`. Until then `article` leaves
-strip parts alone and says so, and a strip's part line with `for` is refused with the reason.
+Strip parts (the follow-up after brief 045): terminal types, accessories and jumpers take an
+article number beside their part number (`article_number`, `article_number.<code>`,
+`<item>.article_number`, `link.<n>.article_number`; project defaults `strip_<code>_article_number`
+and `strip_<item>_article_number`), read from the level the part number comes from, so a strip's
+own end plate never shows the project's article number. `article` writes there too (`1 strip
+part`). A strip's part line may name positions with `for`, and **Renumber** of terminals rewrites
+that `for` as it rewrites links.
 
 ## Try it
 
@@ -39,14 +43,22 @@ strip parts alone and says so, and a strip's part line with `for` is refused wit
 7. **Columns ▾ ▸ Lines under devices**. Expected: -K01 has a row of its own, and under it
    `↳ Aux block 1NO`.
 8. **Export CSV…**. Expected: the file has `Location,Qty,Unit,Tags,Line,Description,Maker,Part number,Article number`.
+9. Strip parts: `setprop -X01 article_number A-0200` (with -X01's `part_number` set), then
+   `projectprops {"props":{"strip_end_plate_part_number":"EP-1","strip_end_plate_article_number":"A-0201"}}`
+   with an end plate placed on a strip. Expected: the terminal row shows `A-0200`, the end-plate
+   row `A-0201`; a strip with its own `end_plate.part_number` shows no `A-0201`.
+10. `partline {"component":"<-X01's id>","add":{"part_number":"FU-6T","for":"1-2"}}`, then
+    **Renumber** the terminals from 3. Expected: the preview lists `part line 1 for 1-2 → 3-4`;
+    the BOM row's tags follow.
 
 ## Checks
 
 - *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-cadcraft --test all
-  lane_047` (12 tests: the BOM page; items in metres and undo; refusals on items; one line on four devices;
+  lane_047` (14 tests: the BOM page; items in metres and undo; refusals on items; one line on four devices;
   fuse inserts per fuse and the uncovered-fuse check; the article column, command and conflict
   with its fix; kits and the nested layout; missing `for` names and unread keys; the update map;
-  hostile values; save and reopen), `cargo test -p ecad-mcp --test all lane_047` (2 tests: every
+  hostile values; save and reopen; follow-up: renumbering keeps a strip line's `for`, strip part
+  article numbers by level), `cargo test -p ecad-mcp --test all lane_047` (2 tests: every
   write by the agent, refused with writes off, `bom` still reads) and `cargo test -p ecad-trial
   --test all lane_047` (3 tests: the Columns menu, + Item's prompts, the inspector's Parts).
 - *Agent-observed:* screenshots in the pull request, from the headless renderer.

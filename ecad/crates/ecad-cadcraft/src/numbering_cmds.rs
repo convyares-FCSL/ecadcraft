@@ -320,7 +320,11 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
         let plan = plan_for(p, &req)?;
         let count = p.change_count();
         // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
-        let (acc_ops, acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
+        let (mut acc_ops, mut acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
+        // Brief 047 (design 047 §2.3): a strip's part lines keep naming the positions they serve.
+        let (for_ops, for_lines) = crate::bom::renumber_for_ops(p.ledger.document(), &plan.ops);
+        acc_ops.extend(for_ops);
+        acc_lines.extend(for_lines);
         if preview {
             let mut v = preview_json(p.ledger.document(), &plan, count);
             v["accessories"] = json!(acc_lines);

@@ -886,6 +886,8 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("symboledit", "the builder's Save"),
     ("symbolimpact", "the builder's review drawer"),
     ("makesymbol", "the builder's Save (048c's Make symbol)"),
+    // Brief 049 (design 049 §5.1): no wheel slot.
+    ("contcaption", "the command line and the inspector's Caption row"),
 ];
 
 /// The action with this id.

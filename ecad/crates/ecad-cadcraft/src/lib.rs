@@ -42,6 +42,8 @@ pub mod checks;
 pub mod commands;
 pub mod connector_cmds;
 pub mod connectors;
+pub mod continuation_cmds;
+pub mod continuations;
 pub mod convert;
 pub mod debug;
 pub mod default_cmds;

@@ -161,3 +161,12 @@ are.
 | **origin** (tool) | The symbol's base point, (0, 0) of its frame: the point the cursor holds when placing. Where provenance is shown it is called **source**, never origin. |
 | **update available** | A placed copy whose symbol has a newer version in the project. |
 | **clash** | A change an update cannot make to a placed copy without losing a connection. |
+
+## Continuation references (brief 049)
+
+| Word | Means |
+| --- | --- |
+| **continuation arrow** | The tagless arrow (`kind = continuation`) that joins its net to every arrow with the same name, on any page. Not a *continuation sheet* (a generated report's next page). |
+| **other end** | Another arrow with the same name. An arrow shows its other ends' places past its tip (`102-C-2 103-B-5`), derived, never typed. |
+| **caption** | A short text on an arrow (`TO CONTROL SUPPLY`) saying where it goes. Display only: it joins nothing. |
+| **caption run** | The arrows on one page with the same caption and direction, next to each other, drawn under one bracket with the caption. |

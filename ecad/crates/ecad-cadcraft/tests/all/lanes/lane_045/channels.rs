@@ -124,6 +124,47 @@ fn f_a_fence_across_eight_wires_makes_channels_0_to_7_and_rest_draws_the_spares(
     assert_eq!(points(&mut h, di).len(), 0);
 }
 
+/// A channel cell has one point, not a way through (screenshot 045-schematic-cells: the half
+/// below each point ran on through the cell box and its number covered the channel number). A
+/// fence keeps only the half of each wire that reaches something; a wire attached at both ends
+/// keeps both halves.
+#[test]
+fn f_a_cell_ends_a_loose_wire_at_its_point() {
+    let mut h = H::new(4532);
+    let di = placed(&mut h, "plcdi", 100.0, 400.0);
+    // A lamp's X2 is 10 mm below its origin, its X1 10 mm above.
+    for x in [100.0, 110.0, 120.0] {
+        placed(&mut h, "lamp", x, 260.0);
+    }
+    placed(&mut h, "lamp", 120.0, 140.0);
+    // From the lamp down to a loose end; drawn the other way, loose end first; lamp to lamp.
+    h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
+    h.run("wire", json!({"points": pts(&[(110.0, 150.0), (110.0, 250.0)])})).unwrap();
+    h.run("wire", json!({"points": pts(&[(120.0, 250.0), (120.0, 150.0)])})).unwrap();
+    let wires = h.doc().conductors.len();
+    let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [125.0, 200.0]})).unwrap();
+    assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
+    let d = h.doc();
+    assert_eq!(d.conductors.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
+    let page = d.page_order[0];
+    let mut cells: Vec<(String, TerminalId)> =
+        d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.starts_with('.')).map(|k| (k.clone(), t))).collect();
+    cells.sort();
+    let ends: Vec<usize> = cells.iter().map(|(_, t)| d.ends_at(*t).len()).collect();
+    assert_eq!(ends, [1, 1, 2], "{cells:?}");
+    for (_, t) in cells.iter().take(2) {
+        let (c, _) = d.ends_at(*t)[0];
+        let wire = &d.conductors[&c];
+        assert!(wire.ends.iter().all(Option::is_some), "the kept half runs from the lamp to the point: {wire:?}");
+        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, c, page).unwrap();
+        assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
+    }
+    same_as_built(&mut h);
+    h.cmdline("u");
+    assert_eq!(h.doc().conductors.len(), wires);
+    same_as_built(&mut h);
+}
+
 #[test]
 fn g_analogue_pins_follow_the_role_or_channel_layout() {
     let P { mut h, ai, .. } = fixture(4522);

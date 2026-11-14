@@ -65,12 +65,6 @@ pub const ITEM_NO_TAG: &str = "An item has no tag. Add a device instead if it is
 pub const ITEM_NO_LINES: &str = "An item has no part lines: it is one part. Set its own part_number, maker and qty.";
 pub const ITEM_NEEDS_DESCRIPTION: &str = "An item needs a description.";
 pub const PARTLINE_FOR_DEVICES: &str = "partline is for devices and strips.";
-/// FP5 fallback: `for` on a strip's line waits for renumbering to keep it.
-pub const STRIP_FOR_LATER: &str = "a strip's part line cannot name positions with for yet (terminal renumbering does not \
-keep them until a later change). Add the line without for and set qty.";
-/// FP5 fallback: `article` does not reach strip parts yet.
-pub const STRIP_ARTICLE_LATER: &str = "Strip terminal, accessory and jumper parts with this part number are not changed yet: \
-they take article numbers in a later change.";
 
 /// One field of a part line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -226,6 +220,14 @@ pub fn parse_unit(text: &str) -> Result<bool, String> {
 // ---------------------------------------------------------------- text values
 
 /// 1 to `max` characters, trimmed, no control characters; empty clears.
+/// An article number as stored (trimmed; empty clears it).
+///
+/// # Errors
+/// Longer than [`MAX_ARTICLE_CHARS`], or control characters.
+pub fn article_value(value: Option<&str>) -> Result<Option<String>, String> {
+    plain(ARTICLE_KEY, value, MAX_ARTICLE_CHARS)
+}
+
 fn plain(key: &str, value: Option<&str>, max: usize) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if v.chars().count() > max || v.chars().any(char::is_control) {
@@ -360,12 +362,6 @@ fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String
         return Ok(None);
     }
     let who = crate::devices::tag_words(doc, c);
-    // FP5 fallback (overseer, 2026-11-13): until terminal renumbering rewrites a strip's `for`
-    // lists (the lane D follow-up after brief 045), a renumber would leave them naming the old
-    // positions, so they are refused rather than left to go stale.
-    if crate::strips::is_strip(doc, c) {
-        return Err(format!("{who}: {STRIP_FOR_LATER}"));
-    }
     let subs = sub_items(doc, c);
     if subs == Subs::None {
         return Err(format!("{who} has nothing to name with for: leave it empty and set qty."));
@@ -380,6 +376,43 @@ fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String
         }
     }
     Ok(Some(t.to_string()))
+}
+
+/// The ops that keep strips' `part.<n>.for` lists on their positions when a renumber plan `ops`
+/// relabels their terminals (design 047 §2.3, as 030 FP4 keeps `link.<n>`), and the preview lines
+/// (`-X05: part line 1 for 1, 5-6 → 1-2, 6`). A list naming no relabelled position is left as
+/// typed; names no terminal had stay.
+pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
+    let mut out = Vec::new();
+    let mut lines = Vec::new();
+    for (c, map) in crate::accessories::relabels(ops) {
+        if !crate::strips::is_strip(doc, c) {
+            continue;
+        }
+        let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { continue };
+        let tag = crate::devices::tag_words(doc, c);
+        for n in used_lines(props) {
+            let key = part_key(n, Field::For);
+            let Some(before) = props.get(&key) else { continue };
+            let Ok(names) = expand_for(before) else { continue };
+            if !names.iter().any(|x| map.contains_key(x)) {
+                continue;
+            }
+            let mut moved: Vec<String> = Vec::with_capacity(names.len());
+            for name in names {
+                let m = map.get(&name).cloned().unwrap_or(name);
+                if !moved.contains(&m) {
+                    moved.push(m);
+                }
+            }
+            let after = names_words(&moved);
+            if after != before.trim() {
+                lines.push(format!("{tag}: part line {n} for {} \u{2192} {after}", before.trim()));
+                out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before.clone()), after: Some(after) });
+            }
+        }
+    }
+    (out, lines)
 }
 
 // ---------------------------------------------------------------- lines
@@ -1004,9 +1037,14 @@ fn same(v: Option<&String>, want: &str) -> bool {
     v.is_some_and(|x| x.trim().eq_ignore_ascii_case(want))
 }
 
-/// The article keys `article` writes for part number `pn` (and maker `maker`) on `doc`, with what
-/// each is (`device`, `line`, `item`, `strip`).
-pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<(ComponentId, String, &'static str)> {
+/// Where `article` writes one article number: the object, the key, and what it is (`device`,
+/// `line`, `item`, `strip`).
+pub type ArticleTarget = (ObjectRef, String, &'static str);
+
+/// The article keys `article` writes for part number `pn` (and maker `maker`) on `doc`. A strip's
+/// terminal, accessory and jumper parts are written at the level their part number is stored at
+/// (design 047 §5): the strip's own key, or the project's `strip_<x>_article_number`.
+pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<ArticleTarget> {
     let mut out = Vec::new();
     for (c, comp) in &doc.components {
         let props = &comp.properties;
@@ -1016,31 +1054,78 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<(Co
             continue;
         }
         let maker_ok = |k: &str| maker.is_none_or(|m| same(props.get(k), m));
-        if same(props.get("part_number"), pn) && maker_ok("maker") && !crate::strips::is_strip(doc, *c) {
-            out.push((*c, ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
+        let strip = crate::strips::is_strip(doc, *c);
+        if same(props.get("part_number"), pn) && maker_ok("maker") && !strip {
+            out.push((ObjectRef::Component(*c), ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
+        }
+        if strip {
+            for (part, mk, article, project_maker) in strip_slots(props) {
+                // The maker as the BOM reads it: the strip's, else the project's.
+                let maker_here = props.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.properties.get(&k)));
+                if same(props.get(&part), pn) && maker.is_none_or(|m| same(maker_here, m)) {
+                    out.push((ObjectRef::Component(*c), article, "strip"));
+                }
+            }
         }
         if device {
             for n in used_lines(props) {
                 if same(props.get(&part_key(n, Field::PartNumber)), pn) && maker_ok(&part_key(n, Field::Maker)) {
-                    out.push((*c, part_key(n, Field::ArticleNumber), "line"));
+                    out.push((ObjectRef::Component(*c), part_key(n, Field::ArticleNumber), "line"));
                 }
             }
+        }
+    }
+    // The project's strip part defaults (`strip_<code>_part_number`, `strip_<item>_part_number`).
+    for (part, mk, article) in project_strip_slots() {
+        if same(doc.properties.get(&part), pn) && maker.is_none_or(|m| same(doc.properties.get(&mk), m)) {
+            out.push((ObjectRef::Project, article, "strip"));
         }
     }
     out
 }
 
+/// A strip's own part slots: (part number key, maker key, article key, the project's maker key)
+/// of each terminal type (036 §7.2), each accessory (030 §4) and each link's own part (030 §5.6,
+/// which has no project default of its own).
+fn strip_slots(props: &Properties) -> Vec<(String, String, String, Option<String>)> {
+    let mut v: Vec<(String, String, String, Option<String>)> = crate::terminal_types::TYPES
+        .iter()
+        .map(|t| {
+            let k = |f: &str| crate::strips::type_key(t, f);
+            (k("part_number"), k("maker"), k(ARTICLE_KEY), Some(format!("strip_{}_maker", t.code)))
+        })
+        .collect();
+    let item_keys = |pre: &str| (format!("{pre}.part_number"), format!("{pre}.maker"), format!("{pre}.{ARTICLE_KEY}"));
+    v.extend(crate::accessories::PART_ITEMS.iter().map(|i| {
+        let (p, m, a) = item_keys(i);
+        let pm = crate::accessories::project_key(&m);
+        (p, m, a, Some(pm))
+    }));
+    v.extend(ecad_model::links::of(props).into_iter().map(|(n, _)| {
+        let (p, m, a) = item_keys(&ecad_model::links::key(n));
+        (p, m, a, None)
+    }));
+    v
+}
+
+/// The project's strip part slots: (part number key, maker key, article key), terminal types as
+/// `strip_<code>_*` and accessories as `strip_<item>_*`.
+fn project_strip_slots() -> Vec<(String, String, String)> {
+    let mut v: Vec<(String, String, String)> = crate::terminal_types::TYPES
+        .iter()
+        .map(|t| (format!("strip_{}_part_number", t.code), format!("strip_{}_maker", t.code), format!("strip_{}_{ARTICLE_KEY}", t.code)))
+        .collect();
+    let pk = crate::accessories::project_key;
+    v.extend(
+        crate::accessories::PART_ITEMS
+            .iter()
+            .map(|i| (pk(&format!("{i}.part_number")), pk(&format!("{i}.maker")), pk(&format!("{i}.{ARTICLE_KEY}")))),
+    );
+    v
+}
+
 fn run_article(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let v = with_project(s, |p, pg, _| {
-        // FP5 fallback: strip parts carrying this part number are left alone, and the echo says so.
-        let pn_low = params.get("part_number").and_then(Value::as_str).map(|t| t.trim().to_lowercase()).unwrap_or_default();
-        let same_pn = |x: &Option<String>| x.as_deref().is_some_and(|x| x.to_lowercase() == pn_low);
-        let strip_parts = !pn_low.is_empty()
-            && p.outputs()
-                .strips
-                .strips
-                .values()
-                .any(|s| s.types.iter().any(|t| same_pn(&t.part_number)) || s.acc.bom.iter().any(|a| same_pn(&a.part_number)));
         let doc = p.ledger.document();
         let pn = params.get("part_number").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty());
         let pn = pn.ok_or("`part_number` is required")?;
@@ -1055,9 +1140,6 @@ fn run_article(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         };
         let after = plain(ARTICLE_KEY, value.as_deref(), MAX_ARTICLE_CHARS)?;
         let targets = article_targets(doc, pn, maker);
-        if targets.is_empty() && strip_parts {
-            return Err(format!("{pn} is used only by strip parts. {STRIP_ARTICLE_LATER}"));
-        }
         if targets.is_empty() {
             return Err(format!("No part {pn} in this project."));
         }
@@ -1066,23 +1148,26 @@ fn run_article(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         }
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         let mut ops = Vec::new();
-        for (c, key, what) in &targets {
+        for (object, key, what) in &targets {
             *counts.entry(what).or_default() += 1;
-            let before = doc.components.get(c).and_then(|x| x.properties.get(key)).cloned();
+            let before = match object {
+                ObjectRef::Component(c) => doc.components.get(c).and_then(|x| x.properties.get(key)).cloned(),
+                _ => doc.properties.get(key).cloned(),
+            };
             if before != after {
-                ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: key.clone(), before, after: after.clone() });
+                ops.push(Op::SetProperty { object: *object, key: key.clone(), before, after: after.clone() });
             }
         }
-        let parts: Vec<String> = [("line", "line", "lines"), ("device", "device", "devices"), ("item", "item", "items")]
-            .iter()
-            .filter_map(|(k, one, many)| counts.get(k).map(|n| format!("{n} {}", if *n == 1 { one } else { many })))
-            .collect();
+        let parts: Vec<String> =
+            [("line", "line", "lines"), ("device", "device", "devices"), ("item", "item", "items"), ("strip", "strip part", "strip parts")]
+                .iter()
+                .filter_map(|(k, one, many)| counts.get(k).map(|n| format!("{n} {}", if *n == 1 { one } else { many })))
+                .collect();
         let n = targets.len();
         let what = match &after {
             Some(a) => format!("Set {a} on {n} part{} ({}).", if n == 1 { "" } else { "s" }, parts.join(", ")),
             None => format!("Cleared the article number of {n} part{} ({}).", if n == 1 { "" } else { "s" }, parts.join(", ")),
         };
-        let what = if strip_parts { format!("{what} {STRIP_ARTICLE_LATER}") } else { what };
         if ops.is_empty() {
             return Ok(json!({"changed": false, "parts": n, "message": what}));
         }
