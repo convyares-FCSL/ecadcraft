@@ -28,7 +28,7 @@ pub use source::{Align, Cell, Changed, Column, ColumnId, ColumnKind, Editor, Lan
 pub use tint::{TINT_SECONDS, TintMap};
 pub use view_model::{Dir, Row, ViewModel, natural_cmp};
 
-use ecad_tokens::{GRAPHITE, Icon, line, size, space, ui_type};
+use ecad_tokens::{Icon, line, size, space, ui_type};
 use egui::{Id, Key, Modifiers, Rect, Response, Role, Sense, Stroke, Ui, WidgetInfo, pos2, vec2};
 
 use crate::prim::{self, Chip, Field, FieldKind, Kind};
@@ -293,9 +293,9 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                     out.push(TableEvent::Export(export::csv(src, src.columns(), &keys)));
                 }
                 let n = self.view.item_count();
-                let g = cells::fitted(ui, &format!("{n} row{}", if n == 1 { "" } else { "s" }), ui_type::SMALL, color(GRAPHITE.text_3), 200.0);
+                let g = cells::fitted(ui, &format!("{n} row{}", if n == 1 { "" } else { "s" }), ui_type::SMALL, color(crate::SHELL.text_3), 200.0);
                 let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
-                ui.painter().galley(r.min, g, color(GRAPHITE.text_3));
+                ui.painter().galley(r.min, g, color(crate::SHELL.text_3));
             });
         });
     }
@@ -333,9 +333,9 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         }
 
         if self.view.rows().is_empty() {
-            let g = cells::fitted(ui, self.empty, ui_type::BODY, color(GRAPHITE.text_2), ui.available_width());
+            let g = cells::fitted(ui, self.empty, ui_type::BODY, color(crate::SHELL.text_2), ui.available_width());
             let (r, _) = ui.allocate_exact_size(g.size() + vec2(0.0, space::M), Sense::hover());
-            ui.painter().galley(r.min + vec2(space::M, space::XS), g, color(GRAPHITE.text_2));
+            ui.painter().galley(r.min + vec2(space::M, space::XS), g, color(crate::SHELL.text_2));
             self.rows_drawn = 0;
             return out;
         }
@@ -351,7 +351,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
     }
 
     fn body<S: TableSource<Key = K>>(&mut self, ui: &mut Ui, src: &S, focused: bool, now: f64, out: &mut Vec<TableEvent<K>>) {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let cols = src.columns().to_vec();
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         let mut builder = egui_extras::TableBuilder::new(ui)
@@ -621,7 +621,7 @@ fn interact_unclipped(ui: &mut Ui, rect: Rect, clip: Rect, id: Id) -> Response {
 
 /// A refusal under its cell (spec §5: where the attempt was made), in the error colour.
 fn refusal_note(ui: &Ui, rect: Rect, message: &str, id: Id) {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     egui::Area::new(id.with("refusal")).order(egui::Order::Foreground).fade_in(false).fixed_pos(rect.left_bottom()).interactable(false).show(
         ui.ctx(),
         |ui| {

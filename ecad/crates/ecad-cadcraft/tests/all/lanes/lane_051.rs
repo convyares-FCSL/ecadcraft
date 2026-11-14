@@ -482,7 +482,7 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
     // Through the command path: the sheet's text follows the renumber.
     h.run("pageprops", json!({"page": first.hex(), "number": "7"})).unwrap();
     let t = texts(&mut h, sheet);
-    assert!(t.iter().any(|x| x.starts_with("\u{2192}7-")), "{t:?}");
+    assert!(t.iter().any(|x| x.starts_with("\u{2192}7/")), "{t:?}");
 }
 
 fn rows_of(h: &mut H, kind: &str) -> Vec<Value> {

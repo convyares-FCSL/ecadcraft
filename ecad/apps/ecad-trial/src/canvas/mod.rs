@@ -36,30 +36,46 @@ pub use selection::{Related, related};
 
 use crate::Trial;
 
-/// The `ui.sheet` command (Text panel ▸ Commands): `ui.sheet paper|dark`, or alone to switch.
+/// The `ui.sheet` command (Text panel ▸ Commands): `ui.sheet paper|follow|dark`, or alone to
+/// switch between paper and dark.
 pub const SHEET_COMMAND: &str = "ui.sheet";
 
-/// Which sheet the page is drawn on: a viewing preference of the person, kept with the shell
-/// state (eframe storage), never in the project.
+/// Which sheet the page is drawn on (UI rev 3, "Sheet colour and full dark"): a viewing
+/// preference of the person, kept with the shell state (eframe storage), never in the project.
+/// It changes the screen only: PDFs and prints always use the paper colours.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Sheet {
+    /// Always light.
     #[default]
     Paper,
+    /// The interface theme: dark in the dark interface, paper in the light one (board 1.18).
+    Follow,
+    /// Always dark.
     Dark,
 }
 
 impl Sheet {
-    /// The sheet's tokens.
-    pub fn tokens(self) -> &'static ecad_ui::tokens::Sheet {
+    /// The three choices, in the menu's order.
+    pub const ALL: [Sheet; 3] = [Sheet::Paper, Sheet::Follow, Sheet::Dark];
+
+    /// Whether the page is drawn dark in the interface theme in use ([`ecad_ui::theme`]).
+    pub fn is_dark(self) -> bool {
         match self {
-            Sheet::Paper => &ecad_ui::tokens::sheet::PAPER,
-            Sheet::Dark => &ecad_ui::tokens::sheet::DARK,
+            Sheet::Paper => false,
+            Sheet::Dark => true,
+            Sheet::Follow => ecad_ui::theme() == ecad_ui::Theme::Dark,
         }
+    }
+
+    /// The sheet's tokens in the interface theme in use.
+    pub fn tokens(self) -> &'static ecad_ui::tokens::Sheet {
+        if self.is_dark() { &ecad_ui::tokens::sheet::DARK } else { &ecad_ui::tokens::sheet::PAPER }
     }
 
     pub fn word(self) -> &'static str {
         match self {
             Sheet::Paper => "paper",
+            Sheet::Follow => "follow",
             Sheet::Dark => "dark",
         }
     }
@@ -151,8 +167,8 @@ fn apply_preferences(t: &mut Trial) {
     t.cad.options.model_background = Some(ecad_ui::color(tokens.sheet));
     t.cad.options.selection_color = Some(ecad_ui::color(tokens.selection));
     // The projection draws wire colours for the sheet in use: tell it, and redraw, on a change.
-    if (ecad_cadcraft::look::sheet().sheet == ecad_ui::tokens::sheet::DARK.sheet) != (sheet == Sheet::Dark) {
-        let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet == Sheet::Dark }));
+    if (ecad_cadcraft::look::sheet().sheet == ecad_ui::tokens::sheet::DARK.sheet) != sheet.is_dark() {
+        let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet.is_dark() }));
     }
     let chrome = t.shell.state.cad_chrome;
     t.cad.ui.show_viewcube = chrome;
@@ -170,7 +186,7 @@ fn refresh(t: &mut Trial, st: &mut State) -> bool {
         st.page = PageData::default();
         return false;
     };
-    let key: Key = (serial, count, page, selection.clone(), t.shell.state.sheet == Sheet::Dark);
+    let key: Key = (serial, count, page, selection.clone(), t.shell.state.sheet.is_dark());
     if st.key.as_ref() == Some(&key) {
         return false;
     }
@@ -256,11 +272,12 @@ impl Trial {
         let arg = line.split_whitespace().nth(1).map(str::to_ascii_lowercase);
         let sheet = match arg.as_deref() {
             Some("paper" | "light") => Sheet::Paper,
+            Some("follow") => Sheet::Follow,
             Some("dark") => Sheet::Dark,
-            None if self.shell.state.sheet == Sheet::Paper => Sheet::Dark,
-            None => Sheet::Paper,
+            None if self.shell.state.sheet.is_dark() => Sheet::Paper,
+            None => Sheet::Dark,
             Some(other) => {
-                self.developer.reply = vec![format!("ui.sheet takes paper or dark, not {other:?}.")];
+                self.developer.reply = vec![format!("ui.sheet takes paper, follow or dark, not {other:?}.")];
                 return;
             }
         };

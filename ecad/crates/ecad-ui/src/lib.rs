@@ -1,6 +1,7 @@
 //! ecad-ui: ECAD's interface kit (brief 037, design `ui-architecture.md` §3–§4).
 //!
-//! - [`style`]: egui's visuals, spacing and text styles from `ecad-tokens` (the Graphite shell).
+//! - [`style`]: egui's visuals, spacing and text styles from `ecad-tokens` (the shell in use,
+//!   Graphite or light: [`set_theme`]).
 //! - [`fonts`]: IBM Plex Sans (interface) and Barlow Semi Condensed (sheet), embedded, registered
 //!   on top of the font set the host app gives.
 //! - [`prim`]: the nine primitives (button, icon button, pill, chip, badge, field, segmented
@@ -39,5 +40,63 @@ pub fn color(c: ecad_tokens::Color) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
 }
 
-/// The shell's colour set (the one appearance, Graphite).
-pub const SHELL: ecad_tokens::Shell = ecad_tokens::GRAPHITE;
+/// The interface theme (UI rev 3, boards 1.17 and 1.18): which shell colour set [`SHELL`] reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Theme {
+    /// Graphite, the default.
+    #[default]
+    Dark,
+    /// The light shell.
+    Light,
+}
+
+impl Theme {
+    /// The shell colour set of this theme.
+    pub const fn shell(self) -> &'static ecad_tokens::Shell {
+        match self {
+            Theme::Dark => &ecad_tokens::GRAPHITE,
+            Theme::Light => &ecad_tokens::LIGHT,
+        }
+    }
+}
+
+thread_local! {
+    /// The theme of the interface drawn on this thread. Per thread, so tests that draw in parallel
+    /// never see each other's theme; the app draws on one thread.
+    static THEME: std::cell::Cell<Theme> = const { std::cell::Cell::new(Theme::Dark) };
+}
+
+/// Choose the theme [`SHELL`] reads on this thread. Re-apply [`style::apply`] after a change so
+/// egui's own widgets follow.
+pub fn set_theme(theme: Theme) {
+    THEME.with(|t| t.set(theme));
+}
+
+/// The theme in use on this thread.
+pub fn theme() -> Theme {
+    THEME.with(std::cell::Cell::get)
+}
+
+/// The shell's colours in use: a handle that reads the current theme's set ([`set_theme`]), so
+/// `SHELL.text` is always the colour of the theme on screen.
+///
+/// # Example
+/// ```
+/// ecad_ui::set_theme(ecad_ui::Theme::Light);
+/// assert_eq!(ecad_ui::SHELL.panel, ecad_tokens::LIGHT.panel);
+/// ecad_ui::set_theme(ecad_ui::Theme::Dark);
+/// assert_eq!(ecad_ui::SHELL.panel, ecad_tokens::GRAPHITE.panel);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentShell;
+
+impl std::ops::Deref for CurrentShell {
+    type Target = ecad_tokens::Shell;
+
+    fn deref(&self) -> &ecad_tokens::Shell {
+        theme().shell()
+    }
+}
+
+/// The shell's colour set in use (Graphite or light, [`set_theme`]).
+pub const SHELL: CurrentShell = CurrentShell;

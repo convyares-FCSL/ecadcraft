@@ -137,6 +137,17 @@ fn references_and_sheets_read_from_page_and_project() {
     assert_eq!(ecad_model::sheet::sheet_of(doc, f.pages[1]).columns, 8);
     let g = ecad_model::sheet::Grid::of(doc, f.pages[1]);
     let place = ecad_model::derive::place_on(&g, "105", ecad_model::Pt::new(130.0, 120.0)).unwrap();
+    // UI rev 3: rows lettered, columns numbered, and the zone's letter first in every style.
+    assert_eq!(place.text(ecad_model::ReferenceStyle::PageZone), "105/D3");
+    assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumnRow), "105-D-3");
+    assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumn), "/105.3", "the column: the current path");
+    assert_eq!(ecad_model::ReferenceStyle::default(), ecad_model::ReferenceStyle::PageZone, "2/B5 for a new project");
+    // A grid lettered across the top (a project saved with `letters numbers`) reads as before.
+    let mut old = ecad_model::sheet::SheetSpec::default();
+    (old.column_labels, old.row_labels) = (ecad_model::GridLabels::Letters, ecad_model::GridLabels::Numbers);
+    let g = ecad_model::sheet::Grid::new(old, ecad_model::LengthUnit::Millimetre);
+    let place = ecad_model::derive::place_on(&g, "105", ecad_model::Pt::new(130.0, 120.0)).unwrap();
     assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumnRow), "105-C-4");
     assert_eq!(place.text(ecad_model::ReferenceStyle::PageColumn), "/105.C");
+    assert_eq!(place.text(ecad_model::ReferenceStyle::PageZone), "105/C4");
 }

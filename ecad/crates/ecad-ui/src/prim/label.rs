@@ -1,6 +1,6 @@
 //! Pill, chip, badge and key cap: small labels.
 
-use ecad_tokens::{GRAPHITE, Icon, line, radius, size, space, ui_type};
+use ecad_tokens::{Icon, line, radius, size, space, ui_type};
 use egui::{Rect, Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, vec2};
 
 use super::{Look, Tone, accessible, galley};
@@ -36,7 +36,13 @@ pub fn badge(ui: &mut Ui, text: impl ToString, tone: Tone) -> Response {
     accessible(&response, || WidgetInfo::labeled(Role::Label, true, &text), Some(tone.name()));
     if ui.is_rect_visible(rect) {
         let p = ui.painter();
-        p.rect(rect, corner(radius::BADGE), color(tone.ground()), Stroke::new(line::HAIRLINE_PX, color(GRAPHITE.line_strong)), StrokeKind::Inside);
+        p.rect(
+            rect,
+            corner(radius::BADGE),
+            color(tone.ground()),
+            Stroke::new(line::HAIRLINE_PX, color(crate::SHELL.line_strong)),
+            StrokeKind::Inside,
+        );
         p.galley(rect.center() - g.size() / 2.0, g, color(tone.text()));
     }
     response
@@ -44,7 +50,7 @@ pub fn badge(ui: &mut Ui, text: impl ToString, tone: Tone) -> Response {
 
 /// A key or chord in key caps: `"Ctrl+K"` draws two caps. Its accessible label is the text.
 pub fn keycap(ui: &mut Ui, keys: &str) -> Response {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let mut parts: Vec<&str> = keys.split('+').filter(|k| !k.is_empty()).collect();
     if keys.ends_with("++") || keys == "+" {
         parts.push("+");
@@ -105,7 +111,7 @@ impl<'a> Chip<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> ChipResponse {
-        let s = GRAPHITE;
+        let s = crate::SHELL;
         let ink = if self.selected { s.text } else { s.text_2 };
         let g = galley(ui, self.text, ui_type::SMALL);
         let h = size::CONTROL_SMALL;

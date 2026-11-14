@@ -33,6 +33,9 @@ pub const RIGHT_W_BUILDER: f32 = 380.0;
 /// Brief 048's review drawer: its body and its header row.
 pub const DRAWER_BODY: f32 = 150.0;
 pub const DRAWER_HEADER: f32 = 36.0;
+/// Compare revisions (board 1.16): its header row over the canvas and its list of changes under it.
+pub const COMPARE_HEADER: f32 = 44.0;
+pub const COMPARE_LIST: f32 = 172.0;
 /// Below this main-view width the shell collapses panels (the inspector, then the panel slot).
 pub const MAIN_MIN_W: f32 = 760.0;
 /// The companion split's handle, and the least width of each half.
@@ -64,6 +67,9 @@ pub struct Slots {
     pub status: Rect,
     /// Whether the inspector is closed (only its rail shows), after forced collapses.
     pub right_rail: bool,
+    /// UI rev 3 (board 1.16): Compare revisions' header over the canvas and its list of changes
+    /// under it, while Compare is open in Draw.
+    pub compare: Option<(Rect, Rect)>,
 }
 
 /// The panel slot's width for its tab, kept within the drag range.
@@ -127,10 +133,16 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     });
     let drawer_top = if state.review { (bottom - DRAWER_HEADER - DRAWER_BODY).max(y) } else { bottom };
     let drawer = state.review.then(|| Rect::from_min_max(pos2(x, drawer_top), pos2(right.left().max(x), bottom)));
-    let view = Rect::from_min_max(pos2(x, y), pos2(right.left().max(x), drawer_top));
+    let mut view = Rect::from_min_max(pos2(x, y), pos2(right.left().max(x), drawer_top));
+    let compare = (draw && state.compare).then(|| {
+        let head = Rect::from_min_max(view.min, pos2(view.right(), (view.top() + COMPARE_HEADER).min(view.bottom())));
+        let list = Rect::from_min_max(pos2(view.left(), (view.bottom() - COMPARE_LIST).max(head.bottom())), view.max);
+        view = Rect::from_min_max(pos2(view.left(), head.bottom()), pos2(view.right(), list.top()));
+        (head, list)
+    });
     let (main, handle, companion) = split(view, state);
     let panel_floats = panel_floats && panel.is_some();
-    Slots { top_bar, agent_banner, panel, panel_floats, tool_strip, main, companion, handle, drawer, right, rail, status, right_rail }
+    Slots { top_bar, agent_banner, panel, panel_floats, tool_strip, main, companion, handle, drawer, right, rail, status, right_rail, compare }
 }
 
 /// The main view split for the companion: each half at least [`HALF_MIN`] wide, or no split.

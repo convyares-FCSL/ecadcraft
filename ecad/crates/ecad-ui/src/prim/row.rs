@@ -1,7 +1,7 @@
 //! Row, and the set-versus-read pair: [`read_value`] for a value read from the drawing,
 //! [`provisional`] for a provisional value.
 
-use ecad_tokens::{GRAPHITE, line, size, space, ui_type};
+use ecad_tokens::{line, size, space, ui_type};
 use egui::{CursorIcon, InnerResponse, Layout, Rect, Response, Role, Sense, Stroke, Ui, UiBuilder, WidgetInfo, pos2, vec2};
 
 use super::{Look, accessible, galley};
@@ -45,7 +45,7 @@ pub struct RowSpec {
 /// vertically. The response is the row's own (clicked selects it); widgets inside take their
 /// own clicks. `label` is its accessible name.
 pub fn row<R>(ui: &mut Ui, spec: RowSpec, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let rect = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), spec.kind.height()));
     // The row is registered before its contents, so they sit above it and take their own clicks.
     let response = ui.interact(rect, ui.next_auto_id().with("ecad.row"), Sense::click());
@@ -85,7 +85,7 @@ pub fn row<R>(ui: &mut Ui, spec: RowSpec, label: &str, add_contents: impl FnOnce
 /// A value read from the drawing (spec §5): plain `text_2` with no box, and a go-to: hovering
 /// underlines it, a click returns `clicked`. Its accessible role is a link labelled with the text.
 pub fn read_value(ui: &mut Ui, text: &str) -> Response {
-    let s = GRAPHITE;
+    let s = crate::SHELL;
     let g = galley(ui, text, ui_type::BODY);
     let (rect, response) = ui.allocate_exact_size(g.size(), Sense::click());
     accessible(&response, || WidgetInfo::labeled(Role::Link, true, text), None);
@@ -105,7 +105,7 @@ pub fn read_value(ui: &mut Ui, text: &str) -> Response {
 /// A provisional value: the provisional colour with a dotted underline, everywhere (page, list,
 /// inspector). Its accessible description is "provisional".
 pub fn provisional(ui: &mut Ui, text: &str) -> Response {
-    let ink = color(GRAPHITE.provisional);
+    let ink = color(crate::SHELL.provisional);
     let g = galley(ui, text, ui_type::BODY);
     let (rect, response) = ui.allocate_exact_size(g.size() + vec2(0.0, space::XXS), Sense::hover());
     accessible(&response, || WidgetInfo::labeled(Role::Label, true, text), Some("provisional"));

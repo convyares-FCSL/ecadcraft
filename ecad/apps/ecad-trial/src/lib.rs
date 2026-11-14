@@ -309,7 +309,7 @@ pub fn window_title(info: Option<&BranchInfo>) -> String {
 }
 
 /// What ECAD's style depends on: CADCraft re-applies its own fonts and style when one changes.
-type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>);
+type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_ui::Theme);
 
 /// The harness state around CADCraft's [`CadApp`].
 pub struct Trial {
@@ -1496,7 +1496,11 @@ impl Trial {
     /// when the language or theme changes; ECAD's then replace them, in the same pass. The style
     /// is applied again in the next pass, once ECAD's font families exist.
     fn ecad_style(&mut self, ctx: &egui::Context) {
-        let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme());
+        // UI rev 3 (boards 1.17, 1.18): the person's light or dark interface, read by every
+        // `ecad_ui::SHELL` colour drawn on this thread from here on.
+        let theme = self.shell.state.theme.ui();
+        ecad_ui::set_theme(theme);
+        let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme(), theme);
         if self.ecad_style != Some(key) {
             ecad_ui::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
             ecad_ui::style::apply(ctx);

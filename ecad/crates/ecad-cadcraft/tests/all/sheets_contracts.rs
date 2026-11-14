@@ -65,7 +65,7 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     assert!(!ents.is_empty());
     assert!(ents.iter().all(|e| e.common.layer == frame::LAYER));
     let texts = frame_texts(&mut h, page);
-    for label in ["A", "B", "C", "D", "E", "F", "G", "H", "1", "2", "3", "4", "5", "6", "Page", "Total", "Rev"] {
+    for label in ["A", "B", "C", "D", "E", "F", "1", "2", "3", "4", "5", "6", "7", "8", "Page", "Total", "Rev"] {
         assert!(texts.iter().any(|t| t == label), "{label} in {texts:?}");
     }
     // The paper edge and the frame, at true size.
@@ -103,14 +103,14 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
 #[test]
 fn references_name_the_frames_column_and_row() {
     let mut s = fixture();
-    assert_eq!(text_on(&mut s.h, s.field), "1-C-6", "Supply's end at x = 120 is in column C");
-    assert_eq!(text_on(&mut s.h, s.supply), "2-A-6");
+    assert_eq!(text_on(&mut s.h, s.field), "1/F3", "Supply's end at x = 120 is in column C");
+    assert_eq!(text_on(&mut s.h, s.supply), "2/F1");
     let doc = s.h.doc();
     let r = cable_references(&doc).into_iter().find(|r| r.page == s.supply).unwrap();
     let item = r.item.unwrap();
     let hd = s.h.handle_of(s.supply, item);
     s.h.run("move", json!({"handles": [hd.hex()], "delta": [40, 100]})).unwrap();
-    assert_eq!(text_on(&mut s.h, s.field), "1-D-4", "x = 160, y = 105");
+    assert_eq!(text_on(&mut s.h, s.field), "1/D4", "x = 160, y = 105");
 }
 
 /// Check C: page number, title and function from `pageprops`: one transaction and one `u` each;
@@ -125,7 +125,7 @@ fn page_properties_are_one_transaction_each_and_the_title_block_follows() {
     assert_eq!(label, "Page properties");
     assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ObjectRef::Page(p), key, .. }] if *p == s.supply && key == "number"));
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "100"));
-    assert_eq!(text_on(&mut s.h, s.field), "100-C-6", "the other end names the new number");
+    assert_eq!(text_on(&mut s.h, s.field), "100/F3", "the other end names the new number");
     s.h.run("pageprops", json!({"title": "Supply A", "function": "PWR"})).unwrap();
     assert_eq!(s.h.head(), head + 2, "two fields, one transaction");
     let texts = frame_texts(&mut s.h, s.supply);
@@ -133,7 +133,7 @@ fn page_properties_are_one_transaction_each_and_the_title_block_follows() {
     s.h.run("u", Value::Null).unwrap();
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "Supply"));
     s.h.run("u", Value::Null).unwrap();
-    assert_eq!(text_on(&mut s.h, s.field), "1-C-6");
+    assert_eq!(text_on(&mut s.h, s.field), "1/F3");
     let head = s.h.head();
     for (n, want) in
         [("2", "Page 2 already exists (\"Field\")."), ("10.5", "A page number is 1 to 12"), ("1234567890123", "A page number is 1 to 12")]
@@ -384,12 +384,12 @@ fn wire_and_reference_properties_follow_the_objects_they_name() {
     let r = cable_references(&doc).into_iter().find(|r| r.page == s.supply).unwrap();
     let hd = s.h.handle_of(s.supply, r.item.unwrap());
     let v = props_of(&mut s.h, s.supply, &[hd]);
-    assert_eq!(row(&v, "others"), "2-A-6");
+    assert_eq!(row(&v, "others"), "2/F1");
     let n = s.h.p(|p| p.change_count());
     s.h.run("pageprops", json!({"page": s.field.hex(), "number": "105"})).unwrap();
     let touched = s.h.p(|p| p.props_changes_since(n)).unwrap();
     assert!(touched.iter().any(|o| v.deps.contains(o)), "the renumber meets the reference view's dependencies");
-    assert_eq!(row(&props_of(&mut s.h, s.supply, &[hd]), "others"), "105-A-6");
+    assert_eq!(row(&props_of(&mut s.h, s.supply, &[hd]), "others"), "105/F1");
 }
 
 /// Review W1: in a project whose pages have no stored numbers (files from before 019), a rename in
@@ -429,7 +429,7 @@ fn an_invalid_sheet_falls_back_to_a3_everywhere() {
     s.h.project.apply_ops(&mut s.h.s, "hostile", vec![Op::SetProjectSettings { before, after }]).unwrap();
     let doc = s.h.doc();
     assert_eq!(ecad_model::sheet::sheet_of(&doc, s.supply), ecad_model::SheetSpec::default());
-    assert_eq!(text_on(&mut s.h, s.field), "1-C-6", "references use the same A3 the frame draws");
+    assert_eq!(text_on(&mut s.h, s.field), "1/F3", "references use the same A3 the frame draws");
     let input = frame::FrameInput::of(&doc, s.supply, &Book::of(&doc));
     assert_eq!(input.sheet, ecad_model::SheetSpec::default());
 }
