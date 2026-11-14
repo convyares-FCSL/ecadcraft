@@ -5,13 +5,14 @@
 //! [`TextKind`]. The name, signature and the three fields do not change in v0.15; kinds may be
 //! added. [`text_shown`] is public too (lane W reads wire-label visibility through it).
 //!
-//! Every value comes from the defaults registry ([`crate::defaults`], entries in
-//! `defaults/text.rs`); nothing here writes a size or a weight as a literal. Both readers are a
-//! few map lookups and never fail: a hostile stored value counts as absent.
+//! Every value comes from the kind's text style (brief 050a, [`crate::styles::text`]): the
+//! registry's `text.<kind>.style` choice says which style, and [`crate::styles::field`] what it
+//! says. Nothing here writes a size or a weight as a literal. The readers are a few map lookups
+//! and never fail: a hostile stored value counts as absent.
 //!
 //! This module draws nothing and stores nothing.
 
-use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId};
+use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, StyleRef};
 
 use crate::defaults::{self, Entry, Scope, text as d};
 
@@ -31,6 +32,9 @@ pub struct TextStyle {
     /// `ECAD-<KIND>-BOLD` ([`kind_style_name`]). Setting only this name on an entity is not enough
     /// for bold in the stroke-font fallback: use [`apply`].
     pub style_name: &'static str,
+    /// Brief 050a (046 Q8): the style's colour on the sheet drawn on, or `None` for ink. A mono
+    /// print prints ink regardless.
+    pub colour: Option<cadcraft_engine::doc::color::Rgb>,
 }
 
 /// A text weight.
@@ -151,82 +155,15 @@ impl TextKind {
         TextKind::ALL.into_iter().find(|k| k.word() == word)
     }
 
-    /// The registry entry of this kind's height.
-    pub fn height_entry(self) -> &'static Entry {
-        match self {
-            TextKind::Tag => &d::TAG_HEIGHT,
-            TextKind::PointLabel => &d::POINT_LABEL_HEIGHT,
-            TextKind::Description => &d::DESCRIPTION_HEIGHT,
-            TextKind::PartNumber => &d::PART_NUMBER_HEIGHT,
-            TextKind::ContinuationName => &d::CONTINUATION_NAME_HEIGHT,
-            TextKind::Reference => &d::REFERENCE_HEIGHT,
-            TextKind::WireLabel => &d::WIRE_LABEL_HEIGHT,
-            TextKind::CableText => &d::CABLE_TEXT_HEIGHT,
-            TextKind::LocationLabel => &d::LOCATION_HEIGHT,
-            TextKind::TitleValue => &d::TITLE_VALUE_HEIGHT,
-            TextKind::TitleCaption => &d::TITLE_CAPTION_HEIGHT,
-            TextKind::TitleMain => &d::TITLE_MAIN_HEIGHT,
-            TextKind::Grid => &d::GRID_HEIGHT,
-            TextKind::Table => &d::TABLE_HEIGHT,
-            TextKind::TableHeader => &d::TABLE_HEADER_HEIGHT,
-            TextKind::Free => &d::FREE_HEIGHT,
-            TextKind::TitlePage => &d::TITLE_PAGE_HEIGHT,
-            TextKind::TitleRev => &d::TITLE_REV_HEIGHT,
-            TextKind::TableHeading => &d::TABLE_HEADING_HEIGHT,
-            TextKind::Cover => &d::COVER_HEIGHT,
-        }
+    /// The registry entry choosing this kind's text style (`text.<kind>.style`, brief 050a).
+    pub fn style_entry(self) -> &'static Entry {
+        let i = TextKind::ALL.iter().position(|k| *k == self).unwrap_or(0);
+        crate::defaults::styles::TEXT.get(i).copied().unwrap_or(&crate::defaults::styles::TAG)
     }
 
-    /// The registry entry of this kind's weight.
-    pub fn weight_entry(self) -> &'static Entry {
-        match self {
-            TextKind::Tag => &d::TAG_WEIGHT,
-            TextKind::PointLabel => &d::POINT_LABEL_WEIGHT,
-            TextKind::Description => &d::DESCRIPTION_WEIGHT,
-            TextKind::PartNumber => &d::PART_NUMBER_WEIGHT,
-            TextKind::ContinuationName => &d::CONTINUATION_NAME_WEIGHT,
-            TextKind::Reference => &d::REFERENCE_WEIGHT,
-            TextKind::WireLabel => &d::WIRE_LABEL_WEIGHT,
-            TextKind::CableText => &d::CABLE_TEXT_WEIGHT,
-            TextKind::LocationLabel => &d::LOCATION_WEIGHT,
-            TextKind::TitleValue => &d::TITLE_VALUE_WEIGHT,
-            TextKind::TitleCaption => &d::TITLE_CAPTION_WEIGHT,
-            TextKind::TitleMain => &d::TITLE_MAIN_WEIGHT,
-            TextKind::Grid => &d::GRID_WEIGHT,
-            TextKind::Table => &d::TABLE_WEIGHT,
-            TextKind::TableHeader => &d::TABLE_HEADER_WEIGHT,
-            TextKind::Free => &d::FREE_WEIGHT,
-            TextKind::TitlePage => &d::TITLE_PAGE_WEIGHT,
-            TextKind::TitleRev => &d::TITLE_REV_WEIGHT,
-            TextKind::TableHeading => &d::TABLE_HEADING_WEIGHT,
-            TextKind::Cover => &d::COVER_WEIGHT,
-        }
-    }
-
-    /// The registry entry of this kind's own font (owner, 2026-11-12).
-    pub fn font_entry(self) -> &'static Entry {
-        match self {
-            TextKind::Tag => &d::TAG_FONT,
-            TextKind::PointLabel => &d::POINT_LABEL_FONT,
-            TextKind::Description => &d::DESCRIPTION_FONT,
-            TextKind::PartNumber => &d::PART_NUMBER_FONT,
-            TextKind::ContinuationName => &d::CONTINUATION_NAME_FONT,
-            TextKind::Reference => &d::REFERENCE_FONT,
-            TextKind::WireLabel => &d::WIRE_LABEL_FONT,
-            TextKind::CableText => &d::CABLE_TEXT_FONT,
-            TextKind::LocationLabel => &d::LOCATION_FONT,
-            TextKind::TitleValue => &d::TITLE_VALUE_FONT,
-            TextKind::TitleCaption => &d::TITLE_CAPTION_FONT,
-            TextKind::TitleMain => &d::TITLE_MAIN_FONT,
-            TextKind::Grid => &d::GRID_FONT,
-            TextKind::Table => &d::TABLE_FONT,
-            TextKind::TableHeader => &d::TABLE_HEADER_FONT,
-            TextKind::Free => &d::FREE_FONT,
-            TextKind::TitlePage => &d::TITLE_PAGE_FONT,
-            TextKind::TitleRev => &d::TITLE_REV_FONT,
-            TextKind::TableHeading => &d::TABLE_HEADING_FONT,
-            TextKind::Cover => &d::COVER_FONT,
-        }
+    /// The built-in text style of this kind: its key word.
+    pub fn builtin_style(self) -> StyleRef {
+        StyleRef::Builtin(self.word().to_string())
     }
 
     /// The registry entry of this kind's visibility, for the kinds that have one (design 031
@@ -255,9 +192,10 @@ pub fn is_reserved_key(key: &str) -> bool {
     key.trim().get(..5).is_some_and(|p| p.eq_ignore_ascii_case("text."))
 }
 
-/// The style of `kind` in this project: the project's `text.<kind>.*` keys (and, for
-/// [`TextKind::WireLabel`], `settings.wiring.label_height`), else the defaults of design 031 §3.2.
-/// Never fails; a hostile stored value gives the default.
+/// The style of `kind` in this project: its text style (the project's `text.<kind>.style`, else
+/// the standard's, else the kind's built-in style) and that style's fields (design 050 §2.4). The
+/// wire label's height is `settings.wiring.label_height` (031 §3.4). Never fails; a hostile stored
+/// value gives the built-in.
 ///
 /// # Example
 ///
@@ -268,16 +206,31 @@ pub fn is_reserved_key(key: &str) -> bool {
 /// assert_eq!((tag.height, tag.weight, tag.style_name), (2.5, Weight::Bold, "ECAD-BOLD"));
 /// ```
 pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
-    let height = defaults::resolve(doc, kind.height_entry(), Scope::project()).length(doc);
-    let weight = match defaults::resolve(doc, kind.weight_entry(), Scope::project()).word() {
-        "bold" => Weight::Bold,
+    text_style_at(doc, kind, Scope::project())
+}
+
+/// [`text_style`] at `at` (brief 050a, design 050 §2.4): an object's own `text.<kind>.style`
+/// (S P O) chooses its style. The CADCraft style name and font stay the kind's project style's (an
+/// object's style changes height, weight and colour).
+pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
+    let id = style_of(doc, kind, at);
+    let f = |k: &str| crate::styles::field_of(doc, "text", &id, k, None);
+    let height = f("height").map_or(2.5, |r| r.length(doc));
+    let weight = match f("weight").map(|r| r.word()) {
+        Some("bold") => Weight::Bold,
         _ => Weight::Regular,
     };
     let style_name = match kind_font(doc, kind) {
         Some(_) => kind_style_name(kind, weight),
         None => weight.style_name(),
     };
-    TextStyle { height, weight, style_name }
+    let colour = f("colour").and_then(|r| crate::styles::colour_rgb(&r.text(), crate::look::projection_sheet()));
+    TextStyle { height, weight, style_name, colour }
+}
+
+/// The text style `kind` uses at `at`.
+pub fn style_of(doc: &Document, kind: TextKind, at: Scope) -> StyleRef {
+    crate::styles::chosen(doc, kind.style_entry(), at)
 }
 
 /// Style a text entity of `kind` as this project draws it (the one entry point for other lanes,
@@ -302,6 +255,10 @@ pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKin
 fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_lineweight: Option<u16>) {
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.style = s.style_name.to_string();
+    }
+    // Brief 050a: a style's colour (ink otherwise; a mono print prints ink regardless).
+    if let Some(rgb) = s.colour {
+        e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
     }
     if let (Weight::Bold, Some(lw)) = (s.weight, bold_lineweight) {
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(lw);
@@ -343,16 +300,21 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
     }
 }
 
-/// A kind's own font family (`text.<kind>.font`), when the project sets one that differs from the
-/// project font; `None` when the kind uses the project font.
+/// A kind's own font family (its text style's `font`, brief 050a), when it names a family that
+/// differs from the project font; `None` when the kind uses the project font (`project`, the
+/// built-in).
 pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
-    let r = defaults::resolve(doc, kind.font_entry(), Scope::project());
+    let id = style_of(doc, kind, Scope::project());
+    let r = crate::styles::field_of(doc, "text", &id, "font", None)?;
     let defaults::Value::Text(f) = r.value else { return None };
+    if f.eq_ignore_ascii_case(crate::styles::text::PROJECT_FONT) {
+        return None;
+    }
     let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
         defaults::Value::Text(t) => t,
         _ => default_family(),
     };
-    (r.from != defaults::Source::Builtin && !f.eq_ignore_ascii_case(project)).then_some(f)
+    (!f.eq_ignore_ascii_case(project)).then_some(f)
 }
 
 /// Whether a text is shown (design 031 §5.2).
@@ -619,7 +581,7 @@ impl Look {
     /// The style of `kind`.
     pub fn style(&self, kind: TextKind) -> TextStyle {
         let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
-        self.styles.get(i).copied().unwrap_or(TextStyle { height: 1.0, weight: Weight::Regular, style_name: STYLE_REGULAR })
+        self.styles.get(i).copied().unwrap_or(TextStyle { height: 1.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None })
     }
 
     /// Give a text entity `kind`'s style name (the project font or the kind's own) and, for bold
@@ -627,6 +589,11 @@ impl Look {
     /// Its height is left as it is (derived texts set their own).
     pub fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
         style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
+    }
+
+    /// [`Look::apply`] with an object's own style `s` of `kind` (brief 050a), in `kind`'s fonts.
+    pub fn apply_style(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, s: TextStyle) {
+        style_entity(e, s, self.fonts_for(kind).bold_lineweight);
     }
 }
 
@@ -1247,11 +1214,12 @@ mod tests {
         let doc = Document::default();
         for (kind, h, w) in TABLE {
             let s = text_style(&doc, kind);
-            assert_eq!(s, TextStyle { height: h, weight: w, style_name: w.style_name() }, "{kind:?}");
-            assert_eq!(kind.height_entry().builtin, Value::Length(h), "{kind:?}");
+            assert_eq!(s, TextStyle { height: h, weight: w, style_name: w.style_name(), colour: None }, "{kind:?}");
+            // Brief 050a: the kind's built-in text style carries exactly these values.
+            let b = crate::styles::text::CATALOGUE.builtin(&kind.builtin_style());
+            assert_eq!(b.and_then(|b| b.value("height")), Some(Value::Length(h)), "{kind:?}");
             assert_eq!(TextKind::from_word(kind.word()), Some(kind));
-            assert!(kind.height_entry().key.starts_with(&format!("text.{}.", kind.word())));
-            assert!(kind.weight_entry().key.starts_with(&format!("text.{}.", kind.word())));
+            assert_eq!(kind.style_entry().key, format!("text.{}.style", kind.word()));
         }
     }
 
@@ -1259,18 +1227,34 @@ mod tests {
     fn hostile_heights_give_the_default() {
         for bad in ["NaN", "abc", "0.1", "11", "1e308", "-2", ""] {
             let mut doc = Document::default();
-            doc.properties.insert("text.tag.height".into(), bad.into());
-            doc.properties.insert("text.tag.weight".into(), "heavy".into());
-            assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD }, "{bad:?}");
+            let rec = ecad_model::StyleRecord {
+                name: String::new(),
+                fields: [("height".to_string(), bad.to_string()), ("weight".into(), "heavy".into())].into_iter().collect(),
+            };
+            doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
+            let want = TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None };
+            assert_eq!(text_style(&doc, TextKind::Tag), want, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn old_031_properties_are_ignored() {
+        // Brief 050a (FP4): no conversion; Checks says so (`ignored-old-setting`).
+        let mut doc = Document::default();
+        doc.properties.insert("text.tag.height".into(), "3".into());
+        doc.properties.insert("text.tag.weight".into(), "regular".into());
+        assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None });
     }
 
     #[test]
     fn project_values_and_inch_projects() {
         let mut doc = Document::default();
-        doc.properties.insert("text.tag.height".into(), "3".into());
-        doc.properties.insert("text.tag.weight".into(), "Regular".into());
-        assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR });
+        let rec = ecad_model::StyleRecord {
+            name: String::new(),
+            fields: [("height".to_string(), "3".to_string()), ("weight".into(), "Regular".into())].into_iter().collect(),
+        };
+        doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
+        assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });
         doc.settings.length_unit = LengthUnit::Inch;
         assert!((text_style(&doc, TextKind::Tag).height - 3.0 / 25.4).abs() < 1e-12);
         doc.settings.wiring.label_height = 2.0;

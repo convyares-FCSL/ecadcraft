@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 
 use ecad_model as m;
-use ecad_model::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, TxId};
+use ecad_model::{
+    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId,
+};
 use serde::{Deserialize, Serialize};
 
 /// A point `[x, y]`.
@@ -346,8 +348,12 @@ pub struct PotentialDef {
     pub name: String,
     pub prefix: String,
     pub numbered: bool,
-    pub colour: String,
-    pub cross_section: String,
+    /// Brief 050b (FP6): read from an older file and kept, never written by this build unless
+    /// the project still holds it. Empty counts as absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_section: Option<String>,
 }
 
 /// How label colours are written (brief 022 fix round).
@@ -435,8 +441,8 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     name: p.name.clone(),
                     prefix: p.prefix.clone(),
                     numbered: p.numbered,
-                    colour: p.colour.clone(),
-                    cross_section: p.cross_section.clone(),
+                    colour: p.legacy_colour.clone(),
+                    cross_section: p.legacy_cross_section.clone(),
                 })
                 .collect(),
             colour_style: match w.colour_style {
@@ -518,8 +524,8 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     name: p.name,
                     prefix: p.prefix,
                     numbered: p.numbered,
-                    colour: p.colour,
-                    cross_section: p.cross_section,
+                    legacy_colour: p.colour.filter(|v| !v.trim().is_empty()),
+                    legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
                 })
                 .collect(),
             colour_style: match w.colour_style {
@@ -564,6 +570,8 @@ pub enum ObjectRef {
     Page(PageId),
     /// Brief 019 (decision FP1).
     Project,
+    /// Brief 050a (FP3): the standard's registry values.
+    Standard,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -780,6 +788,99 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Brief 050a (FP3): one whole style record; `null` is no record.
+    SetStyle {
+        layer: StyleLayer,
+        catalogue: String,
+        id: m::StyleRef,
+        before: Option<StyleRecord>,
+        after: Option<StyleRecord>,
+    },
+    /// Brief 050a (FP3): the standard's header; `null` is no standard (IEC built in).
+    SetStandard {
+        before: Option<StandardHeader>,
+        after: Option<StandardHeader>,
+    },
+}
+
+/// Where a style record lives (brief 050a).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum StyleLayer {
+    Standard,
+    Project,
+}
+
+/// A style record (brief 050a, FP2): its name (left out while empty, as for an override of a
+/// built-in style) and the fields it sets (left out while empty).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StyleRecord {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, String>,
+}
+
+/// A standard's header (brief 050a, FP1). `origin` is reserved for 2.1 and left out while absent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StandardHeader {
+    pub id: StandardId,
+    pub name: String,
+    pub based_on: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<StandardOrigin>,
+}
+
+/// Where a standard came from (reserved for 2.1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StandardOrigin {
+    pub library: LibraryId,
+}
+
+fn layer(l: m::StyleLayer) -> StyleLayer {
+    match l {
+        m::StyleLayer::Standard => StyleLayer::Standard,
+        m::StyleLayer::Project => StyleLayer::Project,
+    }
+}
+
+fn mlayer(l: StyleLayer) -> m::StyleLayer {
+    match l {
+        StyleLayer::Standard => m::StyleLayer::Standard,
+        StyleLayer::Project => m::StyleLayer::Project,
+    }
+}
+
+impl From<&m::StyleRecord> for StyleRecord {
+    fn from(r: &m::StyleRecord) -> Self {
+        StyleRecord { name: r.name.clone(), fields: r.fields.clone() }
+    }
+}
+
+impl From<StyleRecord> for m::StyleRecord {
+    fn from(r: StyleRecord) -> Self {
+        m::StyleRecord { name: r.name, fields: r.fields }
+    }
+}
+
+impl From<&m::StandardHeader> for StandardHeader {
+    fn from(h: &m::StandardHeader) -> Self {
+        StandardHeader {
+            id: h.id,
+            name: h.name.clone(),
+            based_on: h.based_on.clone(),
+            origin: h.origin.as_ref().map(|o| StandardOrigin { library: o.library }),
+        }
+    }
+}
+
+impl From<StandardHeader> for m::StandardHeader {
+    fn from(h: StandardHeader) -> Self {
+        m::StandardHeader { id: h.id, name: h.name, based_on: h.based_on, origin: h.origin.map(|o| m::style::StandardOrigin { library: o.library }) }
+    }
 }
 
 /// The current version of every op in schema version 1.
@@ -971,6 +1072,7 @@ fn object(o: m::ObjectRef) -> ObjectRef {
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
         m::ObjectRef::Page(p) => ObjectRef::Page(p),
         m::ObjectRef::Project => ObjectRef::Project,
+        m::ObjectRef::Standard => ObjectRef::Standard,
     }
 }
 
@@ -1012,6 +1114,16 @@ impl From<&m::Op> for Op {
             m::Op::AddFolder { id, folder, index } => Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::RemoveFolder { id, folder, index } => Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
+            m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
+                layer: layer(*l),
+                catalogue: catalogue.clone(),
+                id: id.clone(),
+                before: before.as_ref().map(Into::into),
+                after: after.as_ref().map(Into::into),
+            },
+            m::Op::SetStandard { before, after } => {
+                Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
+            }
         }
     }
 }
@@ -1205,6 +1317,7 @@ fn mobject(o: ObjectRef) -> m::ObjectRef {
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
         ObjectRef::Page(p) => m::ObjectRef::Page(p),
         ObjectRef::Project => m::ObjectRef::Project,
+        ObjectRef::Standard => m::ObjectRef::Standard,
     }
 }
 
@@ -1242,6 +1355,10 @@ impl TryFrom<Op> for m::Op {
             Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
             Op::RemoveFolder { id, folder, index: i } => m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? },
             Op::ModifyFolder { id, before, after } => m::Op::ModifyFolder { id, before: before.into(), after: after.into() },
+            Op::SetStyle { layer: l, catalogue, id, before, after } => {
+                m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
+            }
+            Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
         })
     }
 }

@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 
 use crate::doc::{Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +97,10 @@ pub(crate) struct Index {
     pub(crate) folder_pages: Multi<FolderId, PageId>,
     /// Folder → folders whose parent it is (brief 019).
     pub(crate) folder_children: Multi<FolderId, FolderId>,
+    /// (stored style ID, choice key) → objects whose own property chooses it (brief 050a, design
+    /// 050 §2.5: the explicit users of a style), for the keys [`crate::style::is_choice_key`]
+    /// names.
+    pub(crate) style_users: Multi<(String, String), ObjectRef>,
 }
 
 impl Index {
@@ -179,6 +184,21 @@ impl Index {
         if let Some(f) = p.properties.get(crate::book::FOLDER_KEY) {
             self.page_folder(id, f, delta);
         }
+        self.style_choices(ObjectRef::Page(id), &p.properties, delta);
+    }
+
+    /// Every style choice among `props` (brief 050a).
+    fn style_choices(&mut self, object: ObjectRef, props: &crate::doc::Properties, delta: Delta) {
+        for (k, v) in props.iter().filter(|(k, _)| crate::style::is_choice_key(k)) {
+            self.style_choice(object, k, v, delta);
+        }
+    }
+
+    /// `object`'s style choice `key` = `value` is added or removed (brief 050a).
+    pub(crate) fn style_choice(&mut self, object: ObjectRef, key: &str, value: &str, delta: Delta) {
+        if crate::style::is_choice_key(key) {
+            bump(&mut self.style_users, (value.trim().to_string(), key.to_string()), object, delta);
+        }
     }
 
     /// A page's `folder` property `value` (its stored text) is added or removed. Text that is no
@@ -213,6 +233,7 @@ impl Index {
         if let Some(k) = crate::connectivity::continuation_key(&c.properties) {
             self.continuation(id, k, delta);
         }
+        self.style_choices(ObjectRef::Component(id), &c.properties, delta);
     }
 
     /// A continuation's name key is added or removed (brief 022).
@@ -244,6 +265,7 @@ impl Index {
         for end in End::BOTH {
             self.conductor_end(id, end, c.end(end), delta);
         }
+        self.style_choices(ObjectRef::Conductor(id), &c.properties, delta);
     }
 
     pub(crate) fn conductor_end(&mut self, id: ConductorId, end: End, terminal: Option<TerminalId>, delta: Delta) {
@@ -259,6 +281,7 @@ impl Index {
         if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
             self.cable_tag(id, t, delta);
         }
+        self.style_choices(ObjectRef::Cable(id), &c.properties, delta);
     }
 
     /// A cable's tag `tag` (its stored value) is added or removed (brief 026).

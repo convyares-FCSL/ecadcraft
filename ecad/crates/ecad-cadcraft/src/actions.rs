@@ -768,6 +768,13 @@ const fn search_only(
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("setdefault", "Settings ▸ Standards (U4c)"),
+    // Brief 050a: the standard header and the style detail on Settings ▸ Standards.
+    ("standard", "Settings ▸ Standards: the standard header"),
+    ("setstyle", "Settings ▸ Standards: a style's detail"),
+    ("deletestyle", "Settings ▸ Standards: a style's Delete…"),
+    ("promote", "Settings ▸ Standards: Promote to standard"),
+    ("styles", "a read; Settings ▸ Standards shows the catalogues"),
+    ("category", "the wire inspector's Category row (brief 050b)"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
     ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),

@@ -78,7 +78,7 @@ fn text_writes_by_the_agent_then_refused_with_writes_off() {
         let before = reads(&mut c, &page);
         assert_eq!(c.log().len(), n, "reads record nothing");
         assert!(before["texts"]["texts"].as_array().is_some_and(|t| !t.is_empty()), "{}", before["texts"]);
-        assert!(before["defaults"]["defaults"].as_array().is_some_and(|t| t.iter().any(|r| r["key"] == "text.tag.height")), "{}", before["defaults"]);
+        assert!(before["defaults"]["defaults"].as_array().is_some_and(|t| t.iter().any(|r| r["key"] == "text.tag.style")), "{}", before["defaults"]);
         // The `text.` prefix is reserved for the text commands.
         for (cmd, params) in [
             ("projectprops", json!({"props": {"text.font": "Y"}})),

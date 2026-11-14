@@ -23,6 +23,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let zone = t.zone_under_cursor(ui.ctx());
     let zoom = t.cad.canvas.xf.map(|xf| xf.scale);
     let mcp = t.agent.status_text();
+    let standard = t.standard_words();
     let mut commands = false;
     let mut standards = false;
     super::in_rect(ui, rect.shrink2(egui::vec2(space::M, 0.0)), "ecad.shell.status", |ui| {
@@ -32,8 +33,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             if let Some(p) = &page {
                 ecad_ui::prim::read_value(ui, p);
             }
-            // Brief 042: the standard opens Settings ▸ Standards (named standards come later).
-            let std = ui.add(ecad_ui::prim::Button::new(STANDARD).kind(ecad_ui::prim::Kind::Quiet).small());
+            // Brief 042: the standard opens Settings ▸ Standards; brief 050a: its name.
+            let std = ui.add(ecad_ui::prim::Button::new(&standard).kind(ecad_ui::prim::Kind::Quiet).small());
             standards |= std.clicked();
             if let Some(z) = &zone {
                 ecad_ui::prim::read_value(ui, &format!("Zone {z}"));
@@ -57,6 +58,16 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
 }
 
 impl Trial {
+    /// `Standard: <name>` (brief 050a), or [`STANDARD`] with IEC (built in) or no project. One
+    /// field read, no copy of the project.
+    pub fn standard_words(&mut self) -> String {
+        let name = self
+            .project
+            .clone()
+            .and_then(|p| p.read(&mut self.cad.session, |p, _| p.ledger.document().standard.as_ref().map(|s| s.header.name.clone())).ok().flatten());
+        name.map_or_else(|| STANDARD.to_string(), |n| format!("Standard: {n}"))
+    }
+
     /// "Saved", "Unsaved changes", "Read-only", or "No project".
     pub fn save_state(&mut self) -> String {
         match self.status() {

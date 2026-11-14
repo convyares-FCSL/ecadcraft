@@ -29,6 +29,8 @@ pub const FINALISE: &str = "Finalise";
 /// Brief 024's fix buttons.
 pub const USE_BOX_LOCATION: &str = "Use the box's location";
 pub const SHOW: &str = "Show";
+/// Brief 050a: a style row's fix opens Settings ▸ Standards.
+pub const GO_TO_STANDARDS: &str = "Go to Standards";
 /// Brief 028's fix buttons.
 pub const OFFER: &str = "Offer drawn";
 pub const RENUMBER_STRIP: &str = "Renumber strip";
@@ -227,6 +229,7 @@ impl ChecksPanel {
             (Fix::SetCores(k), _) => Action::SetCores(k),
             (Fix::NextFreeCore(w), _) => Action::NextFreeCore(w),
             (Fix::ShowCables, _) => Action::ShowCables,
+            (Fix::OpenStandards(w), _) => Action::OpenStandards(w),
             (
                 Fix::LinkOnNonStrip(_)
                 | Fix::MoveToNextFree(_)

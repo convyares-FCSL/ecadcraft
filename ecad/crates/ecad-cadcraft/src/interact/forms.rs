@@ -313,6 +313,10 @@ struct Wire {
     asking_potential: bool,
     /// Brief 032 §2.4: ends that meet other wires join them (the Join keyword turns it off).
     join: bool,
+    /// Brief 050b (design 050 §6.9): asking for the category of new wires, and the one chosen
+    /// for this run of the tool (`None`: auto, from the potential).
+    asking_category: bool,
+    category: Option<String>,
 }
 
 /// The page's quiet ends (cable reference ends): never joined.
@@ -340,6 +344,9 @@ impl Wire {
         }
         if !self.join {
             params["join"] = json!(false);
+        }
+        if let Some(c) = &self.category {
+            params["category"] = json!(c);
         }
         // A refusal (design 032 §2.4) draws nothing; the tool keeps its points, so the user can
         // type J and finish.
@@ -391,6 +398,27 @@ impl Wire {
     }
 
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
+        if self.asking_category {
+            let choice = match &i {
+                Input::Enter | Input::Cancel => {
+                    self.asking_category = false;
+                    return Ok(Step::Continue);
+                }
+                Input::Keyword(k) | Input::Text(k) => k.trim().to_string(),
+                _ => return Ok(Step::Continue),
+            };
+            self.asking_category = false;
+            if choice.eq_ignore_ascii_case("auto") || choice.is_empty() {
+                self.category = None;
+                s.echo("New wires: category auto (from their potential).");
+                return Ok(Step::Continue);
+            }
+            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), "wire", &choice)).map_err(other)?;
+            let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), "wire", &id))).unwrap_or_default();
+            self.category = Some(id.text());
+            s.echo(format!("New wires: category {name}."));
+            return Ok(Step::Continue);
+        }
         if self.asking_potential {
             let choice = match &i {
                 Input::Enter => {
@@ -427,6 +455,10 @@ impl Wire {
         match i {
             Input::Keyword(k) if k == "Potential" && self.points.is_empty() => {
                 self.asking_potential = true;
+                Ok(Step::Continue)
+            }
+            Input::Keyword(k) if k == "Category" && self.points.is_empty() => {
+                self.asking_category = true;
                 Ok(Step::Continue)
             }
             Input::Keyword(k) if k == "Join" => {
@@ -485,6 +517,18 @@ impl Interactive for Wire {
         "WIRE"
     }
     fn prompt(&self, s: &Session) -> Prompt {
+        if self.asking_category {
+            let names = read(s, |p, _| {
+                let doc = p.ledger.document();
+                Ok(crate::styles::catalogue("wire")
+                    .map(|c| crate::styles::rows(doc, c).into_iter().map(|r| r.name).collect::<Vec<_>>())
+                    .unwrap_or_default())
+            })
+            .unwrap_or_default();
+            let mut p = Prompt::new(format!("Category for new wires [auto/{}]", names.join("/")), Accept::TEXT);
+            p.default = Some("auto".into());
+            return p;
+        }
         if self.asking_potential {
             let names = read(s, |p, _| Ok(crate::wire_cmds::potential_choices(p))).unwrap_or_default();
             let mut p = Prompt::new(format!("Potential for new wires [{}]", names.join("/")), Accept::TEXT);
@@ -493,7 +537,7 @@ impl Interactive for Wire {
         }
         match self.points.last() {
             None => {
-                let mut p = Prompt::new("Specify first point of wire", Accept::POINT).kw(&["Potential", "Join"]);
+                let mut p = Prompt::new("Specify first point of wire", Accept::POINT).kw(&["Potential", "Category", "Join"]);
                 p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
                 p
             }

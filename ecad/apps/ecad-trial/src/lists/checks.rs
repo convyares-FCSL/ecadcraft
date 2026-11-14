@@ -64,6 +64,7 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::Finalise => cp::FINALISE,
         Fix::UseBoxLocation(_) => cp::USE_BOX_LOCATION,
         Fix::ShowReports | Fix::ShowCables => cp::SHOW,
+        Fix::OpenStandards(_) => cp::GO_TO_STANDARDS,
         Fix::OfferDrawn(_) => cp::OFFER,
         Fix::RenumberStrip(_) => cp::RENUMBER_STRIP,
         Fix::SetCores(_) => cp::SET_CORES,

@@ -143,8 +143,8 @@ pub fn verify_page_pending(
         *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;
     }
     // Location box labels (brief 024), derived the same way.
-    for (_, value, at) in crate::locations::labels_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::locations::label_entity(&look, &value, at, Handle(0)))).or_default() += 1;
+    for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::locations::styled_label_entity(doc, &look, rep, &value, at, Handle(0)))).or_default() += 1;
     }
     // Conductor labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
@@ -152,8 +152,9 @@ pub fn verify_page_pending(
     }
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.
+    let frame_rgb = crate::frame::line_colour(doc, page);
     for part in crate::generated::parts_of_pending(doc, page, None, pending) {
-        *fan_expected.entry(computed_key(&crate::frame::entity(&part, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
@@ -176,6 +177,18 @@ pub fn verify_page_pending(
             && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
+        }
+        // Brief 050a: a location box outline drawn in its location style reads back as its item;
+        // brief 050b: a wire route drawn in its category's line type and weight likewise.
+        if let Some(Mapped::Item(id)) = map.get(e.handle)
+            && doc
+                .representation_of_item(id)
+                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Conductor(_)))
+            && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
+        {
+            e.common.color = own.common.color;
+            e.common.linetype = own.common.linetype;
+            e.common.lineweight = own.common.lineweight;
         }
         e
     };

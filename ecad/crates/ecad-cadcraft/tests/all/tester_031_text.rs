@@ -457,7 +457,8 @@ fn t2_hostile_stored_values_give_the_default() {
         assert_eq!(v["drawn_with"], clean["drawn_with"], "{key}={value:.40}: a hostile font falls back");
         let rows = texts(&mut f.h, f.page);
         assert_eq!(rows, clean_rows, "{key}={value:.40}: the page draws as with no stored value");
-        let d = f.h.run("defaults", json!({"key": key})).unwrap();
+        // Brief 050a: a kind's height and weight are no registry entries now (old keys ignored).
+        let d = f.h.run("defaults", json!({"key": key})).unwrap_or_default();
         if let Some(e) = d["defaults"].as_array().and_then(|a| a.first()) {
             assert_eq!(e["from"], "builtin", "{key}={value:.40}: {e}");
         }
@@ -497,6 +498,12 @@ fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
     f.h.check();
 }
 
+/// The project's record of the tag text style's `field` (brief 050a).
+fn tag_field(h: &mut H, field: &str) -> Option<String> {
+    let d = h.doc();
+    d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into()))).and_then(|r| r.fields.get(field)).cloned()
+}
+
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
 /// page redraws (tags 3 mm in `Standard`); `u` restores both; the same values again write nothing.
 #[test]
@@ -506,10 +513,11 @@ fn t4_one_transaction_per_change_and_the_page_redraws() {
     let v = one_tx(&mut f.h, "textstyle", json!({"kind": "tag", "height": 3, "weight": "regular"}));
     assert_eq!(v["changed"], json!(true));
     assert_eq!(last_label(&mut f.h), "Text styles");
+    // Brief 050a: one record of the tag's text style, at project level.
     let ops = last_ops(&mut f.h);
-    assert!(ops.iter().all(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("text.tag."))), "{ops:?}");
-    assert_eq!(project_prop(&mut f.h, "text.tag.height").map(|s| s.parse::<f64>().ok()), Some(Some(3.0)));
-    assert_eq!(project_prop(&mut f.h, "text.tag.weight").as_deref(), Some("regular"));
+    assert!(ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if catalogue == "text" && id.text() == "tag")), "{ops:?}");
+    assert_eq!(tag_field(&mut f.h, "height").map(|s| s.parse::<f64>().ok()), Some(Some(3.0)));
+    assert_eq!(tag_field(&mut f.h, "weight").as_deref(), Some("regular"));
     let tag = textstyle_kind(&v, "tag");
     assert_eq!((num(&tag["height"]), tag["weight"].clone(), tag["default"].clone()), (3.0, json!("regular"), json!(false)));
     for (t, _) in drawn_value(&mut f.h, f.page, "-K01") {
@@ -528,10 +536,10 @@ fn t4_one_transaction_per_change_and_the_page_redraws() {
         assert!(t.style.eq_ignore_ascii_case("ECAD-BOLD"));
     }
     f.h.run("redo", Value::Null).unwrap();
-    assert_eq!(project_prop(&mut f.h, "text.tag.weight").as_deref(), Some("regular"));
-    // `null` removes a key (back to default).
+    assert_eq!(tag_field(&mut f.h, "weight").as_deref(), Some("regular"));
+    // `null` removes a field (back to default).
     one_tx(&mut f.h, "textstyle", json!({"kind": "tag", "height": null}));
-    assert_eq!(project_prop(&mut f.h, "text.tag.height"), None);
+    assert_eq!(tag_field(&mut f.h, "height"), None);
     f.h.check();
 }
 
@@ -548,8 +556,10 @@ fn t4_wire_label_height_is_written_to_the_wiring_settings() {
     assert_eq!(project_prop(&mut h, "text.wire_label.height"), None);
     let v = h.run("textstyle", json!({})).unwrap();
     assert_eq!(num(&textstyle_kind(&v, "wire_label")["height"]), 2.0);
-    let d = h.run("defaults", json!({"key": "text.wire_label.height"})).unwrap();
-    assert_eq!(d["defaults"][0]["from"], "project", "{d}");
+    // Brief 050a: the wire label style's height, read from the settings at project level.
+    let st = h.run("styles", json!({"catalogue": "text"})).unwrap();
+    let wl = st["styles"].as_array().unwrap().iter().find(|x| x["id"] == "wire_label").unwrap().clone();
+    assert_eq!(wl["fields"]["height"]["from"], "project", "{wl}");
     h.check();
 }
 
@@ -1365,9 +1375,9 @@ fn t15_hostile_text_keys_draw_the_automatic_place() {
 /// Lane T's entries of design §3.5 (keys).
 fn lane_t_keys() -> Vec<String> {
     let mut keys: Vec<String> = vec!["text.font".into()];
+    // Brief 050a: a kind's height and weight are its text style's; the kind's entry is its choice.
     for (kind, ..) in DEFAULTS {
-        keys.push(format!("text.{kind}.height"));
-        keys.push(format!("text.{kind}.weight"));
+        keys.push(format!("text.{kind}.style"));
     }
     for kind in ["tag", "point_label", "description", "part_number", "continuation_name"] {
         keys.push(format!("text.{kind}.show"));
@@ -1414,7 +1424,7 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
         assert!(r["levels"].to_string().to_lowercase().contains("project"), "every entry allows Project: {r}");
         assert_eq!(r["value"], r["builtin"], "a new project resolves to the built-in: {r}");
         // The wire label height's project level is the wiring settings, which a new project has.
-        if key.starts_with("text.") && key != "text.wire_label.height" {
+        if key.starts_with("text.") {
             assert_eq!(r["from"], "builtin", "{r}");
         }
     }
@@ -1440,8 +1450,8 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
     assert_eq!(one(&mut h, "text.font")["builtin"], "Barlow Semi Condensed");
     assert_eq!(one(&mut h, "text.tag.show.strip")["builtin"], "first");
     // A project value.
-    h.run("textstyle", json!({"kind": "tag", "height": 3})).unwrap();
-    let r = one(&mut h, "text.tag.height");
+    h.run("setdefault", json!({"key": "text.run.gap", "value": 3})).unwrap();
+    let r = one(&mut h, "text.run.gap");
     let value = r["value"].as_f64().or_else(|| r["value"].as_str().and_then(|s| s.parse().ok()));
     assert_eq!((value, r["from"].clone()), (Some(3.0), json!("project")), "{r}");
     // Page and object scope.
