@@ -203,7 +203,8 @@ fn a_kind_with_fewer_actions_leaves_its_slots_empty() {
     let d: Vec<&str> = actions::wheel(ObjectKind::Device).iter().map(|a| a.map_or("-", |a| a.id)).collect();
     assert_eq!(
         d,
-        ["device.edittag", "device.properties", "device.goto", "device.row", "device.delete", "edit.duplicate", "edit.rotate", "edit.mirror"]
+        // Brief 048 (Q1): Edit symbol took TopLeft; Mirror keeps X and the selection wheel.
+        ["device.edittag", "device.properties", "device.goto", "device.row", "device.delete", "edit.duplicate", "edit.rotate", "symbol.edit"]
     );
     for k in ObjectKind::ALL {
         assert!(actions::wheel(k).iter().flatten().count() <= 8);

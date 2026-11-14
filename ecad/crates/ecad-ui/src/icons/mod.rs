@@ -72,6 +72,11 @@ pub fn shapes(rect: Rect, icon: Icon, ink: Color32) -> Vec<Shape> {
         Icon::Eye => tools::eye(&mut pen),
         // 044
         Icon::Connector => tools::connector(&mut pen),
+        // 048
+        Icon::NewSymbol => tools::new_symbol(&mut pen),
+        Icon::ConnectionPoint => tools::connection_point(&mut pen),
+        Icon::TextSlot => tools::text_slot(&mut pen),
+        Icon::Origin => tools::origin(&mut pen),
     }
     pen.out
 }

@@ -45,7 +45,7 @@ pub fn handle(t: &mut Trial, ctx: &egui::Context, slots: &Slots) {
     }
     if take(Modifiers::COMMAND, Key::K) {
         // Search pages, tags, symbols and actions (brief 041).
-        t.search.open = !t.search.open || t.shell.state.workspace == Workspace::Library;
+        t.search.open = !t.search.open;
         t.search.focus = t.search.open;
     }
     if take(Modifiers::ALT, Key::ArrowLeft) {

@@ -43,6 +43,9 @@ pub struct Target {
     /// `at` is where the person pointed (the wheel's right-click), so a form may take it as its
     /// click; otherwise (a key or Ctrl+K on the selection) the object is given by its handle.
     pub pointed: bool,
+    /// Brief 048 (design 048 §4.2): a device's representation clicked is a drawing (from Convert
+    /// to Component), so its wheel offers Make symbol where a symbol's offers Edit symbol.
+    pub drawn: bool,
 }
 
 impl Target {
@@ -63,6 +66,7 @@ impl Target {
             free_text: false,
             others: 0,
             pointed: false,
+            drawn: false,
         }
     }
 }
@@ -212,6 +216,7 @@ fn device(p: &Project, page: PageId, mut t: Target, c: ComponentId, rep: Option<
         .map(|r| r.items.iter().filter_map(|i| map.and_then(|m| m.item(*i))).collect())
         .unwrap_or_default();
     t.others = doc.representations_of(Subject::Component(c)).filter(|(_, r)| r.page != page).count();
+    t.drawn = rep.and_then(|r| doc.representations.get(&r)).is_some_and(|r| r.form == ecad_model::Form::Drawn);
     t
 }
 

@@ -280,6 +280,10 @@ Tool icons echo the schematic.
 | `icon.cloud` | Revision cloud | Scallops round a box (041: an action) |
 | `icon.eye` | Show or hide | An eye (041: an action) |
 | `icon.connector` | Connector | A socket's cup over a plug's pin, each on its lead (044: Place ▸ Connector) |
+| `icon.new_symbol` | New symbol | A symbol box on two leads, a plus at its top right (048: Library ▸ New symbol) |
+| `icon.connection_point` | Connection point | A hollow ring at a lead's end (048: the builder's C tool) |
+| `icon.text_slot` | Text slot | A dashed box with an anchor dot (048: the builder's S tool) |
+| `icon.origin` | Origin | A cross with a ring at its centre (048: the builder's O tool) |
 
 # Canvas tokens in use until U4a (`ecad.*`)
 

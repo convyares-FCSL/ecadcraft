@@ -28,6 +28,8 @@ use crate::Trial;
 pub const COLLAPSE: &str = "Collapse the details panel";
 pub const EXPAND: &str = "Details";
 pub const TITLE: &str = "PROPERTIES";
+/// The right panel's title in the Library (brief 048).
+pub const LIBRARY_TITLE: &str = "DETAILS";
 
 /// Draw the right panel (or its rail, or the Text panel over it).
 pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
@@ -49,9 +51,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         return;
     }
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
+    // Brief 048: the Library's right panel holds a symbol's details (design 048 §3.1, §8.1).
+    let library = t.shell.state.workspace == super::Workspace::Library;
     let collapse = super::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
         ui.horizontal_centered(|ui| {
-            ecad_ui::prim::read_value(ui, TITLE);
+            ecad_ui::prim::read_value(ui, if library { LIBRARY_TITLE } else { TITLE });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, COLLAPSE)).clicked()
             })
@@ -63,6 +67,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         t.shell.state.right_collapsed = true;
     }
     let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::M, rect.bottom()));
+    if library {
+        super::in_rect(ui, body, crate::library::details::DETAILS, |ui| {
+            egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| t.library_right(ui));
+        });
+        return;
+    }
     sync(t);
     let writable = t.project_open() && !t.header().read_only;
     let section = &mut t.shell.right_section;
@@ -239,6 +249,10 @@ pub enum InspectorAction {
     Placements(Vec<RepresentationId>),
     /// Brief 044: run this command line (a connector row's edit).
     RunLine(String),
+    /// Brief 048: bring this copy to its symbol's newest version (the review shows when it clashes).
+    UpdateSymbol(RepresentationId),
+    /// Brief 048c: the drawer row of this copy against the newest version, no save.
+    Compare(RepresentationId),
 }
 
 /// The inspector's rows and what they were built from.
@@ -598,8 +612,14 @@ impl Inspector {
                 let r = ui.small_button("Update");
                 r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SYMBOL_UPDATE}.button")));
                 if r.clicked() {
-                    out.push(InspectorAction::RunLine(format!("symbolupdate {}", serde_json::json!({"copies": [u.rep.hex()]}))));
+                    out.push(InspectorAction::UpdateSymbol(u.rep));
                 }
+            }
+            // Brief 048c (design 048 §8.4): the drawer row of this copy alone, no save.
+            let c = ui.small_button("Compare");
+            c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SYMBOL_UPDATE}.compare")));
+            if c.clicked() {
+                out.push(InspectorAction::Compare(u.rep));
             }
         });
     }
@@ -663,6 +683,12 @@ impl Trial {
                     self.cad.session.echo(e);
                 }
             }
+            InspectorAction::UpdateSymbol(rep) => {
+                if let Err(e) = self.update_symbol(rep) {
+                    self.cad.session.echo(e);
+                }
+            }
+            InspectorAction::Compare(rep) => self.compare_symbol(rep),
             InspectorAction::Placements(reps) => {
                 if let Err(e) = self.goto_symbols(&reps) {
                     self.cad.session.echo(e);

@@ -77,7 +77,7 @@ whether it clashes, design 048 §6.2)",
         CommandSpec::new("makesymbol", "Make Symbol", run_makesymbol)
             .params(
                 "{handles?: [hex] (default: the selection) | component: id, name, key, points?: [{key, label?, at: [x,y] on the page}], \
-slots?: [… at on the page], defaults?, replace?: bool (default true)} (design 048 §9.5: a symbol from plain geometry, or a drawn \
+slots?: [… at on the page], defaults?, replace?: bool (default true), graphics?: the drawing as edited in the builder, in the symbol's frame (points and slots then in that frame too), at?: [x,y] the page point of its origin} (design 048 §9.5: a symbol from plain geometry, or a drawn \
 component promoted, keeping its IDs)",
             )
             .noundo(),
@@ -922,7 +922,9 @@ fn handles(s: &Session, params: &Value) -> Result<Vec<Handle>, String> {
 }
 
 /// The grid point nearest the middle of `prims`' box (design 048 §4.1).
-fn grid_origin(prims: &[Primitive]) -> Pt {
+/// The point of the page a made symbol's (0, 0) goes to: the bounding-box centre of `prims` on
+/// the nearest point-grid point (design 048 §4.1 step 2).
+pub fn grid_origin(prims: &[Primitive]) -> Pt {
     let mut pts: Vec<Pt> = Vec::new();
     for p in prims {
         match p {
@@ -947,7 +949,8 @@ fn grid_origin(prims: &[Primitive]) -> Pt {
     Pt::new(snap((lo.x + hi.x) / 2.0), snap((lo.y + hi.y) / 2.0))
 }
 
-fn shifted(p: &Primitive, o: Pt) -> Primitive {
+/// `p` moved by `-o` (into the frame whose origin is `o`).
+pub fn shifted(p: &Primitive, o: Pt) -> Primitive {
     let m = |q: Pt| Pt::new(q.x - o.x, q.y - o.y);
     match p.clone() {
         Primitive::Line { a, b } => Primitive::Line { a: m(a), b: m(b) },
@@ -988,13 +991,21 @@ fn run_makesymbol(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                     _ => return Err("Make symbol takes lines, arcs and text.".into()),
                 }
             }
-            let origin = grid_origin(&prims);
-            content.graphics = prims.iter().map(|x| shifted(x, origin)).collect();
-            for pt in &mut content.points {
-                pt.at = Pt::new(pt.at.x - origin.x, pt.at.y - origin.y);
-            }
-            for sl in &mut content.slots {
-                sl.at = Pt::new(sl.at.x - origin.x, sl.at.y - origin.y);
+            // The builder (048c) sends the drawing as edited, in the symbol's frame, with `at` the
+            // page point its origin sits on; otherwise the page geometry is taken as it is and
+            // points and slots are page points.
+            let origin = match params.get("at").filter(|v| !v.is_null()) {
+                Some(v) => pt_of(v).filter(|p| p.is_finite()).ok_or("`at` is a page point [x, y].")?,
+                None => grid_origin(&prims),
+            };
+            if content.graphics.is_empty() {
+                content.graphics = prims.iter().map(|x| shifted(x, origin)).collect();
+                for pt in &mut content.points {
+                    pt.at = Pt::new(pt.at.x - origin.x, pt.at.y - origin.y);
+                }
+                for sl in &mut content.slots {
+                    sl.at = Pt::new(sl.at.x - origin.x, sl.at.y - origin.y);
+                }
             }
             refuse_problems(&content, &Rules { doc, lineage: None, grid: true })?;
             let (id, lineage): (DefinitionId, DefinitionId) = (p.ids.fresh(), p.ids.fresh());
