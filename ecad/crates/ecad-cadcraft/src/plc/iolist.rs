@@ -363,13 +363,9 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
                 c(r.place.clone().unwrap_or_default()),
                 c(targets_words(&r.targets)),
                 c(r.wire.clone().unwrap_or_default()),
-                // Brief 056 (design 056 §7.3): the tag, the safe state and the sync state's word.
+                // Brief 056 (design 056 §7.3): the tag and the safe state.
                 c(r.tag.clone().unwrap_or_default()),
                 c(r.safe_shown().map(|(s, _)| s.to_string()).unwrap_or_default()),
-                c(match plc.sync.state(r.card, r.index) {
-                    super::sync::State::Nothing | super::sync::State::Free => String::new(),
-                    st => st.word().to_string(),
-                }),
             ]);
         }
     }
@@ -392,7 +388,6 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
             "Wire",
             "Tag",
             "Safe",
-            "PLC",
         ],
         rows,
     })

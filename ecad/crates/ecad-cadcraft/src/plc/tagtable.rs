@@ -2,7 +2,7 @@
 //! CSV tag table.
 //!
 //! # Semantics
-//! - Every format reads into and writes from [`TagRow`]; sync and Compare see only rows. A format
+//! - Every format reads into and writes from [`TagRow`]; import and export see only rows. A format
 //!   is one [`TagFormat`] and one line in [`FORMATS`] (0.5.0 adds the vendor formats that way).
 //! - Readers are bounded the same way by [`Caps`]: the file's size, the I/O tags kept, the name
 //!   and comment lengths. Only tags with an I/O address are kept ([`normalise`]); memory,
@@ -12,7 +12,9 @@
 //!   mnemonics `E`/`A` (and `PE`/`PA`) read as `I`/`Q`, the IEC bit letter `X` dropped, upper case:
 //!   `%IX0.0`, `E0.0` and `I0.0` are all `I0.0`; `%IW64` is `IW64`.
 //! - Writing puts addresses in `%` form (`%Q2.2`). Fields are quoted per RFC 4180 when they hold a
-//!   separator, a quote or a line break.
+//!   separator, a quote or a line break. A field a spreadsheet would run as a formula (it starts
+//!   with `=`, `+`, `-`, `@`, `＠`, a tab or a carriage return) is written with a leading `'`
+//!   ([`neutral`]); reading takes that `'` off again, so an export reads back unchanged.
 //!
 //! Pure functions; no I/O. Never panics on any input.
 
@@ -204,8 +206,9 @@ impl TagFormat for GenericCsv {
         if t.contains('\0') {
             return false;
         }
+        // A name or an address column: the read then says which of them is missing (tester 056, F2).
         let (h, _) = header(t);
-        h.iter().any(|f| f == "name") && h.iter().any(|f| f == "address")
+        h.iter().any(|f| f == "name" || f == "address")
     }
 
     fn read(&self, bytes: &[u8], caps: &Caps) -> Result<Read, String> {
@@ -243,7 +246,7 @@ impl TagFormat for GenericCsv {
                 out.bad += 1;
                 continue;
             }
-            let get = |k: Option<usize>| k.and_then(|k| fields.get(k)).map(|s| s.trim()).unwrap_or_default();
+            let get = |k: Option<usize>| k.and_then(|k| fields.get(k)).map(|s| unneutral(s.trim())).unwrap_or_default();
             let raw = get(Some(addr_at));
             let address = match normalise(raw) {
                 Address::Io(a) => a,
@@ -296,11 +299,27 @@ impl TagFormat for GenericCsv {
                 let e = r.extra.clone().unwrap_or_default();
                 f.extend([e.card, e.channel, e.safe, e.drives, e.page]);
             }
-            let line: Vec<String> = f.iter().map(|x| quote(x)).collect();
+            let line: Vec<String> = f.iter().map(|x| quote(&neutral(x))).collect();
             s.push_str(&line.join(","));
             s.push_str("\r\n");
         }
         Ok(s.into_bytes())
+    }
+}
+
+/// The characters a spreadsheet takes as the start of a formula (the review of #112, 3).
+const FORMULA_START: [char; 6] = ['=', '+', '-', '@', '\u{ff20}', '\t'];
+
+/// A field a spreadsheet would run as a formula, with a leading `'` (shown as text, not run).
+pub fn neutral(s: &str) -> String {
+    if s.starts_with(FORMULA_START) || s.starts_with('\r') { format!("'{s}") } else { s.to_string() }
+}
+
+/// [`neutral`] undone on read.
+fn unneutral(s: &str) -> &str {
+    match s.strip_prefix('\'') {
+        Some(rest) if rest.starts_with(FORMULA_START) || rest.starts_with('\r') => rest,
+        _ => s,
     }
 }
 
@@ -525,6 +544,30 @@ mod tests {
         let names: Vec<&str> = back.rows.iter().map(|r| r.name.as_str()).collect();
         assert_eq!(names, ["Valve, \"inlet\"", "Level"]);
         assert_eq!(back.rows.first().map(|r| r.comment.as_str()), Some("Linebreak"));
+    }
+
+    #[test]
+    fn formulas_are_written_as_text_and_read_back() {
+        let rows =
+            vec![TagRow { name: "Pump".into(), address: "Q0.0".into(), data_type: "Bool".into(), comment: "=HYPERLINK(\"x\")".into(), extra: None }];
+        let bytes = GenericCsv.write(&rows).unwrap_or_default();
+        let text = String::from_utf8(bytes.clone()).unwrap_or_default();
+        assert!(text.contains("\"'=HYPERLINK(\"\"x\"\")\""), "{text}");
+        let back = GenericCsv.read(&bytes, &Caps::default()).unwrap_or_default();
+        assert_eq!(back.rows.first().map(|r| r.comment.as_str()), Some("=HYPERLINK(\"x\")"));
+        for f in ["+1", "-1", "@SUM(A1)", "\u{ff20}x"] {
+            assert!(neutral(f).starts_with('\''), "{f}");
+        }
+        assert_eq!(neutral("Pump -1"), "Pump -1");
+    }
+
+    #[test]
+    fn a_missing_column_is_named() {
+        let e = GenericCsv.read(b"name,type,comment\nA,Bool,x\n", &Caps::default()).unwrap_err();
+        assert_eq!(e, "The file has no \"address\" column.");
+        assert!(GenericCsv.sniff(b"name,type,comment\n"));
+        let e = GenericCsv.read(b"address,type\n%Q0.0,Bool\n", &Caps::default()).unwrap_err();
+        assert_eq!(e, "The file has no \"name\" column.");
     }
 
     #[test]

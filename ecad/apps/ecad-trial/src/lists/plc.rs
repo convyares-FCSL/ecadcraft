@@ -24,7 +24,6 @@ use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::plc::iolist::{self, Row};
 use ecad_cadcraft::plc::overview::{self, Chip, Square, Tile, TileKind};
 use ecad_cadcraft::plc::signals;
-use ecad_cadcraft::plc::sync::State;
 use ecad_model::{ComponentId, Document, PageId};
 use ecad_ui::table::strip::{self, Link, Mark, StripEvent, Tone};
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -52,13 +51,10 @@ pub const TAG: ColumnId = ColumnId(12);
 pub const SAFE: ColumnId = ColumnId(13);
 pub const DRIVES: ColumnId = ColumnId(14);
 pub const PAGE: ColumnId = ColumnId(15);
-pub const SYNC: ColumnId = ColumnId(16);
 pub const TEST: ColumnId = ColumnId(17);
 
-/// Element names (design 056 §3.1, §4.1, §6.4).
+/// Element names (design 056 §3.1, §4.1).
 pub const CARD_HEAD: &str = "ecad.plc.cardhead";
-pub const SYNC_CHIP: &str = "ecad.plc.syncchip";
-pub const COMPARE: &str = "ecad.plc.compare";
 pub const EXPORT_TAGS: &str = "ecad.plc.exporttags";
 pub const GO_PAGE: &str = "ecad.plc.gopage";
 pub const MORE_FREE: &str = "ecad.plc.morefree";
@@ -68,8 +64,6 @@ pub const MAKE_TAGS: &str = "ecad.plc.maketags";
 const TABLE_ROW_PX: f32 = 30.0;
 /// The free channel's Tag placeholder.
 pub const FREE: &str = "free";
-/// Compare greyed with no snapshot.
-pub const IMPORT_FIRST: &str = "Import a tag table first.";
 /// The Drives header's words for inputs (design 056 §4.5) and the Test column's (§4.6).
 pub const DRIVES_TIP: &str = "For outputs, what the channel switches. For inputs, what feeds it.";
 pub const TESTS_COME: &str = "Tests come with the Tests tab.";
@@ -85,9 +79,10 @@ pub const WRITES_OFF: &str = "Writes are off.";
 pub const THIS_CARD: &str = "This card";
 pub const ALL_CARDS: &str = "All cards";
 
-/// The columns (design 056 §4.2): one card's signal columns `Ch, Address, Tag, Description,
-/// Type, Safe, Drives, Page, PLC, Test`; every card (`all`) keeps 051's columns plus Tag, Safe and
-/// PLC. Address, Tag, Description, Safe and Pins are set here.
+/// The columns (design 056 §4.2, without the PLC column since the owner's change of 2026-11-14):
+/// one card's signal columns `Ch, Address, Tag, Description, Type, Safe, Drives, Page, Test`;
+/// every card (`all`) keeps 051's columns plus Tag and Safe. Address, Tag, Description, Safe and
+/// Pins are set here.
 pub fn columns(all: bool) -> Vec<Column> {
     if all {
         return vec![
@@ -104,8 +99,7 @@ pub fn columns(all: bool) -> Vec<Column> {
             Column::set(SAFE.0, "Safe", Width::Initial(60.0)),
             Column::read(TARGETS.0, "Wired to", Width::Initial(120.0)),
             Column::read(WIRE.0, "Wire", Width::Initial(64.0)),
-            Column::read(PLACE.0, "Place", Width::Initial(72.0)),
-            Column::read(SYNC.0, "PLC", Width::Remainder),
+            Column::read(PLACE.0, "Place", Width::Remainder),
         ];
     }
     vec![
@@ -117,22 +111,8 @@ pub fn columns(all: bool) -> Vec<Column> {
         Column::set(SAFE.0, "Safe", Width::Initial(60.0)),
         Column::read(DRIVES.0, "Drives", Width::Initial(120.0)),
         Column::read(PAGE.0, "Page", Width::Initial(56.0)),
-        Column::read(SYNC.0, "PLC", Width::Initial(130.0)),
         Column::read(TEST.0, "Test", Width::Remainder),
     ]
-}
-
-/// A row's PLC cell (design 056 §6.3).
-fn sync_cell(st: &State) -> Cell {
-    use ecad_ui::prim::Tone as T;
-    match st {
-        State::Nothing => Cell::read("\u{2014}"),
-        State::Free => Cell::Empty,
-        State::NoAddress => Cell::read(st.words()),
-        State::InSync => Cell::Badge(st.words(), T::Ok),
-        State::NotInPlc => Cell::Badge(st.words(), T::Error),
-        _ => Cell::Badge(st.words(), T::Warning),
-    }
 }
 
 /// The I/O rows as a table source.
@@ -146,8 +126,6 @@ pub struct IoSource {
     only: Option<ComponentId>,
     /// Inputs are offered (the project can be written).
     pub writable: bool,
-    /// Brief 056: each row's sync state, read with its rows.
-    states: HashMap<IoKey, State>,
     /// Free channels folded away after the first of a run (`This card` only), and whether the
     /// user unfolded them.
     pub folded: usize,
@@ -164,7 +142,6 @@ impl Default for IoSource {
             by_card: BTreeMap::new(),
             only: None,
             writable: false,
-            states: HashMap::new(),
             folded: 0,
             unfold: false,
             shown: std::collections::HashSet::new(),
@@ -174,15 +151,13 @@ impl Default for IoSource {
 
 impl IoSource {
     /// Replace card `c`'s rows; the keys that changed.
-    fn set_card(&mut self, c: ComponentId, rows: Vec<Row>, plc: &ecad_cadcraft::plc::Plc) -> Vec<IoKey> {
+    fn set_card(&mut self, c: ComponentId, rows: Vec<Row>) -> Vec<IoKey> {
         let mut touched: Vec<IoKey> = self.by_card.remove(&c).unwrap_or_default();
         for k in &touched {
             self.rows.remove(k);
-            self.states.remove(k);
         }
         let keys: Vec<IoKey> = rows.iter().map(|r| (c, r.index)).collect();
         for r in rows {
-            self.states.insert((c, r.index), plc.sync.state(c, r.index));
             self.rows.insert((c, r.index), r);
         }
         touched.extend(keys.iter().copied());
@@ -220,15 +195,9 @@ impl IoSource {
         self.shown = self.keys.iter().copied().collect();
     }
 
-    /// A free channel nothing in the PLC names (design 056 §4.2): no tag, no description, not
-    /// wired.
+    /// A free channel (design 056 §4.2): no tag, no description, not wired.
     pub fn is_free(&self, k: IoKey) -> bool {
-        self.rows.get(&k).is_some_and(Row::is_free) && matches!(self.states.get(&k), None | Some(State::Free | State::Nothing))
-    }
-
-    /// Row `k`'s sync state.
-    pub fn state(&self, k: IoKey) -> State {
-        self.states.get(&k).cloned().unwrap_or_default()
+        self.rows.get(&k).is_some_and(Row::is_free)
     }
 
     /// Show one card's rows (`Some`) or every card's.
@@ -285,7 +254,6 @@ impl TableSource for IoSource {
                 Cell::Read { text: signals::drives_words(&r.targets), go }
             }
             PAGE => Cell::Read { text: r.place.clone().unwrap_or_else(|| "none".into()), go: r.page.is_some() },
-            SYNC => sync_cell(&self.state(key)),
             TEST => Cell::read(r.test.words()),
             CARD => Cell::read(r.card_tag.clone()),
             RACK => Cell::read(r.rack.clone().unwrap_or_default()),
@@ -555,12 +523,10 @@ pub struct IoView {
     pub rack_line: String,
     /// The selected card's header (design 056 §4.1).
     pub head: Option<CardHead>,
-    /// Compare, or the import preview, in place of the table (design 056 §6.5).
-    pub compare: Option<super::plc_compare::CompareView>,
-    /// The path row of Import tags or Export tags.
+    /// The path row of Import an I/O list or Export tags.
     pub path_row: Option<PathRow>,
-    /// A file to read for the import preview at the next sync.
-    import_path: Option<String>,
+    /// An import is running: its refusal shows in the path row; done, the row closes.
+    importing: bool,
     /// The folder last used, while the app runs.
     pub folder: String,
     /// The project's name, for the file name offered.
@@ -569,6 +535,9 @@ pub struct IoView {
     pub book_page: Option<(PageId, String)>,
     /// Lay the rows out again (free channels unfolded).
     reorder: bool,
+    /// Brief 056: the card editor's fields, and its folded sections (the right panel).
+    pub card_editor: super::card_editor::State,
+    pub card_folded: BTreeSet<String>,
 }
 
 /// The card header's words and targets (design 056 §4.1).
@@ -580,11 +549,6 @@ pub struct CardHead {
     pub title: String,
     /// `16 channels, 9 in use, drawn in detail on page 5`.
     pub words: String,
-    /// The chip's words, its tone and its tooltip.
-    pub chip: String,
-    pub chip_tone: ecad_ui::prim::Tone,
-    pub chip_tip: String,
-    pub imported: bool,
     /// `→ Page 5`.
     pub page: Option<(PageId, String)>,
 }
@@ -636,13 +600,14 @@ impl Default for IoView {
             rack_title: String::new(),
             rack_line: String::new(),
             head: None,
-            compare: None,
             path_row: None,
-            import_path: None,
+            importing: false,
             folder: String::new(),
             project_name: String::new(),
             book_page: None,
             reorder: false,
+            card_editor: Default::default(),
+            card_folded: BTreeSet::new(),
         }
     }
 }
@@ -735,7 +700,7 @@ impl IoView {
             let only = self.source.only();
             self.source = IoSource { writable, ..IoSource::default() };
             for card in iolist::cards_in_order(&o.plc) {
-                self.source.set_card(card.id, iolist::rows_of(doc, &o.plc, card), &o.plc);
+                self.source.set_card(card.id, iolist::rows_of(doc, &o.plc, card));
             }
             self.build_strip(doc, o);
             self.source.set_scope(only);
@@ -746,13 +711,13 @@ impl IoView {
             self.table.reset();
             self.table.update(&self.source, Changed::All);
             self.apply_scope(&cards);
-            self.after_sync(doc, o, writable);
+            self.after_sync(doc, o);
             return;
         }
         if o.plc.updates == self.revision {
             self.renumbered(doc);
             self.apply_scope(&cards);
-            self.after_sync(doc, o, writable);
+            self.after_sync(doc, o);
             return;
         }
         // An update missed (the view was not shown): read everything again.
@@ -764,13 +729,13 @@ impl IoView {
         let mut touched = Vec::new();
         for c in &o.plc.rows_changed {
             let rows = o.plc.cards.get(c).filter(|x| x.ty.has_channels()).map(|card| iolist::rows_of(doc, &o.plc, card)).unwrap_or_default();
-            touched.extend(self.source.set_card(*c, rows, &o.plc));
+            touched.extend(self.source.set_card(*c, rows));
             self.patched += 1;
         }
         // A card gone or no longer listed.
         let gone: Vec<ComponentId> = self.source.by_card.keys().copied().filter(|c| !cards.contains(c)).collect();
         for c in gone {
-            touched.extend(self.source.set_card(c, Vec::new(), &o.plc));
+            touched.extend(self.source.set_card(c, Vec::new()));
         }
         // The strip: the tiles of the changed cards; a changed rack or chip set makes it again.
         let changed: BTreeSet<ComponentId> = o.plc.last_changed.iter().chain(o.plc.rows_changed.iter()).copied().collect();
@@ -805,12 +770,12 @@ impl IoView {
             self.table.update(&self.source, Changed::Keys(touched));
         }
         self.apply_scope(&cards);
-        self.after_sync(doc, o, writable);
+        self.after_sync(doc, o);
     }
 
-    /// Brief 056: the rack heading, the card header, Compare's rows, a waiting import preview and
-    /// the book's overview page, from the kept model (words only; no rows made).
-    fn after_sync(&mut self, doc: &Document, o: &Outputs, writable: bool) {
+    /// Brief 056: the rack heading, the card header and the book's overview page, from the kept
+    /// model (words only; no rows made).
+    fn after_sync(&mut self, doc: &Document, o: &Outputs) {
         let plc = &o.plc;
         self.project_name = doc
             .properties
@@ -837,27 +802,14 @@ impl IoView {
             None => (String::new(), String::new()),
         };
         // The card header (design 056 §4.1).
-        let sync = &plc.sync;
-        let imported = sync.has_snapshot();
-        let tip = sync.tip_words();
-        let tone = |n: usize| match (imported, n) {
-            (false, _) => ecad_ui::prim::Tone::Neutral,
-            (true, 0) => ecad_ui::prim::Tone::Ok,
-            _ => ecad_ui::prim::Tone::Warning,
-        };
         self.head = if self.all_cards {
             let cards = iolist::cards_in_order(plc);
             let (n, used) = overview::totals(&cards);
-            let total = sync.total();
             Some(CardHead {
                 card: None,
                 rack: None,
                 title: "All cards".into(),
                 words: format!("{} {}, {}", cards.len(), if cards.len() == 1 { "card" } else { "cards" }, overview::totals_words((n, used))),
-                chip: ecad_cadcraft::plc::sync::chip_words(imported, total),
-                chip_tone: tone(total),
-                chip_tip: tip,
-                imported,
                 page: None,
             })
         } else {
@@ -871,7 +823,6 @@ impl IoView {
                     [one] => format!("drawn in detail on page {one}"),
                     many => format!("drawn in detail on pages {}", many.join(", ")),
                 };
-                let n = sync.card_count(card.id);
                 let rack = match card.rack {
                     ecad_cadcraft::plc::rack::RackRef::Rack(r) => Some(r),
                     _ => None,
@@ -881,10 +832,6 @@ impl IoView {
                     rack,
                     title: format!("{} \u{b7} {}{slot}", card.tag, overview::type_name(card.ty).to_lowercase()),
                     words: format!("{} channels, {used} in use, {drawn}", card.channels),
-                    chip: ecad_cadcraft::plc::sync::chip_words(imported, n),
-                    chip_tone: tone(n),
-                    chip_tip: tip,
-                    imported,
                     page: t.and_then(|t| t.pages.first().copied()).zip(numbers.first().cloned()),
                 }
             })
@@ -895,26 +842,6 @@ impl IoView {
             .iter()
             .find(|p| ecad_cadcraft::generated::kind_of(doc, **p) == Some(ecad_cadcraft::generated::GenKind::PlcRack))
             .map(|p| (*p, ecad_cadcraft::references::page_number(doc, *p)));
-        // An import waiting for its preview (design 056 §6.7).
-        if let Some(path) = self.import_path.take() {
-            match ecad_cadcraft::plc::sync::read_file_tags(&path) {
-                Ok((read, snap)) => {
-                    let pv = ecad_cadcraft::plc::sync::Preview::of(doc, plc, &read, &snap);
-                    let rows = ecad_cadcraft::plc::sync::compare_rows(doc, plc, &pv.sync, None, false);
-                    let source = snap.source.clone().unwrap_or_default();
-                    self.compare = Some(super::plc_compare::CompareView::preview(path, pv.summary, rows, &source));
-                    self.path_row = None;
-                }
-                Err(e) => {
-                    if let Some(r) = self.path_row.as_mut() {
-                        r.error = Some(e);
-                    }
-                }
-            }
-        }
-        if let Some(c) = self.compare.as_mut() {
-            c.sync(doc, plc, writable);
-        }
     }
 
     /// The file name offered for a tag table (design 056 §6.6): `<project> PLC tags.csv` in the
@@ -966,6 +893,18 @@ impl IoView {
 
     /// The result of the last edit's command: a refusal shows under its cell.
     pub fn ran(&mut self, refusal: Option<String>) {
+        // Brief 056: an import's refusal stays in its path row; done, the row closes.
+        if std::mem::take(&mut self.importing) {
+            match refusal {
+                Some(m) => {
+                    if let Some(r) = self.path_row.as_mut() {
+                        r.error = Some(m);
+                    }
+                }
+                None => self.path_row = None,
+            }
+            return;
+        }
         if let (Some((k, col)), Some(msg)) = (self.pending.take(), refusal) {
             self.table.refuse(k, col, msg);
         }
@@ -1053,15 +992,6 @@ impl IoView {
         let r = ui.available_rect_before_wrap();
         ui.painter().hline(r.x_range(), r.top(), eframe::egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
         ui.add_space(ecad_ui::tokens::space::S);
-        // Compare, or the import preview, takes the table's place (design 056 §6.5).
-        if let Some(c) = self.compare.as_mut() {
-            let mut back = false;
-            out.extend(c.show(ui, &mut back));
-            if back {
-                self.compare = None;
-            }
-            return out;
-        }
         // The card header (design 056 §4.1).
         ui.push_id(CARD_HEAD, |ui| {
             ui.horizontal(|ui| {
@@ -1084,17 +1014,6 @@ impl IoView {
                     let ex = ui.push_id(EXPORT_TAGS, |ui| ecad_ui::prim::button(ui, "Export tags", ecad_ui::prim::Kind::Secondary)).inner;
                     if ex.clicked() {
                         out.push(ListAction::ExportTags);
-                    }
-                    let cmp = ui.push_id(COMPARE, |ui| {
-                        ui.add_enabled_ui(h.imported, |ui| ecad_ui::prim::button(ui, "Compare", ecad_ui::prim::Kind::Secondary)).inner
-                    });
-                    if cmp.inner.on_disabled_hover_text(IMPORT_FIRST).clicked() {
-                        out.push(ListAction::Compare);
-                    }
-                    let chip = ui.push_id(SYNC_CHIP, |ui| ecad_ui::prim::pill(ui, &h.chip, h.chip_tone)).inner;
-                    let chip = ui.interact(chip.rect, ui.make_persistent_id(SYNC_CHIP), egui::Sense::click()).on_hover_text(&h.chip_tip);
-                    if chip.clicked() && h.imported {
-                        out.push(ListAction::Compare);
                     }
                     ui.add_space(ecad_ui::tokens::space::S);
                     if let Some(c) = h.card {
@@ -1122,13 +1041,13 @@ impl IoView {
             ui.horizontal(|ui| {
                 ui.add_space(ecad_ui::tokens::space::M);
                 let label = match row.kind {
-                    PathKind::Import => "Read the tag table",
+                    PathKind::Import => "Fill tags and descriptions from",
                     PathKind::Export { .. } => "Save the tag table as",
                 };
                 ui.label(egui::RichText::new(label).size(ty.size).color(ecad_ui::color(s.text_2)));
                 ecad_ui::prim::Field::new(&mut row.path, ecad_ui::prim::FieldKind::Text, "Tag table file").width(420.0).show(ui);
                 let ok = match &mut row.kind {
-                    PathKind::Import => ecad_ui::prim::button(ui, "Preview", ecad_ui::prim::Kind::Primary).clicked(),
+                    PathKind::Import => ecad_ui::prim::button(ui, "Import", ecad_ui::prim::Kind::Primary).clicked(),
                     PathKind::Export { all, .. } => {
                         ui.checkbox(all, "All racks");
                         ecad_ui::prim::button(ui, "Export", ecad_ui::prim::Kind::Primary).clicked()
@@ -1233,24 +1152,17 @@ impl IoView {
                 self.pending_reveal = Some(key);
                 None
             }
-            ListAction::Compare => {
-                let card = if self.all_cards { None } else { self.selected_card() };
-                self.compare = Some(super::plc_compare::CompareView::new(card));
-                None
-            }
             ListAction::Unfold => {
                 self.source.unfold = true;
                 self.reorder = true;
                 None
             }
             ListAction::ImportTags => {
-                self.compare = None;
                 let path = if self.folder.is_empty() { String::new() } else { format!("{}{}", self.folder, std::path::MAIN_SEPARATOR) };
                 self.path_row = Some(PathRow { kind: PathKind::Import, path, error: None });
                 None
             }
             ListAction::ExportTags => {
-                self.compare = None;
                 let rack = self.head.as_ref().and_then(|h| h.rack);
                 self.path_row = Some(PathRow { kind: PathKind::Export { rack, all: rack.is_none() }, path: self.offered_path(), error: None });
                 None
@@ -1260,12 +1172,13 @@ impl IoView {
                 let path = row.path.trim().to_string();
                 self.remember(&path);
                 match row.kind {
+                    // Brief 056 (owner, 2026-11-14): one way, one transaction; `u` undoes it.
                     PathKind::Import => {
-                        self.import_path = Some(path);
+                        self.importing = true;
                         if let Some(r) = self.path_row.as_mut() {
                             r.error = None;
                         }
-                        None
+                        Some(ListAction::Run(format!("plcimport {}", json!({"path": path}))))
                     }
                     PathKind::Export { rack, all } => {
                         self.path_row = None;

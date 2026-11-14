@@ -1,7 +1,7 @@
-//! Brief 056 (the PLC signal list and PLC sync) through MCP (brief 011 rule, design 056 §10):
-//! `plcchannel {tag, safe}`, `plcmaketags`, `plcimport` and `plctake` record one transaction by
-//! `Author::Agent(<client>)` and are refused with writes off; `plcimport {dry_run: true}`,
-//! `plcexport`, `plcsync` and `iolist` work with writes off and record nothing.
+//! Brief 056 (the PLC signal list) through MCP (brief 011 rule, design 056 §10):
+//! `plcchannel {tag, safe}`, `plcmaketags`, `plcimport` and `plccardtype` record one transaction
+//! by `Author::Agent(<client>)` and are refused with writes off; `plcimport {dry_run: true}`,
+//! `plcexport` and `iolist` work with writes off and record nothing.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::Author;
@@ -42,15 +42,15 @@ fn n_writes_are_the_agents_one_transaction_each_and_refused_with_writes_off() {
     let v = by_agent(&mut c, "plcmaketags", json!({"card": "-A02"}));
     assert_eq!(v["made"], 1, "{v}");
     let v = by_agent(&mut c, "plcimport", json!({"text": TAGS, "name": "tags.csv"}));
-    assert_eq!(v["preview"]["differences"], 3, "{v}");
-    by_agent(&mut c, "plctake", json!({"items": [{"card": "-A02", "channel": 0}]}));
+    assert_eq!(v["tags"], 2, "Pump_Run at %Q0.0 and Spare_1 at %Q0.3: {v}");
+    by_agent(&mut c, "plccardtype", json!({"card": "-A02", "type": "AO"}));
 
     refused_with_writes_off("plcchannel", json!({"card": "-A02", "channel": 0, "tag": "x"}));
     refused_with_writes_off("plcchannel", json!({"card": "-A02", "channel": 0, "safe": "on"}));
     refused_with_writes_off("plcmaketags", json!({"card": "-A02"}));
     refused_with_writes_off("plcimport", json!({"text": TAGS}));
     refused_with_writes_off("plcimport", json!({"text": TAGS, "dry_run": false}));
-    refused_with_writes_off("plctake", json!({"all": true}));
+    refused_with_writes_off("plccardtype", json!({"card": "-A02", "type": "DI"}));
 }
 
 #[test]
@@ -59,12 +59,10 @@ fn n_reads_work_with_writes_off_and_record_nothing() {
     let log = r.log();
     let v = r.exec("plcimport", json!({"text": TAGS, "dry_run": true}));
     assert_eq!(v["written"], false, "{v}");
-    assert_eq!(v["preview"]["io"], 2, "{v}");
+    assert_eq!(v["io"], 2, "{v}");
     let v = r.exec("plcexport", json!({}));
     assert_eq!(v["rows"], 0, "{v}");
     assert!(v["text"].as_str().is_some_and(|t| t.starts_with("name,address,type,comment")), "{v}");
-    let v = r.exec("plcsync", json!({}));
-    assert_eq!(v["imported"], false, "{v}");
     r.exec("iolist", json!({}));
     assert_eq!(r.log(), log, "reads record nothing");
 }

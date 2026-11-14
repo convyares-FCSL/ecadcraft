@@ -210,18 +210,10 @@ pub enum Kind {
     PlcTagTwice,
     /// A tag an export leaves out (a control character, too long).
     PlcTagChars,
-    /// Used channels with no tag, once the project has a snapshot (one count row per card).
-    PlcTagMissing,
-    /// A used or named channel the PLC does not have.
-    PlcNotInPlc,
-    /// A channel whose PLC name or address differs.
-    PlcDiffers,
-    /// Snapshot tags at addresses no card has (one count row).
-    PlcNoCard,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 78] = [
+    pub const ALL: [Kind; 74] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -296,10 +288,6 @@ impl Kind {
         Kind::WireAllowance,
         Kind::PlcTagTwice,
         Kind::PlcTagChars,
-        Kind::PlcTagMissing,
-        Kind::PlcNotInPlc,
-        Kind::PlcDiffers,
-        Kind::PlcNoCard,
     ];
 
     /// The JSON name.
@@ -379,10 +367,6 @@ impl Kind {
             Kind::WireAllowance => "wire-allowance",
             Kind::PlcTagTwice => "plc-tag-twice",
             Kind::PlcTagChars => "plc-tag-chars",
-            Kind::PlcTagMissing => "plc-tag-missing",
-            Kind::PlcNotInPlc => "plc-not-in-plc",
-            Kind::PlcDiffers => "plc-differs",
-            Kind::PlcNoCard => "plc-no-card",
         }
     }
 
@@ -468,10 +452,6 @@ impl Kind {
             Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
             Kind::PlcTagTwice => "PLC tag given twice in one PLC",
             Kind::PlcTagChars => "PLC tag an export leaves out",
-            Kind::PlcTagMissing => "Used channels with no PLC tag",
-            Kind::PlcNotInPlc => "Channel not in the PLC project",
-            Kind::PlcDiffers => "PLC tag or address differs from the PLC project",
-            Kind::PlcNoCard => "PLC tags at addresses no card has",
         }
     }
 
@@ -524,9 +504,7 @@ impl Kind {
             | Kind::PartForMissing
             | Kind::CategoryPotentialTwice
             | Kind::WireThroughCard
-            | Kind::PlcTagChars
-            | Kind::PlcNotInPlc
-            | Kind::PlcDiffers => Severity::Warning,
+            | Kind::PlcTagChars => Severity::Warning,
             _ => Severity::Info,
         }
     }

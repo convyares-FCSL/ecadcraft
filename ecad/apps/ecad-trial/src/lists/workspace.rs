@@ -42,8 +42,6 @@ pub const REGENERATE: &str = "Regenerate all";
 pub const NEW_REPORT: &str = "+ New report";
 /// Why Import is greyed (no importer is built yet).
 pub const IMPORT_COMES: &str = "Importing a list comes later.";
-/// Brief 056 (Q13): the PLC tab's importer reads a tag table.
-pub const IMPORT_TAGS: &str = "Import tags";
 /// The footer's sentence (design 056 §8).
 pub fn overview_words(page: &str) -> String {
     format!("This overview is also page {page} of the book: generated, always current, each card a link to its page.")
@@ -322,7 +320,7 @@ impl Trial {
             ListsView::Devices => placeholder(ui, IMPORT_LIST, IMPORT_COMES),
             ListsView::Plc => {
                 let writable = self.project_writable();
-                let b = ui.add_enabled_ui(writable, |ui| ecad_ui::prim::button(ui, IMPORT_TAGS, ecad_ui::prim::Kind::Secondary)).inner;
+                let b = ui.add_enabled_ui(writable, |ui| ecad_ui::prim::button(ui, IMPORT_IO, ecad_ui::prim::Kind::Secondary)).inner;
                 if b.on_disabled_hover_text(super::plc::WRITES_OFF).clicked() {
                     out.push(HeadAction::ImportTags);
                 }

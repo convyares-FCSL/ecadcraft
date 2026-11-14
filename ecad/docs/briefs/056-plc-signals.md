@@ -6,6 +6,13 @@ Designer: **yes** (`docs/design/056.md`) · Size: L
 Release: 0.2.2 (UI rev 4). Source: rev 4 build spec "Project workspace ▸ PLC: the signal list"
 and board 2.03. Lanes D (`plc/`), U (`apps/ecad-trial/src/lists/`).
 
+**Owner's change (2026-11-14, fix round of PR #112):** no sync with an outside PLC. Kept: Export
+tags (CSV) and **Import an I/O list** as a one-way fill of tags and descriptions. Removed: Compare,
+the PLC column, the stored snapshot (FP2 lapses), the differences chip, the right panel's PLC sync
+section, `plcsync` and `plctake`. The right panel for a card becomes a card editor styled as board
+2.03's (type, ID, description, rack, slot, function, location, start, maker, part number,
+accessories). Design 056 §5, §6, §9, §10, §12, §13 say what is built.
+
 ## Goal
 
 The PLC tab becomes the project's signal list: every channel has a PLC tag, a safe state and what

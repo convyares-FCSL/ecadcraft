@@ -261,7 +261,7 @@ pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str
 
 /// A part line as a card: a dot (blue for the main part), its words, its maker and number, and
 /// the quantity in a box.
-fn part_card(ui: &mut egui::Ui, p: &ecad_cadcraft::bom::PartSetRow) {
+pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_cadcraft::bom::PartSetRow) {
     let s = ecad_ui::SHELL;
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 46.0), Sense::hover());

@@ -82,13 +82,14 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     // signal columns.
     assert_eq!(v.source.keys().len(), 9);
     assert_eq!(v.source.folded, 7);
-    assert_eq!(v.source.columns().len(), 10);
+    assert_eq!(v.source.columns().len(), 9);
     // Squares: in use, reserved, a check.
     let dq_tile = &v.strip[2];
     assert_eq!(dq_tile.marks.iter().filter(|m| **m == ecad_ui::table::strip::Mark::Soft).count(), 3);
     assert_eq!(v.strip[1].marks[3], ecad_ui::table::strip::Mark::Alert);
     assert!(h.query_by_label("ecad.plc.tile.2.makepage").is_some(), "DQ has no channel drawn");
-    assert!(h.query_by_label("ecad.plc.tile.3.page.2").is_some(), "AI on page 2");
+    // Brief 056: the first rack brought the rack page (page 2), so the AI card's page is 3.
+    assert!(h.query_by_label("ecad.plc.tile.3.page.3").is_some(), "AI on page 3");
 
     // K: a tile filters the table; a square selects its row.
     h.get_by_label("ecad.plc.tile.2").click();

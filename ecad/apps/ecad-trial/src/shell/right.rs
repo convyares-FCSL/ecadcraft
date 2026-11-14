@@ -31,11 +31,11 @@
 
 mod checks_tab;
 mod details;
-mod device;
+pub(crate) mod device;
 mod fields;
 mod layout_tab;
 mod placing_view;
-mod widgets;
+pub(crate) mod widgets;
 
 pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
 pub use details::{ConnRow, DeviceDetails, DrawnRow};

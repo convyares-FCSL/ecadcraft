@@ -1,9 +1,9 @@
-//! Brief 056 (the PLC signal list and PLC sync, design 056 §13.1): tags and safe states, Drives,
-//! Make tags, the generic CSV tag table, import, Compare's take, export, the sync states and their
-//! update map, Checks, and hostile files.
+//! Brief 056 (the PLC signal list, design 056 §13.1, with the owner's change of 2026-11-14: no
+//! sync, export and a one-way import): tags and safe states, Drives, Make tags, the generic CSV tag
+//! table, Import an I/O list, Export tags, the card type, the rack page in the book, Checks, and
+//! hostile files.
 
 use ecad_cadcraft::outputs::Outputs;
-use ecad_cadcraft::plc::sync::State;
 use ecad_cadcraft::plc::tagtable::{self, Caps, TagFormat};
 use ecad_model::ComponentId;
 use serde_json::{Value, json};
@@ -78,11 +78,7 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| (p.outputs().plc.clone(), Outputs::build(p.ledger.document()).plc));
-    assert!(kept.same_as(&built), "the kept PLC model (sync included) differs from a rebuild");
-}
-
-fn state(h: &mut H, c: ComponentId, i: u32) -> State {
-    h.cfg(|p| p.outputs().plc.sync.state(c, i))
+    assert!(kept.same_as(&built), "the kept PLC model differs from a rebuild");
 }
 
 fn import(h: &mut H, text: &str, extra: Value) -> Result<Value, String> {
@@ -185,82 +181,8 @@ fn e_drives_reaches_the_end_device_through_a_terminal() {
 // ---------------------------------------------------------------- F, G: import
 
 #[test]
-fn f_g_the_preview_writes_nothing_and_the_import_is_one_transaction() {
-    let F { mut h, a03 } = p56(5605);
-    let head = h.head();
-    let v = import(&mut h, P56_TAGS, json!({"dry_run": true})).unwrap();
-    assert_eq!(h.head(), head, "a dry run records nothing");
-    let p = &v["preview"];
-    assert_eq!((p["read"].clone(), p["io"].clone()), (json!(310), json!(10)));
-    assert_eq!(p["skipped"]["not_io"], 300);
-    assert_eq!(p["differences"], 4, "3 on -A03 and 1 on no card");
-    let s = p["summary"].as_str().unwrap();
-    assert!(s.starts_with("310 tags read; 10 with an I/O address. 300 memory and data-block tags skipped."), "{s}");
-    assert!(s.contains("3 differences on -A03, 1 not on any card"), "{s}");
-    assert_eq!(state(&mut h, a03, 2), State::Nothing, "nothing imported yet");
-
-    import(&mut h, P56_TAGS, json!({})).unwrap();
-    assert_eq!(h.head(), head + 1, "one transaction");
-    let label = h.p(|p| p.ledger.log().last().map(|t| t.label.clone()));
-    assert_eq!(label.as_deref(), Some("Import PLC tags"));
-    assert_eq!(state(&mut h, a03, 0), State::InSync);
-    assert_eq!(state(&mut h, a03, 2), State::Differs("Valve_In".into()));
-    assert_eq!(state(&mut h, a03, 8), State::NotInPlc);
-    assert_eq!(state(&mut h, a03, 12), State::OnlyInPlc("Spare_Out4".into()));
-    assert_eq!(state(&mut h, a03, 9), State::Free);
-    let (n, total, none) = h.cfg(|p| {
-        let s = &p.outputs().plc.sync;
-        (s.card_count(a03), s.total(), s.no_card.clone())
-    });
-    assert_eq!((n, total), (3, 4));
-    assert_eq!(none, ["I8.0"]);
-    let checks = h.run("checks", json!({"kinds": ["plc-differs", "plc-not-in-plc", "plc-no-card"]})).unwrap();
-    assert_eq!(checks["checks"].as_array().unwrap().len(), 4, "{checks}");
-    same_as_built(&mut h);
-    h.cmdline("u");
-    assert_eq!(state(&mut h, a03, 2), State::Nothing, "u undoes the import whole");
-    assert!(!h.doc().properties.contains_key("plc.sync.table"));
-    same_as_built(&mut h);
-}
-
-#[test]
-fn f_import_with_take_names_takes_differs_and_only_in_plc() {
-    let F { mut h, a03 } = p56(5606);
-    let head = h.head();
-    import(&mut h, P56_TAGS, json!({"take": "names"})).unwrap();
-    assert_eq!(h.head(), head + 1, "snapshot and names in one transaction");
-    let props = h.doc().components[&a03].properties.clone();
-    assert_eq!(props.get("plc.ch.2.tag").map(String::as_str), Some("Valve_In"));
-    assert_eq!(props.get("plc.ch.12.tag").map(String::as_str), Some("Spare_Out4"));
-    assert_eq!(props.get("plc.ch.12.text").map(String::as_str), Some("Spare output 4"), "an only-in-PLC row takes the comment too");
-    assert_eq!(h.cfg(|p| p.outputs().plc.sync.card_count(a03)), 1, "only `not in PLC` is left");
-}
-
-// ---------------------------------------------------------------- H: take
-
-#[test]
-fn h_use_the_plcs_name_is_one_transaction_and_for_all_too() {
-    let F { mut h, a03 } = p56(5607);
-    import(&mut h, P56_TAGS, json!({})).unwrap();
-    let head = h.head();
-    h.run("plctake", json!({"items": [{"card": "-A03", "channel": 2}]})).unwrap();
-    assert_eq!(h.head(), head + 1);
-    assert_eq!(state(&mut h, a03, 2), State::InSync);
-    assert_eq!(h.cfg(|p| p.outputs().plc.sync.card_count(a03)), 2);
-    h.run("plctake", json!({"card": "-A03"})).unwrap();
-    assert_eq!(h.head(), head + 2, "for all: one transaction");
-    assert_eq!(state(&mut h, a03, 12), State::InSync);
-    let v = h.run("plctake", json!({"all": true})).unwrap();
-    assert_eq!(v["changed"], false, "nothing left to take: {v}");
-    assert_eq!(h.head(), head + 2);
-    same_as_built(&mut h);
-}
-
-// ---------------------------------------------------------------- I, J: export and formats
-
-#[test]
-fn i_export_then_reimport_round_trips_and_counts_untagged() {
-    let F { mut h, .. } = p56(5608);
+fn i_export_then_import_round_trips_and_counts_untagged() {
+    let F { mut h, a03 } = p56(5608);
     h.run("plcchannel", json!({"card": "-A03", "channel": 10, "text": "Reserved, no tag"})).unwrap();
     let head = h.head();
     let v = h.run("plcexport", json!({"rack": "-A01"})).unwrap();
@@ -270,81 +192,165 @@ fn i_export_then_reimport_round_trips_and_counts_untagged() {
     assert!(v["message"].as_str().unwrap().contains("left out 1 without a tag"), "{v}");
     let text = v["text"].as_str().unwrap().to_string();
     assert!(text.starts_with("name,address,type,comment,card,channel,safe,drives,page\r\n"), "{text}");
-    assert!(text.contains("Valve_Inlet,%Q2.2,Bool,Inlet valve open,-A03,2,Off,-H03:X2,"), "{text}");
-    import(&mut h, &text, json!({})).unwrap();
-    let first = h.doc().properties.get("plc.sync.table").cloned().unwrap();
-    let v2 = h.run("plcsync", json!({})).unwrap();
-    assert_eq!(v2["differences"], 0, "an export of the project is in sync: {v2}");
-    // A second export and import gives the same snapshot.
-    let again = h.run("plcexport", json!({"rack": "-A01"})).unwrap()["text"].as_str().unwrap().to_string();
-    import(&mut h, &again, json!({})).unwrap();
-    assert_eq!(h.doc().properties.get("plc.sync.table"), Some(&first), "the same snapshot");
+    // Device tags start with `-`, which a spreadsheet reads as a formula: written as text.
+    assert!(text.contains("Valve_Inlet,%Q2.2,Bool,Inlet valve open,'-A03,2,Off,'-H03:X2,"), "{text}");
+    // Importing the project's own export changes nothing.
+    let v = import(&mut h, &text, json!({})).unwrap();
+    assert_eq!(v["written"], false, "{v}");
+    assert_eq!(h.head(), head, "nothing to change: no transaction");
+    // Clear two tags and a description; the export brings them back in one transaction.
+    h.run("plcchannel", json!({"card": "-A03", "channel": 2, "tag": null, "text": null})).unwrap();
+    h.run("plcchannel", json!({"card": "-A03", "channel": 3, "tag": null})).unwrap();
+    let head = h.head();
+    let v = import(&mut h, &text, json!({})).unwrap();
+    assert_eq!(h.head(), head + 1);
+    assert_eq!((v["tags"].clone(), v["descriptions"].clone()), (json!(2), json!(1)), "{v}");
+    let p = h.doc().components[&a03].properties.clone();
+    assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"));
+    assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve open"));
+    same_as_built(&mut h);
 }
 
 #[test]
-fn j_the_spreadsheet_variant_gives_the_same_states_and_other_files_are_refused() {
-    let F { mut h, a03 } = p56(5609);
-    import(&mut h, P56_TAGS_B, json!({})).unwrap();
-    assert_eq!(state(&mut h, a03, 2), State::Differs("Valve_In".into()));
-    assert_eq!(state(&mut h, a03, 12), State::OnlyInPlc("Spare_Out4".into()));
-    assert_eq!(h.cfg(|p| p.outputs().plc.sync.total()), 4);
+fn f_g_import_an_io_list_fills_tags_and_descriptions_one_way() {
+    let F { mut h, a03 } = p56(5605);
+    let head = h.head();
+    let v = import(&mut h, P56_TAGS, json!({"dry_run": true})).unwrap();
+    assert_eq!(h.head(), head, "a dry run records nothing");
+    assert_eq!((v["read"].clone(), v["io"].clone()), (json!(310), json!(10)), "{v}");
+    assert_eq!(v["skipped"]["not_io"], 300);
+    assert_eq!(v["tags"], 2, "Valve_In at %Q2.2 and Spare_Out4 at %Q3.4: {v}");
+    assert_eq!(v["no_card"], json!(["%I8.0"]));
+    let m = v["message"].as_str().unwrap();
+    assert!(m.starts_with("P56-tags.csv would set: 2 tags and 2 descriptions on -A03"), "{m}");
+
+    let v = import(&mut h, P56_TAGS, json!({})).unwrap();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    assert_eq!(v["written"], true);
+    let label = h.p(|p| p.ledger.log().last().map(|t| t.label.clone()));
+    assert_eq!(label.as_deref(), Some("Import an I/O list"));
+    let p = h.doc().components[&a03].properties.clone();
+    assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_In"));
+    assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve"));
+    assert_eq!(p.get("plc.ch.12.tag").map(String::as_str), Some("Spare_Out4"));
+    assert_eq!(p.get("plc.ch.8.tag").map(String::as_str), Some("Dosing_On"), "a channel not in the list keeps its tag");
+    assert!(!h.doc().properties.keys().any(|k| k.starts_with("plc.sync.")), "nothing of the table is kept");
+    same_as_built(&mut h);
+    h.cmdline("u");
+    let p = h.doc().components[&a03].properties.clone();
+    assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"), "u undoes the import whole");
+    assert!(!p.contains_key("plc.ch.12.tag"));
+    // `what: tags` leaves descriptions alone; the `;` variant reads the same.
+    let v = import(&mut h, P56_TAGS_B, json!({"what": "tags"})).unwrap();
+    assert_eq!((v["tags"].clone(), v["descriptions"].clone()), (json!(2), json!(0)), "{v}");
+}
+
+#[test]
+fn j_an_import_that_would_give_two_channels_one_tag_is_refused_whole() {
+    let F { mut h, .. } = p56(5609);
+    let head = h.head();
+    // Two names that differ only in case, at two addresses.
+    let e = import(&mut h, "name,address\nPump,%Q3.1\nPUMP,%Q3.2\n", json!({})).unwrap_err();
+    assert!(e.starts_with("The import would give two channels the tag \"PUMP\": -A03 channel 9 (%Q3.1) and -A03 channel 10 (%Q3.2)."), "{e}");
+    // A name a channel outside the list already holds.
+    let e = import(&mut h, "name,address\nHorn,%Q3.1\n", json!({})).unwrap_err();
+    assert!(e.contains("\"Horn\"") && e.contains("-A03 channel 6") && e.ends_with("Nothing was imported."), "{e}");
+    assert_eq!(h.head(), head, "nothing recorded");
+    // A swap of two tags in one list is fine.
+    import(&mut h, "name,address\nHorn,%Q2.0\nFan_On,%Q2.6\n", json!({})).unwrap();
+    assert_eq!(h.head(), head + 1);
+}
+
+#[test]
+fn j_other_files_and_a_missing_column_are_refused_in_words() {
+    let F { mut h, .. } = p56(5618);
     let head = h.head();
     let e = import(&mut h, "PK\u{3}\u{4}\u{14}\u{0}\u{6}\u{0}[Content_Types].xml", json!({})).unwrap_err();
     assert_eq!(e, tagtable::UNKNOWN);
-    let e = import(&mut h, "Name,Logical Address,Data Type\nA,%Q0.0,Bool\n", json!({})).unwrap_err();
+    let e = import(&mut h, "Tag,Logical Address,Data Type\nA,%Q0.0,Bool\n", json!({})).unwrap_err();
     assert_eq!(e, tagtable::UNKNOWN);
-    let e = import(&mut h, "name,type\nA,Bool\n", json!({"format": "csv"})).unwrap_err();
-    assert_eq!(e, tagtable::UNKNOWN, "no address column: not the generic header");
+    let e = import(&mut h, "name,type,comment\nA,Bool,x\n", json!({})).unwrap_err();
+    assert_eq!(e, "The file has no \"address\" column.", "tester 056, F2");
     let e = h.run("plcimport", json!({"text": "name,address\n", "format": "tia"})).unwrap_err();
     assert!(e.contains("No tag table format \"tia\""), "{e}");
+    // The review of #112, 1: `name` is bounded.
+    let e = h.run("plcimport", json!({"text": P56_TAGS, "name": "x".repeat(256)})).unwrap_err();
+    assert!(e.contains("1 to 255 characters"), "{e}");
+    let e = h.run("plcimport", json!({"text": P56_TAGS, "name": "a\u{7}b"})).unwrap_err();
+    assert!(e.contains("control"), "{e}");
+    let e = h.run("plcimport", json!({"text": P56_TAGS, "what": "everything"})).unwrap_err();
+    assert!(e.contains("both, tags or descriptions"), "{e}");
     assert_eq!(h.head(), head, "refusals record nothing");
 }
 
-// ---------------------------------------------------------------- K: a card move
-
 #[test]
-fn k_a_card_move_moves_addresses_and_states_only() {
-    let F { mut h, a03 } = p56(5610);
-    import(&mut h, P56_TAGS, json!({})).unwrap();
-    let before = h.cfg(|p| p.outputs().plc.sync.builds);
-    // Behind the AO card in slot order: the DQ card's block moves.
-    h.run("plcslot", json!({"card": "-A03", "slot": 9})).unwrap();
-    let r = rows(&mut h, "-A03");
-    let a0 = r[0]["address"].as_str().unwrap().to_string();
-    assert_ne!(a0, "%Q2.0", "the DQ card's block moved: {a0}");
-    assert_eq!(state(&mut h, a03, 0), State::Moved("Q2.0".into()), "Fan_On is in the PLC at its old address");
-    let after = h.cfg(|p| p.outputs().plc.sync.builds);
-    assert_eq!(after, before, "a card move works out cards, never the whole index");
-    same_as_built(&mut h);
+fn exported_fields_never_run_as_formulas_and_read_back() {
+    let F { mut h, a03 } = p56(5619);
+    h.run("plcchannel", json!({"card": "-A03", "channel": 0, "text": "=HYPERLINK(\"http://x\")"})).unwrap();
+    h.run("plcchannel", json!({"card": "-A03", "channel": 1, "text": "@SUM(A1)"})).unwrap();
+    let text = h.run("plcexport", json!({})).unwrap()["text"].as_str().unwrap().to_string();
+    assert!(text.contains("\"'=HYPERLINK(\"\"http://x\"\")\""), "{text}");
+    assert!(text.contains(",'@SUM(A1),"), "{text}");
+    h.run("plcchannel", json!({"card": "-A03", "channel": 0, "text": null})).unwrap();
+    import(&mut h, &text, json!({})).unwrap();
+    let p = h.doc().components[&a03].properties.clone();
+    assert_eq!(p.get("plc.ch.0.text").map(String::as_str), Some("=HYPERLINK(\"http://x\")"), "read back as written");
 }
 
-// ---------------------------------------------------------------- update map (§12)
-
 #[test]
-fn update_map_a_tag_edit_works_out_one_card_and_an_unrelated_edit_none() {
-    let F { mut h, a03 } = p56(5611);
-    import(&mut h, P56_TAGS, json!({})).unwrap();
-    let (b0, u0) = h.cfg(|p| (p.outputs().plc.sync.builds, p.outputs().plc.sync.card_updates));
-    h.run("plcchannel", json!({"card": "-A03", "channel": 2, "tag": "Valve_In"})).unwrap();
-    let (b1, u1, changed) = h.cfg(|p| {
-        let plc = &p.outputs().plc;
-        (plc.sync.builds, plc.sync.card_updates, plc.rows_changed.clone())
-    });
-    assert_eq!(b1, b0, "no rebuild");
-    assert_eq!(u1 - u0, 1, "one card worked out");
-    assert_eq!(changed.into_iter().collect::<Vec<_>>(), [a03], "one card's rows");
-    assert_eq!(state(&mut h, a03, 2), State::InSync);
-    h.run("place", json!({"symbol": "lamp", "at": [400, 400]})).unwrap();
-    let (b2, u2) = h.cfg(|p| (p.outputs().plc.sync.builds, p.outputs().plc.sync.card_updates));
-    assert_eq!((b2, u2), (b1, u1), "a commit with no PLC data works out nothing");
-    // A new snapshot: one build.
-    import(&mut h, P56_TAGS_B, json!({})).unwrap();
-    let b3 = h.cfg(|p| p.outputs().plc.sync.builds);
-    assert_eq!(b3, 1, "a fresh index, built once");
-    same_as_built(&mut h);
+fn m_the_first_rack_brings_the_rack_page_into_the_book() {
+    let mut h = H::new(5620);
+    let racks = |h: &mut H| {
+        let d = h.doc();
+        d.page_order.iter().filter(|p| ecad_cadcraft::generated::kind_of(&d, **p) == Some(ecad_cadcraft::generated::GenKind::PlcRack)).count()
+    };
+    assert_eq!(racks(&mut h), 0);
+    let head = h.head();
+    line(&mut h, r#"place {"symbol":"plccpu","at":[30,250]}"#).unwrap();
+    assert_eq!(h.head(), head + 1, "the rack and its page in one transaction");
+    assert_eq!(racks(&mut h), 1, "tester 056, F1");
+    line(&mut h, r#"place {"symbol":"plcdq","at":[70,250]}"#).unwrap();
+    line(&mut h, r#"place {"symbol":"plccpu","at":[30,350]}"#).unwrap();
+    assert_eq!(racks(&mut h), 1, "one page for every rack");
+    h.cmdline("u");
+    h.cmdline("u");
+    h.cmdline("u");
+    assert_eq!(racks(&mut h), 0, "undoing the first rack takes its page too");
 }
 
-// ---------------------------------------------------------------- Make tags
+#[test]
+fn the_card_type_changes_the_body_in_one_transaction() {
+    let F { mut h, a03 } = p56(5621);
+    h.run("plcchannel", json!({"card": "-A03", "channel": 4, "safe": "on"})).unwrap();
+    let head = h.head();
+    let v = h.run("plccardtype", json!({"card": "-A03", "type": "AO"})).unwrap();
+    assert_eq!(h.head(), head + 1, "{v}");
+    assert_eq!(v["message"], "-A03 is now a AO card.");
+    let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
+    assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Ao));
+    assert!(!h.doc().components[&a03].properties.contains_key("plc.ch.4.safe"), "`on` is not an analogue safe state");
+    same_as_built(&mut h);
+    h.cmdline("u");
+    let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
+    assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Dq), "u undoes it");
+    let e = h.run("plccardtype", json!({"card": "-A03", "type": "CPU"})).unwrap_err();
+    assert!(e.contains("DI, DQ, AI, AO, RTD or IOL"), "{e}");
+    let e = h.run("plccardtype", json!({"card": "-A01", "type": "DI"})).unwrap_err();
+    assert!(e.contains("not a card"), "{e}");
+    let v = h.run("plccardtype", json!({"card": "-A03", "type": "dq"})).unwrap();
+    assert_eq!(v["changed"], false);
+}
+
+#[test]
+fn checks_a_tag_twice_names_the_other_channel() {
+    let F { mut h, a03 } = p56(5613);
+    // Only a raw setprop or a merge can do this; plcchannel refuses it.
+    h.run("setprop", json!({"component": a03.hex(), "key": "plc.ch.3.tag", "value": "VALVE_INLET"})).unwrap();
+    let rows = h.run("checks", json!({"kinds": ["plc-tag-twice"]})).unwrap()["checks"].as_array().cloned().unwrap();
+    assert_eq!(rows.len(), 2, "one row per channel: {rows:?}");
+    let which: Vec<String> = rows.iter().map(|r| r["which"].as_str().unwrap_or_default().to_string()).collect();
+    assert_ne!(which[0], which[1], "each row names its own channel: {which:?}");
+}
 
 #[test]
 fn make_tags_fills_empty_tags_from_descriptions_uniquely() {
@@ -366,23 +372,6 @@ fn make_tags_fills_empty_tags_from_descriptions_uniquely() {
 }
 
 // ---------------------------------------------------------------- Checks (§9)
-
-#[test]
-fn checks_tag_twice_after_take_and_tag_missing_with_a_snapshot() {
-    let F { mut h, .. } = p56(5613);
-    assert!(h.run("checks", json!({"kinds": ["plc-tag-missing"]})).unwrap()["checks"].as_array().unwrap().is_empty(), "no snapshot: no row");
-    h.run("plcchannel", json!({"card": "-A03", "channel": 0, "tag": null})).unwrap();
-    import(&mut h, P56_TAGS, json!({})).unwrap();
-    let rows = h.run("checks", json!({"kinds": ["plc-tag-missing"]})).unwrap()["checks"].as_array().cloned().unwrap();
-    assert_eq!(rows.len(), 1, "{rows:?}");
-    // Taking `Valve_In` while channel 3 already holds it makes two channels share a tag.
-    h.run("plcchannel", json!({"card": "-A03", "channel": 3, "tag": "VALVE_IN"})).unwrap();
-    h.run("plctake", json!({"items": [{"card": "-A03", "channel": 2}]})).unwrap();
-    let rows = h.run("checks", json!({"kinds": ["plc-tag-twice"]})).unwrap()["checks"].as_array().cloned().unwrap();
-    assert_eq!(rows.len(), 2, "one row per channel: {rows:?}");
-}
-
-// ---------------------------------------------------------------- the percent style
 
 #[test]
 fn the_percent_style_writes_percent_addresses() {
@@ -409,7 +398,7 @@ fn o_hostile_files_are_refused_skipped_or_counted_never_a_panic() {
     let long =
         format!("name,address\n{},%Q2.2\nOk,%Q2.9\nOk2,%Q-1.0\nOk3,%Q99999.0\nA,%Q2.3\nA,%Q2.3\nB\u{1},%Q2.4\n\"open,%Q2.5\n", "n".repeat(300));
     let v = import(&mut h, &long, json!({"dry_run": true})).unwrap();
-    let p = &v["preview"];
+    let p = &v;
     assert_eq!(p["io"], 1, "{p}");
     assert_eq!(p["skipped"]["bad_name"], 2, "{p}");
     assert_eq!(p["skipped"]["bad_address"], 4, "three bad addresses and the unbalanced quote: {p}");
@@ -423,31 +412,4 @@ fn o_hostile_files_are_refused_skipped_or_counted_never_a_panic() {
     assert_eq!(h.head(), head, "nothing recorded");
     let r = tagtable::GenericCsv.read(b"name,address\r\n\"a\"\"b\",%Q0.0", &Caps::default()).unwrap();
     assert_eq!(r.rows[0].name, "a\"b");
-}
-
-#[test]
-fn o_a_snapshot_too_large_for_one_property_is_refused_in_words() {
-    let F { mut h, .. } = p56(5616);
-    let mut t = String::from("name,address,type,comment\n");
-    for k in 0..20_000u32 {
-        t.push_str(&format!("Tag_{k:05},%Q{}.{},Bool,{}\n", k / 8, k % 8, "c".repeat(60)));
-    }
-    let e = import(&mut h, &t, json!({})).unwrap_err();
-    assert!(e.contains("at most 1.0 MB is kept"), "{e}");
-}
-
-#[test]
-fn an_unchanged_snapshot_is_not_recorded_again() {
-    let F { mut h, .. } = p56(5617);
-    import(&mut h, P56_TAGS, json!({})).unwrap();
-    let first = h.p(|p| p.ledger.log().last().map(|t| t.ops.clone())).unwrap();
-    let table_ops =
-        |ops: &[ecad_model::Op]| ops.iter().filter(|op| matches!(op, ecad_model::Op::SetProperty { key, .. } if key == "plc.sync.table")).count();
-    assert_eq!(table_ops(&first), 1, "the first import records the snapshot");
-    // The same table again (the `;` variant reads to the same canonical text): the snapshot is
-    // not recorded twice, so history does not grow by its size.
-    let n = h.p(|p| p.ledger.log().len());
-    import(&mut h, P56_TAGS_B, json!({})).unwrap();
-    let added: Vec<ecad_model::Op> = h.p(|p| p.ledger.log().iter().skip(n).flat_map(|t| t.ops.clone()).collect());
-    assert_eq!(table_ops(&added), 0, "at most the time and source are recorded: {added:?}");
 }

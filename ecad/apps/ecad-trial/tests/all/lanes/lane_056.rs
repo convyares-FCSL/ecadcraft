@@ -1,9 +1,9 @@
-//! Brief 056 in the trial (design 056 §13.1 A–I, L, M; board 2.03): Project ▸ PLC as the signal
-//! list: the rack heading, the tiles' kind words, the card header with the PLC chip, the signal
-//! columns with free channels folded, the import preview, Compare and its take, Export tags, and
-//! the footer's overview page. Screenshots `056-*.png` when `ECAD_TESTER_SHOTS` names a folder.
+//! Brief 056 in the trial (design 056 §13.1 A–I, L, M; board 2.03; the owner's change of
+//! 2026-11-14): Project ▸ PLC as the signal list: the rack heading, the tiles' kind words, the card
+//! header, the signal columns with free channels folded, Import an I/O list, Export tags, the card
+//! editor in the right panel, and the footer's overview page. Screenshots `056-*.png` when
+//! `ECAD_TESTER_SHOTS` names a folder.
 
-use ecad_cadcraft::plc::sync::State;
 use ecad_model::ComponentId;
 use ecad_trial::Trial;
 use ecad_trial::lists::ListAction;
@@ -90,14 +90,14 @@ fn tagged(h: &mut H, tag: &str) -> ComponentId {
     doc(h).components_tagged(tag).first().copied().unwrap_or_else(|| panic!("{tag}"))
 }
 
-fn import(h: &mut H, take: &str) {
-    let line = format!("plcimport {}", json!({"text": TAGS, "name": "P56-tags.csv", "take": take}));
+fn import(h: &mut H) {
+    let line = format!("plcimport {}", json!({"text": TAGS, "name": "P56-tags.csv"}));
     ok(h, &line);
     h.run_steps(4);
 }
 
 #[test]
-fn a_b_g_h_project_plc_is_the_signal_list_of_board_2_03() {
+fn a_b_g_project_plc_is_the_signal_list_of_board_2_03() {
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     p56(&mut h);
@@ -112,8 +112,7 @@ fn a_b_g_h_project_plc_is_the_signal_list_of_board_2_03() {
     assert_eq!(v.strip[2].lines, ["Outputs, pumps and valves"]);
     assert_eq!(v.strip[1].kind, "16 inputs, 24 V");
     assert_eq!(v.strip[6].lines, ["Slot 6 is free"], "the free slot");
-    let footer = view(&h).book_page.clone();
-    assert!(footer.is_some(), "the overview page is in the book");
+    assert!(view(&h).book_page.is_some(), "the overview page is in the book");
 
     // B: -A03 selected: the card header, the columns, free channels folded.
     h.get_by_label("ecad.plc.tile.2").click();
@@ -123,9 +122,8 @@ fn a_b_g_h_project_plc_is_the_signal_list_of_board_2_03() {
     let head = v.head.clone().unwrap();
     assert_eq!(head.title, "-A03 \u{b7} output card \u{b7} slot 2");
     assert!(head.words.starts_with("16 channels, 9 in use, drawn in detail on page "), "{}", head.words);
-    assert_eq!(head.chip, "PLC: not imported");
     let titles: Vec<&str> = v.source.columns().iter().map(|c| c.title).collect();
-    assert_eq!(titles, ["Ch", "Address", "Tag", "Description", "Type", "Safe", "Drives", "Page", "PLC", "Test"]);
+    assert_eq!(titles, ["Ch", "Address", "Tag", "Description", "Type", "Safe", "Drives", "Page", "Test"], "no PLC column (owner, 2026-11-14)");
     assert_eq!(v.source.folded, 6, "the first free channel shows, six fold");
     assert!(h.query_by_label("6 more free channels.").is_some());
     let r2 = v.source.row((a03, 2)).unwrap();
@@ -133,36 +131,19 @@ fn a_b_g_h_project_plc_is_the_signal_list_of_board_2_03() {
     assert!(plc::edit_line(r2, plc::SAFE, "On").is_some_and(|l| l.contains(r#""safe":"On""#)));
     let r9 = v.source.row((a03, 9)).unwrap();
     assert_eq!(plc::edit_line(r9, plc::TAG, plc::FREE), None, "the placeholder is not a tag");
+    assert!(h.query_by_label("ecad.plc.card.editor.tag").is_some(), "the right panel edits the card");
 
-    // G: import; the chip counts -A03's differences and the PLC column shows them.
+    // G: Import an I/O list fills tags and descriptions, one transaction.
     let before = head_of(&mut h);
-    import(&mut h, "none");
+    import(&mut h);
     assert_eq!(head_of(&mut h), before + 1, "one transaction");
     let v = view(&h);
-    assert_eq!(v.head.as_ref().unwrap().chip, "\u{26a0} PLC: 3 differences");
-    assert_eq!(v.source.state((a03, 2)), State::Differs("Valve_In".into()));
-    assert_eq!(v.source.state((a03, 8)), State::NotInPlc);
-    assert_eq!(v.source.state((a03, 12)), State::OnlyInPlc("Spare_Out4".into()));
-    assert!(v.source.folded < 6, "an only-in-PLC channel is never folded");
+    assert_eq!(v.source.row((a03, 2)).and_then(|r| r.tag.clone()).as_deref(), Some("Valve_In"));
+    assert_eq!(v.source.row((a03, 12)).and_then(|r| r.tag.clone()).as_deref(), Some("Spare_Out4"));
+    assert!(v.source.folded < 6, "a channel that took a tag is no longer free");
     take(&h, &deltas, "056-plc.png");
 
-    // H: Compare, then Use PLC's on channel 2: one transaction.
-    act(&mut h, ListAction::Compare);
-    let c = view(&h).compare.as_ref().unwrap();
-    assert!(c.title.starts_with("Compare -A03 with P56-tags.csv (csv), imported "), "{}", c.title);
-    assert_eq!(c.source.rows.len(), 3);
-    take(&h, &deltas, "056-compare.png");
-    let before = head_of(&mut h);
-    ok(&mut h, r#"plctake {"items":[{"card":"-A03","channel":2}]}"#);
-    h.run_steps(4);
-    assert_eq!(head_of(&mut h), before + 1);
-    assert_eq!(view(&h).compare.as_ref().unwrap().source.rows.len(), 2, "Compare follows the take");
-    assert_eq!(view(&h).head.as_ref().unwrap().chip, "\u{26a0} PLC: 2 differences");
-
     // The light theme of the list.
-    act(&mut h, ListAction::Tile(2));
-    h.state_mut().reports.as_mut().unwrap().io.compare = None;
-    h.run_steps(2);
     h.get_by_label(ecad_trial::shell::top_bar::THEME_LIGHT).click();
     h.run_steps(4);
     take(&h, &deltas, "056-plc-light.png");
@@ -173,9 +154,9 @@ fn head_of(h: &mut H) -> u64 {
 }
 
 #[test]
-fn f_the_import_preview_writes_nothing_until_import() {
+fn f_import_an_io_list_from_the_path_row_is_one_transaction_and_refusals_stay_in_the_row() {
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = harness(deltas.clone());
+    let mut h = harness(deltas);
     p56(&mut h);
     show_plc(&mut h);
     h.get_by_label("ecad.plc.tile.2").click();
@@ -184,28 +165,73 @@ fn f_the_import_preview_writes_nothing_until_import() {
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("P56-tags.csv");
     std::fs::write(&file, TAGS).unwrap();
-    let before = head_of(&mut h);
-    act(&mut h, ListAction::ImportTags);
-    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = file.to_string_lossy().into_owned();
-    act(&mut h, ListAction::PathOk);
-    let c = view(&h).compare.as_ref().expect("the preview");
-    let p = c.pending.as_ref().unwrap();
-    assert!(p.summary.starts_with("310 tags read; 10 with an I/O address."), "{}", p.summary);
-    assert!(p.summary.contains("3 differences on -A03, 1 not on any card"), "{}", p.summary);
-    assert_eq!(head_of(&mut h), before, "the preview writes nothing");
-    take(&h, &deltas, "056-preview.png");
-    // Esc writes nothing either.
-    h.state_mut().reports.as_mut().unwrap().io.compare = None;
-    h.run_steps(2);
-    assert_eq!(head_of(&mut h), before);
-    // A file that is not a tag table is refused in the path row, in words.
+    // A file that is not a tag table is refused in the path row, in words, and writes nothing.
     std::fs::write(dir.join("x.csv"), "PK\u{3}\u{4}junk").unwrap();
-    act(&mut h, ListAction::ImportTags);
-    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = dir.join("x.csv").to_string_lossy().into_owned();
-    act(&mut h, ListAction::PathOk);
+    let before = head_of(&mut h);
+    run_path(&mut h, ListAction::ImportTags, &dir.join("x.csv"));
     let err = view(&h).path_row.as_ref().and_then(|r| r.error.clone());
     assert_eq!(err.as_deref(), Some(ecad_cadcraft::plc::tagtable::UNKNOWN));
+    assert_eq!(head_of(&mut h), before);
+    // The table: one transaction, and the row closes.
+    run_path(&mut h, ListAction::ImportTags, &file);
+    assert_eq!(head_of(&mut h), before + 1);
+    assert!(view(&h).path_row.is_none(), "done: the row closes");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Open the path row with `a`, give it `path`, press its OK, and run what it asks.
+fn run_path(h: &mut H, a: ListAction, path: &std::path::Path) {
+    act(h, a);
+    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = path.to_string_lossy().into_owned();
+    let run = h.state_mut().reports.as_mut().and_then(|r| r.io.handle(ListAction::PathOk));
+    let Some(ListAction::Run(line)) = run else { panic!("{run:?}") };
+    let refusal = h.state_mut().submit_command(&line);
+    if let Some(r) = h.state_mut().reports.as_mut() {
+        r.ran(refusal);
+    }
+    h.run_steps(4);
+}
+
+#[test]
+fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
+    use ecad_trial::lists::card_editor::{field_line, start_byte};
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = harness(deltas.clone());
+    p56(&mut h);
+    show_plc(&mut h);
+    h.get_by_label("ecad.plc.tile.2").click();
+    h.run_steps(4);
+    let a03 = tagged(&mut h, "-A03");
+    for label in ["tag", "description", "slot", "function", "location", "start", "maker", "part_number"] {
+        assert!(h.query_by_label(&format!("ecad.plc.card.editor.{label}")).is_some(), "{label}");
+    }
+    // The commands the fields run, each one transaction.
+    let before = head_of(&mut h);
+    for (key, value) in [("description", "Outputs, pumps"), ("maker", "Generic"), ("part_number", "DQ16-R-2A"), ("slot", "7")] {
+        let line = field_line(a03, key, value).unwrap();
+        ok(&mut h, &line);
+    }
+    assert_eq!(head_of(&mut h), before + 4);
+    let d = doc(&mut h);
+    let p = &d.components[&a03].properties;
+    assert_eq!(p.get("part_number").map(String::as_str), Some("DQ16-R-2A"));
+    assert_eq!(p.get("plc.slot").map(String::as_str), Some("7"));
+    // An accessory (the front connector) as a part line.
+    ok(
+        &mut h,
+        &format!("partline {}", json!({"component": a03.hex(), "add": {"description": "Front connector, 20-pin, screw", "part_number": "FC-20-S"}})),
+    );
+    let parts = ecad_cadcraft::bom::part_set(&doc(&mut h), a03);
+    assert_eq!(parts.len(), 2, "the main part and the accessory: {parts:?}");
+    // The type: one transaction through the segmented control's command.
+    h.get_by_label("ecad.plc.card.editor.type.ao").click();
+    h.run_steps(4);
+    assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(ecad_cadcraft::plc::rack::CardType::Ao), "the card is now an AO card");
+    assert_eq!(start_byte("%Q4.0"), Some(Some(4)));
+    assert_eq!(start_byte("IW64"), Some(Some(64)));
+    assert_eq!(start_byte(""), Some(None), "empty unpins");
+    assert!(field_line(a03, "slot", "x").is_none(), "a slot is a number");
+    take(&h, &deltas, "056-card-editor.png");
 }
 
 #[test]
@@ -230,30 +256,8 @@ fn i_export_tags_writes_the_rack_and_changes_nothing() {
     ok(&mut h, &line);
     assert_eq!(head_of(&mut h), before, "export records nothing");
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("Valve_Inlet,%Q2.2,Bool,Inlet valve open,-A03,2,Off,-H03:X2,"), "{text}");
+    assert!(text.contains("Valve_Inlet,%Q2.2,Bool,Inlet valve open,'-A03,2,Off,'-H03:X2,"), "{text}");
     let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn l_with_writes_off_compare_offers_no_take() {
-    use ecad_trial::lists::plc_compare::{CompareView, TAKE};
-    let row = ecad_cadcraft::plc::sync::CompareRow {
-        at: Some((ComponentId(1), 2)),
-        card_tag: "-A03".into(),
-        channel: Some(2),
-        address: "%Q2.2".into(),
-        tag: Some("Valve_Inlet".into()),
-        text: None,
-        ty: "DQ",
-        plc: None,
-        state: State::Differs("Valve_In".into()),
-    };
-    let mut v = CompareView::new(Some(ComponentId(1)));
-    v.set_rows(vec![row]);
-    v.source.writable = true;
-    assert!(matches!(v.source.cell(0, TAKE), ecad_ui::table::Cell::Buttons(_)));
-    v.source.writable = false;
-    assert_eq!(v.source.cell(0, TAKE), ecad_ui::table::Cell::Empty, "writes off: no take");
 }
 
 #[test]

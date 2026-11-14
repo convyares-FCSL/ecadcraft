@@ -16,11 +16,10 @@
 //!   text set (`plcchannel`), committed, updated and its card's rows made again. < 5 ms.
 //! - **work**: how many racks and cards a slot move recomputed (never all of them).
 //!
-//! - Brief 056 (design 056 §12.4): **plcsync build**, the sync index of a 20 000-tag snapshot
-//!   against every channel (< 40 ms); **plcsync upd**, one channel's tag set, committed and its
-//!   state updated (< 1 ms on the update; the commit's own cost is in the time); **plcimport**, a
-//!   5 000-tag generic CSV read, normalised and compared, dry run (< 60 ms); **plcexport**, every
-//!   rack as generic CSV text (< 30 ms); **drives**, Drives of every channel from its rows (< 20 ms).
+//! - Brief 056 (design 056 §12.4, without sync since the owner's change of 2026-11-14):
+//!   **plcimport**, a 5 000-tag generic CSV read, normalised and matched to the channels, dry run
+//!   (< 60 ms); **plcexport**, every rack as generic CSV text (< 30 ms); **drives**, Drives of every
+//!   channel from its rows (< 20 ms).
 //!
 //! Each edit is undone after it is measured.
 
@@ -66,10 +65,6 @@ pub struct MeasuredPlc {
     pub plcstrip_ms: f64,
     pub plcrack_ms: f64,
     /// Brief 056 (design 056 §12.4).
-    pub plcsync_build_ms: f64,
-    pub plcsync_upd_ms: f64,
-    /// The sync index's own part of that update: one card's states worked out again.
-    pub plcsync_card_ms: f64,
     pub plcimport_ms: f64,
     pub plcexport_ms: f64,
     pub drives_ms: f64,
@@ -251,7 +246,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
         }
         out.iolistupd_ms = median(&mut upd);
         measure_051(&project, &mut s, runs, rack, &mut out)?;
-        measure_056(&project, &mut s, runs, card, &mut out)?;
+        measure_056(&project, &mut s, runs, &mut out)?;
         Ok(out)
     })();
     crate::measure::release_lock_file(&copy);
@@ -270,54 +265,7 @@ fn tag_table(n: u32) -> String {
 }
 
 /// Brief 056's rows (design 056 §12.4), on the project as [`measure`] left it.
-fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, card: ComponentId, out: &mut MeasuredPlc) -> Result<(), String> {
-    use ecad_cadcraft::plc::sync;
-    let big = tag_table(20_000);
-    let (_, snap) = sync::read_tags(big.as_bytes(), "bench.csv", None)?;
-    let mut build = Vec::new();
-    for _ in 0..runs {
-        build.push(project.configure(s, |p| {
-            p.outputs();
-            let doc = p.ledger.document();
-            let Some(o) = p.outputs.as_ref() else { return 0.0 };
-            let t = Instant::now();
-            std::hint::black_box(sync::Sync::with_snapshot(doc, &o.plc, Some(snap.clone())));
-            ms(t)
-        })?);
-    }
-    out.plcsync_build_ms = median(&mut build);
-    // A snapshot in the project for the update row (setup, not timed).
-    run(s, "plcimport", json!({"text": tag_table(5_000), "name": "bench.csv"}))?;
-    let mut upd = Vec::new();
-    for k in 0..runs {
-        let t = Instant::now();
-        run(s, "plcchannel", json!({"card": card.hex(), "channel": 0, "tag": format!("Bench_{k}")}))?;
-        project.configure(s, |p| {
-            p.outputs();
-            if let Some(o) = p.outputs.as_ref() {
-                std::hint::black_box((o.plc.sync.state(card, 0), o.plc.sync.card_count(card)));
-            }
-        })?;
-        upd.push(ms(t));
-        run(s, "undo", json!({}))?;
-    }
-    out.plcsync_upd_ms = median(&mut upd);
-    let mut cards = Vec::new();
-    for _ in 0..runs {
-        cards.push(project.configure(s, |p| {
-            p.outputs();
-            let doc = p.ledger.document();
-            let Some(o) = p.outputs.as_ref() else { return 0.0 };
-            let Some(cd) = o.plc.cards.get(&card) else { return 0.0 };
-            let mut kept = o.plc.sync.clone();
-            let t = Instant::now();
-            std::hint::black_box(kept.set_card(doc, &o.plc, cd));
-            std::hint::black_box((kept.state(card, 0), kept.card_count(card)));
-            ms(t)
-        })?);
-    }
-    out.plcsync_card_ms = median(&mut cards);
-    run(s, "undo", json!({}))?;
+fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut MeasuredPlc) -> Result<(), String> {
     let five = tag_table(5_000);
     let mut imports = Vec::new();
     for _ in 0..runs {

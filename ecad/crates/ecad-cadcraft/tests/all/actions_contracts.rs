@@ -144,8 +144,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "plcmaketags",
     "plcexport",
     "plcimport",
-    "plcsync",
-    "plctake",
+    "plccardtype",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

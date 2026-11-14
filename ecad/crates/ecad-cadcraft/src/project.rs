@@ -2255,6 +2255,17 @@ impl Project {
         if let Some(m) = crate::generated::refusal(self.ledger.document(), &ops) {
             return Err(m);
         }
+        // Brief 056 (design 056 §8): the first rack brings the book's rack overview page with it,
+        // in the same transaction (not for a merge or a Restore, which record exactly the state
+        // they bring back).
+        let mut ops = ops;
+        let rack_page = if kind.is_none() && numbering {
+            let (id, more) = crate::plc::page::rack_page_ops(self, &ops)?;
+            ops.extend(more);
+            id
+        } else {
+            None
+        };
         #[cfg(feature = "fault-injection")]
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
@@ -2284,6 +2295,9 @@ impl Project {
             e.to_string()
         })?;
         self.events.record(EventKind::Accepted, Some(command), self.ledger.head(), None, label);
+        if let Some(id) = rack_page {
+            self.pages.entry(id).or_default();
+        }
         let refs = self.finish_watch(watch);
         let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
