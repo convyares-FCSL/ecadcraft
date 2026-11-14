@@ -417,3 +417,39 @@ pub fn rack_places_touched(doc: &Document, plc: &Plc, ops: &[ecad_model::Op]) ->
     // A page moved in the book (rare): every place may change its page number.
     ecad_model::book::moves_pages(ops) && !(plc.cards.is_empty() && plc.racks.is_empty())
 }
+
+/// The release's PLC racks list (design 051 §4.2: in the release like the I/O list): one row per
+/// tile, racks by tag and then the cards in no rack. `None` when the project has no PLC racks or
+/// cards; the release then names [`NO_RACKS`].
+pub fn rack_csv(doc: &Document, plc: &Plc) -> Option<crate::outputs::Table> {
+    use crate::outputs::{Cell, Table};
+    if plc.racks.is_empty() && plc.cards.is_empty() {
+        return None;
+    }
+    let c = |t: String| Cell { text: t, flag: None };
+    let mut rows = Vec::new();
+    let mut push = |rack: &str, t: &Tile| {
+        let (used, reserved) =
+            (t.squares.iter().filter(|s| **s == Square::Used).count(), t.squares.iter().filter(|s| **s == Square::Reserved).count());
+        rows.push(vec![
+            c(rack.to_string()),
+            c(t.slot.map(|s| s.to_string()).unwrap_or_default()),
+            c(if t.kind == TileKind::Free { String::new() } else { t.tag.clone() }),
+            c(t.what.clone()),
+            c(t.range.clone()),
+            c(t.squares.len().to_string()),
+            c(used.to_string()),
+            c(reserved.to_string()),
+            c(t.place.clone().unwrap_or_default()),
+        ]);
+    };
+    for r in plc.racks_by_tag() {
+        for t in overview::rack_tiles(doc, plc, r) {
+            push(&r.tag, &t);
+        }
+    }
+    for t in overview::unracked_tiles(doc, plc) {
+        push("", &t);
+    }
+    Some(Table { headers: vec!["Rack", "Slot", "Tag", "Type", "Addresses", "Channels", "Used", "Reserved", "Place"], rows })
+}
