@@ -477,7 +477,11 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
             let want: Vec<&str> = e.points.iter().map(|p| p.0.as_str()).collect();
             assert_eq!(labels(&v), want, "{}: labels in definition order", e.key);
             let c: ComponentId = id(&v, "component");
-            assert_eq!(prop(&mut h, c, "description").as_deref(), Some(name.as_str()), "{}: default description", e.key);
+            // A connector half or pin makes a connector device, whose own description is the
+            // registry's `Connector` (design 044 §4.6); the half's BOM description is the half's
+            // own (§2.4), not the component's.
+            let want = if symbols::by_key(&e.key).and_then(|s| s.side()).is_some() { "Connector" } else { name.as_str() };
+            assert_eq!(prop(&mut h, c, "description").as_deref(), Some(want), "{}: default description", e.key);
             let d = h.doc();
             let shown = ecad_model::derive::terminal_positions(&d, page);
             for (label, x, y) in &e.points {
