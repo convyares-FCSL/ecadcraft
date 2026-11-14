@@ -9,7 +9,7 @@
 
 use ecad_model::{Primitive, Pt, TextHAlign, TextVAlign};
 use ecad_ui::tokens::{Icon, size, space};
-use eframe::egui::{self, Align2, Color32, FontId, Key, Pos2, Rect, Shape, Stroke, pos2, vec2};
+use eframe::egui::{self, Align2, Color32, Key, Pos2, Rect, Shape, Stroke, pos2, vec2};
 
 use super::draft::{self, Draft, GRID_MM, Offer, Picked, TEXT_MM};
 use super::review::Review;
@@ -651,7 +651,7 @@ fn c32(c: ecad_ui::tokens::Color) -> Color32 {
 /// counter-clockwise, `px` tall.
 /// The text's box on the screen, turned with it.
 fn paint_text(p: &egui::Painter, at: Pos2, value: &str, px: f32, rotation: f64, h: TextHAlign, v: TextVAlign, color: Color32) -> [Pos2; 4] {
-    let galley = p.layout_no_wrap(value.to_string(), FontId::proportional(px.max(4.0)), color);
+    let galley = p.layout_no_wrap(value.to_string(), ecad_ui::style::ui_font(px.max(4.0)), color);
     let size = galley.size();
     let dx = match h {
         TextHAlign::Left => 0.0,
@@ -798,9 +798,9 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
         let c = b.to_screen(rect, pt.at);
         let chosen = b.selected == Some(Picked::Point(i));
         p.circle_stroke(c, RING_PX / 2.0, Stroke::new(if chosen { 2.5 } else { 1.5 }, if chosen { sel } else { cp }));
-        p.text(c + vec2(-RING_PX, 0.0), Align2::RIGHT_CENTER, &pt.key, FontId::proportional(11.0), cp);
+        p.text(c + vec2(-RING_PX, 0.0), Align2::RIGHT_CENTER, &pt.key, ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::CAPTION.size), cp);
         if let Some(l) = &pt.label {
-            p.text(c + vec2(RING_PX, RING_PX / 2.0), Align2::LEFT_TOP, l, FontId::proportional((2.5 * b.scale).clamp(8.0, 28.0)), ink);
+            p.text(c + vec2(RING_PX, RING_PX / 2.0), Align2::LEFT_TOP, l, ecad_ui::style::ui_font((2.5 * b.scale).clamp(8.0, 28.0)), ink);
         }
     }
 
@@ -828,7 +828,13 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
             Offer::Point { at } => {
                 let c = b.to_screen(rect, *at);
                 dashed_ring(&p, c, RING_PX, Stroke::new(2.0, preview));
-                p.text(c + vec2(-RING_PX - 3.0, 0.0), Align2::RIGHT_CENTER, "point?", FontId::proportional(11.0), preview);
+                p.text(
+                    c + vec2(-RING_PX - 3.0, 0.0),
+                    Align2::RIGHT_CENTER,
+                    "point?",
+                    ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::CAPTION.size),
+                    preview,
+                );
             }
             Offer::Slot { at, text, .. } => {
                 let (w, h) = text_size(text, 3.0);
@@ -922,7 +928,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
     // A refusal at the cursor (design 048 §3.3 step 3).
     if let Some((why, at)) = &b.at_cursor {
         let q = b.to_screen(rect, *at) + vec2(12.0, -12.0);
-        let galley = p.layout_no_wrap(why.clone(), FontId::proportional(12.0), c32(shell.text));
+        let galley = p.layout_no_wrap(why.clone(), ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::SMALL.size), c32(shell.text));
         let r = Rect::from_min_size(q, galley.size()).expand(5.0);
         p.rect_filled(r, 4.0, c32(shell.raised));
         p.rect_stroke(r, 4.0, Stroke::new(1.0, c32(shell.error)), egui::StrokeKind::Inside);
@@ -957,7 +963,12 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
             .show(ui, |ui| {
                 ui.set_width(card.width() - 2.0 * space::M);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(&title).font(FontId::proportional(15.0)).strong().color(c32(shell.text)));
+                    ui.label(
+                        egui::RichText::new(&title)
+                            .font(ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::TITLE.size))
+                            .strong()
+                            .color(c32(shell.text)),
+                    );
                     if back {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let r = ui.add(ecad_ui::prim::Button::new("Back to the page").kind(ecad_ui::prim::Kind::Quiet).small());
@@ -977,7 +988,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
     let head = Rect::from_min_size(pos2(card.left(), card_resp.inner.bottom() + space::XS), vec2(card.width(), 0.0));
     // The grid's words at the top right.
     let words = format!("Grid {GRID_MM} mm · drawn at print size, so 1 square is {GRID_MM} mm on paper");
-    let g = p.layout_no_wrap(words, FontId::proportional(12.0), c32(shell.text_2));
+    let g = p.layout_no_wrap(words, ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::SMALL.size), c32(shell.text_2));
     let pill = Rect::from_min_size(
         pos2(rect.right() - space::L - g.size().x - 2.0 * space::M, rect.top() + space::L),
         vec2(g.size().x + 2.0 * space::M, 28.0),
@@ -1005,7 +1016,13 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
     }
     let empty = b.draft.shape.graphics.is_empty() && b.draft.shape.points.is_empty() && b.draft.shape.slots.is_empty();
     if empty && b.pending.is_empty() {
-        let r = p.text(rect.center() + vec2(0.0, 80.0), Align2::CENTER_CENTER, EMPTY_HINT, FontId::proportional(14.0), c32(shell.text_3));
+        let r = p.text(
+            rect.center() + vec2(0.0, 80.0),
+            Align2::CENTER_CENTER,
+            EMPTY_HINT,
+            ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::LEAD.size),
+            c32(shell.text_3),
+        );
         ui.interact(r, egui::Id::unique(HINT), egui::Sense::hover()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, EMPTY_HINT));
     }
 
@@ -1098,12 +1115,18 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_ui::tok
     // The intent line along the bottom.
     b.intent = b.intent_text();
     // Rev 3: a pill centred near the canvas's foot.
-    let g = p.layout_no_wrap(b.intent.clone(), FontId::proportional(13.0), c32(shell.text));
+    let g = p.layout_no_wrap(b.intent.clone(), ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::BODY.size), c32(shell.text));
     let w = (g.size().x + 2.0 * space::L).min(rect.width() - 2.0 * space::L);
     let line = Rect::from_center_size(pos2(rect.center().x, rect.bottom() - space::L - 20.0), vec2(w, 40.0));
     p.rect_filled(line, 8.0, c32(shell.panel));
     p.rect_stroke(line, 8.0, Stroke::new(1.0, c32(shell.line)), egui::StrokeKind::Inside);
-    let r = p.text(line.left_center() + vec2(space::L, 0.0), Align2::LEFT_CENTER, &b.intent, FontId::proportional(13.0), c32(shell.text));
+    let r = p.text(
+        line.left_center() + vec2(space::L, 0.0),
+        Align2::LEFT_CENTER,
+        &b.intent,
+        ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::BODY.size),
+        c32(shell.text),
+    );
     ui.interact(r, egui::Id::unique(INTENT), egui::Sense::hover())
         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, b.intent.clone()));
     acts
@@ -1188,7 +1211,7 @@ pub fn strip(ui: &mut egui::Ui, rect: Rect, b: &mut Builder) {
             icon,
             ink,
         );
-        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, label, FontId::proportional(size::TOOL_LABEL), ink);
+        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, label, ecad_ui::style::ui_font(size::TOOL_LABEL), ink);
         ui.interact(r, egui::Id::unique(("library.builder.foot", label)), egui::Sense::hover())
             .on_hover_text(format!("{label}: the builder always draws on its {GRID_MM} mm grid"));
     }
@@ -1222,6 +1245,6 @@ fn strip_button(ui: &mut egui::Ui, r: Rect, icon: Icon, text: &str, name: &str, 
         icon,
         ink,
     );
-    ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, text, FontId::proportional(size::TOOL_LABEL), ink);
+    ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, text, ecad_ui::style::ui_font(size::TOOL_LABEL), ink);
     resp
 }

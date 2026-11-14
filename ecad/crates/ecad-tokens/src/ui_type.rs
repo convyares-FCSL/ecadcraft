@@ -23,13 +23,19 @@ pub const BODY_EMPHASIS: TypeStyle = TypeStyle { weight: 500, ..BODY };
 pub const TITLE: TypeStyle = TypeStyle { size: 15.0, line: 20.0, weight: 600 };
 /// The selected object's name, screen titles.
 pub const OBJECT: TypeStyle = TypeStyle { size: 20.0, line: 26.0, weight: 600 };
+/// Point keys and slot labels on symbol drawings in the Library (UI rev 3).
+pub const MICRO: TypeStyle = TypeStyle { size: 9.0, line: 12.0, weight: 400 };
+/// An empty screen's hint (UI rev 3).
+pub const LEAD: TypeStyle = TypeStyle { size: 14.0, line: 20.0, weight: 400 };
 
 /// Every style as `(name, style)`, names as in `tokens.md` (`ui_type.body`).
-pub const ALL: [(&str, TypeStyle); 6] = [
+pub const ALL: [(&str, TypeStyle); 8] = [
     ("ui_type.caption", CAPTION),
     ("ui_type.small", SMALL),
     ("ui_type.body", BODY),
     ("ui_type.body_emphasis", BODY_EMPHASIS),
     ("ui_type.title", TITLE),
     ("ui_type.object", OBJECT),
+    ("ui_type.micro", MICRO),
+    ("ui_type.lead", LEAD),
 ];

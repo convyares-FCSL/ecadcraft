@@ -977,7 +977,13 @@ impl ProjectPanel {
         if self.thumbnails {
             let thumb = Rect::from_min_size(pos2(x, y - 13.0), vec2(38.0, 26.0));
             let outline = active.then_some(t.accent);
-            crate::shell::glyphs::thumbnail(&p, thumb, Color32::from_gray(232), Color32::from_gray(70), outline);
+            crate::shell::glyphs::thumbnail(
+                &p,
+                thumb,
+                ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_PAPER),
+                ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_INK),
+                outline,
+            );
             x = thumb.right() + 8.0;
         }
         let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);

@@ -100,7 +100,7 @@ pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
         let (rect, go) = ui.allocate_exact_size(vec2(28.0, 24.0), Sense::click());
         go.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, GO_TO));
         if go.hovered() {
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(4), ecad_ui::color(ecad_ui::SHELL.hover));
+            ui.painter().rect_filled(rect, ecad_ui::style::corner(ecad_ui::tokens::radius::ROW), ecad_ui::color(ecad_ui::SHELL.hover));
         }
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "\u{2192}", w::font(ui, ui_type::TITLE), w::text_2());
         if go.on_hover_text("Go to it").clicked() {
@@ -119,7 +119,7 @@ fn elsewhere_line(ui: &mut egui::Ui, r: &Row) -> bool {
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     let p = ui.painter();
     if resp.hovered() {
-        p.rect_filled(rect, egui::CornerRadius::same(4), ecad_ui::color(s.hover));
+        p.rect_filled(rect, ecad_ui::style::corner(ecad_ui::tokens::radius::ROW), ecad_ui::color(s.hover));
     }
     let colour = match r.check.severity() {
         Severity::Error => s.error,

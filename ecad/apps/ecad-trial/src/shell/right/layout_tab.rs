@@ -68,7 +68,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         w::read(ui, "Variant", &d.symbol_name, "ecad.inspector.layout.variant").on_hover_text("Other variants: not available yet");
         w::row(ui, "Lock", |ui| {
             let (rect, r) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::hover());
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(8), w::raised());
+            ui.painter().rect_filled(rect, ecad_ui::style::corner(ecad_ui::tokens::radius::pill(rect.height())), w::raised());
             ui.painter().circle_filled(pos2(rect.left() + 8.0, rect.center().y), 5.5, w::text_3());
             r.on_hover_text(super::device::NOT_YET);
             ui.label(w::rich(ui, "can be moved and joined", ui_type::SMALL, w::text_2()));
@@ -219,12 +219,21 @@ impl super::Inspector {
             let b = egui::Rect::from_center_size(pos2(r.left() + 9.0, r.center().y), vec2(16.0, 16.0));
             let shell = ecad_ui::SHELL;
             if on {
-                ui.painter().rect_filled(b, egui::CornerRadius::same(4), ecad_ui::color(if can { shell.accent } else { shell.text_3 }));
+                ui.painter().rect_filled(
+                    b,
+                    ecad_ui::style::corner(ecad_ui::tokens::radius::CHECK),
+                    ecad_ui::color(if can { shell.accent } else { shell.text_3 }),
+                );
                 let c = egui::Color32::WHITE;
                 ui.painter().line_segment([b.center() + vec2(-4.0, 0.0), b.center() + vec2(-1.0, 3.0)], egui::Stroke::new(1.6, c));
                 ui.painter().line_segment([b.center() + vec2(-1.0, 3.0), b.center() + vec2(4.0, -3.0)], egui::Stroke::new(1.6, c));
             } else {
-                ui.painter().rect_stroke(b, egui::CornerRadius::same(4), egui::Stroke::new(1.2, w::text_2()), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(
+                    b,
+                    ecad_ui::style::corner(ecad_ui::tokens::radius::CHECK),
+                    egui::Stroke::new(1.2, w::text_2()),
+                    egui::StrokeKind::Inside,
+                );
             }
             if let Some(s) = &show_row {
                 let name = format!("ecad.inspector.{}", s.key);
@@ -247,7 +256,7 @@ impl super::Inspector {
             } else {
                 "As drawn"
             };
-            ui.painter().rect_filled(r.shrink2(vec2(2.0, 0.0)), egui::CornerRadius::same(5), w::raised());
+            ui.painter().rect_filled(r.shrink2(vec2(2.0, 0.0)), ecad_ui::style::corner(ecad_ui::tokens::radius::SEGMENT), w::raised());
             ui.painter().text(
                 pos2(r.left() + 10.0, r.center().y),
                 egui::Align2::LEFT_CENTER,

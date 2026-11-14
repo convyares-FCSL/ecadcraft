@@ -234,7 +234,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
         let sec = t.settings.section;
         let x = head.left() + space::XL + space::S;
         let y = head.center().y;
-        let g = ui.painter().layout_no_wrap(sec.label().to_string(), egui::FontId::proportional(20.0), ecad_ui::color(s.text));
+        let g = ui.painter().layout_no_wrap(
+            sec.label().to_string(),
+            ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::OBJECT.size),
+            ecad_ui::color(s.text),
+        );
         let w = g.size().x;
         let h = g.size().y;
         ui.painter().galley(pos2(x, y - h / 2.0), g, ecad_ui::color(s.text));

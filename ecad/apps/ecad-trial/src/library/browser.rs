@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use ecad_cadcraft::symbols::{self, Family, Starter};
 use ecad_model::{Definition, DefinitionId, Document, Primitive, Pt};
 use ecad_ui::tokens::{space, ui_type};
-use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, pos2, vec2};
+use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 
 use crate::shell::bar;
 
@@ -320,7 +320,7 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
                 p.add(egui::Shape::line(super::builder::arc_points(*center, *radius, *start, *end).into_iter().map(at).collect(), st));
             }
             Primitive::Text { at: a, height, value, .. } => {
-                p.text(at(*a), Align2::LEFT_BOTTOM, value, FontId::proportional(((*height * s) as f32 * 1.25).clamp(5.0, 14.0)), ink);
+                p.text(at(*a), Align2::LEFT_BOTTOM, value, ecad_ui::style::ui_font(((*height * s) as f32 * 1.25).clamp(5.0, 14.0)), ink);
             }
             Primitive::Point { at: a } => {
                 p.circle_filled(at(*a), 1.5, ink);
@@ -330,11 +330,17 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
     if let Some((ring, slot)) = marks {
         for t in &d.terminals {
             p.circle_stroke(at(t.at), 3.5, Stroke::new(1.25, ring));
-            p.text(at(t.at) + vec2(5.0, -5.0), Align2::LEFT_BOTTOM, &t.key, FontId::proportional(9.0), ring);
+            p.text(at(t.at) + vec2(5.0, -5.0), Align2::LEFT_BOTTOM, &t.key, ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::MICRO.size), ring);
         }
         for sl in &d.texts {
             p.circle_filled(at(sl.at), 2.0, slot);
-            p.text(at(sl.at) + vec2(4.0, 0.0), Align2::LEFT_CENTER, super::draft::slot_label(&sl.text), FontId::proportional(9.0), slot);
+            p.text(
+                at(sl.at) + vec2(4.0, 0.0),
+                Align2::LEFT_CENTER,
+                super::draft::slot_label(&sl.text),
+                ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::MICRO.size),
+                slot,
+            );
         }
     }
 }
@@ -625,7 +631,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_ui::tokens::
         let marks = resp.hovered().then(|| (c32(sheet.connection_point), c32(sheet.placement_preview)));
         paint_symbol(&p, pic.shrink(10.0), d, c32(sheet.ink), marks);
     }
-    let name = p.layout(e.name.clone(), FontId::proportional(13.0), c32(s.text), r.width() - 20.0);
+    let name = p.layout(e.name.clone(), ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::BODY.size), c32(s.text), r.width() - 20.0);
     let name_h = name.size().y.min(36.0);
     p.with_clip_rect(Rect::from_min_size(pos2(r.left() + 10.0, pic.bottom() + 6.0), vec2(r.width() - 20.0, 36.0))).galley(
         pos2(r.left() + 10.0, pic.bottom() + 6.0),
@@ -641,7 +647,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_ui::tokens::
         pos2(r.left() + 10.0, (pic.bottom() + 10.0 + name_h).max(r.bottom() - 22.0)),
         Align2::LEFT_TOP,
         src,
-        FontId::proportional(11.0),
+        ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::CAPTION.size),
         c32(tone),
     );
     if resp.clicked() {

@@ -419,7 +419,13 @@ fn standard_cards(ui: &mut egui::Ui) {
                 p.circle_filled(dot, 3.5, ecad_ui::color(s.accent));
             }
             let ink = ecad_ui::color(if on { s.text } else { s.text_2 });
-            p.text(egui::pos2(dot.x + 14.0, dot.y), egui::Align2::LEFT_CENTER, *title, egui::FontId::proportional(15.0), ink);
+            p.text(
+                egui::pos2(dot.x + 14.0, dot.y),
+                egui::Align2::LEFT_CENTER,
+                *title,
+                ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::TITLE.size),
+                ink,
+            );
             if on {
                 let tag = egui::Rect::from_min_size(egui::pos2(r.right() - 64.0, r.top() + 12.0), egui::vec2(52.0, 20.0));
                 p.rect_stroke(tag, ecad_ui::style::corner(4.0), egui::Stroke::new(1.0, ecad_ui::color(s.accent)), egui::StrokeKind::Inside);

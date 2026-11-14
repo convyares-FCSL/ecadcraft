@@ -40,6 +40,11 @@ pub fn color(c: ecad_tokens::Color) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
 }
 
+/// An image from premultiplied RGBA bytes, `size` = `[width, height]` (a rasterised page preview).
+pub fn rgba_image(size: [usize; 2], rgba: &[u8]) -> egui::ColorImage {
+    egui::ColorImage::from_rgba_premultiplied(size, rgba)
+}
+
 /// The interface theme (UI rev 3, boards 1.17 and 1.18): which shell colour set [`SHELL`] reads.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Theme {

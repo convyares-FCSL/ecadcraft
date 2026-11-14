@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_ui::tokens::{radius, space, ui_type};
-use eframe::egui::{self, Color32, CornerRadius, Rect, Response, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
+use eframe::egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
 
 /// The label column's width.
 pub const LABEL_W: f32 = 96.0;
@@ -126,7 +126,7 @@ pub fn read(ui: &mut egui::Ui, label: &str, value: &str, name: &str) -> Response
 /// The box a value set here sits in: raised, rounded, `w` wide; returns its rect.
 pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
     let (rect, _) = ui.allocate_exact_size(vec2(w, FIELD_H), Sense::hover());
-    ui.painter().rect_filled(rect, CornerRadius::same(radius::FIELD as u8), raised());
+    ui.painter().rect_filled(rect, ecad_ui::style::corner(radius::FIELD), raised());
     rect
 }
 
@@ -154,14 +154,14 @@ pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str,
     if invalid {
         ui.painter().rect_stroke(
             rect,
-            CornerRadius::same(radius::FIELD as u8),
+            ecad_ui::style::corner(radius::FIELD),
             Stroke::new(1.0, ecad_ui::color(ecad_ui::SHELL.error)),
             StrokeKind::Outside,
         );
     } else if r.has_focus() {
         ui.painter().rect_stroke(
             rect,
-            CornerRadius::same(radius::FIELD as u8),
+            ecad_ui::style::corner(radius::FIELD),
             Stroke::new(1.0, ecad_ui::color(ecad_ui::SHELL.accent_text)),
             StrokeKind::Inside,
         );
@@ -178,7 +178,7 @@ pub fn segmented(ui: &mut egui::Ui, items: &[&str], selected: Option<usize>, ena
     let p = ui.painter().clone();
     p.rect(
         rect,
-        CornerRadius::same(radius::BUTTON as u8),
+        ecad_ui::style::corner(radius::BUTTON),
         ecad_ui::color(s.bg),
         Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line()),
         StrokeKind::Inside,
@@ -193,9 +193,9 @@ pub fn segmented(ui: &mut egui::Ui, items: &[&str], selected: Option<usize>, ena
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, enabled, selected == Some(i), &label));
         let on = selected == Some(i);
         if on {
-            p.rect_filled(r, CornerRadius::same((radius::BUTTON - 1.0) as u8), ecad_ui::color(s.active));
+            p.rect_filled(r, ecad_ui::style::corner(radius::SEGMENT), ecad_ui::color(s.active));
         } else if enabled && resp.hovered() {
-            p.rect_filled(r, CornerRadius::same((radius::BUTTON - 1.0) as u8), ecad_ui::color(s.hover));
+            p.rect_filled(r, ecad_ui::style::corner(radius::SEGMENT), ecad_ui::color(s.hover));
         }
         let ink = match (enabled, on) {
             (true, true) => text(),
@@ -231,7 +231,7 @@ pub fn status_pill(ui: &mut egui::Ui, ok: bool, words: &str, after: &str, name: 
         let (rect, r) = ui.allocate_exact_size(vec2(g.size().x + 30.0, 22.0), Sense::hover());
         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, name));
         let p = ui.painter();
-        p.rect_filled(rect, CornerRadius::same(11), ecad_ui::color(s.raised));
+        p.rect_filled(rect, ecad_ui::style::corner(radius::pill(rect.height())), ecad_ui::color(s.raised));
         let mark = pos2(rect.left() + 12.0, rect.center().y);
         if ok {
             let c = ecad_ui::color(s.ok);

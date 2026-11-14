@@ -6,7 +6,7 @@
 use ecad_cadcraft::checks::{Object, Severity};
 use ecad_cadcraft::props::{Row, Section};
 use ecad_ui::tokens::{radius, space, ui_type};
-use eframe::egui::{self, CornerRadius, Rect, Sense, pos2, vec2};
+use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
 use super::widgets as w;
 use super::{Cx, InspectorAction, fields};
@@ -268,7 +268,7 @@ fn part_card(ui: &mut egui::Ui, p: &ecad_cadcraft::bom::PartSetRow) {
     let name = format!("{}.row.{}", super::PARTS, p.n);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
     let painter = ui.painter();
-    painter.rect_filled(rect, CornerRadius::same(radius::CARD as u8 / 2 + 1), ecad_ui::color(s.raised));
+    painter.rect_filled(rect, ecad_ui::style::corner(radius::INSET_CARD), ecad_ui::color(s.raised));
     let dot = if p.n == 0 { ecad_ui::color(s.accent_text) } else { w::text_3() };
     painter.circle_filled(pos2(rect.left() + 13.0, rect.top() + 15.0), 3.5, dot);
     let title = p.description.clone().or_else(|| p.part_number.clone()).unwrap_or_else(|| "Part".into());
@@ -298,7 +298,7 @@ fn part_card(ui: &mut egui::Ui, p: &ecad_cadcraft::bom::PartSetRow) {
     let q = Rect::from_center_size(pos2(rect.right() - 20.0, rect.top() + 15.0), vec2(24.0, 22.0));
     painter.rect_stroke(
         q,
-        CornerRadius::same(4),
+        ecad_ui::style::corner(radius::BADGE),
         egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line_strong)),
         egui::StrokeKind::Inside,
     );
@@ -316,9 +316,9 @@ fn drawn_row(ui: &mut egui::Ui, r: &super::details::DrawnRow, i: usize) -> Optio
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, r.rep.is_some(), &name));
     let p = ui.painter();
     if r.this {
-        p.rect_filled(rect, CornerRadius::same(4), ecad_ui::color(s.accent_soft));
+        p.rect_filled(rect, ecad_ui::style::corner(radius::ROW), ecad_ui::color(s.accent_soft));
     } else if resp.hovered() && r.rep.is_some() {
-        p.rect_filled(rect, CornerRadius::same(4), ecad_ui::color(s.hover));
+        p.rect_filled(rect, ecad_ui::style::corner(radius::ROW), ecad_ui::color(s.hover));
     }
     let spare = r.place.is_empty();
     let ink = if spare { w::text_3() } else { w::text() };

@@ -105,6 +105,9 @@ fn constants() -> BTreeMap<String, Vec<String>> {
     }
     put("sheet.selection_fill".into(), vec![format!("{} %", sheet::SELECTION_FILL_PERCENT)]);
     put("sheet.preview_fill".into(), vec![format!("{} %", sheet::PREVIEW_FILL_PERCENT)]);
+    put("sheet.thumbnail_paper".into(), vec![sheet::THUMBNAIL_PAPER.to_token()]);
+    put("sheet.preview_paper".into(), vec![sheet::PREVIEW_PAPER.to_token()]);
+    put("sheet.thumbnail_ink".into(), vec![sheet::THUMBNAIL_INK.to_token()]);
     for (name, cat) in [("wire.power", wire::POWER), ("wire.dc_24v", wire::DC_24V), ("wire.pe", wire::PE)] {
         put(name.into(), vec![wire_colors(cat.paper), wire_colors(cat.dark)]);
     }
