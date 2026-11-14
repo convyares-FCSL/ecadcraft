@@ -104,7 +104,56 @@ pub struct BridgeSession {
 /// A request waiting in the trial: not begun yet, so the client's own wait still applies.
 struct Waiting {
     req: ControlRequest,
+    /// When it arrived, on [`Agent::clock`].
     since: Instant,
+}
+
+/// The clock the busy rule's hold is measured on (design §6.2). Real time in the app. A test may
+/// give the agent a simulated one, which moves only when told ([`Clock::advance`]), so the 5 s
+/// hold is checked exactly, without waiting and whatever the machine's load.
+#[derive(Debug, Clone, Default)]
+pub struct Clock(Option<std::sync::Arc<SimTime>>);
+
+/// A simulated clock's start and how far it has been moved on, in nanoseconds.
+#[derive(Debug)]
+struct SimTime {
+    base: Instant,
+    offset_ns: std::sync::atomic::AtomicU64,
+}
+
+impl Clock {
+    /// A clock that stands still until [`Clock::advance`] moves it. Clones share it.
+    pub fn simulated() -> Self {
+        Clock(Some(std::sync::Arc::new(SimTime { base: Instant::now(), offset_ns: std::sync::atomic::AtomicU64::new(0) })))
+    }
+
+    /// The time now.
+    pub fn now(&self) -> Instant {
+        match &self.0 {
+            None => Instant::now(),
+            Some(s) => {
+                let ns = s.offset_ns.load(std::sync::atomic::Ordering::Relaxed);
+                s.base.checked_add(Duration::from_nanos(ns)).unwrap_or(s.base)
+            }
+        }
+    }
+
+    /// How long since `t`, on this clock.
+    pub fn since(&self, t: Instant) -> Duration {
+        self.now().saturating_duration_since(t)
+    }
+
+    /// Move a simulated clock on by `d`; real time ignores it.
+    pub fn advance(&self, d: Duration) {
+        if let Some(s) = &self.0 {
+            let ns = u64::try_from(d.as_nanos()).unwrap_or(u64::MAX);
+            let relaxed = std::sync::atomic::Ordering::Relaxed;
+            let mut cur = s.offset_ns.load(relaxed);
+            while let Err(seen) = s.offset_ns.compare_exchange_weak(cur, cur.saturating_add(ns), relaxed, relaxed) {
+                cur = seen;
+            }
+        }
+    }
 }
 
 /// A request forwarded to `CadApp`'s own channel, waiting for its reply.
@@ -159,6 +208,8 @@ pub struct Agent {
     pending_warning: Option<&'static str>,
     /// How long a write waits while the person is busy ([`AGENT_HOLD`]; tests shorten it).
     pub hold: Duration,
+    /// The clock `hold` is measured on (tests use [`Clock::simulated`]).
+    pub clock: Clock,
 }
 
 impl Agent {
@@ -188,6 +239,7 @@ impl Agent {
             seen_log: None,
             pending_warning: loaded.warning,
             hold: AGENT_HOLD,
+            clock: Clock::default(),
         }
     }
 
@@ -312,7 +364,7 @@ impl Agent {
                         }
                         continue;
                     }
-                    self.waiting.push_back(Waiting { req, since: Instant::now() });
+                    self.waiting.push_back(Waiting { req, since: self.clock.now() });
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
@@ -529,7 +581,7 @@ impl Trial {
                 && self.agent.on()
                 && let Some(said) = &busy
             {
-                if w.since.elapsed() < self.agent.hold {
+                if self.agent.clock.since(w.since) < self.agent.hold {
                     if let Some(s) = session {
                         blocked.push(s);
                     }
