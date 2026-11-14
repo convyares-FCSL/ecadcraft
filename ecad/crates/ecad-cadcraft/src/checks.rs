@@ -206,10 +206,18 @@ pub enum Kind {
     /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
     /// has no length.
     WireAllowance,
+    /// Brief 054 (design 054 §9): a page's `page.type` names no page type.
+    PageTypeUnknown,
+    /// Brief 054: a page type record holds a value its field does not take.
+    PageTypeField,
+    /// Brief 054: a `folder.<id>.start` names no folder or is not 1–6 digits.
+    FolderStartUnknown,
+    /// Brief 054 (design 054 §4.4): a folder's run of numbers reaches another run's.
+    FolderRunsOverlap,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 72] = [
+    pub const ALL: [Kind; 76] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -282,6 +290,10 @@ impl Kind {
         Kind::CategoryUnknown,
         Kind::CategoryPotentialTwice,
         Kind::WireAllowance,
+        Kind::PageTypeUnknown,
+        Kind::PageTypeField,
+        Kind::FolderStartUnknown,
+        Kind::FolderRunsOverlap,
     ];
 
     /// The JSON name.
@@ -359,6 +371,10 @@ impl Kind {
             Kind::CategoryUnknown => "category-unknown",
             Kind::CategoryPotentialTwice => "category-potential-twice",
             Kind::WireAllowance => "wire-allowance",
+            Kind::PageTypeUnknown => "page-type-unknown",
+            Kind::PageTypeField => "page-type-field",
+            Kind::FolderStartUnknown => "folder-start-unknown",
+            Kind::FolderRunsOverlap => "folder-runs-overlap",
         }
     }
 
@@ -442,6 +458,10 @@ impl Kind {
             Kind::CategoryUnknown => "Wire category not found; drawn without one",
             Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
             Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
+            Kind::PageTypeUnknown => "Page type not found; drawn as its usual type",
+            Kind::PageTypeField => "Page type value not read; its usual value is used",
+            Kind::FolderStartUnknown => "Folder start number not read",
+            Kind::FolderRunsOverlap => "A folder's page numbers run into another folder's",
         }
     }
 
@@ -492,6 +512,9 @@ impl Kind {
             | Kind::ArticleConflict
             | Kind::PartForMissing
             | Kind::CategoryPotentialTwice
+            | Kind::PageTypeUnknown
+            | Kind::PageTypeField
+            | Kind::FolderRunsOverlap
             | Kind::WireThroughCard => Severity::Warning,
             _ => Severity::Info,
         }
@@ -613,6 +636,10 @@ impl Check {
             | Kind::StyleLimits
             | Kind::CategoryPotentialTwice
             | Kind::WireAllowance
+            | Kind::PageTypeUnknown
+            | Kind::PageTypeField
+            | Kind::FolderStartUnknown
+            | Kind::FolderRunsOverlap
                 if !self.which.is_empty() =>
             {
                 self.which.clone()

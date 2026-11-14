@@ -2,7 +2,7 @@
 
 Status: Approved (owner, 2026-11-14, through the overseer: Q13 and Q1 answered as recorded in
 design §18, the other questions as recommended; FP1–FP6 approved by the overseer, 2026-11-14;
-FP7 new with Q13's answer; tester for 054a)
+FP7, new with Q13's answer, approved by the overseer the same day; tester for 054a)
 Branch: `feature/page-types`, from `origin/dev` `8b6c2ccd`
 Designer: **yes** (`docs/design/054.md`) · Size: L (split in two, design §15)
 Roadmap: UI rev 4, release **0.2.2** (with 055 title block editor, the PLC signal list and sync,
@@ -81,7 +81,7 @@ that omit the zone on a zoneless page.
 
 ## Format and ops
 
-No new op. Design §11, FP1–FP6, **approved by the overseer** (2026-11-14):
+No new op. Design §11, FP1–FP7, **approved by the overseer** (2026-11-14):
 
 - FP1 a style catalogue word `page` (records through `SetStyle`);
 - FP2 page property `page.type` (a registry choice at page level);
@@ -89,7 +89,7 @@ No new op. Design §11, FP1–FP6, **approved by the overseer** (2026-11-14):
 - FP4 project property `cover.notes`;
 - FP5 registry entries `front.cover.*` and `page.type`;
 - FP6 the frame drawing honours the type's zones;
-- FP7 (new with the owner's Q13; for the overseer) a folder's start number as the project property
+- FP7 (new with the owner's Q13) a folder's start number as the project property
   `folder.<id>.start`.
 
 ## Acceptance criteria

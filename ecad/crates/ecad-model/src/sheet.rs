@@ -230,19 +230,97 @@ pub fn unit_scale(unit: LengthUnit) -> f64 {
     }
 }
 
-/// The sheet `page` is drawn on: its own `sheet` property when that reads, else the project's.
+/// The sheet `page` is drawn on: its own `sheet` property when that reads, else its page type's,
+/// else the project's.
 ///
 /// The one place a page's sheet is decided, so the frame, the references, the Devices tab and the
 /// Properties panel always agree: the page's own spec when it reads and is within the limits
-/// ([`SheetSpec::check`]), else the project's when that is within them (a hostile file may hold
-/// any numbers), else the default A3.
+/// ([`SheetSpec::check`]), else its page type's stored sheet (brief 054, FP3: [`type_sheet`]),
+/// else the project's when that is within them (a hostile file may hold any numbers), else the
+/// default A3.
 pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
-    doc.pages
-        .get(&page)
-        .and_then(|p| p.properties.get(SHEET_KEY))
+    let p = doc.pages.get(&page);
+    p.and_then(|p| p.properties.get(SHEET_KEY))
         .and_then(|t| SheetSpec::parse(t).ok())
+        .or_else(|| p.and_then(|p| type_sheet(doc, &page_type_of(doc, &p.properties))))
         .or_else(|| doc.settings.sheet.check().ok().map(|()| doc.settings.sheet))
         .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------- page types (brief 054, FP3)
+
+/// The page property naming a page's type (brief 054, FP2): a style ID of catalogue
+/// [`PAGE_CATALOGUE`].
+pub const PAGE_TYPE_KEY: &str = "page.type";
+/// The style catalogue of page types (brief 054, FP1).
+pub const PAGE_CATALOGUE: &str = "page";
+/// The page property holding a generated page's kind (brief 024, FP1).
+pub const GENERATED_KEY: &str = "generated";
+/// The six built-in page types (design 054 §2.2), in table order.
+pub const BUILTIN_PAGE_TYPES: [&str; 6] = ["front", "schematic", "network", "singleline", "panel", "report"];
+/// The generated kinds of the Front sheet type; every other known kind is a Report's.
+const FRONT_KINDS: [&str; 3] = ["cover", "revisions", "contents"];
+const REPORT_KINDS: [&str; 5] = ["bom-location", "terminals", "cables", "plcrack", "iolist"];
+/// The value a type's `sheet` field holds to take the project's sheet.
+pub const PROJECT_SHEET: &str = "project";
+
+/// The type a page with no (usable) `page.type` has (design 054 §2.3, rules 2 and 3): a front
+/// kind is `front`, any other known generated kind `report`, anything else `schematic`.
+pub fn derived_page_type(generated: Option<&str>) -> &'static str {
+    match generated.map(str::trim) {
+        Some(g) if FRONT_KINDS.contains(&g) => "front",
+        Some(g) if REPORT_KINDS.contains(&g) => "report",
+        _ => "schematic",
+    }
+}
+
+/// The page type of a page with these properties (design 054 §2.3): its own `page.type` when that
+/// names a type that exists (a built-in one, or a record in the project or the standard), else
+/// [`derived_page_type`]. Reads stored records only.
+pub fn page_type_of(doc: &Document, props: &crate::Properties) -> crate::StyleRef {
+    let own = props.get(PAGE_TYPE_KEY).and_then(|t| crate::StyleRef::parse(t)).filter(|id| page_type_exists(doc, id));
+    own.unwrap_or_else(|| crate::StyleRef::Builtin(derived_page_type(props.get(GENERATED_KEY).map(String::as_str)).to_string()))
+}
+
+/// Whether `id` names a page type: a built-in one, or a record (within the bound) in the project
+/// or the standard.
+pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
+    use crate::style::StyleLayer;
+    matches!(id, crate::StyleRef::Builtin(w) if BUILTIN_PAGE_TYPES.contains(&w.as_str()))
+        || type_record(doc, StyleLayer::Project, id).is_some()
+        || type_record(doc, StyleLayer::Standard, id).is_some()
+}
+
+/// The record `layer` holds for page type `id`, within the style bound
+/// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-cadcraft` reads them).
+fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::style::StyleRecord> {
+    use crate::style::MAX_STYLES_PER_CATALOGUE;
+    let map = crate::style::layer_of(doc, layer)?.get(PAGE_CATALOGUE)?;
+    let r = map.get(id)?;
+    if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
+        return None;
+    }
+    Some(r)
+}
+
+/// The sheet page type `id` stores (design 054 §3.1): the project record's `sheet` field, then
+/// the standard record's, when it reads as a sheet within the limits. `None` when neither does or
+/// the type takes the project's sheet (`project`, every built-in's value).
+pub fn type_sheet(doc: &Document, id: &crate::StyleRef) -> Option<SheetSpec> {
+    use crate::style::{MAX_FIELD_CHARS, StyleLayer};
+    for layer in [StyleLayer::Project, StyleLayer::Standard] {
+        let Some(v) = type_record(doc, layer, id).and_then(|r| r.fields.get("sheet")) else { continue };
+        if v.chars().count() > MAX_FIELD_CHARS {
+            continue;
+        }
+        if v.trim().eq_ignore_ascii_case(PROJECT_SHEET) {
+            return None;
+        }
+        if let Ok(s) = SheetSpec::parse(v) {
+            return Some(s);
+        }
+    }
+    None
 }
 
 /// The frame's distance from the paper edge on each side, in millimetres.

@@ -968,6 +968,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("deletestyle", "Settings ▸ Standards: a style's Delete…"),
     ("promote", "Settings ▸ Standards: Promote to standard"),
     ("styles", "a read; Settings ▸ Standards shows the catalogues"),
+    // Brief 054: the Book's folder row and header menu, and the Page tab's front pages.
+    ("folderprops", "the Book: a folder row's Start number…"),
+    ("renumberpages", "the Book: Renumber pages"),
+    ("deletepage", "the Page tab's front page toggles, and the Book's Delete on generated pages"),
     ("category", "the wire inspector's Category row (brief 050b)"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),

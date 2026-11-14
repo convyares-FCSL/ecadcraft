@@ -33,6 +33,7 @@ use crate::defaults::{self, Kind, Resolved, Scope, Source, Value};
 pub mod checks;
 pub mod frame;
 pub mod location;
+pub mod page;
 pub mod text;
 pub mod wire;
 
@@ -108,6 +109,7 @@ pub static CATALOGUES: &[&Catalogue] = &[
     &location::CATALOGUE,
     &frame::CATALOGUE,
     &wire::CATALOGUE,
+    &page::CATALOGUE,
 ];
 
 /// The catalogue with this word.
@@ -340,6 +342,8 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
     let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
     match cat.word {
         "frame" => doc.pages.iter().filter(|(_, p)| !own(&p.properties)).filter(|_| project == *id).count(),
+        // Brief 054: pages with no own type whose generated kind (or none) gives `id`.
+        "page" => doc.pages.values().filter(|p| !own(&p.properties)).filter(|p| ecad_model::sheet::page_type_of(doc, &p.properties) == *id).count(),
         "location" if project == *id => doc.components.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count(),
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         "wire" => {
@@ -387,6 +391,10 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
         Op::SetStandard { .. } => Some(BTreeSet::new()),
         Op::SetStyle { catalogue, id, .. } => {
             let Some(cat) = self::catalogue(catalogue) else { return Some(BTreeSet::new()) };
+            // Brief 054 (design 054 §10.2): a page type reaches its pages only.
+            if let Some((pages, _)) = page::touched_by(doc, op) {
+                return Some(pages.into_iter().collect());
+            }
             // A style the project (or standard, or built-in) choice resolves to is on every page.
             if (cat.choices)().iter().any(|e| chosen(doc, e, Scope::project()) == *id) {
                 return None;
