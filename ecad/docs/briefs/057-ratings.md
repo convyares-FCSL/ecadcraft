@@ -70,8 +70,8 @@ layout (rev 4). Any calculator screen.
 
 Design §13, FP1–FP7. No op, no `Document` field, no type change: new conductor, cable and
 location-box properties, five wire-category fields, the `cable` catalogue (050 FP7's reserved word)
-with choice entry `cable_type`, and registry area `rating`. Old files open unchanged. **For the
-overseer.**
+with choice entry `cable_type`, and registry area `rating`. Old files open unchanged. **Approved
+by the overseer (2026-11-14): FP1–FP7.**
 
 ## Update map
 
