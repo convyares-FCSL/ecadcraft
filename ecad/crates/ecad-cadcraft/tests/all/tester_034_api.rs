@@ -138,7 +138,9 @@ fn prefixes_are_registered_defaults() {
         doc.settings.tag_prefixes.insert("valve".into(), bad.into());
         assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB", "{bad:?} falls back");
     }
-    assert!(defaults::all().all(|x| !x.key.contains("rating")), "ratings have no registry default (ruling)");
+    // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
+    // device rating: the 034 ruling still holds for the device's own rating text.
+    assert!(defaults::all().all(|x| !x.key.contains("rating") || x.brief == "057"), "ratings have no registry default (ruling)");
 }
 
 /// §2.3: the change-over rule itself: s = 1 + the highest sequence digit; refused after 9.

@@ -1028,6 +1028,11 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("makesymbol", "the builder's Save (048c's Make symbol)"),
     // Brief 049 (design 049 §5.1): no wheel slot.
     ("contcaption", "the command line and the inspector's Caption row"),
+    // Brief 057 (design 057 §2, §5.3): the Rating section of Project ▸ Wires and Cables, and
+    // Settings ▸ Standards ▸ Rating tables; no wheel slot.
+    ("rating", "the Rating section of Project ▸ Wires and Cables"),
+    ("ratingtable", "Settings ▸ Standards ▸ Rating tables"),
+    ("ratings", "a read; the Rating sections show the same results"),
 ];
 
 /// The action with this id.

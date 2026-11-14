@@ -206,10 +206,44 @@ pub enum Kind {
     /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
     /// has no length.
     WireAllowance,
+    /// Brief 057 (design 057 §7).
+    RatingUnder,
+    /// Brief 057 (design 057 §7).
+    RatingTooHot,
+    /// Brief 057 (design 057 §7).
+    RatingLoadOver,
+    /// Brief 057 (design 057 §7).
+    VoltdropOver,
+    /// Brief 057 (design 057 §7).
+    RatingBundlingUnset,
+    /// Brief 057 (design 057 §7).
+    RatingDeviceMissing,
+    /// Brief 057 (design 057 §7).
+    RatingNoDevice,
+    /// Brief 057 (design 057 §7).
+    RatingTwoDevices,
+    /// Brief 057 (design 057 §7).
+    RatingDeviceUnread,
+    /// Brief 057 (design 057 §7).
+    RatingNamedDevice,
+    /// Brief 057 (design 057 §7).
+    RatingNoData,
+    /// Brief 057 (design 057 §7).
+    RatingNoTable,
+    /// Brief 057 (design 057 §7).
+    RatingTableBadRow,
+    /// Brief 057 (design 057 §7).
+    RatingTableOdd,
+    /// Brief 057 (design 057 §7).
+    RatingAssumed,
+    /// Brief 057 (design 057 §7).
+    RatingNoCurrent,
+    /// Brief 057 (design 057 §7).
+    RatingBadValue,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 72] = [
+    pub const ALL: [Kind; 89] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -282,6 +316,23 @@ impl Kind {
         Kind::CategoryUnknown,
         Kind::CategoryPotentialTwice,
         Kind::WireAllowance,
+        Kind::RatingUnder,
+        Kind::RatingTooHot,
+        Kind::RatingLoadOver,
+        Kind::VoltdropOver,
+        Kind::RatingBundlingUnset,
+        Kind::RatingDeviceMissing,
+        Kind::RatingNoDevice,
+        Kind::RatingTwoDevices,
+        Kind::RatingDeviceUnread,
+        Kind::RatingNamedDevice,
+        Kind::RatingNoData,
+        Kind::RatingNoTable,
+        Kind::RatingTableBadRow,
+        Kind::RatingTableOdd,
+        Kind::RatingAssumed,
+        Kind::RatingNoCurrent,
+        Kind::RatingBadValue,
     ];
 
     /// The JSON name.
@@ -359,6 +410,23 @@ impl Kind {
             Kind::CategoryUnknown => "category-unknown",
             Kind::CategoryPotentialTwice => "category-potential-twice",
             Kind::WireAllowance => "wire-allowance",
+            Kind::RatingUnder => "rating-under",
+            Kind::RatingTooHot => "rating-too-hot",
+            Kind::RatingLoadOver => "rating-load-over",
+            Kind::VoltdropOver => "voltdrop-over",
+            Kind::RatingBundlingUnset => "rating-bundling-unset",
+            Kind::RatingDeviceMissing => "rating-device-missing",
+            Kind::RatingNoDevice => "rating-no-device",
+            Kind::RatingTwoDevices => "rating-two-devices",
+            Kind::RatingDeviceUnread => "rating-device-unread",
+            Kind::RatingNamedDevice => "rating-named-device",
+            Kind::RatingNoData => "rating-no-data",
+            Kind::RatingNoTable => "rating-no-table",
+            Kind::RatingTableBadRow => "rating-table-bad-row",
+            Kind::RatingTableOdd => "rating-table-odd",
+            Kind::RatingAssumed => "rating-assumed",
+            Kind::RatingNoCurrent => "rating-no-current",
+            Kind::RatingBadValue => "rating-bad-value",
         }
     }
 
@@ -442,6 +510,23 @@ impl Kind {
             Kind::CategoryUnknown => "Wire category not found; drawn without one",
             Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
             Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
+            Kind::RatingUnder => "Wire or cable rated below its protective device",
+            Kind::RatingTooHot => "Conductor at or above its maximum temperature",
+            Kind::RatingLoadOver => "Load above the protective device's rating",
+            Kind::VoltdropOver => "Cable volt drop over its limit",
+            Kind::RatingBundlingUnset => "Panel wires with no bundling factor",
+            Kind::RatingDeviceMissing => "Protected by names no device",
+            Kind::RatingNoDevice => "Rated wires and cables with no protective device",
+            Kind::RatingTwoDevices => "Fed by two protective devices",
+            Kind::RatingDeviceUnread => "Device rating has no readable current",
+            Kind::RatingNamedDevice => "Protected by a device that is not a protective kind",
+            Kind::RatingNoData => "Protected wires with no rating data",
+            Kind::RatingNoTable => "No rating table value for this subject",
+            Kind::RatingTableBadRow => "Rating table rows not read",
+            Kind::RatingTableOdd => "Rating table values out of order",
+            Kind::RatingAssumed => "Cables with no cable type (values assumed)",
+            Kind::RatingNoCurrent => "Cables with no load and no device (no volt drop)",
+            Kind::RatingBadValue => "Rating value ECAD does not read",
         }
     }
 
@@ -455,7 +540,9 @@ impl Kind {
             | Kind::LevelTwice
             | Kind::SlotTwice
             | Kind::ChannelTwice
-            | Kind::ConnectorPinTwice => Severity::Error,
+            | Kind::ConnectorPinTwice
+            | Kind::RatingUnder
+            | Kind::RatingTooHot => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -492,7 +579,11 @@ impl Kind {
             | Kind::ArticleConflict
             | Kind::PartForMissing
             | Kind::CategoryPotentialTwice
-            | Kind::WireThroughCard => Severity::Warning,
+            | Kind::WireThroughCard
+            | Kind::RatingLoadOver
+            | Kind::VoltdropOver
+            | Kind::RatingBundlingUnset
+            | Kind::RatingDeviceMissing => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -580,6 +671,20 @@ pub enum Fix {
     DropMissingFor(ComponentId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
+    ShowRating(crate::rating::RatedSubject),
+    /// Brief 057: **Use 2.5 mm²**: the conductor's own `cross_section`.
+    UseSize(ConductorId, f64),
+    /// Brief 057: **Change cable type…** filtered to this size (mm²).
+    PickCableType(CableId, f64),
+    /// Brief 057: **Use Datasheet** (`rating {basis}`).
+    SetBasis(crate::rating::RatedSubject, crate::rating::Basis),
+    /// Brief 057: **Clear Protected by**.
+    ClearProtectedBy(crate::rating::RatedSubject),
+    /// Brief 057: **Choose a table**, **Set project bundling**: Settings ▸ Standards ▸ Defaults at Rating.
+    ChooseRatingTable,
+    /// Brief 057: **Show** the rated wires (Project ▸ Wires).
+    ShowRatedWires,
 }
 
 /// One row of the Checks list.
@@ -617,6 +722,8 @@ impl Check {
             {
                 self.which.clone()
             }
+            // Brief 057: every rating row says its own sentence.
+            k if crate::rating::is_rating_kind(k) && !self.which.is_empty() => self.which.clone(),
             _ => self.kind.words().to_string(),
         }
     }
@@ -678,6 +785,10 @@ pub enum Key {
     Page(PageId),
     /// Brief 050a: the style rows (unknown styles, old settings, limits).
     Styles,
+    /// Brief 057: a rated subject's own rows.
+    Rating(crate::rating::RatedSubject),
+    /// Brief 057: the count rows, unread devices and the rating table's own rows.
+    RatingSummary,
 }
 
 type Cell = (PageId, i64, i64);
@@ -855,7 +966,7 @@ fn net_words(doc: &Document, net: &NetData) -> String {
 
 /// Where a conductor is: its first page in book order and the midpoint of its longest segment
 /// there, or a given end.
-fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
+pub(crate) fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
     let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let routes = routes_of(doc, c);
     let Some((page, v)) = routes.iter().min_by_key(|(p, _)| order.get(p).copied().unwrap_or(usize::MAX)) else {
@@ -1210,6 +1321,8 @@ pub struct Checks {
     /// Bumped only when some row actually changed (an update that re-checked subjects and found
     /// the same rows leaves it), for views that show the rows themselves (the Release dialog).
     pub changed: u64,
+    /// Brief 057: the kept rating results and their indexes (design 057 §10).
+    pub rating: crate::rating::Kept,
 }
 
 impl Checks {
@@ -1244,6 +1357,14 @@ impl Checks {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
+        // Brief 057.
+        ch.rating = crate::rating::Kept::build(doc);
+        let rows: Vec<(crate::rating::RatedSubject, Vec<Check>)> =
+            ch.rating.results.values().map(|r| (r.subject, crate::rating::rows(doc, r))).collect();
+        for (s, v) in rows {
+            ch.set(Key::Rating(s), v);
+        }
+        ch.set(Key::RatingSummary, crate::rating::summary_rows(doc, &ch.rating));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1412,6 +1533,15 @@ impl Checks {
         if scope.styles {
             self.set(Key::Styles, crate::styles::checks::rows(doc));
         }
+        // Brief 057 (design 057 §10): the subjects the ops reach, and the count rows.
+        let touched = self.rating.update(doc, &scope.rating);
+        if !touched.is_empty() || scope.rating.any() {
+            for s in touched {
+                let rows = self.rating.results.get(&s).map(|r| crate::rating::rows(doc, r)).unwrap_or_default();
+                self.set(Key::Rating(s), rows);
+            }
+            self.set(Key::RatingSummary, crate::rating::summary_rows(doc, &self.rating));
+        }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
@@ -1438,6 +1568,8 @@ pub struct Scope {
     cables: BTreeSet<ecad_model::CableId>,
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
     styles: bool,
+    /// Brief 057: what the ops reach of the rating results.
+    rating: crate::rating::Touch,
 }
 
 impl Scope {
@@ -1454,6 +1586,7 @@ impl Scope {
             }
             s.nodes.insert(n);
         };
+        self.rating.collect(doc, ops);
         for op in ops {
             self.styles |= crate::styles::checks::touches(op);
             match op {

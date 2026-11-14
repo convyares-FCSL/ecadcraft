@@ -65,6 +65,29 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 057: only the rating rows (design 057 §10) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--ratings"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-ratings-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::ratings::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "rated {}, device_rating {:.2} ms (re-checked {}, re-traced {}), wire_on_net {:.2} ms, panel_default {:.1} ms, checks_build {:.1} ms",
+                    t.rated, t.device_rating_ms, t.device_evaluated, t.device_retraced, t.wire_on_net_ms, t.panel_default_ms, t.checks_build_ms
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 050: only the style rows (design 050 §11) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--styles"

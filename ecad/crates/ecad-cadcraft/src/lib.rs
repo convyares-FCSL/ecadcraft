@@ -71,6 +71,8 @@ pub mod preview;
 pub mod printbook;
 pub mod project;
 pub mod props;
+pub mod rating;
+pub mod rating_cmds;
 pub mod references;
 pub mod release;
 pub mod revisions;
