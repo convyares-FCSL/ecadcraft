@@ -504,9 +504,12 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 
 // ---------------------------------------------------------------- per commit (brief 014)
 
+/// Style catalogues no cable reference reads (brief 053): a change of one reaches no reference.
+const NO_REFERENCE_STYLES: &[&str] = &["text", "wire", "location"];
+
 /// The cables whose references, or whose drawing at a reference end on any page, `ops` could
 /// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
-/// layer, cable property or settings ops), which means the whole document, as before
+/// layer, standard, frame style or settings ops), which means the whole document, as before
 /// brief 014. Worked out on the document before the ops.
 ///
 /// # Semantics
@@ -588,10 +591,12 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             }
             Op::SetProjectSettings { before, after }
                 if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
-            // Brief 053: a style or standard is read by no reference (the derivation reads
-            // cables, routes, pages and project settings only), so it reaches none (before, every
-            // cable: `textstyle` derived every reference twice).
-            Op::SetStyle { .. } | Op::SetStandard { .. } => {}
+            // Brief 053: the text, wire and location styles only change how things are drawn;
+            // no reference reads them (the derivation reads cables, routes, pages and the sheet),
+            // so they reach none (before, every cable: `textstyle` derived every reference twice).
+            // Any other catalogue (the frame, one added later) and a standard, which may come to
+            // carry sheets, still reach every cable.
+            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(&catalogue.as_str()) => {}
             // Brief 053: a deleted component has no terminals and no representations left (the
             // model's invariants I8 and I10); removing those is its own op above, so the record
             // itself reaches no reference (`toposition` derived every one twice).
