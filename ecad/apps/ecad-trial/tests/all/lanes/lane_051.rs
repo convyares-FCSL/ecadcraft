@@ -143,6 +143,15 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     assert_eq!(doc(&mut h).page_order.len(), pages + 1);
     assert!(h.query_by_label("ecad.plc.tile.2.makepage").is_none());
     assert!(view(&h).strip[2].links.iter().flatten().any(|l| l.name.starts_with("ecad.plc.tile.2.page.")));
+
+    // Selecting a drawn card's tile selects its symbols, so the inspector shows the card; Lists
+    // stays on screen (overseer's look note on #89).
+    h.state_mut().cad.session.set_selection(Vec::new());
+    h.get_by_label("ecad.plc.tile.3").click();
+    h.run_steps(4);
+    assert!(!h.state().cad.session.selection().is_empty(), "the AI card's symbols are selected");
+    assert_eq!(h.state().shell.state.workspace, Workspace::Lists);
+    take(&h, &deltas, "051-lists-plc-card.png");
 }
 
 #[test]

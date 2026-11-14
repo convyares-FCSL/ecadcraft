@@ -374,6 +374,9 @@ pub struct IoView {
     /// The shown chip's tiles, as read and as the strip draws them, and what their links do.
     pub tiles: Vec<Tile>,
     pub strip: Vec<strip::Tile>,
+    /// Each tile's symbols, first page first: selecting a tile selects them, so the inspector
+    /// shows the card (overseer's look note on #89).
+    pub symbols: Vec<Vec<ecad_model::RepresentationId>>,
     links: Vec<Vec<Vec<TileLink>>>,
     /// Each tile's page numbers as last shown.
     numbers: Vec<Vec<String>>,
@@ -407,6 +410,7 @@ impl Default for IoView {
             chip: 0,
             tiles: Vec::new(),
             strip: Vec::new(),
+            symbols: Vec::new(),
             links: Vec::new(),
             numbers: Vec::new(),
             totals: String::new(),
@@ -450,6 +454,7 @@ impl IoView {
         let made: Vec<_> = tiles.iter().zip(&self.numbers).map(|(t, n)| strip_tile(t, n, self.source.writable, doc)).collect();
         self.strip = made.iter().map(|(t, _)| t.clone()).collect();
         self.links = made.into_iter().map(|(_, l)| l).collect();
+        self.symbols = tiles.iter().map(|t| symbols_of(doc, t)).collect();
         self.tiles = tiles;
         // Keep the selected card when it is still shown, else the first card tile.
         self.selected =
@@ -465,6 +470,9 @@ impl IoView {
         let t = overview::card_tile(doc, &o.plc, card, head);
         let numbers = Self::numbers_of(doc, &t);
         let (st, links) = strip_tile(&t, &numbers, self.source.writable, doc);
+        if let Some(s) = self.symbols.get_mut(i) {
+            *s = symbols_of(doc, &t);
+        }
         if let (Some(a), Some(b), Some(c2), Some(d)) = (self.tiles.get_mut(i), self.strip.get_mut(i), self.links.get_mut(i), self.numbers.get_mut(i))
         {
             *a = t;
@@ -709,8 +717,11 @@ impl IoView {
     pub fn handle(&mut self, a: ListAction) -> Option<ListAction> {
         match a {
             ListAction::Tile(i) => {
+                let changed = self.selected != Some(i);
                 self.select(i);
-                None
+                // The card's symbols selected on its first page: the inspector shows the card.
+                let reps = self.symbols.get(i).cloned().unwrap_or_default();
+                (changed && !reps.is_empty()).then_some(ListAction::Panel(crate::project_panel::Action::GotoSymbols(reps)))
             }
             ListAction::Chip(i) => {
                 self.choose_chip(i);
@@ -727,6 +738,23 @@ impl IoView {
             other => Some(other),
         }
     }
+}
+
+/// The symbols of a tile's card or rack, by page in book order (at most 256).
+fn symbols_of(doc: &Document, t: &Tile) -> Vec<ecad_model::RepresentationId> {
+    let c = match t.kind {
+        TileKind::Card(c) | TileKind::Rack(c) => c,
+        TileKind::Free => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for page in &t.pages {
+        out.extend(doc.representations_of(ecad_model::Subject::Component(c)).filter(|(_, r)| r.page == *page).map(|(id, _)| id));
+        if out.len() >= 256 {
+            out.truncate(256);
+            break;
+        }
+    }
+    out
 }
 
 fn same_chip(a: &Chip, b: &Chip) -> bool {
