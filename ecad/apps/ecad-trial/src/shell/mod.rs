@@ -29,16 +29,19 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod bar;
+pub mod connector;
 pub mod drawer;
 pub mod glyphs;
 pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
+pub mod placing;
 pub mod right;
 pub mod state;
 pub mod status_bar;
 pub mod text_panel;
+pub mod toggles;
 pub mod tool_strip;
 pub mod top_bar;
 pub mod wheel;
@@ -163,8 +166,6 @@ pub struct Shell {
     pub restore_view: bool,
     /// Library opened the symbol search: it closes again when another workspace is shown.
     search_from_library: bool,
-    /// The right panel's ECAD properties (the same section CADCraft's Properties palette drew).
-    right_section: Box<dyn FnMut(&mut egui::Ui)>,
     /// The project whose views were applied, and the page whose view is shown.
     view_of: Option<(String, Option<PageId>)>,
     /// The shell's own share of the last frame, in milliseconds (design §10).
@@ -184,8 +185,9 @@ impl std::fmt::Debug for Shell {
 }
 
 impl Shell {
-    /// A shell with the default state, drawing `props` in its right panel.
-    pub fn new(props: crate::sheets_ui::Shared) -> Self {
+    /// A shell with the default state. (The right panel reads the trial's `props` copy itself, UI
+    /// rev 3; the argument is kept for its callers.)
+    pub fn new(_props: crate::sheets_ui::Shared) -> Self {
         Shell {
             state: ShellState::default(),
             views: Views::default(),
@@ -204,7 +206,6 @@ impl Shell {
             page_rect: None,
             restore_view: false,
             search_from_library: false,
-            right_section: crate::sheets_ui::section(props),
             view_of: None,
             frame_ms: 0.0,
             well: status_bar::Well::default(),

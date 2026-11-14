@@ -105,9 +105,12 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     h.state_mut().goto_symbols(&[rep]).unwrap();
     h.run_steps(3);
     let rows = &h.state().settings.inspector.rows;
-    let style = rows.iter().find(|r| r.key == "text.tag.style").expect("a Tag style row");
+    let style = rows.iter().find(|r| r.key == "text.tag.style").expect("a Tag style row").clone();
     assert!(style.styles.iter().any(|(_, n)| n == "Tag large"), "{:?}", style.styles);
     assert_eq!(style.value, "Tag");
+    // UI rev 3: the size list is on the Layout tab, under Text on the sheet.
+    h.state_mut().open_inspector(ecad_trial::shell::RightTab::Layout);
+    h.run_steps(3);
     assert!(h.query_by_label("ecad.inspector.style.text.tag.style").is_some());
     let large = style.styles.iter().find(|(_, n)| n == "Tag large").unwrap().0.clone();
     let line = ecad_cadcraft::default_cmds::line(

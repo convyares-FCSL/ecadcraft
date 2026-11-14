@@ -1,15 +1,16 @@
-//! The radial wheel (spec §5, brief 041): eight slots on a ring of 150 / 54 px radii, each 41°
-//! with 4° gaps (`ecad_tokens::wheel`), centred on the cursor, with a chip above naming the
-//! object. It knows nothing of commands: the caller gives each slot's label, icon, whether it is
-//! greyed (and why), and an optional short list; the widget reports what was chosen.
+//! The radial wheel (spec §5, brief 041; UI rev 3, board 1.14): about 190 px across, eight
+//! icon-only slots on a ring (`ecad_tokens::wheel`), centred on the cursor, with a chip above
+//! naming the object. The slot under the cursor names itself in a tooltip beside it. It knows
+//! nothing of commands: the caller gives each slot's label, icon, whether it is greyed (and why),
+//! and an optional short list; the widget reports what was chosen.
 //!
 //! # Semantics
 //! - **Press, move, release**: opened on a right press, the release over a slot runs it; released
 //!   in the centre, the wheel stays open for a click; released outside, it cancels.
 //! - **Click, click**: with the button up, a click on a slot runs it; a click outside, or Esc,
 //!   cancels; a click in the centre does nothing.
-//! - A greyed slot never runs. Hovered or clicked, the reason shows under the wheel with a button
-//!   for the next step, if the caller offers one ([`Event::Next`]).
+//! - A greyed slot never runs and stays in place. Hovered, its tooltip says why; clicked, the
+//!   tooltip stays with a button for the next step, if the caller offers one ([`Event::Next`]).
 //! - A slot with a list opens it beside the slot (at most [`MAX_LIST`] rows; never a second
 //!   wheel); a row reports [`Event::Choose`].
 //!
@@ -122,33 +123,36 @@ pub fn show(ctx: &Context, w: &mut Wheel, chip: &str, slots: &[Option<SlotSpec>;
     let hovered = pos.and_then(|p| slot_at(w.center, p));
     let mut ev = Event::None;
     let list_rect = w.list.map(|i| list_rect(w.center, i, slots.get(i).and_then(|s| s.as_ref()).and_then(|s| s.list.as_ref()).map_or(0, Vec::len)));
-    let reason_rect = Rect::from_center_size(pos2(w.center.x, w.center.y + o + space::L + 24.0), vec2(320.0, 48.0));
+    // The tooltip of the slot under the cursor, or of the greyed slot clicked (which keeps it).
+    let tip_slot = hovered.filter(|i| slots.get(*i).is_some_and(Option::is_some)).or(w.reason);
+    let tip = tip_slot.and_then(|i| slots.get(i).and_then(|s| s.as_ref()).map(|sp| (i, sp)));
+    let reason_rect = tip.map_or(Rect::NOTHING, |(i, sp)| tip_rect(ctx, w.center, i, sp));
 
     // The area covers the ring, the chip, the reason and the list, so the page under them hears
     // no click.
-    let cover = bounds.union(reason_rect).union(list_rect.unwrap_or(bounds));
+    let cover = bounds.union(if reason_rect.is_positive() { reason_rect } else { bounds }).union(list_rect.unwrap_or(bounds));
     egui::Area::new(Id::unique(("ecad.wheel", chip))).order(Order::Foreground).fixed_pos(cover.min).interactable(true).show(ctx, |ui| {
         let bg = ui.allocate_rect(cover, Sense::click_and_drag());
         bg.widget_info(|| WidgetInfo::labeled(egui::Role::Group, true, label(chip)));
         let painter = ui.painter().clone();
         let s = GRAPHITE;
+        // The ring: one dark disc whose slots light in the accent under the cursor.
+        let whole = TAU / 2.0;
+        painter.add(ring(w.center, -whole, whole, crate::color(s.line)));
         for (i, slot) in slots.iter().enumerate() {
             let on = hovered == Some(i) || w.list == Some(i);
             let (fill, ink) = match slot {
-                None => (crate::color(s.panel).gamma_multiply(0.85), crate::color(s.text_3)),
-                Some(sp) if sp.greyed.is_some() => (crate::color(s.panel), crate::color(s.text_3)),
-                Some(_) if on => (crate::color(s.accent_soft), crate::color(s.accent_text)),
-                Some(_) => (crate::color(s.raised), crate::color(s.text)),
+                None => (crate::color(s.panel), crate::color(s.text_3)),
+                Some(sp) if sp.greyed.is_some() => (crate::color(s.panel), crate::color(s.text_3).gamma_multiply(0.6)),
+                Some(_) if on => (crate::color(s.accent), Color32::WHITE),
+                Some(_) => (crate::color(s.panel), crate::color(s.text)),
             };
             painter.add(sector(w.center, i, fill));
-            painter.add(Shape::closed_line(outline(w.center, i), Stroke::new(1.0, crate::color(s.line))));
             let Some(sp) = slot else { continue };
             let c = slot_center(w.center, i);
-            let icon = Rect::from_center_size(c - vec2(0.0, 8.0), vec2(20.0, 20.0));
+            let icon = Rect::from_center_size(c, vec2(18.0, 18.0));
             crate::icons::paint(&painter, icon, sp.icon, ink);
-            let font = crate::fonts::font(ui.ctx(), ui_type::CAPTION);
-            painter.text(c + vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &sp.label, font, ink);
-            let r = ui.interact(Rect::from_center_size(c, vec2(36.0, 36.0)), Id::unique(("ecad.wheel.slot", i)), Sense::hover());
+            let r = ui.interact(Rect::from_center_size(c, vec2(28.0, 28.0)), Id::unique(("ecad.wheel.slot", i)), Sense::hover());
             let greyed = sp.greyed.clone();
             r.widget_info(|| {
                 let mut info = WidgetInfo::labeled(egui::Role::Button, greyed.is_none(), sp.label.clone());
@@ -167,20 +171,34 @@ pub fn show(ctx: &Context, w: &mut Wheel, chip: &str, slots: &[Option<SlotSpec>;
         let chip_r = ui.interact(chip_rect, Id::unique("ecad.wheel.chip"), Sense::hover());
         chip_r.widget_info(|| WidgetInfo::labeled(egui::Role::Label, true, chip.to_string()));
 
-        // A greyed slot's reason, with its next step.
-        let shown_reason = hovered.filter(|i| slots.get(*i).and_then(|s| s.as_ref()).is_some_and(|s| s.greyed.is_some())).or(w.reason);
-        if let Some(i) = shown_reason
-            && let Some(Some(sp)) = slots.get(i)
-            && let Some(why) = &sp.greyed
-        {
-            painter.rect_filled(reason_rect, crate::style::corner(radius::TILE), crate::color(s.raised));
-            let mut child =
-                ui.new_child(egui::UiBuilder::new().max_rect(reason_rect.shrink(space::S)).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            crate::prim::read_value(&mut child, why);
-            if let Some(next) = &sp.next
-                && child.add(crate::prim::Button::new(next).small()).clicked()
-            {
-                ev = Event::Next(i);
+        // The slot's tooltip: its name; for a greyed slot, why, with its next step.
+        if let Some((i, sp)) = tip {
+            painter.rect(
+                reason_rect,
+                crate::style::corner(radius::TILE),
+                crate::color(s.panel),
+                Stroke::new(1.0, crate::color(s.line_strong)),
+                egui::StrokeKind::Inside,
+            );
+            let inner = reason_rect.shrink2(vec2(space::M, space::S));
+            let title = crate::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
+            let small = crate::fonts::font(ui.ctx(), ui_type::SMALL);
+            painter.text(pos2(inner.left(), inner.top() + 9.0), egui::Align2::LEFT_CENTER, &sp.label, title, crate::color(s.text));
+            if let Some(why) = &sp.greyed {
+                let g = painter.layout(why.clone(), small, crate::color(s.text_2), inner.width());
+                let h = g.size().y;
+                let why_rect = Rect::from_min_size(pos2(inner.left(), inner.top() + 20.0), g.size());
+                painter.galley(why_rect.min, g, crate::color(s.text_2));
+                // The reason is read by screen readers and tests as a label.
+                let wr = ui.interact(why_rect, Id::unique(("ecad.wheel.why", i)), Sense::hover());
+                wr.widget_info(|| WidgetInfo::labeled(egui::Role::Label, true, why.clone()));
+                if let Some(next) = &sp.next {
+                    let r = Rect::from_min_size(pos2(inner.left(), inner.top() + 24.0 + h), vec2(inner.width(), 26.0));
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Center)));
+                    if child.add(crate::prim::Button::new(next).small()).clicked() {
+                        ev = Event::Next(i);
+                    }
+                }
             }
         }
         // A slot's short list.
@@ -251,6 +269,28 @@ pub fn show(ctx: &Context, w: &mut Wheel, chip: &str, slots: &[Option<SlotSpec>;
     Event::None
 }
 
+/// Most width of a slot's tooltip.
+const TIP_W: f32 = 260.0;
+
+/// Where slot `i`'s tooltip goes: beside the ring on the slot's side, level with the slot. A
+/// greyed slot's tooltip is taller: it says why and may offer the next step.
+fn tip_rect(ctx: &Context, center: Pos2, i: usize, sp: &SlotSpec) -> Rect {
+    let c = slot_center(center, i);
+    let title = crate::fonts::font(ctx, ui_type::BODY_EMPHASIS);
+    let small = crate::fonts::font(ctx, ui_type::SMALL);
+    let label_w = ctx.fonts_mut(|f| f.layout_no_wrap(sp.label.clone(), title, Color32::WHITE).size().x);
+    let (w, h) = match &sp.greyed {
+        None => ((label_w + 2.0 * space::M).min(TIP_W), 30.0),
+        Some(why) => {
+            let text_h = ctx.fonts_mut(|f| f.layout(why.clone(), small, Color32::WHITE, TIP_W - 2.0 * space::M).size().y);
+            (TIP_W, 2.0 * space::S + 22.0 + text_h + if sp.next.is_some() { 32.0 } else { 0.0 })
+        }
+    };
+    let right = c.x >= center.x - 1.0;
+    let x = if right { center.x + wheel::OUTER_RADIUS + space::S } else { center.x - wheel::OUTER_RADIUS - space::S - w };
+    Rect::from_min_size(pos2(x, c.y - 15.0), vec2(w, h))
+}
+
 /// Where slot `i`'s list of `n` rows goes: beside the slot, away from the centre.
 fn list_rect(center: Pos2, i: usize, n: usize) -> Rect {
     let c = slot_center(center, i);
@@ -258,16 +298,6 @@ fn list_rect(center: Pos2, i: usize, n: usize) -> Rect {
     let w = 180.0;
     let x = if c.x >= center.x { center.x + wheel::OUTER_RADIUS + space::S } else { center.x - wheel::OUTER_RADIUS - space::S - w };
     Rect::from_min_size(pos2(x, c.y - h / 2.0), vec2(w, h))
-}
-
-/// The points along slot `i`'s outline: the outer arc, then the inner arc back.
-fn outline(center: Pos2, i: usize) -> Vec<Pos2> {
-    let (a0, a1) = span(i);
-    let steps = 12;
-    let at = |r: f32, a: f32| pos2(center.x + r * a.sin(), center.y - r * a.cos());
-    let mut v: Vec<Pos2> = (0..=steps).map(|k| at(wheel::OUTER_RADIUS, a0 + (a1 - a0) * k as f32 / steps as f32)).collect();
-    v.extend((0..=steps).rev().map(|k| at(wheel::INNER_RADIUS, a0 + (a1 - a0) * k as f32 / steps as f32)));
-    v
 }
 
 /// Slot `i`'s start and end angle, radians clockwise from the top.
@@ -280,7 +310,13 @@ fn span(i: usize) -> (f32, f32) {
 /// Slot `i` filled (a ring sector as a triangle strip).
 fn sector(center: Pos2, i: usize, fill: Color32) -> Shape {
     let (a0, a1) = span(i);
-    let steps = 12u32;
+    ring(center, a0, a1, fill)
+}
+
+/// The ring between the inner and outer radius from angle `a0` to `a1` (radians clockwise from
+/// the top), filled as a triangle strip.
+fn ring(center: Pos2, a0: f32, a1: f32, fill: Color32) -> Shape {
+    let steps = (((a1 - a0).abs() / TAU * 96.0).ceil() as u32).max(4);
     let at = |r: f32, a: f32| pos2(center.x + r * a.sin(), center.y - r * a.cos());
     let mut mesh = Mesh::default();
     for k in 0..=steps {
@@ -294,4 +330,30 @@ fn sector(center: Pos2, i: usize, fill: Color32) -> Shape {
         mesh.add_triangle(b + 1, b + 3, b + 2);
     }
     Shape::mesh(mesh)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Board 1.14: a slot's tooltip clears the ring, so it never covers another slot's icon (the
+    /// top slot's used to sit on the top-right one).
+    #[test]
+    fn no_tooltip_covers_a_slot_icon() {
+        let ctx = Context::default();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
+        out.textures_delta.clear();
+        let c = pos2(500.0, 400.0);
+        for i in 0..wheel::SLOTS {
+            for greyed in [None, Some("A reason that takes a couple of lines to say, with a way forward.".to_string())] {
+                let mut sp = SlotSpec::new("Edit tag", Icon::Edit);
+                sp.greyed = greyed;
+                let tip = tip_rect(&ctx, c, i, &sp);
+                for j in 0..wheel::SLOTS {
+                    let icon = Rect::from_center_size(slot_center(c, j), vec2(24.0, 24.0));
+                    assert!(!tip.intersects(icon), "slot {i}'s tooltip covers slot {j}'s icon");
+                }
+            }
+        }
+    }
 }

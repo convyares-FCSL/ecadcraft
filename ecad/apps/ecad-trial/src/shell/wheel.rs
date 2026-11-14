@@ -84,6 +84,8 @@ impl Trial {
             }
         }
         self.show_wheel(&ctx);
+        self.placing_frame(ui);
+        self.maker_frame(ui);
         self.intent_frame(ui);
         self.shell.tools.was_running = self.cad.session.running.is_some();
     }
@@ -336,14 +338,18 @@ impl Trial {
                 })?;
                 self.goto_symbols(&there.ok_or_else(|| format!("{} has no symbol on another page.", t.name))?)?;
             }
-            App::DeviceRow | App::TerminalRow | App::CableRow => {
+            App::DeviceRow | App::TerminalRow | App::CableRow | App::PlcRacks => {
                 self.set_workspace(Workspace::Lists);
                 self.shell.lists = match app {
                     App::DeviceRow => ListsView::Devices,
                     App::TerminalRow => ListsView::Terminals,
+                    App::PlcRacks => ListsView::Plc,
                     _ => ListsView::Reports,
                 };
             }
+            // UI rev 3: Wire ▸ Continuation places the continuation arrow, as Find symbol does.
+            App::Continuation => self.start_pick(crate::search::Pick::Symbol("continuation"))?,
+            App::Coming => return Err(actions::COMING.into()),
             App::ShowNet => {
                 let t = target.ok_or("no wire")?;
                 let w = t.conductor.ok_or("no wire")?;
