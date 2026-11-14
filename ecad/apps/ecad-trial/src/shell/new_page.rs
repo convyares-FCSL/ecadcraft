@@ -10,7 +10,7 @@
 //! None while open: it reads the types, the book and the next number once, on opening.
 
 use ecad_cadcraft::generated::GenKind;
-use ecad_cadcraft::styles::page::{self as ptype, Position};
+use ecad_cadcraft::styles::page::{self as ptype, Holds};
 use ecad_model::book::Book;
 use ecad_model::{FolderId, PageId, StyleRef};
 use ecad_ui::tokens::{space, ui_type};
@@ -54,7 +54,7 @@ impl KindRow {
 pub struct TypeRow {
     pub id: StyleRef,
     pub name: String,
-    pub position: Position,
+    pub holds: Holds,
     pub enabled: bool,
     pub kinds: Vec<KindRow>,
 }
@@ -78,9 +78,9 @@ pub struct Picker {
     frames: u32,
 }
 
-fn kind_rows(position: Position, doc: &ecad_model::Document, book: &Book) -> Vec<KindRow> {
+fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindRow> {
     let mut out = Vec::new();
-    for k in ptype::kinds(position) {
+    for k in ptype::kinds(holds) {
         let in_book = |style: Option<&str>| -> Vec<String> {
             book.order
                 .iter()
@@ -115,9 +115,9 @@ impl Trial {
             let rows: Vec<TypeRow> = ptype::ordered(doc)
                 .into_iter()
                 .map(|r| {
-                    let position = ptype::look_of(doc, &r.id).position;
+                    let holds = ptype::look_of(doc, &r.id).holds;
                     let panel = r.id == StyleRef::Builtin(ptype::PANEL.into());
-                    TypeRow { kinds: kind_rows(position, doc, &book), enabled: !panel, name: r.name, position, id: r.id }
+                    TypeRow { kinds: kind_rows(holds, doc, &book), enabled: !panel, name: r.name, holds, id: r.id }
                 })
                 .collect();
             // The open page's type from the page well, the group's from a group row (its last
@@ -290,7 +290,7 @@ impl Trial {
                     }
                 }
                 let th = Rect::from_min_size(pos2(r.left() + space::S, r.center().y - 8.0), vec2(24.0, 16.0));
-                crate::settings::pages::thumbnail(&p, th, &row.id, row.position);
+                crate::settings::pages::thumbnail(&p, th, &row.id, row.holds);
                 let ink = if row.enabled { s.text } else { s.text_3 };
                 p.text(
                     pos2(th.right() + space::M, r.center().y),

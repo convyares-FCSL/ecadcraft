@@ -250,6 +250,8 @@ impl ChecksPanel {
             (Fix::PlaceMates(c, side), _) => Action::PlaceMates(c, side),
             (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
             (Fix::RenumberPage(page), _) => Action::RenumberPage(page),
+            // Brief 054 (design 054 §9): Use its usual type, Reset, Remove.
+            (Fix::Page(f), _) => Action::RunLine(f.line()),
             (Fix::AddJunction(_) | Fix::Join(_), None) => return None,
         })
     }

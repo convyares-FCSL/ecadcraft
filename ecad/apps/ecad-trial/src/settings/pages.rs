@@ -10,7 +10,7 @@
 //! ledger's head moves (any commit or undo while Settings is open); nothing is read per frame
 //! beyond the head.
 
-use ecad_cadcraft::styles::page::{self as ptype, Position};
+use ecad_cadcraft::styles::page::{self as ptype, Holds};
 use ecad_model::sheet::{GridLabels, PRESETS, SheetSpec};
 use ecad_model::{PageId, StyleRef};
 use ecad_ui::tokens::{space, ui_type};
@@ -24,7 +24,7 @@ pub const TABLE: &str = "ecad.settings.pages.table";
 pub const ADD: &str = "ecad.settings.pages.add";
 pub const PROJECT: &str = "ecad.settings.pages.project";
 /// The header line (design 054 §5.1).
-pub const ABOUT: &str = "Each page type brings its own sheet. + Page in the Book asks which type and puts it where the type belongs.";
+pub const ABOUT: &str = "Each page type brings its own sheet. + Page asks which type and adds the page after the one you are on.";
 /// Under the table.
 pub const LIBRARY_NOTE: &str = "Frames and title blocks are made in Library ▸ Title blocks.";
 /// Under Position in the right panel (design 054 §5.3).
@@ -50,7 +50,8 @@ pub struct TypeRow {
     pub title_block: &'static str,
     pub frame: Option<StyleRef>,
     pub zones: bool,
-    pub position: Position,
+    /// Which generated kinds it holds (hidden; picks an own type's thumbnail).
+    pub holds: Holds,
     pub pages: usize,
     /// One page of this type, for Settings' preview (none: the sheet alone).
     pub first: Option<PageId>,
@@ -125,7 +126,7 @@ pub fn read(t: &mut Trial) -> Option<Snapshot> {
                     title_block: look.title_block,
                     frame: look.frame,
                     zones: look.zones,
-                    position: look.position,
+                    holds: look.holds,
                     pages: counts.get(&r.id).copied().unwrap_or(0),
                     first: None,
                     name: r.name,
@@ -146,18 +147,18 @@ fn head(t: &mut Trial) -> Option<u64> {
 
 /// Paint a type's thumbnail glyph (design 054 §5.2): lines for front, the schematic glyph, nodes
 /// for network, a tree for single-line, plate and door for panel, a ruled table for report. An own
-/// type takes its position's glyph.
-pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, position: Position) {
+/// type takes the glyph of what it holds.
+pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
     let (paper, ink) = (ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_PAPER), ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_INK));
     p.rect_filled(r, 2.0, paper);
     let st = egui::Stroke::new(1.0, ink);
     let i = r.shrink2(vec2(r.width() * 0.12, r.height() * 0.16));
     let word = match id {
         StyleRef::Builtin(w) => w.as_str(),
-        StyleRef::Own(_) => match position {
-            Position::Front => "front",
-            Position::Back => "report",
-            Position::Body => "schematic",
+        StyleRef::Own(_) => match holds {
+            Holds::Front => "front",
+            Holds::Report => "report",
+            Holds::None => "schematic",
         },
     };
     let lx = |f: f32| i.left() + i.width() * f;
@@ -271,7 +272,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
         t.settings.pages.snapshot = Some(s);
     }
     let Some(snap) = t.settings.pages.snapshot.clone() else { return };
-    let writable = !t.header().read_only;
+    // Read only: the file, a revision or history point shown, no project (design 054 §5.5).
+    let writable = t.writable();
     if t.settings.pages.selected.as_ref().is_none_or(|sel| !snap.rows.iter().any(|r| r.id == *sel)) {
         t.settings.pages.selected =
             snap.rows.iter().find(|r| r.id == StyleRef::Builtin(ptype::PANEL.into())).or(snap.rows.first()).map(|r| r.id.clone());
@@ -395,8 +397,7 @@ fn act(t: &mut Trial, d: Do) {
 
 /// The table's column lefts, as shares of its width after the thumbnail (board 5.02 without its
 /// Numbers column).
-const COLS: [(&str, f32); 7] =
-    [("Type", 0.0), ("Sheet", 0.33), ("Frame", 0.46), ("Title block", 0.56), ("Zones", 0.69), ("Position", 0.76), ("Pages", 0.94)];
+const COLS: [(&str, f32); 6] = [("Type", 0.0), ("Sheet", 0.38), ("Frame", 0.53), ("Title block", 0.65), ("Zones", 0.8), ("Pages", 0.92)];
 
 fn col(r: Rect, i: usize) -> f32 {
     let x0 = r.left() + THUMB.x + 2.0 * space::XL;
@@ -442,7 +443,7 @@ fn table(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo
         });
         let y = r.center().y;
         let th = Rect::from_min_size(pos2(r.left() + space::XL, y - THUMB.y / 2.0), THUMB);
-        thumbnail(&p, th, &row.id, row.position);
+        thumbnail(&p, th, &row.id, row.holds);
         p.rect_stroke(th, 2.0, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Outside);
         // Type: the name (with 050's override dot) over the subtitle.
         let nx = col(r, 0);
@@ -490,20 +491,11 @@ fn table(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo
         if z.inner.clicked() {
             todo.push(Do::Set(row.id.clone(), vec![("zones", Some(if row.zones { "off" } else { "on" }.into()))]));
         }
-        // Position.
-        let pos_r = Rect::from_min_size(pos2(col(r, 5), y - 15.0), vec2(col(r, 6) - col(r, 5) - space::L, 30.0));
-        let mut i = row.position as usize;
-        let changed = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(pos_r).id_salt(("ecad.settings.pages.position", &id)), |ui| {
-                ui.add_enabled_ui(writable, |ui| ecad_ui::prim::segmented(ui, &mut i, &["Front", "Body", "Back"]).changed()).inner
-            })
-            .inner;
-        if changed {
-            let w = ["front", "body", "back"].get(i).copied().unwrap_or("body");
-            todo.push(Do::Set(row.id.clone(), vec![("position", Some(w.into()))]));
-        }
         // Pages.
-        p.text(pos2(col(r, 6), y), egui::Align2::LEFT_CENTER, row.pages.to_string(), bar::font(ui, ui_type::BODY), ecad_ui::color(s.text_2));
+        let count =
+            p.text(pos2(col(r, 5), y), egui::Align2::LEFT_CENTER, row.pages.to_string(), bar::font(ui, ui_type::BODY), ecad_ui::color(s.text_2));
+        ui.interact(count, egui::Id::unique(("ecad.settings.pages.count", &id)), Sense::hover())
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.settings.pages.count.{id}")));
         p.hline(r.x_range(), r.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
     }
     ui.add_space(space::L);
@@ -661,17 +653,7 @@ fn panel(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writa
             }
         });
     });
-    section(ui, "book", "In the Book", row.position.label(), |ui| {
-        prow(ui, "Position", |ui| {
-            let mut i = row.position as usize;
-            let ch = ui.add_enabled_ui(writable, |ui| ecad_ui::prim::segmented(ui, &mut i, &["Front", "Body", "Back"]).changed()).inner;
-            if ch {
-                let w = ["front", "body", "back"].get(i).copied().unwrap_or("body");
-                todo.push(Do::Set(row.id.clone(), vec![("position", Some(w.into()))]));
-            }
-        });
-        ui.label(egui::RichText::new(NUMBERS_NOTE).small().color(ecad_ui::color(s.text_3)));
-    });
+    ui.label(egui::RichText::new(NUMBERS_NOTE).small().color(ecad_ui::color(s.text_3)));
     if row.own || row.overridden {
         section(ui, "name", "Name", &row.name, |ui| {
             if row.own {

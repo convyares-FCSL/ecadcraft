@@ -139,6 +139,8 @@ pub enum Action {
     RenumberPages(Option<FolderId>),
     /// Brief 054: `deletepage {pages}` (generated pages only).
     DeletePages(Vec<PageId>),
+    /// Brief 054: a Checks fix's command line (a page type or folder start fix).
+    RunLine(String),
     /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
     GotoCheck(Box<ecad_cadcraft::checks::Check>),
     /// Checks tab: `junction {at}` on this page.

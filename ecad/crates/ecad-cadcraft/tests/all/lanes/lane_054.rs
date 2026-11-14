@@ -37,9 +37,9 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     assert_eq!(ids, ["front", "schematic", "network", "singleline", "panel", "report"]);
     let d = h.doc();
     let look = |w: &str| ptype::look_of(&d, &StyleRef::Builtin(w.into()));
-    assert_eq!(look("front").position, ptype::Position::Front);
+    assert_eq!(look("front").holds, ptype::Holds::Front);
     assert!(!look("front").zones && look("schematic").zones && !look("panel").zones && !look("report").zones);
-    assert_eq!(look("report").position, ptype::Position::Back);
+    assert_eq!(look("report").holds, ptype::Holds::Report);
     assert_eq!((look("schematic").sheet, look("schematic").frame.clone(), look("schematic").title_block), (None, None, "frame"));
     let names: Vec<String> = ptype::ordered(&d).into_iter().map(|r| r.name).collect();
     assert_eq!(names, ["Front sheet", "Schematic", "Network", "Single-line", "Panel layout", "Report"]);
@@ -105,7 +105,7 @@ fn newpage_refuses_a_type_that_does_not_fit_the_kind() {
     assert!(e.contains("No page type is called"), "{e}");
     let e = h.run("newpage", json!({"type": "schematic", "after": "00000000000000000000000000000abc"})).unwrap_err();
     assert!(e.contains("No such page to add after."), "{e}");
-    // setdefault at page level keeps a generated page's position.
+    // setdefault at page level keeps a generated page in a type that holds its kind.
     let cover = page(&mut h, json!({"generated": "cover"}));
     let e = h.run("setdefault", json!({"key": "page.type", "level": "page", "page": cover.hex(), "value": "report"})).unwrap_err();
     assert!(e.contains("choose a Front sheet type"), "{e}");
@@ -273,11 +273,11 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
             .unwrap();
     });
     assert_eq!(ty(&mut h, p1), "schematic");
-    h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"position": "x", "sheet": "A0 999x999"}})).unwrap_err();
+    h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x", "sheet": "A0 999x999"}})).unwrap_err();
     // Written past the command's checks, as a hostile file would hold them.
     h.cfg(|p| {
         let mut r = ecad_model::StyleRecord::default();
-        r.fields.insert("position".into(), "x".into());
+        r.fields.insert("holds".into(), "x".into());
         r.fields.insert("sheet".into(), "A0 999x999".into());
         r.fields.insert("zones".into(), "maybe".into());
         p.ledger
@@ -296,7 +296,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     });
     let d = h.doc();
     let look = ptype::look_of(&d, &StyleRef::Builtin("schematic".into()));
-    assert_eq!((look.position, look.zones, look.sheet), (ptype::Position::Body, true, None));
+    assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet);
     let rows = kinds(&mut h);
     for k in [Kind::PageTypeUnknown, Kind::PageTypeField, Kind::FolderStartUnknown] {
@@ -395,4 +395,53 @@ fn wire_colour_lines_merge_equal_categories() {
     assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
     assert_eq!(ecad_cadcraft::front::colour_words("GNYE"), "green / yellow");
     assert_eq!(ecad_cadcraft::front::colour_words("orange"), "orange");
+}
+
+/// Review of #111, 1 and 2: several new copies of a definition in one transaction, and a
+/// definition in use redrawn or renamed, change the cover's legend.
+#[test]
+fn the_legend_sees_several_new_copies_at_once_and_a_redrawn_definition() {
+    use ecad_model::{ItemKind, Op};
+    let mut h = H::new(5422);
+    let first = h.first_page();
+    page(&mut h, json!({"generated": "cover"}));
+    h.activate(first);
+    h.run("place", json!({"symbol": "lamp", "at": [100, 100]})).unwrap();
+    h.run("place", json!({"symbol": "lamp", "at": [150, 100]})).unwrap();
+    let d = h.doc();
+    let copies: Vec<Op> =
+        d.items.iter().filter(|(_, it)| matches!(it.kind, ItemKind::Symbol(_))).map(|(id, it)| Op::AddItem { id: *id, item: it.clone() }).collect();
+    assert_eq!(copies.len(), 2);
+    // Both copies in one transaction: the definition is new to the legend.
+    assert!(ecad_cadcraft::front::touches(&d, &copies));
+    // One of two copies alone is not.
+    assert!(!ecad_cadcraft::front::touches(&d, &copies[..1]));
+    // A definition in use redrawn or renamed (048's Edit symbol embeds it again).
+    let (def_id, def) = d.definitions.iter().next().map(|(i, x)| (*i, x.clone())).unwrap();
+    assert!(ecad_cadcraft::front::touches(&d, &[Op::EmbedDefinition { id: def_id, definition: def }]));
+}
+
+/// Design 054 §10.1: a second wire of a category in use leaves the cover; the first of a new
+/// category redraws it.
+#[test]
+fn wire_categories_in_use_cross_zero_only() {
+    let mut h = H::new(5423);
+    let first = h.first_page();
+    page(&mut h, json!({"generated": "cover"}));
+    h.activate(first);
+    let d0 = h.doc();
+    let mut uses = ecad_cadcraft::front::Uses::build(&d0);
+    let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
+    let w: ecad_model::ConductorId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
+    let ops = last(&mut h);
+    uses.update(&h.doc(), &ops);
+    h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
+    let ops = last(&mut h);
+    assert!(uses.update(&h.doc(), &ops), "the first 24 V DC wire");
+    let w2: ecad_model::ConductorId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
+    let ops = last(&mut h);
+    uses.update(&h.doc(), &ops);
+    h.run("category", json!({"conductor": w2.hex(), "value": "dc24"})).unwrap();
+    let ops = last(&mut h);
+    assert!(!uses.update(&h.doc(), &ops), "a second 24 V DC wire changes nothing on the cover");
 }

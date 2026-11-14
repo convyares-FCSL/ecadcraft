@@ -2023,6 +2023,11 @@ impl Trial {
                     self.panel.note = Some(e);
                 }
             }
+            A::RunLine(line) => {
+                if let Some(e) = self.run_line(&line) {
+                    self.panel.note = Some(e);
+                }
+            }
             A::DeletePages(pages) => {
                 let v = json!({"pages": pages.iter().map(|p| p.hex()).collect::<Vec<_>>()});
                 if let Some(e) = self.run_line(&format!("deletepage {v}")) {

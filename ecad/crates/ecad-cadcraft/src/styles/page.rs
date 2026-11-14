@@ -2,8 +2,11 @@
 //!
 //! A page type says what a page is: Front sheet, Schematic, Network, Single-line, Panel layout,
 //! Report, or a project's own. It brings the page's sheet, frame style, title block and zones, and
-//! its position (front, body, back), which orders the + Page picker and says which generated kinds
-//! the type holds. It never decides where a page goes or how it is numbered (owner, Q1 and Q13).
+//! says which generated kinds its pages may be (the hidden field `holds`: Front sheet holds the
+//! cover, revision history and contents, Report the report kinds; an own type holds what the type
+//! it was copied from holds). A type never decides where a page goes or how it is numbered (owner,
+//! Q1 and Q13), and it has no position (owner, fix round: "if I don't know what it does, a user
+//! wouldn't").
 //!
 //! # Semantics
 //! - A page's type ([`type_of`]) is its own `page.type` when that names a type that exists, else
@@ -36,8 +39,8 @@ fn is_frame(s: &str) -> bool {
 /// The title block layouts a type may name: `frame` (the frame style's own), then the layouts
 /// (055 adds more).
 pub const TITLE_BLOCKS: &[&str] = &["frame", "standard"];
-/// Front, body, back.
-pub const POSITIONS: &[&str] = &["front", "body", "back"];
+/// What generated kinds a type holds: none (drawn pages), the front kinds, the report kinds.
+pub const HOLDS: &[&str] = &["none", "front", "report"];
 
 static FIELDS: &[Field] = &[
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, builtin: Value::Text(PROJECT_SHEET), over: None },
@@ -50,16 +53,17 @@ static FIELDS: &[Field] = &[
     },
     Field { key: "title_block", label: "Title block", kind: Kind::Choice(TITLE_BLOCKS), builtin: Value::Choice("frame"), over: None },
     Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
-    Field { key: "position", label: "Position", kind: Kind::Choice(POSITIONS), builtin: Value::Choice("body"), over: None },
+    // Not shown: copied with the type, so an own type holds what its source holds.
+    Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), builtin: Value::Choice("none"), over: None },
 ];
 
 static BUILTINS: &[Builtin] = &[
-    Builtin { id: "front", name: "Front sheet", values: &[("position", Value::Choice("front")), ("zones", Value::Choice("off"))] },
+    Builtin { id: "front", name: "Front sheet", values: &[("holds", Value::Choice("front")), ("zones", Value::Choice("off"))] },
     Builtin { id: "schematic", name: "Schematic", values: &[] },
     Builtin { id: "network", name: "Network", values: &[] },
     Builtin { id: "singleline", name: "Single-line", values: &[] },
     Builtin { id: "panel", name: "Panel layout", values: &[("zones", Value::Choice("off"))] },
-    Builtin { id: "report", name: "Report", values: &[("position", Value::Choice("back")), ("zones", Value::Choice("off"))] },
+    Builtin { id: "report", name: "Report", values: &[("holds", Value::Choice("report")), ("zones", Value::Choice("off"))] },
 ];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
@@ -79,48 +83,32 @@ pub const PANEL: &str = "panel";
 /// The built-in Report type.
 pub const REPORT: &str = "report";
 
-/// Where a type's pages belong in the book. It orders the picker and says which generated kinds a
-/// type holds; it never places a page (owner, Q1).
+/// Which generated kinds a type's pages may be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Position {
+pub enum Holds {
+    /// Drawn pages only.
+    None,
+    /// Cover, revision history, contents.
     Front,
-    Body,
-    Back,
+    /// BOM, terminal plan, cable schedule, PLC racks, I/O list.
+    Report,
 }
 
-impl Position {
-    /// The stored word.
-    pub fn word(self) -> &'static str {
-        match self {
-            Position::Front => "front",
-            Position::Body => "body",
-            Position::Back => "back",
-        }
-    }
-
-    /// Words for the segmented control: `Front`, `Body`, `Back`.
-    pub fn label(self) -> &'static str {
-        match self {
-            Position::Front => "Front",
-            Position::Body => "Body",
-            Position::Back => "Back",
-        }
-    }
-
-    fn of_word(w: &str) -> Position {
+impl Holds {
+    fn of_word(w: &str) -> Holds {
         match w {
-            "front" => Position::Front,
-            "back" => Position::Back,
-            _ => Position::Body,
+            "front" => Holds::Front,
+            "report" => Holds::Report,
+            _ => Holds::None,
         }
     }
 
-    /// The position of the types that hold generated pages of `kind`: a cover, revision list or
-    /// contents is a front page, every other kind a back page.
-    pub fn of_kind(kind: GenKind) -> Position {
+    /// What a type must hold to take pages of `kind`: a cover, revision history or contents is a
+    /// Front sheet page, every other kind a Report page.
+    pub fn of_kind(kind: GenKind) -> Holds {
         match kind {
-            GenKind::Cover | GenKind::Revisions | GenKind::Contents => Position::Front,
-            _ => Position::Back,
+            GenKind::Cover | GenKind::Revisions | GenKind::Contents => Holds::Front,
+            _ => Holds::Report,
         }
     }
 }
@@ -135,7 +123,7 @@ pub struct TypeLook {
     /// `frame` (the frame style's own) or a layout ID.
     pub title_block: &'static str,
     pub zones: bool,
-    pub position: Position,
+    pub holds: Holds,
 }
 
 fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defaults::Resolved<'a>> {
@@ -153,8 +141,8 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
     let title_block = field(doc, id, "title_block").map_or("frame", |r| r.word());
     let title_block = if title_block.is_empty() { "frame" } else { title_block };
     let zones = field(doc, id, "zones").is_none_or(|r| r.word() != "off");
-    let position = Position::of_word(field(doc, id, "position").map_or("body", |r| r.word()));
-    TypeLook { sheet, frame, title_block, zones, position }
+    let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
+    TypeLook { sheet, frame, title_block, zones, holds }
 }
 
 /// The type of `page` (design 054 §2.3).
@@ -201,12 +189,12 @@ pub fn subtitle(id: &StyleRef) -> &'static str {
     }
 }
 
-/// The generated kinds a type of `position` holds, in the picker's order (design 054 §4.1).
-pub fn kinds(position: Position) -> &'static [GenKind] {
-    match position {
-        Position::Front => &[GenKind::Cover, GenKind::Revisions, GenKind::Contents],
-        Position::Back => &[GenKind::BomLocation, GenKind::Terminals, GenKind::Cables, GenKind::PlcRack, GenKind::IoList],
-        Position::Body => &[],
+/// The generated kinds a type that `holds` them takes, in the picker's order (design 054 §4.1).
+pub fn kinds(holds: Holds) -> &'static [GenKind] {
+    match holds {
+        Holds::Front => &[GenKind::Cover, GenKind::Revisions, GenKind::Contents],
+        Holds::Report => &[GenKind::BomLocation, GenKind::Terminals, GenKind::Cables, GenKind::PlcRack, GenKind::IoList],
+        Holds::None => &[],
     }
 }
 
@@ -216,14 +204,10 @@ pub fn generated_only(id: &StyleRef) -> bool {
     matches!(id, StyleRef::Builtin(w) if w == FRONT || w == REPORT)
 }
 
-/// The types in the picker's and the table's order (design 054 §4.1): by position (front, body,
-/// back), built-ins in their order, then own types by name.
+/// The types in the picker's and the table's order: the catalogue's (built-ins in their order,
+/// then own types by name).
 pub fn ordered(doc: &Document) -> Vec<super::Row> {
-    let mut rows = super::rows(doc, &CATALOGUE);
-    // A stable sort keeps rows()'s order (built-ins first, then own types by name) within a
-    // position.
-    rows.sort_by_key(|r| look_of(doc, &r.id).position);
-    rows
+    super::rows(doc, &CATALOGUE)
 }
 
 /// How many pages have each type, in one pass over the pages (asked on demand: the Settings
@@ -269,8 +253,8 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
 
 /// The refusal for a generated `kind` given a type of the wrong position (design 054 §2.3).
 pub fn kind_refusal(kind: GenKind) -> String {
-    let (one, ty) = match Position::of_kind(kind) {
-        Position::Front => ("Front sheet", "Front sheet"),
+    let (one, ty) = match Holds::of_kind(kind) {
+        Holds::Front => ("Front sheet", "Front sheet"),
         _ => ("Report", "Report"),
     };
     format!("A {} page is a {one} page; choose a {ty} type.", kind.title().to_lowercase())
@@ -278,7 +262,7 @@ pub fn kind_refusal(kind: GenKind) -> String {
 
 /// The refusal for a generated-only type with no `generated` (design 054 §4.2).
 pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
-    let pos = look_of(doc, id).position;
+    let pos = look_of(doc, id).holds;
     let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", k.value())).collect();
     let words = match list.as_slice() {
         [] => String::new(),

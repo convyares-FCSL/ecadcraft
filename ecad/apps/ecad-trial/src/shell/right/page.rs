@@ -87,8 +87,8 @@ fn read(t: &mut Trial, page: PageId) -> Option<PageView> {
             .iter()
             .rev()
             .find(|x| {
-                ecad_cadcraft::styles::page::look_of(doc, &ecad_cadcraft::styles::page::type_of(doc, **x)).position
-                    == ecad_cadcraft::styles::page::Position::Front
+                ecad_cadcraft::styles::page::look_of(doc, &ecad_cadcraft::styles::page::type_of(doc, **x)).holds
+                    == ecad_cadcraft::styles::page::Holds::Front
             })
             .copied();
         Some(PageView {
@@ -199,7 +199,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, v: &PageView, writable: bool, full
             }
         });
     }
-    if ecad_cadcraft::styles::page::Position::of_kind(v.kind) == ecad_cadcraft::styles::page::Position::Front {
+    if ecad_cadcraft::styles::page::Holds::of_kind(v.kind) == ecad_cadcraft::styles::page::Holds::Front {
         widgets::section(ui, &mut folded, full, "page.front", "Front pages", "in the Book", false, |ui| {
             for row in &v.front {
                 ui.horizontal(|ui| {

@@ -65,6 +65,29 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 054: only the page type and cover rows (design 054 §10.4) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--pages"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-pages-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::pages::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "newpage {:.1} ms, renumber {:.1} ms, typesheet {:.1} ms, coverfirst {:.1} ms, coverupd {:.1} ms, wirecat {:.1} ms ({} pages)",
+                    t.newpage_ms, t.renumber_ms, t.typesheet_ms, t.coverfirst_ms, t.coverupd_ms, t.wirecat_ms, t.pages
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 050: only the style rows (design 050 §11) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--styles"

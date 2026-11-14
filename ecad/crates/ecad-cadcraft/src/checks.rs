@@ -214,10 +214,15 @@ pub enum Kind {
     FolderStartUnknown,
     /// Brief 054 (design 054 §4.4): a folder's run of numbers reaches another run's.
     FolderRunsOverlap,
+    /// Brief 054b (design 054 §6.3, Q6): the cover's symbol legend shows fewer symbols than are
+    /// used.
+    CoverLegendCut,
+    /// Brief 054b (design 054 §6.4): stored cover notes past the bounds, read cut.
+    CoverNotesCut,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 76] = [
+    pub const ALL: [Kind; 78] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -294,6 +299,8 @@ impl Kind {
         Kind::PageTypeField,
         Kind::FolderStartUnknown,
         Kind::FolderRunsOverlap,
+        Kind::CoverLegendCut,
+        Kind::CoverNotesCut,
     ];
 
     /// The JSON name.
@@ -375,6 +382,8 @@ impl Kind {
             Kind::PageTypeField => "page-type-field",
             Kind::FolderStartUnknown => "folder-start-unknown",
             Kind::FolderRunsOverlap => "folder-runs-overlap",
+            Kind::CoverLegendCut => "cover-legend-cut",
+            Kind::CoverNotesCut => "cover-notes-cut",
         }
     }
 
@@ -462,6 +471,8 @@ impl Kind {
             Kind::PageTypeField => "Page type value not read; its usual value is used",
             Kind::FolderStartUnknown => "Folder start number not read",
             Kind::FolderRunsOverlap => "A folder's page numbers run into another folder's",
+            Kind::CoverLegendCut => "The cover's symbol legend does not show every symbol",
+            Kind::CoverNotesCut => "The cover's notes are past 40 notes of 400 characters; the rest are not shown",
         }
     }
 
@@ -515,6 +526,7 @@ impl Kind {
             | Kind::PageTypeUnknown
             | Kind::PageTypeField
             | Kind::FolderRunsOverlap
+            | Kind::CoverNotesCut
             | Kind::WireThroughCard => Severity::Warning,
             _ => Severity::Info,
         }
@@ -603,6 +615,8 @@ pub enum Fix {
     DropMissingFor(ComponentId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 054 (design 054 §9): a page type or folder start row's fix.
+    Page(crate::page_types::PageFix),
 }
 
 /// One row of the Checks list.
@@ -640,6 +654,7 @@ impl Check {
             | Kind::PageTypeField
             | Kind::FolderStartUnknown
             | Kind::FolderRunsOverlap
+            | Kind::CoverLegendCut
                 if !self.which.is_empty() =>
             {
                 self.which.clone()
@@ -686,6 +701,14 @@ impl Check {
             "text": self.what(),
             "which": self.which,
             "where": self.locator(doc),
+            // Brief 054: the command a page type or folder start fix runs.
+            "fix": match self.fix {
+                Some(Fix::Page(f)) => {
+                    let (command, params) = f.command();
+                    json!({"label": f.label(), "command": command, "params": params})
+                }
+                _ => Value::Null,
+            },
         })
     }
 }
@@ -705,6 +728,8 @@ pub enum Key {
     Page(PageId),
     /// Brief 050a: the style rows (unknown styles, old settings, limits).
     Styles,
+    /// Brief 054b: the cover's rows (legend cut, notes cut), refreshed when the cover changes.
+    Cover,
 }
 
 type Cell = (PageId, i64, i64);
@@ -1271,9 +1296,16 @@ impl Checks {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
+        ch.set(Key::Cover, crate::front::check_rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
+    }
+
+    /// Brief 054b: work out the cover's rows again (after a change the cover's map names).
+    pub fn set_cover(&mut self, doc: &Document) {
+        self.set(Key::Cover, crate::front::check_rows(doc));
+        self.revision += 1;
     }
 
     fn set(&mut self, key: Key, v: Vec<Check>) {

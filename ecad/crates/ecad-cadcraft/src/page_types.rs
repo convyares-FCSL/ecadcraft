@@ -266,8 +266,14 @@ fn run_folderprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
     };
     with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
-        let name = doc.folders.get(&folder).map(|f| f.name.clone()).ok_or("no such folder")?;
         let key = start_key(folder);
+        // A start key whose folder is gone (a hostile or merged file) may only be cleared.
+        let gone = !doc.folders.contains_key(&folder) && doc.properties.contains_key(&key) && start == Some(None);
+        let name = match doc.folders.get(&folder) {
+            Some(f) => f.name.clone(),
+            None if gone => String::from("(gone)"),
+            None => return Err("no such folder".into()),
+        };
         let before = doc.properties.get(&key).cloned();
         let Some(after) = start else {
             return Ok(json!({"folder": folder.hex(), "name": name, "start": before}));
@@ -377,7 +383,7 @@ fn run_deletepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
 /// checked against `generated`. `Ok(None)`: no type and no generated kind (a page as before).
 ///
 /// # Errors
-/// In words: no such type, a generated-only type with no kind, a kind of another position.
+/// In words: no such type, a generated-only type with no kind, a kind the type does not hold.
 pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> Result<Option<StyleRef>, String> {
     let Some(t) = ty.map(str::trim).filter(|t| !t.is_empty()) else {
         return Ok(kind.map(|k| ptype::derived(Some(k))));
@@ -385,8 +391,74 @@ pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> 
     let id = crate::styles::find(doc, ptype::WORD, t)?;
     match kind {
         None if ptype::generated_only(&id) => Err(ptype::generated_refusal(doc, &id)),
-        Some(k) if ptype::look_of(doc, &id).position != ptype::Position::of_kind(k) => Err(ptype::kind_refusal(k)),
+        Some(k) if ptype::look_of(doc, &id).holds != ptype::Holds::of_kind(k) => Err(ptype::kind_refusal(k)),
         _ => Ok(Some(id)),
+    }
+}
+
+/// A fix of a page type or folder start row (design 054 §9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageFix {
+    /// **Use its usual type**: clear the page's own `page.type`, so it takes its derived type.
+    UseDerived(PageId),
+    /// **Reset**: clear field `field` (an index into the catalogue's fields) of a type's project
+    /// record.
+    Reset(TypeRef, u8),
+    /// **Remove**: clear a folder start key (the folder may be gone).
+    RemoveStart(FolderId),
+}
+
+/// A page type, as a fix can hold it: a built-in by its index, or an own type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeRef {
+    Builtin(u8),
+    Own(u128),
+}
+
+impl TypeRef {
+    fn of(id: &StyleRef) -> Option<TypeRef> {
+        match id {
+            StyleRef::Own(n) => Some(TypeRef::Own(*n)),
+            StyleRef::Builtin(w) => ptype::CATALOGUE.builtins.iter().position(|b| b.id == w).and_then(|i| u8::try_from(i).ok()).map(TypeRef::Builtin),
+        }
+    }
+
+    fn id(self) -> String {
+        match self {
+            TypeRef::Own(n) => StyleRef::Own(n).text(),
+            TypeRef::Builtin(i) => ptype::CATALOGUE.builtins.get(usize::from(i)).map_or_else(String::new, |b| b.id.to_string()),
+        }
+    }
+}
+
+impl PageFix {
+    /// The button's words.
+    pub fn label(self) -> &'static str {
+        match self {
+            PageFix::UseDerived(_) => "Use its usual type",
+            PageFix::Reset(..) => "Reset",
+            PageFix::RemoveStart(_) => "Remove",
+        }
+    }
+
+    /// The command and parameters the fix runs (one transaction).
+    pub fn command(self) -> (&'static str, Value) {
+        match self {
+            PageFix::UseDerived(p) => {
+                ("setdefault", json!({"key": ecad_model::sheet::PAGE_TYPE_KEY, "level": "page", "page": p.hex(), "reset": true}))
+            }
+            PageFix::Reset(t, f) => {
+                let key = ptype::CATALOGUE.fields.get(usize::from(f)).map_or("", |f| f.key);
+                ("setstyle", json!({"catalogue": ptype::WORD, "id": t.id(), "fields": {key: null}}))
+            }
+            PageFix::RemoveStart(f) => ("folderprops", json!({"folder": f.hex(), "start": null})),
+        }
+    }
+
+    /// The command as one line (the Checks panel runs it through the command path).
+    pub fn line(self) -> String {
+        let (c, p) = self.command();
+        format!("{c} {p}")
     }
 }
 
@@ -420,17 +492,24 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         }
         let used = crate::styles::name(doc, ptype::WORD, &ptype::type_of(doc, p));
         let which = format!("Page {}: page type {value:?} not found; drawn as {used}", book::page_number(doc, p));
-        out.push(row(Kind::PageTypeUnknown, Some(p), which));
+        let mut r = row(Kind::PageTypeUnknown, Some(p), which);
+        r.fix = Some(crate::checks::Fix::Page(PageFix::UseDerived(p)));
+        out.push(r);
     }
     // Type records holding values their fields do not take.
     for layer in [StyleLayer::Standard, StyleLayer::Project] {
         for (id, r) in crate::styles::records(doc, layer, ptype::WORD) {
-            for f in ptype::CATALOGUE.fields {
+            for (i, f) in ptype::CATALOGUE.fields.iter().enumerate() {
                 let Some(v) = r.fields.get(f.key) else { continue };
                 if crate::defaults::parse_value(f.kind, v).is_none() {
                     let name = crate::styles::name(doc, ptype::WORD, id);
                     let shown: String = v.chars().take(24).filter(|c| !c.is_control()).collect();
-                    out.push(row(Kind::PageTypeField, None, format!("Page type {name}: {} {shown:?} not read; its usual value is used", f.label)));
+                    let mut c = row(Kind::PageTypeField, None, format!("Page type {name}: {} {shown:?} not read; its usual value is used", f.label));
+                    // Reset writes the project's record; a standard's value is changed in Standards.
+                    if layer == StyleLayer::Project {
+                        c.fix = TypeRef::of(id).zip(u8::try_from(i).ok()).map(|(t, i)| crate::checks::Fix::Page(PageFix::Reset(t, i)));
+                    }
+                    out.push(c);
                 }
             }
         }
@@ -440,13 +519,16 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         if !key.ends_with(KEY_SUFFIX) {
             continue;
         }
-        let folder = folder_of_key(key).filter(|f| doc.folders.contains_key(f));
+        let named = folder_of_key(key);
+        let folder = named.filter(|f| doc.folders.contains_key(f));
         let which = match folder.and_then(|f| doc.folders.get(&f)) {
             None => "A folder start number names a folder that is not in the project".to_string(),
             Some(f) if !is_start(value.trim()) => format!("Folder {}'s start number is not 1 to 6 digits", f.name),
             Some(_) => continue,
         };
-        out.push(row(Kind::FolderStartUnknown, None, which));
+        let mut r = row(Kind::FolderStartUnknown, None, which);
+        r.fix = named.map(|f| crate::checks::Fix::Page(PageFix::RemoveStart(f)));
+        out.push(r);
     }
     // Runs that reach each other.
     for (a, b, n) in overlaps(doc, None) {

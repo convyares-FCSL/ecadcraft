@@ -29,7 +29,11 @@ pub static SYMBOL_LEGEND: Entry = toggle("front.cover.symbol_legend", "Symbol le
 pub static REVISIONS: Entry = toggle("front.cover.revisions", "Revisions", true);
 pub static STRUCTURE_CODES: Entry = toggle("front.cover.structure_codes", "Structure codes", false);
 pub static CUSTOMER_SITE: Entry = toggle("front.cover.customer_site", "Customer and site", true);
-/// The words after the project's title in the cover heading (Q12); empty leaves the title alone.
+/// What an empty cover heading is stored as: the cover shows the title alone.
+pub const NO_HEADING: &str = "none";
+
+/// The words after the project's title in the cover heading (Q12); empty (stored as
+/// [`NO_HEADING`]) leaves the title alone.
 pub static HEADING: Entry = Entry {
     key: "front.cover.heading",
     label: "Cover heading",

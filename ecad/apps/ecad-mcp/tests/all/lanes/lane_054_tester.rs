@@ -110,7 +110,7 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
             ("folderprops", json!({"folder": f, "start": "1a"})),
             ("deletepage", json!({"page": first})),
             ("projectprops", json!({"props": {"cover.notes": "x".repeat(401)}})),
-            ("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"position": "x"}})),
+            ("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}})),
             ("setdefault", json!({"key": "page.type", "level": "project", "value": "network"})),
         ] {
             let m = c.refused("execute", json!({"command": cmd, "params": params}));

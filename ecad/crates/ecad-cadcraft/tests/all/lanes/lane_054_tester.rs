@@ -123,25 +123,27 @@ fn with_cover(seed: u64) -> (H, PageId, PageId) {
 // ---------------------------------------------------------------- AC1: the catalogue
 
 /// AC1, §2.1, §2.2: `styles {catalogue: page}` lists the six built-ins with their fields: sheet and
-/// frame `project`, title block `frame`, zones and position per the table.
+/// frame `project`, title block `frame`, zones per the table, and the generated kinds each holds
+/// (fix round: the owner dropped `position`; `holds` is hidden and copied with a type).
 #[test]
 fn ac1_the_page_catalogue_lists_six_built_ins_with_their_fields() {
     let mut h = H::new(0x54_0101);
     let rows = styles(&mut h, "page");
     let ids: Vec<String> = rows.iter().map(|r| s(&r["id"])).collect();
     assert_eq!(ids.len(), 6, "{ids:?}");
-    for (id, name, position, zones) in [
+    for (id, name, holds, zones) in [
         ("front", "Front sheet", "front", "off"),
-        ("schematic", "Schematic", "body", "on"),
-        ("network", "Network", "body", "on"),
-        ("singleline", "Single-line", "body", "on"),
-        ("panel", "Panel layout", "body", "off"),
-        ("report", "Report", "back", "off"),
+        ("schematic", "Schematic", "none", "on"),
+        ("network", "Network", "none", "on"),
+        ("singleline", "Single-line", "none", "on"),
+        ("panel", "Panel layout", "none", "off"),
+        ("report", "Report", "report", "off"),
     ] {
         let r = style_row(&mut h, "page", id);
         assert_eq!(s(&r["name"]), name, "{id}");
         assert_eq!(s(&r["layer"]), "builtin", "{id}");
-        assert_eq!(field_text(&r, "position"), position, "{id}");
+        assert_eq!(field_text(&r, "holds"), holds, "{id}");
+        assert!(r["fields"]["position"].is_null(), "{id}: no position (owner, fix round)");
         assert_eq!(field_text(&r, "zones"), zones, "{id}");
         assert_eq!(field_text(&r, "sheet"), "project", "{id}: every built-in takes the project's sheet");
         assert_eq!(field_text(&r, "frame"), "project", "{id}");
@@ -458,7 +460,7 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
 }
 
 /// §2.3: `setdefault page.type` at page level (G only) moves one page's type; a generated page
-/// refuses a type of the wrong position; project level is refused.
+/// refuses a type that does not hold its kind; project level is refused.
 #[test]
 fn ac4_setdefault_page_type_is_page_level_only() {
     let (mut h, p) = pages(0x54_0402, 2);
@@ -527,7 +529,7 @@ fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
 fn fp3_a_malformed_type_sheet_reads_as_absent() {
     let (mut h, p) = pages(0x54_0603, 1);
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A0 999x999"}}));
-    refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"position": "x"}}));
+    refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}}));
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
         let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
         let before = h.doc().styles.get("page").and_then(|m| m.get(&sch)).cloned();
@@ -539,7 +541,7 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
                 id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
                 before,
                 after: Some(ecad_model::style::StyleRecord {
-                    fields: [("sheet".to_string(), bad.to_string()), ("position".to_string(), "x".to_string())].into_iter().collect(),
+                    fields: [("sheet".to_string(), bad.to_string()), ("holds".to_string(), "x".to_string())].into_iter().collect(),
                     ..Default::default()
                 }),
             }],
@@ -813,7 +815,7 @@ fn map_the_cover_follows_only_its_keys() {
 // ------------------------------------------------------------------------ AC15: hostile
 
 /// AC15, §9: hostile stored values read as absent or cut, each with its Checks row, never a panic:
-/// a type record with `position: x` and `sheet: A0 999x999`; a `folder.<id>.start` of
+/// a type record with `holds: x` and `sheet: A0 999x999`; a `folder.<id>.start` of
 /// `99999999999` and one naming no folder; a `page.type` naming nothing (1 MB of notes: the 054b test below).
 #[test]
 fn ac15_hostile_values_read_as_absent_with_checks_rows() {

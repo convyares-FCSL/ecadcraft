@@ -133,7 +133,7 @@ fn ac13_each_settings_control_writes_one_setstyle() {
     // Every name of §5.2's table; the missing ones are reported together at the end.
     let mut missing = Vec::new();
     for t in ["front", "schematic", "network", "singleline", "panel", "report"] {
-        for col in ["row", "sheet", "frame", "titleblock", "zones", "position", "count"] {
+        for col in ["row", "sheet", "frame", "titleblock", "zones", "count"] {
             let n = format!("ecad.settings.pages.{col}.{t}");
             if !has(&h, &n) {
                 missing.push(n);
@@ -161,7 +161,7 @@ fn ac13_read_only_disables_every_control() {
     run(&mut h, "openrevision", json!({"rev": "A"}));
     h.state_mut().open_settings(Section::Pages);
     h.run_steps(4);
-    for col in ["sheet", "zones", "position", "titleblock"] {
+    for col in ["sheet", "zones", "titleblock"] {
         assert!(disabled(&h, &format!("ecad.settings.pages.{col}.schematic")), "{col} disabled while read only");
     }
     assert!(disabled(&h, "ecad.settings.pages.add"));

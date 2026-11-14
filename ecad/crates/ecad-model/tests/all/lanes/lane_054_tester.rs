@@ -89,12 +89,7 @@ fn fp3_page_type_property_and_own_types() {
         Author::User,
         "own",
         vec![
-            set_type(
-                StyleLayer::Project,
-                own.clone(),
-                None,
-                Some(StyleRecord { name: "Wide".into(), ..rec(&[("sheet", "A0"), ("position", "body")]) }),
-            ),
+            set_type(StyleLayer::Project, own.clone(), None, Some(StyleRecord { name: "Wide".into(), ..rec(&[("sheet", "A0"), ("holds", "none")]) })),
             set_type(StyleLayer::Project, b("network"), None, Some(rec(&[("sheet", "A2")]))),
             set_page(p[0], "page.type", &own.text()),
             set_page(p[4], "page.type", "#0000000000000000000000000000dead"),
