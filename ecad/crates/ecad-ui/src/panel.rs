@@ -162,9 +162,12 @@ pub fn rule(ui: &mut Ui, full: Rangef) {
 pub fn hairline(ui: &mut Ui, full: Rangef) {
     let s = crate::SHELL;
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), line::HAIRLINE_PX), Sense::hover());
-    // Past the panel's padding, which the content's clip rect leaves out.
+    // Past the panel's padding, which the content's clip rect leaves out (a painter's own
+    // `with_clip_rect` can only narrow it): the same layer, clipped to the panel's width and the
+    // content's height.
     let clip = Rect::from_x_y_ranges(full, ui.clip_rect().y_range());
-    ui.painter().with_clip_rect(clip).hline(full, r.center().y, Stroke::new(line::HAIRLINE_PX, color(s.line)));
+    let wide = egui::Painter::new(ui.ctx().clone(), ui.layer_id(), clip);
+    wide.hline(full, r.center().y, Stroke::new(line::HAIRLINE_PX, color(s.line)));
 }
 
 /// Space before a section's body, after its header.
