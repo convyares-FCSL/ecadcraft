@@ -240,8 +240,11 @@ pub(crate) fn click(h: &mut Harness<'static, Trial>, label: &str) {
             h.get_by_label(&ecad_trial::shell::tool_strip::panel_label(tab)).click();
         }
     } else if label == ecad_trial::checks_panel::CHECKS_TAB {
-        // The rail's button when the inspector is collapsed, else its tab: one label.
-        h.get_by_label(&ecad_trial::shell::right::rail_label(ecad_trial::shell::RightTab::Checks)).click();
+        // The rail's Checks button opens it (pressed while open on Checks it would close).
+        let s = h.state().shell_state();
+        if s.right_collapsed || s.right_tab != ecad_trial::shell::RightTab::Checks {
+            h.get_by_label(&ecad_trial::shell::right::rail_label(ecad_trial::shell::RightTab::Checks)).click();
+        }
     } else {
         h.get_by_label(label).click();
     }

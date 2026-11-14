@@ -4,8 +4,8 @@
 //!
 //! One bar at each edge: the top bar (40 px) and the bottom bar (32 px). Between them, in Draw:
 //! the tool strip (56 px) at the left edge, the panel slot beside it while a panel is open (Book
-//! and Devices 248 px, History 280 px), the canvas, and the inspector at the right (320 px open,
-//! a 56 px rail collapsed). Project, Library and Publish have no strip and no panel slot; their
+//! and Devices 248 px, History 280 px), the canvas, and its mirror at the right: the inspector's
+//! permanent 56 px rail at the right edge, with the inspector (320 px) beside it while open. Project, Library and Publish have no strip and no panel slot; their
 //! inspector is 340 px open. The agent banner sits under the top bar while an agent is connected.
 //!
 //! Brief 048: the symbol builder (Library) has a strip too, and a 380 px right panel. Its review
@@ -52,10 +52,14 @@ pub struct Slots {
     pub drawer: Option<Rect>,
     /// The companion split's drag handle, between `main` and `companion`.
     pub handle: Option<Rect>,
+    /// The inspector beside the rail while open; a zero-width rect at the rail's left edge while
+    /// closed.
     pub right: Rect,
+    /// The inspector's rail at the right edge, always shown (the strip's mirror).
+    pub rail: Rect,
     /// The bottom bar.
     pub status: Rect,
-    /// Whether the inspector shows as its rail, after forced collapses.
+    /// Whether the inspector is closed (only its rail shows), after forced collapses.
     pub right_rail: bool,
 }
 
@@ -84,8 +88,8 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let strip_w = if draw || builder { size::TOOL_STRIP } else { 0.0 };
     let main_w = |panel_open: bool, right_rail: bool| {
         let l = if panel_open { left_width(state) } else { 0.0 };
-        let r = if right_rail { RAIL_W } else { right_w };
-        window.width() - strip_w - l - r
+        let r = if right_rail { 0.0 } else { right_w };
+        window.width() - strip_w - l - r - RAIL_W
     };
     // Collapse order: the inspector to its rail, then the panel slot closes. The Text panel keeps
     // the inspector open (it is drawn over it).
@@ -104,8 +108,9 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     });
     let status = Rect::from_min_max(pos2(window.left(), window.bottom() - size::STATUS_BAR), window.max);
     let bottom = status.top().max(y);
-    let rw = if right_rail { RAIL_W } else { right_w };
-    let right = Rect::from_min_max(pos2((window.right() - rw).max(window.left()), y), pos2(window.right(), bottom));
+    let rail = Rect::from_min_max(pos2((window.right() - RAIL_W).max(window.left()), y), pos2(window.right(), bottom));
+    let rw = if right_rail { 0.0 } else { right_w };
+    let right = Rect::from_min_max(pos2((rail.left() - rw).max(window.left()), y), pos2(rail.left(), bottom));
     let tool_strip = (draw || builder).then(|| Rect::from_min_max(pos2(window.left(), y), pos2((window.left() + strip_w).min(right.left()), bottom)));
     let mut x = tool_strip.map_or(window.left(), |s| s.right());
     let panel = panel_open.then(|| {
@@ -117,7 +122,7 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let drawer = state.review.then(|| Rect::from_min_max(pos2(x, drawer_top), pos2(right.left().max(x), bottom)));
     let view = Rect::from_min_max(pos2(x, y), pos2(right.left().max(x), drawer_top));
     let (main, handle, companion) = split(view, state);
-    Slots { top_bar, agent_banner, panel, tool_strip, main, companion, handle, drawer, right, status, right_rail }
+    Slots { top_bar, agent_banner, panel, tool_strip, main, companion, handle, drawer, right, rail, status, right_rail }
 }
 
 /// The main view split for the companion: each half at least [`HALF_MIN`] wide, or no split.

@@ -15,8 +15,8 @@ The window has one bar at each edge, and the drawing comes first. The default vi
   - Beside it: the workspace switch, **Draw / Project / Library / Publish**. **Project** is
     the old Lists, renamed; it works as before.
   - Centred: search (Ctrl K).
-  - At the right: the agent icon, the light/dark switch (only dark works for now), help and the
-    account avatar.
+  - At the right: the agent icon, **Share** (coming: it does nothing yet), the light/dark switch
+    (only dark works for now), help and the account avatar.
   - No branding and no revision pill.
 - **Tool strip, 56 px, at the left edge.**
   - At the top: the **Book**, **Devices** and **History** panel buttons. Each opens its panel
@@ -26,9 +26,11 @@ The window has one bar at each edge, and the drawing comes first. The default vi
     PLC has no tools yet, so it is greyed.
   - At the foot: the **Snap**, **Grid** and **Ortho** toggles.
   - Hovering a group still lists its tools. Rev 3's own flyouts come later.
-- **Inspector, collapsed to a 56 px rail.** It has one labelled button each for **Device**,
-  **Layout** and **Checks**; Checks carries a red dot when there are problems. Pressing one opens
-  the inspector on that tab, and `]` folds it again. For now Device and Layout show today's
+- **Inspector: the left side's mirror.** A permanent 56 px rail at the right edge has one labelled
+  button each for **Device**, **Layout** and **Checks**; Checks carries a red dot when there are
+  problems. Pressing one opens the inspector beside the rail on that tab; pressing it again
+  closes it, as Book does on the strip. The rail's buttons are the tabs: the panel has no tab
+  selector. `]` or the panel's close button closes it too. For now Device and Layout show today's
   properties, and Checks shows the check list that was the drawer's.
 - **Bottom bar, 32 px.**
   - Status at the left:
@@ -36,10 +38,12 @@ The window has one bar at each edge, and the drawing comes first. The default vi
     - **Rev C D\***, which opens History;
     - the checks counter, which opens the Checks tab.
   - The page well in the centre:
-    - group and page arrows at its ends;
-    - the page number, "/ total" and title;
-    - the open group's page buttons, with other folders folded to a folder, a count and a ›;
-    - **+**, which adds a page.
+    - the page shown, number, "/ total" and title, at its centre between `« ‹` and `› »`, with a
+      divider either side;
+    - left of it, the groups before (folded) and the open group's page buttons;
+    - right of it, the groups after (folded to a folder, a count and a ›) and **+**, which adds a
+      page;
+    - right-click a page button for the same wheel a page in Book gets.
   - The view at the right:
     - **IEC**, which opens Settings ▸ Standards;
     - the sheet size;

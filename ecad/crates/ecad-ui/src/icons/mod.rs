@@ -100,6 +100,7 @@ pub fn shapes(rect: Rect, icon: Icon, ink: Color32) -> Vec<Shape> {
         Icon::CableBundle => rev3::cable_bundle(&mut pen),
         Icon::LocationBox => rev3::location_box(&mut pen),
         Icon::DeviceGrid => rev3::device_grid(&mut pen),
+        Icon::Share => rev3::share(&mut pen),
     }
     pen.out
 }

@@ -3,9 +3,10 @@
 //!
 //! - Status: the save state and time; the revision, "Rev C D*" (opens History); the checks
 //!   counter (opens the inspector's Checks tab).
-//! - The page well, 880 px, centred: previous group and previous page at its left end, next page
-//!   and next group at its right end; the page number, "/ 09" and title; then the page buttons of
-//!   the open group, the other groups folded to a folder, a count and a ›; + adds a page.
+//! - The page well, 880 px, centred: the page shown (number, "/ 09", title) at its centre between
+//!   `« ‹` and `› »`, a divider either side; the groups before and the open group's pages left of
+//!   it, the groups after (folded to a folder, a count and a ›) and + right of it. A page button's
+//!   right-click opens the page wheel, as a page row in Book does.
 //! - The view: standard · sheet size · sheet colour, then Fit, zoom out, zoom %, zoom in.
 //!
 //! In Project, Library and Publish the well and the view groups are hidden; the status stays.
@@ -362,7 +363,13 @@ enum Item {
     Folder(String),
 }
 
-/// The page well in `well`.
+/// The width of the page shown's number, total and title at the well's centre.
+const CENTRE_TEXT: f32 = 250.0;
+
+/// The page well in `well`. Carl's rev 3 round 2: the page shown, `02 / 09 Motor control`, sits at
+/// the well's centre between `« ‹` and `› »`, with a divider either side. Left of it, in book
+/// order, the groups before the shown one (folded) and the shown group's own pages, packed towards
+/// the divider; right of it the groups after (folded, or opened with ›) and +.
 fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
     let s = ecad_ui::SHELL;
     ui.painter().rect(
@@ -378,11 +385,16 @@ fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
     let btn = |x: f32| Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(BTN, BTN));
     let has_pages = !t.shell.well.groups.is_empty();
     let mut go: Option<PageId> = None;
-    let mut step: Option<(bool, bool)> = None; // (group, next)
+    let mut wheel: Option<(PageId, egui::Pos2)> = None;
+    // (group, next)
+    let mut step: Option<(bool, bool)> = None;
     let mut open_group = None;
     let mut add = false;
-    // Ends.
-    let mut x = well.left() + space::XXS;
+
+    // The centre: « ‹ [page shown] › », the page text centred on the well.
+    let text = Rect::from_center_size(well.center(), vec2(CENTRE_TEXT.min(well.width() / 3.0), BTN));
+    let mut x = text.left() - space::XS - 2.0 * BTN;
+    let left_div = x - space::S;
     if bar::icon_button(ui, btn(x), Icon::ChevronsLeft, PREV_GROUP, 12.0, has_pages).clicked() {
         step = Some((true, false));
     }
@@ -390,121 +402,83 @@ fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
     if bar::icon_button(ui, btn(x), Icon::ChevronLeft, PREV_PAGE, 12.0, has_pages).clicked() {
         step = Some((false, false));
     }
-    x += BTN + space::S;
-    let mut rx = well.right() - space::XXS - BTN;
-    if bar::icon_button(ui, btn(rx), Icon::ChevronsRight, NEXT_GROUP, 12.0, has_pages).clicked() {
-        step = Some((true, true));
-    }
-    rx -= BTN;
-    if bar::icon_button(ui, btn(rx), Icon::ChevronRight, NEXT_PAGE, 12.0, has_pages).clicked() {
+    let mut x = text.right() + space::XS;
+    if bar::icon_button(ui, btn(x), Icon::ChevronRight, NEXT_PAGE, 12.0, has_pages).clicked() {
         step = Some((false, true));
     }
-    rx -= space::S;
+    x += BTN;
+    if bar::icon_button(ui, btn(x), Icon::ChevronsRight, NEXT_GROUP, 12.0, has_pages).clicked() {
+        step = Some((true, true));
+    }
+    let right_div = x + BTN + space::S;
+    bar::vline(ui, left_div, y - 8.0, y + 8.0);
+    bar::vline(ui, right_div, y - 8.0, y + 8.0);
 
-    // The page shown: number, "/ total" and title.
+    // The page shown: number, "/ total" and title, as one centred line.
     let total = t.panel.rows().len();
     let active = t.panel.active.and_then(|a| t.panel.rows().iter().find(|r| r.id == a)).map(|r| (r.number.clone(), r.title.clone()));
-    let width = |n: usize| format!("{n:02}");
     match &active {
         Some((number, title)) => {
-            let e = bar::text_at(ui, x, y, &padded(number), ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
-            let e = bar::text_at(ui, e + space::XS, y, &format!("/ {}", width(total)), ui_type::SMALL, ecad_ui::color(s.text_3));
-            let room = (well.left() + 300.0 - (e + space::M)).max(0.0);
-            let title = clip(ui, title, room);
+            let number = padded(number);
+            let of = format!("/ {total:02}");
+            let fixed = bar::text_width(ui, &number, ui_type::BODY_EMPHASIS) + space::XS + bar::text_width(ui, &of, ui_type::SMALL) + space::M;
+            let title = clip(ui, title, (text.width() - fixed).max(0.0));
+            let line = fixed + bar::text_width(ui, &title, ui_type::BODY);
+            let x0 = text.center().x - line / 2.0;
+            let e = bar::text_at(ui, x0, y, &number, ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
+            let e = bar::text_at(ui, e + space::XS, y, &of, ui_type::SMALL, ecad_ui::color(s.text_3));
             bar::text_at(ui, e + space::M, y, &title, ui_type::BODY, ecad_ui::color(s.text_2));
         }
         None => {
-            let text = if t.project_open() { "No page shown" } else { "No project" };
-            bar::text_at(ui, x, y, text, ui_type::SMALL, ecad_ui::color(s.text_3));
+            let words = if t.project_open() { "No page shown" } else { "No project" };
+            ui.painter().text(text.center(), egui::Align2::CENTER_CENTER, words, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_3));
         }
     }
-    let split = well.left() + 300.0;
-    bar::vline(ui, split, y - 8.0, y + 8.0);
 
-    // The strip of pages: the open groups' pages, the others folded; then +.
+    // The items either side: up to the shown group on the left, after it on the right.
     let at = t.well_group_of_active();
-    let mut items = Vec::new();
+    let several = t.shell.well.groups.len() > 1;
+    let (mut left, mut right) = (Vec::new(), Vec::new());
     for (gi, g) in t.shell.well.groups.iter().enumerate() {
-        let open = Some(gi) == at || t.shell.well.opened.contains(&g.folder) || t.shell.well.groups.len() == 1;
+        let open = Some(gi) == at || t.shell.well.opened.contains(&g.folder) || !several;
+        let side = if at.is_some_and(|a| gi > a) { &mut right } else { &mut left };
         if open {
-            if g.folder.is_some() || t.shell.well.groups.len() > 1 {
-                items.push(Item::Folder(g.name.clone()));
+            if g.folder.is_some() || several {
+                side.push(Item::Folder(g.name.clone()));
             }
-            items.extend(g.pages.iter().map(|(p, n)| Item::Page(*p, n.clone())));
+            side.extend(g.pages.iter().map(|(p, n)| Item::Page(*p, n.clone())));
         } else {
-            items.push(Item::Folded(gi, g.name.clone(), g.pages.len()));
+            side.push(Item::Folded(gi, g.name.clone(), g.pages.len()));
         }
     }
-    let item_w = |i: &Item| match i {
-        Item::Page(..) => PAGE_BTN + space::XXS,
-        Item::Folder(_) => 24.0,
-        // A folded group's chip, then a gap (the board's).
-        Item::Folded(_, _, n) => 44.0 + 7.0 * n.to_string().len() as f32 + space::M,
-    };
-    // Keep what fits, centred on the page shown.
-    let room = (rx - BTN - space::S) - (split + space::M);
-    let shown_at = items.iter().position(|i| matches!(i, Item::Page(p, _) if Some(*p) == t.panel.active)).unwrap_or(0);
-    let (mut lo, mut hi) = (shown_at, shown_at.min(items.len()));
-    let mut used = 0.0;
-    loop {
-        let mut grew = false;
-        if hi < items.len() && used + items.get(hi).map_or(0.0, item_w) <= room {
-            used += items.get(hi).map_or(0.0, item_w);
-            hi += 1;
-            grew = true;
-        }
-        if lo > 0 && used + items.get(lo - 1).map_or(0.0, item_w) <= room {
-            used += items.get(lo - 1).map_or(0.0, item_w);
-            lo -= 1;
-            grew = true;
-        }
-        if !grew {
-            break;
-        }
-    }
-    // The strip sits centred between the split and the right-hand arrows (the board's).
-    let strip_w = used + if t.project_open() { BTN + space::XS } else { 0.0 };
-    let mut x = split + space::M + ((room - strip_w) / 2.0).max(0.0);
-    for i in items.get(lo..hi).unwrap_or_default() {
-        match i {
-            Item::Folder(name) => {
-                let r = Rect::from_center_size(pos2(x + 10.0, y), vec2(14.0, 14.0));
-                ecad_ui::icons::paint(ui.painter(), r, Icon::Folder, ecad_ui::color(s.text_3));
-                ui.interact(r, egui::Id::unique(("ecad.well.folder", name)), egui::Sense::hover()).on_hover_text(name);
-            }
-            Item::Page(p, n) => {
-                let r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(PAGE_BTN, BTN));
-                let on = Some(*p) == t.panel.active;
-                if bar::text_button_small(ui, r, &padded(n), &format!("Page {n}"), on).clicked() {
-                    go = Some(*p);
-                }
-            }
-            Item::Folded(gi, name, count) => {
-                let r = Rect::from_min_size(pos2(x + space::XS, y - BTN / 2.0), vec2(item_w(i) - space::M, BTN));
-                ui.painter().rect_stroke(r, ecad_ui::tokens::radius::FIELD, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
-                let resp = bar::hit(ui, r, &format!("Group {name}"), false, false, true).on_hover_text(name);
-                let icon = Rect::from_center_size(pos2(r.left() + 12.0, y), vec2(12.0, 12.0));
-                ecad_ui::icons::paint(ui.painter(), icon, Icon::Folder, ecad_ui::color(s.text_3));
-                let e = bar::text_at(ui, icon.right() + space::XS, y, &count.to_string(), ui_type::SMALL, ecad_ui::color(s.text_2));
-                ecad_ui::icons::paint(
-                    ui.painter(),
-                    Rect::from_center_size(pos2(e + 6.0, y), vec2(8.0, 8.0)),
-                    Icon::ChevronRight,
-                    ecad_ui::color(s.text_3),
-                );
-                if resp.clicked() {
-                    open_group = Some(*gi);
-                }
-            }
-        }
+    // Left: what fits, kept round the page shown, packed towards the divider.
+    let room_l = (left_div - space::S) - (well.left() + space::S);
+    let shown_at = left.iter().position(|i| matches!(i, Item::Page(p, _) if Some(*p) == t.panel.active)).unwrap_or(left.len().saturating_sub(1));
+    let (lo, hi, used) = window(&left, shown_at, room_l);
+    let mut x = left_div - space::S - used;
+    for i in left.get(lo..hi).unwrap_or_default() {
+        draw_item(t, ui, i, x, y, &mut go, &mut wheel, &mut open_group);
         x += item_w(i);
     }
-    if t.project_open() && bar::icon_button(ui, btn(x + space::XS), Icon::Plus, ADD_PAGE, 12.0, true).clicked() {
+    // Right: the first items that fit, then +.
+    let plus = t.project_open();
+    let room_r = (well.right() - space::S) - (right_div + space::S) - if plus { BTN + space::XS } else { 0.0 };
+    let (_, hi, _) = window(&right, 0, room_r);
+    let mut x = right_div + space::S;
+    for i in right.get(..hi).unwrap_or_default() {
+        draw_item(t, ui, i, x, y, &mut go, &mut wheel, &mut open_group);
+        x += item_w(i);
+    }
+    if plus && bar::icon_button(ui, btn(x + space::XS), Icon::Plus, ADD_PAGE, 12.0, true).clicked() {
         add = true;
     }
 
     if let Some(p) = go {
         t.well_show(p);
+    }
+    if let Some((p, at)) = wheel {
+        // The same wheel a page row in Book gets (brief 041: the page row's slots).
+        t.open_page_wheel(p, at);
     }
     match step {
         Some((true, next)) => t.step_group(next),
@@ -519,6 +493,88 @@ fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
     }
     if add {
         t.panel_action(crate::project_panel::Action::New);
+    }
+}
+
+/// An item's width in the well.
+fn item_w(i: &Item) -> f32 {
+    match i {
+        Item::Page(..) => PAGE_BTN + space::XXS,
+        Item::Folder(_) => 24.0,
+        // A folded group's chip, then a gap (the board's).
+        Item::Folded(_, _, n) => 44.0 + 7.0 * n.to_string().len() as f32 + space::M,
+    }
+}
+
+/// The run of `items` that fits in `room`, grown from `around` both ways: `(lo, hi, width)`.
+fn window(items: &[Item], around: usize, room: f32) -> (usize, usize, f32) {
+    let (mut lo, mut hi) = (around.min(items.len()), around.min(items.len()));
+    let mut used = 0.0;
+    loop {
+        let mut grew = false;
+        if let Some(i) = items.get(hi)
+            && used + item_w(i) <= room
+        {
+            used += item_w(i);
+            hi += 1;
+            grew = true;
+        }
+        if lo > 0
+            && let Some(i) = items.get(lo - 1)
+            && used + item_w(i) <= room
+        {
+            used += item_w(i);
+            lo -= 1;
+            grew = true;
+        }
+        if !grew {
+            return (lo, hi, used);
+        }
+    }
+}
+
+/// Draw one well item at `x`; a click on a page shows it, a right-click opens its wheel, a click on
+/// a folded group opens it.
+#[allow(clippy::too_many_arguments)]
+fn draw_item(
+    t: &Trial, ui: &mut egui::Ui, i: &Item, x: f32, y: f32, go: &mut Option<PageId>, wheel: &mut Option<(PageId, egui::Pos2)>,
+    open_group: &mut Option<usize>,
+) {
+    let s = ecad_ui::SHELL;
+    match i {
+        Item::Folder(name) => {
+            let r = Rect::from_center_size(pos2(x + 10.0, y), vec2(14.0, 14.0));
+            ecad_ui::icons::paint(ui.painter(), r, Icon::Folder, ecad_ui::color(s.text_3));
+            ui.interact(r, egui::Id::unique(("ecad.well.folder", name)), egui::Sense::hover()).on_hover_text(name);
+        }
+        Item::Page(p, n) => {
+            let r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(PAGE_BTN, BTN));
+            let on = Some(*p) == t.panel.active;
+            let resp = bar::text_button_small(ui, r, &padded(n), &format!("Page {n}"), on);
+            if resp.clicked() {
+                *go = Some(*p);
+            }
+            if resp.secondary_clicked() {
+                *wheel = Some((*p, resp.interact_pointer_pos().unwrap_or(r.center())));
+            }
+        }
+        Item::Folded(gi, name, count) => {
+            let r = Rect::from_min_size(pos2(x + space::XS, y - BTN / 2.0), vec2(item_w(i) - space::M, BTN));
+            ui.painter().rect_stroke(r, ecad_ui::tokens::radius::FIELD, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
+            let resp = bar::hit(ui, r, &format!("Group {name}"), false, false, true).on_hover_text(name);
+            let icon = Rect::from_center_size(pos2(r.left() + 12.0, y), vec2(12.0, 12.0));
+            ecad_ui::icons::paint(ui.painter(), icon, Icon::Folder, ecad_ui::color(s.text_3));
+            let e = bar::text_at(ui, icon.right() + space::XS, y, &count.to_string(), ui_type::SMALL, ecad_ui::color(s.text_2));
+            ecad_ui::icons::paint(
+                ui.painter(),
+                Rect::from_center_size(pos2(e + 6.0, y), vec2(8.0, 8.0)),
+                Icon::ChevronRight,
+                ecad_ui::color(s.text_3),
+            );
+            if resp.clicked() {
+                *open_group = Some(*gi);
+            }
+        }
     }
 }
 

@@ -5,7 +5,7 @@
 //!   popouts, Settings and standards).
 //! - Beside it: the workspace switch, Draw / Project / Library / Publish, in the same pill.
 //! - Centred on the window: search (Ctrl K).
-//! - Right: the agent icon, the light/dark switch, help and the account avatar.
+//! - Right: the agent icon, share (coming), the light/dark switch, help and the account avatar.
 //!
 //! The Checks counter and the revision moved to the bottom bar ([`super::status_bar`]); their
 //! accessible labels ([`CHECKS_PILL`], [`REVISION_PILL`]) moved with them.
@@ -31,6 +31,8 @@ pub const AGENT_PILL: &str = "Agent pill";
 pub const THEME_DARK: &str = "Dark interface";
 pub const THEME_LIGHT: &str = "Light interface";
 pub const HELP: &str = "Help";
+/// Share (coming; it does nothing yet).
+pub const SHARE: &str = "Share";
 pub const ACCOUNT: &str = "Account";
 /// The project menu's entries (the header's labels).
 pub const NEW: &str = "New project";
@@ -153,6 +155,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     l.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, false, false, THEME_LIGHT));
     l.on_hover_text("The light interface is not available yet.");
     ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(light.center(), vec2(13.0, 13.0)), Icon::Sun, ecad_ui::color(s.text_3));
+    let share = Rect::from_center_size(pos2(x - 14.0, y), vec2(28.0, 28.0));
+    x = share.left() - space::XS;
+    bar::icon_button(ui, share, Icon::Share, SHARE, size::ICON, true).on_hover_text("Share (coming)");
     let agent_rect = Rect::from_center_size(pos2(x - 14.0, y), vec2(28.0, 28.0));
     let (tone, state, hover) = agent_state(ui, t);
     let r = bar::icon_button(ui, agent_rect, Icon::Agent, &format!("{AGENT_PILL}: {state}"), size::ICON, true).on_hover_text(hover);

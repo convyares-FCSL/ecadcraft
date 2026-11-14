@@ -29,7 +29,8 @@ fn the_regions_at_1920_by_1080_are_the_specs() {
     assert_eq!(d.tool_strip.map(size), Some((56.0, 1008.0)), "tool strip 56 px at the left edge");
     assert_eq!(d.tool_strip.map(|r| r.left()), Some(0.0));
     assert!(d.panel.is_none(), "both sides closed: no panel");
-    assert!(d.right_rail && d.right.width() == 56.0, "the inspector is a 56 px rail");
+    assert!(d.right_rail && d.right.width() == 0.0, "the inspector is closed");
+    assert_eq!((d.rail.left(), d.rail.width()), (1864.0, 56.0), "its rail is always at the right edge");
     assert_eq!(size(d.main), (1920.0 - 56.0 - 56.0, 1008.0), "the canvas is the rest");
     // A panel opened by the strip sits beside it: Book and Devices 248, History 280.
     for (tab, w) in [(LeftTab::Pages, 248.0), (LeftTab::Devices, 248.0), (LeftTab::History, 280.0)] {
@@ -42,11 +43,13 @@ fn the_regions_at_1920_by_1080_are_the_specs() {
     }
     // The inspector open: 320 in Draw, 340 in the other workspaces, which have no strip or panel.
     let open = ShellState { right_collapsed: false, ..s.clone() };
-    assert_eq!(at(&open, 1920.0, 1080.0).right.width(), 320.0);
+    let o = at(&open, 1920.0, 1080.0);
+    assert_eq!((o.right.left(), o.right.width(), o.rail.left()), (1864.0 - 320.0, 320.0, 1864.0), "beside the rail, as Book beside the strip");
+    assert_eq!(o.main.right(), 1864.0 - 320.0);
     let project =
         ShellState { workspace: Workspace::Lists, left: ecad_trial::shell::state::LeftState { collapsed: false, ..Default::default() }, ..open };
     let p = at(&project, 1920.0, 1080.0);
-    assert_eq!((p.right.width(), p.tool_strip, p.panel, p.main.left()), (340.0, None, None, 0.0));
+    assert_eq!((p.right.width(), p.tool_strip, p.panel, p.main.left(), p.rail.width()), (340.0, None, None, 0.0, 56.0));
 }
 
 #[test]
@@ -110,11 +113,21 @@ fn the_frame_shows_its_buttons_and_they_open_what_they_name() {
     h.get_by_label(&tool_strip::panel_label(LeftTab::Pages)).click();
     h.run_steps(3);
     assert!(h.state().shell_state().left.collapsed);
-    // The rail's Checks expands the inspector on Checks; ] folds it again.
+    // The rail's Checks opens the inspector beside the rail on Checks; the rail's buttons are the
+    // only tabs (no selector in the panel); pressed again it closes, as Book on the strip.
     h.get_by_label(&right::rail_label(RightTab::Checks)).click();
     h.run_steps(3);
     assert!(!h.state().shell_state().right_collapsed);
     assert_eq!(h.state().shell_state().right_tab, RightTab::Checks);
+    assert_eq!(h.query_all_by_label(&right::rail_label(RightTab::Device)).count(), 1, "no tab selector in the panel");
+    h.get_by_label(&right::rail_label(RightTab::Layout)).click();
+    h.run_steps(3);
+    assert_eq!(h.state().shell_state().right_tab, RightTab::Layout, "another rail button switches the tab");
+    h.get_by_label(&right::rail_label(RightTab::Layout)).click();
+    h.run_steps(3);
+    assert!(h.state().shell_state().right_collapsed, "pressed again: closed");
+    // Share is there and does nothing yet.
+    assert!(h.query_by_label(top_bar::SHARE).is_some());
     // The bottom bar's checks counter opens the same tab.
     h.state_mut().shell.state.right_collapsed = true;
     h.run_steps(2);
@@ -189,6 +202,26 @@ fn the_page_well_opens_the_shown_pages_group_and_folds_the_others() {
     h.get_by_label(status_bar::NEXT_GROUP).click();
     h.run_steps(4);
     assert_eq!(h.state().panel.active, Some(order[3]));
+    // The page shown sits at the well's centre.
+    let well = h.get_by_label(status_bar::PAGE_WELL).rect();
+    let prev = h.get_by_label(status_bar::PREV_PAGE).rect();
+    let next = h.get_by_label(status_bar::NEXT_PAGE).rect();
+    assert!(((prev.right() + next.left()) / 2.0 - well.center().x).abs() < 1.0, "centred between ‹ and ›");
+    // A page button's right-click opens the page wheel, as a page row in Book does.
+    let at = h.get_by_label("Page 5").rect().center();
+    for pressed in [true, false] {
+        h.event(eframe::egui::Event::PointerMoved(at));
+        h.event(eframe::egui::Event::PointerButton {
+            pos: at,
+            button: eframe::egui::PointerButton::Secondary,
+            pressed,
+            modifiers: eframe::egui::Modifiers::NONE,
+        });
+        h.run_steps(2);
+    }
+    let t = h.state().wheel_target().cloned().expect("the page wheel");
+    assert_eq!(t.kind, ecad_cadcraft::actions::ObjectKind::PageRow);
+    assert_eq!(t.page, Some(order[4]));
 }
 
 /// Board 1.01 at 1920 × 1080 for the side-by-side (written only when `ECAD_TESTER_SHOTS` names a
@@ -228,5 +261,11 @@ fn screenshots_of_board_1_01() {
     h.state_mut().fit_sheet();
     h.run_steps(4);
     let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-1.01-ours.png"));
+    // Round 2: the inspector open beside its rail, on Device.
+    h.state_mut().open_inspector(RightTab::Device);
+    h.run_steps(4);
+    h.state_mut().fit_sheet();
+    h.run_steps(4);
+    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-1.01-r2-right.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }

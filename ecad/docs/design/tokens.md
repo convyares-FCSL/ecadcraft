@@ -308,6 +308,7 @@ Tool icons echo the schematic.
 | `icon.cable_bundle` | Cable tools | Three leads tied by two strokes (UI rev 3: the Cable group) |
 | `icon.location_box` | Location tools | A dashed box with a marked corner (UI rev 3: the Location group) |
 | `icon.device_grid` | Devices panel | Three squares and a plus (UI rev 3: the Devices panel) |
+| `icon.share` | Share | An arrow rising out of a tray (UI rev 3: the top bar) |
 
 # Canvas tokens in use until U4a (`ecad.*`)
 

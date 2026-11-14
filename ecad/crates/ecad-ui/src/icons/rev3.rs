@@ -160,3 +160,10 @@ pub fn device_grid(p: &mut Pen) {
     p.line((11.5, 9.0), (11.5, 14.0));
     p.line((9.0, 11.5), (14.0, 11.5));
 }
+
+/// Share: an arrow rising out of a tray.
+pub fn share(p: &mut Pen) {
+    p.poly(&[(5.0, 7.0), (2.5, 7.0), (2.5, 14.0), (13.5, 14.0), (13.5, 7.0), (11.0, 7.0)], false);
+    p.line((8.0, 10.0), (8.0, 1.5));
+    p.poly(&[(5.0, 4.5), (8.0, 1.5), (11.0, 4.5)], false);
+}

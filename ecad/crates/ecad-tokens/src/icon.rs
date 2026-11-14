@@ -157,11 +157,13 @@ pub enum Icon {
     LocationBox,
     /// Devices panel: three squares and a plus (UI rev 3: the Devices panel).
     DeviceGrid,
+    /// Share: an arrow rising out of a tray (UI rev 3: the top bar).
+    Share,
 }
 
 impl Icon {
     /// Every icon, in declaration order.
-    pub const ALL: [Icon; 72] = [
+    pub const ALL: [Icon; 73] = [
         Icon::Select,
         Icon::Wire,
         Icon::Place,
@@ -238,6 +240,7 @@ impl Icon {
         Icon::CableBundle,
         Icon::LocationBox,
         Icon::DeviceGrid,
+        Icon::Share,
     ];
 
     /// A readable name, used as the accessible label of an icon with no label of its own.
@@ -319,6 +322,7 @@ impl Icon {
             Icon::CableBundle => "Cable tools",
             Icon::LocationBox => "Location tools",
             Icon::DeviceGrid => "Devices panel",
+            Icon::Share => "Share",
         }
     }
 }
