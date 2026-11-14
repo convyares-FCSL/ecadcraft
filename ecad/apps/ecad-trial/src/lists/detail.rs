@@ -301,8 +301,8 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
             Section {
                 title: "Identity",
                 props: vec![
-                    read("Number", nonempty(&number)),
-                    read("Potential", nonempty(&rows.text(k, "Potential"))),
+                    set("Number", nonempty(&number), if v.source.provisional(k) { "provisional" } else { "" }),
+                    set("Potential", nonempty(&rows.text(k, "Potential")), "from the drawing"),
                     read("From", nonempty(&from)),
                     read("To", nonempty(&to)),
                 ],
@@ -312,9 +312,9 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
                 title: "Made as",
                 hint: "from the category".into(),
                 props: vec![
-                    read("Category", nonempty(&rows.text(k, "Category"))),
-                    read("Colour", nonempty(&rows.text(k, "Colour"))),
-                    read("Size", nonempty(&rows.text(k, "Cross-section"))),
+                    set("Category", nonempty(&rows.text(k, "Category")), ""),
+                    set("Colour", nonempty(&rows.text(k, "Colour")), ""),
+                    set("Size", nonempty(&rows.text(k, "Cross-section")), ""),
                     read("Cable", nonempty(&rows.text(k, "Cable"))),
                 ],
                 ..Section::default()
@@ -352,7 +352,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
             Section {
                 title: "Identity",
                 props: vec![
-                    read("Tag", nonempty(&tag)),
+                    set("Tag", nonempty(&tag), ""),
                     read("Runs", format!("{} \u{2192} {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))),
                 ],
                 ..Section::default()
@@ -361,10 +361,10 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
                 title: "Part",
                 hint: "sets the cores".into(),
                 props: vec![
-                    read("Type", nonempty(&rows.text(k, "Type"))),
+                    set("Type", nonempty(&rows.text(k, "Type")), ""),
                     read("Cores", format!("{} \u{b7} {} used", nonempty(&rows.text(k, "Cores")), nonempty(&rows.text(k, "Used")))),
                     read("Maker", nonempty(&rows.text(k, "Maker"))),
-                    read("Length", nonempty(&length)),
+                    set("Length", nonempty(&length), ""),
                 ],
                 ..Section::default()
             },

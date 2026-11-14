@@ -83,8 +83,40 @@ pub enum ValueKind {
     /// Read from the drawing: grey, no box (change it on its page).
     #[default]
     Read,
-    /// Not built yet: the dimmest grey, no box.
+    /// Will be set here, not built yet: an input box with its value in the dimmest grey.
     Later,
+}
+
+/// A one-line text input in a field box filling `rect` (a row's value column), `hint` at its
+/// right. `edit` is the caller's (its id, placeholder); this draws it frameless in the body type,
+/// with the focus ring when focused and an `error` line when `invalid`. Its accessible name is
+/// `name`, disabled when the `Ui` is.
+pub fn input(ui: &mut Ui, rect: Rect, edit: egui::TextEdit<'_>, hint: &str, name: &str, invalid: bool) -> Response {
+    let s = crate::SHELL;
+    let (bx, room) = field_box(ui, rect, hint);
+    let body = fonts::font(ui.ctx(), ui_type::BODY);
+    let line_h = ui.fonts_mut(|f| f.row_height(&body)) + space::XXS;
+    let top = bx.center().y - line_h / 2.0;
+    let edit_rect = Rect::from_min_max(pos2(room.left(), top), pos2(room.right(), top + line_h));
+    let r = ui.put(edit_rect, edit.frame(egui::Frame::NONE).font(body).text_color(color(s.text)));
+    let enabled = ui.is_enabled();
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, enabled, name));
+    if invalid {
+        ui.painter().rect_stroke(bx, corner(radius::FIELD), Stroke::new(line::HAIRLINE_PX, color(s.error)), egui::StrokeKind::Outside);
+    } else if r.has_focus() {
+        ui.painter().rect_stroke(bx, corner(radius::FIELD), Stroke::new(line::FOCUS_RING_PX, color(s.accent_text)), egui::StrokeKind::Inside);
+    }
+    r
+}
+
+/// A label and a text input ([`input`]) as one row, as wide as the panel.
+pub fn input_row(ui: &mut Ui, label_text: &str, edit: egui::TextEdit<'_>, hint: &str, name: &str, invalid: bool) -> Response {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), size::CONTROL), Sense::hover());
+    let s = crate::SHELL;
+    let lg = crate::table::cells::fitted(ui, label_text, ui_type::SMALL, color(s.text_3), size::LABEL_COLUMN - space::S);
+    ui.painter().galley(pos2(rect.left(), rect.center().y - lg.size().y / 2.0), lg, color(s.text_3));
+    let column = Rect::from_min_max(pos2(rect.left() + size::LABEL_COLUMN, rect.top()), rect.max);
+    input(ui, column, edit, hint, name, invalid)
 }
 
 /// One label-and-value row, as wide as the panel. Its accessible name is `"<label>: <value>"`.
@@ -102,8 +134,9 @@ pub fn value_row(ui: &mut Ui, label_text: &str, value: &str, hint: &str, kind: V
     let column = Rect::from_min_max(pos2(rect.left() + size::LABEL_COLUMN, rect.top()), rect.max);
     let (room, ink) = match kind {
         ValueKind::Set => (field_box(ui, column, hint).1, s.text),
-        ValueKind::Read | ValueKind::Later => {
-            let ink = if kind == ValueKind::Read { s.text_2 } else { s.text_3 };
+        ValueKind::Later => (field_box(ui, column, hint).1, s.text_3),
+        ValueKind::Read => {
+            let ink = s.text_2;
             let mut right = column.right();
             if !hint.is_empty() {
                 let g = crate::table::cells::fitted(ui, hint, ui_type::SMALL, color(s.text_3), column.width() / 2.0);

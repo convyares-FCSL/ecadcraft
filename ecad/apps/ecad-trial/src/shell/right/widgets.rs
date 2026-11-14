@@ -5,8 +5,8 @@
 
 use std::collections::BTreeSet;
 
-use ecad_ui::tokens::{radius, space, ui_type};
-use eframe::egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
+use ecad_ui::tokens::{space, ui_type};
+use eframe::egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, vec2};
 
 /// The label column's width.
 pub const LABEL_W: f32 = ecad_ui::tokens::size::LABEL_COLUMN;
@@ -116,32 +116,16 @@ pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
     ecad_ui::panel::field_box(ui, rect, "").0
 }
 
-/// A text input inside a field box with an optional grey `hint` at its right (`auto`, `from
-/// page`). Returns the edit's response.
+/// A text input inside a field box (`ecad_ui::panel::input`) with an optional grey `hint` at its
+/// right (`auto`, `from page`). Returns the edit's response.
 pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: bool) -> Response {
     let w = ui.available_width();
     let (row, _) = ui.allocate_exact_size(vec2(w, FIELD_H), Sense::hover());
-    let (rect, room) = ecad_ui::panel::field_box(ui, row, hint);
-    // One line of text, centred in the box.
-    let body = font(ui, ui_type::BODY);
-    let line_h = ui.fonts_mut(|f| f.row_height(&body)) + space::XXS;
-    let top = rect.center().y - line_h / 2.0;
-    let edit_rect = Rect::from_min_max(pos2(room.left(), top), pos2(room.right(), top + line_h));
-    let mut edit = egui::TextEdit::singleline(buf).frame(egui::Frame::NONE).font(body).text_color(text());
+    let mut edit = egui::TextEdit::singleline(buf);
     if !placeholder.is_empty() {
         edit = edit.hint_text(rich(ui, placeholder, ui_type::BODY, text_3()));
     }
-    let r = ui.put(edit_rect, edit);
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, name));
-    let corner = ecad_ui::style::corner(radius::FIELD);
-    if invalid {
-        let stroke = Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.error));
-        ui.painter().rect_stroke(rect, corner, stroke, StrokeKind::Outside);
-    } else if r.has_focus() {
-        let stroke = Stroke::new(ecad_ui::tokens::line::FOCUS_RING_PX, ecad_ui::color(ecad_ui::SHELL.accent_text));
-        ui.painter().rect_stroke(rect, corner, stroke, StrokeKind::Inside);
-    }
-    r
+    ecad_ui::panel::input(ui, row, edit, hint, name, invalid)
 }
 
 /// A segmented control as wide as the row (`ecad_ui::prim::Segmented`). `enabled` false shows it

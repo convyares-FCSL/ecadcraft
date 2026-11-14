@@ -509,7 +509,7 @@ impl DevicesPanel {
             .inner;
         out.extend(acts);
         if let Some(c) = self.selected {
-            self.editor(ui, c, writable, &mut out);
+            self.editor(ui, c, writable, true, &mut out);
         }
         out
     }
@@ -519,7 +519,7 @@ impl DevicesPanel {
     pub fn show_editor(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
         let mut out = Vec::new();
         if let Some(c) = self.selected {
-            self.editor(ui, c, writable, &mut out);
+            self.editor(ui, c, writable, false, &mut out);
         }
         out
     }
@@ -575,9 +575,10 @@ impl DevicesPanel {
         out
     }
 
-    /// The selected device's six properties, each a field; Enter or leaving a changed field runs
-    /// `setprop`, Esc puts it back.
-    fn editor(&mut self, ui: &mut egui::Ui, c: ComponentId, writable: bool, out: &mut Vec<Action>) {
+    /// The selected device's six properties, each a field (`ecad_ui::panel::input_row`); Enter or
+    /// leaving a changed field runs `setprop`, Esc puts it back. `caption` heads it with a rule and
+    /// "DEVICE <tag>" (beside the table); the Project panel's section header names it instead.
+    fn editor(&mut self, ui: &mut egui::Ui, c: ComponentId, writable: bool, caption: bool, out: &mut Vec<Action>) {
         let Some(e) = self.list.entries.iter().find(|e| e.id == c).cloned() else {
             self.selected = None;
             return;
@@ -588,11 +589,13 @@ impl DevicesPanel {
             ecad_ui::color(ecad_ui::SHELL.text),
             ecad_ui::color(ecad_ui::SHELL.accent),
         );
-        ui.add_space(4.0);
-        ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line));
-        ui.add_space(4.0);
-        ui.spacing_mut().item_spacing.y = 2.0;
-        ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(dim));
+        if caption {
+            ui.add_space(4.0);
+            ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line));
+            ui.add_space(4.0);
+            ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(dim));
+        }
+        ui.spacing_mut().item_spacing.y = 0.0;
         if let Some((msg, offer)) = self.error.clone() {
             ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
             // Brief 026 (design §7.1): Swap first, then the same device, then the next free tag.
@@ -637,37 +640,48 @@ impl DevicesPanel {
                 conflict: None,
             });
         }
-        egui::Grid::new("ecad.devices.props").num_columns(2).spacing(vec2(6.0, 2.0)).show(ui, |ui| {
-            for (i, (key, name)) in PROPERTIES.iter().enumerate() {
-                let stored = e.properties.get(i).cloned().flatten().unwrap_or_default();
-                ui.label(RichText::new(*name).small());
-                let mine = self.editing.as_ref().filter(|(d, k, _)| *d == c && k == key);
-                let mut text = mine.map_or_else(|| stored.clone(), |(_, _, x)| x.clone());
-                let field = ui.add_enabled(
-                    writable,
-                    egui::TextEdit::singleline(&mut text).id(egui::Id::unique(("ecad.devices.prop", *key))).desired_width(f32::INFINITY),
-                );
-                let field = field.accessible_name(format!("{name} field"));
-                if field.changed() {
-                    self.editing = Some((c, key, text.clone()));
+        // Where a blank value comes from: the location box the device is drawn in.
+        let derived_location = self.source.row(c).map(|r| r.location.clone()).filter(|l| !l.trim().is_empty());
+        for (i, (key, name)) in PROPERTIES.iter().enumerate() {
+            let stored = e.properties.get(i).cloned().flatten().unwrap_or_default();
+            let mine = self.editing.as_ref().filter(|(d, k, _)| *d == c && k == key);
+            let mut text = mine.map_or_else(|| stored.clone(), |(_, _, x)| x.clone());
+            let (placeholder, hint) = match *key {
+                "tag" if provisional => (String::new(), "provisional"),
+                "tag" if e.fixed => (String::new(), "fixed"),
+                "location" if stored.is_empty() => {
+                    (derived_location.clone().unwrap_or_default(), if derived_location.is_some() { "from box" } else { "" })
                 }
-                if field.lost_focus() && self.editing.as_ref().is_some_and(|(d, k, _)| *d == c && k == key) {
-                    let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
-                    let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    // The key that ended the edit is the field's, not CADCraft's command line's.
-                    ui.input_mut(|i| {
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
-                    });
-                    let edited = self.editing.take().map(|(_, _, x)| x).unwrap_or_default();
-                    if !esc && edited.trim() != stored.trim() {
-                        let _ = enter;
-                        out.push(Action::SetDeviceProperty { component: c, key, value: edited, conflict: None });
+                _ => (String::new(), ""),
+            };
+            let label = format!("{name} field");
+            let field = ui
+                .add_enabled_ui(writable, |ui| {
+                    let mut edit = egui::TextEdit::singleline(&mut text).id(egui::Id::unique(("ecad.devices.prop", *key)));
+                    if !placeholder.is_empty() {
+                        edit = edit.hint_text(RichText::new(&placeholder).color(ecad_ui::color(ecad_ui::SHELL.text_3)));
                     }
-                }
-                ui.end_row();
+                    ecad_ui::panel::input_row(ui, name, edit, hint, &label, false)
+                })
+                .inner;
+            if field.changed() {
+                self.editing = Some((c, key, text.clone()));
             }
-        });
+            if field.lost_focus() && self.editing.as_ref().is_some_and(|(d, k, _)| *d == c && k == key) {
+                let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                // The key that ended the edit is the field's, not CADCraft's command line's.
+                ui.input_mut(|i| {
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+                });
+                let edited = self.editing.take().map(|(_, _, x)| x).unwrap_or_default();
+                if !esc && edited.trim() != stored.trim() {
+                    let _ = enter;
+                    out.push(Action::SetDeviceProperty { component: c, key, value: edited, conflict: None });
+                }
+            }
+        }
     }
 
     /// The trial reports a refused property edit; a tag held by another device offers the merge.
