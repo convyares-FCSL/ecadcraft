@@ -89,7 +89,7 @@ pub struct ProjectProps {
     pub others: Vec<(String, String)>,
     pub revision: String,
     style_orig: String,
-    /// `page-column-row` or `page-column`.
+    /// `page-zone`, `page-column-row` or `page-column`.
     pub style: String,
     mirror_orig: String,
     /// Where contact tables go by default (brief 025): `auto`, `below`, `right` or `off`.
@@ -484,7 +484,7 @@ impl ProjectProps {
                     ui.label(RichText::new("References").small().strong());
                     ui.add_enabled_ui(!ro, |ui| {
                         ui.horizontal(|ui| {
-                            for (word, shown) in [("page-column-row", "105-C-4"), ("page-column", "/105.C")] {
+                            for (word, shown) in [("page-zone", "105/B3"), ("page-column-row", "105-B-3"), ("page-column", "/105.B")] {
                                 if ui.radio(self.style == word, shown).clicked() {
                                     self.style = word.to_string();
                                 }

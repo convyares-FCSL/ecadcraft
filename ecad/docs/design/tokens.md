@@ -40,13 +40,13 @@ operating system's setting. Code reads the one in use through `ecad_ui::SHELL`.
 | `shell.accent` | `#2F6BE0` | `#2F6BE0` | Primary button, active tool (white text 4.9:1) |
 | `shell.accent_text` | `#7FB0FF` | `#1F5FCC` | Selected outline, focus ring, links |
 | `shell.accent_soft` | `#2F6BE0 at 18 %` | `#2F6BE0 at 12 %` | Selected row |
-| `shell.ok` | `#55D68B` | `#137A45` | Saved, check passed |
+| `shell.ok` | `#55D68B` | `#116E3E` | Saved, check passed |
 | `shell.warning` | `#F2B84B` | `#8A5200` | Warning |
 | `shell.error` | `#FF6B5E` | `#C4231A` | Error, delete |
 | `shell.provisional` | `#FF7AB8` | `#B0186A` | Provisional and pending values |
 | `shell.agent` | `#B9E34A` | `#4A7200` | Agent presence and agent-made changes |
 | `shell.cable` | `#B48CFF` | `#6A35C8` | Cable names in lists |
-| `shell.connect` | `#45CFD3` | `#08767A` | Links and connection points in lists |
+| `shell.connect` | `#45CFD3` | `#066A6E` | Links and connection points in lists |
 
 | Token | Value | Use |
 | --- | --- | --- |

@@ -73,13 +73,13 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let titles: Vec<&str> = view.sections.iter().map(|s| s.title.as_str()).collect();
     // Project-level things are popouts of the Project panel, not part of Properties.
     assert_eq!(titles, ["ECAD · PAGE 1"]);
-    // Number 100 by the panel's field: one transaction; the other end reads 100-B-6.
+    // Number 100 by the panel's field: one transaction; the other end reads 100/F2.
     let before = head(&mut h);
     type_into(&mut h, "ecad.props.page.number", "100");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(last_label(&mut h), "Page properties");
     let refs = ecad_cadcraft::references::markers_on_page(&doc(&mut h), field);
-    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("100-B-6"));
+    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("100/F2"));
     // A refusal keeps the field and says why; nothing recorded.
     let before = head(&mut h);
     type_into(&mut h, "ecad.props.page.number", "2");
@@ -135,9 +135,9 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let d = doc(&mut h);
     assert_eq!((d.settings.reference_style, d.settings.tag_padding), (ecad_model::ReferenceStyle::PageColumn, 3));
     let refs = ecad_cadcraft::references::markers_on_page(&d, field);
-    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("/100.B"));
+    assert_eq!(refs.first().map(|m| m.text.as_str()), Some("/100.F"), "the lettered zone: the row");
     ok(&mut h, "u");
-    assert_eq!(doc(&mut h).settings.reference_style, ecad_model::ReferenceStyle::PageColumnRow);
+    assert_eq!(doc(&mut h).settings.reference_style, ecad_model::ReferenceStyle::PageZone, "undo: back to the default, 2/B5");
 
     // Folders: New folder (renamed in place), a page into it, fold; one transaction each.
     let before = head(&mut h);

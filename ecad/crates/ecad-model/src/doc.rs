@@ -424,15 +424,19 @@ impl ContactMirror {
     }
 }
 
-/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08). Other
-/// styles (US) come later.
+/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08; UI round 2
+/// and rev 3: `2/B5`). The zone's letter comes first whichever axis is lettered
+/// ([`crate::derive::place_text`]). Other styles (US) come later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ReferenceStyle {
-    /// `105-C-4`: page number, column, row.
-    #[default]
+    /// `105-B-3`: page number, then the zone, letter first.
     PageColumnRow,
-    /// `/105.C`: page number and column.
+    /// `/105.B`: page number and the lettered zone.
     PageColumn,
+    /// `105/B3`: page number, then the zone, letter first (UI round 2 and rev 3; the default of a
+    /// new project).
+    #[default]
+    PageZone,
 }
 
 /// The page number step of a project that sets none.

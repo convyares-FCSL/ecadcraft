@@ -642,7 +642,7 @@ impl Trial {
         p.read(&mut self.cad.session, |p, _| {
             let grid = ecad_model::sheet::Grid::of(p.ledger.document(), page);
             let (c, r) = (grid.column_of(w.x)?, grid.row_of(w.y)?);
-            Some(format!("{}-{}", grid.column_label(c), grid.row_label(r)))
+            Some(ecad_model::derive::zone_text(&grid.column_label(c), &grid.row_label(r)))
         })
         .ok()
         .flatten()

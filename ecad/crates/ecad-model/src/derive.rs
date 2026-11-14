@@ -205,20 +205,39 @@ pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 /// for any real cable, and a bound on the work per reference.
 pub const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
-/// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08): `105-C-4` or
-/// `/105.C`; `?` (`/?`) when the place cannot be located.
+/// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08; UI round 2
+/// and rev 3): `105/B3`, `105-B-3` or `/105.B`; `?` (`/?`) when the place cannot be located.
+///
+/// # Semantics
+/// The zone's **letter comes first**: on the default grid (rows lettered, columns numbered) the
+/// row, then the column; on a grid lettered across the top (a project saved before UI rev 3, or a
+/// sheet spec saying `letters numbers`) the column, then the row, as before (`105-C-4`). The
+/// page-and-one-zone style names the lettered axis.
 pub fn place_text(style: ReferenceStyle, page: &str, column: Option<&str>, row: Option<&str>) -> String {
+    let lettered = |l: &str| l.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+    // Rows lettered and columns not: the row is the zone's letter.
+    let rows_first = matches!((column, row), (Some(c), Some(r)) if lettered(r) && !lettered(c));
     match (style, column, row) {
+        (ReferenceStyle::PageZone, Some(c), Some(r)) if rows_first => format!("{page}/{r}{c}"),
+        (ReferenceStyle::PageZone, Some(c), Some(r)) => format!("{page}/{c}{r}"),
+        (ReferenceStyle::PageColumnRow, Some(c), Some(r)) if rows_first => format!("{page}-{r}-{c}"),
         (ReferenceStyle::PageColumnRow, Some(c), Some(r)) => format!("{page}-{c}-{r}"),
+        (ReferenceStyle::PageColumn, Some(_), Some(r)) if rows_first => format!("/{page}.{r}"),
         (ReferenceStyle::PageColumn, Some(c), _) => format!("/{page}.{c}"),
         _ => unlocated(style).to_string(),
     }
 }
 
+/// A zone as `B3`: its letter first, whichever axis is lettered ([`place_text`]).
+pub fn zone_text(column: &str, row: &str) -> String {
+    let lettered = |l: &str| l.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+    if lettered(row) && !lettered(column) { format!("{row}{column}") } else { format!("{column}{row}") }
+}
+
 /// What a reference shows for a place that cannot be located, or for no other end.
 pub fn unlocated(style: ReferenceStyle) -> &'static str {
     match style {
-        ReferenceStyle::PageColumnRow => "?",
+        ReferenceStyle::PageColumnRow | ReferenceStyle::PageZone => "?",
         ReferenceStyle::PageColumn => "/?",
     }
 }

@@ -8,8 +8,15 @@ full dark"). Folded into `docs/quick-start.md` at the phase-end tidy-up.
 
 - **Zones: letters down the sides, numbers across the top.** A new project's sheet numbers its
   columns 1–8 across the top and bottom and letters its rows A–F down both sides (owner, UI round
-  2: "zones A–F × 1–8"). Before, it was the other way round. A project saved before keeps the grid
-  stored in it; a page's sheet spec can still say `letters numbers` to get the old grid.
+  2: "zones A–F × 1–8"). Before, it was the other way round.
+- **References read `2/B5`**: page, then the zone, letter first (contact tables, cross-references,
+  cable and continuation references, check rows). This is the new default reference style,
+  `page-zone`. Project properties still offer `105-B-3` and `/105.B` (the lettered zone); both now
+  put the letter first too.
+- **Projects saved before.** A project that kept the default A3 grid stored no grid and no
+  reference style, so it opens with the new grid and `2/B5`. A project with another sheet (A2,
+  custom) stored its labels and keeps its old grid, with the letter still first (`105/C4`).
+  Nothing is migrated.
 - **Light and dark interface.** The sun and moon switch at the right of the top bar now works:
   the sun gives the light shell of board 1.17, the moon Graphite. The choice is kept with the
   window layout, not in the project.

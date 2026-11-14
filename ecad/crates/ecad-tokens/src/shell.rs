@@ -96,13 +96,13 @@ pub const LIGHT: Shell = Shell {
     accent: ACCENT,
     accent_text: Color::hex(0x1F5FCC),
     accent_soft: ACCENT.at_percent(LIGHT_SOFT_PERCENT),
-    ok: Color::hex(0x137A45),
+    ok: Color::hex(0x116E3E),
     warning: Color::hex(0x8A5200),
     error: Color::hex(0xC4231A),
     provisional: Color::hex(0xB0186A),
     agent: Color::hex(0x4A7200),
     cable: Color::hex(0x6A35C8),
-    connect: Color::hex(0x08767A),
+    connect: Color::hex(0x066A6E),
 };
 
 /// Opacity of the light shell's soft fill, %: 18 % reads too strong on a light ground (board 1.17's
