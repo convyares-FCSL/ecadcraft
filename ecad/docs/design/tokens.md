@@ -503,3 +503,74 @@ and 024's location label height when 031 lands.
 | --- | --- | --- |
 | `ecad.level-box` | `cad.text_dim`, 1 px on screen; 0.25 mm on generated pages | The position box spanning a position's level rows in the terminal plan |
 | `ecad.field-editable` | `cad.border` 1 px, square corners, CADCraft's text-edit fill | A plan cell that edits in place; derived cells have no border |
+
+## Wire codes and markers (040, `design/040.md` §2)
+
+`ecad.wire_colour.<code>`, IEC 60757 codes, paper and dark (`ecad_cadcraft::look::CODE_COLOURS`):
+
+| Code | Paper | Dark |
+| --- | --- | --- |
+| BK | ink `#16191D` | ink `#E4E6E9` |
+| BN | `#8A4B1F` | `#C9895A` |
+| RD | `#C62828` | `#FF7A70` |
+| OG | `#D96800` | `#FFA34D` |
+| YE | `#E3B800` | `#F2D34B` |
+| GN | `#2F8F3A` | `#6FD67A` |
+| BU | `#23408F` | `#8FB0FF` |
+| VT | `#7B3FA0` | `#C392F0` |
+| GY | `#7C8591` | `#A3ABB6` |
+| WH | `#B9B4A6` | `#F2F3F5` |
+| PK | `#D9528F` | `#FF9CC8` |
+| GD | `#A8851C` | `#E3C463` |
+| TQ | `#14948F` | `#54D3CC` |
+| SR | `#98A0A8` | `#C9CED4` |
+
+GN, YE and BU equal the spec's PE and 24 V category colours. Painted marker sizes:
+`ecad.marker.error` and `ecad.marker.warning` 12 px; `ecad.grid.min_pitch` 10 px.
+
+## Terminal-strip pages (046, `design/046.md` §13)
+
+All ink (ACI 7): a strip page prints in mono like every generated page (040 "everything else
+ink").
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `ecad.strip.body` | ink, `ecad.hairline` | Terminal body outlines |
+| `ecad.strip.pe-hatch` | ink, 0.13 mm, 45°, 1 mm pitch | PE levels |
+| `ecad.strip.cable-bar` | ink, `ecad.cable-weight` × 2 | Cable bars |
+| `ecad.strip.accessory` | ink, solid fill | End stops, end plates, partitions |
+| `ecad.strip.lane-gap` | 2 mm links, 2.5 mm cable bars | Lane spacing |
+
+Reused: `ecad.hairline`, `ecad.dot-size`, `ecad.link`, `ecad.link-stub`, `ecad.level-box`,
+`ecad.xref-spare`, `ecad.tag`, `ecad.cable-weight`, `ecad.missing-box`, `ecad.flagged-print`.
+
+## Symbol builder (048, `design/048.md` §10)
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `ecad.builder-grid-minor` | 2.5 mm, `sheet.grid` dot 1 px | Builder grid |
+| `ecad.builder-grid-major` | 5 mm, `sheet.grid` dot 2 px | Point grid |
+| `ecad.builder-origin` | `sheet.ink_2`, 4 mm arms, 0.18 mm | Origin cross |
+| `ecad.slot-anchor` | `sheet.placement_preview`, 2 px dot | Slot anchor |
+| `ecad.review-thumb` | 64 × 64 px | Review thumbnails |
+
+## Continuation references (049, `design/049.md` §7.1)
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `ecad.continuation-ref` | `sheet.ink_2` of the sheet in use (true colour), kind `Reference` | An arrow's other-end text (review of #85: the UI spec's Ink 2 for references, not the cable colour) |
+| `ecad.continuation-bracket` | ByLayer on `ECAD-TAGS`, thin | Caption bracket and ticks |
+| `ecad.continuation-caption` | ByLayer on `ECAD-TAGS`, kind `ContinuationCaption` | Caption text |
+
+## PLC visuals (051, `design/051.md` §8)
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `ecad.plc.tile_width` | 112 px | Tile width in Lists ▸ PLC |
+| `ecad.plc.square` | 8 px | Channel square |
+| `ecad.plc.square_gap` | 3 px | Between squares |
+| `ecad.plc.square_used` | `shell.text_2` | in use |
+| `ecad.plc.square_free` | `shell.line_strong` (outline) | free |
+| `ecad.plc.square_reserved` | `shell.provisional` | reserved |
+| `ecad.plc.square_check` | `shell.error` | has a check |
+| `ecad.plc.tile_selected` | `shell.accent_text` border, `shell.accent_soft` ground | selected tile |
