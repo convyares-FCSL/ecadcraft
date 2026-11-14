@@ -6,47 +6,42 @@
 #   2026-11-12). Workers test only their own changed crates; the slow set and the whole suite run
 #   at the QA gate. All test binaries took ~8 min of a ~12 min run (2026-11-08); a change to a
 #   leaf crate builds a few of them.
-# - Full suite, the QA gate: on pull requests into main, pushes to main, by hand
-#   (workflow_dispatch) and nightly on dev (schedule): the CADCraft workspace (formatting, lints,
-#   tests) and the ECAD workspace on Linux and natively on Windows. The ECAD workspace runs what
+#   A push to dev (a merged pull request) runs only the quick check's build, to write the cache
+#   the pull requests into dev restore.
+# - Full suite, the QA gate: on pull requests into main (minor releases), pushes to main and by
+#   hand (workflow_dispatch): the CADCraft workspace (formatting, lints, tests) and the ECAD
+#   workspace on Linux and natively on Windows. The ECAD workspace runs what
 #   `cargo xtask ci` runs, split into parallel jobs (2026-11-14; as one job per platform it took
 #   52 min on Linux and 104 min on Windows on PR #99):
 #   - `cargo xtask lint`: fmt, clippy with all features and with the default ones, layers, the
 #     patch guard and wasm;
 #   - every test with all features, the slow set included, through cargo-nextest in three shards:
-#     ecad-bench (whose tier equivalence test alone took 24 min) and the rest split in two;
+#     ecad-bench's tests except the translation oracle (its tier equivalence tests are the
+#     longest), and the rest, with the oracle, split in two;
 #   - the fast tests with default features, and the doctests (nextest does not run doctests);
 #   - Windows: clippy (both feature sets), every fast test (both feature sets), the doctests, and
 #     the slow tests except those that only compute in memory, which run on Linux
-#     (`ci-windows` in ecad/.config/nextest.toml names them and says why). fmt, layers, the patch
-#     guard and wasm give the same result on any host, so they run on Linux only.
+#     (`ci-windows` in ecad/.config/nextest.toml names them and says why; owner, 2026-11-14).
+#     fmt, layers, the patch guard and wasm give the same result on any host, so they run on
+#     Linux only;
+#   - the large-tier load bench (`cargo xtask bench --tier large`), on pull requests into main and
+#     by hand; its results are kept as an artifact.
 # Every action is pinned to a commit hash (the tag in the comment); Dependabot proposes updates
 # (owner decision, 2026-11-08). Green CI is required before review; it is not approval to merge.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   pull_request:
     branches: [dev, main]
-  # Nightly on dev: the full suite and the large bench, so a slow-set failure shows up before the
-  # QA gate, and the caches it saves belong to the default branch, where every pull request can
-  # restore them (see "Caches" below). Nothing waits for it.
-  schedule:
-    - cron: "0 2 * * *"
   workflow_dispatch:
-    inputs:
-      bench:
-        description: Also run the large-tier load bench (cargo xtask bench --tier large)
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  # The nightly run has its own group, so it neither cancels nor is cancelled by a push to main.
-  group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -62,26 +57,23 @@ env:
   NEXTEST_VERSION: 0.9.150
   NEXTEST_SHA256_LINUX: b0959bc64232974224cf9fb22c915845398c0e8668fa7831eb5b43fb1eef781f
   NEXTEST_SHA256_WINDOWS: b7a8bf567140b8b366716f2dea27b32e088dc12f53597315f976d0dbf7c6ade8
-  # The nightly run checks out dev (a scheduled run's own ref is the default branch); every other
-  # event checks out its own ref.
-  CHECKOUT_REF: ${{ github.event_name == 'schedule' && 'dev' || '' }}
 
 # Caches: the repository's cache store holds 10 GB and evicts the least recently used entries
 # (it was full, at 10.6 GB, after PR #99, and the gate's jobs found no cache). A cache saved by a
-# pull request is visible only to that pull request; one saved on the default branch (pushes to
-# main and the nightly run) is visible to every run. Each ECAD job names its cache (`shared-key`),
-# one job per name saves it, and rust-cache does not save when it restored the exact key, so a
-# pull request whose lock file matches the nightly's adds no copy of its own.
+# pull request is visible only to that pull request; one saved by a push to a branch is visible
+# to pull requests into that branch (and one saved on main, the default branch, to every run).
+# So the quick check's cache is written only by pushes to dev, and the gate's by pushes to main
+# and by the gate pull request itself (for its re-runs). Each ECAD job names its cache
+# (`shared-key`) and one job per name saves it.
 
 jobs:
   quick:
     name: ECAD quick check
-    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || github.event_name == 'schedule'
+    if: github.base_ref == 'dev' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ env.CHECKOUT_REF }}
           # test-changed diffs from the merge base with origin/dev; the whole history is ~25 MB.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -91,9 +83,9 @@ jobs:
         with:
           workspaces: ecad
           shared-key: ecad-quick
-          # Only the nightly writes it: a copy saved by a pull request is visible to that pull
-          # request alone, and these copies filled the store. Pull requests restore the nightly's.
-          save-if: ${{ github.event_name == 'schedule' }}
+          # Only pushes to dev write it: a copy saved by a pull request is visible to that pull
+          # request alone, and these copies filled the store (owner, 2026-11-14).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Format
         working-directory: ecad
         run: cargo fmt --all -- --check
@@ -105,21 +97,20 @@ jobs:
         if: github.event_name == 'pull_request'
         working-directory: ecad
         run: cargo xtask test-changed --base origin/dev --with-dependents
-      # Nightly: build every test binary, so the cache saved on the default branch serves any pull
-      # request into dev. The tests themselves run in the full-suite jobs.
+      # A push to dev: build every test binary for the cache the pull requests into dev restore.
+      # Nothing runs; the merged pull request already passed its quick check.
       - name: Build every test for the pull requests' cache
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'push'
         working-directory: ecad
         run: cargo test --workspace --all-features --no-run
 
   fmt:
     name: Format
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt
@@ -127,12 +118,11 @@ jobs:
 
   test:
     name: Clippy and tests
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
       # The packages CADCraft's own CI installs (upstream ci.yml, 0.15.1); mesa-vulkan-drivers gives
       # the UI tests a software GPU for their wgpu rendering.
       - name: Install windowing, font and GPU libraries for the desktop app and its tests
@@ -165,13 +155,13 @@ jobs:
 
   ecad-lint:
     name: ECAD lint (fmt, clippy, layers, patch guard, wasm)
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ env.CHECKOUT_REF }}
           # The upstream patch guard diffs against the incorporated CADCraft commit.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -188,22 +178,22 @@ jobs:
 
   ecad-test:
     name: ECAD tests with all features and the slow set (${{ matrix.shard.name }})
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         shard:
-          # ecad-bench holds the longest tests (the small and medium tier equivalence, 24 min on
-          # PR #99, and the translation oracle, 4.5 min), so it runs on its own.
-          - { name: ecad-bench, filter: "package(ecad-bench)", partition: "" }
-          - { name: rest 1 of 2, filter: "not package(ecad-bench)", partition: "--partition hash:1/2" }
-          - { name: rest 2 of 2, filter: "not package(ecad-bench)", partition: "--partition hash:2/2" }
+          # ecad-bench's tier equivalence tests are the longest (the medium tier ~20 min), so they
+          # get a shard of their own; its translation oracle (4.5 min) runs with the rest, so the
+          # two do not share the shard's cores (owner, 2026-11-14).
+          - { name: ecad-bench, filter: "package(ecad-bench) and not binary(translate_differential)", partition: "" }
+          - { name: rest 1 of 2, filter: "not package(ecad-bench) or binary(translate_differential)", partition: "--partition hash:1/2" }
+          - { name: rest 2 of 2, filter: "not package(ecad-bench) or binary(translate_differential)", partition: "--partition hash:2/2" }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -236,13 +226,12 @@ jobs:
 
   ecad-test-default:
     name: ECAD tests with default features, and doctests
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -277,7 +266,8 @@ jobs:
 
   ecad-windows:
     name: ECAD workspace (Windows)
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -285,8 +275,6 @@ jobs:
       - name: Check out with LF line endings
         run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
@@ -329,17 +317,16 @@ jobs:
           path: ecad/target/nextest/*/junit.xml
           if-no-files-found: ignore
 
-  # The large-tier load bench (release build): nightly, or by hand with the `bench` input. It never
-  # runs on a pull request and nothing waits for it; the results are kept as an artifact.
+  # The large-tier load bench (release build), part of the QA gate: on pull requests into main and
+  # by hand, not on the push to main that follows a merged gate. The results are kept as an
+  # artifact; the bench reports timings and fails only if it cannot run.
   ecad-bench:
     name: ECAD large bench
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.bench)
+    if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:

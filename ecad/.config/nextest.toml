@@ -26,7 +26,7 @@ path = "junit.xml"
 # The QA gate on Windows: as `ci`, without the slow tests that only compute in memory (random-edit
 # oracles, generated-tier equivalence, cap and numbering probes). They behave the same on every
 # platform and run in the Linux jobs; on Windows the bench tier test alone took 37 of the job's
-# 104 minutes (PR #99). Windows keeps every fast test and every slow test that touches the file
+# 104 minutes (PR #99). Leaving them out on Windows is the owner's decision (2026-11-14). Windows keeps every fast test and every slow test that touches the file
 # system, child processes, settings files, printing or the UI. A new slow test runs on Windows
 # until it is added here. Names are matched at the end, so the phase-end tidy-up (which drops the
 # `lanes::lane_<NNN>::` prefix) does not change what is left out.
@@ -39,7 +39,8 @@ final-status-level = "slow"
 failure-output = "immediate-final"
 default-filter = """
 not (
-    test(/the_small_and_medium_tiers_are_the_same_both_ways$/)
+    test(/the_small_tier_is_the_same_both_ways$/)
+    | test(/the_medium_tier_is_the_same_both_ways$/)
     | test(/randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation$/)
     | test(/tester_014_r3_random_edits_across_two_pages_match_the_oracle$/)
     | test(/random_edits_keep_locations_and_reports_equal_to_a_rebuild_long$/)
