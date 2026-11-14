@@ -1,6 +1,6 @@
 # Brief 056: The PLC signal list and PLC sync
 
-Status: Draft
+Status: Draft (FP1–FP5 approved by the overseer, 2026-11-14; owner answers to design §16 pending)
 Branch: `feature/plc-signals`, from `origin/dev` `8b6c2ccd`.
 Designer: **yes** (`docs/design/056.md`) · Size: L
 Release: 0.2.2 (UI rev 4). Source: rev 4 build spec "Project workspace ▸ PLC: the signal list"
@@ -121,6 +121,12 @@ Design §14:
   `calamine`, MIT), wasm build kept or XLSX native-only.
 
 No new op, no record field, nothing in `ecad-model`.
+
+**Approved (overseer, 2026-11-14): FP1–FP5.** FP5 conditions (design §14): permissive licences
+only, every one already on the house-rules allowlist (MIT and Apache-2.0 are); the allowlist is
+not edited in this repository, and a licence not on it means stop and ask. One crate that reads
+and writes XLSX is preferred if a sound one exists, otherwise one reader and one writer; the PR
+names the crates weighed. `cargo xtask wasm` stays green (XLSX native-only if needed).
 
 ## Tester
 
