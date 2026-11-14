@@ -69,8 +69,8 @@ Design §0 has the full table. In short:
 | `ecad/crates/ecad-cadcraft/src/project.rs` | `located_tag_pages` narrows; the move follow-up (§5.4) |
 | `ecad/crates/ecad-cadcraft/src/outputs.rs` | **Overlaps 053.** Device rows lose `main` and the box/page scope rows; go-to by `reps::goto` |
 | `ecad/crates/ecad-cadcraft/src/output_cmds.rs`, `interact/location_form.rs` | Box tool: propose and conflict prompt |
-| `ecad/crates/ecad-cadcraft/src/location_cmds.rs` (**new**) | `setlocation` / `setfunction`, `adoptdesignations` |
-| `ecad/crates/ecad-cadcraft/src/designations.rs`, `designation_cmds.rs` (**new**) | The project's list of functions and locations: entries, use index, `designations`, `designationadd`, `designationedit` (rename), `designationremove` |
+| `ecad/crates/ecad-cadcraft/src/location_cmds.rs` (**new**) | `setlocation` / `setfunction` |
+| `ecad/crates/ecad-cadcraft/src/designations.rs`, `designation_cmds.rs` (**new**) | The project's list of functions and locations: entries, use index, `designations`, `designationadd`, `designationedit` (rename), `designationmerge`, `designationremove` |
 | `ecad/crates/ecad-cadcraft/src/sheet_cmds.rs`, `props.rs`, `frame.rs` | Page and project values stored as entry keys and shown as codes |
 | `ecad/apps/ecad-trial/src/settings/project.rs` | The **Functions and locations** card (replaces its placeholder) |
 | `ecad/apps/ecad-trial/src/tools.rs` | **Function Box** tool |
@@ -102,11 +102,11 @@ Not touched: `ecad-store`, `ecad-file`, upstream, CI. **No `.ecad` format change
    a function, a location or both, and a function-only box is drawn dash-dot. Tags show
    `=F1+CP1-K01` where a symbol's context differs. One popup covers both aspects.
 6. **The project's list** (design §5.9, §9.4): entries with key, code and description. Devices,
-   boxes, pages and the project store keys. A typed unknown code adds an entry. Rename, describe,
-   remove-when-unused, and device counts are in Settings ▸ Project info.
-7. **Opening today's projects** (design §7): nothing is written on open. **Adopt Functions and
-   Locations** (one command, one transaction) turns stored codes into list entries (Q10) and gives
-   unset devices what today's derivation would give.
+   boxes, pages and the project store keys. A typed unknown code adds an entry. Settings ▸ Project info
+   has rename, describe, **merge** one entry into another (Q11), remove when unused, **Remove
+   unused**, and device counts.
+7. **Opening today's projects** (design §7): nothing is written on open, and there is no
+   adoption or compatibility code (Q10). Older projects are re-made.
 8. **Checks** (design §6): unused and missing location or function; an entry that is no longer
    in the list; duplicate codes after a merge; two heads.
 
@@ -126,8 +126,8 @@ Design §10 lists every criterion. The main ones:
    and its default answer is Leave.
 6. Renaming `+CP1` to `+CP10` in the list is one transaction. Every tag, box label, title block
    field and BOM row follows it, and undo restores it.
-7. MCP contract tests for `setlocation`, `setfunction`, `adoptdesignations`, the four
-   `designation*` commands, and the `location` and `function` parameters of `place`, `locationbox`
+7. MCP contract tests for `setlocation`, `setfunction`, the five `designation*`
+   commands, and the `location` and `function` parameters of `place`, `locationbox`
    and `functionbox`. Each checks the recorded transaction, `Author::Agent`, and refusal with
    writes off.
 8. Bench (medium; large once at the end): `symin ms` and `boxmove ms` no worse than `dev`;
@@ -143,7 +143,7 @@ narrows a redraw map that once had a bug. The stored values change from codes to
 - **052a, types and no `main`** (design §3, §4): `reps.rs`, the readers and writers, xref,
   numbering hook. No visible change except heads chosen by type, never by ID or order.
 - **052b, stored function and location and the list** (design §5.1–§5.2, §5.7–§5.9, §6, §7, §8,
-  §9.1): resolve, overrides, prefixes, list and rename, outputs, checks, inspector, adopt. **Starts
+  §9.1): resolve, overrides, prefixes, list, rename and merge, outputs, checks, inspector. **Starts
   after 053 merges** (`outputs.rs`). Size L.
 - **052c, the Settings list** (design §9.4): lane U only, after 052b. Size S.
 - **052d, proposals and function boxes** (design §5.3–§5.6, §5.8, §9.2, §9.5): place, join, move,
@@ -158,4 +158,5 @@ narrows a redraw map that once had a bug. The stored values change from codes to
 - Q1–Q9 were answered by the owner on 2026-11-14 (design §12.1).
 - FP1–FP6 were approved by the overseer on 2026-11-14 (design §11).
 - FP7–FP9 were approved by the overseer on 2026-11-14 (design §11).
-- Open: the new owner questions Q10–Q11 (design §12.2).
+- Q10 (no adoption) and Q11 (merge in 052) were answered by the owner on 2026-11-14 (design
+  §12.2). Nothing is open.
