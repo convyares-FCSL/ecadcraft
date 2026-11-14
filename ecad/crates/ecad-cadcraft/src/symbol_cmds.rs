@@ -1032,7 +1032,7 @@ fn run_makesymbol(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 }
                 let style = plain_style(p);
                 let pl = Placement { origin, rotation: 0.0, mirror: false, scale: 1.0 };
-                let plan = plan_place_project(p, page, style, id, &def, pl, None)?;
+                let plan = plan_place_project(p, page, style, id, &def, pl, None, None)?;
                 placed = Some((plan.component, plan.representation, plan.tag.clone()));
                 ops.extend(plan.ops);
             }
@@ -1160,12 +1160,15 @@ pub struct PlacedProject {
 }
 
 /// Plan placing version `def_id` (`def`) at `pl` on `page`: a new device (`join: device`), or a
-/// part of device `join` (`join: part`).
+/// part of device `join` (`join: part`). A new device takes the stored tag `tag` when one was
+/// typed (already normalised, and held by no device), else the next free number of its prefix.
 ///
 /// # Errors
 /// No tag number left; a part with no device, or a label the device already has.
+#[allow(clippy::too_many_arguments)]
 pub fn plan_place_project(
     p: &mut Project, page: PageId, style: ecad_model::Style, def_id: DefinitionId, def: &Definition, pl: Placement, join: Option<ComponentId>,
+    tag: Option<String>,
 ) -> Result<PlacedProject, String> {
     let key = def.defaults.get("key").cloned().unwrap_or_default();
     let (item, representation): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
@@ -1178,7 +1181,8 @@ pub fn plan_place_project(
             if !doc.components.contains_key(&c) {
                 return Err("No such device.".into());
             }
-            let have = crate::devices::labels_of(doc, c);
+            // Unlabelled points count by their key.
+            let have: BTreeSet<String> = doc.terminals_of(c).map(|(t, _)| crate::devices::label_of(doc, t)).collect();
             let mut cps = BTreeMap::new();
             for td in &def.terminals {
                 let label = td.label.clone().unwrap_or_else(|| td.key.clone());
@@ -1186,7 +1190,8 @@ pub fn plan_place_project(
                     return Err(format!("{} already has a connection point {label}.", crate::devices::tag_words(doc, c)));
                 }
                 let t: TerminalId = p.ids.fresh();
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label) } });
+                // A point drawn without a label stays unlabelled: it prints no label (bug 1).
+                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(label) } });
                 cps.insert(t, td.at);
             }
             ops.push(Op::AddItem { id: item, item: instance });
@@ -1204,8 +1209,13 @@ pub fn plan_place_project(
             Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tag_words(doc, c) })
         }
         (Join::Device, None) => {
-            let prefix = field_value(doc, &key, def, Field::Prefix).unwrap_or_else(|| "X".into());
-            let tag = p.tag_high.next_auto(&p.ledger, &prefix)?;
+            let tag = match tag {
+                Some(t) => t,
+                None => {
+                    let prefix = field_value(doc, &key, def, Field::Prefix).unwrap_or_else(|| "X".into());
+                    p.tag_high.next_auto(&p.ledger, &prefix)?
+                }
+            };
             let doc = p.ledger.document();
             let c: ComponentId = p.ids.fresh();
             let mut properties = ecad_model::Properties::new();
@@ -1257,14 +1267,38 @@ pub(crate) fn place_project_key(s: &mut Session, params: &Value, key: &str) -> c
     };
     let mirror = params.get("mirror").and_then(Value::as_bool).unwrap_or(false);
     let device: Option<ComponentId> = opt_id(params, "device").map_err(err)?;
+    // Pack re-run, bug 2: a typed tag names the new device, as for a built-in symbol.
+    let tag = match params.get("tag") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(_) => return Err(err("`tag` must be a string")),
+    };
+    if device.is_some() && tag.is_some() {
+        return Err(err("`tag` is for a new device; `device` joins an existing one"));
+    }
     let key = key.to_string();
     with_project(s, |p, pg, page| {
         let doc = p.ledger.document();
         let Some(v) = symbols::project_by_key(doc, &key) else { return Ok(None) };
         let (id, def) = (v.id, v.def.clone());
+        // A typed tag a device already holds is that device (a tag is an identity), as `place`
+        // does for built-in symbols; devices and cables share one namespace (brief 026).
+        let (device, tag) = match tag {
+            None => (device, None),
+            Some(t) => {
+                let t = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
+                match crate::devices::holder_of(doc, &t, None) {
+                    Some(c) => (Some(c), None),
+                    None if !doc.cables_tagged(&t).is_empty() => {
+                        return Err(format!("Tag {t} is a cable's; choose another tag for a device."));
+                    }
+                    None => (None, Some(t)),
+                }
+            }
+        };
         let pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let style = plain_style(p);
-        let plan = plan_place_project(p, page, style, id, &def, pl, device)?;
+        let plan = plan_place_project(p, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();

@@ -613,7 +613,10 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     let into_labels = labels_of(doc, into);
     let add = |old: TerminalId, label: String, ops: &mut Vec<Op>, ids: &mut IdAllocator, map: &mut BTreeMap<TerminalId, TerminalId>| -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label: Some(label.clone()), key: Some(label) } });
+        // An unlabelled point keeping its own name stays unlabelled: it prints no label (bug 1).
+        let unlabelled = doc.terminals.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
+        let shown = (!unlabelled).then(|| label.clone());
+        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label: shown, key: Some(label) } });
         map.insert(old, nt);
         nt
     };
@@ -674,11 +677,11 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         ));
     }
     // Terminals no representation shows move too, with their labels.
-    for (t, term) in doc.terminals_of(from) {
+    for (t, _) in doc.terminals_of(from) {
         if new_terminal.contains_key(&t) {
             continue;
         }
-        let label = term.label.clone().unwrap_or_else(|| t.hex());
+        let label = label_of(doc, t);
         if into_labels.contains(&label) || assigned.contains(&label) {
             return Err(format!("{who} already has connection point {label}."));
         }
@@ -714,8 +717,12 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     Ok(ops)
 }
 
+/// A terminal's name: its label, else its definition key; its ID only when it has neither. A
+/// point drawn with an empty label (a project symbol's earth point) is named by its key, never by
+/// its 32-digit ID (pack re-run, bug 1).
 pub(crate) fn label_of(doc: &Document, t: TerminalId) -> String {
-    doc.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| t.hex())
+    let term = doc.terminals.get(&t);
+    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.clone())).unwrap_or_else(|| t.hex())
 }
 
 // ---------------------------------------------------------------- erasing (§3.3)
