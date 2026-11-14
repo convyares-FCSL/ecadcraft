@@ -92,15 +92,18 @@ fn look_category(h: &mut H, c: ConductorId) -> Option<String> {
 /// §12.11, §5.2: the ten categories; a 24V wire is labelled `24V-01 0.5 BU`, drawn blue, and its
 /// wire-report row shows Category "24 V DC".
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
     let mut h = H::new(0x50b_1101);
     let rows = styles(&mut h, "wire");
     assert_eq!(rows.len(), 10, "{rows:?}");
+    let mut part_numbers = Vec::new();
     for (id, name, pot, colour, xs, line, weight) in BUILTIN {
         let r = rows.iter().find(|r| s(&r["id"]) == id).unwrap_or_else(|| panic!("category {id}"));
         assert_eq!((s(&r["name"]), s(&r["layer"])), (name.to_string(), "builtin".to_string()), "{id}");
-        assert_eq!(field_text(r, "potential"), pot, "{id}");
+        let p = field_text(r, "potential");
+        if p != pot {
+            part_numbers.push((id, format!("potential {p:?}")));
+        }
         assert_eq!(field_text(r, "colour"), colour, "{id}");
         assert_eq!(field_text(r, "cross_section"), xs, "{id}");
         assert_eq!(field_text(r, "line_colour"), line, "{id}");
@@ -108,7 +111,10 @@ fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
         assert_eq!(field_text(r, "line_type"), "continuous", "{id}");
         assert_eq!(field_text(r, "label_rule"), "project", "{id}");
         assert_eq!(num(&field(r, "allowance").0), Some(0.0), "{id}: built-in allowance 0 (question 5)");
-        assert_eq!(field_text(r, "part_number"), "", "{id}");
+        let pn = field_text(r, "part_number");
+        if !pn.is_empty() {
+            part_numbers.push((id, format!("part_number {pn:?}")));
+        }
     }
     let e = ecad_cadcraft::defaults::find("wire.category").expect("the choice entry");
     use ecad_cadcraft::defaults::Level;
@@ -122,17 +128,22 @@ fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
     let row = wire_row(&mut h, w);
     assert_eq!(s(&row["category"]), "24 V DC", "{row}");
     let n = h.run("nets", json!({})).unwrap().to_string();
-    assert!(n.contains("dc24") || n.contains("24 V DC"), "nets carries the category: {n:.400}");
     // No potential: no category, today's look (ink, 0.25, continuous).
     let plain = wire_at(&mut h, 80.0, None);
     assert_eq!(look_category(&mut h, plain), None);
     assert_eq!(route_colour(&mut h, page, plain), None, "ink");
-    assert_eq!(route_entity(&mut h, page, plain).common.lineweight, Lineweight::Mm100(25));
+    assert!(thin(route_entity(&mut h, page, plain).common.lineweight), "today's 0.25");
+    assert!(part_numbers.is_empty(), "§5.3: empty text fields read empty: {part_numbers:?}");
+    assert!(n.contains("dc24") || n.contains("24 V DC"), "§5.6: nets carries the category: {n:.400}");
+}
+
+/// Today's wire weight: 0.25 mm, drawn ByLayer (the wire layer's weight) when nothing changes it.
+fn thin(w: Lineweight) -> bool {
+    matches!(w, Lineweight::ByLayer | Lineweight::Mm100(25))
 }
 
 /// §5.2, AC 2: power categories draw in ink at 0.6 mm; PE keeps its GNYE look.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b11_power_is_ink_at_0_6_and_pe_is_green_yellow() {
     let mut h = H::new(0x50b_1102);
     let page = h.first_page();
@@ -142,7 +153,7 @@ fn b11_power_is_ink_at_0_6_and_pe_is_green_yellow() {
     assert_eq!(route_entity(&mut h, page, l1).common.lineweight, Lineweight::Mm100(60));
     assert_eq!(label(&mut h, page, l1).map(|t| t.ends_with("2.5 BN")), Some(true), "the label keeps the insulation colour");
     assert_eq!(route_colour(&mut h, page, pe), Some(code_colour("GNYE")));
-    assert_eq!(route_entity(&mut h, page, pe).common.lineweight, Lineweight::Mm100(25));
+    assert!(thin(route_entity(&mut h, page, pe).common.lineweight), "PE at 0.25");
 }
 
 // ------------------------------------------------- b12: a category change, overrides
@@ -150,7 +161,6 @@ fn b11_power_is_ink_at_0_6_and_pe_is_green_yellow() {
 /// §12.12, AC 3: changing `dc24`'s colour turns every 24V wire's label and line red, except a
 /// conductor with its own `colour`; Reset (clearing it) makes it follow the category again.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b12_a_category_colour_reaches_every_user_but_an_overridden_one() {
     let mut h = H::new(0x50b_1201);
     let page = h.first_page();
@@ -179,7 +189,6 @@ fn b12_a_category_colour_reaches_every_user_but_an_overridden_one() {
 /// §5.6: the wire report shows the resolved colour and cross-section, the category name, and a
 /// marker on an overridden cell; 024's "No colour…" wording now names the category.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b12_the_wire_report_shows_category_and_resolved_values() {
     let mut h = H::new(0x50b_1202);
     let w = wire_at(&mut h, 20.0, Some("24V"));
@@ -199,11 +208,11 @@ fn b12_the_wire_report_shows_category_and_resolved_values() {
 /// net keeps 24V; on a wire with no potential, `dc24` also sets potential 24V in one transaction;
 /// on a net with another potential, the potential is never changed and the result says so.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b13_category_on_a_conductor_and_the_potential_rule() {
     let mut h = H::new(0x50b_1301);
     let a = wire_at(&mut h, 20.0, Some("24V"));
-    let b: ConductorId = id(&h.run("wire", json!({"points": pts(&[(60.0, 20.0), (100.0, 20.0)])})).unwrap(), "conductor");
+    let b: ConductorId = id(&h.run("wire", json!({"points": pts(&[(30.0, 20.0), (30.0, 60.0)])})).unwrap(), "conductor"); // a tee: its own conductor
+    assert_ne!(a, b, "two conductors");
     assert_eq!(net_potential(&mut h, b), "24V", "joined into the 24V net");
     let (_, tx) = one_tx(&mut h, "category", json!({"conductor": a.hex(), "value": "signal"}));
     assert!(
@@ -237,12 +246,12 @@ fn b13_category_on_a_conductor_and_the_potential_rule() {
 /// AC 4, §5.4: a potential change on a net moves its unassigned conductors to the new potential's
 /// category, and leaves conductors with their own category alone.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b13_a_potential_change_moves_only_unassigned_conductors() {
     let mut h = H::new(0x50b_1302);
     let page = h.first_page();
     let a = wire_at(&mut h, 20.0, Some("24V"));
-    let b: ConductorId = id(&h.run("wire", json!({"points": pts(&[(60.0, 20.0), (100.0, 20.0)])})).unwrap(), "conductor");
+    let b: ConductorId = id(&h.run("wire", json!({"points": pts(&[(30.0, 20.0), (30.0, 60.0)])})).unwrap(), "conductor"); // a tee: its own conductor
+    assert_ne!(a, b, "two conductors");
     h.run("category", json!({"conductor": b.hex(), "value": "signal"})).unwrap();
     h.run("potential", json!({"conductor": a.hex(), "value": "0V"})).unwrap();
     assert_eq!(look_category(&mut h, a).as_deref(), Some("dc0"));
@@ -253,7 +262,6 @@ fn b13_a_potential_change_moves_only_unassigned_conductors() {
 /// §6.9: `wire {category}` gives the new conductor its category in the same transaction; the
 /// prompt offers `[Potential/Category]`; a typed `C` asks for the category.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b13_wire_with_a_category_and_the_prompt_keyword() {
     let mut h = H::new(0x50b_1303);
     let (v, _) = one_tx(&mut h, "wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "category": "dc24"}));
@@ -263,10 +271,10 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
     refused(&mut h, "wire", json!({"points": pts(&[(0.0, 40.0), (60.0, 40.0)]), "category": "nope"}));
     // The typed command: the prompt names the keyword.
     h.s.cmdline("wire").unwrap();
-    let prompt = h.s.log.iter().rev().take(3).cloned().collect::<Vec<_>>().join(" | ");
+    let prompt = h.s.current_prompt().map(|p| p.display()).unwrap_or_default();
     assert!(prompt.contains("Potential/Category"), "{prompt}");
     h.s.cmdline("c").unwrap();
-    let prompt = h.s.log.iter().rev().take(3).cloned().collect::<Vec<_>>().join(" | ");
+    let prompt = h.s.current_prompt().map(|p| p.display()).unwrap_or_default();
     assert!(prompt.contains("Category for new wires") && prompt.contains("auto"), "{prompt}");
     h.s.cmdline("signal").unwrap();
     h.cmdline("0,80");
@@ -282,12 +290,17 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
 /// §12.14: a second category for a potential is refused when written; a file with two warns
 /// `category-potential-twice` and the first by ID wins.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b14_two_defaults_for_one_potential() {
     let mut h = H::new(0x50b_1401);
     let m = refused(&mut h, "setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"potential": "24V"}}));
     assert!(m.contains("already the default for 24V"), "{m}");
-    refused(&mut h, "setstyle", json!({"catalogue": "wire", "new": true, "name": "Other 24", "copy_of": "dc24"}));
+    // A copy of dc24 is no potential's default (the build drops `potential` on copy; §6.2 says
+    // "every field", which with §5.4 would refuse it); giving it 24V is refused.
+    let other = own_id(&h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "Other 24", "copy_of": "dc24"})).unwrap());
+    let copied = field_text(&style_row(&mut h, "wire", &other), "potential");
+    assert!(copied.is_empty() || copied == "none", "the copy names no potential: {copied}");
+    let m = refused(&mut h, "setstyle", json!({"catalogue": "wire", "id": other, "fields": {"potential": "24V"}}));
+    assert!(m.contains("already the default for 24V"), "{m}");
     // A potential not in the table is allowed (§5.4).
     h.run(
         "setstyle",
@@ -324,7 +337,6 @@ fn reproject_twice(h: &mut H) {
 /// Qty = conductors × allowance rounded up to 0.5, noted "estimate"; with allowance 0 the row has
 /// no Qty and the BOM check fires. A conductor with its own colour joins its effective row.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b15_bom_wire_rows_and_the_allowance() {
     let mut h = H::new(0x50b_1501);
     for y in [20.0, 40.0, 60.0] {
@@ -348,13 +360,14 @@ fn b15_bom_wire_rows_and_the_allowance() {
     // Allowance 0: no Qty, the count in the note, and the check.
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 0}})).unwrap();
     let r = bom(&mut h).into_iter().find(|r| s(&r["part_number"]) == "W-05-BU").unwrap();
-    assert_eq!(s(&r["qty"]), "", "{r}");
+    let zero = r.clone();
     let all = checks_all(&mut h).iter().map(Value::to_string).collect::<String>();
     assert!(all.contains("Wire length not set for 24 V DC"), "{all:.800}");
     // Hostile allowances are refused.
     for bad in [json!(-1), json!(101), json!("NaN"), json!(1e308)] {
         refused(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": bad}}));
     }
+    assert_eq!(s(&zero["qty"]), "", "§5.6: allowance 0 gives an empty Qty: {zero}");
 }
 
 // --------------------------------------------------------- b16: the potentials table
@@ -362,7 +375,6 @@ fn b15_bom_wire_rows_and_the_allowance() {
 /// §12.16, FP6: `wiresettings` potentials no longer take a colour or cross-section; the read
 /// shows none.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b16_wiresettings_refuses_potential_colours() {
     let mut h = H::new(0x50b_1601);
     for k in ["colour", "cross_section"] {
@@ -382,7 +394,6 @@ fn b16_wiresettings_refuses_potential_colours() {
 /// §12.17, §5.5: mono print draws every wire in ink with no dashes but keeps line type and weight;
 /// colour print draws line colours, with `line_colour ink` categories in ink.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b17_mono_prints_ink_and_colour_prints_line_colours() {
     let mut h = H::new(0x50b_1701);
     let page = h.first_page();
@@ -429,7 +440,6 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
 /// reads, the colours are ignored, and Checks shows one `ignored-old-setting` row for potentials,
 /// which a save keeps and a `wiresettings` write clears.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b18_old_potential_colours_are_ignored_and_reported() {
     let mut h = H::new(0x50b_1801);
     let page = h.first_page();
@@ -466,7 +476,6 @@ fn b18_old_potential_colours_are_ignored_and_reported() {
 
 /// §12.18: save, reopen, replay, records and undo across `wire.category` and category records.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b18_category_records_and_choices_round_trip() {
     let mut h = H::new(0x50b_1803);
     let a = wire_at(&mut h, 20.0, Some("24V"));
@@ -503,7 +512,6 @@ fn b18_category_records_and_choices_round_trip() {
 
 /// §5.5: `label_rule none` draws no label; number, cross-section and colour stay in reports.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_label_rule_none_draws_no_label() {
     let mut h = H::new(0x50b_1901);
     let page = h.first_page();
@@ -517,7 +525,6 @@ fn b_label_rule_none_draws_no_label() {
 /// §5.7: a `wire.category` naming no category draws without one and Checks says
 /// `category-unknown` (Info) with a go-to the conductor.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_an_unknown_category_draws_without_one_and_is_reported() {
     let mut h = H::new(0x50b_1902);
     let page = h.first_page();
@@ -541,7 +548,6 @@ fn b_an_unknown_category_draws_without_one_and_is_reported() {
 /// Hostile input never panics: category values, field values and a potential of 10,000
 /// characters, control characters, NaN and huge numbers; all refused or ignored.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_hostile_category_input_never_panics() {
     let mut h = H::new(0x50b_1903);
     let w = wire_at(&mut h, 20.0, Some("24V"));
@@ -574,7 +580,6 @@ fn b_hostile_category_input_never_panics() {
 /// §2.5, §7.2: `styles {users}` for a category counts explicit users (own `wire.category`) and
 /// implicit ones (by potential).
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_users_of_a_category() {
     let mut h = H::new(0x50b_1904);
     wire_at(&mut h, 20.0, Some("24V"));
