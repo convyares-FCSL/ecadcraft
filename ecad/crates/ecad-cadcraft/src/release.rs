@@ -879,7 +879,7 @@ pub fn manifest(
     })
 }
 
-/// `ECAD 0.1.0-dev (CADCraft 227e3c3)`.
+/// `ECAD 0.3.0-dev (CADCraft 227e3c3)`.
 pub fn app() -> String {
     format!("ECAD {} (CADCraft {})", env!("CARGO_PKG_VERSION"), crate::UPSTREAM_COMMIT.get(..7).unwrap_or_default())
 }
