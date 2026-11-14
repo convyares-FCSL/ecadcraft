@@ -296,6 +296,13 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // Brief 025: the Coil and Contacts rows name places on the device's pages.
         for c in &k.devices {
             v.deps.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
+            // Brief 049: an arrow's Other ends row names its partners' places.
+            if let Some(n) = crate::continuations::name_of(doc, *c) {
+                for o in doc.continuations_named(&n) {
+                    v.deps.insert(ObjectRef::Component(o));
+                    v.deps.extend(doc.representations_of(Subject::Component(o)).map(|(_, r)| ObjectRef::Page(r.page)));
+                }
+            }
         }
         // An inherited location (brief 024) reads the main symbol's page (its boxes and
         // `location`) and the project's.
@@ -498,11 +505,16 @@ fn device_section(
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
+        // Brief 049 (design 049 §5.2): a continuation's Caption and Other ends.
+        (true, Some(c)) if crate::continuations::is_continuation(doc, c) => continuation_rows(doc, devices, symbol, &mut rows, &mut buttons),
         (true, Some(c)) => {
             xref_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
             crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
+        }
+        (false, _) if devices.iter().all(|c| crate::continuations::is_continuation(doc, *c)) => {
+            continuation_rows(doc, devices, None, &mut rows, &mut buttons);
         }
         _ => {}
     }
@@ -574,6 +586,29 @@ fn xref_rows(doc: &Document, c: ComponentId, symbol: Option<ecad_model::Represen
         if dev.head.is_some() {
             buttons.push(format!("refgoto:{}::Go to coil", sym.hex()));
         }
+    }
+}
+
+/// Brief 049's rows of continuation arrows (design 049 §5.2): **Caption** (blank when they
+/// differ), and for one arrow its **Other ends** with Go to (`refgoto:<source>:<target>:<label>`).
+fn continuation_rows(
+    doc: &Document, arrows: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>,
+) {
+    use crate::continuations as k;
+    let captions: BTreeSet<Option<&str>> = arrows.iter().map(|c| k::caption_of(doc, *c)).collect();
+    let mut r = Row::rw(
+        k::CAPTION_KEY,
+        "Caption",
+        if captions.len() == 1 { captions.into_iter().next().flatten().unwrap_or_default().to_string() } else { String::new() },
+    );
+    r.varies = arrows.iter().map(|c| k::caption_of(doc, *c)).collect::<BTreeSet<_>>().len() > 1;
+    rows.push(r);
+    let Some(sym) = symbol.filter(|s| k::arrow(doc, *s).is_some()) else { return };
+    let ends = k::other_ends(doc, sym);
+    let words: Vec<String> = ends.iter().map(|e| k::end_words(doc, e)).collect();
+    rows.push(Row::ro("otherends", "Other ends", if words.is_empty() { "none".into() } else { words.join("; ") }));
+    for e in &ends {
+        buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), e.rep.hex(), e.text));
     }
 }
 

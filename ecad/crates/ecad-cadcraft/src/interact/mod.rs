@@ -21,6 +21,7 @@
 
 mod accessories;
 mod connectors;
+mod continuations;
 // Brief 047: Reports ▸ BOM ▸ + Item.
 mod bom_item;
 mod devices;
@@ -53,6 +54,7 @@ use crate::views::{FanOnPage, View, fan_on_page};
 pub(crate) use accessories::{accessory, jumper};
 pub(crate) use bom_item::bomitem;
 pub(crate) use connectors::connector;
+pub(crate) use continuations::contcaption;
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
 pub(crate) use location_form::locationbox;
@@ -482,6 +484,11 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // contact's lens with its coil.
         Mapped::Xref(r) => {
             let Subject::Component(c) = doc.representations.get(&r)?.subject else { return None };
+            // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
+            if crate::continuations::is_continuation(doc, c) {
+                let rep = if crate::continuations::arrow(doc, r).is_some() { r } else { return None };
+                return Some(crate::continuations::hover_lines(doc, c, rep));
+            }
             let row = view.map.xref_part(h).and_then(|(_, i)| {
                 let dev = crate::xref::device(doc, c);
                 let mut places = crate::xref::Places::new(doc);
@@ -505,6 +512,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => {
                     with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid))
                 }
+                // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
+                Subject::Component(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
                 Subject::Component(c) => component_lines(doc, c),
                 Subject::Conductor(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.

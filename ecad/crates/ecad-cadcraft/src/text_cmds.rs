@@ -452,6 +452,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
         TextKind::PartNumber => "part number",
         TextKind::ContinuationName => "continuation name",
         TextKind::Reference => "references",
+        TextKind::ContinuationCaption => "continuation captions",
         TextKind::LocationLabel => "location labels",
         TextKind::WireLabel => "wire labels",
         _ => kind.word(),

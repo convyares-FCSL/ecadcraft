@@ -820,6 +820,8 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
     ("article", "the command line and Checks' Use … for all until 2.3's catalogue"),
+    // Brief 049 (design 049 §5.1): no wheel slot.
+    ("contcaption", "the command line and the inspector's Caption row"),
 ];
 
 /// The action with this id.

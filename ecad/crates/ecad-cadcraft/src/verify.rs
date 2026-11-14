@@ -136,7 +136,10 @@ pub fn verify_page_pending(
     }
     // Device cross-references (brief 025), derived the same way.
     for part in crate::xref::parts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::project::xref_entity(&part, Handle(0)))).or_default() += 1;
+        let mut e = crate::project::xref_entity(&part, Handle(0));
+        // Brief 049: a continuation's other-end text in Ink 2, as the page draws it.
+        crate::continuations::colour(doc, &part, &mut e);
+        *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // Link lines (brief 030), derived the same way.
     for part in crate::link_lines::parts_on_page(doc, page) {

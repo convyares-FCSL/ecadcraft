@@ -22,7 +22,7 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
             .params("{component: id} (the device's contact table: offer, head, placement, rows; read only)")
             .noundo(),
         CommandSpec::new("refgoto", "Go to Reference", run_refgoto)
-            .params("{source: id, target?: id} (a cable reference end, a contact or a coil: opens the place it shows; records nothing)")
+            .params("{source: id, target?: id} (a cable reference end, a contact, a coil or a continuation arrow: opens the place it shows; records nothing)")
             .noundo(),
         CommandSpec::new("mirrormove", "Move Mirror Table", run_mirrormove)
             .params("{component: id, at?: [x,y], placement?: \"auto\"|\"below\"|\"right\"|\"off\"} (where the device's contact table goes)")
@@ -66,7 +66,10 @@ fn run_refgoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     let (uid, jump, opened) = with_any_page(s, |p, pg| {
         let doc = p.ledger.document();
         let r = doc.representations.get(&source).ok_or("no such reference")?;
+        let arrow = matches!(p.xref.member(source), Some((xref::Group::Continuation(_), _)));
         let none = match r.subject {
+            // Brief 049: a lonely continuation arrow.
+            Subject::Component(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
             Subject::Component(_) => "This symbol shows no reference: its device has no coil or no contacts.",
             Subject::Cable(_) => "this reference has no other end",
             Subject::Conductor(_) => "That is not a reference.",
@@ -74,7 +77,13 @@ fn run_refgoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         if p.xref.member(source).is_none() {
             return Err(none.into());
         }
-        let t = xref::goto_target(doc, &p.xref, source, target).ok_or(none)?;
+        // Brief 049 (design 049 §5.3): an arrow goes to its first other end, then the next on
+        // repeat (after the place the last go-to ringed), wrapping.
+        let t = if arrow {
+            crate::continuations::goto(doc, source, target, p.goto_ring.map(|(page, at, _)| (page, at))).ok_or(none)?
+        } else {
+            xref::goto_target(doc, &p.xref, source, target).ok_or(none)?
+        };
         let tr = doc.representations.get(&t).ok_or("the other end cannot be located")?;
         let at = xref::anchor(doc, tr)
             .or_else(|| {
@@ -87,6 +96,12 @@ fn run_refgoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         let mut places = xref::Places::new(doc);
         let place = places.text(tr.page, Some(at));
         let what = match tr.subject {
+            Subject::Component(c) if crate::continuations::is_continuation(doc, c) => {
+                format!(
+                    "continuation {}",
+                    doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default()
+                )
+            }
             Subject::Component(c) => match xref::device(doc, c).head {
                 Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
                 _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
