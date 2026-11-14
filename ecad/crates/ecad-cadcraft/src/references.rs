@@ -76,7 +76,24 @@ pub fn all(doc: &Document) -> Vec<CableReference> {
 
 /// The reference ends on `page`, derived.
 pub fn references_on_page(doc: &Document, page: PageId) -> Vec<CableReference> {
-    cable_references(doc).into_iter().filter(|r| r.page == page).collect()
+    page_cable_references(doc, page).into_iter().filter(|r| r.page == page).collect()
+}
+
+/// The references of the cables with a reference end on `page`, derived as [`all`] derives them
+/// (a reference's text reads only its own cable's references and routes; brief 014's
+/// [`cable_references_of`]). Cost is in proportion to the page's representations and those
+/// cables, not to the document (brief 053: `wire` and `joinwires` derived every reference of the
+/// project to find a page's markers).
+fn page_cable_references(doc: &Document, page: PageId) -> Vec<CableReference> {
+    let cables: BTreeSet<CableId> = doc
+        .representations_on(page)
+        .filter(|(_, r)| is_reference(r))
+        .filter_map(|(_, r)| match r.subject {
+            Subject::Cable(k) => Some(k),
+            _ => None,
+        })
+        .collect();
+    cable_references_of(doc, &cables)
 }
 
 /// What one reference end shows on its page (design 010 §6.1, §6.2). Call [`markers_on_page`].
@@ -113,7 +130,7 @@ pub struct Marker {
 /// Ends that cannot be located (a missing or non-finite point, only from a hostile file) are left
 /// out; `cablerefs` and the hover still list them with `/?`.
 pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
-    markers_from(doc, cable_references(doc), page)
+    markers_from(doc, page_cable_references(doc, page), page)
 }
 
 /// [`markers_on_page`] from references already derived (`refs`, as [`all`] returns them), so one
