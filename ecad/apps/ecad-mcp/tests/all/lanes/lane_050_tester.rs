@@ -176,7 +176,6 @@ fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
 
 /// The new commands are listed with parameter docs.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn a10_the_new_commands_are_listed() {
     let mut c = crate::mcp_contracts::reader();
     let catalog = c.ok("list_commands", json!({}));
@@ -317,7 +316,6 @@ fn fp3_the_standard_header_is_one_unit() {
 /// AC 5 (050b), §6.8: `category` and `wire {category}` by the agent, one transaction each, one
 /// undo; refused with writes off.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t050b Kategorien \u{e4}");
     let path = dir.file("Leitungen (B).ecad");
@@ -378,7 +376,6 @@ fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
 /// differently on both branches is one conflict named by the category; a conductor's category on
 /// one branch and the category's colour on the other merge cleanly.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b18_category_merges() {
     let dir = TempDir::new("t050b-merge");
     let path = dir.file("cat.ecad");

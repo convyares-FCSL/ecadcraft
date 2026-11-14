@@ -52,7 +52,6 @@ fn a09_style_changes_patch_the_standards_tables_and_rebuild_none() {
 
 /// Brief 050b AC 6: a category change patches, rebuilds nothing.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_a_category_change_patches_and_rebuilds_none() {
     let mut h = shown_standards();
     let (rebuilds, patches) = counters(&h);
@@ -83,7 +82,6 @@ fn a09_the_catalogue_strip_and_the_header_are_named() {
 
 /// §9 (050b): the Wire categories tab.
 #[test]
-#[ignore = "tester 050: awaiting build"]
 fn b_the_wire_categories_tab_is_named() {
     let h = shown_standards();
     assert!(h.query_by_label("ecad.standards.catalogue.wire").is_some());
