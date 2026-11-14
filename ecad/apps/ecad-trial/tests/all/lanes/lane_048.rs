@@ -323,6 +323,25 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
 }
 
 #[test]
+fn editing_a_built_in_from_the_browser_saves_a_copy_that_remembers_it() {
+    let mut h = shell(None);
+    h.state_mut().edit_starter("coil").unwrap();
+    h.run_steps(3);
+    let main = h.state().shell.slots.unwrap().main;
+    h.event(Event::PointerMoved(main.center()));
+    tool(&mut h, Tool::Slot);
+    click_mm(&mut h, 10.0, 0.0);
+    fill(&mut h, details::KEY, "coil2");
+    h.run_steps(2);
+    h.get_by_label(details::SAVE).click();
+    h.run_steps(4);
+    let d = doc(&mut h);
+    let v = symbols::project_by_key(&d, "coil2").expect("saved");
+    let from = v.def.derived_from.clone().expect("derived_from (FP4)");
+    assert_eq!(from.definition, symbols::by_key("coil").unwrap().id);
+}
+
+#[test]
 fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     let mut h = shell(None);
     let (reps, _) = three_copies(&mut h);

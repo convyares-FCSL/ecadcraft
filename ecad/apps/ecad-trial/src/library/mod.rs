@@ -150,6 +150,7 @@ impl Trial {
         draft.key.clear();
         draft.name = s.name.to_string();
         draft.prefix = s.prefix().to_string();
+        draft.from = Some(s.id.hex());
         draft.mark_start();
         self.library.back_to_page = false;
         self.open_builder(draft);
@@ -288,7 +289,12 @@ impl Trial {
         let d = b.draft.clone();
         let mut params = d.params();
         let r = match &d.source {
-            Source::New => self.cad.run("symbolnew", params),
+            Source::New => {
+                if let Some(f) = &d.from {
+                    params["from"] = json!(f);
+                }
+                self.cad.run("symbolnew", params)
+            }
             Source::Edit { definition, builtin, .. } => {
                 params["definition"] = json!(definition);
                 if as_new {

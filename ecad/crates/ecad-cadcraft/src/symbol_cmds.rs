@@ -732,10 +732,15 @@ fn run_symbolnew(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         refuse_problems(&content, &Rules { doc, lineage: None, grid: true })?;
         let derived_from = match from {
             None => None,
-            Some(f) => {
-                let d = doc.definitions.get(&f).ok_or("No such definition to copy from.")?;
-                d.origin.clone().filter(|o| o.library != PROJECT_SYMBOLS)
-            }
+            Some(f) => match doc.definitions.get(&f) {
+                Some(d) => d.origin.clone().filter(|o| o.library != PROJECT_SYMBOLS),
+                // A built-in the project has not placed yet: its catalogue definition's origin, so
+                // the copy remembers where it came from (FP4) all the same.
+                None => {
+                    let s = symbols::STARTERS.iter().find(|s| s.id == f).ok_or("No such definition to copy from.")?;
+                    s.definition()?.origin.clone()
+                }
+            },
         };
         let (id, lineage): (DefinitionId, DefinitionId) = (p.ids.fresh(), p.ids.fresh());
         let def = version_definition(&content, lineage, 1, derived_from)?;

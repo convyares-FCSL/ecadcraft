@@ -93,6 +93,10 @@ pub struct Draft {
     pub rating: String,
     /// `join: part` (a part of a named device) instead of a device of its own.
     pub part: bool,
+    /// A new symbol drawn from a built-in (hex definition ID): `symbolnew {from}`, so the copy
+    /// records `derived_from` (FP4).
+    #[serde(default)]
+    pub from: Option<String>,
     pub shape: Shape,
     /// What it held when opened (Cancel asks only when it changed).
     pub start: Shape,

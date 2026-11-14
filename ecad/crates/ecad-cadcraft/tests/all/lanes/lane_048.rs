@@ -438,3 +438,15 @@ fn makesymbol_refusal_names_the_wire_it_cannot_take() {
     assert_eq!(e, "Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.");
     assert_eq!(h.head(), before);
 }
+
+#[test]
+fn a_copy_of_a_built_in_not_placed_yet_remembers_where_it_came_from() {
+    let mut h = H::new(4817);
+    let coil = symbols::by_key("coil").unwrap();
+    assert!(symbols::embedded(&h.doc(), coil).is_none(), "coil is not placed in this project");
+    h.run("symbolnew", float(json!({"key": "coil2", "from": coil.id.hex()}))).unwrap();
+    let d = h.doc();
+    let v = symbols::project_by_key(&d, "coil2").unwrap();
+    let from = v.def.derived_from.clone().expect("derived_from");
+    assert_eq!((from.library, from.definition), (symbols::STARTER_LIBRARY, coil.id));
+}
