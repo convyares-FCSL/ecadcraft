@@ -162,7 +162,6 @@ fn ac16_the_new_commands_are_listed() {
 /// AC16 (054b): the cover's block toggle `setdefault front.cover.notes` at project level by the
 /// agent, one transaction, one undo; refused with writes off.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac16_the_cover_toggle_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t054b Deckblatt \u{e4}");
     let path = dir.file("Projekt 054 (B).ecad");

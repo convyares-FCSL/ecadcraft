@@ -93,7 +93,12 @@ fn ac14_the_picker_adds_102_right_after_101() {
     let at = b.order.iter().position(|p| *p == p101).unwrap();
     let new = b.order[at + 1];
     assert_eq!(number_of(&mut h, new), "102", "right after 101 with the next available number");
-    assert!(h.query_by_label_contains("Added page 102 (Schematic) after 101.").is_some(), "§4.1 status words");
+    let log = &h.state().cad.session.log;
+    assert!(
+        log.iter().any(|l| l == "Added page 102 (Schematic) after 101."),
+        "§4.1 status words: {:?}",
+        log.iter().rev().take(3).collect::<Vec<_>>()
+    );
 }
 
 /// AC14, §4.1: Esc closes the picker and writes nothing; Panel layout is disabled with its tooltip;
@@ -105,7 +110,7 @@ fn ac14_esc_writes_nothing_and_panel_layout_is_disabled() {
     click(&mut h, ecad_trial::shell::status_bar::ADD_PAGE);
     assert!(disabled(&h, "ecad.newpage.type.panel"), "Q3: disabled");
     h.get_by_label("ecad.newpage.type.panel").hover();
-    h.run_steps(30);
+    h.run_steps(90);
     assert!(h.query_by_label_contains("Panel layout pages come with the panel layout page.").is_some(), "the tooltip");
     click(&mut h, "ecad.newpage.type.front");
     for k in ["cover", "revisions", "contents"] {
@@ -151,7 +156,7 @@ fn ac13_each_settings_control_writes_one_setstyle() {
 #[test]
 fn ac13_read_only_disables_every_control() {
     let mut h = shell();
-    run(&mut h, "revision", json!({"description": "first"}));
+    run(&mut h, "revision", json!({"description": "first", "drawn": "T"}));
     run(&mut h, "issuerevision", json!({}));
     run(&mut h, "openrevision", json!({"rev": "A"}));
     h.state_mut().open_settings(Section::Pages);
@@ -170,11 +175,9 @@ fn num_the_book_names_renumber_and_start_number() {
     let f = f["folder"].as_str().unwrap().to_string();
     run(&mut h, "folderprops", json!({"folder": f, "start": "100"}));
     h.run_steps(3);
-    assert!(
-        h.query_by_label_contains("Schematic").is_some_and(|n| format!("{:?}", n.accesskit_node()).contains("100"))
-            || h.query_by_label_contains("100").is_some(),
-        "the folder row shows its start number grey"
-    );
+    // The row paints it (not in the accessibility tree): read what the Book panel shows.
+    let fid = ecad_model::FolderId::from(u128::from_str_radix(&f, 16).unwrap());
+    assert_eq!(h.state().panel.starts.get(&fid).map(String::as_str), Some("100"), "the folder row shows its start number");
     // Opening the header and row menus (ecad.book.renumber, ecad.book.folder.start.<id>) is left
     // to the click-through trial: the design names the items, not how the menus open.
 }

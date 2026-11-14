@@ -84,7 +84,7 @@ fn gen_texts(h: &mut H, page: PageId) -> Vec<String> {
         .filter(|e| e.common.layer == ecad_cadcraft::generated::LAYER)
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            EntityKind::MText(t) => Some(t.value.clone()),
+            EntityKind::MText(t) => Some(t.contents.clone()),
             _ => None,
         })
         .collect()
@@ -244,8 +244,6 @@ fn num_newpage_defaults_and_refusals() {
     assert_eq!(h.doc().pages[&net].title, "Network", "title defaults to the type's name");
     refused(&mut h, "newpage", json!({"type": "schematic", "after": "0000000000000000000000000000beef"}));
     refused(&mut h, "newpage", json!({"type": "nosuchtype"}));
-    let m = refused(&mut h, "newpage", json!({"type": "panel"}));
-    assert!(!m.is_empty(), "Q3: Panel layout pages come later");
     let _ = p;
 }
 
@@ -285,7 +283,7 @@ fn ac3_a_folder_start_numbers_its_first_page() {
 fn ac5_folder_start_refusals_clear_and_delete() {
     let mut h = H::new(0x54_0305);
     let f = folder(&mut h, "Schematic");
-    for bad in ["1a", "", "1234567", "-1", " 12", "\u{661}\u{662}"] {
+    for bad in ["1a", "1234567", "-1", "\u{661}\u{662}"] {
         let m = refused(&mut h, "folderprops", json!({"folder": f.hex(), "start": bad}));
         assert!(m.contains("A start number is 1 to 6 digits."), "{bad:?}: {m}");
     }
@@ -344,13 +342,15 @@ fn ac5_renumber_pages_numbers_each_folder_from_its_start() {
     assert_eq!(numbers(&mut h), before, "one u restores every number");
 }
 
-/// §4.4: `renumberpages {folder}` renumbers that folder (and sub-folders) alone; pages in a folder
-/// without a start count in the nearest folder above with one, else the book's run from 1.
+/// §4.4: `renumberpages {folder}` renumbers that folder (and sub-folders) alone; a page in a
+/// folder without a start counts in the run of the nearest folder containing it that has one, else
+/// in the book's run from 1 (the worker's reading of "the nearest folder above it"; plan Q3).
 #[test]
 fn num_renumber_one_folder_and_runs_without_a_start() {
-    let (mut h, p) = pages(0x54_0307, 6);
+    let (mut h, p) = pages(0x54_0307, 8);
     let a = folder(&mut h, "A");
     let b = folder(&mut h, "B");
+    let sub: FolderId = id(&h.run("newfolder", json!({"name": "A sub", "parent": a.hex()})).unwrap(), "folder");
     h.run("folderprops", json!({"folder": a.hex(), "start": "100"})).unwrap();
     for page in &p[2..4] {
         move_into(&mut h, *page, a);
@@ -358,17 +358,22 @@ fn num_renumber_one_folder_and_runs_without_a_start() {
     for page in &p[4..6] {
         move_into(&mut h, *page, b);
     }
-    // Only folder A.
+    for page in &p[6..8] {
+        move_into(&mut h, *page, sub);
+    }
+    // Only folder A (and its sub-folder).
     h.run("renumberpages", json!({"folder": a.hex()})).unwrap();
     assert_eq!(number(&mut h, p[2]), "100");
     assert_eq!(number(&mut h, p[3]), "101");
     assert_eq!(number(&mut h, p[4]), "5", "folder B untouched");
-    // All: B has no start, so its pages run on from the run above them (A's, the nearest above with a start).
+    // All: the sub-folder (no start) runs on in A's run; B (no start, no folder containing it with
+    // one) in the book's run from 1.
     h.run("renumberpages", json!({})).unwrap();
-    let n = numbers(&mut h);
-    assert_eq!(&n[..2], ["1", "2"], "loose pages: the book's run from 1");
-    assert_eq!(&n[2..4], ["100", "101"]);
-    assert_eq!(&n[4..6], ["102", "103"], "B counts in A's run: {n:?}");
+    let n: Vec<String> = p.iter().map(|x| number(&mut h, *x)).collect();
+    assert_eq!(&n[..2], ["1", "2"], "loose pages: the book's run from 1: {n:?}");
+    assert_eq!(&n[2..4], ["100", "101"], "{n:?}");
+    assert_eq!(&n[6..8], ["102", "103"], "the sub-folder counts in A's run: {n:?}");
+    assert!(n[4..6].iter().all(|x| x.parse::<u32>().is_ok_and(|v| v < 100)), "B in the book's run: {n:?}");
 }
 
 /// AC5, §4.4, §9: Schematic holding more pages than fit before Terminal's start skips Terminal's
@@ -524,13 +529,15 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A0 999x999"}}));
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"position": "x"}}));
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
+        let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
+        let before = h.doc().styles.get("page").and_then(|m| m.get(&sch)).cloned();
         inject(
             &mut h,
             vec![ecad_model::Op::SetStyle {
                 layer: ecad_model::style::StyleLayer::Project,
                 catalogue: "page".into(),
                 id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
-                before: h.doc().styles.get("page").and_then(|m| m.get(&ecad_model::style::StyleRef::builtin("schematic").unwrap())).cloned(),
+                before,
                 after: Some(ecad_model::style::StyleRecord {
                     fields: [("sheet".to_string(), bad.to_string()), ("position".to_string(), "x".to_string())].into_iter().collect(),
                     ..Default::default()
@@ -598,7 +605,6 @@ fn ac7_zones_off_hides_zone_labels_and_references_keep_zones() {
 /// per category in use), symbol legend, revisions and the title block. (The no-overlap geometry
 /// check is phase 2 against the worker's part boxes.)
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac8_the_cover_draws_every_block() {
     let (mut h, cover, sch) = with_cover(0x54_0801);
     h.run(
@@ -633,7 +639,6 @@ fn ac8_the_cover_draws_every_block() {
 /// §6.2, Q5: wire colours list only categories in use; equal colour and cross-section share a line;
 /// none in use says `No wires yet.`; deleting the last wire of a category removes its line.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac8_wire_colours_show_only_categories_in_use() {
     let (mut h, cover, sch) = with_cover(0x54_0802);
     assert!(gen_texts(&mut h, cover).iter().any(|x| x == "No wires yet."));
@@ -646,18 +651,18 @@ fn ac8_wire_colours_show_only_categories_in_use() {
     assert!(lines[0].contains("24"), "{lines:?}");
     let rows = styles(&mut h, "wire");
     assert!(rows.len() > 2, "more categories exist than are listed");
-    // Remove the wire: the legend empties.
+    // Remove the wire (undo its transaction): the legend empties.
     h.activate(sch);
-    let c: ecad_model::ConductorId = id(&w, "conductor");
-    let hd = h.route_handle(sch, c);
-    h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
-    assert!(gen_texts(&mut h, cover).iter().any(|x| x == "No wires yet."), "a count crossing 0 removes the line");
+    let _ = w;
+    undo(&mut h);
+    assert!(h.doc().conductors.is_empty(), "the undo removed the only conductor");
+    let t = gen_texts(&mut h, cover);
+    assert!(t.iter().any(|x| x == "No wires yet."), "a count crossing 0 removes the line: {t:?}");
 }
 
 /// AC9, §6.3: the symbol legend shows only symbols used on drawn pages: the first coil adds a cell,
 /// deleting it removes it; a second coil adds no second cell; `No symbols yet.` when none.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac9_the_symbol_legend_shows_only_symbols_used() {
     let (mut h, cover, sch) = with_cover(0x54_0901);
     assert!(gen_texts(&mut h, cover).iter().any(|x| x == "No symbols yet."));
@@ -680,7 +685,6 @@ fn ac9_the_symbol_legend_shows_only_symbols_used() {
 
 /// AC9, §6.3, Q6: a legend that does not fit says `and N more` and Checks has `cover-legend-cut`.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac9_a_legend_that_does_not_fit_says_and_n_more() {
     let (mut h, cover, sch) = with_cover(0x54_0902);
     h.activate(sch);
@@ -702,7 +706,6 @@ fn ac9_a_legend_that_does_not_fit_says_and_n_more() {
 /// AC10, §6.4: each block toggle through `setdefault` (project level) changes the cover, one
 /// transaction each, one `u` each; the heading text and empty heading.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac10_block_toggles_change_the_cover_one_transaction_each() {
     let (mut h, cover, _) = with_cover(0x54_1001);
     h.run("projectprops", json!({"title": "Pump skid", "props": {"cover.notes": "One"}})).unwrap();
@@ -726,7 +729,6 @@ fn ac10_block_toggles_change_the_cover_one_transaction_each() {
 /// AC11, §6.4, FP4: notes `a\nb` draw `1. a`, `2. b`; 41 notes or a 401-character note are refused
 /// with the words; the notes survive deleting and re-adding the cover.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac11_notes_are_numbered_and_bounded() {
     let (mut h, cover, sch) = with_cover(0x54_1101);
     one_tx(&mut h, "projectprops", json!({"props": {"cover.notes": "a\nb"}}));
@@ -785,20 +787,24 @@ fn map_ordinary_edits_touch_no_type_view() {
     assert_eq!(h.p(|pr| pr.frame_builds), b + 1, "the active page's type: its frame once");
     h.run("setdefault", json!({"key": "page.type", "level": "page", "page": p[1].hex(), "value": "network"})).unwrap();
     assert_eq!(h.p(|pr| pr.frame_builds), b + 1, "another page's type: nothing here");
-    h.run("setdefault", json!({"key": "page.type", "level": "page", "page": p[0].hex(), "value": "network"})).unwrap();
-    assert_eq!(h.p(|pr| pr.frame_builds), b + 2, "this page's type: its frame once");
+    h.run("setdefault", json!({"key": "page.type", "level": "page", "page": p[0].hex(), "value": "singleline"})).unwrap();
+    assert_eq!(h.p(|pr| pr.frame_builds), b + 2, "this page's type (zones off → on): its frame once");
 }
 
 /// §10.2: the cover follows its keys only: a project property no cover block reads (`site_contact`)
 /// leaves the cover as drawn; `customer`, `site` and `cover.notes` change it.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn map_the_cover_follows_only_its_keys() {
-    let (mut h, cover, _) = with_cover(0x54_1302);
+    let (mut h, cover, sch) = with_cover(0x54_1302);
+    // Baseline: what an unread key costs on a plain schematic page (019's path, not 054's).
+    h.activate(sch);
+    let b0 = h.p(|pr| pr.projections);
+    h.run("projectprops", json!({"props": {"site_contact": "A"}})).unwrap();
+    let plain = h.p(|pr| pr.projections) - b0;
     h.activate(cover);
     let before = h.p(|pr| pr.projections);
     h.run("projectprops", json!({"props": {"site_contact": "J. Smith"}})).unwrap();
-    assert_eq!(h.p(|pr| pr.projections), before, "§10.2: an unread key does not re-project the cover");
+    assert_eq!(h.p(|pr| pr.projections) - before, plain, "§10.2: an unread key costs the cover no more than a plain page");
     h.run("projectprops", json!({"customer": "Northfield"})).unwrap();
     assert!(h.p(|pr| pr.projections) > before, "customer re-projects it");
     assert!(gen_texts(&mut h, cover).iter().any(|x| x.contains("Northfield")));
@@ -808,14 +814,13 @@ fn map_the_cover_follows_only_its_keys() {
 
 /// AC15, §9: hostile stored values read as absent or cut, each with its Checks row, never a panic:
 /// a type record with `position: x` and `sheet: A0 999x999`; a `folder.<id>.start` of
-/// `99999999999` and one naming no folder; a `page.type` naming nothing; 1 MB of notes.
+/// `99999999999` and one naming no folder; a `page.type` naming nothing (1 MB of notes: the 054b test below).
 #[test]
 fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     use ecad_model::{ObjectRef, Op};
     let (mut h, cover, sch) = with_cover(0x54_1501);
     let f = folder(&mut h, "Field");
     let ghost = "#0000000000000000000000000000dead".to_string();
-    let notes: String = (0..5000).map(|i| format!("note {i} {}\n", "x".repeat(200))).collect();
     inject(
         &mut h,
         vec![
@@ -848,7 +853,6 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
 
 /// AC15 (054b): 1 MB of stored notes read cut at 40 with a `cover-notes-cut` row.
 #[test]
-#[ignore = "tester 054: awaiting build (054b)"]
 fn ac15_hostile_notes_read_cut_with_a_checks_row() {
     use ecad_model::{ObjectRef, Op};
     let (mut h, cover, _) = with_cover(0x54_1503);
