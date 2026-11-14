@@ -354,6 +354,8 @@ pub fn is_head(s: &Starter) -> bool {
 pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
     match (s.key, s.kind) {
         ("power3", _) => vec![(PoleKind::No, true); 3],
+        // Pack re-run, bug 11: the 4-pole set is a contactor's power contacts too.
+        ("power4", _) => vec![(PoleKind::No, true); 4],
         (_, Kind::Contact { make }) => vec![(if make { PoleKind::No } else { PoleKind::Nc }, false)],
         _ => Vec::new(),
     }
@@ -1089,6 +1091,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
     }
     let mut places = Places::new(doc);
     let mut out = Vec::new();
+    let mut tables: Vec<Table> = Vec::new();
     for (c, here) in by_component {
         // Brief 044 (design 044 §7): a connector's half and pin references.
         if crate::connectors::is_connector(doc, c) {
@@ -1107,12 +1110,102 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
         if dev.head.is_some_and(|h| here.contains(&h))
             && let Some(t) = table(doc, &mut places, &dev)
         {
-            out.extend(t.parts);
+            tables.push(t);
         }
     }
+    // Pack re-run, bug 4: tables of heads drawn close together clear each other. This depends
+    // only on the page's tables as each device derives it, and a commit that changes one of them
+    // redraws the page ([`Watch`]), so the update map is unchanged.
+    spread(doc, &mut tables);
+    out.extend(tables.into_iter().flat_map(|t| t.parts));
     // Brief 049 (design 049 §4): continuation arrows' other ends, brackets and captions.
     out.extend(crate::continuations::parts_on_page(doc, &mut places, page));
     out
+}
+
+/// The most steps one table takes to clear the tables before it (hostile pages stay bounded).
+const MAX_SPREAD_STEPS: usize = 64;
+/// The gap kept between two tables spread apart, millimetres.
+const SPREAD_GAP_MM: f64 = 2.0;
+
+/// Whether boxes `a` and `b` overlap (touching is not overlapping).
+fn boxes_overlap(a: (Pt, Pt), b: (Pt, Pt)) -> bool {
+    a.0.x < b.1.x - 1e-9 && b.0.x < a.1.x - 1e-9 && a.0.y < b.1.y - 1e-9 && b.0.y < a.1.y - 1e-9
+}
+
+/// Spread one page's `tables` so that no two overlap (pack re-run, bug 4). A table the user placed
+/// (`at`) never moves. The others are taken left to right (then top down): each keeps its place
+/// when it clears the tables before it, else moves right past them; when that leaves the free
+/// area, it goes under them instead, if that stays in the free area, else stays. Deterministic,
+/// and each table moves only for tables before it.
+pub fn spread(doc: &Document, tables: &mut [Table]) {
+    let Some(page) = tables.first().map(|t| t.page) else { return };
+    let free = free_area(doc, page);
+    let gap = SPREAD_GAP_MM * unit(doc);
+    let fixed = |t: &Table| matches!(t.placement, Placement::At(_) | Placement::Off);
+    let mut taken: Vec<(Pt, Pt)> = tables.iter().filter(|t| fixed(t)).map(|t| table_box(doc, t.top, &t.rows)).collect();
+    let mut order: Vec<usize> = (0..tables.len()).filter(|i| tables.get(*i).is_some_and(|t| !fixed(t))).collect();
+    order.sort_by(|a, b| match (tables.get(*a), tables.get(*b)) {
+        (Some(x), Some(y)) => x.top.x.total_cmp(&y.top.x).then(y.top.y.total_cmp(&x.top.y)).then(x.head.cmp(&y.head)),
+        _ => a.cmp(b),
+    });
+    for i in order {
+        let Some(t) = tables.get_mut(i) else { continue };
+        let first = table_box(doc, t.top, &t.rows);
+        let left = t.top.x - first.0.x;
+        let height = t.top.y - first.0.y;
+        // Right past the tables it meets.
+        let mut right = t.top;
+        for _ in 0..MAX_SPREAD_STEPS {
+            let b = table_box(doc, right, &t.rows);
+            let Some(edge) = taken.iter().filter(|o| boxes_overlap(b, **o)).map(|o| o.1.x).reduce(f64::max) else { break };
+            right.x = edge + gap + left;
+        }
+        let mut top = right;
+        if !inside(table_box(doc, right, &t.rows), free) && inside(first, free) {
+            // Under the tables it meets, from its own place; else where it was (never off the
+            // free area it started in).
+            let mut down = t.top;
+            for _ in 0..MAX_SPREAD_STEPS {
+                let b = table_box(doc, down, &t.rows);
+                let Some(edge) = taken.iter().filter(|o| boxes_overlap(b, **o)).map(|o| o.0.y).reduce(f64::min) else { break };
+                down.y = edge - gap;
+            }
+            top = if inside(table_box(doc, down, &t.rows), free) { down } else { t.top };
+        }
+        let b = table_box(doc, top, &t.rows);
+        if top != t.top && top.is_finite() && taken.iter().all(|o| !boxes_overlap(b, *o)) {
+            t.top = top;
+            t.parts = table_parts(doc, t.head, top, &t.rows);
+            t.bottom = top.y - height;
+        }
+        taken.push(table_box(doc, t.top, &t.rows));
+    }
+}
+
+/// Device `dev`'s table where its page draws it: [`table`], then moved by [`spread`] with the other
+/// tables on its page (review of #92, 2). O(devices on that page); for replies, not per commit.
+pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
+    let own = table(doc, places, dev)?;
+    let mut others: BTreeSet<ComponentId> = BTreeSet::new();
+    for (_, r) in doc.representations_on(own.page) {
+        if let Subject::Component(c) = r.subject
+            && c != dev.component
+        {
+            others.insert(c);
+        }
+    }
+    let mut tables: Vec<Table> = others
+        .into_iter()
+        .filter(|c| !crate::connectors::is_connector(doc, *c))
+        .map(|c| device(doc, c))
+        .filter(|d| d.head.is_some_and(|h| doc.representations.get(&h).is_some_and(|r| r.page == own.page)))
+        .filter_map(|d| table(doc, places, &d))
+        .collect();
+    let head = own.head;
+    tables.push(own);
+    spread(doc, &mut tables);
+    tables.into_iter().find(|t| t.head == head)
 }
 
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
@@ -1958,7 +2051,7 @@ pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
 
 /// The `contacts` reply's `table` (design 033 §4.2): `{top, bottom, placement, shown}`, or null.
 fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Value {
-    let Some(t) = table(doc, places, dev) else { return Value::Null };
+    let Some(t) = drawn_table(doc, places, dev) else { return Value::Null };
     let k = unit(doc);
     json!({
         "top": [t.top.x / k, t.top.y / k],

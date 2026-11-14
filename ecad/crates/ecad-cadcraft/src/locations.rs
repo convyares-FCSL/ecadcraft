@@ -385,7 +385,15 @@ pub fn shown_tag(doc: &Document, c: ComponentId, r: &Representation, tag: &str, 
     let device = resolve_with(doc, c, cache);
     let Some(loc) = device.value else { return tag.to_string() };
     let here = rep_context(doc, r, cache);
-    if here.value.as_deref() == Some(loc.as_str()) { tag.to_string() } else { format!("{loc}{tag}") }
+    if here.value.as_deref() == Some(loc.as_str()) { tag.to_string() } else { located_tag(&loc, tag) }
+}
+
+/// `tag` after location `loc` (`+X1`). A tag stored without its `-` (the project's tag dash off)
+/// gets it back here: IEC 81346 separates the location and product aspects by their prefix signs,
+/// and `+X1K01` would read as one location (pack re-run, bug 3).
+pub fn located_tag(loc: &str, tag: &str) -> String {
+    let t = tag.trim_start();
+    if t.is_empty() || t.starts_with(['-', '=', '+']) { format!("{loc}{t}") } else { format!("{loc}-{t}") }
 }
 
 /// The label of a box: its location at the top-left vertex (greatest y, then least x).
