@@ -104,7 +104,7 @@ const LOCAL_STYLE: &[&str] = &[
 /// that styles locally is a violation.
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
     ("apps/ecad-trial/src/debugger.rs", 1, "developer tool: restyled when U2 moves the Developer section"),
-    ("apps/ecad-trial/src/history_panel.rs", 7, "038 (U2) moves it; restyled by U4d"),
+    ("apps/ecad-trial/src/history_panel.rs", 3, "038 (U2) moves it; restyled by U4d"),
     ("apps/ecad-trial/src/merge_dialog.rs", 2, "restyled with History (U4d)"),
     ("apps/ecad-trial/src/outputs_ui.rs", 5, "restyled with Publish (after U2)"),
     ("apps/ecad-trial/src/preview.rs", 5, "restyled with the page view (U4a)"),

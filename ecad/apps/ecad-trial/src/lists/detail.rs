@@ -447,7 +447,7 @@ fn prop_row(ui: &mut egui::Ui, p: &Prop) {
     painter.text(pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, p.label, small.clone(), ecad_ui::color(s.text_2));
     let value = Rect::from_min_max(pos2(rect.left() + label_w, rect.top() + space::XXS), pos2(rect.right(), rect.bottom() - space::XXS));
     if p.set {
-        painter.rect_filled(value, egui::CornerRadius::same(radius::FIELD as u8), ecad_ui::color(s.raised));
+        painter.rect_filled(value, ecad_ui::style::corner(radius::FIELD), ecad_ui::color(s.raised));
     }
     let ink = if p.later.is_some() {
         s.text_3

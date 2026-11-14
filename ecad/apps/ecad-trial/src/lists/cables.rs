@@ -347,12 +347,7 @@ pub fn show_tab(t: &mut crate::Trial, ui: &mut eframe::egui::Ui) -> Option<(ecad
     let (area, _) = ui.allocate_exact_size(vec2(ui.available_width(), 200.0), Sense::hover());
     let area = area.shrink2(vec2(space::L, space::XS));
     let p = ui.painter();
-    p.rect_stroke(
-        area,
-        egui::CornerRadius::same(radius::CARD as u8),
-        Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)),
-        egui::StrokeKind::Inside,
-    );
+    p.rect_stroke(area, ecad_ui::style::corner(radius::CARD), Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
     let end_w = 240.0_f32.min(area.width() / 4.0);
     let left = egui::Rect::from_min_size(area.min + vec2(space::XL, space::XL), vec2(end_w, area.height() - 2.0 * space::XL));
     let right = egui::Rect::from_min_size(pos2(area.right() - space::XL - end_w, left.top()), left.size());

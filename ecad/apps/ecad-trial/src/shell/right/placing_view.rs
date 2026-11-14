@@ -157,7 +157,7 @@ fn boxed(ui: &mut egui::Ui, label: &str, value: &str, hint: &str, name: &str) {
                 egui::Rect::from_min_size(pos2(rect.right() - space::S - g.size().x - 12.0, rect.center().y - 10.0), vec2(g.size().x + 12.0, 20.0));
             p.rect_stroke(
                 pill,
-                egui::CornerRadius::same(10),
+                ecad_ui::style::corner(ecad_ui::tokens::radius::pill(pill.height())),
                 Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.line_strong)),
                 egui::StrokeKind::Inside,
             );

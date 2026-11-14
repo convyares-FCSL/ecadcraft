@@ -253,7 +253,7 @@ fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)])
                     pos2(x + space::M, y1 - space::M),
                     egui::Align2::LEFT_BOTTOM,
                     *value,
-                    egui::FontId::proportional(big),
+                    ecad_ui::style::ui_font(big),
                     ink,
                 );
             }

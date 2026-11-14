@@ -270,7 +270,7 @@ impl Trial {
             let view = PreviewView::extents(&d, w, h);
             match rasterise(&d, view, w, h, bg, 0.0) {
                 Ok(img) => {
-                    let image = egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.rgba);
+                    let image = ecad_ui::rgba_image([img.width as usize, img.height as usize], &img.rgba);
                     let texture = ctx.load_texture(format!("publish.thumb.{}", page.hex()), image, egui::TextureOptions::LINEAR);
                     self.publish.thumbs.insert(*page, Thumb { texture });
                     self.publish.drawn += 1;

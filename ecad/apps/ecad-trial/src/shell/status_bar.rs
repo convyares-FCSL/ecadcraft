@@ -601,7 +601,12 @@ fn hover_preview(t: &Trial, ui: &egui::Ui, button: Rect, page: PageId, number: &
         ui.painter().add(shadow.as_shape(card, 6.0));
         ui.painter().rect(card, 6.0, ecad_ui::color(s.bg), egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
         let sheet = Rect::from_min_size(card.min + vec2(space::S, space::S), vec2(size.x - 2.0 * space::S, 140.0));
-        super::glyphs::preview(ui.painter(), sheet, egui::Color32::from_gray(236), egui::Color32::from_gray(70));
+        super::glyphs::preview(
+            ui.painter(),
+            sheet,
+            ecad_ui::color(ecad_ui::tokens::sheet::PREVIEW_PAPER),
+            ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_INK),
+        );
         let y = sheet.bottom() + 16.0;
         let x = card.left() + space::M;
         let e = bar::text_at(ui, x, y, &padded(number), ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
