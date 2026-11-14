@@ -1,7 +1,7 @@
 # Brief 057: wire and cable rating checks
 
 Status: Approved (owner, 2026-11-14: design §14 answered, Q11 user-entered tables only, Q17 IEC
-method names and factors, all others as recommended; overseer, 2026-11-14: FP1–FP7, FP8 from Q11).
+method names and factors, all others as recommended; overseer, 2026-11-14: FP1–FP8).
 Branch: `feature/ratings`, from `origin/dev` `8b6c2ccd`.
 Designer: **yes** (`docs/design/057.md`) · Size: L (split below)
 Release: **0.2.2** (UI rev 4). The Power brief (0.2.3) supplies load currents and the panel's
@@ -75,7 +75,7 @@ location-box properties, five wire-category fields, the `cable` catalogue (050 F
 with choice entry `cable_type`, the `ratingtable` catalogue (FP8) chosen by `rating.table`, and
 registry area `rating`. Old files open unchanged. **Approved by the overseer (2026-11-14):
 FP1–FP7.** FP8 was added after the owner's Q11 answer and uses FP4's mechanism (a catalogue word,
-no op).
+no op). **FP8 approved by the overseer (2026-11-14); it ships with no values.**
 
 ## Update map
 
