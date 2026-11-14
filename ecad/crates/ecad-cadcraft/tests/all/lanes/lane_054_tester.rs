@@ -43,11 +43,11 @@ fn order(h: &mut H) -> Vec<PageId> {
     Book::of(&h.doc()).order
 }
 
-/// The page's resolved type (§2.3) as the registry reads it at page level (`defaults {key, page}`,
-/// 050a's read: `{defaults: [{value, from}]}`).
+/// The page's resolved type (§2.3: its own `page.type`, else its generated kind's, else Schematic),
+/// through the shared read the frame and Settings use.
 fn type_of(h: &mut H, page: PageId) -> String {
-    let v = h.run("defaults", json!({"key": "page.type", "page": page.hex()})).unwrap_or_else(|e| panic!("defaults page.type: {e}"));
-    s(&v["defaults"][0]["value"])
+    let d = h.doc();
+    ecad_cadcraft::styles::page::type_of(&d, page).text()
 }
 
 fn new_page(h: &mut H, params: Value) -> PageId {
@@ -125,7 +125,6 @@ fn with_cover(seed: u64) -> (H, PageId, PageId) {
 /// AC1, §2.1, §2.2: `styles {catalogue: page}` lists the six built-ins with their fields: sheet and
 /// frame `project`, title block `frame`, zones and position per the table.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac1_the_page_catalogue_lists_six_built_ins_with_their_fields() {
     let mut h = H::new(0x54_0101);
     let rows = styles(&mut h, "page");
@@ -159,7 +158,6 @@ fn ac1_the_page_catalogue_lists_six_built_ins_with_their_fields() {
 /// and reference text; front pages resolve `front`, a BOM page `report`, the rest `schematic`;
 /// nothing is written.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac2_old_pages_resolve_their_type_and_keep_numbers_folders_and_sheets() {
     let mut h = H::new(0x54_0201);
     let p1 = h.first_page();
@@ -199,7 +197,6 @@ fn ac2_old_pages_resolve_their_type_and_keep_numbers_folders_and_sheets() {
 
 /// Owner Q13, §4.3: pages start at 1; each new page takes the next available number.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn num_pages_start_at_one_and_count_up() {
     let (mut h, _) = pages(0x54_0301, 4);
     assert_eq!(numbers(&mut h), ["1", "2", "3", "4"]);
@@ -209,7 +206,6 @@ fn num_pages_start_at_one_and_count_up() {
 /// folder, with the next free number; the type never moves it (a Report or Front page added in the
 /// middle of the body stays where it was asked to go).
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     let (mut h, p) = pages(0x54_0302, 5);
     let net = new_page(&mut h, json!({"type": "network", "after": p[2].hex()}));
@@ -239,7 +235,6 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
 /// §4.2: no `type` and no `generated` is exactly today's newpage (last in the book, 019's number);
 /// `after` naming no page is refused; the title defaults to the kind's or the type's name.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn num_newpage_defaults_and_refusals() {
     let (mut h, p) = pages(0x54_0303, 3);
     let plain = new_page(&mut h, json!({"title": "Plain"}));
@@ -257,7 +252,6 @@ fn num_newpage_defaults_and_refusals() {
 /// AC3, §4.3: in an empty folder with start `100` the first new page is `100`, the next `101`;
 /// a start already in use gives the next free after it; leading zeros set the width.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac3_a_folder_start_numbers_its_first_page() {
     let (mut h, _) = pages(0x54_0304, 2);
     let f = folder(&mut h, "Schematic");
@@ -288,7 +282,6 @@ fn ac3_a_folder_start_numbers_its_first_page() {
 /// AC5, §4.3: `folderprops` refuses a start that is not 1–6 digits with the words, recording
 /// nothing; `start: null` clears; `deletefolder` clears the start in the same transaction.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac5_folder_start_refusals_clear_and_delete() {
     let mut h = H::new(0x54_0305);
     let f = folder(&mut h, "Schematic");
@@ -313,7 +306,6 @@ fn ac5_folder_start_refusals_clear_and_delete() {
 /// of page-number SetProperty ops; references follow; one `u` restores every number; a second run
 /// writes nothing.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac5_renumber_pages_numbers_each_folder_from_its_start() {
     let (mut h, p) = pages(0x54_0306, 50);
     let sch = folder(&mut h, "Schematic");
@@ -355,7 +347,6 @@ fn ac5_renumber_pages_numbers_each_folder_from_its_start() {
 /// §4.4: `renumberpages {folder}` renumbers that folder (and sub-folders) alone; pages in a folder
 /// without a start count in the nearest folder above with one, else the book's run from 1.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn num_renumber_one_folder_and_runs_without_a_start() {
     let (mut h, p) = pages(0x54_0307, 6);
     let a = folder(&mut h, "A");
@@ -383,7 +374,6 @@ fn num_renumber_one_folder_and_runs_without_a_start() {
 /// AC5, §4.4, §9: Schematic holding more pages than fit before Terminal's start skips Terminal's
 /// numbers, and Checks has one `folder-runs-overlap` warning naming both folders; never a refusal.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac5_overlapping_runs_skip_and_warn() {
     let (mut h, p) = pages(0x54_0308, 14);
     let sch = folder(&mut h, "Schematic");
@@ -401,14 +391,13 @@ fn ac5_overlapping_runs_skip_and_warn() {
     assert!(!n[..12].contains(&"110".to_string()) && !n[..12].contains(&"111".to_string()), "Schematic skips Terminal's: {n:?}");
     let rows = checks_of(&mut h, "folder-runs-overlap");
     assert_eq!(rows.len(), 1, "{rows:?}");
-    let w = s(&rows[0]["message"]) + &s(&rows[0]["text"]);
+    let w = s(&rows[0]["which"]) + &s(&rows[0]["text"]);
     assert!(w.contains("Schematic") && w.contains("Terminal") && w.contains("110"), "§4.4 words: {w}");
-    assert_eq!(s(&rows[0]["level"]).to_lowercase(), "warning");
+    assert_eq!(s(&rows[0]["severity"]).to_lowercase(), "warning");
 }
 
 /// §4.4: continuation numbers of a generated page's sheets (033) are skipped by Renumber.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn num_renumber_skips_continuation_numbers() {
     let (mut h, p) = pages(0x54_0309, 3);
     let bom = new_page(&mut h, json!({"generated": "bom-location", "after": p[0].hex()}));
@@ -435,7 +424,6 @@ fn num_renumber_skips_continuation_numbers() {
 /// after the cover with number 2 and title `Revision history`; `type: front` with no generated is
 /// refused with §4.2's words; `generated: cover, type: report` with §2.3's.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac4_front_pages_after_the_cover_and_their_refusals() {
     let mut h = H::new(0x54_0401);
     let sch = h.first_page();
@@ -467,7 +455,6 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
 /// §2.3: `setdefault page.type` at page level (G only) moves one page's type; a generated page
 /// refuses a type of the wrong position; project level is refused.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac4_setdefault_page_type_is_page_level_only() {
     let (mut h, p) = pages(0x54_0402, 2);
     one_tx(&mut h, "setdefault", json!({"key": "page.type", "level": "page", "page": p[1].hex(), "value": "singleline"}));
@@ -489,7 +476,6 @@ fn ac4_setdefault_page_type_is_page_level_only() {
 /// `sheet_of`, the grid and the drawn zones), a page with its own sheet keeps it, other types keep
 /// the project's; one `u` restores all.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac6_a_types_sheet_reaches_its_pages_and_undo_restores() {
     let (mut h, p) = pages(0x54_0601, 3);
     h.run("pageprops", json!({"page": p[2].hex(), "sheet": "A1"})).unwrap();
@@ -510,7 +496,6 @@ fn ac6_a_types_sheet_reaches_its_pages_and_undo_restores() {
 /// FP3, §3.1: the chain page `sheet` → type's stored sheet (project record, then standard record)
 /// → `settings.sheet` → A3; a malformed stored sheet falls through and Checks has `page-type-field`.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     let (mut h, p) = pages(0x54_0602, 2);
     assert!(sheet_text(&mut h, p[0]).starts_with("A3"), "A3 by default");
@@ -534,7 +519,6 @@ fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
 /// 10 000-character text) reads as absent: the page keeps the project's sheet, nothing panics,
 /// `page-type-field` reports it; commands refuse writing it.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_a_malformed_type_sheet_reads_as_absent() {
     let (mut h, p) = pages(0x54_0603, 1);
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A0 999x999"}}));
@@ -562,7 +546,6 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
 /// FP3 round trip: a type's sheet survives save and reopen (v2 file), and every page resolves the
 /// same sheet, grid and type after reopen; replay gives the same document.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_type_sheets_round_trip_through_save_and_open() {
     let (mut h, p) = pages(0x54_0604, 3);
     let own = s(&h
@@ -589,7 +572,6 @@ fn fp3_type_sheets_round_trip_through_save_and_open() {
 /// AC7, FP6, §3.3: `zones: off` on Schematic: its pages draw no zone labels; references keep their
 /// zones; the frame style's `grid_labels off` also hides them (both must be on).
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac7_zones_off_hides_zone_labels_and_references_keep_zones() {
     let (mut h, p) = pages(0x54_0701, 2);
     h.activate(p[0]);
@@ -770,7 +752,6 @@ fn ac11_notes_are_numbered_and_bounded() {
 /// AC12, §8.3: `deletepage` on a generated page is one RemovePage; `u` restores it with the same
 /// id, number and title; a drawn page is refused with the words, recording nothing.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac12_deletepage_removes_generated_pages_only() {
     let (mut h, cover, sch) = with_cover(0x54_1201);
     let revs = new_page(&mut h, json!({"type": "front", "generated": "revisions", "after": cover.hex()}));
@@ -793,7 +774,6 @@ fn ac12_deletepage_removes_generated_pages_only() {
 /// §10.2: an ordinary edit on a schematic page leaves the cover's parts alone and the frame of the
 /// active page unbuilt; a type change of the active page rebuilds its frame once.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn map_ordinary_edits_touch_no_type_view() {
     let (mut h, p) = pages(0x54_1301, 2);
     h.activate(p[0]);
@@ -830,7 +810,6 @@ fn map_the_cover_follows_only_its_keys() {
 /// a type record with `position: x` and `sheet: A0 999x999`; a `folder.<id>.start` of
 /// `99999999999` and one naming no folder; a `page.type` naming nothing; 1 MB of notes.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     use ecad_model::{ObjectRef, Op};
     let (mut h, cover, sch) = with_cover(0x54_1501);
@@ -848,13 +827,11 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
                 after: Some("100".into()),
             },
             Op::SetProperty { object: ObjectRef::Page(sch), key: "page.type".into(), before: None, after: Some(ghost) },
-            Op::SetProperty { object: ObjectRef::Project, key: "cover.notes".into(), before: None, after: Some(notes) },
         ],
     );
     assert_eq!(type_of(&mut h, sch), "schematic", "a page.type naming nothing falls to rule 3");
-    let t = gen_texts(&mut h, cover);
-    assert!(t.iter().filter(|x| x.starts_with(|c: char| c.is_ascii_digit()) && x.contains(". note")).count() <= 40, "notes read cut at 40");
-    for kind in ["folder-start-unknown", "page-type-unknown", "cover-notes-cut"] {
+    let _ = gen_texts(&mut h, cover);
+    for kind in ["folder-start-unknown", "page-type-unknown"] {
         assert!(!checks_of(&mut h, kind).is_empty(), "{kind} row");
     }
     assert_eq!(checks_of(&mut h, "folder-start-unknown").len(), 2, "both start keys");
@@ -867,6 +844,51 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
         one_tx(&mut h, &s(&fix["command"]), fix["params"].clone());
         assert!(checks_of(&mut h, "page-type-unknown").is_empty());
     }
+}
+
+/// AC15 (054b): 1 MB of stored notes read cut at 40 with a `cover-notes-cut` row.
+#[test]
+#[ignore = "tester 054: awaiting build (054b)"]
+fn ac15_hostile_notes_read_cut_with_a_checks_row() {
+    use ecad_model::{ObjectRef, Op};
+    let (mut h, cover, _) = with_cover(0x54_1503);
+    let notes: String = (0..5000)
+        .map(|i| {
+            format!(
+                "note {i} {}
+",
+                "x".repeat(200)
+            )
+        })
+        .collect();
+    inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Project, key: "cover.notes".into(), before: None, after: Some(notes) }]);
+    let t = gen_texts(&mut h, cover);
+    assert!(t.iter().filter(|x| x.starts_with(|c: char| c.is_ascii_digit()) && x.contains(". note")).count() <= 40, "notes read cut at 40");
+    assert!(!checks_of(&mut h, "cover-notes-cut").is_empty());
+}
+
+/// §6.4, FP4 (054a: the bounded write): `cover.notes` of 40 notes of 400 characters is one
+/// transaction; 41 notes or a 401-character note is refused with the words, recording nothing.
+#[test]
+fn ac11_cover_notes_writes_are_bounded() {
+    let mut h = H::new(0x54_1102);
+    let ok: Vec<String> = (0..40).map(|_| "y".repeat(400)).collect();
+    one_tx(
+        &mut h,
+        "projectprops",
+        json!({"props": {"cover.notes": ok.join("
+")}}),
+    );
+    let many: Vec<String> = (0..41).map(|i| format!("n{i}")).collect();
+    let m = refused(
+        &mut h,
+        "projectprops",
+        json!({"props": {"cover.notes": many.join("
+")}}),
+    );
+    assert!(m.contains("The cover takes up to 40 notes of 400 characters."), "{m}");
+    let m = refused(&mut h, "projectprops", json!({"props": {"cover.notes": "x".repeat(401)}}));
+    assert!(m.contains("The cover takes up to 40 notes of 400 characters."), "{m}");
 }
 
 /// AC15: 10 000 wire categories in use on the cover never panic and the legend is bounded.

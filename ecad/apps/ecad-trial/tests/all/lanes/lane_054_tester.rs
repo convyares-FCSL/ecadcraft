@@ -73,7 +73,6 @@ fn on_page_101() -> (H, ecad_model::PageId) {
 /// AC14, §4.1: from the page well on page 101 the picker highlights Schematic, shows `102` at its
 /// right, and Enter adds 102 right after 101 (one transaction); the status line says so.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac14_the_picker_adds_102_right_after_101() {
     let (mut h, p101) = on_page_101();
     click(&mut h, ecad_trial::shell::status_bar::ADD_PAGE);
@@ -100,7 +99,6 @@ fn ac14_the_picker_adds_102_right_after_101() {
 /// AC14, §4.1: Esc closes the picker and writes nothing; Panel layout is disabled with its tooltip;
 /// Front sheet opens its kinds.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac14_esc_writes_nothing_and_panel_layout_is_disabled() {
     let (mut h, _) = on_page_101();
     let head0 = head(&mut h);
@@ -122,15 +120,19 @@ fn ac14_esc_writes_nothing_and_panel_layout_is_disabled() {
 /// AC13, §5.2: each control of Settings ▸ Pages and sheets writes one `setstyle`: the Zones toggle
 /// and the Position segment of Schematic; the Pages count reads the types index.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac13_each_settings_control_writes_one_setstyle() {
     let mut h = shell();
     h.state_mut().open_settings(Section::Pages);
     h.run_steps(4);
     assert!(has(&h, "ecad.settings.pages.table"));
+    // Every name of §5.2's table; the missing ones are reported together at the end.
+    let mut missing = Vec::new();
     for t in ["front", "schematic", "network", "singleline", "panel", "report"] {
         for col in ["row", "sheet", "frame", "titleblock", "zones", "position", "count"] {
-            assert!(has(&h, &format!("ecad.settings.pages.{col}.{t}")), "{col}.{t}");
+            let n = format!("ecad.settings.pages.{col}.{t}");
+            if !has(&h, &n) {
+                missing.push(n);
+            }
         }
     }
     assert!(has(&h, "ecad.settings.pages.add") && has(&h, "ecad.settings.pages.project"));
@@ -142,11 +144,11 @@ fn ac13_each_settings_control_writes_one_setstyle() {
     assert!(last.to_string().contains("SetStyle") || d.styles.get("page").is_some_and(|m| !m.is_empty()), "a page record: {last}");
     run(&mut h, "u", json!({}));
     assert_eq!(doc(&mut h).styles.get("page").map(|m| m.len()).unwrap_or(0), 0, "one u");
+    assert!(missing.is_empty(), "§5.2 element names missing: {missing:?}");
 }
 
 /// AC13, §5.5: read only (a revision open) disables every control.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac13_read_only_disables_every_control() {
     let mut h = shell();
     run(&mut h, "revision", json!({"description": "first"}));
@@ -162,7 +164,6 @@ fn ac13_read_only_disables_every_control() {
 
 /// §4.3, §4.4: the Book's header menu has Renumber pages and a folder row offers Start number….
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn num_the_book_names_renumber_and_start_number() {
     let mut h = shell();
     let f = run(&mut h, "newfolder", json!({"name": "Schematic"}));

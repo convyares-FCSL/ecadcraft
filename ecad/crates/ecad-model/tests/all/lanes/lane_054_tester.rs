@@ -46,7 +46,6 @@ fn sheets(l: &Ledger, pages: &[PageId]) -> Vec<String> {
 
 /// FP3: with no record, every page resolves as before (own sheet, else settings, else A3).
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_no_record_resolves_as_before() {
     let (l, p) = fixture();
     let s = sheets(&l, &p);
@@ -58,7 +57,6 @@ fn fp3_no_record_resolves_as_before() {
 /// Report record's reaches BOM and terminals; a Schematic record's reaches the plain page; the
 /// page's own sheet wins over all.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_records_reach_their_derived_types_and_the_own_sheet_wins() {
     let (mut l, p) = fixture();
     l.commit(
@@ -84,7 +82,6 @@ fn fp3_records_reach_their_derived_types_and_the_own_sheet_wins() {
 /// FP3: `page.type` on the page wins over the derived type; an own type's record is read; a
 /// `page.type` naming no type falls back to the derived type.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_page_type_property_and_own_types() {
     let (mut l, p) = fixture();
     let own = StyleRef::Own(0x54);
@@ -118,7 +115,6 @@ fn fp3_page_type_property_and_own_types() {
 /// FP3: the project record over the standard record; a malformed or out-of-limits stored sheet
 /// (`A0 999x999`, `A9`, 10 000 characters, `project`) is skipped as if absent; then settings.sheet.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     let (mut l, p) = fixture();
     let header = StandardHeader { id: StandardId(0x54), name: "House".into(), based_on: "iec".into(), origin: None };
@@ -150,7 +146,6 @@ fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
 
 /// FP3: undo, redo and replay give the same sheets; a record's inverse restores the old sheet.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn fp3_undo_redo_and_replay_give_the_same_sheets() {
     let (mut l, p) = fixture();
     let before = sheets(&l, &p);

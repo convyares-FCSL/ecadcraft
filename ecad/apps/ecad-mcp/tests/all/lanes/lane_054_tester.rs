@@ -1,7 +1,7 @@
 //! Tester 054 through MCP (brief 011 rule; design 054 §12.1 AC16). On a project saved at a path
 //! with spaces and non-ASCII letters, each writing form (`newpage {type}`, `newpage {type,
 //! generated, after}`, `setstyle {catalogue: "page"}` new and change, `setdefault page.type` at page
-//! level, `setdefault front.cover.notes` at project level, `projectprops {props: {cover.notes}}`,
+//! level, `projectprops {props: {cover.notes}}`,
 //! `folderprops`, `renumberpages`, `deletepage`) records one transaction by
 //! `Author::Agent(<client>)`, and one `u` restores the document; `styles {catalogue: page}` records
 //! nothing; with writes off every write is refused with `WRITES_OFF` and reads are unchanged.
@@ -55,7 +55,6 @@ fn reads(c: &mut Client) -> Value {
 
 /// AC16: every writing form by the agent, one transaction, one undo; then writes off.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t054 Seitentypen mit Leerzeichen \u{e4}");
     let path = dir.file("Projekt 054 (A).ecad");
@@ -73,9 +72,9 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
         let (v, ops) = one_by_agent_then_undo(&mut c, "newpage", json!({"type": "front", "generated": "cover", "after": first}));
         assert_eq!(names(&ops), ["AddPage"]);
         let cover = s(&v["page"]);
-        let (_, ops) = one_by_agent_then_undo(&mut c, "newpage", json!({"type": "front", "generated": "revisions", "after": cover}));
+        let (v, ops) = one_by_agent_then_undo(&mut c, "newpage", json!({"type": "front", "generated": "revisions", "after": cover}));
         assert_eq!(names(&ops), ["AddPage"]);
-        let revs = c.log().last().and_then(|t| t.ops.first().cloned());
+        let revs_id = s(&v["page"]);
         let (v, ops) = one_by_agent_then_undo(
             &mut c,
             "setstyle",
@@ -89,7 +88,6 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
         let (_, ops) =
             one_by_agent_then_undo(&mut c, "setdefault", json!({"key": "page.type", "level": "page", "page": page, "value": "singleline"}));
         assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Page(_), .. }]), "{ops:?}");
-        one_by_agent_then_undo(&mut c, "setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "off"}));
         let (_, ops) = one_by_agent_then_undo(&mut c, "projectprops", json!({"props": {"cover.notes": "First note\nSecond note"}}));
         assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. }] if key == "cover.notes"), "{ops:?}");
         let f = s(&c.exec("newfolder", json!({"name": "Schematic"}))["folder"]);
@@ -101,10 +99,6 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
         );
         let (_, ops) = one_by_agent_then_undo(&mut c, "renumberpages", json!({}));
         assert!(!ops.is_empty() && ops.iter().all(|o| o.name() == "SetProperty"), "{ops:?}");
-        let revs_id = match revs {
-            Some(Op::AddPage { id, .. }) => id.hex(),
-            other => panic!("{other:?}"),
-        };
         let (_, ops) = one_by_agent_then_undo(&mut c, "deletepage", json!({"page": revs_id}));
         assert_eq!(names(&ops), ["RemovePage"]);
 
@@ -138,7 +132,6 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
         ("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A1"}})),
         ("setstyle", json!({"catalogue": "page", "new": true, "name": "New", "copy_of": "schematic"})),
         ("setdefault", json!({"key": "page.type", "level": "page", "page": page, "value": "network"})),
-        ("setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "on"})),
         ("projectprops", json!({"props": {"cover.notes": "x"}})),
         ("folderprops", json!({"folder": folder, "start": "200"})),
         ("renumberpages", json!({})),
@@ -153,7 +146,6 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
 
 /// The new commands are listed with parameter docs; `newpage` documents `type` and `after`.
 #[test]
-#[ignore = "tester 054: awaiting build"]
 fn ac16_the_new_commands_are_listed() {
     let mut c = crate::mcp_contracts::reader();
     let catalog = c.ok("list_commands", json!({}));
@@ -165,4 +157,25 @@ fn ac16_the_new_commands_are_listed() {
     let np = catalog.iter().find(|i| i["id"] == "newpage").unwrap();
     let p = s(&np["params"]);
     assert!(p.contains("type") && p.contains("after"), "{p}");
+}
+
+/// AC16 (054b): the cover's block toggle `setdefault front.cover.notes` at project level by the
+/// agent, one transaction, one undo; refused with writes off.
+#[test]
+#[ignore = "tester 054: awaiting build (054b)"]
+fn ac16_the_cover_toggle_by_the_agent_then_refused_with_writes_off() {
+    let dir = TempDir::new("t054b Deckblatt \u{e4}");
+    let path = dir.file("Projekt 054 (B).ecad");
+    {
+        let mut c = create(&path);
+        let (_, ops) = one_by_agent_then_undo(&mut c, "setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "off"}));
+        assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Project, .. }]), "{ops:?}");
+        assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
+    }
+    let (sess, _) = EcadMcp::open(&path, Options::default()).unwrap();
+    let mut c = Client::new(sess);
+    let log = c.log();
+    let m = c.refused("execute", json!({"command": "setdefault", "params": {"key": "front.cover.notes", "level": "project", "value": "on"}}));
+    assert_eq!(m, policy::WRITES_OFF);
+    assert_eq!(c.log(), log);
 }
