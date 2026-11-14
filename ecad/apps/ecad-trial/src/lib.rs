@@ -1223,6 +1223,11 @@ impl Trial {
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
+        // UI rev 3: the picker's chip names the symbol being placed.
+        self.shell.tools.placing.symbol = match &pick {
+            search::Pick::Symbol(k) => ecad_cadcraft::symbols::by_key(k).map(|s| s.key),
+            _ => None,
+        };
         let text = match pick {
             search::Pick::Symbol(k) => k.to_string(),
             search::Pick::Device(tag) => tag,
@@ -1910,6 +1915,10 @@ impl Trial {
                 }
             }
             A::Reports => self.reports_view(),
+            A::ProjectDevices => {
+                self.shell.lists = shell::ListsView::Devices;
+                self.set_workspace(shell::Workspace::Lists);
+            }
             A::PrintBook(folder) => {
                 self.open_print_book(folder);
                 self.publish_view(shell::PublishTab::PrintBook);
@@ -2107,6 +2116,7 @@ impl Trial {
     pub fn history_action(&mut self, d: history_panel::Do) {
         use history_panel::Do;
         match d {
+            Do::Agent(a) => self.agent_action(a),
             Do::Run(cmd, params) => {
                 match self.run_click(cmd, params) {
                     Ok(_) => {

@@ -5,7 +5,8 @@
 //! One bar at each edge: the top bar (40 px) and the bottom bar (32 px). Between them, in Draw:
 //! the tool strip (56 px) at the left edge, the panel slot beside it while a panel is open (Book
 //! and Devices 248 px, History 280 px), the canvas, and its mirror at the right: the inspector's
-//! permanent 56 px rail at the right edge, with the inspector (320 px) beside it while open. Project, Library and Publish have no strip and no panel slot; their
+//! permanent 56 px rail at the right edge, with the inspector (320 px) beside it while open. A
+//! pinned panel docks and the canvas moves over for it; an unpinned one floats over the canvas. Project, Library and Publish have no strip and no panel slot; their
 //! inspector is 340 px open. The agent banner sits under the top bar while an agent is connected.
 //!
 //! Brief 048: the symbol builder (Library) has a strip too, and a 380 px right panel. Its review
@@ -48,6 +49,8 @@ pub struct Slots {
     pub agent_banner: Option<Rect>,
     /// The panel slot beside the strip, while a panel is open (Draw only).
     pub panel: Option<Rect>,
+    /// The open panel is unpinned: it floats over the drawing, which does not move for it.
+    pub panel_floats: bool,
     pub tool_strip: Option<Rect>,
     pub main: Rect,
     pub companion: Option<Rect>,
@@ -90,10 +93,12 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let builder = state.workspace == Workspace::Library && state.builder;
     let right_w = right_width(state.workspace, state.builder);
     let mut panel_open = draw && !state.left.collapsed;
+    // An unpinned panel floats over the drawing: it takes no width from the canvas.
+    let panel_floats = state.left.floats();
     let mut right_rail = state.right_collapsed && !state.text_panel;
     let strip_w = if draw || builder { size::TOOL_STRIP } else { 0.0 };
     let main_w = |panel_open: bool, right_rail: bool| {
-        let l = if panel_open { left_width(state) } else { 0.0 };
+        let l = if panel_open && !panel_floats { left_width(state) } else { 0.0 };
         let r = if right_rail { 0.0 } else { right_w };
         window.width() - strip_w - l - r - RAIL_W
     };
@@ -121,7 +126,9 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let mut x = tool_strip.map_or(window.left(), |s| s.right());
     let panel = panel_open.then(|| {
         let r = Rect::from_min_max(pos2(x, y), pos2((x + left_width(state)).min(right.left()), bottom));
-        x = r.right();
+        if !panel_floats {
+            x = r.right();
+        }
         r
     });
     let drawer_top = if state.review { (bottom - DRAWER_HEADER - DRAWER_BODY).max(y) } else { bottom };
@@ -134,7 +141,8 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
         (head, list)
     });
     let (main, handle, companion) = split(view, state);
-    Slots { top_bar, agent_banner, panel, tool_strip, main, companion, handle, drawer, right, rail, status, right_rail, compare }
+    let panel_floats = panel_floats && panel.is_some();
+    Slots { top_bar, agent_banner, panel, panel_floats, tool_strip, main, companion, handle, drawer, right, rail, status, right_rail, compare }
 }
 
 /// The main view split for the companion: each half at least [`HALF_MIN`] wide, or no split.

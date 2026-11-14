@@ -20,4 +20,7 @@ mod lane_050;
 mod lane_050_tester;
 mod lane_051;
 mod lane_uiv3;
+mod lane_uiv3_b;
 mod lane_uiv3_canvas;
+mod lane_uiv3_tools;
+mod lane_uiv3a;

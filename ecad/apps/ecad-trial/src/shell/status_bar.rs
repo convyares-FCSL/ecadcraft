@@ -555,6 +555,9 @@ fn draw_item(
             let r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(PAGE_BTN, BTN));
             let on = Some(*p) == t.panel.active;
             let resp = bar::text_button_small(ui, r, &padded(n), &format!("Page {n}"), on);
+            if resp.hovered() {
+                hover_preview(t, ui, r, *p, n);
+            }
             if resp.clicked() {
                 *go = Some(*p);
             }
@@ -581,6 +584,37 @@ fn draw_item(
         }
     }
 }
+
+/// The preview above a hovered page button (UI rev 3, board 1.08): a sketch of the page, its
+/// number and title, its group and "click to go". The sketch is the panels' drawn thumbnail, not
+/// a render of the page.
+fn hover_preview(t: &Trial, ui: &egui::Ui, button: Rect, page: PageId, number: &str) {
+    let s = ecad_ui::SHELL;
+    let title = t.panel.rows().iter().find(|r| r.id == page).map(|r| r.title.clone()).unwrap_or_default();
+    let group = t.shell.well.groups.iter().find(|g| g.pages.iter().any(|(p, _)| *p == page)).map(|g| g.name.clone()).unwrap_or_default();
+    let size = vec2(PREVIEW_W, PREVIEW_H);
+    let at = pos2(button.center().x - size.x / 2.0, button.top() - space::S - size.y);
+    egui::Area::new(egui::Id::unique("ecad.well.preview")).order(egui::Order::Tooltip).fixed_pos(at).interactable(false).show(ui.ctx(), |ui| {
+        let card = Rect::from_min_size(at, size);
+        let shadow = egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: egui::Color32::from_black_alpha(120) };
+        ui.painter().add(shadow.as_shape(card, 6.0));
+        ui.painter().rect(card, 6.0, ecad_ui::color(s.bg), egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
+        let sheet = Rect::from_min_size(card.min + vec2(space::S, space::S), vec2(size.x - 2.0 * space::S, 140.0));
+        super::glyphs::preview(ui.painter(), sheet, egui::Color32::from_gray(236), egui::Color32::from_gray(70));
+        let y = sheet.bottom() + 16.0;
+        let x = card.left() + space::M;
+        let e = bar::text_at(ui, x, y, &padded(number), ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
+        let room = card.right() - e - space::L;
+        bar::text_at(ui, e + space::S, y, &clip(ui, &title, room), ui_type::BODY, ecad_ui::color(s.text));
+        let line = if group.is_empty() { "Click to go".to_string() } else { format!("{group} group · click to go") };
+        bar::text_at(ui, x, y + 20.0, &line, ui_type::SMALL, ecad_ui::color(s.text_2));
+        ui.allocate_rect(card, egui::Sense::hover());
+    });
+}
+
+/// The hover preview's size.
+const PREVIEW_W: f32 = 228.0;
+const PREVIEW_H: f32 = 198.0;
 
 /// A page number as the well shows it: a plain number padded to two digits (`2` → `02`), any
 /// other number as it is.

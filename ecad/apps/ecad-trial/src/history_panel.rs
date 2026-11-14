@@ -26,13 +26,13 @@
 //!   confirmation, design 035 §8); after it ended its steps undo one by one as any others. The
 //!   groups are made when the Steps list is read (its update map above), never per frame.
 
-use cadcraft_ui_egui::theme::Tokens;
-use ecad_cadcraft::history::{self, Graph, Layout, NodeKind, Show};
+use ecad_cadcraft::history::{self, Graph, NodeKind, Show};
 use ecad_file::v2::schema::{BranchId, BranchStatus};
 use ecad_model::Op;
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, pos2, vec2};
 use serde_json::{Value, json};
 
+use crate::agent::BannerAction;
 use crate::agent::last_write::LiveSession;
 use crate::project_panel::{Action, ROW_H};
 
@@ -62,7 +62,31 @@ pub enum Do {
     ShowPoint(Value),
     /// Open the merge dialog for `{from, into?}` (brief 020b).
     AskMerge(Value),
+    /// UI rev 3 (board 1.04): the agent card's Pause, Resume and disconnect, as the banner's.
+    Agent(BannerAction),
 }
+
+/// The agent card's facts, copied from the banner when it changes (board 1.04).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentCard {
+    pub name: String,
+    pub steps: usize,
+    pub paused: bool,
+}
+
+/// Board 1.04's texts.
+pub const FOOTER: &str = "Selecting a change marks it on the page. Compare opens the full view with clouds.";
+pub const NEW_BRANCH: &str = "New branch";
+pub const NAME_THIS: &str = "Name this one";
+pub const EARLIER: &str = "Show earlier changes";
+pub const OLDER: &str = "Show older versions";
+/// How many changes the panel shows before "Show n earlier changes" (board 1.04 shows about 8, so
+/// Versions stays in view).
+pub const FIRST_CHANGES: usize = 8;
+pub const AGENT_DISCONNECT: &str = "Disconnect the agent";
+/// The placeholders' reasons.
+pub const COMPARE_LATER: &str = "Compare is not available yet";
+pub const FILTER_LATER: &str = "Filtering the changes is not available yet";
 
 /// A selected row: a node of the graph, or a step of the Steps list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,7 +173,10 @@ pub fn author_chip(agent: Option<&str>) -> &str {
 pub struct HistoryPanel {
     pub show: Show,
     graph: Graph,
-    layout: Layout,
+    /// Sections folded (board 1.04: every section folds).
+    pub folded: std::collections::BTreeSet<&'static str>,
+    /// The agent card while an agent is connected.
+    pub agent: Option<AgentCard>,
     /// Project serial, change count, unsaved count and head the copy was taken at.
     seen: Option<(u64, u64, u64, u64)>,
     /// Read the graph again on the next sync (after a branch action).
@@ -171,6 +198,8 @@ pub struct HistoryPanel {
     pub undo_session: bool,
     steps_for: Option<(Sel, u64)>,
     steps_more: u64,
+    /// Changes shown past the first [`FIRST_CHANGES`] (Show n earlier changes).
+    pub changes_more: usize,
     pub dialog: Option<Dialog>,
     /// A refusal or note under the header.
     pub note: Option<String>,
@@ -225,7 +254,6 @@ impl HistoryPanel {
     fn rebuild(&mut self, p: &ecad_cadcraft::Project, key: (u64, u64, u64, u64)) {
         match history::graph(p, self.show) {
             Ok(g) => {
-                self.layout = history::layout(&g);
                 self.graph = g;
                 self.note = None;
             }
@@ -303,10 +331,8 @@ impl HistoryPanel {
     }
 
     fn sync_steps(&mut self, p: &ecad_cadcraft::Project) {
-        if !self.steps_open {
-            return;
-        }
-        let Some(sel) = self.selected.clone() else { return };
+        // UI rev 3: the Changes list always shows the branch shown's steps back from Now.
+        let Some(sel) = self.anchor() else { return };
         let want = (sel.clone(), self.steps_more);
         if self.steps_for.as_ref() == Some(&want) {
             return;
@@ -332,194 +358,588 @@ impl HistoryPanel {
         self.steps_for = Some(want);
     }
 
-    /// The tab's contents; `writable`: a project that can be changed; `file`: it has a version 2
-    /// file.
-    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool, read_only: bool) -> Vec<Action> {
+    /// The panel's contents (UI rev 3, board 1.04), top to bottom: the pending revision, the agent
+    /// while one is connected, Branches, Changes and Versions, each folding, then a short footer.
+    /// `writable`: a project that can be changed; `read_only`: its file cannot be written.
+    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool, read_only: bool, header: &crate::project_panel::Header) -> Vec<Action> {
         let mut out = Vec::new();
-        let t = Tokens::get();
         let (next_version, next_branch, unsaved, cur_name, has_file) = self.defaults.clone();
-        // The header: Branch [▾], New version, New branch, ⋯.
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            ui.label(RichText::new("Branch").small());
-            let combo = egui::ComboBox::from_id_salt("ecad.history.branch").selected_text(RichText::new(&cur_name).small());
-            let shown = combo.show_ui(ui, |ui| {
-                for b in self.graph.branches.iter().filter(|b| b.status == BranchStatus::Open) {
-                    if ui.selectable_label(b.current, &b.name).clicked() && !b.current {
-                        if unsaved > 0 && read_only {
-                            self.dialog = Some(Dialog::SwitchReadOnly);
-                        } else if unsaved > 0 {
-                            self.dialog = Some(Dialog::Switch { branch: b.id.hex(), name: b.name.clone() });
-                        } else {
-                            out.push(Action::History(Do::Run("switchbranch", json!({"branch": b.id.hex(), "save": false}))));
-                        }
-                    }
-                }
-                ui.separator();
-                if ui.checkbox(&mut self.show.archived, "Show merged and archived").changed() {
-                    self.invalidate();
-                }
-            });
-            // Double-click on the Branch list's name, or F2, renames the branch shown (design §3.2).
-            let cur_row = self.graph.branches.iter().find(|b| b.current).cloned();
-            let f2 = ui.input(|i| i.key_pressed(egui::Key::F2)) && self.dialog.is_none();
-            if writable
-                && (shown.response.double_clicked() || f2)
-                && let Some(b) = cur_row.filter(|b| b.fork.is_some())
-            {
-                self.dialog = Some(Dialog::Rename { branch: b.id.hex(), name: b.name.clone(), error: None });
-            }
-            if writable {
-                if ui
-                    .small_button("New version")
-                    .on_hover_text("Keep the project as it is now under a name")
-                    .accessible_name("ecad.history.newversion")
-                    .clicked()
-                {
-                    self.dialog = Some(Dialog::NewVersion { name: next_version.clone(), description: String::new(), error: None });
-                }
-                if ui
-                    .small_button("New branch")
-                    .on_hover_text("Try something on a branch from Now")
-                    .accessible_name("ecad.history.newbranch")
-                    .clicked()
-                {
-                    if has_file {
-                        self.dialog = Some(Dialog::NewBranch {
-                            name: next_branch.clone(),
-                            from: Value::Null,
-                            from_text: format!("{cur_name} · Now"),
-                            switch: true,
-                            error: None,
-                        });
-                    } else {
-                        self.note = Some("Branches live in the project file. Save it first.".into());
-                    }
-                }
-            }
-            ui.menu_button(RichText::new("\u{22ef}").small(), |ui| {
-                if ui.checkbox(&mut self.show.autos, "Show automatic snapshots").changed() {
-                    self.invalidate();
-                }
-                if ui.checkbox(&mut self.show.archived, "Show merged and archived branches").changed() {
-                    self.invalidate();
-                }
-                let on_main = self.graph.branches.iter().find(|b| b.current).is_none_or(|b| b.fork.is_none());
-                if writable && !on_main {
-                    ui.separator();
-                    let cur = self.graph.branches.iter().find(|b| b.current).cloned();
-                    if let Some(b) = cur {
-                        if ui.button("Rename branch…").clicked() {
-                            self.dialog = Some(Dialog::Rename { branch: b.id.hex(), name: b.name.clone(), error: None });
-                            ui.close();
-                        }
-                        if ui.button("Archive branch…").clicked() {
-                            self.dialog = Some(Dialog::Archive { branch: b.id.hex(), name: b.name.clone() });
-                            ui.close();
-                        }
-                        let parent = self.parent_name(&b);
-                        if ui.button(format!("Merge into {parent}…")).clicked() {
-                            out.push(Action::History(Do::AskMerge(json!({"from": b.id.hex()}))));
-                            ui.close();
-                        }
-                        if ui.button(format!("Update from {parent}…")).clicked() {
-                            out.push(Action::History(Do::AskMerge(json!({"from": parent, "into": b.id.hex()}))));
-                            ui.close();
-                        }
-                    }
-                }
-            })
-            .response
-            .accessible_name("ecad.history.more");
-        });
+        let s = ecad_ui::SHELL;
+        let r = ui.max_rect();
+        // F2 renames the branch shown (design §3.2).
+        let f2 = ui.input(|i| i.key_pressed(egui::Key::F2)) && self.dialog.is_none();
+        if writable
+            && f2
+            && let Some(b) = self.graph.branches.iter().find(|b| b.current && b.fork.is_some()).cloned()
+        {
+            self.dialog = Some(Dialog::Rename { branch: b.id.hex(), name: b.name.clone(), error: None });
+        }
         if let Some(n) = self.note.clone() {
             ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new(n).small().color(t.text_dim));
+                ui.label(RichText::new(n).small().color(ecad_ui::color(s.text_2)));
                 if !has_file && ui.small_button("Save As…").clicked() {
                     out.push(Action::History(Do::SaveAs));
                 }
             });
         }
-        // The graph, newest first, virtualised.
-        let n = self.graph.nodes.len();
-        let details_h = if self.selected.is_some() { 120.0 + if self.steps_open { 160.0 } else { 0.0 } } else { 24.0 };
-        let list_h = (ui.available_height() - details_h).max(ROW_H * 4.0);
+        let footer_h = 40.0;
+        let body_h = (ui.available_height() - footer_h).max(ROW_H * 4.0);
         let mut drawn = 0;
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let mut clicked: Option<(usize, bool)> = None;
-        let mut at_end = false;
-        let mut menu: Option<Action> = None;
-        egui::ScrollArea::vertical().id_salt("ecad.history.graph").max_height(list_h).auto_shrink([false, true]).show_rows(
-            ui,
-            ROW_H,
-            n,
-            |ui, range| {
-                at_end = range.end >= n;
-                for i in range {
-                    drawn += 1;
-                    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
-                    self.draw_row(ui, rect, i);
-                    let label = self.row_label(i);
-                    let resp = resp.on_hover_text(self.hover(i));
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
-                    if resp.double_clicked() {
-                        clicked = Some((i, true));
-                    } else if resp.clicked() {
-                        clicked = Some((i, false));
-                    }
-                    // A branch's Now row: its actions (design §4.1).
-                    if let Some(node) = self.graph.nodes.get(i).cloned()
-                        && node.kind == NodeKind::Now
-                    {
-                        let row = self.graph.branches.iter().find(|b| b.id == node.branch).cloned();
-                        resp.context_menu(|ui| {
-                            if let Some(a) = self.now_menu(ui, row.as_ref(), writable, unsaved, read_only) {
-                                menu = Some(a);
-                            }
-                        });
-                    }
+        egui::ScrollArea::vertical().id_salt("ecad.history.body").max_height(body_h).auto_shrink([false, false]).show(ui, |ui| {
+            // Rows are as wide as the panel (the content never widens it).
+            ui.set_max_width(r.width());
+            ui.spacing_mut().item_spacing.y = 0.0;
+            self.revision_card(ui, header, &mut out);
+            self.agent_card(ui, &cur_name, &mut out);
+            drawn += self.branches(ui, writable, unsaved, read_only, has_file, &cur_name, &next_branch, &mut out);
+            drawn += self.changes(ui, writable, &cur_name, &mut out);
+            drawn += self.versions(ui, writable, &next_version, &mut out);
+        });
+        self.rows_drawn = drawn;
+        // The footer.
+        let foot = egui::Rect::from_min_max(pos2(r.left() - 8.0, (r.bottom() - footer_h).max(r.top())), pos2(r.right() + 8.0, r.bottom()));
+        ui.painter().hline(foot.x_range(), foot.top() + 0.5, Stroke::new(1.0, ecad_ui::color(s.line)));
+        crate::shell::in_rect(ui, foot.shrink2(vec2(10.0, 5.0)), "ecad.history.footer", |ui| {
+            ui.add(egui::Label::new(RichText::new(FOOTER).small().color(ecad_ui::color(s.text_3))).wrap());
+        });
+        self.dialogs(ui, unsaved, &cur_name, &mut out);
+        out
+    }
+
+    /// The pending revision: `Rev D* pending`, after which revision, the checks' verdict, Release
+    /// and Compare (a placeholder until Compare comes).
+    fn revision_card(&mut self, ui: &mut egui::Ui, header: &crate::project_panel::Header, out: &mut Vec<Action>) {
+        let s = ecad_ui::SHELL;
+        let c = ecad_ui::color;
+        let last = self.graph.nodes.iter().find(|n| n.kind == NodeKind::Revision).cloned();
+        let today = now_ms();
+        egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 4, top: 6, bottom: 10 }).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            let Some((rev, checks)) = &header.release else {
+                ui.label(RichText::new("No revision pending").color(c(s.text_2)));
+                return;
+            };
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                let title = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::TITLE);
+                ui.label(RichText::new("Rev ").font(title.clone()).color(c(s.text)));
+                ui.label(RichText::new(format!("{rev}*")).font(title.clone()).color(c(s.provisional)));
+                ui.label(RichText::new(" pending").font(title).color(c(s.text)));
+                if let Some(l) = &last {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let after = format!("after {}, {}", l.label.trim_start_matches("Rev "), history::short_time(l.time_ms, today));
+                        ui.label(RichText::new(after).small().color(c(s.text_3)));
+                    });
                 }
-            },
-        );
+            });
+            let verdict = match checks {
+                None => "Checks run at release".to_string(),
+                Some((0, 0)) => "No problems: ready to release".to_string(),
+                Some((0, w)) => format!("{w} warning{} to look at", if *w == 1 { "" } else { "s" }),
+                Some((e, _)) => format!("{e} error{} a full release", if *e == 1 { " stops" } else { "s stop" }),
+            };
+            ui.label(RichText::new(verdict).small().color(c(s.text_2)));
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                let release = format!("Release {rev}\u{2026}");
+                if ui.add(ecad_ui::prim::Button::new(&release).kind(ecad_ui::prim::Kind::Primary).small()).clicked() {
+                    out.push(Action::Release);
+                }
+                let compare = last.as_ref().map_or_else(|| "Compare".to_string(), |l| format!("Compare with {}", l.label.trim_start_matches("Rev ")));
+                ui.add(ecad_ui::prim::Button::new(&compare).small().disabled(COMPARE_LATER));
+            });
+        });
+        separator(ui);
+    }
+
+    /// The agent while one is connected (Carl's ruling: it writes on the branch shown, not a
+    /// branch of its own): who, where, how many changes; Pause or Resume, and disconnect.
+    fn agent_card(&mut self, ui: &mut egui::Ui, cur_name: &str, out: &mut Vec<Action>) {
+        let Some(a) = self.agent.clone() else { return };
+        let s = ecad_ui::SHELL;
+        let c = ecad_ui::color;
+        let lime = c(s.agent);
+        let shown = egui::Frame::NONE.fill(lime.gamma_multiply(0.08)).inner_margin(egui::Margin::symmetric(6, 8)).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.horizontal(|ui| {
+                chip(ui, "AI", lime, Color32::from_rgb(20, 24, 10));
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    let state = if a.paused { "is paused" } else { "is writing" };
+                    ui.label(RichText::new(format!("{} {state}", a.name)).strong().color(c(s.text)));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label(RichText::new("on branch ").small().color(c(s.text_2)));
+                        ui.label(RichText::new(cur_name).small().color(lime));
+                        let n = a.steps;
+                        ui.label(RichText::new(format!(" \u{b7} {n} change{}", if n == 1 { "" } else { "s" })).small().color(c(s.text_2)));
+                    });
+                });
+            });
+            ui.horizontal(|ui| {
+                let (label, act) = if a.paused { ("Resume", BannerAction::Resume) } else { ("Pause", BannerAction::Pause) };
+                if ui.add(ecad_ui::prim::Button::new(label).small()).clicked() {
+                    out.push(Action::History(Do::Agent(act)));
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Close, AGENT_DISCONNECT)).clicked() {
+                        out.push(Action::History(Do::Agent(BannerAction::Disconnect)));
+                    }
+                });
+            });
+        });
+        let r = shown.response.rect;
+        ui.painter().rect_filled(egui::Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, lime);
+        separator(ui);
+    }
+
+    /// A folding section's header: chevron, title, and an action at the right (`None`: none).
+    /// Returns (open, action clicked).
+    fn section(&mut self, ui: &mut egui::Ui, key: &'static str, title: &str, action: Option<(&str, bool)>) -> (bool, bool) {
+        let s = ecad_ui::SHELL;
+        let c = ecad_ui::color;
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+        let open = !self.folded.contains(key);
+        let p = ui.painter_at(rect);
+        let y = rect.center().y;
+        let chev = egui::Rect::from_center_size(pos2(rect.left() + 8.0, y), vec2(10.0, 10.0));
+        ecad_ui::icons::paint(&p, chev, if open { ecad_ui::tokens::Icon::ChevronDown } else { ecad_ui::tokens::Icon::ChevronRight }, c(s.text_3));
+        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY_EMPHASIS);
+        p.text(pos2(rect.left() + 20.0, y), egui::Align2::LEFT_CENTER, title, font, c(s.text));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Section {title}")));
+        let mut acted = false;
+        if let Some((label, enabled)) = action {
+            let w = crate::shell::bar::text_width(ui, label, ecad_ui::tokens::ui_type::BODY) + 12.0;
+            let r = egui::Rect::from_min_max(pos2(rect.right() - w, rect.top() + 4.0), pos2(rect.right(), rect.bottom() - 4.0));
+            let b = crate::shell::bar::hit(ui, r, label, false, false, enabled);
+            ui.painter().text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY),
+                crate::shell::bar::ink(false, false, enabled),
+            );
+            acted = b.clicked();
+        }
+        if resp.clicked() && !acted && !self.folded.remove(key) {
+            self.folded.insert(key);
+        }
+        (open, acted)
+    }
+
+    /// Branches: the branch shown first ("you are here"), the other open branches with how far
+    /// ahead they are and Merge, merged and archived ones greyed. Double-click switches; a row's
+    /// right-click offers switch, merge, update, rename and archive. Returns the rows drawn.
+    #[allow(clippy::too_many_arguments)]
+    fn branches(
+        &mut self, ui: &mut egui::Ui, writable: bool, unsaved: u64, read_only: bool, has_file: bool, cur_name: &str, next_branch: &str,
+        out: &mut Vec<Action>,
+    ) -> usize {
+        let (open, new) = self.section(ui, "branches", "Branches", writable.then_some((NEW_BRANCH, true)));
+        if new {
+            if has_file {
+                self.dialog = Some(Dialog::NewBranch {
+                    name: next_branch.to_string(),
+                    from: Value::Null,
+                    from_text: format!("{cur_name} · Now"),
+                    switch: true,
+                    error: None,
+                });
+            } else {
+                self.note = Some("Branches live in the project file. Save it first.".into());
+            }
+        }
+        if !open {
+            separator(ui);
+            return 0;
+        }
+        let s = ecad_ui::SHELL;
+        let c = ecad_ui::color;
+        let mut rows = self.graph.branches.clone();
+        rows.sort_by_key(|b| (!b.current, b.status != BranchStatus::Open, b.fork.is_some()));
+        let mut menu: Option<Action> = None;
+        for b in &rows {
+            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 29.0), Sense::click());
+            let p = ui.painter_at(rect);
+            let y = rect.center().y;
+            let live = b.status == BranchStatus::Open;
+            if b.current {
+                p.rect_filled(rect, 0.0, c(s.accent_soft));
+            } else if resp.hovered() {
+                p.rect_filled(rect, 0.0, c(s.hover));
+            }
+            let lane = if b.fork.is_none() {
+                c(s.accent)
+            } else if live {
+                c(s.agent)
+            } else {
+                c(s.text_3)
+            };
+            p.line_segment([pos2(rect.left() + 10.0, y - 7.0), pos2(rect.left() + 10.0, y + 7.0)], Stroke::new(2.0, lane));
+            p.circle_filled(pos2(rect.left() + 10.0, y - 7.0), 2.0, lane);
+            let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
+            let small = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+            let ink = if live { c(s.text) } else { c(s.text_3) };
+            let name = p.text(pos2(rect.left() + 24.0, y), egui::Align2::LEFT_CENTER, &b.name, font.clone(), ink);
+            let sub = if b.current {
+                "you are here".to_string()
+            } else if !live {
+                format!("{} {}", if b.status == BranchStatus::Merged { "merged" } else { "archived" }, history::short_time(b.created_ms, now_ms()))
+            } else {
+                let ahead = b.fork.map_or(0, |(_, at)| b.head.saturating_sub(at));
+                format!("{ahead} ahead")
+            };
+            p.text(pos2(name.right() + 8.0, y), egui::Align2::LEFT_CENTER, sub, small, c(s.text_3));
+            let label = format!("Branch {}", b.name);
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, b.current, &label));
+            if b.current {
+                let tick = egui::Rect::from_center_size(pos2(rect.right() - 12.0, y), vec2(10.0, 10.0));
+                crate::shell::glyphs::tick(&p, tick, c(s.accent_text));
+            } else if live && writable {
+                let r = egui::Rect::from_min_max(pos2(rect.right() - 54.0, rect.top() + 3.0), pos2(rect.right() - 2.0, rect.bottom() - 3.0));
+                let merge_label = format!("Merge {}", b.name);
+                let m = crate::shell::bar::hit(ui, r, &merge_label, false, false, true);
+                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "Merge", font, c(s.text));
+                if m.clicked() {
+                    out.push(Action::History(Do::AskMerge(json!({"from": b.id.hex()}))));
+                }
+            }
+            if resp.double_clicked() && !b.current && live {
+                if unsaved > 0 && read_only {
+                    self.dialog = Some(Dialog::SwitchReadOnly);
+                } else if unsaved > 0 {
+                    self.dialog = Some(Dialog::Switch { branch: b.id.hex(), name: b.name.clone() });
+                } else {
+                    out.push(Action::History(Do::Run("switchbranch", json!({"branch": b.id.hex()}))));
+                }
+            }
+            resp.context_menu(|ui| {
+                if let Some(a) = self.now_menu(ui, Some(b), writable, unsaved, read_only) {
+                    menu = Some(a);
+                }
+            });
+        }
         if let Some(a) = menu {
             out.push(a);
         }
-        // The next page of rows, read when the list is scrolled to its end (design §8.2).
-        if at_end && self.graph.more {
-            self.show.limit = self.graph.nodes.len() + history::PAGE;
-            self.invalidate();
+        // Merged and archived branches are listed on request.
+        ui.horizontal(|ui| {
+            ui.add_space(20.0);
+            if ui.checkbox(&mut self.show.archived, RichText::new("Show merged and archived").small()).changed() {
+                self.invalidate();
+            }
+        });
+        separator(ui);
+        rows.len()
+    }
+
+    /// Changes: the branch shown's steps, newest first, with their branch line down the left; an
+    /// agent's session folds to one row (brief 043). Selecting a change marks it on the page and
+    /// offers Show, Branch from here and Restore. Returns the rows drawn.
+    fn changes(&mut self, ui: &mut egui::Ui, writable: bool, cur_name: &str, out: &mut Vec<Action>) -> usize {
+        let (open, _) = self.section(ui, "changes", "Changes", None);
+        if !open {
+            separator(ui);
+            return 0;
         }
-        self.rows_drawn = drawn;
-        if n <= 2 && self.graph.nodes.iter().all(|x| matches!(x.kind, NodeKind::Now | NodeKind::Root)) {
-            ui.label(RichText::new("Create a version to keep this point, or a branch to try something.").small().color(t.text_dim));
-        }
-        if let Some((i, double)) = clicked
-            && let Some(node) = self.graph.nodes.get(i).cloned()
-        {
-            let sel = Sel { branch: node.branch, seq: node.seq, kind: node.kind, name: node.name.clone() };
-            if double {
-                if node.kind == NodeKind::Now && Some(node.branch) != self.graph.current {
-                    let name = self.graph.branches.iter().find(|b| b.id == node.branch).map(|b| b.name.clone()).unwrap_or_default();
-                    if unsaved > 0 && read_only {
-                        self.dialog = Some(Dialog::SwitchReadOnly);
-                    } else if unsaved > 0 {
-                        self.dialog = Some(Dialog::Switch { branch: node.branch.hex(), name });
-                    } else {
-                        out.push(Action::History(Do::Run("switchbranch", json!({"branch": node.branch.hex()}))));
+        // The filter: All for now; by branch and This page are placeholders.
+        ui.horizontal(|ui| {
+            ui.add_space(20.0);
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (name, on) in [("All", true), (cur_name, false), ("This page", false)] {
+                let w = crate::shell::bar::text_width(ui, name, ecad_ui::tokens::ui_type::SMALL) + 14.0;
+                let (r, _) = ui.allocate_exact_size(vec2(w, 22.0), Sense::hover());
+                let label = format!("Changes: {name}");
+                let enabled = on;
+                let b = crate::shell::bar::hit(ui, r, &label, on, false, enabled);
+                let b = if enabled { b } else { b.on_hover_text(FILTER_LATER) };
+                let _ = b;
+                ui.painter().text(
+                    r.center(),
+                    egui::Align2::CENTER_CENTER,
+                    name,
+                    crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+                    crate::shell::bar::ink(on, false, enabled),
+                );
+            }
+        });
+        ui.add_space(4.0);
+        let Some(sel) = self.anchor() else {
+            separator(ui);
+            return 0;
+        };
+        let groups = self.groups.clone();
+        let mut i = 0;
+        let mut drawn = 0;
+        // Board 1.04: a few changes first, so Versions stays in view; a session group is one
+        // row however many steps it folds (its expanded steps don't count).
+        let cap = FIRST_CHANGES + self.changes_more;
+        let mut shown = 0;
+        let mut hidden = 0;
+        let top = ui.cursor().top();
+        for g in &groups {
+            let rows: Vec<StepRow> = self.steps.get(i..i + g.seqs.len()).map(<[StepRow]>::to_vec).unwrap_or_default();
+            i += g.seqs.len();
+            let key = g.seqs.first().copied().unwrap_or(0);
+            if shown >= cap {
+                hidden += if g.is_session() { 1 } else { rows.len() };
+                continue;
+            }
+            if g.is_session() {
+                shown += 1;
+                let open = self.expanded.contains(&key);
+                let live = self.group_is_live(g);
+                ui.horizontal(|ui| {
+                    ui.add_space(20.0);
+                    let (toggle, undo) = group_row(ui, g, open, live);
+                    if toggle && !self.expanded.remove(&key) {
+                        self.expanded.insert(key);
                     }
-                } else {
-                    out.push(Action::History(Do::ShowPoint(sel.params())));
+                    if undo {
+                        self.undo_session = true;
+                    }
+                });
+                drawn += 1;
+                if !open {
+                    continue;
                 }
             }
-            if self.selected.as_ref() != Some(&sel) {
-                self.steps_more = 0;
+            for r in rows {
+                if !g.is_session() {
+                    if shown >= cap {
+                        hidden += 1;
+                        continue;
+                    }
+                    shown += 1;
+                }
+                drawn += 1;
+                if self.step_row(ui, &sel, &r, cur_name) {
+                    let s = Sel { branch: sel.branch, seq: r.seq, kind: NodeKind::Fork, name: None };
+                    self.selected = if self.selected.as_ref() == Some(&s) { None } else { Some(s) };
+                    self.details = None;
+                }
+                if self.selected.as_ref().is_some_and(|s| s.kind == NodeKind::Fork && s.seq == r.seq) {
+                    self.point_actions(ui, writable, out);
+                }
             }
-            self.selected = Some(sel);
         }
-        ui.separator();
-        self.details_box(ui, writable, &mut out);
-        self.dialogs(ui, unsaved, &cur_name, &mut out);
-        out
+        // The branch line down the left edge.
+        let bottom = ui.cursor().top();
+        if bottom > top {
+            let x = ui.max_rect().left() + 10.0;
+            ui.painter().line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_ui::color(ecad_ui::SHELL.accent).gamma_multiply(0.7)));
+        }
+        // Show the rows already read first; past them, read the next page.
+        let more_to_read = self.steps.len() as u64 >= history::STEPS_PAGE * (self.steps_more + 1);
+        if hidden > 0 || more_to_read {
+            let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                let b = ui.add(egui::Label::new(RichText::new(text).color(ecad_ui::color(ecad_ui::SHELL.accent_text))).sense(Sense::click()));
+                b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EARLIER));
+                if b.clicked() {
+                    if hidden > 0 {
+                        self.changes_more += history::STEPS_PAGE as usize;
+                    } else {
+                        self.steps_more += 1;
+                    }
+                }
+            });
+        }
+        if self.steps.is_empty() {
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                ui.label(RichText::new("No changes yet.").small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+            });
+        }
+        separator(ui);
+        drawn
+    }
+
+    /// One change: the line's dot, the author's chip, what it did, and when on which branch.
+    /// Returns whether it was clicked.
+    fn step_row(&self, ui: &mut egui::Ui, sel: &Sel, r: &StepRow, branch: &str) -> bool {
+        let s = ecad_ui::SHELL;
+        let c = ecad_ui::color;
+        let picked = self.selected.as_ref().is_some_and(|x| x.branch == sel.branch && x.seq == r.seq && x.kind == NodeKind::Fork);
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), Sense::click());
+        let p = ui.painter_at(rect);
+        if picked {
+            p.rect_filled(rect, 0.0, c(s.accent_soft));
+            p.rect_filled(egui::Rect::from_min_size(rect.min, vec2(3.0, rect.height())), 0.0, c(s.accent));
+        } else if resp.hovered() {
+            p.rect_filled(rect, 0.0, c(s.hover));
+        }
+        let lane = if r.agent.is_some() { c(s.agent) } else { c(s.accent) };
+        crate::shell::glyphs::lane_dot(&p, pos2(rect.left() + 10.0, rect.center().y), lane, c(s.panel));
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, picked, format!("Step {}: {}", r.seq, r.label)));
+        // The chip: AI for an agent; a neutral person for a person, since a person's change
+        // records no name (the login's initials would mislabel someone else's changes).
+        let chip_r = egui::Rect::from_center_size(pos2(rect.left() + 34.0, rect.center().y), vec2(22.0, 22.0));
+        match &r.agent {
+            Some(_) => {
+                p.rect_filled(chip_r, 5.0, c(s.agent));
+                let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+                p.text(chip_r.center(), egui::Align2::CENTER_CENTER, "AI", font, Color32::from_rgb(20, 24, 10));
+            }
+            None => {
+                p.rect_filled(chip_r, 5.0, c(s.active));
+                crate::shell::glyphs::person(&p, chip_r.shrink(5.0), c(s.text_2));
+            }
+        }
+        let name = author_chip(r.agent.as_deref()).to_string();
+        let chip = ui.interact(chip_r, ui.scope_id().with(("ecad.history.author", r.seq)), Sense::hover());
+        chip.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{AUTHOR}: {name}")));
+        let x = chip_r.right() + 8.0;
+        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
+        let small = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+        let room = (rect.right() - x - 4.0).max(0.0);
+        let label = crate::project_panel::cut_text(ui, &r.label, &font, room);
+        p.text(pos2(x, rect.top() + 14.0), egui::Align2::LEFT_CENTER, label, font, c(s.text));
+        let when = format!("{} \u{b7} {branch}", r.time);
+        p.text(pos2(x, rect.top() + 32.0), egui::Align2::LEFT_CENTER, when, small, c(s.text_3));
+        resp.clicked()
+    }
+
+    /// Versions: named versions and issued revisions, newest first, each with Compare (a
+    /// placeholder); Name this one makes a version of now. Returns the rows drawn.
+    fn versions(&mut self, ui: &mut egui::Ui, writable: bool, next_version: &str, out: &mut Vec<Action>) -> usize {
+        let (open, name) = self.section(ui, "versions", "Versions", writable.then_some((NAME_THIS, true)));
+        if name {
+            self.dialog = Some(Dialog::NewVersion { name: next_version.to_string(), description: String::new(), error: None });
+        }
+        if !open {
+            return 0;
+        }
+        let s = ecad_ui::SHELL;
+        let c = ecad_ui::color;
+        let nodes: Vec<history::Node> =
+            self.graph.nodes.iter().filter(|n| matches!(n.kind, NodeKind::Version | NodeKind::Revision)).cloned().collect();
+        let today = now_ms();
+        let mut drawn = 0;
+        for n in &nodes {
+            drawn += 1;
+            let sel = Sel { branch: n.branch, seq: n.seq, kind: n.kind, name: n.name.clone() };
+            let picked = self.selected.as_ref() == Some(&sel);
+            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), Sense::click());
+            let p = ui.painter_at(rect);
+            if picked {
+                p.rect_filled(rect, 0.0, c(s.accent_soft));
+            } else if resp.hovered() {
+                p.rect_filled(rect, 0.0, c(s.hover));
+            }
+            p.circle_filled(pos2(rect.left() + 10.0, rect.top() + 15.0), 3.5, c(s.accent_text));
+            let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
+            let small = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+            let title = match n.kind {
+                NodeKind::Revision => format!("{}, released", n.label),
+                _ => n.label.clone(),
+            };
+            let cmp = egui::Rect::from_min_max(pos2(rect.right() - 66.0, rect.top() + 6.0), pos2(rect.right() - 2.0, rect.top() + 26.0));
+            let room = (cmp.left() - rect.left() - 28.0).max(0.0);
+            let title = crate::project_panel::cut_text(ui, &title, &font, room);
+            p.text(pos2(rect.left() + 22.0, rect.top() + 15.0), egui::Align2::LEFT_CENTER, title, font.clone(), c(s.text));
+            let mut when = history::short_time(n.time_ms, today);
+            if n.kind == NodeKind::Revision {
+                when.push_str(" \u{b7} locked");
+            }
+            p.text(pos2(rect.left() + 22.0, rect.top() + 33.0), egui::Align2::LEFT_CENTER, when, small, c(s.text_3));
+            let label = self.version_label(n);
+            let resp = resp.on_hover_text(history::full_time(n.time_ms));
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, picked, &label));
+            let compare = crate::shell::bar::hit(ui, cmp, &format!("Compare {}", n.label), false, false, false).on_hover_text(COMPARE_LATER);
+            let _ = compare;
+            ui.painter().text(cmp.center(), egui::Align2::CENTER_CENTER, "Compare", font, crate::shell::bar::ink(false, false, false));
+            if resp.double_clicked() {
+                out.push(Action::History(Do::ShowPoint(sel.params())));
+            }
+            if resp.clicked() {
+                if self.selected.as_ref() != Some(&sel) {
+                    self.steps_more = 0;
+                }
+                self.selected = Some(sel.clone());
+            }
+            if picked {
+                self.point_actions(ui, writable, out);
+            }
+        }
+        // The graph is read a page at a time (design 020 §8.2): the next page on request.
+        if self.graph.more {
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                let more = ui.add(egui::Label::new(RichText::new(OLDER).color(c(s.accent_text))).sense(Sense::click()));
+                more.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, OLDER));
+                if more.clicked() {
+                    self.show.limit = self.graph.nodes.len() + history::PAGE;
+                    self.invalidate();
+                }
+            });
+        }
+        if nodes.is_empty() {
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                ui.label(RichText::new("Name a version to keep this point.").small().color(c(s.text_3)));
+            });
+        }
+        drawn
+    }
+
+    /// A version's or revision's accessible label (`Version Before change on main`).
+    fn version_label(&self, n: &history::Node) -> String {
+        let b = self.graph.branches.iter().find(|b| b.id == n.branch).map_or("main", |b| b.name.as_str());
+        match n.kind {
+            NodeKind::Revision => format!("{} on {b}, {}", n.label, history::full_time(n.time_ms)),
+            _ => format!("Version {} on {b}", n.label),
+        }
+    }
+
+    /// The selected point's actions, under its row: Show, Branch from here, Restore, Reopen.
+    fn point_actions(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
+        let Some((sel, v)) = self.details.clone() else { return };
+        if let Some(e) = v.get("error").and_then(Value::as_str) {
+            ui.label(RichText::new(e).small().color(ecad_ui::color(ecad_ui::SHELL.text_2)));
+            return;
+        }
+        let title = v.get("title").and_then(Value::as_str).unwrap_or_default().to_string();
+        let restore_here = v.get("restore").and_then(Value::as_bool) == Some(true);
+        let branch_row = self.graph.branches.iter().find(|b| b.id == sel.branch).cloned();
+        let closed = branch_row.as_ref().is_some_and(|b| b.status != BranchStatus::Open);
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(28.0);
+            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+            if ui.add(ecad_ui::prim::Button::new("Show").small()).accessible_name("ecad.history.show").clicked() {
+                out.push(Action::History(Do::ShowPoint(sel.params())));
+            }
+            if writable
+                && self.defaults.4
+                && ui.add(ecad_ui::prim::Button::new("Branch from here…").small()).accessible_name("ecad.history.branchfrom").clicked()
+            {
+                let from_text = format!("{} · {}", branch_row.as_ref().map_or("main", |b| b.name.as_str()), title);
+                self.dialog = Some(Dialog::NewBranch { name: self.defaults.1.clone(), from: sel.params(), from_text, switch: true, error: None });
+            }
+            if writable
+                && restore_here
+                && sel.kind != NodeKind::Now
+                && ui.add(ecad_ui::prim::Button::new("Restore…").small()).accessible_name("ecad.history.restore").clicked()
+            {
+                out.push(Action::History(Do::AskRestore(sel.params())));
+            }
+            if closed && writable && ui.add(ecad_ui::prim::Button::new("Reopen branch").small()).accessible_name("ecad.history.reopen").clicked() {
+                let name = branch_row.as_ref().map(|b| b.name.clone()).unwrap_or_default();
+                match self.free_name(sel.branch, &name) {
+                    // Another open branch has its name: offer the next free one (never a dead end).
+                    Some(free) => self.dialog = Some(Dialog::Reopen { branch: sel.branch.hex(), old: name, name: free, error: None }),
+                    None => out.push(Action::History(Do::Run("reopenbranch", json!({"branch": sel.branch.hex()})))),
+                }
+            }
+        });
+        ui.add_space(4.0);
+    }
+
+    /// The point the Changes list counts back from: the branch shown's Now.
+    fn anchor(&self) -> Option<Sel> {
+        let n = self.graph.nodes.iter().find(|n| n.kind == NodeKind::Now && Some(n.branch) == self.graph.current)?;
+        Some(Sel { branch: n.branch, seq: n.seq, kind: n.kind, name: None })
     }
 
     /// `None` when no other open branch has `name`; else the next free `name (n)`.
@@ -579,269 +999,6 @@ impl HistoryPanel {
 
     fn parent_name(&self, b: &history::BranchRow) -> String {
         b.fork.and_then(|(p, _)| self.graph.branches.iter().find(|x| x.id == p)).map_or_else(|| "main".into(), |x| x.name.clone())
-    }
-
-    fn row_label(&self, i: usize) -> String {
-        let Some(n) = self.graph.nodes.get(i) else { return String::new() };
-        let b = self.graph.branches.iter().find(|b| b.id == n.branch).map_or("main", |b| b.name.as_str());
-        match n.kind {
-            NodeKind::Now => format!("Now on {b}{}", n.label.split(" · ").nth(2).map(|u| format!(", {u}")).unwrap_or_default()),
-            NodeKind::Revision => format!("{} on {b}, {}", n.label, history::full_time(n.time_ms)),
-            NodeKind::Version => format!("Version {} on {b}", n.label),
-            _ => format!("{} on {b}", n.label),
-        }
-    }
-
-    fn hover(&self, i: usize) -> String {
-        let Some(n) = self.graph.nodes.get(i) else { return String::new() };
-        let mut s = history::full_time(n.time_ms);
-        if !n.author.is_empty() {
-            s.push_str(&format!(" · {}", n.author));
-        }
-        if self.layout.spans.iter().any(|sp| sp.branch == n.branch && sp.overflow) {
-            let b = self.graph.branches.iter().find(|b| b.id == n.branch).map_or("", |b| b.name.as_str());
-            s.push_str(&format!("\nBranch \"{b}\": more branches than lanes; pick it in the Branch list to follow it"));
-        }
-        s
-    }
-
-    /// One row: lane lines, the node's glyph, its label and its date.
-    fn draw_row(&self, ui: &egui::Ui, rect: egui::Rect, i: usize) {
-        let t = Tokens::get();
-        let Some(n) = self.graph.nodes.get(i) else { return };
-        let painter = ui.painter_at(rect);
-        let selected = self.selected.as_ref().is_some_and(|s| s.branch == n.branch && s.seq == n.seq && s.kind == n.kind);
-        if selected {
-            painter.rect_filled(rect, 0.0, t.select_bg);
-        }
-        let lane_x = |l: usize| rect.left() + 6.0 + l as f32 * LANE_W;
-        let cy = rect.center().y;
-        let dim = Stroke::new(1.0, t.text_dim);
-        let cur = Stroke::new(2.0, t.accent);
-        for s in &self.layout.spans {
-            if i < s.top || i > s.bottom {
-                continue;
-            }
-            let x = lane_x(s.lane);
-            // The segment between rows `upper` and `upper + 1` is on the current line when its upper
-            // end is at or below where the current line starts on this lane.
-            let stroke = |upper: usize| if s.current_from.is_some_and(|f| upper >= f) { cur } else { dim };
-            let bends = i == s.bottom && s.into.is_some();
-            // Up from this row's centre (unless it is the top, or the fork row, where the line
-            // bends into the parent's lane instead).
-            if i > s.top && !bends {
-                painter.line_segment([pos2(x, rect.top()), pos2(x, cy)], stroke(i - 1));
-            }
-            // Down to the next row (unless this is the bottom).
-            if i < s.bottom {
-                painter.line_segment([pos2(x, cy), pos2(x, rect.bottom())], stroke(i));
-            }
-            if bends && let Some(into) = s.into {
-                painter.line_segment([pos2(x, rect.top()), pos2(lane_x(into), cy)], stroke(i.saturating_sub(1)));
-            }
-        }
-        // Merge joins (brief 020b): from the source's row up its lane, then into the merge row.
-        for j in &self.layout.joins {
-            if i < j.row || i > j.from_row {
-                continue;
-            }
-            let x = lane_x(j.from_lane);
-            if i == j.row {
-                painter.line_segment([pos2(x, rect.bottom()), pos2(lane_x(j.lane), cy)], dim);
-            } else if i == j.from_row {
-                painter.line_segment([pos2(x, rect.top()), pos2(x, cy)], dim);
-            } else {
-                painter.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], dim);
-            }
-        }
-        let lane = self.layout.lanes.get(i).copied().unwrap_or(0);
-        let c = pos2(lane_x(lane), cy);
-        let is_current = Some(n.branch) == self.graph.current;
-        match n.kind {
-            NodeKind::Now => {
-                if is_current {
-                    painter.circle_stroke(c, 4.5, Stroke::new(1.5, t.accent));
-                    painter.circle_filled(c, 2.0, t.accent);
-                } else {
-                    painter.circle_filled(c, 4.0, t.text);
-                }
-            }
-            NodeKind::Revision => {
-                let r = 4.5;
-                painter.add(egui::Shape::convex_polygon(
-                    vec![pos2(c.x, c.y - r), pos2(c.x + r, c.y), pos2(c.x, c.y + r), pos2(c.x - r, c.y)],
-                    t.accent,
-                    Stroke::NONE,
-                ));
-            }
-            NodeKind::Version => {
-                painter.circle_filled(c, 4.0, t.panel);
-                painter.circle_stroke(c, 4.0, Stroke::new(1.0, t.text));
-            }
-            NodeKind::Merge => {
-                painter.circle_filled(c, 4.0, t.text);
-            }
-            NodeKind::Fork => {
-                painter.circle_filled(c, 2.0, t.text_dim);
-            }
-            NodeKind::Auto | NodeKind::Root => {
-                painter.circle_filled(c, 1.5, t.text_faint);
-            }
-        }
-        let lanes_used = self.layout.spans.iter().map(|s| s.lane + 1).max().unwrap_or(1).min(history::MAX_LANES);
-        let text_x = rect.left() + 6.0 + lanes_used as f32 * LANE_W + 4.0;
-        let font = egui::FontId::monospace(11.0);
-        let color = match n.kind {
-            NodeKind::Auto => t.text_faint,
-            NodeKind::Fork | NodeKind::Root => t.text_dim,
-            _ => t.text,
-        };
-        let date =
-            history::short_time(n.time_ms, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64));
-        let date_w = painter.layout_no_wrap(date.clone(), font.clone(), color).size().x;
-        // The row's author (brief 043): "You", or the agent's name in the `agent` colour.
-        let (who, who_ink) = match n.author.as_str() {
-            "" => (String::new(), ecad_ui::SHELL.text_3),
-            "you" => (YOU.to_string(), ecad_ui::SHELL.text_3),
-            a => (a.to_string(), ecad_ui::SHELL.agent),
-        };
-        let who_font = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::CAPTION);
-        let who_g = painter.layout_no_wrap(who, who_font, ecad_ui::color(who_ink));
-        let who_w = if who_g.size().x > 0.0 { who_g.size().x + 8.0 } else { 0.0 };
-        painter.galley(pos2(rect.right() - 4.0 - date_w - 8.0 - who_g.size().x, cy - who_g.size().y / 2.0), who_g, ecad_ui::color(who_ink));
-        let room = (rect.right() - 4.0 - date_w - 8.0 - who_w - text_x).max(10.0);
-        let label = fit(&painter, &n.label, &font, room);
-        let galley = if n.kind == NodeKind::Revision {
-            painter.layout_no_wrap(label, egui::FontId::monospace(11.0), t.accent)
-        } else {
-            painter.layout_no_wrap(label, font.clone(), color)
-        };
-        painter.galley(pos2(text_x, cy - galley.size().y / 2.0), galley, color);
-        painter.text(pos2(rect.right() - 4.0, cy), egui::Align2::RIGHT_CENTER, date, font, t.text_dim);
-        if self.layout.spans.iter().any(|s| s.branch == n.branch && s.overflow) {
-            painter.text(pos2(lane_x(lane) + 6.0, cy), egui::Align2::LEFT_CENTER, "\u{bb}", egui::FontId::monospace(9.0), t.text_dim);
-        }
-    }
-
-    fn details_box(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
-        let t = Tokens::get();
-        let Some((sel, v)) = self.details.clone() else {
-            ui.label(RichText::new("Select a row to see it.").small().color(t.text_dim));
-            return;
-        };
-        let frame = egui::Frame::NONE.inner_margin(egui::Margin::symmetric(2, 2));
-        frame.show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            if let Some(e) = v.get("error").and_then(Value::as_str) {
-                ui.label(RichText::new(e).small().color(t.text_dim));
-                return;
-            }
-            let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            ui.label(RichText::new(format!("── {} ", s("title"))).small().strong())
-                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.history.details"));
-            ui.label(RichText::new(s("line1")).small());
-            if !s("line2").is_empty() {
-                ui.label(RichText::new(s("line2")).small().color(t.text_dim));
-            }
-            if !s("description").is_empty() {
-                ui.label(RichText::new(format!("\"{}\"", s("description"))).small());
-            }
-            ui.label(RichText::new(s("summary")).small().color(t.text_dim));
-            let restore_here = v.get("restore").and_then(Value::as_bool) == Some(true);
-            let branch_row = self.graph.branches.iter().find(|b| b.id == sel.branch).cloned();
-            let closed = branch_row.as_ref().is_some_and(|b| b.status != BranchStatus::Open);
-            if !restore_here && !closed && writable && sel.kind != NodeKind::Now {
-                let b = branch_row.as_ref().map_or("this branch", |b| b.name.as_str());
-                ui.label(RichText::new(format!("On \"{b}\": branch from here, or merge that branch.")).small().color(t.text_dim));
-            }
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if ui.small_button("Show").accessible_name("ecad.history.show").clicked() {
-                    out.push(Action::History(Do::ShowPoint(sel.params())));
-                }
-                if writable && self.defaults.4 && ui.small_button("Branch from here…").accessible_name("ecad.history.branchfrom").clicked() {
-                    let from_text = format!("{} · {}", branch_row.as_ref().map_or("main", |b| b.name.as_str()), s("title"));
-                    self.dialog = Some(Dialog::NewBranch { name: self.defaults.1.clone(), from: sel.params(), from_text, switch: true, error: None });
-                }
-                if writable
-                    && restore_here
-                    && sel.kind != NodeKind::Now
-                    && ui.small_button("Restore…").accessible_name("ecad.history.restore").clicked()
-                {
-                    out.push(Action::History(Do::AskRestore(sel.params())));
-                }
-                if closed && writable && ui.small_button("Reopen branch").accessible_name("ecad.history.reopen").clicked() {
-                    let name = branch_row.as_ref().map(|b| b.name.clone()).unwrap_or_default();
-                    match self.free_name(sel.branch, &name) {
-                        // Another open branch has its name: offer the next free one (never a dead end).
-                        Some(free) => self.dialog = Some(Dialog::Reopen { branch: sel.branch.hex(), old: name, name: free, error: None }),
-                        None => out.push(Action::History(Do::Run("reopenbranch", json!({"branch": sel.branch.hex()})))),
-                    }
-                }
-                let steps = if self.steps_open { "Steps \u{25b4}" } else { "Steps \u{25be}" };
-                if ui.small_button(steps).accessible_name("ecad.history.steps").clicked() {
-                    self.steps_open = !self.steps_open;
-                    self.steps_for = None;
-                }
-            });
-            if self.steps_open {
-                egui::ScrollArea::vertical().id_salt("ecad.history.stepslist").max_height(150.0).show(ui, |ui| {
-                    self.steps_list(ui, &sel);
-                    if self.steps.len() as u64 >= history::STEPS_PAGE * (self.steps_more + 1) && ui.small_button("Older steps…").clicked() {
-                        self.steps_more += 1;
-                    }
-                });
-            }
-        });
-    }
-
-    /// The Steps list (brief 043): a session group collapses to one row with its author, count and
-    /// time span (and Undo session while it is live); every other step is one row with its author.
-    fn steps_list(&mut self, ui: &mut egui::Ui, sel: &Sel) {
-        let groups = self.groups.clone();
-        let mut i = 0;
-        for g in &groups {
-            let rows: Vec<StepRow> = self.steps.get(i..i + g.seqs.len()).map(<[StepRow]>::to_vec).unwrap_or_default();
-            i += g.seqs.len();
-            let key = g.seqs.first().copied().unwrap_or(0);
-            if g.is_session() {
-                let open = self.expanded.contains(&key);
-                let live = self.group_is_live(g);
-                let (toggle, undo) = group_row(ui, g, open, live);
-                if toggle && !self.expanded.remove(&key) {
-                    self.expanded.insert(key);
-                }
-                if undo {
-                    self.undo_session = true;
-                }
-                if !open {
-                    continue;
-                }
-            }
-            let indent = if g.is_session() { ecad_ui::tokens::space::XL } else { 0.0 };
-            for r in rows {
-                if self.step_row(ui, sel, &r, indent) {
-                    self.selected = Some(Sel { branch: sel.branch, seq: r.seq, kind: NodeKind::Fork, name: None });
-                    self.details = None;
-                }
-            }
-        }
-    }
-
-    /// One step: `#57  Wire W12  [author]  10-12 14:02`. Returns whether it was clicked.
-    fn step_row(&self, ui: &mut egui::Ui, sel: &Sel, r: &StepRow, indent: f32) -> bool {
-        let picked = self.selected.as_ref().is_some_and(|s| s.branch == sel.branch && s.seq == r.seq && s.kind == NodeKind::Fork);
-        let shell = ecad_ui::SHELL;
-        ui.horizontal(|ui| {
-            ui.add_space(indent);
-            let text = format!("#{:<5} {}", r.seq, r.label);
-            let resp = ui.selectable_label(picked, RichText::new(text).small().monospace());
-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Step {}: {}", r.seq, r.label)));
-            author_pill(ui, r.agent.as_deref());
-            ui.label(RichText::new(&r.time).small().color(ecad_ui::color(shell.text_3)));
-            resp.clicked()
-        })
-        .inner
     }
 
     /// Whether `g` belongs to the live agent session (Undo session is offered on it).
@@ -1056,24 +1213,6 @@ fn changes_merges(t: &ecad_model::Transaction) -> bool {
     }
 }
 
-/// `text` cut with an ellipsis to fit `width` points.
-fn fit(p: &egui::Painter, text: &str, font: &egui::FontId, width: f32) -> String {
-    let w = |s: &str| p.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x;
-    if w(text) <= width {
-        return text.to_string();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut n = chars.len();
-    while n > 0 {
-        n -= 1;
-        let cut: String = chars.iter().take(n).collect::<String>() + "\u{2026}";
-        if w(&cut) <= width {
-            return cut;
-        }
-    }
-    String::new()
-}
-
 /// An author chip: "You", or the agent's name in the `agent` tone. Its accessible name is
 /// `history.author: <name>`.
 fn author_pill(ui: &mut egui::Ui, agent: Option<&str>) {
@@ -1124,6 +1263,15 @@ impl crate::Trial {
         if std::mem::take(&mut self.panel.history.undo_session) {
             self.agent_action(crate::agent::BannerAction::UndoSession);
         }
+        let card = self
+            .agent
+            .banner
+            .as_ref()
+            .filter(|b| !matches!(b.state, crate::agent::BannerState::Finished | crate::agent::BannerState::Error))
+            .map(|b| AgentCard { name: b.agent.clone(), steps: b.steps, paused: b.state == crate::agent::BannerState::Paused });
+        if self.panel.history.agent != card {
+            self.panel.history.agent = card;
+        }
         let kept = self.panel.history.live.take();
         let was = kept.as_ref().map(|l| l.key.clone());
         self.panel.history.live = crate::agent::last_write::live_session(self, kept);
@@ -1132,4 +1280,24 @@ impl crate::Trial {
             self.panel.history.regroup();
         }
     }
+}
+
+/// A thin line between sections.
+fn separator(ui: &mut egui::Ui) {
+    let r = ui.max_rect();
+    let y = ui.cursor().top() + 0.5;
+    ui.painter().hline(r.x_range(), y, Stroke::new(1.0, ecad_ui::color(ecad_ui::SHELL.line)));
+    ui.add_space(1.0);
+}
+
+/// A small square chip with `text` (the agent card's AI).
+fn chip(ui: &mut egui::Ui, text: &str, fill: Color32, ink: Color32) {
+    let (r, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
+    ui.painter().rect_filled(r, 5.0, fill);
+    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL), ink);
+}
+
+/// Now, in milliseconds since 1970 (for the short times).
+fn now_ms() -> Option<u64> {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }

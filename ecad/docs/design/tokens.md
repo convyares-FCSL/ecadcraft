@@ -222,11 +222,11 @@ sheet only (`ecad_tokens::shadow`).
 
 | Token | Value |
 | --- | --- |
-| `wheel.outer_radius` | `150 px` |
-| `wheel.inner_radius` | `54 px` |
+| `wheel.outer_radius` | `94 px` |
+| `wheel.inner_radius` | `32 px` |
 | `wheel.slots` | `8` |
-| `wheel.slot` | `41 deg` |
-| `wheel.gap` | `4 deg` |
+| `wheel.slot` | `43 deg` |
+| `wheel.gap` | `2 deg` |
 | `shadow.offset` | `0 8 px` |
 | `shadow.blur` | `24 px` |
 | `shadow.color` | `#000000 at 45 %` |
