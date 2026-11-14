@@ -610,13 +610,32 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         .filter_map(|(_, r)| rep_starter(doc, r))
         .any(|x| matches!(x.kind, Kind::Fixed { exclusive: true }));
     let who = tag_words(doc, into);
-    let into_labels = labels_of(doc, into);
-    let add = |old: TerminalId, label: String, ops: &mut Vec<Op>, ids: &mut IdAllocator, map: &mut BTreeMap<TerminalId, TerminalId>| -> TerminalId {
-        let nt: TerminalId = ids.fresh();
-        // An unlabelled point keeping its own name stays unlabelled: it prints no label (bug 1).
+    // `into`'s point names, unlabelled points by their key (review of #92, 1).
+    let into_labels: BTreeSet<String> = doc.terminals_of(into).map(|(t, _)| label_of(doc, t)).collect();
+    // The name and label `old` moves under as `label`: an unlabelled point keeping its own name
+    // stays unlabelled, so it prints no label (bug 1); one whose name `into` already has is
+    // renamed to the next free `<name>2`, `<name>3`… and still prints nothing. A labelled point
+    // whose label is taken is refused.
+    let name_for = |old: TerminalId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), String> {
+        let taken = |n: &str| into_labels.contains(n) || assigned.contains(n);
         let unlabelled = doc.terminals.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
-        let shown = (!unlabelled).then(|| label.clone());
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label: shown, key: Some(label) } });
+        if !taken(&label) {
+            let shown = (!unlabelled).then(|| label.clone());
+            return Ok((label, shown));
+        }
+        if unlabelled && let Some(n) = (2..=MAX_RENAMED).map(|n| format!("{label}{n}")).find(|n| !taken(n)) {
+            return Ok((n, None));
+        }
+        Err(format!("{who} already has connection point {label}."))
+    };
+    let add = |old: TerminalId,
+               (name, label): (String, Option<String>),
+               ops: &mut Vec<Op>,
+               ids: &mut IdAllocator,
+               map: &mut BTreeMap<TerminalId, TerminalId>|
+     -> TerminalId {
+        let nt: TerminalId = ids.fresh();
+        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(name) } });
         map.insert(old, nt);
         nt
     };
@@ -658,13 +677,11 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         };
         let mut cps = BTreeMap::new();
         for ((old, at), label) in shown.iter().zip(labels) {
-            if into_labels.contains(&label) || assigned.contains(&label) {
-                return Err(format!("{who} already has connection point {label}."));
-            }
-            assigned.insert(label.clone());
+            let named = name_for(*old, label, &assigned)?;
+            assigned.insert(named.0.clone());
             let nt = match new_terminal.get(old) {
                 Some(nt) => *nt,
-                None => add(*old, label, &mut ops_add, ids, &mut new_terminal),
+                None => add(*old, named, &mut ops_add, ids, &mut new_terminal),
             };
             cps.insert(nt, *at);
         }
@@ -681,12 +698,9 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         if new_terminal.contains_key(&t) {
             continue;
         }
-        let label = label_of(doc, t);
-        if into_labels.contains(&label) || assigned.contains(&label) {
-            return Err(format!("{who} already has connection point {label}."));
-        }
-        assigned.insert(label.clone());
-        add(t, label, &mut ops_add, ids, &mut new_terminal);
+        let named = name_for(t, label_of(doc, t), &assigned)?;
+        assigned.insert(named.0.clone());
+        add(t, named, &mut ops_add, ids, &mut new_terminal);
     }
     let mut ops = ops_add;
     let (unlinks, links): (Vec<Op>, Vec<Op>) = ops_reps.into_iter().unzip();
@@ -716,6 +730,9 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     ops.push(Op::DeleteComponent { id: from, component: from_c });
     Ok(ops)
 }
+
+/// Most `<name>2`, `<name>3`… tried for an unlabelled point a merge renames.
+const MAX_RENAMED: u32 = 999;
 
 /// A terminal's name: its label, else its definition key; its ID only when it has neither. A
 /// point drawn with an empty label (a project symbol's earth point) is named by its key, never by

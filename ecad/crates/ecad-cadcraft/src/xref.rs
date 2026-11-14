@@ -1183,6 +1183,31 @@ pub fn spread(doc: &Document, tables: &mut [Table]) {
     }
 }
 
+/// Device `dev`'s table where its page draws it: [`table`], then moved by [`spread`] with the other
+/// tables on its page (review of #92, 2). O(devices on that page); for replies, not per commit.
+pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
+    let own = table(doc, places, dev)?;
+    let mut others: BTreeSet<ComponentId> = BTreeSet::new();
+    for (_, r) in doc.representations_on(own.page) {
+        if let Subject::Component(c) = r.subject
+            && c != dev.component
+        {
+            others.insert(c);
+        }
+    }
+    let mut tables: Vec<Table> = others
+        .into_iter()
+        .filter(|c| !crate::connectors::is_connector(doc, *c))
+        .map(|c| device(doc, c))
+        .filter(|d| d.head.is_some_and(|h| doc.representations.get(&h).is_some_and(|r| r.page == own.page)))
+        .filter_map(|d| table(doc, places, &d))
+        .collect();
+    let head = own.head;
+    tables.push(own);
+    spread(doc, &mut tables);
+    tables.into_iter().find(|t| t.head == head)
+}
+
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
 fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> BTreeMap<PageId, Vec<Part>> {
@@ -2026,7 +2051,7 @@ pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
 
 /// The `contacts` reply's `table` (design 033 §4.2): `{top, bottom, placement, shown}`, or null.
 fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Value {
-    let Some(t) = table(doc, places, dev) else { return Value::Null };
+    let Some(t) = drawn_table(doc, places, dev) else { return Value::Null };
     let k = unit(doc);
     json!({
         "top": [t.top.x / k, t.top.y / k],

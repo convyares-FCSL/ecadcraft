@@ -55,10 +55,29 @@ fn bug_1_an_unlabelled_point_never_prints_its_id_after_a_merge() {
     for t in page_texts(&mut h, page) {
         assert!(!is_hex_id(&t), "a text prints a 32-digit ID: {t}");
     }
-    // Both points are still named by their key, unlabelled.
-    let terms: Vec<_> = d.terminals_of(a).map(|(_, t)| (t.key.clone(), t.label.clone())).collect();
-    assert_eq!(terms.len(), 2);
-    assert!(terms.iter().all(|(k, l)| l.is_none() && k.as_deref().is_some_and(|k| !is_hex_id(k))), "{terms:?}");
+    // Both points are unlabelled, with two different names: the moved one is renamed, never the
+    // same name twice on one device (review of #92, 1).
+    let mut terms: Vec<_> = d.terminals_of(a).map(|(_, t)| (t.key.clone(), t.label.clone())).collect();
+    terms.sort();
+    assert_eq!(terms, [(Some("PE".to_string()), None), (Some("PE2".to_string()), None)]);
+    // A labelled point whose label the device already has is still refused.
+    let mut h = H::new(9106);
+    h.run(
+        "symbolnew",
+        json!({
+            "name": "Earth", "key": "e2",
+            "graphics": [{"kind": "line", "a": [-3, 0], "b": [3, 0]}],
+            "points": [{"key": "PE", "label": "PE", "at": [0, 0]}],
+            "slots": [{"text": "tag", "at": [4, 0]}],
+            "defaults": {"prefix": "PE"},
+        }),
+    )
+    .unwrap();
+    let a = placed(&mut h, json!({"symbol": "e2", "at": [50, 50]}));
+    let b = placed(&mut h, json!({"symbol": "e2", "at": [80, 50]}));
+    let ta = tag(&h.doc(), a);
+    let e = h.run("setprop", json!({"component": b.hex(), "key": "tag", "value": ta, "merge": true})).unwrap_err();
+    assert!(e.contains("already has connection point PE"), "{e}");
 }
 
 // ---------------------------------------------------------------- bug 2
@@ -146,6 +165,11 @@ fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
     }
     let boxes = table_boxes(&mut h, page);
     assert_eq!(boxes.len(), 4, "one table per coil");
+    // The `contacts` reply reports each table where it is drawn (review of #92, 2).
+    for k in &coils {
+        let top = h.p(|p| ecad_cadcraft::xref::contacts_json(p.ledger.document(), *k)).unwrap()["table"]["top"][0].as_f64().unwrap();
+        assert!(boxes.iter().any(|b| (b.0.x - (top - 10.0)).abs() < 1e-6), "reply top {top} matches no drawn table: {boxes:?}");
+    }
     for (i, a) in boxes.iter().enumerate() {
         for b in boxes.iter().skip(i + 1) {
             let apart = a.1.x <= b.0.x || b.1.x <= a.0.x || a.1.y <= b.0.y || b.1.y <= a.0.y;
