@@ -172,7 +172,7 @@ maps, bench (§7–§9).
 and built-in `house`; FD3 the page's `title_block` names a block, with no fallback to the frame; FD4
 the element body replacing 055a's items; FD5 frames carry no body; FD6 `checked_date` and
 `approved_date` revision fields. No new op. **Approved (overseer, 2026-11-14): FD1–FD6**, FD4 as
-amended by the owner's Q3 and Q9 answers.
+amended by the owner's Q3 and Q9 answers; FD4 and FD5 amended again by Q8 (no stretch, `bottom_full` retired, keep-out is the block's rectangle), back with the overseer.
 
 **Parts.** 055c-1 model and drawing (M), 055c-2 title block editor (M–L), 055c-3 frame editor (S–M).
 
@@ -183,7 +183,7 @@ amended by the owner's Q3 and Q9 answers.
 revision model, and the block's table only shows, hides and styles the project's columns (width, row
 height, text size); Q4 one transaction per gesture yes (reverses 055 Q4); Q5 no overlap yes; **Q6**:
 the drawing number is the pack number, one project field, with no composite and no page-level
-suffix; Q7 2.5 mm grid yes; **Q8 stretch: as recommended, not yet confirmed**; **Q9 no** Approvals
+suffix; Q7 2.5 mm grid yes; **Q8 no stretch**: every width is set by the user (columns drive the block's size), a wider sheet gets its own block by Duplicate, the keep-out follows the block's actual size, and a block wider than the frame is a Checks warning; **Q9 no** Approvals
 element: each revision item (current revision, date, description, ECR, drawn, checked, approved and
 their dates) is its own placeable field, with a palette preset that drops several; Q10 plain page
 type yes, routed to 054.
