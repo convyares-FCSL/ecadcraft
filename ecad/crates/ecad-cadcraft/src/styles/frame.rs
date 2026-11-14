@@ -12,7 +12,7 @@ use ecad_model::sheet::{Margins, parse_frame_sheet, parse_margins};
 use ecad_model::{Document, PageId, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Scope, Value};
+use crate::defaults::{Kind, Value};
 
 /// The `sheet` field's word for "the page's own sheet".
 pub const PAGE_SHEET: &str = "page";
@@ -92,6 +92,9 @@ pub struct FrameLook {
     pub block: BlockAt,
     /// Brief 055: the frame's distance from the paper edge (as `ecad_model::sheet::margins_of`).
     pub margins: Margins,
+    /// Brief 055 (overseer ruling): zone ticks and labels drawn; off when the page type turns
+    /// zones off, whatever the frame says.
+    pub zones: bool,
 }
 
 impl Default for FrameLook {
@@ -104,6 +107,7 @@ impl Default for FrameLook {
             centre_marks: true,
             block: BlockAt::BottomFull,
             margins: Margins::default(),
+            zones: true,
         }
     }
 }
@@ -112,11 +116,13 @@ fn weight(mm: f64) -> u16 {
     (mm * 100.0).round().clamp(0.0, 211.0) as u16
 }
 
-/// The frame look of `page` (its own `print.frame.style`, else the project's, the standard's, the
-/// built-in `sheet`).
+/// The frame look of `page`: its frame (`ecad_model::sheet::frame_style`, the one resolver: page,
+/// page type, project, standard, built-in), with zones off when its page type turns them off.
 pub fn frame_look(doc: &Document, page: PageId) -> FrameLook {
-    let id = super::chosen(doc, &crate::defaults::styles::FRAME, Scope::page(page));
-    look_of(doc, &id)
+    let id = ecad_model::sheet::frame_style(doc, page);
+    let mut look = look_of(doc, &id);
+    look.zones = ecad_model::sheet::page_type_zones(doc, page).unwrap_or(true);
+    look
 }
 
 /// The look of frame style `id`.
@@ -131,5 +137,6 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> FrameLook {
         // Own frames are drawn for one sheet, as made (design 055 §1.4).
         block: if id.is_builtin() && f("block").is_none_or(|r| r.word() != "bottom_right") { BlockAt::BottomFull } else { BlockAt::BottomRight },
         margins: f("margins").and_then(|r| parse_margins(&r.text())).unwrap_or_default(),
+        zones: true,
     }
 }

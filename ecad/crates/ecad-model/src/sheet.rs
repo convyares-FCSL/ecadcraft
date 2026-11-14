@@ -263,15 +263,56 @@ pub fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
         || crate::style::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
 }
 
-/// The frame style `page` uses (design 050 §2.4, as `ecad-cadcraft` resolves
-/// `print.frame.style`): the page's own choice, else the project's, else the standard's, else the
-/// built-in, each only when it names a frame style that exists.
+// --- Page-type steps (brief 054, overseer ruling 2026-11-14). Each returns `None` until 054's
+// page types land; the merge fills them in, and every resolver below already asks them.
+
+/// The sheet `page`'s page type sets (054). `None` until page types land.
+pub fn page_type_sheet(_doc: &Document, _page: PageId) -> Option<SheetSpec> {
+    None
+}
+
+/// The frame style `page`'s page type names (054's `frame`). `None` until page types land.
+pub fn page_type_frame(_doc: &Document, _page: PageId) -> Option<StyleRef> {
+    None
+}
+
+/// The frame style whose title block `page`'s page type borrows (054's `title_block`). `None`
+/// until page types land.
+pub fn page_type_title_block(_doc: &Document, _page: PageId) -> Option<StyleRef> {
+    None
+}
+
+/// Whether `page`'s page type shows zones (054's `zones`). `None` (the frame decides) until page
+/// types land.
+pub fn page_type_zones(_doc: &Document, _page: PageId) -> Option<bool> {
+    None
+}
+
+/// Brief 055 (overseer ruling 2026-11-14): the page property naming a frame style whose title
+/// block the page borrows (the border stays its frame's).
+pub const TITLE_BLOCK_KEY: &str = "title_block";
+
+/// The frame style `page` uses (design 050 §2.4): the page's own `print.frame.style`, else its
+/// page type's frame, else the project's, else the standard's, else the built-in, each only when
+/// it names a frame style that exists. The one frame resolver: `ecad-cadcraft` asks it too.
 pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
     let pick = |v: Option<&String>| v.and_then(|t| StyleRef::parse(t)).filter(|id| frame_exists(doc, id));
     pick(doc.pages.get(&page).and_then(|p| p.properties.get(FRAME_STYLE_KEY)))
+        .or_else(|| page_type_frame(doc, page).filter(|id| frame_exists(doc, id)))
         .or_else(|| pick(doc.properties.get(FRAME_STYLE_KEY)))
         .or_else(|| pick(doc.standard.as_ref().and_then(|s| s.values.get(FRAME_STYLE_KEY))))
         .unwrap_or_else(|| StyleRef::Builtin(BUILTIN_FRAME.to_string()))
+}
+
+/// The frame style whose title block `page` draws (overseer ruling 2026-11-14, no new catalogue):
+/// the page's own `title_block`, else its page type's, else its frame ([`frame_style`]), each only
+/// when it names a frame style that exists. Its body is the block ([`frame_block`]); none (the
+/// built-in, or a frame without one) draws the house block.
+pub fn title_block_style(doc: &Document, page: PageId) -> StyleRef {
+    let named = |id: Option<StyleRef>| id.filter(|id| frame_exists(doc, id));
+    named(doc.pages.get(&page).and_then(|p| p.properties.get(TITLE_BLOCK_KEY)).and_then(|t| StyleRef::parse(t)))
+        .or_else(|| named(page_type_title_block(doc, page)))
+        .unwrap_or_else(|| frame_style(doc, page))
 }
 
 /// Frame style `id`'s stored value of `key`: the project's record, else the standard's.
@@ -329,20 +370,21 @@ pub fn margins_of(doc: &Document, page: PageId) -> Margins {
 /// The keep-out strip at the bottom of `page`'s frame, in millimetres (design 055 §2): its own
 /// block's height, else the built-in's [`TITLE_BLOCK_MM`]; never more than the frame's height.
 pub fn keep_out(doc: &Document, page: PageId) -> f64 {
-    let id = frame_style(doc, page);
+    let id = title_block_style(doc, page);
     let h = frame_block(doc, &id).and_then(|b| b.height()).unwrap_or(TITLE_BLOCK_MM);
     let spec = sheet_of(doc, page);
     let m = margins_of(doc, page);
     h.min((f64::from(spec.height) - m.bottom - m.top).max(0.0))
 }
 
-/// The sheet `page` would have without its frame: its own `sheet` property, else the project's,
-/// else A3 (design 019 §3).
+/// The sheet `page` would have without its frame: its own `sheet` property, else its page type's
+/// ([`page_type_sheet`]), else the project's, else A3 (design 019 §3).
 pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
     doc.pages
         .get(&page)
         .and_then(|p| p.properties.get(SHEET_KEY))
         .and_then(|t| SheetSpec::parse(t).ok())
+        .or_else(|| page_type_sheet(doc, page).filter(|s| s.check().is_ok()))
         .or_else(|| doc.settings.sheet.check().ok().map(|()| doc.settings.sheet))
         .unwrap_or_default()
 }

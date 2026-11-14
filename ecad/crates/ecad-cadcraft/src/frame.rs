@@ -179,7 +179,8 @@ impl FrameInput {
         let sheet = ecad_model::sheet::sheet_of(doc, page);
         let text = FrameText::of(doc);
         let look = crate::styles::frame::frame_look(doc, page);
-        let id = ecad_model::sheet::frame_style(doc, page);
+        // The block may be borrowed from another frame (overseer ruling: page, page type, frame).
+        let id = ecad_model::sheet::title_block_style(doc, page);
         let block = crate::title_block::block_of(doc, &id, &sheet, &look.margins, &text);
         let (project, newest) = crate::title_block::bind::read(doc, &block.layout);
         // The rows the block's tables can show.

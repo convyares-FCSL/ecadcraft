@@ -60,9 +60,9 @@ fn layer_of(doc: &Document, id: &StyleRef) -> Option<StyleLayer> {
     [StyleLayer::Project, StyleLayer::Standard].into_iter().find(|l| styles::record(doc, *l, FRAME_CATALOGUE, id).is_some())
 }
 
-/// The pages whose frame is `id`.
+/// The pages whose frame is `id`, or whose title block is borrowed from it.
 pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
-    doc.page_order.iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id).collect()
+    doc.page_order.iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id).collect()
 }
 
 /// The sheet a call names (`sheet`), else the project's.

@@ -51,7 +51,7 @@ pub fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margi
 
 /// The block `page` shows.
 pub fn page_block(doc: &Document, page: PageId) -> Block {
-    let id = sheet::frame_style(doc, page);
+    let id = sheet::title_block_style(doc, page);
     block_of(doc, &id, &sheet::sheet_of(doc, page), &sheet::margins_of(doc, page), &FrameText::of(doc))
 }
 

@@ -110,7 +110,9 @@ pub fn border(pen: &mut Pen, input: &FrameInput) {
     pen.rect((0.0, 0.0), (w, h), inner, Some(LABEL_ACI));
     pen.rect((l, b), (r, t), border, None);
     let (cw, rh) = (grid.column_width(), grid.row_height());
-    for ci in 0..s.columns {
+    // A page type with zones off: no ticks and no labels, whatever the frame says.
+    let (columns, rows) = if input.look.zones { (s.columns, s.rows) } else { (0, 0) };
+    for ci in 0..columns {
         let x0 = l + f64::from(ci) * cw;
         if ci > 0 {
             pen.line((x0, t), (x0, t + TICK_MM.min(m.top)), inner, None);
@@ -122,7 +124,7 @@ pub fn border(pen: &mut Pen, input: &FrameInput) {
             pen.text((x0 + cw / 2.0, b - m.bottom / 2.0), input.text.grid, &label, ml, None, None);
         }
     }
-    for ri in 0..s.rows {
+    for ri in 0..rows {
         let y1 = t - f64::from(ri) * rh;
         if ri > 0 {
             pen.line((l, y1), (l - TICK_MM.min(m.left), y1), inner, None);

@@ -156,8 +156,9 @@ fn cut_rows(doc: &Document) -> Vec<Check> {
     // (frame, item) → (first page, pages, field name)
     let mut cut: BTreeMap<(String, usize), (PageId, usize, String)> = BTreeMap::new();
     for page in book.order.iter().take(MAX_PAGES) {
-        let id = sheet::frame_style(doc, *page);
-        let key = (id.text(), sheet::sheet_of(doc, *page).text());
+        let id = sheet::title_block_style(doc, *page);
+        // One input per frame, borrowed block and sheet.
+        let key = (format!("{} {}", sheet::frame_style(doc, *page).text(), id.text()), sheet::sheet_of(doc, *page).text());
         let base = bases.entry(key).or_insert_with(|| FrameInput::of(doc, *page, &book));
         let mut inp = page_input(doc, &book, base, *page);
         inp.total = base.total.clone();

@@ -199,3 +199,31 @@ fn a_frame_record_is_one_merge_unit() {
         }
     }
 }
+
+/// Overseer ruling (2026-11-14): a page's title block may be borrowed from another frame (page,
+/// then page type, then its own frame); the border, sheet and margins stay its frame's. The
+/// page-type steps answer `None` until brief 054 lands.
+#[test]
+fn a_page_borrows_a_title_block_and_the_page_type_steps_wait_for_054() {
+    let (mut doc, page) = doc_with_page();
+    assert_eq!(sheet::page_type_sheet(&doc, page), None);
+    assert_eq!(sheet::page_type_frame(&doc, page), None);
+    assert_eq!(sheet::page_type_title_block(&doc, page), None);
+    assert_eq!(sheet::page_type_zones(&doc, page), None);
+    doc.styles.entry("frame".into()).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0));
+    doc.styles.entry("frame".into()).or_default().insert(StyleRef::Own(8), frame("A3", "10,10,10,7", 30.0));
+    doc.properties.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
+    assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7), "the frame's own block");
+    if let Some(p) = doc.pages.get_mut(&page) {
+        p.properties.insert(sheet::TITLE_BLOCK_KEY.into(), StyleRef::Own(8).text());
+    }
+    assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(8), "borrowed");
+    assert_eq!(sheet::frame_style(&doc, page), StyleRef::Own(7), "the border stays the frame's");
+    assert_eq!(sheet::sheet_of(&doc, page).width, 594);
+    assert_eq!(sheet::keep_out(&doc, page), 30.0, "the borrowed block's height");
+    // A name that is no frame falls back to the frame's own block.
+    if let Some(p) = doc.pages.get_mut(&page) {
+        p.properties.insert(sheet::TITLE_BLOCK_KEY.into(), StyleRef::Own(99).text());
+    }
+    assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7));
+}
