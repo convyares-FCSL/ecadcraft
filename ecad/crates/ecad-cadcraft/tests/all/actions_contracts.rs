@@ -140,6 +140,12 @@ const ECAD_COMMANDS: &[&str] = &[
     "makesymbol",
     // Brief 049.
     "contcaption",
+    // Brief 056.
+    "plcmaketags",
+    "plcexport",
+    "plcimport",
+    "plcsync",
+    "plctake",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

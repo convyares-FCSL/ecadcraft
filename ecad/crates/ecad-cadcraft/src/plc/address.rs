@@ -37,6 +37,8 @@ pub const MAX_SIZE: u32 = 4_096;
 pub enum Style {
     ByteBit,
     Iec,
+    /// Brief 056 (Q5): `%I0.0`, `%Q2.2`, `%IW64`.
+    Percent,
     Slot,
     None,
 }
@@ -47,6 +49,7 @@ impl Style {
         let at = Scope { component: Some(r), ..Scope::project() };
         match defaults::resolve(doc, &defaults::plc::ADDRESS_STYLE, at).word() {
             "iec" => Style::Iec,
+            "percent" => Style::Percent,
             "slot" => Style::Slot,
             "none" => Style::None,
             _ => Style::ByteBit,
@@ -57,6 +60,7 @@ impl Style {
         match self {
             Style::ByteBit => "byte.bit",
             Style::Iec => "iec",
+            Style::Percent => "percent",
             Style::Slot => "slot",
             Style::None => "none",
         }
@@ -160,20 +164,24 @@ pub fn automatic(style: Style, ty: CardType, block: &Block, slot: u32, i: u32, s
     match style {
         Style::None => None,
         Style::Slot => Some(format!("{}:{slot}/{shown:02}", if output { 'O' } else { 'I' })),
-        Style::ByteBit | Style::Iec if digital => {
+        Style::ByteBit | Style::Iec | Style::Percent if digital => {
             let byte = start.checked_add(i / 8)?;
             if byte >= start.saturating_add(size) {
                 return None;
             }
             let bit = i % 8;
-            Some(if style == Style::Iec { format!("{iec}X{byte}.{bit}") } else { format!("{letter}{byte}.{bit}") })
+            Some(match style {
+                Style::Iec => format!("{iec}X{byte}.{bit}"),
+                Style::Percent => format!("{iec}{byte}.{bit}"),
+                _ => format!("{letter}{byte}.{bit}"),
+            })
         }
-        Style::ByteBit | Style::Iec => {
+        Style::ByteBit | Style::Iec | Style::Percent => {
             let byte = start.checked_add(i.checked_mul(word)?)?;
             if byte.checked_add(word)? > start.saturating_add(size) {
                 return None;
             }
-            Some(if style == Style::Iec { format!("{iec}W{byte}") } else { format!("{letter}W{byte}") })
+            Some(if matches!(style, Style::Iec | Style::Percent) { format!("{iec}W{byte}") } else { format!("{letter}W{byte}") })
         }
     }
 }
@@ -181,8 +189,8 @@ pub fn automatic(style: Style, ty: CardType, block: &Block, slot: u32, i: u32, s
 /// `I2–I3`: a block in words.
 pub fn block_words(style: Style, output: bool, (start, size): (u32, u32)) -> String {
     let letter = match (style, output) {
-        (Style::Iec, false) => "%I",
-        (Style::Iec, true) => "%Q",
+        (Style::Iec | Style::Percent, false) => "%I",
+        (Style::Iec | Style::Percent, true) => "%Q",
         (_, false) => "I",
         (_, true) => "Q",
     };

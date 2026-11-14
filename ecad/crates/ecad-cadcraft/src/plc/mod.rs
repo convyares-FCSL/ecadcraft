@@ -18,6 +18,9 @@ pub mod overview;
 pub mod page;
 pub mod rack;
 pub mod sheets;
+pub mod signals;
+pub mod sync;
+pub mod tagtable;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -62,7 +65,7 @@ pins?: {role: pin}, move_to?: channel number (with terminal?: id; a drawn copy t
             .noundo(),
         CommandSpec::new("plcaddress", "PLC Addresses", address::run_plcaddress)
             .params(
-                "{rack: id or tag, style?: byte.bit|iec|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its \
+                "{rack: id or tag, style?: byte.bit|iec|percent|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its \
 current start), clear?: bool (unpin every card)} or {card: id or tag, start?: byte (null unpins), size?: bytes (null: by type)}",
             )
             .noundo(),
@@ -92,6 +95,15 @@ pub enum PlcFix {
     ClearTyped(u32),
     /// `no-address`: **Show** the racks with style `none`.
     NoAddress,
+    /// Brief 056 (design 056 §9): `plc-tag-twice`, `plc-tag-chars`: **Rename** (the channel's
+    /// index; the UI focuses its Tag cell).
+    Rename(u32),
+    /// `plc-tag-missing`: **Make tags** for the card.
+    MakeTags,
+    /// `plc-not-in-plc`, `plc-no-card`: **Compare** (the UI opens Compare; no command).
+    Compare,
+    /// `plc-differs`: **Compare**, **Use the PLC's name** (the channel's index).
+    TakeName(u32),
 }
 
 /// The type of device `c` as a PLC card or rack: its card body's, else (a card drawn only by
@@ -168,6 +180,17 @@ pub struct ChannelData {
     pub used: bool,
     pub text: Option<String>,
     pub typed: Option<String>,
+    /// Brief 056 (FP1): its PLC tag and its own safe state.
+    pub tag: Option<String>,
+    pub safe: Option<String>,
+}
+
+impl ChannelData {
+    /// The text that makes a free channel reserved: its description, else its tag (design 056
+    /// §4.2: typing either reserves it).
+    pub fn mark(&self) -> Option<&str> {
+        self.text.as_deref().or(self.tag.as_deref())
+    }
 }
 
 /// A channel's state (design 045 §6).
@@ -242,6 +265,8 @@ pub struct Plc {
     pub last_work: usize,
     /// How many racks and cards were recomputed in all (tests: an unrelated edit adds none).
     pub recomputed: u64,
+    /// Brief 056 (design 056 §12.2): every channel's state against the PLC's snapshot.
+    pub sync: sync::Sync,
 }
 
 impl PartialEq for Plc {
@@ -253,6 +278,7 @@ impl PartialEq for Plc {
             && self.unracked == o.unracked
             && self.blocks == o.blocks
             && self.no_address == o.no_address
+            && self.sync == o.sync
     }
 }
 
@@ -274,6 +300,7 @@ impl Plc {
         for g in groups {
             p.set_checks(doc, g);
         }
+        p.sync = sync::Sync::build(doc, &p);
         p.last_changed.clear();
         p.last_work = 0;
         p
@@ -376,7 +403,8 @@ impl Plc {
                         out.extend(self.naming.get(c).into_iter().flatten().copied());
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => all = true,
+                // Brief 056: the snapshot is not a default; the sync index reads it (`update`).
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") && !key.starts_with(sync::PREFIX) => all = true,
                 Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                     if let Subject::Component(c) = rep.subject {
                         out.insert(c);
@@ -428,7 +456,9 @@ impl Plc {
             let keys: Vec<&str> = ops
                 .iter()
                 .filter_map(|op| match op {
-                    Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => Some(key.as_str()),
+                    Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") && !key.starts_with(sync::PREFIX) => {
+                        Some(key.as_str())
+                    }
                     _ => None,
                 })
                 .collect();
@@ -488,7 +518,10 @@ impl Plc {
             }
         }
         touched.extend(self.rows_changed.iter().copied());
-        if touched.is_empty() {
+        // Brief 056 (design 056 §12.1): a new snapshot rebuilds the sync index once, and every
+        // card's rows show its PLC column again.
+        let snapshot = ops.iter().any(|op| matches!(op, Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with(sync::PREFIX)));
+        if touched.is_empty() && !snapshot {
             return false;
         }
         let before: Vec<(ComponentId, Option<CardData>, Option<RackData>)> =
@@ -509,6 +542,25 @@ impl Plc {
         }
         let cards: Vec<ComponentId> = touched.iter().chain(self.last_changed.iter()).filter(|c| self.cards.contains_key(c)).copied().collect();
         self.rows_changed.extend(cards);
+        if snapshot {
+            self.sync = sync::Sync::build(doc, self);
+            self.rows_changed.extend(self.cards.keys().copied());
+            return true;
+        }
+        // The cards whose rows changed: their states; an address that moved, the tags on no card.
+        let mut moved = false;
+        let redo: Vec<ComponentId> = self.rows_changed.iter().chain(self.last_changed.iter()).copied().collect::<BTreeSet<_>>().into_iter().collect();
+        let mut kept = std::mem::take(&mut self.sync);
+        for c in redo {
+            match self.cards.get(&c).filter(|x| x.ty.has_channels()) {
+                Some(card) => moved |= kept.set_card(doc, self, card),
+                None => moved |= kept.remove_card(c),
+            }
+        }
+        if moved {
+            kept.set_no_card();
+        }
+        self.sync = kept;
         changed || !self.rows_changed.is_empty()
     }
 
@@ -799,6 +851,7 @@ impl Plc {
                 fix: Some(Fix::Plc(ComponentId(0), PlcFix::Unracked)),
             });
         }
+        out.extend(self.signal_checks());
         let n: usize = self.no_address.values().sum();
         if n > 0 {
             let which = if n == 1 { "1 used channel has no address".to_string() } else { format!("{n} used channels have no address") };
@@ -809,6 +862,98 @@ impl Plc {
                 object: Object::None,
                 which,
                 fix: Some(Fix::Plc(ComponentId(0), PlcFix::NoAddress)),
+            });
+        }
+        out
+    }
+
+    /// Brief 056's rows (design 056 §9): tags twice in a PLC or that an export leaves out, used
+    /// channels without a tag (with a snapshot), and the sync states. Worked out from the kept
+    /// model when asked; bounded by its channels.
+    fn signal_checks(&self) -> Vec<Check> {
+        let mut out = Vec::new();
+        let format: &dyn tagtable::TagFormat = &tagtable::GenericCsv;
+        let mut by_plc: BTreeMap<Option<ComponentId>, BTreeMap<String, Vec<(&CardData, u32)>>> = BTreeMap::new();
+        for card in self.cards.values().filter(|c| c.ty.has_channels()) {
+            let plc = match card.rack {
+                RackRef::Rack(r) => Some(r),
+                _ => None,
+            };
+            let mut missing = 0usize;
+            for (i, ch) in &card.chans {
+                match &ch.tag {
+                    Some(t) => {
+                        by_plc.entry(plc).or_default().entry(signals::name_key(t)).or_default().push((card, *i));
+                        if !format.name_ok(t) {
+                            out.push(Check {
+                                kind: Kind::PlcTagChars,
+                                page: card.page,
+                                at: None,
+                                object: Object::Component(card.id),
+                                which: format!("{} channel {}", card.tag, i + card.first),
+                                fix: Some(Fix::Plc(card.id, PlcFix::Rename(*i))),
+                            });
+                        }
+                    }
+                    None if ch.used && self.sync.has_snapshot() => missing += 1,
+                    None => {}
+                }
+            }
+            if missing > 0 {
+                let which = if missing == 1 { format!("{}: 1 used channel", card.tag) } else { format!("{}: {missing} used channels", card.tag) };
+                out.push(Check {
+                    kind: Kind::PlcTagMissing,
+                    page: card.page,
+                    at: None,
+                    object: Object::Component(card.id),
+                    which,
+                    fix: Some(Fix::Plc(card.id, PlcFix::MakeTags)),
+                });
+            }
+        }
+        for tags in by_plc.values() {
+            for holders in tags.values().filter(|h| h.len() > 1) {
+                let words: Vec<String> = holders.iter().take(4).map(|(c, i)| format!("{} channel {}", c.tag, i + c.first)).collect();
+                let tag = holders.first().and_then(|(c, i)| c.chans.get(i)).and_then(|x| x.tag.clone()).unwrap_or_default();
+                for (c, i) in holders {
+                    out.push(Check {
+                        kind: Kind::PlcTagTwice,
+                        page: c.page,
+                        at: None,
+                        object: Object::Component(c.id),
+                        which: format!("\"{tag}\" is the tag of {}", words.join(" and ")),
+                        fix: Some(Fix::Plc(c.id, PlcFix::Rename(*i))),
+                    });
+                }
+            }
+        }
+        for ((c, i), st) in self.sync.states() {
+            let Some(card) = self.cards.get(c) else { continue };
+            let (kind, fix) = match st {
+                sync::State::NotInPlc => (Kind::PlcNotInPlc, PlcFix::Compare),
+                sync::State::Differs(_) | sync::State::Moved(_) | sync::State::OnlyInPlc(_) => (Kind::PlcDiffers, PlcFix::TakeName(*i)),
+                _ => continue,
+            };
+            out.push(Check {
+                kind,
+                page: card.page,
+                at: None,
+                object: Object::Component(*c),
+                which: format!("{} channel {}: {}", card.tag, i + card.first, st.words()),
+                fix: Some(Fix::Plc(*c, fix)),
+            });
+        }
+        let n = self.sync.no_card.len();
+        if n > 0 {
+            let which =
+                if n == 1 { "1 PLC tag is at an address no card has".to_string() } else { format!("{n} PLC tags are at addresses no card has") };
+            out.push(Check {
+                kind: Kind::PlcNoCard,
+                page: None,
+                at: None,
+                object: Object::None,
+                which,
+                fix: Some(Fix::Plc(ComponentId(0), PlcFix::Compare)),
             });
         }
         out
@@ -883,6 +1028,22 @@ impl Plc {
                 .filter(|r| self.no_address.contains_key(&r.id))
                 .map(|r| (format!("Set {}'s address style", r.tag), "plcaddress", json!({"rack": r.id.hex(), "style": "byte.bit"})))
                 .collect(),
+            PlcFix::Rename(_) | PlcFix::Compare => Vec::new(),
+            PlcFix::MakeTags => vec![(format!("Make tags for {tag}"), "plcmaketags", json!({"card": c.hex()}))],
+            PlcFix::TakeName(i) => {
+                let first = self.first_of(c);
+                match self.sync.state(c, i) {
+                    sync::State::Differs(_) | sync::State::OnlyInPlc(_) => {
+                        vec![("Use the PLC's name".to_string(), "plctake", json!({"items": [{"card": c.hex(), "channel": i + first}]}))]
+                    }
+                    sync::State::Moved(_) => vec![(
+                        "Use the PLC's address".to_string(),
+                        "plctake",
+                        json!({"items": [{"card": c.hex(), "channel": i + first}], "what": "address"}),
+                    )],
+                    _ => Vec::new(),
+                }
+            }
             PlcFix::Unracked => self
                 .unracked_by_tag()
                 .into_iter()
@@ -956,8 +1117,11 @@ impl Plc {
             "slot": card.slot,
             "channels": card.channels,
             "used": card.chans.values().filter(|x| x.used).count(),
-            "reserved": card.chans.values().filter(|x| !x.used && x.text.is_some()).count(),
-            "spare": card.channels.saturating_sub(u32::try_from(card.chans.values().filter(|x| x.used || x.text.is_some()).count()).unwrap_or(0)),
+            "reserved": card.chans.values().filter(|x| !x.used && x.mark().is_some()).count(),
+            "spare": card.channels.saturating_sub(u32::try_from(card.chans.values().filter(|x| x.used || x.mark().is_some()).count()).unwrap_or(0)),
+            // Brief 056 (design 056 §10): the tile's kind words and channels in use.
+            "kind_words": overview::kind_words(doc, card),
+            "in_use": card.chans.iter().filter(|(i, x)| **i < card.channels && (x.used || x.mark().is_some())).count(),
             "inputs": self.blocks.get(&c).and_then(|b| b.input).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),
             "outputs": self.blocks.get(&c).and_then(|b| b.output).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),
             "pinned": self.blocks.get(&c).is_some_and(|b| b.pinned),
@@ -1188,10 +1352,11 @@ pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData
                 continue;
             }
             let ch = out.entry(i).or_default();
-            if what == "text" {
-                ch.text = Some(v.to_string());
-            } else {
-                ch.typed = Some(v.to_string());
+            match what {
+                "text" => ch.text = Some(v.to_string()),
+                signals::TAG => ch.tag = Some(v.to_string()),
+                signals::SAFE => ch.safe = Some(v.to_string()),
+                _ => ch.typed = Some(v.to_string()),
             }
         }
     }

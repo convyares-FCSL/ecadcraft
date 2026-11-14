@@ -327,28 +327,39 @@ fn tile(doc: &Document, d: &mut Draw, looks: &Look, unit: LengthUnit, t: &Tile, 
         return;
     }
     d.rect((x, y - TILE_H), (x + TILE_W, y), THIN_WEIGHT, None);
-    d.text(at(4.0), look(TextKind::TableHeader), &t.head, HAlign::Left, Some(LABEL_ACI), room);
+    // Brief 056 (design 056 §8): `Slot 2` and the kind words, the tag, the description (else the
+    // type name), the squares, the range, then `9 of 16 in use` and the place of the first run.
+    let half = Some(TILE_W / 2.0 - 2.0);
+    d.text(at(4.0), look(TextKind::TableHeader), &t.head, HAlign::Left, Some(LABEL_ACI), half);
+    d.text((x + TILE_W - 1.5, y - 4.0), look(TextKind::TableHeader), &t.kind_words, HAlign::Right, Some(LABEL_ACI), half);
     d.text(at(10.0), look(TextKind::Tag), &t.tag, HAlign::Left, None, room);
-    d.text(at(15.5), look(TextKind::Table), &t.what, HAlign::Left, None, room);
-    d.text(at(20.5), look(TextKind::Table), &t.range, HAlign::Left, None, room);
+    let title = if t.title.is_empty() { &t.what } else { &t.title };
+    d.text(at(15.5), look(TextKind::Table), title, HAlign::Left, None, room);
     let shown = SQUARES_PER_ROW * SQUARE_ROWS;
     for (k, s) in t.squares.iter().take(shown).enumerate() {
         let (row, col) = (k / SQUARES_PER_ROW, k % SQUARES_PER_ROW);
         let sx = x + 1.5 + col as f64 * (SQUARE + SQUARE_GAP);
-        let sy = y - 24.0 - SQUARE - row as f64 * (SQUARE + SQUARE_GAP);
+        let sy = y - 18.5 - SQUARE - row as f64 * (SQUARE + SQUARE_GAP);
         square(d, sx, sy, *s);
     }
     if t.squares.len() > shown {
         let more = format!("+{}", t.squares.len() - shown);
-        d.text((x + TILE_W - 1.5, y - 24.0 - SQUARE / 2.0), look(TextKind::Table), &more, HAlign::Right, None, Some(8.0));
+        d.text((x + TILE_W - 1.5, y - 18.5 - SQUARE / 2.0), look(TextKind::Table), &more, HAlign::Right, None, Some(8.0));
     }
+    let rows = t.squares.len().min(shown).div_ceil(SQUARES_PER_ROW) as f64;
+    let range_at = if t.squares.is_empty() { 20.5 } else { 18.5 + rows * (SQUARE + SQUARE_GAP) + 3.0 };
+    d.text(at(range_at), look(TextKind::Table), &t.range, HAlign::Left, None, room);
     let foot = match (&t.place, t.kind) {
         (_, TileKind::Card(_)) if !t.drawn => "not drawn".into(),
         (Some(p), _) => format!("\u{2192}{p}"),
         (None, _) => String::new(),
     };
     let _ = doc;
-    d.text((x + 1.5, y - TILE_H + 3.0), look(TextKind::Reference), &foot, HAlign::Left, None, room);
+    let in_use = t.in_use_words();
+    if !in_use.is_empty() {
+        d.text((x + 1.5, y - TILE_H + 3.0), look(TextKind::Table), &in_use, HAlign::Left, None, half);
+    }
+    d.text((x + TILE_W - 1.5, y - TILE_H + 3.0), look(TextKind::Reference), &foot, HAlign::Right, None, half);
 }
 
 /// Sheet `i` of the `plcrack` page.

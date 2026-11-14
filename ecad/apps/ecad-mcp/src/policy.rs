@@ -79,6 +79,10 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
+    // Brief 056: the tag table as text (no `path` from an agent) and the sync states read the
+    // project; export changes nothing.
+    "plcexport",
+    "plcsync",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
@@ -99,11 +103,15 @@ const READ_WITH_PREVIEW: &[&str] = &["merge", "renumber", "finalise"];
 /// that is not issued). Its `folder` is a file key, refused in every mode.
 const READ_WITH_REV: &[&str] = &["release"];
 
+/// Commands whose form with `dry_run: true` only reads (brief 056: the import preview).
+const READ_WITH_DRY_RUN: &[&str] = &["plcimport"];
+
 /// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
-/// [`READ_WITH_REV`]).
+/// [`READ_WITH_REV`], [`READ_WITH_DRY_RUN`]).
 pub fn reads_only(id: &str, params: &Value) -> bool {
     READ_WITHOUT_FIELDS.iter().any(|(c, keep)| *c == id && params.as_object().is_none_or(|o| o.keys().all(|k| keep.contains(&k.as_str()))))
         || (READ_WITH_PREVIEW.contains(&id) && params.get("preview").and_then(Value::as_bool) == Some(true))
+        || (READ_WITH_DRY_RUN.contains(&id) && params.get("dry_run").and_then(Value::as_bool) == Some(true))
         || (READ_WITH_REV.contains(&id)
             && params.get("rev").is_some_and(Value::is_string)
             // Replace moves a folder on disk aside: a write, never with writes off (review of PR #54, 1).

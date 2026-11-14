@@ -23,7 +23,8 @@ pub const NO_CARDS: &str = "No PLC cards with channels.";
 /// Most targets one row names.
 pub const MAX_TARGETS: usize = 8;
 /// The fields of a row the PLC manager edits, with the command that writes each.
-pub const EDITABLE: [(&str, &str); 3] = [("address", "plcchannel"), ("pins", "plcchannel"), ("text", "plcchannel")];
+pub const EDITABLE: [(&str, &str); 5] =
+    [("address", "plcchannel"), ("pins", "plcchannel"), ("text", "plcchannel"), ("tag", "plcchannel"), ("safe", "plcchannel")];
 
 /// What a channel is wired to: another connection point on its nets.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +32,11 @@ pub struct Target {
     pub device: String,
     pub point: String,
     pub place: String,
+    /// Brief 056 (design 056 §4.5): a terminal or connector half, which the channel passes through.
+    pub through: bool,
+    /// Where it is drawn (a go-to).
+    pub page: Option<PageId>,
+    pub at: Option<Pt>,
 }
 
 /// One I/O row (design 045 §8.1).
@@ -57,6 +63,29 @@ pub struct Row {
     pub at: Option<Pt>,
     pub targets: Vec<Target>,
     pub wire: Option<String>,
+    /// Brief 056 (design 056 §4.3, §4.4): the PLC tag, the own safe state, and the default an
+    /// output without one takes (`None` for inputs).
+    pub tag: Option<String>,
+    pub safe: Option<String>,
+    pub safe_default: Option<String>,
+    /// The Test column (design 056 §4.6), from the Tests brief; always `None` in 056.
+    pub test: super::signals::TestState,
+}
+
+impl Row {
+    /// The safe state shown: the own one, else the default; and whether it is the default.
+    pub fn safe_shown(&self) -> Option<(&str, bool)> {
+        match (&self.safe, &self.safe_default) {
+            (Some(s), _) => Some((s.as_str(), false)),
+            (None, Some(d)) => Some((d.as_str(), true)),
+            (None, None) => None,
+        }
+    }
+
+    /// A channel nobody uses or named: no tag, no description, not wired.
+    pub fn is_free(&self) -> bool {
+        self.state == "spare" && self.tag.is_none()
+    }
 }
 
 /// The place of a symbol representation, in the project's reference style.
@@ -94,6 +123,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         _ => None,
     };
     let mut out = Vec::new();
+    let safe_default = super::signals::safe_default(doc, card.id, card.ty);
     for i in indexes(card) {
         let ch = card.chans.get(&i);
         let (address, typed) = plc.address_of(doc, card.id, i);
@@ -115,18 +145,29 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
             }
             for o in &net.terminals {
                 let Some(term) = doc.terminals.get(o) else { continue };
-                if term.component == card.id || targets.len() >= MAX_TARGETS {
+                if term.component == card.id || targets.len() >= 2 * MAX_TARGETS {
                     continue;
                 }
                 // A junction or continuation is not a target.
                 if crate::devices::tag_of(doc, term.component).is_none() {
                     continue;
                 }
-                let place = doc.representations_showing(*o).next().map(|(_, r)| rep_place(doc, r).0.unwrap_or_default()).unwrap_or_default();
+                // Brief 056: pass-throughs and end devices are capped apart, so terminals never
+                // crowd out what the channel drives.
+                let through = super::signals::is_pass_through(doc, term.component);
+                if targets.iter().filter(|t: &&Target| t.through == through).count() >= MAX_TARGETS {
+                    continue;
+                }
+                let shown = doc.representations_showing(*o).next();
+                let (place, at) = shown.map(|(_, r)| rep_place(doc, r)).unwrap_or((None, None));
+                let at = shown.and_then(|(_, r)| r.connection_points.get(o).copied()).or(at);
                 targets.push(Target {
                     device: crate::devices::tag_words(doc, term.component),
                     point: crate::interact::terminal_name(doc, *o),
-                    place,
+                    place: place.unwrap_or_default(),
+                    through,
+                    page: shown.map(|(_, r)| r.page),
+                    at,
                 });
             }
         }
@@ -134,6 +175,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         targets.dedup();
         let used = ch.is_some_and(|c| c.used);
         let text = ch.and_then(|c| c.text.clone());
+        let tag = ch.and_then(|c| c.tag.clone());
         out.push(Row {
             card: card.id,
             card_tag: card.tag.clone(),
@@ -146,8 +188,12 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
             address_out,
             typed,
             pins,
-            state: state_word(used, text.as_deref()),
+            state: state_word(used, text.as_deref().or(tag.as_deref())),
             text,
+            safe: ch.and_then(|c| c.safe.clone()).filter(|_| safe_default.is_some()),
+            safe_default: safe_default.clone(),
+            tag,
+            test: super::signals::TestState::None,
             drawn: ch.is_some_and(|c| !c.points.is_empty()),
             place,
             page,
@@ -169,6 +215,7 @@ pub fn pins_words(pins: &[(&'static str, String)]) -> String {
 
 /// `-S03:14, -K01:A1`.
 pub fn targets_words(t: &[Target]) -> String {
+    let t: Vec<&Target> = t.iter().take(MAX_TARGETS).collect();
     t.iter().map(|x| format!("{}:{}", x.device, x.point)).collect::<Vec<_>>().join(", ")
 }
 
@@ -201,6 +248,12 @@ pub fn row_json(r: &Row) -> Value {
         "place": r.place,
         "targets": r.targets.iter().map(|t| json!({"device": t.device, "point": t.point, "place": t.place})).collect::<Vec<_>>(),
         "wire": r.wire,
+        // Brief 056 (design 056 §10): `tag` is the card's already, so the PLC tag is `plc_tag`.
+        "plc_tag": r.tag,
+        "safe": r.safe_shown().map(|(s, _)| s),
+        "safe_default": r.safe_shown().is_some_and(|(_, d)| d),
+        "drives": super::signals::drives(&r.targets).0.iter().map(|t| json!({"device": t.device, "point": t.point, "place": t.place})).collect::<Vec<_>>(),
+        "test": r.test.json(),
         "editable": EDITABLE.iter().map(|(f, c)| json!({"field": f, "command": c})).collect::<Vec<_>>(),
     })
 }
@@ -222,8 +275,8 @@ pub fn heading(card: &CardData, rows: &[Row], plc: &Plc) -> String {
     format!("{place}  {}  {} {}  {part}  {u} used, {r} reserved, {s} spare", card.tag, card.ty.code(), card.channels)
 }
 
-/// The page's lines: per card a heading, then its rows (`Slot | Card | Ch | Address | Description
-/// | Pins | Wired to | Wire | Place`).
+/// The page's lines: per card a heading, then its rows (`Slot | Card | Ch | Address | Tag |
+/// Description | Safe | Pins | Wired to | Wire | Place`).
 pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
     let spare = crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text();
     let mut out = Vec::new();
@@ -243,7 +296,10 @@ pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
                     r.card_tag.clone(),
                     r.channel.to_string(),
                     address_words(r),
+                    // Brief 056 (Q9): the tag and the safe state.
+                    r.tag.clone().unwrap_or_default(),
                     desc,
+                    r.safe_shown().map(|(s, _)| super::signals::safe_words(s)).unwrap_or_default(),
                     pins_words(&r.pins),
                     targets_words(&r.targets),
                     r.wire.clone().unwrap_or_default(),
@@ -255,13 +311,15 @@ pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
     out
 }
 
-/// The page's columns with their A3 widths.
-pub const PAGE_COLUMNS: [(&str, f64); 9] = [
+/// The page's columns with their A3 widths (brief 056, Q9: Tag and Safe; Description narrower).
+pub const PAGE_COLUMNS: [(&str, f64); 11] = [
     ("Slot", 14.0),
     ("Card", 22.0),
     ("Ch", 12.0),
     ("Address", 30.0),
-    ("Description", 110.0),
+    ("Tag", 28.0),
+    ("Description", 70.0),
+    ("Safe", 12.0),
     ("Pins", 30.0),
     ("Wired to", 90.0),
     ("Wire", 30.0),
@@ -305,6 +363,13 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
                 c(r.place.clone().unwrap_or_default()),
                 c(targets_words(&r.targets)),
                 c(r.wire.clone().unwrap_or_default()),
+                // Brief 056 (design 056 §7.3): the tag, the safe state and the sync state's word.
+                c(r.tag.clone().unwrap_or_default()),
+                c(r.safe_shown().map(|(s, _)| s.to_string()).unwrap_or_default()),
+                c(match plc.sync.state(r.card, r.index) {
+                    super::sync::State::Nothing | super::sync::State::Free => String::new(),
+                    st => st.word().to_string(),
+                }),
             ]);
         }
     }
@@ -325,6 +390,9 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
             "Place",
             "Wired to",
             "Wire",
+            "Tag",
+            "Safe",
+            "PLC",
         ],
         rows,
     })

@@ -177,6 +177,10 @@ fn edit_lines_follow_the_column() {
         at: None,
         targets: Vec::new(),
         wire: None,
+        tag: None,
+        safe: None,
+        safe_default: None,
+        test: Default::default(),
     };
     let one = row(vec![("in", "4".into())]);
     let two = row(vec![("+", "1".into()), ("-", "5".into())]);

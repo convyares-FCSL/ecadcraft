@@ -206,10 +206,22 @@ pub enum Kind {
     /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
     /// has no length.
     WireAllowance,
+    /// Brief 056 (design 056 §9): two channels of one PLC share a tag (without case).
+    PlcTagTwice,
+    /// A tag an export leaves out (a control character, too long).
+    PlcTagChars,
+    /// Used channels with no tag, once the project has a snapshot (one count row per card).
+    PlcTagMissing,
+    /// A used or named channel the PLC does not have.
+    PlcNotInPlc,
+    /// A channel whose PLC name or address differs.
+    PlcDiffers,
+    /// Snapshot tags at addresses no card has (one count row).
+    PlcNoCard,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 72] = [
+    pub const ALL: [Kind; 78] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -282,6 +294,12 @@ impl Kind {
         Kind::CategoryUnknown,
         Kind::CategoryPotentialTwice,
         Kind::WireAllowance,
+        Kind::PlcTagTwice,
+        Kind::PlcTagChars,
+        Kind::PlcTagMissing,
+        Kind::PlcNotInPlc,
+        Kind::PlcDiffers,
+        Kind::PlcNoCard,
     ];
 
     /// The JSON name.
@@ -359,6 +377,12 @@ impl Kind {
             Kind::CategoryUnknown => "category-unknown",
             Kind::CategoryPotentialTwice => "category-potential-twice",
             Kind::WireAllowance => "wire-allowance",
+            Kind::PlcTagTwice => "plc-tag-twice",
+            Kind::PlcTagChars => "plc-tag-chars",
+            Kind::PlcTagMissing => "plc-tag-missing",
+            Kind::PlcNotInPlc => "plc-not-in-plc",
+            Kind::PlcDiffers => "plc-differs",
+            Kind::PlcNoCard => "plc-no-card",
         }
     }
 
@@ -442,6 +466,12 @@ impl Kind {
             Kind::CategoryUnknown => "Wire category not found; drawn without one",
             Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
             Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
+            Kind::PlcTagTwice => "PLC tag given twice in one PLC",
+            Kind::PlcTagChars => "PLC tag an export leaves out",
+            Kind::PlcTagMissing => "Used channels with no PLC tag",
+            Kind::PlcNotInPlc => "Channel not in the PLC project",
+            Kind::PlcDiffers => "PLC tag or address differs from the PLC project",
+            Kind::PlcNoCard => "PLC tags at addresses no card has",
         }
     }
 
@@ -455,7 +485,8 @@ impl Kind {
             | Kind::LevelTwice
             | Kind::SlotTwice
             | Kind::ChannelTwice
-            | Kind::ConnectorPinTwice => Severity::Error,
+            | Kind::ConnectorPinTwice
+            | Kind::PlcTagTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -492,7 +523,10 @@ impl Kind {
             | Kind::ArticleConflict
             | Kind::PartForMissing
             | Kind::CategoryPotentialTwice
-            | Kind::WireThroughCard => Severity::Warning,
+            | Kind::WireThroughCard
+            | Kind::PlcTagChars
+            | Kind::PlcNotInPlc
+            | Kind::PlcDiffers => Severity::Warning,
             _ => Severity::Info,
         }
     }

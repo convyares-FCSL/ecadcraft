@@ -1017,6 +1017,12 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("xrefs", "a read for agents"),
     ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
     ("iolist", "a read; Lists ▸ PLC shows it"),
+    // Brief 056 (design 056 §4, §6): Project ▸ PLC's card header, Compare and Import tags.
+    ("plcmaketags", "Project ▸ PLC ▸ the card header's … ▸ Make tags"),
+    ("plcexport", "Project ▸ PLC ▸ Export tags"),
+    ("plcimport", "Project ▸ PLC ▸ Import tags"),
+    ("plcsync", "a read; Project ▸ PLC's PLC column and Compare show it"),
+    ("plctake", "Project ▸ PLC ▸ Compare ▸ Use PLC's"),
     // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
