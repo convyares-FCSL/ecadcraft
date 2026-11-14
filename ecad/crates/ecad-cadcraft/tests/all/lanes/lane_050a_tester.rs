@@ -439,7 +439,7 @@ fn a02_registry_choice_entries_and_their_levels() {
         }
         checked += 1;
     }
-    assert_eq!(checked, 22);
+    assert_eq!(checked, 2 + TextKind::ALL.len(), "21 text kinds since 049's continuation caption");
     for k in TextKind::ALL {
         for old in ["height", "weight", "font"] {
             assert!(defaults::find(&format!("text.{}.{old}", k.word())).is_none(), "FP4: text.{}.{old} left the registry", k.word());

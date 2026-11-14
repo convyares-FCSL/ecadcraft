@@ -87,10 +87,14 @@ pub struct PotentialDef {
     /// Brief 050b (FP6): a colour an older build stored on the row. Never read for drawing or
     /// labels (wire categories give colours now); kept so Checks can say it is ignored, and
     /// cleared when the table is written again.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Stored under its pre-050b name `colour`: a version 2 project chunk serialises this struct,
+    /// so an older chunk's value is read here and an unchanged table keeps its bytes.
+    #[serde(rename = "colour", default, skip_serializing_if = "Option::is_none")]
     pub legacy_colour: Option<String>,
-    /// Brief 050b (FP6): as [`PotentialDef::legacy_colour`], for a cross-section.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Brief 050b (FP6): as [`PotentialDef::legacy_colour`], for a cross-section (stored as
+    /// `cross_section`).
+    #[serde(rename = "cross_section", default, skip_serializing_if = "Option::is_none")]
     pub legacy_cross_section: Option<String>,
 }
 

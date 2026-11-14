@@ -313,7 +313,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     });
     let doc = h.doc();
     let cat = styles::catalogue("text").unwrap();
-    assert!(styles::rows(&doc, cat).len() <= 20 + ecad_model::style::MAX_STYLES_PER_CATALOGUE);
+    assert!(styles::rows(&doc, cat).len() <= 21 + ecad_model::style::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_cadcraft::checks::all(&doc, 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_cadcraft::checks::Kind::StyleLimits));
     assert!(rows.iter().filter(|c| c.kind == ecad_cadcraft::checks::Kind::StyleUnknown).count() >= 2);

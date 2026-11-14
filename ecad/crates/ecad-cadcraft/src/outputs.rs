@@ -352,7 +352,19 @@ pub struct BomRow {
 impl BomRow {
     /// The Qty cell as the window and the BOM page show it: `4`, `5.6 m`.
     pub fn qty_text(&self) -> String {
-        if self.metres { format!("{} m", self.qty) } else { self.qty.to_string() }
+        if self.no_qty() {
+            String::new()
+        } else if self.metres {
+            format!("{} m", self.qty)
+        } else {
+            self.qty.to_string()
+        }
+    }
+
+    /// Brief 050b (design 050 §5.6): a wire row whose category has no allowance has no Qty (an
+    /// empty cell, never "0 m"); its note gives the count of wires.
+    pub fn no_qty(&self) -> bool {
+        self.metres && self.qty.0 == 0 && self.tags.is_empty() && self.devices.is_empty()
     }
 
     /// The Description as shown: a nested line indented with `\u{21b3}` and its kit.
@@ -1503,7 +1515,7 @@ impl Outputs {
             (id, n)
         });
         let part = look.category.as_ref().and_then(|id| {
-            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).map(|r| r.text()).filter(|t| !t.eq_ignore_ascii_case("none"));
+            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).and_then(|r| crate::styles::wire::filled(&r));
             let pn = f("part_number")?;
             let allowance = crate::styles::field_of(doc, "wire", id, "allowance", None).map_or(0.0, |r| r.number());
             Some((pn, f("maker"), f("description"), allowance))
@@ -2401,7 +2413,13 @@ impl Outputs {
         for r in self.bom_with(group, nested) {
             let who = self.row_who(&r);
             let mut cells = vec![Cell::opt(&r.location, || format!("{who} has no location."))];
-            let qty = if csv { r.qty.to_string() } else { r.qty_text() };
+            let qty = if r.no_qty() {
+                String::new()
+            } else if csv {
+                r.qty.to_string()
+            } else {
+                r.qty_text()
+            };
             cells.push(if r.overflow { Cell { text: qty, flag: Some("The quantity is too large to add up.".into()) } } else { Cell::ok(qty) });
             if csv {
                 cells.push(Cell::ok(if r.metres { "m" } else { "pcs" }));

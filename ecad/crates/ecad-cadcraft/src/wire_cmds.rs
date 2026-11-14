@@ -58,15 +58,31 @@ pub fn net_json(doc: &Document, net: &NetData) -> Value {
         .filter(|x| wires::kind_of(doc, x.component) == Some(CONTINUATION))
         .filter_map(|x| doc.components.get(&x.component).and_then(|c| c.properties.get(NAME)).cloned())
         .collect();
-    json!({
+    // Brief 050b (design 050 §5.6): the net's wire category, ID and name; a net whose wires
+    // resolve to different categories has none and lists them.
+    let looks = crate::styles::wire::WireLooks::new(doc);
+    let cats: BTreeSet<ecad_model::StyleRef> = net.conductors.iter().filter_map(|c| looks.category(doc, *c).0).collect();
+    let cat_json = |id: &ecad_model::StyleRef| json!({"id": id.text(), "name": crate::styles::name(doc, "wire", id)});
+    let uncategorised = net.conductors.iter().any(|c| looks.category(doc, *c).0.is_none());
+    let (category, categories) = match (cats.len(), uncategorised) {
+        (1, false) => (cats.first().map(cat_json), None),
+        (0, _) => (None, None),
+        _ => (None, Some(cats.iter().map(cat_json).collect::<Vec<_>>())),
+    };
+    let mut out = json!({
         "number": wiring::net_number(doc, net),
         "fixed": wiring::net_fixed(net),
         "potential": pot.name,
+        "category": category,
         "conductors": net.conductors.iter().map(|c| c.hex()).collect::<Vec<_>>(),
         "points": points,
         "continuations": continuations,
         "pages": pages.into_values().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
-    })
+    });
+    if let Some(list) = categories {
+        out["categories"] = json!(list);
+    }
+    out
 }
 
 /// A net's sort key in listings: its first conductor, else its first terminal.
@@ -394,10 +410,7 @@ pub(crate) fn category_ops(
     doc: &Document, conductors: &[ConductorId], value: Option<&ecad_model::StyleRef>,
 ) -> Result<(Vec<Op>, Option<String>), String> {
     let key = wiring::WIRE_CATEGORY;
-    let pot = value
-        .and_then(|id| crate::styles::field_of(doc, "wire", id, "potential", None))
-        .map(|r| r.text())
-        .filter(|t| !t.eq_ignore_ascii_case("none"));
+    let pot = value.and_then(|id| crate::styles::field_of(doc, "wire", id, "potential", None)).and_then(|r| crate::styles::wire::filled(&r));
     let conn = doc.connectivity();
     let mut ops = Vec::new();
     let mut kept: Option<String> = None;

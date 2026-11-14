@@ -241,3 +241,79 @@ fn the_standard_header_merges_as_one_unit() {
     let plan = run_merge(&a, t.document(), s.document(), &scope, &BTreeMap::new());
     assert!(plan.conflicts.iter().any(|c| c.id == "project/standard"), "{:?}", plan.conflicts);
 }
+
+fn merged(base: &Ledger, t_ops: Vec<Op>, s_ops: Vec<Op>, choices: &BTreeMap<String, Choice>) -> (merge::Plan, Option<Document>) {
+    let a = base.document().clone();
+    let (mut t, mut s) = (base.clone(), base.clone());
+    t.commit(Author::User, "t", t_ops.clone()).unwrap();
+    s.commit(Author::User, "s", s_ops.clone()).unwrap();
+    let mut scope = Scope::default();
+    scope.add_ops(&t_ops);
+    scope.add_ops(&s_ops);
+    let plan = run_merge(&a, t.document(), s.document(), &scope, choices);
+    if !plan.unanswered.is_empty() || plan.problem.is_some() {
+        return (plan, None);
+    }
+    let mut m = t.clone();
+    if !plan.ops.is_empty() {
+        m.commit(Author::User, "merge", plan.ops.clone()).unwrap();
+    }
+    let d = m.document().clone();
+    assert!(d.check().is_ok());
+    (plan, Some(d))
+}
+
+/// Review of PR 88, finding 2 (risk 20): a standard removed on one side while the other side
+/// changes a value or a standard-layer style is one conflict; either answer keeps the result whole
+/// (the standard with the other side's changes, or no standard), never a silent loss.
+#[test]
+fn a_standard_removed_on_one_side_and_changed_on_the_other_is_one_conflict() {
+    let mut base = Ledger::new(50);
+    base.commit(Author::User, "base", vec![Op::SetStandard { before: None, after: Some(header("House")) }]).unwrap();
+    let remove = || vec![Op::SetStandard { before: Some(header("House")), after: None }];
+    let value = || vec![Op::SetProperty { object: ObjectRef::Standard, key: "text.tag.style".into(), before: None, after: Some("x".into()) }];
+    let style = || vec![set_style(StyleLayer::Standard, tag(), None, Some(rec("", &[("colour", "RD")])))];
+
+    // The target removes, the source adds a value.
+    let (plan, _) = merged(&base, remove(), value(), &BTreeMap::new());
+    let c: Vec<_> = plan.conflicts.iter().filter(|c| c.id == "project/standard").collect();
+    assert_eq!(c.len(), 1, "{:?}", plan.conflicts);
+    assert_eq!(plan.conflicts.len(), 1, "one conflict, not one per key: {:?}", plan.conflicts);
+    assert!(c[0].what.contains("Standard \"House\"") && c[0].what.contains("removed on main; changed on branch"), "{}", c[0].what);
+    let keep = BTreeMap::from([("project/standard".to_string(), Choice::Source)]);
+    let d = merged(&base, remove(), value(), &keep).1.unwrap();
+    let st = d.standard.as_ref().expect("kept with the branch's change");
+    assert_eq!((st.header.name.as_str(), st.values.get("text.tag.style").map(String::as_str)), ("House", Some("x")));
+    let drop = BTreeMap::from([("project/standard".to_string(), Choice::Target)]);
+    assert!(merged(&base, remove(), value(), &drop).1.unwrap().standard.is_none());
+
+    // The mirror: the target adds a standard-layer style, the source removes.
+    let (plan, _) = merged(&base, style(), remove(), &BTreeMap::new());
+    assert_eq!(plan.conflicts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["project/standard"], "{:?}", plan.conflicts);
+    let keep = BTreeMap::from([("project/standard".to_string(), Choice::Target)]);
+    let d = merged(&base, style(), remove(), &keep).1.unwrap();
+    let st = d.standard.as_ref().unwrap();
+    assert!(st.styles.get("text").is_some_and(|m| m.contains_key(&tag())), "{st:?}");
+    let drop = BTreeMap::from([("project/standard".to_string(), Choice::Source)]);
+    assert!(merged(&base, style(), remove(), &drop).1.unwrap().standard.is_none());
+
+    // Removed on one side, untouched on the other: it goes, no conflict.
+    let (plan, d) = merged(
+        &base,
+        remove(),
+        vec![Op::SetProperty { object: ObjectRef::Project, key: "a".into(), before: None, after: Some("1".into()) }],
+        &BTreeMap::new(),
+    );
+    assert!(plan.conflicts.is_empty(), "{:?}", plan.conflicts);
+    assert!(d.unwrap().standard.is_none());
+}
+
+/// Review of PR 88, finding 1: a potential row as an older build stored it names `colour` and
+/// `cross_section`; they read as the legacy fields and write back under the same names.
+#[test]
+fn an_old_potential_row_reads_its_colour_as_legacy() {
+    let old = r#"{"name":"L","prefix":"L-","numbered":true,"colour":"BN","cross_section":"2.5"}"#;
+    let p: ecad_model::wiring::PotentialDef = serde_json::from_str(old).unwrap();
+    assert_eq!((p.legacy_colour.as_deref(), p.legacy_cross_section.as_deref()), (Some("BN"), Some("2.5")));
+    assert_eq!(serde_json::to_string(&p).unwrap(), old);
+}

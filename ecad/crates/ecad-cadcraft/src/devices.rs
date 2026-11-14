@@ -1242,10 +1242,7 @@ fn slot_texts(
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
         // Brief 050a: the device's own text style of this kind, font included.
-        let own = doc
-            .components
-            .get(&c)
-            .and_then(|x| crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
+        let own = doc.components.get(&c).and_then(|x| crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
         let height = match &own {
             Some(o) => o.style.height,
             None if of == TextOf::Tag => sizes.tag,

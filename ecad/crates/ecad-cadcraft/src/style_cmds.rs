@@ -462,7 +462,10 @@ fn run_style(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
                 if cat.word == "wire" && f.key == "potential" {
                     continue;
                 }
-                rec.fields.insert(f.key.to_string(), styles::field(doc, cat, &from, f, None).text());
+                let v = styles::field(doc, cat, &from, f, None).text();
+                if !v.is_empty() {
+                    rec.fields.insert(f.key.to_string(), v);
+                }
             }
             let rec = styles::with_fields(Some(&rec), None, &fields);
             styles::check_record(doc, cat, &id, layer, &rec)?;
