@@ -156,11 +156,13 @@ fn head_of(h: &mut H) -> u64 {
 #[test]
 fn f_import_an_io_list_from_the_path_row_is_one_transaction_and_refusals_stay_in_the_row() {
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = harness(deltas);
+    let mut h = harness(deltas.clone());
     p56(&mut h);
     show_plc(&mut h);
     h.get_by_label("ecad.plc.tile.2").click();
     h.run_steps(4);
+    // The import then visibly brings channel 2's tag back.
+    ok(&mut h, r#"plcchannel {"card":"-A03","channel":2,"tag":null}"#);
     let dir = std::env::temp_dir().join(format!("ecad-056-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("P56-tags.csv");
@@ -172,8 +174,14 @@ fn f_import_an_io_list_from_the_path_row_is_one_transaction_and_refusals_stay_in
     let err = view(&h).path_row.as_ref().and_then(|r| r.error.clone());
     assert_eq!(err.as_deref(), Some(ecad_cadcraft::plc::tagtable::UNKNOWN));
     assert_eq!(head_of(&mut h), before);
-    // The table: one transaction, and the row closes.
+    // The path row, filled in (a screenshot for the owner), then the import: one transaction, and
+    // the row closes.
+    act(&mut h, ListAction::ImportTags);
+    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = r"C:\Projects\Pump station\P56-tags.csv".into();
+    h.run_steps(4);
+    take(&h, &deltas, "056-import-row.png");
     run_path(&mut h, ListAction::ImportTags, &file);
+    take(&h, &deltas, "056-import-done.png");
     assert_eq!(head_of(&mut h), before + 1);
     assert!(view(&h).path_row.is_none(), "done: the row closes");
     let _ = std::fs::remove_dir_all(&dir);
