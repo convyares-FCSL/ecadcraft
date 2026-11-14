@@ -1223,6 +1223,11 @@ impl Trial {
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
+        // UI rev 3: the picker's chip names the symbol being placed.
+        self.shell.tools.placing.symbol = match &pick {
+            search::Pick::Symbol(k) => ecad_cadcraft::symbols::by_key(k).map(|s| s.key),
+            _ => None,
+        };
         let text = match pick {
             search::Pick::Symbol(k) => k.to_string(),
             search::Pick::Device(tag) => tag,

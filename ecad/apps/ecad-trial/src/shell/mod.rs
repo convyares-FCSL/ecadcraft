@@ -29,15 +29,18 @@
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod bar;
+pub mod connector;
 pub mod drawer;
 pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
+pub mod placing;
 pub mod right;
 pub mod state;
 pub mod status_bar;
 pub mod text_panel;
+pub mod toggles;
 pub mod tool_strip;
 pub mod top_bar;
 pub mod wheel;

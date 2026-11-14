@@ -8,8 +8,10 @@
 //!
 //! # Semantics
 //! - **Tool groups** (UI rev 3: Select, Draw, Text | Device, Terminal, PLC | Wire, Cable |
-//!   Location) are the actions with a `group`, in order; a tool whose command does not exist yet
-//!   is not listed. A group with a key (V D T W C) picks its last-used tool and steps.
+//!   Location) are the actions with a `group`, in flyout order: tools, window actions (a view or
+//!   a dialog) and, where the board names an item with no command yet, a placeholder
+//!   ([`App::Coming`]) that stays greyed in place. A group with a key (V D T W C) picks its
+//!   last-used tool and steps.
 //! - **The wheel** of a kind is the actions naming that kind in `wheel`, at their slot. Slots mean
 //!   the same on every wheel (spec §5): [`Slot::Bottom`] deletes, [`Slot::Right`] goes to what the
 //!   object relates to, [`Slot::BottomRight`] shows its row; the three on the left copy, turn or
@@ -119,10 +121,10 @@ pub enum ToolGroup {
     Device,
     Terminal,
     Plc,
-    /// Wire (and, later, bridge and continuation).
+    /// Wire, bridge and continuation.
     Wire,
     Cable,
-    /// Location box (and, later, function box and device or PLC outline).
+    /// Location box (function box and device or PLC outline later).
     Location,
 }
 
@@ -186,6 +188,25 @@ impl ToolGroup {
     /// Whether a divider follows it on the strip.
     pub const fn divider_after(self) -> bool {
         matches!(self, ToolGroup::Text | ToolGroup::Plc | ToolGroup::Cable)
+    }
+
+    /// The note at the foot of its flyout (UI rev 3, boards 1.09 and 1.10), if it has one.
+    pub const fn note(self) -> Option<&'static str> {
+        match self {
+            ToolGroup::Terminal => Some("Full strip view, levels and parts"),
+            ToolGroup::Location => Some("A box gives everything inside it its location or function. Properties then reads \"from box\"."),
+            ToolGroup::Plc => Some("Racks, cards and their channels"),
+            ToolGroup::Select | ToolGroup::Draw | ToolGroup::Text | ToolGroup::Device | ToolGroup::Wire | ToolGroup::Cable => None,
+        }
+    }
+
+    /// The action of the button beside its note (Terminal: the Terminal manager), if any. It is
+    /// not one of [`ToolGroup::tools`].
+    pub fn link(self) -> Option<&'static Action> {
+        match self {
+            ToolGroup::Terminal => find("terminal.manager"),
+            _ => None,
+        }
     }
 
     /// Its tools, in flyout order.
@@ -308,6 +329,13 @@ pub enum App {
     /// Brief 048: bring a placed symbol to its newest version (`symbolupdate`), with the review in
     /// the drawer when it would clash (design 048 §8.4).
     UpdateSymbol,
+    /// UI rev 3: Project ▸ PLC (the rack overview).
+    PlcRacks,
+    /// UI rev 3: Place Symbol with the continuation arrow (Wire ▸ Continuation).
+    Continuation,
+    /// UI rev 3: a flyout item the board names whose tool does not exist yet. It never runs: it
+    /// is greyed, and its hover says so ([`COMING`]).
+    Coming,
 }
 
 /// How an action runs its command on the object (or the selection).
@@ -453,6 +481,14 @@ fn has_reference(c: &Context) -> Enabled {
     }
 }
 
+/// Why a flyout item whose tool does not exist yet ([`App::Coming`]) is greyed.
+pub const COMING: &str = "Not available yet: this tool comes later.";
+
+/// Never runs: the tool does not exist yet.
+fn coming(_: &Context) -> Enabled {
+    Enabled::Greyed { why: COMING.into(), next: None }
+}
+
 /// A cable reference end can be previewed.
 fn is_cable_reference(c: &Context) -> Enabled {
     match c.target {
@@ -479,6 +515,32 @@ const fn tool(
     }
 }
 
+/// A flyout item whose tool does not exist yet: greyed in place ([`App::Coming`]).
+const fn coming_tool(id: &'static str, label: &'static str, icon: Icon, group: ToolGroup, order: u8) -> Action {
+    Action {
+        id,
+        command: "",
+        params: Params::App(App::Coming),
+        label,
+        icon,
+        group: Some((group, order)),
+        wheel: &[],
+        key: None,
+        search: &[],
+        searchable: false,
+        enabled: coming,
+    }
+}
+
+/// A flyout item that is a window action or a template rather than a tool that prompts.
+#[allow(clippy::too_many_arguments)]
+const fn group_app(
+    id: &'static str, command: &'static str, app: App, label: &'static str, icon: Icon, group: Option<(ToolGroup, u8)>,
+    search: &'static [&'static str], enabled: fn(&Context) -> Enabled,
+) -> Action {
+    Action { id, command, params: Params::App(app), label, icon, group, wheel: &[], key: None, search, searchable: true, enabled }
+}
+
 const fn slot(
     id: &'static str, command: &'static str, params: Params, label: &'static str, icon: Icon, wheel: &'static [(ObjectKind, Slot)],
     enabled: fn(&Context) -> Enabled,
@@ -491,9 +553,8 @@ use Slot as S;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[
-    // ---- Tool groups (UI rev 3). Lasso, Branch, Potential or bus line, Jump, Continuation
-    // arrow, Function box, Device or PLC outline and PLC's rack, detail page, card and channel
-    // tools have no command yet; PLC's group is empty until they do.
+    // ---- Tool groups (UI rev 3, "Tool strip (Draw)" and boards 1.09, 1.10). An item the board
+    // names with no command yet is a placeholder (`coming_tool`), greyed in place.
     Action {
         id: "select",
         command: "",
@@ -509,7 +570,27 @@ pub const ACTIONS: &[Action] = &[
     },
     tool("wire.tool", "wire", "Wire", Icon::Wire, ToolGroup::Wire, 0, &["draw wire", "conductor"]),
     tool("place.symbol", "place", "Symbol", Icon::Place, ToolGroup::Device, 0, &["place symbol", "device", "coil", "contact"]),
-    tool("place.terminal", "terminals", "Terminal", Icon::Terminal, ToolGroup::Terminal, 0, &["place terminals", "strip"]),
+    tool("place.terminal", "terminals", "Terminal", Icon::TerminalPin, ToolGroup::Terminal, 0, &["place terminals", "strip"]),
+    // The same tool: a line across wires puts one terminal on each wire it crosses.
+    tool(
+        "place.terminals",
+        "terminals",
+        "Terminals across wires",
+        Icon::Terminal,
+        ToolGroup::Terminal,
+        1,
+        &["terminals", "across", "row of terminals"],
+    ),
+    tool("terminal.link", "bridge", "Draw a link (bridge)", Icon::Connect, ToolGroup::Terminal, 2, &["bridge", "link", "terminal"]),
+    coming_tool("terminal.swap", "Swap top and bottom", Icon::Mirror, ToolGroup::Terminal, 3),
+    coming_tool("terminal.reorder", "Reorder the strip…", Icon::Move, ToolGroup::Terminal, 4),
+    group_app("terminal.renumber", "renumber", App::Renumber, "Renumber…", Icon::Number, Some((ToolGroup::Terminal, 5)), &["renumber terminals"], ok),
+    // The Terminal flyout's foot (not one of its tools): the Terminal manager, Project ▸ Terminals.
+    group_app("terminal.manager", "", App::TerminalRow, "Terminal manager", Icon::ShowRow, None, &["terminal plan", "strips"], ok),
+    // ---- PLC: the rack overview, then the card commands through their templates, as Ctrl+K
+    // ran them before (brief 045).
+    group_app("plc.racks", "", App::PlcRacks, "Rack overview", Icon::Plc, Some((ToolGroup::Plc, 0)), &["plc", "rack", "racks"], ok),
+    group_app("plc.page", "plcpage", App::Template, "Detail page…", Icon::NewPage, Some((ToolGroup::Plc, 1)), &["plc", "card page", "detail"], write),
     // Brief 044 (design 044 §4.1): Place ▸ Connector; UI rev 3: Device ▸ Connector.
     tool(
         "place.connector",
@@ -520,6 +601,18 @@ pub const ACTIONS: &[Action] = &[
         1,
         &["connector", "plug", "socket", "d-sub", "m12", "mated"],
     ),
+    // ---- Wire.
+    tool("wire.bridge", "bridge", "Bridge", Icon::Connect, ToolGroup::Wire, 1, &["link", "between terminals"]),
+    group_app(
+        "wire.continuation",
+        "place",
+        App::Continuation,
+        "Continuation",
+        Icon::GoTo,
+        Some((ToolGroup::Wire, 2)),
+        &["continuation", "arrow"],
+        write,
+    ),
     tool("cable.slash", "cableslash", "Cable slash", Icon::Cable, ToolGroup::Cable, 0, &["new cable"]),
     tool("cable.continue", "cablecontinue", "Continue cable", Icon::GoTo, ToolGroup::Cable, 1, &["cable on another page"]),
     tool("draw.line", "line", "Line", Icon::Line, ToolGroup::Draw, 0, &["geometry"]),
@@ -527,7 +620,10 @@ pub const ACTIONS: &[Action] = &[
     tool("draw.rectangle", "rectang", "Rectangle", Icon::Rectangle, ToolGroup::Draw, 2, &["geometry"]),
     tool("draw.circle", "circle", "Circle", Icon::Circle, ToolGroup::Draw, 3, &["geometry"]),
     tool("draw.arc", "arc", "Arc", Icon::Arc, ToolGroup::Draw, 4, &["geometry"]),
-    tool("box.location", "locationbox", "Location box", Icon::Box, ToolGroup::Location, 0, &["location", "+"]),
+    tool("box.location", "locationbox", "Location box", Icon::LocationBox, ToolGroup::Location, 0, &["location", "+"]),
+    coming_tool("box.function", "Function box", Icon::Box, ToolGroup::Location, 1),
+    coming_tool("box.both", "Function and location box", Icon::Box, ToolGroup::Location, 2),
+    coming_tool("box.outline", "Device or PLC outline", Icon::Rectangle, ToolGroup::Location, 3),
     tool("text.text", "text", "Text", Icon::Text, ToolGroup::Text, 0, &["free text"]),
     tool("text.note", "mtext", "Note", Icon::Properties, ToolGroup::Text, 1, &["multiline text"]),
     tool("text.cloud", "revcloud", "Revision cloud", Icon::Cloud, ToolGroup::Text, 2, &["revision"]),
@@ -807,7 +903,6 @@ pub const ACTIONS: &[Action] = &[
     search_only("wire.connecttool", "connect", Params::Start, "Connect", Icon::Connect, &["attach"]),
     search_only("wire.disconnecttool", "disconnect", Params::Start, "Disconnect", Icon::Disconnect, &["detach"]),
     search_only("wire.numbertool", "wirenumber", Params::Start, "Fix wire number", Icon::Number, &["number"]),
-    search_only("terminal.bridge", "bridge", Params::Start, "Draw bridge", Icon::Connect, &["terminal", "link"]),
     // Brief 044 (design 044 §9.3): the terminal wheel holds strip terminals only (its jumper, plan
     // and accessory slots do not apply to a connector pin), so Rename pin is a Ctrl+K action.
     search_only("connector.renamepin", "pinlabel", Params::App(App::Template), "Rename pin", Icon::Edit, &["pinlabel", "connector pin", "pin name"]),
@@ -829,14 +924,25 @@ pub const ACTIONS: &[Action] = &[
     search_only("numbering.wires", "renumberwires", Params::App(App::RenumberWires), "Renumber wires", Icon::Number, &["wire numbers"]),
     search_only("numbering.finalise", "finalise", Params::App(App::Finalise), "Finalise numbering", Icon::Number, &["provisional"]),
     // Brief 045 (design 045 §2.6, §4.8): the card commands, found with Ctrl+K until a card wheel.
-    search_only("plc.slot", "plcslot", Params::App(App::Template), "Card slot", Icon::Devices, &["plc", "rack", "card", "move card"]),
-    search_only(
+    group_app(
+        "plc.slot",
+        "plcslot",
+        App::Template,
+        "Card…",
+        Icon::Devices,
+        Some((ToolGroup::Plc, 2)),
+        &["plc", "rack", "card", "card slot", "move card"],
+        write,
+    ),
+    group_app(
         "plc.channels",
         "plcchannels",
-        Params::App(App::Template),
-        "Place channels",
+        App::Template,
+        "Channel…",
         Icon::Connect,
-        &["plc", "channel", "fence", "spare", "remaining"],
+        Some((ToolGroup::Plc, 3)),
+        &["plc", "channel", "place channels", "fence", "spare", "remaining"],
+        write,
     ),
     search_only("plc.channel", "plcchannel", Params::App(App::Template), "Channel data", Icon::Edit, &["plc", "channel", "description", "pin"]),
     search_only("plc.address", "plcaddress", Params::App(App::Template), "PLC addresses", Icon::Number, &["plc", "address", "fix addresses", "pin"]),
@@ -911,8 +1017,6 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("xrefs", "a read for agents"),
     ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
     ("iolist", "a read; Lists ▸ PLC shows it"),
-    // Brief 051 (design 051 §3.6).
-    ("plcpage", "Lists ▸ PLC ▸ a tile's Make its page"),
     // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
