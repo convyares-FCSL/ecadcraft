@@ -12,8 +12,8 @@
 //! - Bounded: at most [`MAX_TRACE_NETS`] nets per subject; each net once (cycles end).
 //! - Devices found at the same depth are all returned; the caller uses the largest In.
 //!
-//! A strip's fuse position (036) has no line or load side in the drawing; reached from either
-//! side, it is taken as the protecting device.
+//! A strip's fuse position (036) protects only what reaches its out point (`.no`); its in point
+//! (the supply side) and a one-point drawing stop the trace there.
 
 use std::collections::BTreeSet;
 
@@ -129,8 +129,14 @@ fn step(doc: &Document, t: TerminalId) -> Step {
     if crate::strips::is_strip(doc, c) {
         for p in crate::terminal_types::positions(doc, c) {
             if let Some(ts) = p.levels.values().find(|ts| ts.contains(&t)) {
+                // Review of #108: a fuse position protects only what is on its out point (`.no`); its
+                // in point (supply side) or an old one-point drawing stops the trace, so a supply-side
+                // wire is never passed against it.
                 if p.ty.code == "fuse" {
-                    return Step::Found(c, Some(p.label.clone()));
+                    if crate::terminal_types::level_of(doc, t).1 == Some('o') {
+                        return Step::Found(c, Some(p.label.clone()));
+                    }
+                    return Step::Stop;
                 }
                 return Step::Cross(ts.iter().copied().filter(|x| *x != t).collect());
             }

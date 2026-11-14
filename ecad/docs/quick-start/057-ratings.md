@@ -10,7 +10,7 @@ drop against its limit. Results are rows in the Checks list (the bottom counter,
 there is no calculator screen. Project ▸ Wires and Project ▸ Cables show a **Rating** section in
 the right panel (boards 2.05 and 2.06).
 
-**ECAD ships no IEC or BS 7671 table values.** The Table basis ("IEC table" on cables) reads a
+**ECAD ships no IEC or BS 7671 table values.** The Table basis reads a
 **rating table** that you enter or import from a CSV you are licensed to use (Settings ▸
 Standards ▸ Rating tables). Every number below is **made up for this guide**; none is a value
 from a standard.
@@ -22,7 +22,8 @@ Run `cargo run --release -p ecad-trial`, open a project with a breaker, a contac
 
 1. **A panel wire on the Datasheet basis.** Give the Power L category a made-up datasheet rating:
    `setstyle {"catalogue":"wire","id":"l","fields":{"rated_current":"27","rated_at":"30"}}`.
-   Set the panel temperature in Settings ▸ Standards ▸ Defaults ▸ Rating (40 °C is the default),
+   Set the panel temperature on the wire's Panel row (Enter writes it to the wire's location box,
+   as `rating {"location":"+CAB1","temperature":40}` does; with no location, the project default),
    and the breaker's rating in its properties (`4A C`). Open Project ▸ Wires and pick an L wire
    leaving the breaker: Rating shows `Rated 27 A at 30 °C`, `Panel × 0.87 40 °C`, `Bundled × 1.00
    not set` (warning) and `Carries 23.5 A  -Q01 4 A ✓`. Type `0.8` in Bundled and press Enter:
@@ -40,7 +41,7 @@ Run `cargo run --release -p ecad-trial`, open a project with a breaker, a contac
    **Apply rows**, then choose it in Defaults ▸ Rating ▸ Rating table. Import CSV… and Export CSV
    take a file path.
 4. **A field cable.** Pick -W01 in Project ▸ Cables (type `4G1.5`, length 12 m). Rating: basis
-   **IEC table**, method `E · perforated tray`, ambient 35 °C (computed × 0.94 when the table has
+   **Table**, method `E · perforated tray`, ambient 35 °C (computed × 0.94 when the table has
    no ambient rows), grouping 3 (× 0.90): `Table 20 A`, `Carries 16.9 A`, `Volt drop 0.2 %  ≤ 5 % ✓`
    (at the breaker's 4 A when no load is set).
 5. **Volt drop over.** Make a 24 V DC cable 60 m long with a 0.75 mm² class 5 cable type and

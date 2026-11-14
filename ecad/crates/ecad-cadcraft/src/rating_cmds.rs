@@ -32,7 +32,8 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(
                 "{wire: conductor id or wire number | cable: tag or id | many: [{wire|cable, …}], basis?: \"datasheet\"|\"table\"|\"manual\", \
 manual?, bundling?: \"0.8\"|\"3 bunched\", load?, protected_by?: \"-Q01\"|\"-F01:3\", method?, ambient?, grouped?, voltage?, system?: \
-\"ac1\"|\"ac3\"|\"dc\", vd_limit?, cable_type?: id or name} (null clears; one transaction)",
+\"ac1\"|\"ac3\"|\"dc\", vd_limit?, cable_type?: id or name} | {location: \"+CAB1\", temperature: °C | null} (a location's panel \
+temperature, on its location boxes; null clears; one transaction)",
             )
             .noundo(),
         CommandSpec::new("ratingtable", "Rating Table", run_ratingtable)
@@ -189,7 +190,71 @@ fn item_ops(doc: &Document, item: &Value) -> Result<(Vec<Op>, Vec<RatedSubject>)
     Ok((ops, subjects))
 }
 
+/// `rating {location, temperature}` (design 057 FP6; tester F1): the location boxes of
+/// `location` take `rating.temperature`, written here (034's `setprop` rule reads `rating.<n>` as a
+/// fuse bank's and refuses it on a box).
+fn run_location(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let loc = params
+        .get("location")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .ok_or_else(|| err("`location` names a location, such as +CAB1."))?;
+    if let Some(o) = params.as_object()
+        && let Some(k) = o.keys().find(|k| !matches!(k.as_str(), "location" | "temperature"))
+    {
+        return Err(err(format!("{k} is not a location rating key; give `temperature`.")));
+    }
+    let after = match params.get("temperature") {
+        Some(Value::Null) => None,
+        Some(v) => {
+            let t = as_text(v).ok_or_else(|| err("temperature is a number in \u{b0}C, or null to clear it."))?;
+            if parse::ambient(&t).is_none() {
+                return Err(err("temperature is \u{2212}40 to 90 \u{b0}C."));
+            }
+            Some(t)
+        }
+        None => return Err(err("Give `temperature` (\u{b0}C), or null to clear it.")),
+    };
+    let loc = loc.to_string();
+    with_project(s, |p, pg, _| {
+        let doc = p.ledger.document();
+        let boxes: Vec<ecad_model::ComponentId> = doc
+            .components
+            .iter()
+            .filter(|(_, x)| {
+                crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == loc)
+            })
+            .map(|(c, _)| *c)
+            .collect();
+        if boxes.is_empty() {
+            return Err(format!("No location box is {loc}; draw one with Location Box first."));
+        }
+        let mut ops = Vec::new();
+        for c in &boxes {
+            let before = doc.components.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
+            if before != after {
+                ops.push(Op::SetProperty {
+                    object: ecad_model::ObjectRef::Component(*c),
+                    key: rating::TEMPERATURE.into(),
+                    before,
+                    after: after.clone(),
+                });
+            }
+        }
+        let changed = !ops.is_empty();
+        if changed {
+            let words = after.as_deref().map_or_else(|| "project default".to_string(), |t| format!("{t} \u{b0}C"));
+            p.apply_edit(pg, "rating", &format!("Panel temperature {loc}: {words}"), ops)?;
+        }
+        Ok(json!({"changed": changed, "location": loc, "boxes": boxes.len(), "temperature": after}))
+    })
+}
+
 fn run_rating(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get("location").is_some() {
+        return run_location(s, params);
+    }
     with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
         let items: Vec<&Value> = match params.get("many") {

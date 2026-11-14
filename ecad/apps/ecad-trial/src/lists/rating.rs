@@ -32,10 +32,12 @@ struct Row {
     tip: String,
     edit: Option<&'static str>,
     strong: bool,
+    /// The location a panel temperature is written to (tester F1).
+    loc: Option<String>,
 }
 
 fn row(label: &'static str, value: impl Into<String>, note: impl Into<String>) -> Row {
-    Row { label, value: value.into(), note: note.into(), tone: None, tip: String::new(), edit: None, strong: false }
+    Row { label, value: value.into(), note: note.into(), tone: None, tip: String::new(), edit: None, strong: false, loc: None }
 }
 
 /// The folded summary and its tone (design 057 §2.1): pass muted, fail in error.
@@ -64,6 +66,11 @@ fn rows(r: &Rating) -> Vec<Row> {
             x.tip = format!("{} \u{b7} {}", f.input, f.from);
             if cable {
                 x.edit = Some("ambient");
+            } else {
+                // Tester F1: the panel temperature is set here, on the wire's location (else the
+                // project default).
+                x.edit = Some("panel");
+                x.loc = f.from.strip_prefix("location ").map(str::to_string).or_else(|| r.locations.first().cloned());
             }
             if f.from.contains("computed") {
                 x.note = format!("{} \u{b7} computed", f.input);
@@ -180,10 +187,8 @@ fn after(r: &Rating) -> Vec<Row> {
     v
 }
 
-/// The basis words of the segment (design 057 §2.1, §2.2).
-fn basis_words(cable: bool) -> [&'static str; 3] {
-    if cable { ["Datasheet", "IEC table", "Manual"] } else { ["Datasheet", "Table", "Manual"] }
-}
+/// The basis words of the segment (design 057 §2.1, §2.2; the owner: "Table" on cables too).
+const BASIS_WORDS: [&str; 3] = ["Datasheet", "Table", "Manual"];
 
 /// Draw the section's body. Returns the `rating` calls asked for.
 pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
@@ -202,7 +207,7 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         label_w(ui, "Basis", BASIS_LABEL_W);
-        let resp = ui.add_enabled_ui(p.writable, |ui| prim::segmented(ui, &mut basis, &basis_words(cable))).response;
+        let resp = ui.add_enabled_ui(p.writable, |ui| prim::segmented(ui, &mut basis, &BASIS_WORDS)).response;
         if !p.writable {
             resp.on_disabled_hover_text("This project is read-only here.");
         }
@@ -513,8 +518,20 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
             if edit.lost_focus() {
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) && text.trim() != x.note.trim() {
                     let t = text.trim();
-                    let v = if t.is_empty() || t == "\u{2014}" || t == "not set" { Value::Null } else { json!(t) };
-                    call = Some(("rating", json!({what: id, key: v})));
+                    let clear = t.is_empty() || t == "\u{2014}" || t == "not set";
+                    let v = if clear { Value::Null } else { json!(t) };
+                    call = Some(match (key, &x.loc) {
+                        // A typed °C goes to the location, or to the project when the wire has none.
+                        ("panel", Some(loc)) => {
+                            ("rating", json!({"location": loc, "temperature": ecad_cadcraft::rating::parse::ambient(t).map_or(v, |n| json!(n))}))
+                        }
+                        ("panel", None) if clear => ("setdefault", json!({"key": "rating.panel_temperature", "level": "project", "reset": true})),
+                        ("panel", None) => (
+                            "setdefault",
+                            json!({"key": "rating.panel_temperature", "level": "project", "value": ecad_cadcraft::rating::parse::ambient(t).map_or(v, |n| json!(n.to_string()))}),
+                        ),
+                        _ => ("rating", json!({what: id, key: v})),
+                    });
                 }
                 ui.data_mut(|d| d.remove::<String>(buf_id));
             }

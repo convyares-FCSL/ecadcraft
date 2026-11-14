@@ -327,15 +327,21 @@ fn c18_no_values_shipped() {
     let h = &mut H::new(1);
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::styles::ratingtable::chosen(&doc), None);
-    // No source file outside `tests/` holds a table row.
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut stack = vec![src];
+    // No source file of any ECAD crate, app or tool outside `tests/` holds a table row (review of
+    // #108: every crate, not only this one).
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let mut stack = vec![root];
+    let mut scanned = 0;
     while let Some(d) = stack.pop() {
         for e in std::fs::read_dir(&d).unwrap().flatten() {
             let p = e.path();
             if p.is_dir() {
-                stack.push(p);
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                if !matches!(name, "tests" | "target" | ".git" | "node_modules") {
+                    stack.push(p);
+                }
             } else if p.extension().is_some_and(|x| x == "rs") {
+                scanned += 1;
                 let text = std::fs::read_to_string(&p).unwrap();
                 for kind in ["capacity,", "grouping,", "resistance,", "ambient,"] {
                     let row = text.lines().any(|l| {
@@ -347,6 +353,7 @@ fn c18_no_values_shipped() {
             }
         }
     }
+    assert!(scanned > 200, "the scan reached the workspace ({scanned} files)");
 }
 
 #[test]
@@ -444,4 +451,144 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     assert_eq!(ratingtable::rows_text(&doc, &id), "");
     assert_eq!(checks_of(&mut f.h, "style-limits").len(), 1);
     let _ = rating::Kept::build(&doc);
+}
+
+// ------------------------------------------------------------------------------- fix round
+
+/// A location box `+CAB1` over the fixture (its devices at x 50–150, y 0–110).
+fn cab1(h: &mut H) -> ComponentId {
+    id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[0, -30], [200, 130]]})).unwrap(), "component")
+}
+
+#[test]
+fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there() {
+    let mut f = fixture();
+    rate_category(&mut f.h);
+    f.h.run("rating", json!({"wire": f.l2.hex(), "bundling": "0.80"})).unwrap();
+    let b = cab1(&mut f.h);
+    let r = f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
+    assert_eq!(r["boxes"], json!(1), "{r}");
+    assert_eq!(f.h.doc().components[&b].properties.get(rating::TEMPERATURE).map(String::as_str), Some("44"));
+    let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
+    let panel = r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap();
+    // round2(√(26/40)) = round2(0.8062) = 0.81.
+    assert_eq!(panel["factor"], json!(0.81), "{r}");
+    assert_eq!(panel["from"], json!("location +CAB1"));
+    // Refusals write nothing.
+    let head = f.h.head();
+    assert!(f.h.run("rating", json!({"location": "+CAB1", "temperature": 95})).is_err());
+    assert!(f.h.run("rating", json!({"location": "+NONE", "temperature": 40})).is_err());
+    assert_eq!(f.h.head(), head);
+    // D1: the change re-checks the wires at +CAB1 only, with no re-trace.
+    let before = f.h.doc();
+    let mut k = rating::Kept::build(&before);
+    f.h.run("rating", json!({"location": "+CAB1", "temperature": 45})).unwrap();
+    let after = f.h.doc();
+    let ops: Vec<ecad_model::Op> = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
+    let mut touch = rating::Touch::default();
+    touch.collect(&before, &ops);
+    touch.collect(&after, &ops);
+    assert!(!touch.all_results);
+    let changed = k.update(&after, &touch);
+    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![rating::RatedSubject::Conductor(f.l2)]);
+    assert_eq!(k.retraced, 0);
+    // A device's own location reaches its wires only.
+    let mut k = rating::Kept::build(&after);
+    setprop(&mut f.h, "component", f.q01.hex(), "location", json!("+CAB2"));
+    let later = f.h.doc();
+    let ops: Vec<ecad_model::Op> = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
+    let mut touch = rating::Touch::default();
+    touch.collect(&after, &ops);
+    touch.collect(&later, &ops);
+    assert!(!touch.all_results);
+    let on_q01: Vec<ConductorId> = later.terminals_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
+    for s in k.update(&later, &touch) {
+        assert!(matches!(s, rating::RatedSubject::Conductor(c) if on_q01.contains(&c)), "{s:?}");
+    }
+    // A box temperature a file holds out of range: a row, not silence.
+    let rows = checks_of(&mut f.h, "rating-bad-value");
+    assert!(rows.is_empty(), "{rows:?}");
+    f.h.cfg(|p| {
+        p.ledger.commit(
+            ecad_model::Author::User,
+            "hostile box temperature",
+            vec![ecad_model::Op::SetProperty {
+                object: ecad_model::ObjectRef::Component(b),
+                key: rating::TEMPERATURE.into(),
+                before: Some("45".into()),
+                after: Some("95".into()),
+            }],
+        )
+    })
+    .unwrap();
+    let rows = texts(&checks_of(&mut f.h, "rating-bad-value"));
+    assert!(rows.iter().any(|t| t.contains("+CAB1") && t.contains("95")), "{rows:?}");
+}
+
+#[test]
+fn f2_near_the_device_rating_the_row_shows_the_extra_digit() {
+    let mut f = fixture();
+    f.h.run("rating", json!({"wire": f.l2.hex(), "basis": "manual", "manual": "21.5985"})).unwrap();
+    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("21.6 A"));
+    let under = texts(&checks_of(&mut f.h, "rating-under"));
+    assert!(under.len() == 1 && under[0].ends_with("carries 21.60 A; -Q01 is 21.6 A"), "{under:?}");
+}
+
+#[test]
+fn f3_protected_wires_with_no_rating_data_are_counted() {
+    let mut f = fixture();
+    // No rating data anywhere: no rows.
+    assert!(checks_of(&mut f.h, "rating-no-data").is_empty());
+    // A second wire on -Q01's load side, of no rated category.
+    let other = wire(&mut f.h, &[(50.0, 90.0), (90.0, 90.0)]);
+    let _ = other;
+    rate_category(&mut f.h);
+    let rows = texts(&checks_of(&mut f.h, "rating-no-data"));
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert!(rows[0].contains("no rating data"), "{rows:?}");
+    // The project stops rating: the count goes.
+    f.h.run("setstyle", json!({"catalogue": "wire", "id": "l2", "fields": {"rated_current": null}})).unwrap();
+    assert!(checks_of(&mut f.h, "rating-no-data").is_empty());
+}
+
+#[test]
+fn f6_the_trace_bound_is_said_in_words() {
+    let mut f = fixture();
+    rate_category(&mut f.h);
+    let doc = f.h.doc();
+    let mut r = rating::rating_of(&doc, rating::RatedSubject::Conductor(f.l2));
+    r.issues = vec![rating::Issue::NoDevice(true)];
+    let rows = rating::rows(&doc, &r);
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].which.ends_with("trace stopped after 64 nets; set Protected by"), "{}", rows[0].which);
+}
+
+#[test]
+fn a_strip_fuse_position_protects_its_out_point_only() {
+    let mut h = H::new(570);
+    let x = place(&mut h, "termfuse", [100.0, 100.0], "-X05");
+    let doc = h.doc();
+    let page = h.first_page();
+    let mut points: Vec<(char, ecad_model::Pt)> = Vec::new();
+    for (t, _) in doc.terminals_of(x) {
+        let side = ecad_cadcraft::terminal_types::level_of(&doc, t).1;
+        if let (Some(c), Some(at)) = (side, ecad_model::derive::terminal_position(&doc, page, t)) {
+            points.push((c, at));
+        }
+    }
+    let label = doc.terminals_of(x).find_map(|(_, t)| t.label.clone()).unwrap();
+    setprop(&mut h, "component", x.hex(), &format!("rating.{label}"), json!("2 A"));
+    let at = |c: char| points.iter().find(|(s, _)| *s == c).map(|(_, p)| *p).unwrap();
+    let (i, o) = (at('i'), at('o'));
+    let supply = wire(&mut h, &[(i.x, i.y), (i.x + 40.0, i.y + 40.0)]);
+    let load = wire(&mut h, &[(o.x, o.y), (o.x + 40.0, o.y - 40.0)]);
+    h.run(
+        "rating",
+        json!({"many": [{"wire": supply.hex(), "basis": "manual", "manual": "1"}, {"wire": load.hex(), "basis": "manual", "manual": "1"}]}),
+    )
+    .unwrap();
+    let r = ratings(&mut h, json!({"wire": load.hex()}));
+    assert_eq!(r["device"]["tag"], json!(format!("-X05:{label}")), "{r}");
+    let r = ratings(&mut h, json!({"wire": supply.hex()}));
+    assert!(r["device"].is_null(), "the supply side is not protected by the fuse: {r}");
 }

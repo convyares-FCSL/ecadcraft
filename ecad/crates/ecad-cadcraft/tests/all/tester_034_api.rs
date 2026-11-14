@@ -139,8 +139,20 @@ fn prefixes_are_registered_defaults() {
         assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB", "{bad:?} falls back");
     }
     // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
-    // device rating: the 034 ruling still holds for the device's own rating text.
-    assert!(defaults::all().all(|x| !x.key.contains("rating") || x.brief == "057"), "ratings have no registry default (ruling)");
+    // device rating: exactly these keys are excepted; the 034 ruling holds for everything else.
+    const BRIEF_057: [&str; 10] = [
+        "rating.wire_basis",
+        "rating.cable_basis",
+        "rating.panel_temperature",
+        "rating.ambient",
+        "rating.table",
+        "rating.bundling",
+        "rating.method",
+        "rating.voltage",
+        "rating.system",
+        "rating.vd_limit",
+    ];
+    assert!(defaults::all().all(|x| !x.key.contains("rating") || BRIEF_057.contains(&x.key)), "ratings have no registry default (ruling)");
 }
 
 /// §2.3: the change-over rule itself: s = 1 + the highest sequence digit; refused after 9.

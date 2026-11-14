@@ -298,7 +298,9 @@ fn a_hostile_style_document_opens_draws_and_reports() {
         });
         ops.push(Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "harness".into(),
+            // A word reserved for no catalogue, here or later (a hyphen is refused by the model's
+            // invariant, so the unknown word must be a valid one).
+            catalogue: "zz_not_a_catalogue".into(),
             id: StyleRef::Own(10),
             before: None,
             after: Some(StyleRecord { name: "Future".into(), fields: Default::default() }),
@@ -324,7 +326,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     let fan = Default::default();
     let (d, _) = ecad_cadcraft::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
     assert!(!d.model.is_empty());
-    assert!(h.run("styles", json!({})).unwrap()["unknown_catalogues"].as_array().unwrap().iter().any(|c| c["catalogue"] == "harness"));
+    assert!(h.run("styles", json!({})).unwrap()["unknown_catalogues"].as_array().unwrap().iter().any(|c| c["catalogue"] == "zz_not_a_catalogue"));
     assert_eq!(text_style(&doc, TextKind::Tag).height, 2.5);
 }
 
