@@ -91,6 +91,9 @@ jobs:
         with:
           workspaces: ecad
           shared-key: ecad-quick
+          # Only the nightly writes it: a copy saved by a pull request is visible to that pull
+          # request alone, and these copies filled the store. Pull requests restore the nightly's.
+          save-if: ${{ github.event_name == 'schedule' }}
       - name: Format
         working-directory: ecad
         run: cargo fmt --all -- --check

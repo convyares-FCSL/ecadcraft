@@ -242,6 +242,9 @@ fn close_all(h: &mut H) {
 }
 
 fn reopen(path: &str, seed: u64) -> H {
+    // As `H::new`: run alone (as nextest runs every test), nothing else has installed ECAD's commands.
+    ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
