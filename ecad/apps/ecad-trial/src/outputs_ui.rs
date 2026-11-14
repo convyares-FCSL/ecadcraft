@@ -130,6 +130,18 @@ pub struct Reports {
     /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
     pub io: crate::lists::plc::IoView,
     pub io_shown: bool,
+    /// UI rev 3 (boards 2.04, 2.05): Project ▸ Wires and Cables, kept in step while shown.
+    pub wires: crate::lists::wires::WiresView,
+    pub cables: crate::lists::cables::CablesView,
+    pub wires_shown: bool,
+    pub cables_shown: bool,
+    /// UI rev 3 (board 2.06): Project ▸ Reports' list of reports; the window is its preview,
+    /// shown without its own tab row.
+    pub list: crate::lists::reports::ReportsList,
+    pub preview: bool,
+    /// UI rev 3: the Project tabs' counts (terminals, PLC channels, wires, cables), from kept
+    /// counts, taken with the Reports tab counts.
+    pub tab_counts: [usize; 4],
     /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
     /// them; ticking writes `setdefault`), whether the project can be written (Columns and the
     /// add-item button are greyed when not), each BOM row's item when it lists one item only, and
@@ -167,9 +179,19 @@ impl Reports {
         let reference_style = p.ledger.document().settings.reference_style;
         let style = reference_style as u64;
         let o = p.outputs();
+        if self.wires_shown {
+            self.wires.sync(serial, o);
+        }
+        if self.cables_shown {
+            self.cables.sync(serial, o);
+        }
         // The counts on the tabs, from kept counts (no rows made).
         if self.counted != Some((serial, o.build_id ^ o.revision, self.group)) {
             self.counts = [o.bom_count(self.group), o.wire_count(), o.cable_count(), o.strips.len()];
+            let terminals = o.strips.sorted().iter().map(|s| s.rows.len()).sum();
+            let cards: Vec<_> = o.plc.cards.values().collect();
+            let channels = usize::try_from(ecad_cadcraft::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
+            self.tab_counts = [terminals, channels, o.wire_count(), o.cable_count()];
             self.counted = Some((serial, o.build_id ^ o.revision, self.group));
         }
         // The Terminals tab follows only the strips it shows (review of PR #55, finding 2; design
@@ -222,6 +244,8 @@ impl Reports {
         self.counted = None;
         self.strips_seen = None;
         self.terminals.invalidate();
+        self.wires.invalidate();
+        self.cables.invalidate();
     }
 
     /// The result of the last [`Out::Run`]: a terminal plan edit's refusal shows under its cell.
@@ -307,7 +331,8 @@ impl Reports {
             .hosted(self.host)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    for (i, tab) in TABS.into_iter().enumerate() {
+                    // UI rev 3: as Project ▸ Reports' preview the list above picks the tab.
+                    for (i, tab) in TABS.into_iter().enumerate().filter(|_| !self.preview) {
                         let n = self.counts.get(i).copied().unwrap_or(0);
                         let b = ui
                             .selectable_label(self.tab == tab, format!("{} ({n})", tab.label()))

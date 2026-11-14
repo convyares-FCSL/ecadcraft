@@ -66,7 +66,7 @@ pub fn columns(all: bool) -> Vec<Column> {
         Column::set(ADDRESS.0, "Address", Width::Initial(72.0)),
         Column::set(PINS.0, "Pins", Width::Initial(64.0)),
         Column::set(TEXT.0, "Description", Width::Initial(180.0)),
-        Column::read(STATE.0, "State", Width::Initial(64.0)).groupable(),
+        Column::read(STATE.0, "State", Width::Initial(96.0)).groupable(),
         Column::read(TARGETS.0, "Wired to", Width::Initial(120.0)),
         Column::read(WIRE.0, "Wire", Width::Initial(64.0)),
         Column::read(PLACE.0, "Place", Width::Remainder),
@@ -312,6 +312,12 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
         _ => {
             let mut parts = Vec::new();
             let mut a = Vec::new();
+            // UI rev 3 (board 2.03): how many channels are in use, then the page link.
+            if !t.squares.is_empty() {
+                let used = t.squares.iter().filter(|s| **s != Square::Spare).count();
+                parts.push(Link { text: format!("{used} of {} in use", t.squares.len()), tone: Tone::Plain, ..Link::default() });
+                a.push(TileLink::None);
+            }
             page_links(&mut parts, &mut a);
             if t.checks > 0 {
                 let words = if t.checks == 1 { "\u{b7} 1 check".to_string() } else { format!("\u{b7} {} checks", t.checks) };
@@ -325,10 +331,12 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
             acts.push(a);
         }
     }
-    let mut info = vec![t.what.clone()];
-    if !matches!(t.kind, TileKind::Free) {
-        info.push(t.range.clone());
-    }
+    // UI rev 3 (board 2.03): what the card is at the head's right, its addresses under the squares.
+    let (kind, info, under) = match t.kind {
+        TileKind::Free => (String::new(), vec![t.what.clone()], String::new()),
+        _ if t.squares.is_empty() => (String::new(), vec![t.what.clone(), t.range.clone()], String::new()),
+        _ => (t.what.clone(), Vec::new(), t.range.clone()),
+    };
     let tips = match t.card() {
         Some(c) => (0..t.squares.len()).map(|i| tip_words(doc, c, t, i)).collect(),
         None => Vec::new(),
@@ -336,6 +344,8 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     let tile = strip::Tile {
         name: name.clone(),
         head: t.head.clone(),
+        kind,
+        under,
         title: t.tag.clone(),
         faint_title: t.kind == TileKind::Free,
         lines: info,
@@ -627,8 +637,11 @@ impl IoView {
         use eframe::egui;
         let mut out = Vec::new();
         let s = ecad_ui::SHELL;
-        // Chips and the total.
+        let ty = ecad_ui::tokens::ui_type::BODY;
+        // UI rev 3 (board 2.03): the rack's line (its chips, its totals) and the legend.
+        ui.add_space(ecad_ui::tokens::space::M);
         ui.horizontal(|ui| {
+            ui.add_space(ecad_ui::tokens::space::M);
             if self.chips.len() > 1 {
                 let words: Vec<String> = self.chips.iter().map(Chip::words).collect();
                 let labels: Vec<&str> = words.iter().map(String::as_str).collect();
@@ -637,16 +650,21 @@ impl IoView {
                 if i != self.chip {
                     out.push(ListAction::Chip(i));
                 }
+            } else if let Some(c) = self.chips.first() {
+                let title = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE);
+                ui.label(egui::RichText::new(c.words()).font(title).color(ecad_ui::color(s.text)));
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(&self.totals).size(ecad_ui::tokens::ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
-            });
+            ui.label(egui::RichText::new(&self.totals).size(ty.size).color(ecad_ui::color(s.text_2)));
+            if !self.tiles.is_empty() {
+                ui.add_space(ecad_ui::tokens::space::XXL);
+                strip::legend(ui, &LEGEND);
+            }
         });
+        ui.add_space(ecad_ui::tokens::space::S);
         if self.tiles.is_empty() {
             ui.label(egui::RichText::new(NO_CARDS).color(ecad_ui::color(s.text_3)));
         } else {
             let events = strip::show(ui, egui::Id::unique(STRIP), &self.strip, self.selected);
-            strip::legend(ui, &LEGEND);
             for e in events {
                 match e {
                     StripEvent::Select(i) => out.push(ListAction::Tile(i)),
@@ -676,9 +694,20 @@ impl IoView {
                 }
             }
         }
-        ui.add_space(ecad_ui::tokens::space::S);
-        // The scope switch over the table.
+        ui.add_space(ecad_ui::tokens::space::L);
+        // The selected card's line (board 2.03), then the scope switch over the table.
         ui.horizontal(|ui| {
+            ui.add_space(ecad_ui::tokens::space::M);
+            if let Some(t) = self.selected.and_then(|i| self.tiles.get(i)) {
+                let words = format!("{} \u{b7} {} \u{b7} {}", t.tag, t.what, t.head);
+                let strong = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY_EMPHASIS);
+                ui.label(egui::RichText::new(words).font(strong).color(ecad_ui::color(s.text)));
+                let used = t.squares.iter().filter(|q| **q != Square::Spare).count();
+                let n = t.squares.len();
+                let place = t.place.as_deref().map_or_else(|| "on no page".to_string(), |p| format!("card at {p}"));
+                ui.label(egui::RichText::new(format!("{n} channels, {used} in use, {place}")).size(ty.size).color(ecad_ui::color(s.text_2)));
+                ui.add_space(ecad_ui::tokens::space::L);
+            }
             let mut i = usize::from(self.all_cards);
             ui.push_id(SCOPE, |ui| ecad_ui::prim::segmented(ui, &mut i, &[THIS_CARD, ALL_CARDS]));
             if (i == 1) != self.all_cards {

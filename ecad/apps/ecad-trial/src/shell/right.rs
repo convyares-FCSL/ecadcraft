@@ -98,6 +98,14 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         t.shell.state.right_collapsed = true;
     }
     let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::M, rect.bottom()));
+    // UI rev 3, Project workspace (boards 2.01–2.06): the selected row, its properties and its
+    // own checks (`lists::detail`); the Checks tab stays the check list.
+    if t.shell.state.workspace == super::Workspace::Lists && t.shell.state.right_tab != RightTab::Checks {
+        // The inspector keeps following the page's selection meanwhile.
+        sync(t);
+        crate::lists::detail::show(t, ui, Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max));
+        return;
+    }
     if library {
         super::in_rect(ui, body, crate::library::details::DETAILS, |ui| {
             egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| t.library_right(ui));

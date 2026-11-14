@@ -124,6 +124,9 @@ fn the_inspector_lists_a_devices_part_set() {
         ),
     );
     let rep = doc(&mut h).representations.iter().find(|(_, r)| r.subject == ecad_model::Subject::Component(k03)).map(|(id, _)| *id).unwrap();
+    // UI rev 3: the Project workspace's right panel shows its selected row; the inspector of the
+    // page's selection is Draw's.
+    h.state_mut().set_workspace(ecad_trial::shell::Workspace::Draw);
     h.state_mut().goto_symbols(&[rep]).unwrap();
     h.run_steps(4);
     let parts = h.state().settings.inspector.parts.clone();
