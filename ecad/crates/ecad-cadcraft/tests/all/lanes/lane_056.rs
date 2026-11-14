@@ -435,3 +435,19 @@ fn o_a_snapshot_too_large_for_one_property_is_refused_in_words() {
     let e = import(&mut h, &t, json!({})).unwrap_err();
     assert!(e.contains("at most 1.0 MB is kept"), "{e}");
 }
+
+#[test]
+fn an_unchanged_snapshot_is_not_recorded_again() {
+    let F { mut h, .. } = p56(5617);
+    import(&mut h, P56_TAGS, json!({})).unwrap();
+    let first = h.p(|p| p.ledger.log().last().map(|t| t.ops.clone())).unwrap();
+    let table_ops =
+        |ops: &[ecad_model::Op]| ops.iter().filter(|op| matches!(op, ecad_model::Op::SetProperty { key, .. } if key == "plc.sync.table")).count();
+    assert_eq!(table_ops(&first), 1, "the first import records the snapshot");
+    // The same table again (the `;` variant reads to the same canonical text): the snapshot is
+    // not recorded twice, so history does not grow by its size.
+    let n = h.p(|p| p.ledger.log().len());
+    import(&mut h, P56_TAGS_B, json!({})).unwrap();
+    let added: Vec<ecad_model::Op> = h.p(|p| p.ledger.log().iter().skip(n).flat_map(|t| t.ops.clone()).collect());
+    assert_eq!(table_ops(&added), 0, "at most the time and source are recorded: {added:?}");
+}
