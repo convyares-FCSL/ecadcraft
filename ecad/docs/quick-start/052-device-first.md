@@ -26,7 +26,41 @@ first.
    (`pinp`) on page 2. Each pin shows its mate's place; there is no half-level reference text
    beside the first pin.
 
+## Part b: function and location stored on the device, and the project's list
+
+A device's location (`+`) and function (`=`) are what you set on it. Boxes, pages and the project
+no longer give a device a location by themselves (part d adds the proposals). Each location and
+function is an entry in the project's list, so renaming one renames it everywhere.
+
+Projects from v0.2.0 or earlier: their locations and functions show `?` and Checks lists them as
+no longer in the list. Re-make them; nothing converts them.
+
+### Try it
+
+1. **Set a location.** Select a device; in the inspector, type `+CP1` in Location. The echo says
+   `New location +CP1 added to the project's list.` One undo removes both.
+2. **No location is `?`.** A device with none shows `?`. With a symbol selected inside a box or on
+   a page with a location, the row offers **Use +CP1**.
+3. **Prefixes.** Give `-K01` `=F1` and `+CP1`. A contact of it on a page whose function is `=F2`
+   and location `+CP2` shows `=F1+CP1-K01`.
+4. **Connector halves.** Select a connector: **Location (socket)** and **Location (plug)** each
+   take their own value; the BOM has one row per half at its location.
+5. **Checks.** A device whose location none of its symbols is in shows
+   `-K01 is +CP2, but none of its symbols is in +CP2`, with **Use it** when they share one.
+
+## Part c: Settings ▸ Project info ▸ Functions and locations
+
+1. Open Settings ▸ Project info. The card lists functions and locations with their device counts;
+   ● marks the project's default.
+2. Click a code and type a new one (`+CP1` → `+CP10`): every tag, box label and BOM row follows at
+   once; `u` undoes it. Typing a code another entry has shows it in red with **Merge into …**.
+3. The row's menu (⋯): **Make default**, **Merge into…** (moves every user, then removes the entry),
+   **Remove** (only when nothing uses it).
+4. **Remove unused (n)** removes every entry nothing uses, in one step.
+
 ### Automated checks
 
 - `cargo test -p ecad-cadcraft --test all lane_052`
 - `cargo test -p ecad-model --test all lane_052`
+- `cargo test -p ecad-mcp --test all lane_052`
+- `cargo test -p ecad-trial --test all lane_052`

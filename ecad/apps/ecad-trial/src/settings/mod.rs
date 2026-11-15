@@ -12,6 +12,7 @@
 //! [`later`] (Libraries, Versions and backups, Shortcuts: what exists today, and what comes).
 
 pub mod agent;
+pub mod designations;
 pub mod developer;
 pub mod display;
 pub mod later;

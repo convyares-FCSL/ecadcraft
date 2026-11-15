@@ -5,15 +5,16 @@
 //! closes Settings, Cancel writes nothing.
 //!
 //! Project info shows the fields that exist today (title, drawing number, customer, status, the
-//! default function and location, and the free properties). People and approval, each function's
-//! and location's description and count, where each title block field is filled from, the
+//! default function and location, the project's list of functions and locations (brief 052c,
+//! [`super::designations`]), and the free properties). People and approval, where each title
+//! block field is filled from, the
 //! customer logo, revision letters and the project's language and units are placeholders: they
 //! have no data yet.
 
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use super::{card, dashed_rect, later_box, later_row, row};
+use super::{card, dashed_rect, later_row, row};
 use crate::Trial;
 use crate::sheets_ui::{Out, Part, Popout};
 use crate::shell::bar;
@@ -44,6 +45,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
     let name = t.header().name.unwrap_or_default();
     let page = t.panel.active.and_then(|a| t.panel.rows().iter().find(|r| r.id == a)).map(|r| (r.number.clone(), r.title.clone()));
     let pages = t.panel.rows().len();
+    // Brief 052c: the project's list, read again only after a commit that could change it.
+    let designation_rows = super::designations::rows(t, ui.ctx());
+    let mut designation_ask: super::designations::Ask = None;
     let sheet = match t.shell.state.sheet {
         crate::canvas::Sheet::Paper => "Paper",
         crate::canvas::Sheet::Follow => "Follow the theme",
@@ -125,7 +129,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
                     }
                     ui.label(egui::RichText::new("The defaults for new pages.").small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
                     ui.add_space(space::S);
-                    later_box(ui, "Each function and location with its description and device count comes later", 32.0);
+                    designation_ask = super::designations::body(ui, &designation_rows, ro);
                 },
             );
         });
@@ -218,6 +222,10 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui) {
     }
     if let Some(o) = out {
         t.project_props_out(o);
+    }
+    // Brief 052c (design 052 §9.4): the card's edits are immediate commands.
+    if let Some(cmd) = designation_ask {
+        let _ = t.run_line(&cmd);
     }
 }
 
