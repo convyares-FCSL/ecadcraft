@@ -23,6 +23,9 @@ pub struct Showcase {
     pub read_only: String,
     pub workspace: usize,
     pub chip: bool,
+    /// The gallery's selector and segmented choice.
+    pub category: usize,
+    pub basis: usize,
 }
 
 impl Default for Showcase {
@@ -35,6 +38,8 @@ impl Default for Showcase {
             read_only: "+CAB1".into(),
             workspace: 0,
             chip: true,
+            category: 0,
+            basis: 0,
         }
     }
 }
@@ -167,8 +172,227 @@ pub fn show(ui: &mut Ui, state: &mut Showcase) {
                 caption(ui, "provisional:");
                 provisional(ui, "-K?1");
             });
+            components(ui, state);
             // The bottom edge, so the last row is not under the scroll area's edge.
             let _ = ui.allocate_rect(Rect::from_min_size(ui.cursor().min, vec2(1.0, space::XL)), Sense::hover());
         });
     });
+}
+
+/// The states every value component is shown in, left to right.
+pub const STATES: [&str; 6] = ["Editable", "Hover", "Focus", "Read-only", "Disabled", "Empty"];
+
+/// One cell of the component table: the state's caption over the component, a column wide.
+fn cell(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    ui.allocate_ui(vec2(COLUMN, crate::tokens::size::CONTROL), |ui| {
+        ui.set_width(COLUMN);
+        add(ui);
+    });
+}
+
+/// A component table column's width: an inspector value column.
+const COLUMN: f32 = crate::tokens::size::LABEL_COLUMN * 2.0;
+
+/// The value components (`crate::control`, `crate::panel`), each in every state (design
+/// `docs/design/components.md`): the gallery the style guide's screenshots come from.
+pub fn components(ui: &mut Ui, state: &mut Showcase) {
+    use crate::control::{Decor, Select, TextEntry, Toggle, ValueBox, link, read_text};
+    heading(ui, "Value components");
+    caption(ui, "Anything the person can change looks editable at a glance; a value read from the drawing never looks like an input.");
+    ui.horizontal(|ui| {
+        ui.add_space(crate::tokens::size::LABEL_COLUMN);
+        for s in STATES {
+            cell(ui, |ui| caption(ui, s));
+        }
+    });
+    let looks = [Look::Auto, Look::Hover, Look::Focus];
+    let line = |ui: &mut Ui, name: &str, each: &mut dyn FnMut(&mut Ui, usize)| {
+        ui.horizontal(|ui| {
+            crate::panel::label(ui, name);
+            for i in 0..STATES.len() {
+                cell(ui, |ui| each(ui, i));
+            }
+        });
+    };
+    let swatch = Some((crate::tokens::sheet::PAPER.ink, None));
+    line(ui, "Text entry", &mut |ui, i| {
+        let mut t = if i == 5 { String::new() } else { state.text.clone() };
+        let e = TextEntry::new(&mut t, "Text entry").hint("auto").bold(true);
+        match i {
+            0..=2 => {
+                let e = e.look(looks.get(i).copied().unwrap_or_default());
+                if i == 0 {
+                    TextEntry::new(&mut state.text, "Text entry").hint("auto").bold(true).show(ui);
+                } else {
+                    e.show(ui);
+                }
+            }
+            3 => {
+                e.read_only(true).show(ui);
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| e.show(ui));
+            }
+            _ => {
+                e.placeholder("Not set").show(ui);
+            }
+        }
+    });
+    line(ui, "Number + unit", &mut |ui, i| {
+        let mut t = if i == 5 { String::new() } else { state.number.clone() };
+        let e = TextEntry::new(&mut t, "Number with unit").number("mm\u{b2}").hint("from category");
+        match i {
+            0 => {
+                TextEntry::new(&mut state.number, "Number with unit").number("mm\u{b2}").hint("from category").show(ui);
+            }
+            1 | 2 => {
+                e.look(looks.get(i).copied().unwrap_or_default()).show(ui);
+            }
+            3 => {
+                e.read_only(true).show(ui);
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| e.show(ui));
+            }
+            _ => {
+                e.show(ui);
+            }
+        }
+    });
+    let options = ["Power L / N", "Control 24 V", "PE"];
+    line(ui, "Selector", &mut |ui, i| {
+        let mut k = if i == 5 { usize::MAX } else { state.category };
+        fn sel<'a>(k: &'a mut usize, options: &'a [&'a str]) -> Select<'a> {
+            Select::new(k, options, "Selector").placeholder("Choose…")
+        }
+        match i {
+            0 => {
+                Select::new(&mut state.category, &options, "Selector").show(ui);
+            }
+            1 | 2 => {
+                sel(&mut k, &options).look(looks.get(i).copied().unwrap_or_default()).show(ui);
+            }
+            3 => {
+                sel(&mut k, &options).read_only(true).show(ui);
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| sel(&mut k, &options).show(ui));
+            }
+            _ => {
+                sel(&mut k, &options).show(ui);
+            }
+        }
+    });
+    line(ui, "Colour", &mut |ui, i| {
+        let text = if i == 5 { "" } else { "BK" };
+        let d = Decor { hint: "from category", swatch: if i == 5 { None } else { swatch }, ..Decor::default() };
+        match i {
+            3 => {
+                read_text(ui, text, d, "Colour");
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| ValueBox::new(text, "Colour").decor(d).show(ui));
+            }
+            _ => {
+                ValueBox::new(text, "Colour").decor(d).look(looks.get(i).copied().unwrap_or_default()).show(ui);
+            }
+        }
+    });
+    line(ui, "Value + hint", &mut |ui, i| {
+        let text = if i == 5 { "" } else { "L2" };
+        let d = Decor { hint: "from the drawing", ..Decor::default() };
+        match i {
+            3 => {
+                read_text(ui, text, d, "Value with hint");
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| ValueBox::new(text, "Value with hint").decor(d).show(ui));
+            }
+            _ => {
+                ValueBox::new(text, "Value with hint").decor(d).look(looks.get(i).copied().unwrap_or_default()).show(ui);
+            }
+        }
+    });
+    line(ui, "Read value", &mut |ui, i| {
+        let text = if i == 5 { "" } else { "-K01:4 \u{b7} 2/C1" };
+        read_text(ui, text, Decor::default(), "Read value");
+    });
+    line(ui, "Toggle", &mut |ui, i| {
+        let mut on = i != 5 && state.chip;
+        let t = Toggle::new(&mut on, "Toggle");
+        match i {
+            0 => {
+                Toggle::new(&mut state.chip, "Toggle").show(ui);
+            }
+            1 | 2 => {
+                t.look(looks.get(i).copied().unwrap_or_default()).show(ui);
+            }
+            3 => {
+                t.read_only(true).show(ui);
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| t.show(ui));
+            }
+            _ => {
+                t.show(ui);
+            }
+        }
+    });
+    line(ui, "Segmented", &mut |ui, i| {
+        let items = ["Datasheet", "Table", "Manual"];
+        let mut k = if i == 5 { usize::MAX } else { state.basis };
+        match i {
+            0 => {
+                ui.add(Segmented::new(&mut state.basis, &items));
+            }
+            1 => {
+                ui.add(Segmented::new(&mut k, &items).look(1, Look::Hover));
+            }
+            2 => {
+                ui.add(Segmented::new(&mut k, &items).look(1, Look::Focus));
+            }
+            3 => {
+                ui.add(Segmented::new(&mut k, &items).read_only(true));
+            }
+            4 => {
+                ui.add_enabled_ui(false, |ui| ui.add(Segmented::new(&mut k, &items)));
+            }
+            _ => {
+                ui.add(Segmented::new(&mut k, &items));
+            }
+        }
+    });
+    line(ui, "Link", &mut |ui, i| {
+        if i == 0 || i == 1 {
+            link(ui, "\u{2192} 2/C1");
+        }
+    });
+    line(ui, "Status pill", &mut |ui, i| {
+        let (tone, words) = match i {
+            0 => (Tone::Ok, "No checks on L2-03"),
+            1 => (Tone::Warning, "1 warning"),
+            2 => (Tone::Error, "1 error"),
+            _ => return,
+        };
+        crate::panel::status_pill(ui, tone, words, words);
+    });
+    line(ui, "Buttons", &mut |ui, i| {
+        let (label, kind) = match i {
+            0 => ("Primary", Kind::Primary),
+            1 => ("Secondary", Kind::Secondary),
+            2 => ("Quiet", Kind::Quiet),
+            3 => ("Danger", Kind::Danger),
+            4 => {
+                ui.add(Button::new("Disabled").disabled("not yet"));
+                return;
+            }
+            _ => return,
+        };
+        ui.add(Button::new(label).kind(kind).small());
+    });
+    ui.add_space(space::M);
+    let mut open = true;
+    let _ = crate::panel::section_header(ui, open, "Section header", "18.8 A \u{2265} 4 A");
+    open = !open;
+    let _ = crate::panel::section_header(ui, open, "Folded section", "2/D1");
 }

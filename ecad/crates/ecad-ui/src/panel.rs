@@ -5,8 +5,8 @@
 //! - [`label`]: the grey label in the label column ([`size::LABEL_COLUMN`]).
 //! - [`field_box`]: the input box a value set here sits in, with its hint at the right ("auto",
 //!   "from category").
-//! - [`value_row`]: a whole row: label, then the value boxed when it is set here, grey and unboxed
-//!   when it is read from the drawing, dimmer still when it is not built yet.
+//! - [`value_row`]: a whole row: label, then the value boxed when it is set on the object, plain
+//!   grey when it is read from the drawing, a dim box when it is not built yet.
 //! - [`status_pill`]: a one-line status ("✓ No checks on L2-03"): a mark in its tone, neutral words.
 //! - [`rule`]: the hairline between sections, edge to edge of the panel.
 //!
@@ -87,69 +87,17 @@ pub enum ValueKind {
     Later,
 }
 
-/// A one-line text input in a field box filling `rect` (a row's value column), `hint` at its
-/// right. `edit` is the caller's (its id, placeholder); this draws it frameless in the body type,
-/// with the focus ring when focused and an `error` line when `invalid`. Its accessible name is
-/// `name`, disabled when the `Ui` is.
-pub fn input(ui: &mut Ui, rect: Rect, edit: egui::TextEdit<'_>, hint: &str, name: &str, invalid: bool) -> Response {
-    let s = crate::SHELL;
-    let (bx, room) = field_box(ui, rect, hint);
-    let body = fonts::font(ui.ctx(), ui_type::BODY);
-    let line_h = ui.fonts_mut(|f| f.row_height(&body)) + space::XXS;
-    let top = bx.center().y - line_h / 2.0;
-    let edit_rect = Rect::from_min_max(pos2(room.left(), top), pos2(room.right(), top + line_h));
-    let r = ui.put(edit_rect, edit.frame(egui::Frame::NONE).font(body).text_color(color(s.text)));
-    let enabled = ui.is_enabled();
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, enabled, name));
-    if invalid {
-        ui.painter().rect_stroke(bx, corner(radius::FIELD), Stroke::new(line::HAIRLINE_PX, color(s.error)), egui::StrokeKind::Outside);
-    } else if r.has_focus() {
-        ui.painter().rect_stroke(bx, corner(radius::FIELD), Stroke::new(line::FOCUS_RING_PX, color(s.accent_text)), egui::StrokeKind::Inside);
-    }
-    r
-}
-
-/// A label and a text input ([`input`]) as one row, as wide as the panel.
-pub fn input_row(ui: &mut Ui, label_text: &str, edit: egui::TextEdit<'_>, hint: &str, name: &str, invalid: bool) -> Response {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), size::CONTROL), Sense::hover());
-    let s = crate::SHELL;
-    let lg = crate::table::cells::fitted(ui, label_text, ui_type::SMALL, color(s.text_3), size::LABEL_COLUMN - space::S);
-    ui.painter().galley(pos2(rect.left(), rect.center().y - lg.size().y / 2.0), lg, color(s.text_3));
-    let column = Rect::from_min_max(pos2(rect.left() + size::LABEL_COLUMN, rect.top()), rect.max);
-    input(ui, column, edit, hint, name, invalid)
-}
-
-/// One label-and-value row, as wide as the panel. Its accessible name is `"<label>: <value>"`.
-pub fn value_row(ui: &mut Ui, label_text: &str, value: &str, hint: &str, kind: ValueKind) -> Response {
-    let s = crate::SHELL;
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), size::CONTROL), Sense::hover());
+/// One label-and-value row, as wide as the panel ([`crate::control`]): a [`ValueKind::Set`] value
+/// is a [`crate::control::ValueBox`] (with a chevron when `chevron`), a [`ValueKind::Read`] one is
+/// [`crate::control::read_text`], a [`ValueKind::Later`] one a disabled box. Its accessible name
+/// is `"<label>: <value>"`.
+pub fn value_row(ui: &mut Ui, label_text: &str, value: &str, decor: crate::control::Decor<'_>, kind: ValueKind, chevron: bool) -> Response {
     let name = format!("{label_text}: {value}");
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
-    if !ui.is_rect_visible(rect) {
-        return resp;
-    }
-    let p = ui.painter();
-    let lg = crate::table::cells::fitted(ui, label_text, ui_type::SMALL, color(s.text_3), size::LABEL_COLUMN - space::S);
-    p.galley(pos2(rect.left(), rect.center().y - lg.size().y / 2.0), lg, color(s.text_3));
-    let column = Rect::from_min_max(pos2(rect.left() + size::LABEL_COLUMN, rect.top()), rect.max);
-    let (room, ink) = match kind {
-        ValueKind::Set => (field_box(ui, column, hint).1, s.text),
-        ValueKind::Later => (field_box(ui, column, hint).1, s.text_3),
-        ValueKind::Read => {
-            let ink = s.text_2;
-            let mut right = column.right();
-            if !hint.is_empty() {
-                let g = crate::table::cells::fitted(ui, hint, ui_type::SMALL, color(s.text_3), column.width() / 2.0);
-                right -= g.size().x;
-                ui.painter().galley(pos2(right, column.center().y - g.size().y / 2.0), g, color(s.text_3));
-                right -= space::M;
-            }
-            (Rect::from_min_max(column.min, pos2(right.max(column.left()), column.bottom())), ink)
-        }
-    };
-    let g = crate::table::cells::fitted(ui, value, ui_type::BODY, color(ink), room.width());
-    ui.painter().galley(pos2(room.left(), room.center().y - g.size().y / 2.0), g, color(ink));
-    resp
+    crate::control::row(ui, label_text, |ui| match kind {
+        ValueKind::Set => crate::control::ValueBox::new(value, &name).decor(decor).chevron(chevron).show(ui),
+        ValueKind::Read => crate::control::read_text(ui, value, decor, &name),
+        ValueKind::Later => ui.add_enabled_ui(false, |ui| crate::control::ValueBox::new(value, &name).decor(decor).chevron(chevron).show(ui)).inner,
+    })
 }
 
 /// A one-line status pill: a tick in `ok` for [`Tone::Ok`], else a dot in the tone, then the

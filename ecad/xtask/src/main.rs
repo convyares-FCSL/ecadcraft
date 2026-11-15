@@ -113,6 +113,37 @@ const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
     ("apps/ecad-trial/src/sheets_ui.rs", 5, "restyled with Publish (after U2)"),
 ];
 
+/// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
+/// `ecad_ui::control` (text entry, number with unit, selector, toggle, value box) instead, so
+/// anything the person can change looks editable and a read value never looks like an input.
+const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
+
+/// ECAD UI files that still use raw egui value controls ([`RAW_CONTROL`]): the number of lines
+/// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
+/// uses one is a violation.
+const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
+    ("apps/ecad-trial/src/debugger.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/developer.rs", 5, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/lib.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/lists/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/merge_dialog.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/outputs_ui.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/publish.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/release_ui.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/renumber_dialog.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/sheets_ui.rs", 21, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("apps/ecad-trial/src/text_ui.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+];
+
 /// UI toolkits and ECAD's own UI kit: Core and Adapter crates may depend on none of them (the
 /// kit too, so the document and adapter crates never draw; design `ui-architecture.md` §2).
 const UI_CRATES: &[&str] =
@@ -256,10 +287,21 @@ fn dev_feature_places(rel: &str, text: &str) -> Vec<String> {
 /// The places in one ECAD UI source file (`rel`, `/` separated) that style locally
 /// ([`LOCAL_STYLE`]), as `rel:line: text`; comment lines and `//` comments are skipped.
 fn local_style_places(rel: &str, text: &str) -> Vec<String> {
+    places_matching(rel, text, LOCAL_STYLE)
+}
+
+/// The places in one ECAD UI source file that use a raw egui value control ([`RAW_CONTROL`]),
+/// as `rel:line: text`; comment lines and `//` comments are skipped.
+fn raw_control_places(rel: &str, text: &str) -> Vec<String> {
+    places_matching(rel, text, RAW_CONTROL)
+}
+
+/// The lines of `text` (outside `//` comments) that contain one of `patterns`, as `rel:line: text`.
+fn places_matching(rel: &str, text: &str, patterns: &[&str]) -> Vec<String> {
     let code = strip_line_comments(text);
     code.lines()
         .enumerate()
-        .filter(|(_, l)| LOCAL_STYLE.iter().any(|p| l.contains(p)))
+        .filter(|(_, l)| patterns.iter().any(|p| l.contains(p)))
         .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
         .collect()
 }
@@ -273,6 +315,19 @@ fn style_count_problem(path: &str, found: usize, allowed: usize, brief: &str) ->
         }
         std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer styles locally; remove its allowlist entry ({brief})")),
         std::cmp::Ordering::Less => Some(format!("{path}: {found} locally styled lines, fewer than the allowlist's {allowed}; lower the count")),
+        std::cmp::Ordering::Equal => None,
+    }
+}
+
+/// What is wrong with a file in [`RAW_CONTROL_ALLOWLIST`] that has `found` raw-control lines
+/// against its `allowed` count, if anything: more is a violation; fewer means lower the count.
+fn raw_count_problem(path: &str, found: usize, allowed: usize, why: &str) -> Option<String> {
+    match found.cmp(&allowed) {
+        std::cmp::Ordering::Greater => {
+            Some(format!("{path}: {found} raw egui value controls, the allowlist allows {allowed} ({why}); use ecad_ui::control"))
+        }
+        std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer uses raw egui value controls; remove its allowlist entry")),
+        std::cmp::Ordering::Less => Some(format!("{path}: {found} raw egui value controls, fewer than the allowlist's {allowed}; lower the count")),
         std::cmp::Ordering::Equal => None,
     }
 }
@@ -402,6 +457,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
     let mut style_seen: BTreeSet<&str> = BTreeSet::new();
+    let mut raw_seen: BTreeSet<&str> = BTreeSet::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         let class = class_of(name);
@@ -431,12 +487,25 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                     }
                     None => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from ecad-tokens through ecad-ui)"))),
                 }
+                let places = raw_control_places(&rel, &text);
+                match RAW_CONTROL_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
+                    Some((path, allowed, why)) => {
+                        raw_seen.insert(path);
+                        out.extend(raw_count_problem(path, places.len(), *allowed, why));
+                    }
+                    None => out.extend(places.into_iter().map(|p| format!("{p} (no raw egui value controls: use ecad_ui::control)"))),
+                }
             }
         }
     }
     for (path, _, brief) in STYLE_ALLOWLIST {
         if !style_seen.contains(path) {
             out.push(format!("{path}: in the local-styling allowlist ({brief}) but not found; remove the entry"));
+        }
+    }
+    for (path, _, why) in RAW_CONTROL_ALLOWLIST {
+        if !raw_seen.contains(path) {
+            out.push(format!("{path}: in the raw-control allowlist ({why}) but not found; remove the entry"));
         }
     }
     for (path, brief) in DEV_FEATURE_ALLOWLIST {
@@ -1108,6 +1177,29 @@ let c = ecad_ui::color(SHELL.text);",
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
         assert!(!v.iter().any(|m| m.contains("history_panel.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
+    }
+
+    /// A UI file not in the raw-control allowlist that uses `egui::TextEdit` or a `ComboBox` fails
+    /// `layers`; one in it, within its count, does not.
+    #[test]
+    fn a_new_ui_file_with_a_raw_text_edit_fails_layers() {
+        let root = std::env::temp_dir().join(format!("ecad-xtask-raw-{}", std::process::id()));
+        let src = root.join("apps").join("ecad-trial").join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("new_panel.rs"), "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n").unwrap();
+        std::fs::write(src.join("search.rs"), "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n").unwrap();
+        let meta = serde_json::json!({
+            "workspace_root": root.to_string_lossy(),
+            "packages": [{"name": "ecad-trial", "manifest_path": root.join("apps").join("ecad-trial").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
+        });
+        let v = source_violations(&meta).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no raw egui value controls")), "{v:?}");
+        assert!(!v.iter().any(|m| m.contains("search.rs") && m.contains("raw egui value controls")), "allowlisted: {v:?}");
+        assert_eq!(
+            raw_control_places("x.rs", "// egui::ComboBox::from_id_salt(1)\nlet c = ecad_ui::control::Select::new(&mut i, &o, \"n\");").len(),
+            0
+        );
     }
 
     /// Core and Adapter crates may not depend on ECAD's UI kit or the egui family (design §2).

@@ -575,7 +575,7 @@ impl DevicesPanel {
         out
     }
 
-    /// The selected device's six properties, each a field (`ecad_ui::panel::input_row`); Enter or
+    /// The selected device's six properties, each a text entry (`ecad_ui::control::TextEntry`); Enter or
     /// leaving a changed field runs `setprop`, Esc puts it back. `caption` heads it with a rule and
     /// "DEVICE <tag>" (beside the table); the Project panel's section header names it instead.
     fn editor(&mut self, ui: &mut egui::Ui, c: ComponentId, writable: bool, caption: bool, out: &mut Vec<Action>) {
@@ -657,11 +657,14 @@ impl DevicesPanel {
             let label = format!("{name} field");
             let field = ui
                 .add_enabled_ui(writable, |ui| {
-                    let mut edit = egui::TextEdit::singleline(&mut text).id(egui::Id::unique(("ecad.devices.prop", *key)));
-                    if !placeholder.is_empty() {
-                        edit = edit.hint_text(RichText::new(&placeholder).color(ecad_ui::color(ecad_ui::SHELL.text_3)));
-                    }
-                    ecad_ui::panel::input_row(ui, name, edit, hint, &label, false)
+                    ecad_ui::control::row(ui, name, |ui| {
+                        ecad_ui::control::TextEntry::new(&mut text, &label)
+                            .id(egui::Id::unique(("ecad.devices.prop", *key)))
+                            .placeholder(&placeholder)
+                            .hint(hint)
+                            .bold(*key == "tag")
+                            .show(ui)
+                    })
                 })
                 .inner;
             if field.changed() {

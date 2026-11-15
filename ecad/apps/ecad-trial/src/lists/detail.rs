@@ -33,6 +33,8 @@ pub const NOTHING: &str = "Select a row to see it here.";
 /// The greyed parts buttons' reason.
 pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
 pub const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
+/// A cross-section's unit.
+const MM2: &str = "mm\u{b2}";
 
 fn first<K: Copy + Ord>(t: &ecad_ui::table::Table<K>) -> Option<K> {
     t.selection.cursor().or_else(|| t.selection.keys().iter().next().copied())
@@ -71,18 +73,60 @@ struct Prop {
     set: bool,
     /// Not built yet: greyed with this reason.
     later: Option<&'static str>,
+    /// Its unit (`mm²`), whether it is the key identity value (bold), its colour swatch, and
+    /// whether it is one of a list (a chevron).
+    unit: &'static str,
+    bold: bool,
+    swatch: Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)>,
+    choice: bool,
+}
+
+impl Prop {
+    fn unit(mut self, unit: &'static str) -> Self {
+        self.unit = unit;
+        self
+    }
+    fn bold(mut self) -> Self {
+        self.bold = true;
+        self
+    }
+    fn choice(mut self) -> Self {
+        self.choice = true;
+        self
+    }
+    fn swatch(mut self, code: &str) -> Self {
+        self.swatch = swatch(code);
+        self
+    }
+}
+
+/// A wire colour code's swatch in its insulation colours (the paper sheet's, on either shell:
+/// black insulation stays black); none for a code that is not a colour.
+fn swatch(code: &str) -> Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)> {
+    let sheet = &ecad_ui::tokens::sheet::PAPER;
+    ecad_cadcraft::look::wire_colours(code, sheet).map(|c| (c.solid, c.dashes))
 }
 
 fn read(label: &'static str, value: impl Into<String>) -> Prop {
-    Prop { label, value: value.into(), hint: String::new(), set: false, later: None }
+    Prop { label, value: value.into(), hint: String::new(), set: false, later: None, unit: "", bold: false, swatch: None, choice: false }
 }
 
 fn set(label: &'static str, value: impl Into<String>, hint: impl Into<String>) -> Prop {
-    Prop { label, value: value.into(), hint: hint.into(), set: true, later: None }
+    Prop { label, value: value.into(), hint: hint.into(), set: true, later: None, unit: "", bold: false, swatch: None, choice: false }
 }
 
 fn later(label: &'static str, why: &'static str) -> Prop {
-    Prop { label, value: super::report::DASH.into(), hint: String::new(), set: false, later: Some(why) }
+    Prop {
+        label,
+        value: super::report::DASH.into(),
+        hint: String::new(),
+        set: false,
+        later: Some(why),
+        unit: "",
+        bold: false,
+        swatch: None,
+        choice: false,
+    }
 }
 
 /// A folding section.
@@ -301,7 +345,7 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
             Section {
                 title: "Identity",
                 props: vec![
-                    set("Number", nonempty(&number), if v.source.provisional(k) { "provisional" } else { "" }),
+                    set("Number", nonempty(&number), if v.source.provisional(k) { "provisional" } else { "" }).bold(),
                     set("Potential", nonempty(&rows.text(k, "Potential")), "from the drawing"),
                     read("From", nonempty(&from)),
                     read("To", nonempty(&to)),
@@ -312,9 +356,9 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
                 title: "Made as",
                 hint: "from the category".into(),
                 props: vec![
-                    set("Category", nonempty(&rows.text(k, "Category")), ""),
-                    set("Colour", nonempty(&rows.text(k, "Colour")), ""),
-                    set("Size", nonempty(&rows.text(k, "Cross-section")), ""),
+                    set("Category", nonempty(&rows.text(k, "Category")), "").choice(),
+                    set("Colour", nonempty(&rows.text(k, "Colour")), "").swatch(&rows.text(k, "Colour")),
+                    set("Size", nonempty(&rows.text(k, "Cross-section")), "").unit(MM2),
                     read("Cable", nonempty(&rows.text(k, "Cable"))),
                 ],
                 ..Section::default()
@@ -352,7 +396,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
             Section {
                 title: "Identity",
                 props: vec![
-                    set("Tag", nonempty(&tag), ""),
+                    set("Tag", nonempty(&tag), "").bold(),
                     read("Runs", format!("{} \u{2192} {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))),
                 ],
                 ..Section::default()
@@ -361,10 +405,10 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
                 title: "Part",
                 hint: "sets the cores".into(),
                 props: vec![
-                    set("Type", nonempty(&rows.text(k, "Type")), ""),
+                    set("Type", nonempty(&rows.text(k, "Type")), "").choice(),
                     read("Cores", format!("{} \u{b7} {} used", nonempty(&rows.text(k, "Cores")), nonempty(&rows.text(k, "Used")))),
                     read("Maker", nonempty(&rows.text(k, "Maker"))),
-                    set("Length", nonempty(&length), ""),
+                    set("Length", nonempty(&length), "").unit("m"),
                 ],
                 ..Section::default()
             },
@@ -443,7 +487,8 @@ fn prop_row(ui: &mut egui::Ui, p: &Prop) {
         (false, true) => panel::ValueKind::Set,
         (false, false) => panel::ValueKind::Read,
     };
-    let resp = panel::value_row(ui, p.label, &p.value, &p.hint, kind);
+    let decor = ecad_ui::control::Decor { hint: &p.hint, unit: p.unit, bold: p.bold, swatch: p.swatch };
+    let resp = panel::value_row(ui, p.label, &p.value, decor, kind, p.choice);
     if let Some(why) = p.later {
         resp.on_hover_text(why);
     }

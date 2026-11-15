@@ -116,16 +116,10 @@ pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
     ecad_ui::panel::field_box(ui, rect, "").0
 }
 
-/// A text input inside a field box (`ecad_ui::panel::input`) with an optional grey `hint` at its
-/// right (`auto`, `from page`). Returns the edit's response.
-pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: bool) -> Response {
-    let w = ui.available_width();
-    let (row, _) = ui.allocate_exact_size(vec2(w, FIELD_H), Sense::hover());
-    let mut edit = egui::TextEdit::singleline(buf);
-    if !placeholder.is_empty() {
-        edit = edit.hint_text(rich(ui, placeholder, ui_type::BODY, text_3()));
-    }
-    ecad_ui::panel::input(ui, row, edit, hint, name, invalid)
+/// A text entry (`ecad_ui::control::TextEntry`) with an optional grey `hint` at its right
+/// (`auto`, `from page`); `invalid` is the message, if any. Returns the edit's response.
+pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: Option<&str>) -> Response {
+    ecad_ui::control::TextEntry::new(buf, name).placeholder(placeholder).hint(hint).invalid(invalid).show(ui)
 }
 
 /// A segmented control as wide as the row (`ecad_ui::prim::Segmented`). `enabled` false shows it
