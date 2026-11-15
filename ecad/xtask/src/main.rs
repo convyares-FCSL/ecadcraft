@@ -59,6 +59,8 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-drawing-style", Class::Core),
     ("ecad-cadcraft", Class::Adapter),
     ("ecad-inspect", Class::Core),
+    // The electrical rules (design 065; created by the split lane, step 6).
+    ("ecad-electrical", Class::Core),
     // The screen tokens (design 065 §1.1); the drawing style is `ecad-drawing-style`.
     ("ecad-tokens", Class::UiKit),
     ("ecad-ui", Class::UiKit),
@@ -70,6 +72,10 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-inspector", Class::Dev),
     ("ecad-xtask", Class::Exempt),
 ];
+
+/// The order inside Core (design 065 §1; owner, 2026-11-15): a Core crate depends only on Core
+/// crates before it, so no cycle (such as `ecad-file` → `ecad-electrical`) can be written.
+const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-inspect", "ecad-electrical"];
 
 /// Dependencies that break the layer rules for now, each with the step of the crate split (design
 /// 065 §5) that removes it. An entry no longer needed fails `layers`.
@@ -315,7 +321,11 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             let ui = UI_CRATES.contains(&dep) || class_of(dep) == Some(Class::UiKit);
             let cadcraft = dep.starts_with("cadcraft-");
             let bad = match class {
-                Class::Core => (cadcraft || ui) && !dev,
+                Class::Core => {
+                    let before = |c: &str| CORE_ORDER.iter().position(|x| *x == c);
+                    let out_of_order = class_of(dep) == Some(Class::Core) && !matches!((before(dep), before(name)), (Some(d), Some(n)) if d < n);
+                    (cadcraft || ui || out_of_order) && !dev
+                }
                 Class::Adapter => ui && !dev,
                 Class::UiKit => !dev && !UIKIT_ALLOWED.contains(&dep),
                 Class::Ui | Class::Dev | Class::Exempt => false,
@@ -1584,6 +1594,11 @@ let c = ecad_ui::color(SHELL.text);",
             ("ecad-cadcraft", "epaint", 1),
             ("ecad-mcp", "egui_extras", 1),
             ("ecad-model", "ecad-tokens", 1),
+            // The Core order (design 065 §1): forward edges only.
+            ("ecad-file", "ecad-store", 0),
+            ("ecad-electrical", "ecad-file", 0),
+            ("ecad-file", "ecad-electrical", 1),
+            ("ecad-model", "ecad-store", 1),
             ("ecad-cadcraft", "ecad-tokens", 0),
             ("ecad-trial", "ecad-ui", 0),
         ];

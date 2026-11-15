@@ -68,8 +68,10 @@ layer has to build for wasm. The `cargo xtask wasm` check of the ECAD crates exi
 of CADCraft's "never break wasm" rule. It goes in the split lane (§5, step 10). CADCraft's own
 wasm build, and any `ECAD-SEAM` in CADCraft files, are not affected.
 
-Inside Core, the order is: `ecad-drawing-style` and `ecad-model` at the top, then `ecad-store`,
-`ecad-electrical`, `ecad-inspect`, then `ecad-file`.
+Inside Core, the order is: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
+`ecad-inspect`, then `ecad-electrical` (owner, 2026-11-15, split lane step 4). A Core crate depends
+only on Core crates before it in this order; `cargo xtask layers` refuses the rest, so a cycle
+such as `ecad-file` → `ecad-electrical` cannot be written.
 
 - `ecad-model`: the document, ops, ledger, merge, numbering, derived nets and references.
 - `ecad-store`: storage under the file: pages of bytes, the lock.
@@ -82,8 +84,10 @@ Inside Core, the order is: `ecad-drawing-style` and `ecad-model` at the top, the
 - `ecad-tokens` (UI kit): how the screen looks: shell colours, spacing, radii, shadows, icons,
   UI type sizes.
 
-`ecad-electrical` depends on `ecad-model` and `ecad-drawing-style` only, not on the store or the
-file.
+`ecad-electrical` depends on `ecad-model`, `ecad-drawing-style` and `ecad-file`, and makes no OS
+calls itself. The file edge exists because a starter symbol's definition carries its content hash
+(`ecad_file::definition_hash`, the canonical JSON of the file format; owner, 2026-11-15, option A).
+Moving that hash into `ecad-model` is listed in `docs/deferred-work.md`.
 
 ### 1.1 Drawing style and UI tokens (owner call 1)
 
@@ -391,7 +395,7 @@ in `xtask/src/main.rs` changes as follows:
 
 | Layer | Crates | May depend on (normal deps) | Must not |
 |---|---|---|---|
-| Core | model, store, file, electrical, inspect, drawing-style | Core crates above it in the §1 order; crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, `ecad-tokens`, Engine, App, Programs, Dev |
+| Core | model, drawing-style, store, file, inspect, electrical | Core crates before it in the §1 order (model → drawing-style → store → file → inspect → electrical); crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, `ecad-tokens`, Engine, App, Programs, Dev |
 | Engine | ecad-cadcraft | Core; `cadcraft-engine`, `cadcraft-io` | UI crates, `ecad-ui`, `ecad-tokens`, `cadcraft-ui-egui`, App, Programs, Dev |
 | UI kit | ecad-ui, ecad-tokens | `ecad-tokens`: `ecad-drawing-style` only. `ecad-ui`: `egui`, `epaint`, `egui_extras`, `ecad-tokens`, `ecad-drawing-style` (`UIKIT_ALLOWED` gains `ecad-drawing-style`) | everything else |
 | App | ecad-app | Core, Engine, UI kit; `cadcraft-ui-egui`, `eframe`, `egui` | `cadcraft-engine` directly, Programs, Dev (except through its `dev` feature) |
