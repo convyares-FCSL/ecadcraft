@@ -451,18 +451,21 @@ fn run_style(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
             if styles::rows(doc, cat).iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
                 return Err(format!("A {} is already called {name:?}; choose another name.", cat.one.to_lowercase()));
             }
+            // Brief 057: a catalogue with no built-in styles (cable types, rating tables) starts an
+            // empty style.
             let from = match text_param(params, "copy_of") {
-                Some(t) => styles::find(doc, cat.word, t)?,
-                None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())).ok_or("This catalogue has no built-in style to copy.")?,
+                Some(t) => Some(styles::find(doc, cat.word, t)?),
+                None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
             };
             let id = StyleRef::Own(p.ids.fresh::<u128>());
             let mut rec = StyleRecord { name: name.to_string(), fields: Default::default(), body: None };
             for f in cat.fields {
+                let Some(from) = &from else { break };
                 // 050b: a copy is no potential's default (one category per potential).
                 if cat.word == "wire" && f.key == "potential" {
                     continue;
                 }
-                let v = styles::field(doc, cat, &from, f, None).text();
+                let v = styles::field(doc, cat, from, f, None).text();
                 if !v.is_empty() {
                     rec.fields.insert(f.key.to_string(), v);
                 }

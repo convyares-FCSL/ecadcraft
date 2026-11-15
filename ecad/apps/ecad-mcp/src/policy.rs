@@ -79,6 +79,8 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
+    // Brief 057: the rating results read the project.
+    "ratings",
     // Brief 052: the project's list of functions and locations, with counts, reads the project.
     "designations",
     // Brief 055: the title blocks' list reads the project.
@@ -101,7 +103,7 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
 
 /// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
 /// project file, which stays with the person who started the server).
-const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("standard", "from")];
+const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("standard", "from"), ("ratingtable", "import"), ("ratingtable", "export")];
 
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
 /// the Renumber and Finalise previews).

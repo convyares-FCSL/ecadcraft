@@ -115,11 +115,13 @@ fn the_demo_nets_and_wire_numbers() {
     let points = ecad_cadcraft::wires::net_points(&doc, k04);
     assert_eq!(points, ["-H01:X1", "-K01:14", "-K01:A1", "-S02:14"], "{points:?}");
     // Checks: -M01:PE, and the three L continuations whose partners are not drawn; brief 024's
-    // count of devices without a part number (-S01 among them, design 024 §13).
+    // count of devices without a part number (-S01 among them, design 024 §13); brief 057's open
+    // core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used).
     // Brief 052: -K01's function =PUMP is stored, and no box, page or project says =PUMP.
     assert_eq!(
         checks,
         [
+            "CoreOpen 2/E3 -W01 core GNYE has no wire; connect it, or tick Not used",
             "FunctionUnused 2/E1 -K01 is =PUMP, but none of its symbols is in =PUMP",
             "LonelyContinuation 2/D3 L1",
             "LonelyContinuation 2/D3 L2",

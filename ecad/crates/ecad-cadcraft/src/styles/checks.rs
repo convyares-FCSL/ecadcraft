@@ -198,7 +198,8 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             let mut bad = styles.len().saturating_sub(MAX_STYLES_PER_CATALOGUE);
             for r in styles.values().take(MAX_STYLES_PER_CATALOGUE) {
                 let named_badly = !r.name.is_empty() && !is_name(&r.name);
-                let fields_badly = r.fields.len() > MAX_FIELDS_PER_STYLE || r.fields.values().any(|v| v.chars().count() > MAX_FIELD_CHARS);
+                let fields_badly =
+                    r.fields.len() > MAX_FIELDS_PER_STYLE || r.fields.iter().any(|(k, v)| v.chars().nth(crate::styles::field_cap(cat, k)).is_some());
                 bad += usize::from(named_badly || fields_badly);
             }
             if bad > 0 {

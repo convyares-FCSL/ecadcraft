@@ -625,6 +625,10 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             // A strip's offer; on another device `terminals` stays free text (review of PR #55, 5).
             (ObjectRef::Component(c), crate::strips::OFFER_KEY) if crate::strips::is_strip(doc, c) => crate::strips::offer_value(value.as_deref())?,
             (ObjectRef::Cable(_), crate::strips::CORES_KEY) => crate::strips::cores_value(value.as_deref())?,
+            // Brief 057 (tester re-check 2): a core's Not used tick, bounded.
+            (ObjectRef::Cable(k), key) if key.starts_with(crate::styles::cable::UNUSED_PREFIX) => {
+                crate::styles::cable::unused_value(doc, k, key, value.as_deref())?
+            }
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }

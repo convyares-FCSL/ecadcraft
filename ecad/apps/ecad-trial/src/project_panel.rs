@@ -209,6 +209,11 @@ pub enum Action {
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
+    /// Choose a table, Show the rated wires).
+    RatingFix(ecad_cadcraft::checks::Fix),
+    /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
+    CoreFix(ecad_cadcraft::checks::Fix, usize),
     /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
     /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
     EditTitleBlock(PageId, u16),
