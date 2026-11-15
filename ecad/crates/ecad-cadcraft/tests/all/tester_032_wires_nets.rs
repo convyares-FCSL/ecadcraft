@@ -5,16 +5,16 @@
 //! before the build and read new result fields and fix variants by name; they run on the build.
 
 use cadcraft_engine::Input;
-use cadcraft_engine::Session;
 use cadcraft_engine::geom::Vec2;
+use ecad_cadcraft::Persistence;
 use ecad_cadcraft::checks::Kind;
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::wires::{self, LABEL_LAYER};
-use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Op, PageId, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{reopen, tmp_dir};
 
 // ---------- helpers ----------
 
@@ -420,7 +420,7 @@ fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
     h.run("saveas", json!({"path": path})).unwrap();
     let head = h.head();
     let doc = h.doc();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     let mut h2 = reopen(&path, 0x7032_0013);
     assert_eq!(h2.head(), head, "open writes nothing");
@@ -428,7 +428,7 @@ fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
     assert_eq!(checks(&mut h2, &["looks-connected"]).len(), 1);
     h2.run("joinwires", json!({"at": [50, 0]})).unwrap();
     assert_eq!(h2.doc().conductors.len(), 1);
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -883,13 +883,13 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     h.cfg(|p| p.persistence = Persistence::File);
     let path = dir.join("Etiketten ä.ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     let mut h2 = reopen(&path, 0x7032_0161);
     let s = h2.run("wiresettings", json!({})).unwrap();
     assert_eq!(s["label_rule"], "each", "{s}");
     assert_eq!(s["label_min_length"], json!(12.5), "{s}");
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
     // Serde: a stored WiringSettings without the two fields reads the defaults.
@@ -1075,27 +1075,6 @@ fn t10h_hostile_input_refused_without_panic() {
 }
 
 // ---------- save helpers (as tester 028/030) ----------
-
-fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t032 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
 
 /// Runs now: today's behaviour that 032 must keep (a T without join stays two nets; an end on a
 /// wire's interior still gets a junction).

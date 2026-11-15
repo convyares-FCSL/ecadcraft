@@ -21,6 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::common::{H, id, pts};
 
+use crate::common::close_all;
 use cadcraft_engine::Session;
 use ecad_cadcraft::xref::{self, RefIndex};
 use ecad_cadcraft::{Persistence, ProjectHandle};
@@ -343,12 +344,6 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn close_all(s: &mut Session) {
-    while !s.docs.is_empty() {
-        s.execute("close", &json!({"index": 0})).unwrap();
     }
 }
 

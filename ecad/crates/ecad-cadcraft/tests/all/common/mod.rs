@@ -9,6 +9,7 @@ use ecad_cadcraft::{Mapped, PagesRef, Project, ProjectHandle};
 use ecad_model::derive::mismatches;
 use ecad_model::{ComponentId, ConductorId, Document, ItemKind, PageId, Pt, TerminalId};
 use serde_json::{Value, json};
+use std::path::PathBuf;
 
 pub struct H {
     pub s: Session,
@@ -235,6 +236,46 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
             assert!(mismatches(doc, 1e-6).is_empty(), "mismatch: {:?}", mismatches(doc, 1e-6));
         }
         assert!(doc.check().is_ok());
+    }
+}
+
+/// Close every document of `s`, as before reopening a saved project in a fresh session.
+pub fn close_all(s: &mut Session) {
+    while !s.docs.is_empty() {
+        s.execute("close", &json!({"index": 0})).unwrap();
+    }
+}
+
+/// A fresh temporary folder whose name has spaces and a non-ASCII letter, as on a Windows desktop
+/// (`C:\Users\...\Schaltpläne 2026`). `tag` says which test made it.
+pub fn tmp_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("ecad {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// Open the project file at `path` in a fresh session, with its trail started at the opened document.
+pub fn reopen(path: &str, seed: u64) -> H {
+    // As `H::new`: run alone (as nextest runs every test), nothing else has installed ECAD's commands.
+    ecad_cadcraft::install();
+    ecad_cadcraft::views::isolate_for_tests();
+    let mut s = Session::empty();
+    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
+    let mut h = H { s, project, trail: Vec::new() };
+    let d = h.doc();
+    h.trail.push(d);
+    h
+}
+
+/// `place` a symbol at `at`; the command's JSON result (`component`, ...).
+pub fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
+    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
+}
+
+impl H {
+    /// Close every document of this session ([`close_all`]).
+    pub fn close_all(&mut self) {
+        close_all(&mut self.s);
     }
 }
 

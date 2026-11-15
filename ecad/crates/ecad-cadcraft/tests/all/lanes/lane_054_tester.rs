@@ -23,8 +23,9 @@ use ecad_model::book::Book;
 use ecad_model::{ComponentId, FolderId, PageId};
 use serde_json::{Value, json};
 
+use crate::common::tmp_dir;
 use crate::common::{H, id};
-use crate::tester_050a_style::{checks_of, field_text, inject, one_tx, refused, s, save_and_reopen, style_row, styles, tmp_dir, undo};
+use crate::tester_050a_style::{checks_of, field_text, inject, one_tx, refused, s, save_and_reopen, style_row, styles, undo};
 
 // ------------------------------------------------------------------------------- helpers
 

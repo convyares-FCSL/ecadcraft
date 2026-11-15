@@ -14,6 +14,7 @@ use ecad_cadcraft::strip_page::{self, StripPages};
 use ecad_model::{CableId, ComponentId, PageId, TerminalId};
 use serde_json::{Value, json};
 
+use crate::common::place;
 use crate::common::{H, id, pts};
 
 /// Fixture G's objects.
@@ -24,10 +25,6 @@ struct G {
     cable: CableId,
     terms: Vec<TerminalId>,
     m1: ComponentId,
-}
-
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
-    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
 }
 
 fn fixture(seed: u64) -> G {

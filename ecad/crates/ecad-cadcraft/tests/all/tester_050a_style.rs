@@ -17,12 +17,13 @@ use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_cadcraft::defaults::{self, Kind, Level, Scope, Source};
 use ecad_cadcraft::text_style::{self, TextKind};
-use ecad_cadcraft::{Persistence, ProjectHandle, printbook};
+use ecad_cadcraft::{Persistence, printbook};
 use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId, Transaction};
 use ecad_tokens::sheet::PAPER;
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{reopen, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
 
@@ -167,27 +168,6 @@ pub(crate) fn coil(h: &mut H, x: f64) -> ComponentId {
     id(&h.run("place", json!({"symbol": "coil", "at": [x, 100]})).unwrap(), "component")
 }
 
-pub(crate) fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t050 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-pub(crate) fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-pub(crate) fn reopen(path: &str, seed: u64) -> H {
-    let mut s = cadcraft_engine::Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
-
 /// Save `h` at `dir/name` and give the path.
 pub(crate) fn save_as(h: &mut H, dir: &std::path::Path, name: &str) -> String {
     h.cfg(|p| p.persistence = Persistence::File);
@@ -198,7 +178,7 @@ pub(crate) fn save_as(h: &mut H, dir: &std::path::Path, name: &str) -> String {
 
 pub(crate) fn save_and_reopen(mut h: H, dir: &std::path::Path, name: &str, seed: u64) -> H {
     let path = save_as(&mut h, dir, name);
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     reopen(&path, seed)
 }
@@ -821,7 +801,7 @@ fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
     let a_std = a.run("standard", json!({})).unwrap();
     let a_doc_std = a.doc().standard.clone();
     let path_a = save_as(&mut a, &dir, "Panel Std (A).ecad");
-    close_all(&mut a);
+    a.close_all();
     drop(a);
     let hash = |p: &str| std::fs::read(p).unwrap();
     let before = hash(&path_a);

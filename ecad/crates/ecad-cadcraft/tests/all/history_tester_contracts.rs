@@ -9,6 +9,7 @@ use crate::common::{H, pts, small_project};
 
 use std::path::PathBuf;
 
+use crate::common::close_all;
 use cadcraft_engine::Session;
 use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::Document;
@@ -30,12 +31,6 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn close_all(s: &mut Session) {
-    while !s.docs.is_empty() {
-        s.execute("close", &json!({"index": 0})).unwrap();
     }
 }
 
