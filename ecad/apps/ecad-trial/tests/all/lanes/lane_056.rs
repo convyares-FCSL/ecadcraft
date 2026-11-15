@@ -67,6 +67,14 @@ fn p56(h: &mut H) {
     ok(h, &format!(r#"setprop {{"component":"{a03}","key":"description","value":"Outputs, pumps and valves"}}"#));
     ok(h, &format!(r#"setprop {{"component":"{a03}","key":"plc.kind","value":"relay"}}"#));
     ok(h, &format!(r#"setprop {{"component":"{a02}","key":"plc.kind","value":"24 V"}}"#));
+    // Board 2.03's card: its main part and a front connector; the control function from the page
+    // and the cabinet from a location box drawn round the rack.
+    ok(h, &format!(r#"setprop {{"component":"{a03}","key":"maker","value":"Generic"}}"#));
+    ok(h, &format!(r#"setprop {{"component":"{a03}","key":"part_number","value":"DQ16-R-2A"}}"#));
+    ok(h, &format!(r#"partline {{"component":"{a03}","add":{{"description":"Front connector","part_number":"FC-20-S","maker":"Generic"}}}}"#));
+    ok(h, r#"pageprops {"function":"=CTRL"}"#);
+    ok(h, &format!(r#"setfunction {{"component":"{a03}","value":"=CTRL"}}"#));
+    ok(h, r#"locationbox {"location":"+CAB1","corners":[[10,200],[300,320]]}"#);
 }
 
 fn show_plc(h: &mut H) {
@@ -212,16 +220,30 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     for label in ["tag", "description", "rack", "slot", "function", "location", "start", "rule", "maker", "part_number"] {
         assert!(h.query_by_label(&format!("ecad.plc.card.editor.{label}")).is_some(), "{label}");
     }
+    // Board 2.03's Parts: the main part (what the card is, maker and part number, `main part`),
+    // then the front connector, each with its quantity; Function and Location with their source.
+    let info = ecad_trial::lists::card_editor::info(h.state_mut(), 2).unwrap();
+    let rows: Vec<_> = info.parts.iter().map(|r| (r.description.clone().unwrap_or_default(), r.qty.clone(), r.note.clone())).collect();
+    assert_eq!(
+        rows,
+        [
+            ("Output card, 16 outputs, relay".to_string(), "\u{d7}1".to_string(), Some("main part".to_string())),
+            ("Front connector".to_string(), "\u{d7}1".to_string(), None),
+        ]
+    );
+    assert_eq!(info.function, ("=CTRL".to_string(), "from page"));
+    assert_eq!(info.location, ("+CAB1".to_string(), "from box"));
+    assert!(ecad_trial::lists::card_editor::part_rows(Vec::new(), None, None, "Output card".into()).is_empty(), "none yet only with no part");
     // The commands the fields run, each one transaction.
     let before = head_of(&mut h);
-    for (key, value) in [("description", "Outputs, pumps"), ("maker", "Generic"), ("part_number", "DQ16-R-2A"), ("slot", "7")] {
+    for (key, value) in [("description", "Outputs, pumps"), ("maker", "Acme"), ("part_number", "DQ16-R-2B"), ("slot", "7")] {
         let line = field_line(a03, key, value).unwrap();
         ok(&mut h, &line);
     }
     assert_eq!(head_of(&mut h), before + 4);
     let d = doc(&mut h);
     let p = &d.components[&a03].properties;
-    assert_eq!(p.get("part_number").map(String::as_str), Some("DQ16-R-2A"));
+    assert_eq!(p.get("part_number").map(String::as_str), Some("DQ16-R-2B"));
     assert_eq!(p.get("plc.slot").map(String::as_str), Some("7"));
     // An accessory (the front connector) as a part line.
     ok(
@@ -229,7 +251,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
         &format!("partline {}", json!({"component": a03.hex(), "add": {"description": "Front connector, 20-pin, screw", "part_number": "FC-20-S"}})),
     );
     let parts = ecad_cadcraft::bom::part_set(&doc(&mut h), a03);
-    assert_eq!(parts.len(), 2, "the main part and the accessory: {parts:?}");
+    assert_eq!(parts.len(), 3, "the main part and the two accessories: {parts:?}");
     // The type: picking one shows the confirm step, which says what happens to the signals.
     use ecad_cadcraft::plc::rack::CardType;
     let before = head_of(&mut h);

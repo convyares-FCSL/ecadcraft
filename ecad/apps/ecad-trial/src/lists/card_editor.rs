@@ -24,7 +24,7 @@ use ecad_model::{ComponentId, PageId};
 use eframe::egui::{self, Rect, vec2};
 use serde_json::json;
 
-use ecad_ui::control::{Decor, Select, TextEntry, read_text};
+use ecad_ui::control::{Decor, Select, TextEntry, ValueBox, read_text};
 
 use crate::Trial;
 use crate::shell::right::widgets as w;
@@ -33,6 +33,10 @@ use crate::shell::right::widgets as w;
 pub const PANEL: &str = "ecad.plc.card.editor";
 /// The greyed catalogue button's reason.
 pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
+/// The card's symbols read for the Function and Location hints (a card draws a body and channels).
+const MAX_SYMBOLS: usize = 256;
+/// The main part's note in Parts (board 2.03).
+pub const MAIN_PART: &str = "main part";
 /// The Rack choice for a card in no rack.
 pub const NO_RACK: &str = "None";
 /// The Detailed page note (board 2.03).
@@ -77,6 +81,10 @@ pub struct State {
     error: Option<(&'static str, String)>,
     /// A type picked and waiting for **Change type** (the confirm step says what changes).
     pub pending_type: Option<CardType>,
+    /// The value-with-hint field opened for typing (function or location), and whether its entry
+    /// takes the focus on the next frame.
+    editing: Option<&'static str>,
+    focus: bool,
 }
 
 impl State {
@@ -107,16 +115,30 @@ pub fn info(t: &mut Trial, i: usize) -> Option<Info> {
         let own = |k: &str| comp.properties.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let page = overview::pages_of(doc, c).first().copied();
         // Brief 052 (design 052 §9.1): function and location are entry keys stored on the device,
-        // shown as their codes; nothing is inherited. Unset shows `?`, as the inspector does.
-        let aspect = |l: ecad_cadcraft::locations::Located| -> (String, &'static str) {
+        // shown as their codes; nothing is inherited. The hint says where the stored code comes
+        // from: the box, page or project whose code it is where one of the card's symbols is drawn
+        // (a box first), else `set here`.
+        let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Component(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
+        let mut boxes = ecad_cadcraft::locations::BoxCache::default();
+        let mut aspect = |a: ecad_cadcraft::designations::Aspect, l: ecad_cadcraft::locations::Located| -> (String, &'static str) {
+            let mut hint = "set here";
+            for r in &symbols {
+                let x = ecad_cadcraft::locations::rep_context_in(doc, a, r, &mut boxes);
+                if x.key.is_some() && x.key == l.key {
+                    let h = source_hint(Some(&x.source));
+                    if h == "from box" || hint == "set here" || (h == "from page" && hint == "from project") {
+                        hint = h;
+                    }
+                }
+            }
             match l.value {
-                Some(code) => (code, ""),
+                Some(code) => (code, hint),
                 None if l.missing() => ("?".to_string(), "not in the list"),
-                None => (String::new(), "?"),
+                None => (String::new(), ""),
             }
         };
-        let function = aspect(ecad_cadcraft::locations::resolve_function(doc, c));
-        let location = aspect(ecad_cadcraft::locations::resolve(doc, c));
+        let function = aspect(ecad_cadcraft::designations::Aspect::Function, ecad_cadcraft::locations::resolve_function(doc, c));
+        let location = aspect(ecad_cadcraft::designations::Aspect::Location, ecad_cadcraft::locations::resolve(doc, c));
         let (rack, rule) = match card.rack {
             RackRef::Rack(r) => (
                 plc.racks.get(&r).map(|x| x.tag.clone()),
@@ -137,18 +159,7 @@ pub fn info(t: &mut Trial, i: usize) -> Option<Info> {
         let slot_words = card.slot.map(|s| format!(", slot {s}")).unwrap_or_default();
         let kind = overview::kind_words(doc, card);
         let ty_name = overview::type_name(card.ty);
-        let mut parts = ecad_cadcraft::bom::part_set(doc, c);
-        if parts.is_empty() && (own("part_number").is_some() || own("maker").is_some()) {
-            parts.push(ecad_cadcraft::bom::PartSetRow {
-                n: 0,
-                qty: "1".into(),
-                maker: own("maker"),
-                part_number: own("part_number"),
-                description: overview::description(doc, card),
-                article_number: None,
-                note: None,
-            });
-        }
+        let parts = part_rows(ecad_cadcraft::bom::part_set(doc, c), own("maker"), own("part_number"), format!("{ty_name}, {kind}"));
         Some(Info {
             card: Some(c),
             tag: card.tag.clone(),
@@ -173,6 +184,44 @@ pub fn info(t: &mut Trial, i: usize) -> Option<Info> {
     })
     .ok()
     .flatten()
+}
+
+/// The source hint of a stored function or location whose code is also the context's there.
+fn source_hint(source: Option<&ecad_cadcraft::locations::Source>) -> &'static str {
+    use ecad_cadcraft::locations::Source;
+    match source {
+        Some(Source::Box { .. }) => "from box",
+        Some(Source::Page(_)) => "from page",
+        Some(Source::Project) => "from project",
+        _ => "set here",
+    }
+}
+
+/// The Parts rows as board 2.03 shows them: the card's main part (named for what the card is, its
+/// maker and part number, `main part`), then each accessory line, every quantity as `×1`. Empty
+/// only when the card has no part at all (no maker, no part number, no lines).
+pub fn part_rows(
+    set: Vec<ecad_cadcraft::bom::PartSetRow>, maker: Option<String>, part_number: Option<String>, what: String,
+) -> Vec<ecad_cadcraft::bom::PartSetRow> {
+    if set.is_empty() && maker.is_none() && part_number.is_none() {
+        return Vec::new();
+    }
+    let main = ecad_cadcraft::bom::PartSetRow {
+        n: 0,
+        qty: "1".into(),
+        maker,
+        part_number,
+        description: Some(what),
+        article_number: None,
+        note: Some(MAIN_PART.into()),
+    };
+    std::iter::once(main)
+        .chain(set.into_iter().filter(|r| r.n != 0))
+        .map(|mut r| {
+            r.qty = format!("\u{d7}{}", r.qty);
+            r
+        })
+        .collect()
 }
 
 /// The byte a typed start names: `%Q4.0`, `Q4`, `IW64`, `4`; empty unpins.
@@ -208,22 +257,48 @@ fn field(
     placeholder: &str, hint: &str,
 ) {
     let invalid = st.error.as_ref().is_some_and(|(k, _)| *k == key);
+    // Function and location are values with a hint (components.md): the code and where it comes
+    // from, in a box that opens its entry when clicked.
+    let boxed = matches!(key, "function" | "location");
+    let name = format!("{PANEL}.{key}");
+    if boxed && st.editing != Some(key) {
+        let shown = st.fields.get(key).map(|e| e.0.clone()).unwrap_or_default();
+        let clicked = w::row(ui, label, |ui| ui.add_enabled_ui(writable, |ui| ValueBox::new(&shown, &name).hint(hint).show(ui)).inner).clicked();
+        if clicked && writable {
+            st.editing = Some(key);
+            st.focus = true;
+        }
+        error_line(ui, st, key);
+        return;
+    }
+    let id = ui.make_persistent_id((PANEL, key));
+    let focus = std::mem::take(&mut st.focus);
     let Some(entry) = st.fields.get_mut(key) else { return };
     let r = w::row(ui, label, |ui| {
-        let name = format!("{PANEL}.{key}");
         ui.add_enabled_ui(writable, |ui| {
             // The card's ID is its key identity value: bold (components.md).
-            TextEntry::new(&mut entry.1, &name).placeholder(placeholder).hint(hint).bold(key == "tag").invalid(invalid.then_some("")).show(ui)
+            TextEntry::new(&mut entry.1, &name).id(id).placeholder(placeholder).hint(hint).bold(key == "tag").invalid(invalid.then_some("")).show(ui)
         })
         .inner
     });
+    if focus {
+        ui.memory_mut(|m| m.request_focus(id));
+    }
     let done = r.lost_focus() || (r.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+    if boxed && done {
+        st.editing = None;
+    }
     if done
         && entry.1.trim() != entry.0.trim()
         && let Some(l) = field_line(c, key, &entry.1)
     {
         lines.push((key, l));
     }
+    error_line(ui, st, key);
+}
+
+/// The refusal under field `key`, if it has one.
+fn error_line(ui: &mut egui::Ui, st: &State, key: &str) {
     if let Some((k, m)) = &st.error
         && *k == key
     {
