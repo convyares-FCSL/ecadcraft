@@ -1,6 +1,7 @@
 # Brief 059: The cable manager
 
-Status: Draft
+Status: Approved (owner, 2026-11-15: design §14 answered; overseer, 2026-11-15: FD1–FD5
+approved). The worker starts after #108 (057) merges.
 Branch: `feature/cable-manager`, from `origin/dev` `22c924d1` (052 merged, #105). Starts after
 057 (`feature/ratings`) merges into `dev`: it builds on 057's Cables tab, Details pane, cable view,
 core table, `cable` catalogue and `core-open`.
@@ -14,14 +15,15 @@ the slash and Add to cable tools).
 Project ▸ Cables becomes the place where cables are **built**, before they are drawn (owner,
 2026-11-15): "a good place to build your cables, then you assign them in the drawing".
 
-- **+ Cable** creates a cable with no wires yet: tag, cable type, cores, length, planned ends,
-  glands.
+- **+ Cable** creates a cable with no wires yet (the next free `-W`, ready to edit): cable type,
+  cores, length, each end's planned location and function, glands. Its menu also offers the
+  not-drawn cables, to assign one in the drawing.
 - **Every field is editable** in the Details pane: type, cores, length, glands, shield, maker,
-  part number, description, planned ends.
-- **Remove** deletes a cable. A cable that is not drawn goes at once. A drawn cable needs a
-  confirmation that names where it is drawn; its wires stay.
-- **Assign in the drawing.** The slash tool and Add to cable pick an existing cable from a list
-  instead of always making a new one. Picking a cable that is not drawn yet makes the slashed wires
+  part number, description, and each end's planned location and function.
+- **Remove** deletes a cable that is not drawn. A drawn cable is **refused**, with a **Go to** for
+  each page it is drawn on (owner, Q1).
+- **Assign in the drawing.** The slash tool and Add to cable pick **New cable** (the next free `-W`
+  at once) or an existing cable from a list. Picking a cable that is not drawn yet makes the slashed wires
   its cores, in order, with its core labels.
 - **Cores not assigned show as such**: in the core table, the cable view and the Checks.
 - **Gland sizes** at each end, shown in the list, the Details pane and the cable view (today:
@@ -42,28 +44,31 @@ Project ▸ Cables becomes the place where cables are **built**, before they are
 
 - No new op and no new record field. A cable that is not drawn is a `Cable` with no members and
   no representation. New data are cable properties and `cable` catalogue fields (design §13,
-  FD1–FD5, for the overseer).
+  FD1–FD5, approved). A cable stays a `Cable`, not a device (Q10). Each **end** has its own planned
+  location and function, as entry keys of 052's lists (Q4).
 - New commands `cablenew`, `cableedit`, `cableremove`, with typed parameter structs
   (`#[serde(deny_unknown_fields)]`) and an error enum, `CableError` (code review 2026-11, findings
   2 and 3). `cableslash` and `cableadd` gain the assign rule.
-- Checks: `cable-not-drawn`, `cable-ends-differ`, `no-gland`, and `core-open` adjusted (not raised
-  for a cable that is not drawn; "not assigned" wording for unwired cores). `too-many-cores` and
-  `no-core-count` are reused for a cores mismatch.
+- Checks: `cable-not-drawn` (Info; Warning in the release check), `cable-end-off-plan` (a drawn end
+  differs from that end's plan), `no-gland`, `cable-bad-value`, and `core-open` adjusted (not raised
+  for a cable that is not drawn; "not assigned" wording for unwired cores). Reducing cores below
+  those assigned is refused (Q6).
+- The cable report includes not-drawn cables by default, and the choice is offered when the report
+  is generated (Q3).
 
 ## Out of scope
 
 - Gland sizes computed from the cable's outer diameter and a gland table (Q5, option C), cable
   routing and tray fill, cable pull lengths from a layout, ferrules, and importing a cable schedule
   from CSV (the toolbar's Import stays the report import of 057).
-- Making a cable a `Component`. In the model a cable is still a `Cable` (052 left it so). 059
-  gives it device-like data (tag, function, planned locations) as properties (Q10).
+- Making a cable a `Component` (owner, Q10: a cable is a different thing from a device).
 
 ## Parts
 
 | Part | What | Size | Tester |
 | --- | --- | --- | --- |
 | 059a | Model rules, `cable_cmds.rs` (`cablenew`, `cableedit`, `cableremove`), `CableError`, the assign rule in `cableslash` / `cableadd`, checks, MCP contract tests | M | Yes (it changes `cableslash`'s behaviour) |
-| 059b | Cables tab: + Cable, editable Details pane, Remove with confirmation, the not-drawn state in the list, cable view and core table | M | No (reviewer) |
+| 059b | Cables tab: + Cable (new or assign), editable Details pane, Remove (refused when drawn, with Go to), the not-drawn state in the list, cable view and core table, the report option | M | No (reviewer) |
 | 059c | Assign in the drawing: the cable picker on the slash tool and on Add to cable; the "Assign in the drawing" fix | M | Yes (interactive slash) |
 | 059d | Glands: per-end sizes, cable-type default, `no-gland`, list and cable view | S | No |
 
@@ -74,15 +79,16 @@ Project ▸ Cables becomes the place where cables are **built**, before they are
 Design §11 lists the checks. In short:
 
 1. `cablenew {}` makes `-W<next>` with no members in one transaction, `Create cable`. It shows in
-   Project ▸ Cables as **not drawn**, with one `cable-not-drawn` row and no `core-open` rows.
+   Project ▸ Cables as **not drawn**, with one `cable-not-drawn` Info row (Warning in the release
+   check) and no `core-open` rows.
 2. `cableedit` sets each field and refuses a bad value with `CableError::BadValue`, writing nothing.
-   Each edit is one transaction and one undo step.
+   Reducing the cores below those assigned is refused with `CableError::CoresInUse`, naming the
+   cores in use. Each edit is one transaction and one undo step.
 3. `cableremove` on a cable that is not drawn deletes it. On a drawn cable it is refused with
-   `CableError::Drawn` (pages and wire count in the words) unless `drawn: "unassign"`. Then the
-   wires stay, and the slashes and references go, exactly as `ecaddelete {cable}` does today.
+   `CableError::Drawn`, naming the pages; the UI offers a **Go to** for each.
 4. `cableslash {from, to, cable}` on a cable that is not drawn makes the crossed wires its members
-   in crossing order, with core labels from its offer, plus a slash. On a drawn cable it continues
-   the cable as today (032).
+   in crossing order, with core labels from its offer, plus a slash; more wires than free cores is
+   refused (Q6). On a drawn cable it continues the cable as today (032).
 5. The slash tool's **Cable** picker lists not-drawn cables first, and picking one does 4. Esc
    writes nothing.
 6. Glands show in the list (`M20, M20`), the Details pane's Ends and the cable view.
@@ -91,6 +97,6 @@ Design §11 lists the checks. In short:
 8. Bench rows `cablenew`, `cableedit`, `cableassign` (design §12) within budget on the large
    project.
 
-## Owner questions
+## Owner answers
 
-Design §14: ten questions, each with options, costs and a recommendation.
+Design §14 records the ten answers (owner, 2026-11-15).
