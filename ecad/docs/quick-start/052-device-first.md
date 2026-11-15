@@ -70,7 +70,11 @@ silently. Leave is always the default.
    `+CP1` at once. One undo removes the coil and its location together.
 2. **Draw a box around an existing device.** Devices with no location inside take the box's; a
    device with another location is listed under the intent line: `-K05  +CP2 → +CP1`, with
-   **Move all**, **Leave all** and a **Move** per row. Esc (or any other edit) leaves them.
+   **Move all**, **Leave all** and a **Move** per row. Their symbols on the page are ringed; the
+   row under the pointer rings its device in the warning colour. Esc (or any other edit) leaves
+   them.
+3a. **A connector half elsewhere.** Place a plug pin of a `+CP1` connector inside a `+FIELD`
+   box: its row also offers **Half**, which gives only the plug `+FIELD`.
 3. **Move a contact into another box and leave it.** Drag an unset device's only symbol into box
    `+CP1`: it is set (the echo says so). `u` clears the location; `u` again moves it back. Move a
    device that already has `+CP2`: it is listed, and Leave keeps `+CP2` (its symbol there shows

@@ -257,6 +257,21 @@ fn run_conflicts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             p.conflicts.clear();
             Ok(json!({"changed": false, "message": words}))
         })?,
+        Some("half") => with_project(s, |p, pg, _| {
+            let chosen: Vec<crate::proposals::Conflict> =
+                p.conflicts.iter().filter(|c| c.half.is_some() && only.as_ref().is_none_or(|o| o.contains(&c.component))).cloned().collect();
+            let doc = p.ledger.document();
+            let ops = crate::proposals::half_ops(doc, &chosen);
+            if ops.is_empty() {
+                return Err("No connector half is waiting: Half answers a half or pin just placed.".into());
+            }
+            let label = match chosen.as_slice() {
+                [c] => format!("Set {} half location {}", crate::devices::tag_words(doc, c.component), c.to),
+                _ => format!("Set half locations ({} halves)", chosen.len()),
+            };
+            p.apply_edit(pg, "conflicts", &label, ops)?;
+            Ok(json!({"changed": true, "message": format!("{label}.")}))
+        })?,
         Some("move") => with_project(s, |p, pg, _| {
             let chosen: Vec<crate::proposals::Conflict> =
                 p.conflicts.iter().filter(|c| only.as_ref().is_none_or(|o| o.contains(&c.component))).cloned().collect();
@@ -270,7 +285,7 @@ fn run_conflicts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             p.apply_edit(pg, "conflicts", &label, ops)?;
             Ok(json!({"changed": true, "message": format!("{label}.")}))
         })?,
-        Some(_) => return Err(err("`answer` is \"move\" or \"leave\"")),
+        Some(_) => return Err(err("`answer` is \"move\", \"half\" or \"leave\"")),
     };
     if let Some(m) = v.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()) {
         s.echo(m.to_string());

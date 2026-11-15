@@ -1298,15 +1298,20 @@ pub(crate) fn place_project_key(s: &mut Session, params: &Value, key: &str) -> c
         };
         let pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let style = plain_style(p);
-        let plan = plan_place_project(p, page, style, id, &def, pl, device, tag)?;
+        let mut plan = plan_place_project(p, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
+        // Brief 052d (design 052 §5.3): the place proposes.
+        let proposed = crate::proposals::plan_place(p, params, plan.component, page, at, None)?;
+        plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();
         let terminals: Vec<Value> = doc.terminals_of(plan.component).map(|(t, x)| json!({"id": t.hex(), "key": x.key, "label": x.label})).collect();
-        Ok(Some(json!({
+        let mut v = json!({
             "component": plan.component.hex(), "representation": plan.representation.hex(), "definition": id.hex(),
             "tag": plan.tag, "joined": device.is_some(), "terminals": terminals,
-        })))
+        });
+        crate::proposals::finish_place(p, pg, plan.component, device.is_some(), &proposed, &mut v);
+        Ok(Some(v))
     })
 }
 

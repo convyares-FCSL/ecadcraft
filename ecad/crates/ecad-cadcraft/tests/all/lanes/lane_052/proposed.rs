@@ -161,3 +161,44 @@ fn a_function_box_around_a_location_box_proposes_both() {
     let v = h.run("place", json!({"symbol": "no", "at": [140, 160], "device": m.hex(), "function": "move"})).unwrap();
     assert_eq!(func(&h.doc(), m).as_deref(), Some("=F1"), "{v}");
 }
+
+/// §5.3: a connector half placed where the connector has another location is asked about with
+/// Half, which sets only that half's `location.<side>`; JSON `location: "half"` answers it.
+#[test]
+fn a_connector_half_answers_half() {
+    let mut h = H::new(SEED);
+    let v = h.run("place", json!({"symbol": "pins", "at": [300, 40]})).unwrap();
+    let x: ComponentId = id(&v, "component");
+    h.run("setlocation", json!({"component": x.hex(), "value": "+CP1"})).unwrap();
+    h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 100], [200, 220]]})).unwrap();
+    let v = h.run("place", json!({"symbol": "pinp", "device": x.hex(), "at": [75, 180]})).unwrap();
+    assert_eq!(v["location"]["conflicts"][0]["proposed"], "+FIELD", "{v}");
+    let head = h.head();
+    h.run("conflicts", json!({"answer": "half"})).unwrap();
+    assert_eq!(h.head(), head + 1);
+    let d = h.doc();
+    assert_eq!(loc(&d, x).as_deref(), Some("+CP1"), "the connector keeps its location");
+    assert_eq!(locations::half_location(&d, x, ecad_cadcraft::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
+    // JSON: the half answered in the place's own transaction.
+    let v = h.run("place", json!({"symbol": "pins", "at": [320, 40]})).unwrap();
+    let y: ComponentId = id(&v, "component");
+    h.run("setlocation", json!({"component": y.hex(), "value": "+CP1"})).unwrap();
+    h.run("place", json!({"symbol": "pinp", "device": y.hex(), "at": [75, 140], "location": "half"})).unwrap();
+    let d = h.doc();
+    assert_eq!(locations::half_location(&d, y, ecad_cadcraft::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
+    assert_eq!(loc(&d, y).as_deref(), Some("+CP1"));
+}
+
+/// §5.3: the other place paths propose too: a level terminal (its strip), a PLC channel (its
+/// card) and a connector placed in a box take the box's location.
+#[test]
+fn levels_channels_and_connectors_propose_too() {
+    let mut h = H::new(SEED);
+    h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 20], [400, 280]]})).unwrap();
+    let v = h.run("place", json!({"symbol": "termlnpe.1", "at": [60, 200]})).unwrap();
+    assert_eq!(loc(&h.doc(), id(&v, "component")).as_deref(), Some("+CP1"), "{v}");
+    let v = h.run("place", json!({"symbol": "di", "at": [150, 200]})).unwrap();
+    assert_eq!(loc(&h.doc(), id(&v, "component")).as_deref(), Some("+CP1"), "{v}");
+    let v = h.run("place", json!({"symbol": "pins", "at": [250, 200]})).unwrap();
+    assert_eq!(loc(&h.doc(), id(&v, "component")).as_deref(), Some("+CP1"), "{v}");
+}

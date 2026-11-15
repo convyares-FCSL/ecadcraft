@@ -642,6 +642,9 @@ pub(crate) fn run_place_half(
             ops.extend(l.ops.clone());
         }
         let label = if new { format!("Place connector {tag_text}") } else { format!("Add symbol to {tag_text}") };
+        // Brief 052d (design 052 §5.3): the place proposes; a half's conflict may answer Half.
+        let proposed = crate::proposals::plan_place(p, params, c, page, origin, starter.side())?;
+        ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
         let doc = p.ledger.document();
@@ -668,6 +671,7 @@ pub(crate) fn run_place_half(
         v["joined"] = json!(!new);
         v["representation"] = json!(rep.hex());
         v["definition"] = json!(def.hex());
+        crate::proposals::finish_place(p, pg, c, !new, &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

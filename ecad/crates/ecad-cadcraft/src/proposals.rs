@@ -36,6 +36,9 @@ pub enum Mode {
     Keep,
     /// Set this code.
     Value(String),
+    /// A connector half or pin placed: set that half's own location (`location.socket` /
+    /// `location.plug`) when the connector has another one (design 052 §5.3, **Half**).
+    Half,
 }
 
 impl Mode {
@@ -51,6 +54,7 @@ impl Mode {
                 "propose" => Ok(Mode::Propose),
                 "move" => Ok(Mode::Move),
                 "keep" => Ok(Mode::Keep),
+                "half" if a == Aspect::Location => Ok(Mode::Half),
                 _ => Ok(Mode::Value(t.trim().to_string())),
             },
             Some(_) => Err(format!("`{}` is \"propose\", \"move\", \"keep\" or a code", a.word())),
@@ -78,6 +82,9 @@ pub struct Conflict {
     pub to_key: String,
     /// Every one of its symbols is now in the proposal's context.
     pub all_symbols: bool,
+    /// For a connector half or pin just placed: its side (socket or plug). The answer **Half**
+    /// sets that half's `location.<side>` instead of the connector's location (design 052 §5.3).
+    pub half: Option<crate::symbols::Side>,
 }
 
 /// What a planned proposal does.
@@ -145,7 +152,7 @@ pub fn plan(
                     let code = designations::code_of(doc, a, &k).unwrap_or_else(|| designations::normalise(doc, a, t).unwrap_or_default());
                     (k, code)
                 }
-                Mode::Propose | Mode::Move => {
+                Mode::Propose | Mode::Move | Mode::Half => {
                     let ctx = context(doc, a, s, extra, &mut cache);
                     match (ctx.key, ctx.value) {
                         (Some(k), Some(c)) => (k, c),
@@ -163,7 +170,7 @@ pub fn plan(
             if stored.is_some() && !matches!(mode, Mode::Value(_)) {
                 let from = designations::shown_text(doc, a, stored.as_deref());
                 let all_symbols = all_in(doc, a, s.device, &key, extra, &mut cache);
-                out.conflicts.push(Conflict { component: s.device, aspect: a, from, to: code.clone(), to_key: key.clone(), all_symbols });
+                out.conflicts.push(Conflict { component: s.device, aspect: a, from, to: code.clone(), to_key: key.clone(), all_symbols, half: None });
                 if mode == Mode::Move {
                     out.moved += 1;
                 }
@@ -212,6 +219,7 @@ pub fn plan_change(doc: &Document, a: Aspect, candidates: &[Spot], old_key: Opti
                     to: new_code.to_string(),
                     to_key: new_key.to_string(),
                     all_symbols: true,
+                    half: None,
                 });
                 if *mode == Mode::Move {
                     out.moved += 1;
@@ -454,6 +462,70 @@ pub fn left_words(doc: &Document, conflicts: &[Conflict]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// The ops giving each connector half in `conflicts` its own location (the answer **Half**):
+/// `location.socket` / `location.plug` set to the proposal.
+pub fn half_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
+    conflicts
+        .iter()
+        .filter_map(|c| {
+            let side = c.half?;
+            let key = format!("location.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
+            let before = doc.components.get(&c.component)?.properties.get(&key).cloned();
+            (before.as_deref() != Some(c.to_key.as_str())).then(|| Op::SetProperty {
+                object: ObjectRef::Component(c.component),
+                key,
+                before,
+                after: Some(c.to_key.clone()),
+            })
+        })
+        .collect()
+}
+
+/// Plan a placement's proposal (design 052 §5.3) for the symbol of device `c` at `at` on `page`,
+/// with `params`' `location` / `function` modes. `half`: the side a connector half or pin draws
+/// (its location conflict can then be answered **Half**; JSON `location: "half"` answers it).
+///
+/// # Errors
+/// A mode or a typed code that is not valid.
+pub(crate) fn plan_place(
+    p: &mut crate::project::Project, params: &Value, c: ComponentId, page: PageId, at: Pt, half: Option<crate::symbols::Side>,
+) -> Result<Planned, String> {
+    let mut modes = Mode::both(params)?;
+    let half_mode = modes[1] == Mode::Half;
+    if half_mode {
+        modes[1] = Mode::Propose;
+    }
+    let half = half.filter(|s| *s != crate::symbols::Side::Both);
+    let spot = Spot { device: c, page, at: Some(at) };
+    let mut pending = Pending::default();
+    let mut planned = plan(p.ledger.document(), &mut p.ids, &[spot], &modes, &[], &mut pending)?;
+    for x in planned.conflicts.iter_mut().filter(|x| x.aspect == Aspect::Location) {
+        x.half = half;
+    }
+    if half_mode && half.is_some() {
+        let (halves, rest): (Vec<Conflict>, Vec<Conflict>) = planned.conflicts.drain(..).partition(|x| x.half.is_some());
+        planned.ops.extend(half_ops(p.ledger.document(), &halves));
+        planned.set.extend(halves.iter().map(|x| (x.component, x.aspect, x.to.clone())));
+        planned.conflicts = rest;
+    }
+    Ok(planned)
+}
+
+/// After a placement committed: keep its conflicts waiting (Leave by default), echo what was set
+/// and what stayed, and add the proposal to the result `v`.
+pub(crate) fn finish_place(
+    p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, c: ComponentId, joined: bool, planned: &Planned, v: &mut Value,
+) {
+    p.conflicts = if planned.moved == 0 { planned.conflicts.clone() } else { Vec::new() };
+    let doc = p.ledger.document();
+    if let (Some(o), Some(x)) = (v.as_object_mut(), json(doc, planned).as_object()) {
+        o.extend(x.clone());
+    }
+    for line in place_words(doc, c, joined, planned) {
+        pg.echo(line);
+    }
 }
 
 /// The ops moving `conflicts` to their proposals (the answer **Move**).
