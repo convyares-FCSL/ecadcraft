@@ -240,10 +240,13 @@ pub enum Kind {
     RatingNoCurrent,
     /// Brief 057 (design 057 §7).
     RatingBadValue,
+    /// Brief 057 (owner rule, board 2.06): a cable core not connected at both ends, not ticked
+    /// Not used.
+    CoreOpen,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 89] = [
+    pub const ALL: [Kind; 90] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -333,6 +336,7 @@ impl Kind {
         Kind::RatingAssumed,
         Kind::RatingNoCurrent,
         Kind::RatingBadValue,
+        Kind::CoreOpen,
     ];
 
     /// The JSON name.
@@ -427,6 +431,7 @@ impl Kind {
             Kind::RatingAssumed => "rating-assumed",
             Kind::RatingNoCurrent => "rating-no-current",
             Kind::RatingBadValue => "rating-bad-value",
+            Kind::CoreOpen => "core-open",
         }
     }
 
@@ -527,6 +532,7 @@ impl Kind {
             Kind::RatingAssumed => "Cables with no cable type (values assumed)",
             Kind::RatingNoCurrent => "Cables with no load and no device (no volt drop)",
             Kind::RatingBadValue => "Rating value ECAD does not read",
+            Kind::CoreOpen => "Cable core open at an end (tick Not used for a spare)",
         }
     }
 
@@ -541,6 +547,7 @@ impl Kind {
             | Kind::SlotTwice
             | Kind::ChannelTwice
             | Kind::ConnectorPinTwice
+            | Kind::CoreOpen
             | Kind::RatingUnder
             | Kind::RatingTooHot => Severity::Error,
             Kind::OpenEnd
@@ -718,6 +725,7 @@ impl Check {
             | Kind::StyleLimits
             | Kind::CategoryPotentialTwice
             | Kind::WireAllowance
+            | Kind::CoreOpen
                 if !self.which.is_empty() =>
             {
                 self.which.clone()
@@ -1288,6 +1296,23 @@ pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
 /// The checks of cable `k` (brief 026): a provisional tag; a tag another cable or a device holds.
 pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
     let mut out = Vec::new();
+    // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
+    let open = crate::styles::cable::open_cores(doc, k);
+    if !open.is_empty() {
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let name = crate::views::cable_title(doc, k);
+        for o in open {
+            let how = if o.unwired { "has no wire" } else { "is open at an end" };
+            out.push(Check {
+                kind: Kind::CoreOpen,
+                page,
+                at,
+                object: Object::Cable(k),
+                which: format!("{name} core {} {how}; connect it, or tick Not used", o.label),
+                fix: Some(Fix::ShowCables),
+            });
+        }
+    }
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
     if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
@@ -1591,6 +1616,8 @@ impl Scope {
             self.styles |= crate::styles::checks::touches(op);
             match op {
                 Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
+                    // Brief 057: a member's ends decide its cable's open cores.
+                    self.cables.extend(doc.cables_of(*id));
                     self.conductors.insert(*id);
                     self.routes.insert(*id);
                     node(self, Node::Conductor(*id));
@@ -1601,6 +1628,7 @@ impl Scope {
                     }
                 }
                 Op::AttachEnd { conductor, before, after, .. } => {
+                    self.cables.extend(doc.cables_of(*conductor));
                     self.conductors.insert(*conductor);
                     self.routes.insert(*conductor);
                     node(self, Node::Conductor(*conductor));

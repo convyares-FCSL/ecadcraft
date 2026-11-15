@@ -30,6 +30,11 @@ fn project_in(dir: &Path, drawing_number: &str) -> (H, String) {
         h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap();
     }
     let c1 = h.run("cableslash", json!({"from": [88, -3], "to": [92, 18], "tag": "C1"})).unwrap()["cable"].clone();
+    // Brief 057 (owner rule): the fixture's cores run over loose wires on purpose; ticked Not
+    // used, they are no open-core errors, and the release gate reads only this fixture's own.
+    for l in ["1", "2", "3"] {
+        h.run("setprop", json!({"cable": c1, "key": format!("unused.{l}"), "value": "yes"})).unwrap();
+    }
     h.run("cableref", json!({"cable": c1, "at": [120, 5]})).unwrap();
     h.run("projectprops", json!({"title": "Pump panel", "drawing_number": drawing_number})).unwrap();
     h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();

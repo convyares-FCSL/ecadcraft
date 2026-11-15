@@ -44,6 +44,10 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     ok(&mut h, r#"projectprops {"drawing_number": "D-1001"}"#);
+    // Brief 057 (owner rule): the demo's unwired GNYE core is an error until ticked Not used; this
+    // test is the release dialog's, so it is ticked here.
+    let w01 = crate::project_panel::doc(&mut h).cables_tagged("-W01")[0];
+    ok(&mut h, &format!(r#"setprop {{"cable": "{}", "key": "unused.GNYE", "value": "yes"}}"#, w01.hex()));
 
     // Publish ▸ Release opens the dialog (UI rev 3: the bottom bar's revision opens History, and
     // Publish shows the print choices, board 4.01): Rev A, its fields empty, Release disabled

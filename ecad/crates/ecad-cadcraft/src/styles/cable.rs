@@ -78,6 +78,64 @@ pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
     of(doc, k).and_then(|id| super::field_of(doc, WORD, &id, CORE_COLOURS, None)).and_then(|r| colour_list(&r.text())).unwrap_or_default()
 }
 
+/// A cable property ticking core `<label>` as **Not used** (owner rule, board 2.06): `unused.<label>`
+/// = `yes`. An unticked core that is not connected at both ends is an open end (an error).
+pub const UNUSED_PREFIX: &str = "unused.";
+/// The longest core label read in an `unused.` key.
+pub const MAX_LABEL_CHARS: usize = 16;
+
+/// The property key ticking core `label` as not used.
+pub fn unused_key(label: &str) -> String {
+    format!("{UNUSED_PREFIX}{}", label.trim().chars().take(MAX_LABEL_CHARS).collect::<String>())
+}
+
+/// Whether core `label` of cable `k` is ticked **Not used**.
+pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
+    doc.cables.get(&k).and_then(|c| c.properties.get(&unused_key(label))).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"))
+}
+
+/// A core that is not connected at both ends and not ticked Not used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenCore {
+    pub label: String,
+    /// No wire at all (an offered core nobody uses).
+    pub unwired: bool,
+}
+
+/// The open cores of cable `k` (owner rule): offered cores no member uses, and core chains with an
+/// end attached to nothing, unless ticked Not used. Bounded by the cable's member bound.
+pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
+    let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
+    let chains = crate::references::core_chains(doc, k);
+    let heads: Vec<ecad_model::CableMember> = chains
+        .iter()
+        .filter_map(|ch| {
+            let first = *ch.first()?;
+            let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
+            Some(ecad_model::CableMember { conductor: first, core })
+        })
+        .collect();
+    let count = crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads);
+    let mut out = Vec::new();
+    for label in &count.spare {
+        if !is_unused(doc, k, label) {
+            out.push(OpenCore { label: label.clone(), unwired: true });
+        }
+    }
+    for (i, ch) in chains.iter().enumerate() {
+        let open = ch.iter().any(|w| doc.conductors.get(w).is_none_or(|c| c.ends.iter().any(Option::is_none)));
+        if !open {
+            continue;
+        }
+        let label =
+            count.matched.get(i).cloned().flatten().or_else(|| heads.get(i).and_then(|h| h.core.clone())).unwrap_or_else(|| (i + 1).to_string());
+        if !is_unused(doc, k, &label) {
+            out.push(OpenCore { label, unwired: false });
+        }
+    }
+    out
+}
+
 /// The cables that name cable type `id` (one pass over the cables, asked for one type at a time).
 pub fn users(doc: &Document, id: &StyleRef) -> Vec<CableId> {
     let want = id.text();

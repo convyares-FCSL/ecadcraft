@@ -131,15 +131,41 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
     h.state_mut().reports.as_mut().unwrap().cables.table.selection.set([k]);
     h.run_steps(8);
+    // Owner: a plain list until Details opens the selected cable below it.
+    assert!(h.query_by_label_contains("drawn end to end").is_none(), "a plain list");
+    if let Some(out) = crate::project_panel::shots() {
+        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-list.png"));
+    }
+    h.get_by_label(ecad_trial::lists::workspace::DETAILS).click();
+    h.run_steps(8);
     assert!(h.query_by_label_contains("-W01 drawn end to end, 4 cores").is_some(), "the drawing");
     let r = h.state().reports.as_ref().unwrap();
     let colours: Vec<Option<String>> = r.cables.cores.rows.keys.iter().map(|i| r.cables.cores.colour(*i)).collect();
     assert_eq!(colours, ["BN", "BK", "GY", "GNYE"].map(|c| Some(c.to_string())).to_vec());
     let drawing = r.cables.drawing(k);
     assert_eq!(drawing.cores.iter().map(|c| c.colour.clone().unwrap_or_default()).collect::<Vec<_>>(), ["BN", "BK", "GY", "GNYE"]);
+    // Owner rule: the demo's unwired GNYE core is an open end, an error, until ticked Not used.
+    let r = h.state().reports.as_ref().unwrap();
+    let gnye = r.cables.cores.rows.keys.iter().copied().find(|i| r.cables.cores.rows.text(*i, "Core") == "GNYE").unwrap();
+    assert!(r.cables.cores.is_open(gnye));
+    let open_rows = |h: &mut H| doc_checks(h).into_iter().filter(|c| c.kind == ecad_cadcraft::checks::Kind::CoreOpen).count();
+    assert_eq!(open_rows(&mut h), 1);
+    assert!(h.query_by_label_contains("Field end").is_some(), "the board's columns");
     if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view.png"));
+        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-open.png"));
     }
+    // The GNYE row is the last of the four.
+    h.get_all_by_label(ecad_trial::lists::cables::NOT_USED_OFF).last().unwrap().click();
+    h.run_steps(6);
+    assert!(h.state().reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
+    assert_eq!(open_rows(&mut h), 0, "a ticked core is no error");
+    let d = doc(&mut h);
+    assert_eq!(d.cables[&w01].properties.get("unused.GNYE").map(String::as_str), Some("yes"));
+    if let Some(out) = crate::project_panel::shots() {
+        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-ticked.png"));
+    }
+    ok(&mut h, "u");
+    assert_eq!(open_rows(&mut h), 1, "one undo takes the tick back");
     // Cores only hides it; Swap ends keeps it, mirrored.
     h.get_by_label("Cores only").click();
     h.run_steps(4);
@@ -149,5 +175,14 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     h.run_steps(4);
     assert!(h.state().reports.as_ref().unwrap().cables.swapped);
     assert!(h.query_by_label_contains("drawn end to end").is_some());
+    // Esc closes the details; the list stays.
+    h.key_press(egui::Key::Escape);
+    h.run_steps(4);
+    assert!(!h.state().reports.as_ref().unwrap().cables.details);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn doc_checks(h: &mut H) -> Vec<ecad_cadcraft::checks::Check> {
+    let d = doc(h);
+    ecad_cadcraft::checks::all(&d, 0.01)
 }

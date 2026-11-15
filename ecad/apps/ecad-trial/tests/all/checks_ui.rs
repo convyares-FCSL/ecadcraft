@@ -162,8 +162,10 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.state_mut().shell.lists = ecad_trial::shell::ListsView::Checks;
     h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
-    // Four rows of brief 022, and brief 024's count of devices without a part number.
-    assert_eq!(rows.len(), 5, "{rows:?}");
+    // Four rows of brief 022, brief 024's count of devices without a part number, and brief 057's
+    // open core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used).
+    assert_eq!(rows.len(), 6, "{rows:?}");
+    assert!(rows.iter().any(|r| r.check.kind == Kind::CoreOpen), "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::NoPartNumber), "{rows:?}");
     let pe = rows.iter().find(|r| r.check.which == "-M01:PE").unwrap().clone();
     assert_eq!(pe.locator, "3/E3");

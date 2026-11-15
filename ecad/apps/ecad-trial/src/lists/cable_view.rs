@@ -23,14 +23,17 @@ pub struct Core {
     /// Its connection point at each end (`-X01:1`), empty when open.
     pub from: String,
     pub to: String,
-    pub spare: bool,
+    /// The wire beyond the field end (`L1-04`), when there is one.
+    pub field_wire: String,
+    /// Ticked Not used (owner rule): drawn as a spare, no open end.
+    pub unused: bool,
 }
 
 impl Core {
-    /// Whether one end is open while the other is connected (marked in red).
+    /// Whether an end is open (owner rule): not ticked Not used and attached to nothing.
     pub fn open(&self, end_from: bool) -> bool {
-        let (this, other) = if end_from { (&self.from, &self.to) } else { (&self.to, &self.from) };
-        !self.spare && this.is_empty() && !other.is_empty()
+        let this = if end_from { &self.from } else { &self.to };
+        !self.unused && this.is_empty()
     }
 }
 
@@ -61,17 +64,38 @@ fn pin(of: &str) -> &str {
     of.rsplit_once(':').map_or(of, |(_, p)| p)
 }
 
-/// The colours a core is drawn in: solid, and dashes for a two-colour code.
-fn colours(code: Option<&str>, dark: bool) -> (Color32, Option<Color32>) {
-    let sheet = if dark { ecad_ui::tokens::sheet::DARK } else { ecad_ui::tokens::sheet::PAPER };
-    match code.and_then(|c| ecad_cadcraft::look::wire_colours(c, &sheet)) {
+/// The colours a core is drawn in: solid, and dashes for a two-colour code. A core is drawn in its
+/// true (paper) colour on either sheet, so black stays black; [`core_line`] gives a dark core an
+/// outline that keeps it readable on the dark sheet (owner look check).
+fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
+    match code.and_then(|c| ecad_cadcraft::look::wire_colours(c, &ecad_ui::tokens::sheet::PAPER)) {
         Some(w) => (ecad_ui::color(w.solid), w.dashes.map(ecad_ui::color)),
         None => (ecad_ui::color(ecad_ui::SHELL.text_2), None),
     }
 }
 
-/// A line of `points` in `solid`, with `dashes` laid over it.
-fn core_line(p: &egui::Painter, points: &[Pos2], solid: Color32, dashes: Option<Color32>, width: f32) {
+/// Relative luminance (sRGB, 0–1) of `c`.
+fn luminance(c: Color32) -> f32 {
+    let f = |v: u8| {
+        let x = f32::from(v) / 255.0;
+        if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * f(c.r()) + 0.7152 * f(c.g()) + 0.0722 * f(c.b())
+}
+
+/// Whether `fg` needs an outline to read on `bg` (contrast ratio under 3:1).
+fn needs_outline(fg: Color32, bg: Color32) -> bool {
+    let (a, b) = (luminance(fg), luminance(bg));
+    let (hi, lo) = if a > b { (a, b) } else { (b, a) };
+    (hi + 0.05) / (lo + 0.05) < 3.0
+}
+
+/// A line of `points` in `solid`, with `dashes` laid over it; a core too close to the ground
+/// colour gets an outline in the strong line colour first.
+fn core_line(p: &egui::Painter, points: &[Pos2], solid: Color32, dashes: Option<Color32>, width: f32, ground: Color32) {
+    if needs_outline(solid, ground) {
+        p.add(egui::Shape::line(points.to_vec(), Stroke::new(width + 2.0, ecad_ui::color(ecad_ui::SHELL.line_strong))));
+    }
     p.add(egui::Shape::line(points.to_vec(), Stroke::new(width, solid)));
     if let Some(d) = dashes {
         p.add(egui::Shape::dashed_line(points, Stroke::new(width, d), 6.0, 6.0));
@@ -91,7 +115,6 @@ pub fn height(n: usize) -> f32 {
 /// Draw `d` in the width available; `swapped` draws the field end at the left.
 pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     let s = ecad_ui::SHELL;
-    let dark = ui.visuals().dark_mode;
     let (area, resp) = ui.allocate_exact_size(vec2(ui.available_width(), height(d.cores.len())), Sense::hover());
     let info = format!("{} drawn end to end, {} cores", d.tag, d.cores.len());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &info));
@@ -161,7 +184,7 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
                     2.0,
                 ));
                 p.text(b.center(), egui::Align2::CENTER_CENTER, words, small.clone(), red);
-            } else if !c.spare || !pt.is_empty() {
+            } else if !c.unused || !pt.is_empty() {
                 p.rect_filled(b, ecad_ui::style::corner(4.0), ecad_ui::color(s.bg));
                 p.rect_stroke(
                     b,
@@ -173,22 +196,28 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
             }
         }
         // The cabinet end's words: the wire and the point.
-        let l_words = match (c.wire.is_empty(), l_pt.is_empty()) {
-            (_, true) if c.spare => "spare".to_string(),
+        // Each end's words: the wire there and the point (owner look check: the field end too).
+        let (l_wire, r_wire) = if swapped { (&c.field_wire, &c.wire) } else { (&c.wire, &c.field_wire) };
+        let words = |wire: &String, pt: &String| match (wire.is_empty(), pt.is_empty()) {
+            (_, true) if c.unused => "not used".to_string(),
             (_, true) => "open".to_string(),
-            (true, false) => l_pt.clone(),
-            (false, false) => format!("{} \u{b7} {}", c.wire, l_pt),
+            (true, false) => pt.clone(),
+            (false, false) => format!("{wire} \u{b7} {pt}"),
         };
-        p.text(
-            pos2(left.left() + space::L, y),
-            egui::Align2::LEFT_CENTER,
-            l_words,
-            body.clone(),
-            ecad_ui::color(if c.spare { s.text_3 } else { s.text_2 }),
-        );
+        let ink = |open: bool| {
+            if open {
+                red
+            } else if c.unused {
+                ecad_ui::color(s.text_3)
+            } else {
+                ecad_ui::color(s.text_2)
+            }
+        };
+        p.text(pos2(left.left() + space::L, y), egui::Align2::LEFT_CENTER, words(l_wire, l_pt), body.clone(), ink(l_open));
+        p.text(pos2(r_box.right() + space::M, y), egui::Align2::LEFT_CENTER, words(r_wire, r_pt), body.clone(), ink(r_open));
         // The line: from the left point through the glands and the body to the right point.
-        let (solid, dashes) = colours(c.colour.as_deref(), dark);
-        let (solid, dashes) = if c.spare { (solid.gamma_multiply(0.45), dashes.map(|d| d.gamma_multiply(0.45))) } else { (solid, dashes) };
+        let (solid, dashes) = colours(c.colour.as_deref());
+        let (solid, dashes) = if c.unused { (solid.gamma_multiply(0.45), dashes.map(|d| d.gamma_multiply(0.45))) } else { (solid, dashes) };
         let jy = jacket.top() + jacket.height() * (i as f32 + 0.5) / n as f32;
         let mut pts = vec![pos2(l_box.right(), y), pos2(jacket.left() - 40.0, y), pos2(jacket.left() + 20.0, jy)];
         pts.extend([pos2(jacket.right() - 20.0, jy), pos2(jacket.right() + 40.0, y), pos2(r_box.left(), y)]);
@@ -198,7 +227,7 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
         if r_open {
             pts.pop();
         }
-        core_line(&p, &pts, solid, dashes, 3.0);
+        core_line(&p, &pts, solid, dashes, 3.0, ecad_ui::color(s.panel));
         for (open, at, below) in [(l_open, pts.first().copied(), l_box), (r_open, pts.last().copied(), r_box)] {
             if open && let Some(at) = at {
                 p.circle_filled(at, 4.0, red);

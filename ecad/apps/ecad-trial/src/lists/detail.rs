@@ -352,6 +352,10 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
     let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
     let mut checks: Vec<(String, Tone)> =
         rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default();
+    // Brief 057 (owner rule): each open core, as an error.
+    for label in v.source.open.get(k).into_iter().flatten() {
+        checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
+    }
     let spare = rows.text(k, "Spare");
     if spare.parse::<u32>().is_ok_and(|n| n > 0) {
         checks.push((format!("{spare} spare core{}.", if spare == "1" { "" } else { "s" }), Tone::Neutral));
