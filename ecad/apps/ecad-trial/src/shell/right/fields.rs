@@ -33,7 +33,7 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
                 if menu {
                     ui.set_max_width(ui.available_width() - 26.0);
                 }
-                w::input(ui, &mut buf, placeholder, hint, &name, error.as_deref())
+                w::input(ui, &mut buf, placeholder, hint, &name, error.is_some())
             })
             .inner;
         if r.has_focus() {

@@ -283,6 +283,8 @@ impl<'a> TextEntry<'a> {
         self.read_only = read_only;
         self
     }
+    /// Mark it invalid with `message` (its tooltip and accessible description); an empty message
+    /// marks it without words, for a caller that shows the message beside it.
     pub fn invalid(mut self, message: Option<&'a str>) -> Self {
         self.invalid = message;
         self
@@ -340,8 +342,10 @@ impl<'a> TextEntry<'a> {
         let r = ui.put(edit_rect, edit);
         let value = self.text.clone();
         let name = self.name;
-        accessible(&r, || WidgetInfo { current_text_value: Some(value.clone()), ..WidgetInfo::labeled(Role::TextInput, !disabled, name) }, problem);
-        let r = match problem {
+        // An empty message marks it invalid without words (they are shown beside it).
+        let message = problem.filter(|m| !m.is_empty());
+        accessible(&r, || WidgetInfo { current_text_value: Some(value.clone()), ..WidgetInfo::labeled(Role::TextInput, !disabled, name) }, message);
+        let r = match message {
             Some(m) => r.on_hover_text(m),
             None => r,
         };

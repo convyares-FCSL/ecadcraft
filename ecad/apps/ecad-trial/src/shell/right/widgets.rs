@@ -117,9 +117,10 @@ pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
 }
 
 /// A text entry (`ecad_ui::control::TextEntry`) with an optional grey `hint` at its right
-/// (`auto`, `from page`); `invalid` is the message, if any. Returns the edit's response.
-pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: Option<&str>) -> Response {
-    ecad_ui::control::TextEntry::new(buf, name).placeholder(placeholder).hint(hint).invalid(invalid).show(ui)
+/// (`auto`, `from page`); `invalid` marks it (the caller shows the message under the row).
+/// Returns the edit's response.
+pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: bool) -> Response {
+    ecad_ui::control::TextEntry::new(buf, name).placeholder(placeholder).hint(hint).invalid(invalid.then_some("")).show(ui)
 }
 
 /// A segmented control as wide as the row (`ecad_ui::prim::Segmented`). `enabled` false shows it
