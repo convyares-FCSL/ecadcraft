@@ -1,19 +1,24 @@
 //! ECAD workspace checks.
 //!
-//! - `layers`: document crates must not depend on CADCraft; only the adapter may use the engine;
-//!   only UI crates and apps may use UI toolkits (principle P10, proposal §8). Developer tools
-//!   (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product crate depends
-//!   on one except through its own `dev` feature, dev features are read only in a crate's `dev`
-//!   module, and no product source reads a file under `dev/`. ECAD's interface kit (`ecad-ui`,
-//!   class UiKit) uses egui and `ecad-tokens` only, and ECAD UI sources do not style locally
-//!   (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI sources and direct
-//!   `cadcraft-engine` use by the apps are ratcheted: their allowlisted counts only fall; `anyhow`
-//!   is for apps only, `tokio` for none; Core crates' direct OS access (file system, environment,
-//!   processes, network, clock) is ratcheted to fall to none (brief 060).
+//! - `layers`: the layer table of design 065 §4 (Core, Engine, UI kit, App, Programs, Dev): Core
+//!   uses no CADCraft crate and no UI toolkit, and Core crates depend only on Core crates before
+//!   them; only the Engine (`ecad-cadcraft`) uses the drawing engine, and App and Programs reach it
+//!   only through it, in `Cargo.toml` and in their sources (principle P10, proposal §8).
+//!   Developer tools (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product
+//!   crate depends on one except through its own `dev` feature, dev features are read only in a
+//!   crate's `dev` module, and no product source reads a file under `dev/`. ECAD's interface kit
+//!   (class UiKit) uses egui, `ecad-tokens` and the drawing style only, and ECAD UI sources do not
+//!   style locally (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI
+//!   sources are ratcheted: their allowlisted counts only fall. Core crates other than
+//!   `ecad-store` reach no OS (file system, environment, processes, network, clock; design 065
+//!   §3.1). The crate rules of design 061 §6: `anyhow` only in Programs, xtask and ecad-bench,
+//!   `tokio` nowhere, `rayon` only where the work is, `schemars` only in the Engine and
+//!   ecad-model's `schema` feature. Every workspace member has a README in the shape of design
+//!   065 §6 (ratcheted while lane 068 writes them).
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
-//! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`, warnings as errors (as CI).
-//! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches, wasm.
+//! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches. ECAD is
+//!   desktop-only (owner, 2026-11-15), so there is no wasm build.
 //! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
 //!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
 //! - `test-changed`: the fast tests of the crates changed since the last push (the upstream
@@ -33,28 +38,33 @@ use serde_json::Value;
 
 mod clean;
 
-/// How an ECAD crate may depend on others.
+/// The layer of an ECAD crate (design 065 §1 and §4): a crate uses only crates in layers above it
+/// (and in its own layer where §4 says so). Engine and UI kit are siblings: neither uses the other.
+/// The rules apply to normal dependencies; dev-dependencies (tests) are free, except on Dev crates.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Class {
-    /// No `cadcraft-*` and no UI toolkit dependency.
+    /// What a project is and means, without a screen or a drawing engine: no `cadcraft-*` crate,
+    /// no UI toolkit or UI kit, no Engine, App or Programs crate, and only Core crates before it
+    /// in [`CORE_ORDER`].
     Core,
-    /// May use CADCraft crates below the UI.
-    Adapter,
-    /// May use anything.
-    Ui,
-    /// The application (design 065 §4): for now the same rules as [`Class::Ui`]; the split lane's
-    /// step 10 gives it the §4 table's.
-    App,
-    /// The programs (design 065 §4): for now the same rules as [`Class::Ui`]; the split lane's
-    /// step 10 gives them the §4 table's.
-    Programs,
+    /// The link to CADCraft (`ecad-cadcraft`): Core and [`ENGINE_CADCRAFT`]; no UI toolkit or UI
+    /// kit, no App or Programs crate.
+    Engine,
     /// ECAD's interface kit (design `ui-architecture.md` §2): may use egui, epaint and
     /// egui_extras, the token crate and the drawing style (design 065 §1.1), but no `cadcraft-*`
     /// crate and no other ECAD crate, so the widgets stay swappable and test without wgpu.
     UiKit,
+    /// The application (`ecad-app`): Core, Engine, UI kit and CADCraft's window crates, but never
+    /// `cadcraft-engine` directly and no Programs crate.
+    App,
+    /// Things a person or agent starts, one `main` each (`ecad-desktop`, `ecad-cli`, `ecad-mcp`):
+    /// anything in the product (other programs too, owner ruling), but never `cadcraft-engine`
+    /// directly.
+    Programs,
     /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
     /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
     Dev,
+    /// `xtask`: a developer tool outside `dev/` (design 065 §4 counts it in Dev); no rules.
     Exempt,
 }
 
@@ -63,7 +73,7 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-store", Class::Core),
     ("ecad-file", Class::Core),
     ("ecad-drawing-style", Class::Core),
-    ("ecad-cadcraft", Class::Adapter),
+    ("ecad-cadcraft", Class::Engine),
     ("ecad-inspect", Class::Core),
     // The electrical rules (design 065; created by the split lane, step 6).
     ("ecad-electrical", Class::Core),
@@ -71,15 +81,29 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-tokens", Class::UiKit),
     ("ecad-ui", Class::UiKit),
     ("ecad-bench", Class::Dev),
-    ("ecad-cli", Class::Ui),
+    ("ecad-cli", Class::Programs),
     // The application, and the desktop program that runs it (design 065 §2.2, split step 9).
     ("ecad-app", Class::App),
     ("ecad-desktop", Class::Programs),
-    // Headless by construction: CADCraft crates below the UI only.
-    ("ecad-mcp", Class::Adapter),
+    ("ecad-mcp", Class::Programs),
     ("ecad-inspector", Class::Dev),
     ("ecad-xtask", Class::Exempt),
 ];
+
+/// The CADCraft crates the Engine may use (design 065 §4).
+const ENGINE_CADCRAFT: &[&str] = &["cadcraft-engine", "cadcraft-io"];
+
+/// The layer's name as a README's `Layer:` line writes it (design 065 §6); `xtask` counts as Dev.
+fn layer_name(class: Class) -> &'static str {
+    match class {
+        Class::Core => "Core",
+        Class::Engine => "Engine",
+        Class::UiKit => "UI kit",
+        Class::App => "App",
+        Class::Programs => "Programs",
+        Class::Dev | Class::Exempt => "Dev",
+    }
+}
 
 /// The order inside Core (design 065 §1; owner, 2026-11-15): a Core crate depends only on Core
 /// crates before it, so no cycle (such as `ecad-file` → `ecad-electrical`) can be written.
@@ -218,43 +242,71 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("apps/ecad-desktop/src/window.rs", 9),
 ];
 
-/// Apps that must reach the engine only through `ecad-cadcraft` (owner ruling, 2026-11-15; an
-/// app may depend on another app). Dev tools such as `ecad-bench` may use it directly (design 065).
-const ENGINE_FREE: &[&str] = &["ecad-app", "ecad-cli", "ecad-desktop", "ecad-mcp"];
+/// Paths a layer's sources (`src/`, outside `//` comments) must not name, each matched where it
+/// starts a name (design 065 §4). Cargo alone is not enough for App and Programs, because
+/// `cadcraft-ui-egui` and `cadcraft-mcp` can hand engine types through; for ecad-electrical the
+/// check repeats Cargo's rule with a clearer message. Dev tools such as `ecad-bench` may use the
+/// engine directly.
+fn forbidden_paths(name: &str, class: Class) -> &'static [&'static str] {
+    match class {
+        Class::App | Class::Programs => &["cadcraft_engine"],
+        Class::Core if name == "ecad-electrical" => &["cadcraft_"],
+        _ => &[],
+    }
+}
 
-/// Apps of [`ENGINE_FREE`] that still use `cadcraft-engine` directly: the number of source lines
-/// (outside comments) that name `cadcraft_engine`, seeded on 2026-11-15 (brief 060). The counts
-/// only fall; at none, the entry and the dependency in the app's `Cargo.toml` go. None left since
-/// `ecad_cadcraft::cad` (design 065 §3, cut 11).
-const ENGINE_ALLOWLIST: &[(&str, usize)] = &[];
+/// The one Core crate that may reach the OS: storage under the file and the lock (design 065
+/// §3.1). Every other Core crate stays pure data and rules, so it is testable and portable; disk
+/// access belongs to `ecad-store`, and the time is passed in (owner, 2026-11-15).
+const CORE_OS_OK: &str = "ecad-store";
 
-/// Core crates that must not reach the file system, the environment, processes, the network or
-/// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is
-/// testable and portable; disk access belongs to `ecad-store`, and the time is passed in.
-const CORE_PURE: &[&str] = &["ecad-model", "ecad-file", "ecad-drawing-style", "ecad-electrical"];
+/// Direct OS access in Core code (design 065 §3.1, §4), each matched where it starts a name.
+/// Threads and rayon are allowed.
+const CORE_OS: &[&str] = &[
+    "std::fs",
+    "fs::",
+    "std::env",
+    "env::var",
+    "std::process",
+    "std::net",
+    "SystemTime",
+    "Instant::now",
+    "RandomState",
+    "chrono::Local",
+    "Local::now",
+    "Utc::now",
+    "home_dir",
+    "canonicalize",
+    "File::",
+    "OpenOptions",
+];
 
-/// Direct OS access in Core code ([`CORE_PURE`]), each matched where it starts a name.
-const CORE_OS: &[&str] =
-    &["std::fs", "fs::", "std::env", "env::var", "std::process", "std::net", "SystemTime::now", "Instant::now", "Utc::now", "Local::now"];
+/// Crates that find the user's folders: Core other than [`CORE_OS_OK`] may not depend on them.
+const CORE_OS_CRATES: &[&str] = &["dirs", "dirs-next", "dirs-sys", "directories", "directories-next"];
 
-/// Core files that still reach the OS directly ([`CORE_OS`]): the number of lines that do (test
-/// modules aside), seeded on 2026-11-15 (brief 060). The counts only fall; the split lane took
-/// them to none (design 065 §5 step 1c), and a file not listed that reaches the OS is a violation.
-const CORE_OS_ALLOWLIST: &[(&str, usize)] = &[];
+/// Crates besides Programs that may use `anyhow` (design 061 §6, brief 060): xtask and
+/// ecad-bench's binary. A library returns its own error type, so a caller can react to the kind
+/// of failure (review 2026-11, finding 3); `anyhow` erases it, which only a program's `main` may do.
+const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-xtask"];
 
-/// Crates that may use `anyhow` (owner, 2026-11-15, brief 060): the apps and xtask. A library
-/// returns its own error type, so a caller can react to the kind of failure (review 2026-11,
-/// finding 3); `anyhow` erases it, which only a program's `main` may do.
-const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-cli", "ecad-desktop", "ecad-mcp", "ecad-xtask"];
+/// Where `rayon` may appear (design 061 §6, 065 §4), as a plain dependency (normal, not optional,
+/// no target table): where the per-page and per-chunk work is. No wasm `cfg`: ECAD is
+/// desktop-only.
+const RAYON_OK: &[&str] = &["ecad-model", "ecad-file", "ecad-electrical", "ecad-cadcraft"];
 
-/// UI toolkits and ECAD's own UI kit: Core and Adapter crates may depend on none of them (the
-/// kit too, so the document and adapter crates never draw; design `ui-architecture.md` §2).
+/// UI toolkits and ECAD's own UI kit: Core and Engine crates may depend on none of them (the
+/// kit too, so the document and engine crates never draw; design `ui-architecture.md` §2).
 const UI_CRATES: &[&str] =
     &["cadcraft-ui-egui", "craft-ui", "egui", "epaint", "egui_extras", "eframe", "egui-wgpu", "wgpu", "winit", "rfd", "ecad-ui"];
 
-/// Library crates that must build for wasm.
-const WASM_CRATES: &[&str] =
-    &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-drawing-style", "ecad-cadcraft", "ecad-tokens", "ecad-ui"];
+/// The sections of a crate's README, in order, after its `# <crate name>` title (design 065 §6).
+const README_SECTIONS: &[&str] = &["## Purpose", "## Contents", "## Must not depend on", "## Key types", "## How to test"];
+
+/// Workspace members whose README is missing or not yet in the shape of design 065 §6, seeded on
+/// 2026-11-15 (split lane step 10); lane 068 writes them. The list only shrinks: a member not
+/// listed whose README fails is a violation, and an entry whose README passes (or that is no
+/// longer a member) fails `layers` until it is removed.
+const README_ALLOWLIST: &[&str] = &["ecad-app", "ecad-cadcraft", "ecad-desktop", "ecad-electrical", "ecad-xtask"];
 
 /// What a UiKit crate may depend on, besides dev-dependencies (design §2).
 const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens", "ecad-drawing-style"];
@@ -289,14 +341,7 @@ fn dev_dependency_problem(p: &Value, d: &Value, dep: &str) -> Option<String> {
         return Some(format!("{name} must not depend on the developer tool {dep} (only optionally, through its `dev` feature)"));
     }
     let features = p["features"].as_object();
-    let enables = |list: &Value| {
-        list.as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .any(|f| f == dep || f == format!("dep:{dep}") || f.starts_with(&format!("{dep}/")) || f.starts_with(&format!("{dep}?/")))
-    };
-    let enablers: Vec<&String> = features.into_iter().flatten().filter(|(k, v)| enables(v) || k.as_str() == dep).map(|(k, _)| k).collect();
+    let enablers = enabling_features(p, dep);
     if enablers.iter().any(|k| k.as_str() != "dev") {
         return Some(format!("{name}: only its `dev` feature may enable {dep} (enabled by {enablers:?}; use `dev = [\"dep:{dep}\"]`)"));
     }
@@ -306,6 +351,19 @@ fn dev_dependency_problem(p: &Value, d: &Value, dep: &str) -> Option<String> {
         return Some(format!("{name}: its `dev` feature (which enables {dep}) must not be on by default"));
     }
     None
+}
+
+/// The features of package `p` that enable its optional dependency `dep` (by `dep:`, by its name,
+/// or through one of its features), and a feature named after it.
+fn enabling_features(p: &Value, dep: &str) -> Vec<String> {
+    let enables = |list: &Value| {
+        list.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .any(|f| f == dep || f == format!("dep:{dep}") || f.starts_with(&format!("{dep}/")) || f.starts_with(&format!("{dep}?/")))
+    };
+    p["features"].as_object().into_iter().flatten().filter(|(k, v)| enables(v) || k.as_str() == dep).map(|(k, _)| k.clone()).collect()
 }
 
 fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
@@ -328,22 +386,30 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             let dev = d["kind"].as_str() == Some("dev");
             let ui = UI_CRATES.contains(&dep) || class_of(dep) == Some(Class::UiKit);
             let cadcraft = dep.starts_with("cadcraft-");
-            let bad = match class {
-                Class::Core => {
-                    let before = |c: &str| CORE_ORDER.iter().position(|x| *x == c);
-                    let out_of_order = class_of(dep) == Some(Class::Core) && !matches!((before(dep), before(name)), (Some(d), Some(n)) if d < n);
-                    (cadcraft || ui || out_of_order) && !dev
-                }
-                Class::Adapter => ui && !dev,
-                Class::UiKit => !dev && !UIKIT_ALLOWED.contains(&dep),
-                Class::Ui | Class::App | Class::Programs | Class::Dev | Class::Exempt => false,
-            };
-            if bad && !dev && LAYER_EXCEPTIONS.iter().any(|(n, d, _)| *n == name && *d == dep) {
+            let dep_class = class_of(dep);
+            let above_engine = matches!(dep_class, Some(Class::App | Class::Programs));
+            // Dev-dependencies are free here (tests): in particular ecad-app's tests use
+            // ecad-desktop's argument parsing and startup, so App may dev-depend on a program,
+            // never depend on one. Dev crates are checked below, dev-dependencies included.
+            let bad = !dev
+                && match class {
+                    Class::Core => {
+                        let before = |c: &str| CORE_ORDER.iter().position(|x| *x == c);
+                        let out_of_order = dep_class == Some(Class::Core) && !matches!((before(dep), before(name)), (Some(d), Some(n)) if d < n);
+                        cadcraft || ui || out_of_order || dep_class == Some(Class::Engine) || above_engine
+                    }
+                    Class::Engine => ui || (cadcraft && !ENGINE_CADCRAFT.contains(&dep)) || above_engine,
+                    Class::UiKit => !UIKIT_ALLOWED.contains(&dep),
+                    Class::App => dep == "cadcraft-engine" || dep_class == Some(Class::Programs),
+                    Class::Programs => dep == "cadcraft-engine",
+                    Class::Dev | Class::Exempt => false,
+                };
+            if bad && LAYER_EXCEPTIONS.iter().any(|(n, d, _)| *n == name && *d == dep) {
                 used_exceptions.insert((name, dep));
             } else if bad {
                 out.push(format!("{name} ({class:?}) must not depend on {dep}"));
             }
-            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui | Class::App | Class::Programs | Class::UiKit);
+            let product = matches!(class, Class::Core | Class::Engine | Class::App | Class::Programs | Class::UiKit);
             if product
                 && class_of(dep) == Some(Class::Dev)
                 && let Some(why) = dev_dependency_problem(p, d, dep)
@@ -375,80 +441,198 @@ fn core_os_places(rel: &str, text: &str) -> Vec<String> {
                 && lines.get(i + 1).is_some_and(|n| n.trim_start().starts_with("mod ") || n.trim_start().starts_with("pub mod "))
         })
         .unwrap_or(lines.len());
-    let starts_name = |l: &str, i: usize| l[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
-    lines[..end]
-        .iter()
+    name_places(rel, text, lines.get(..end).unwrap_or_default(), CORE_OS)
+}
+
+/// The lines of `code` (the comment-stripped lines of `text`) that contain one of `patterns`
+/// where a name starts (not inside a longer name: `fs::` does not match `ecad_fs::`), as
+/// `rel:line: text`.
+fn name_places(rel: &str, text: &str, code: &[&str], patterns: &[&str]) -> Vec<String> {
+    let starts_name = |l: &str, i: usize| l.get(..i).and_then(|s| s.chars().next_back()).is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+    code.iter()
         .enumerate()
-        .filter(|(_, l)| CORE_OS.iter().any(|p| l.match_indices(p).any(|(i, _)| starts_name(l, i))))
+        .filter(|(_, l)| patterns.iter().any(|p| l.match_indices(p).any(|(i, _)| starts_name(l, i))))
         .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
         .collect()
 }
 
-/// The Core crates' ([`CORE_PURE`]) direct OS access beyond [`CORE_OS_ALLOWLIST`], and the entries
-/// that must come down (brief 060).
-fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
+/// The places in one source file (`rel`) of crate `name` that name a path its layer must not
+/// ([`forbidden_paths`]), outside `//` comments, as `rel:line: text`.
+fn forbidden_path_places(name: &str, class: Class, rel: &str, text: &str) -> Vec<String> {
+    let code = strip_line_comments(text);
+    let lines: Vec<&str> = code.lines().collect();
+    name_places(rel, text, &lines, forbidden_paths(name, class))
+}
+
+/// The packages of `meta` with their class and folder (packages not in [`TABLE`] are skipped;
+/// [`layer_violations`] reports them).
+fn classed_packages(meta: &Value) -> Result<Vec<(&str, Class, Option<PathBuf>, &Value)>, String> {
+    Ok(meta["packages"]
+        .as_array()
+        .ok_or("cargo metadata: no packages")?
+        .iter()
+        .filter_map(|p| {
+            let name = p["name"].as_str().unwrap_or_default();
+            let dir = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf));
+            class_of(name).map(|c| (name, c, dir, p))
+        })
+        .collect())
+}
+
+/// Design 065 §4's source checks for App, Programs and ecad-electrical ([`forbidden_paths`]): the
+/// lines of their `src/` that name a forbidden path. A hard rule: no allowlist.
+fn path_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
-        let name = p["name"].as_str().unwrap_or_default();
-        if !CORE_PURE.contains(&name) {
+    for (name, class, dir, _) in classed_packages(meta)? {
+        let Some(dir) = dir else { continue };
+        if forbidden_paths(name, class).is_empty() {
             continue;
         }
-        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
         let mut files = Vec::new();
         rust_files(&dir.join("src"), &mut files);
         for f in files {
             let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
             let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
-            let places = core_os_places(&rel, &text);
-            match CORE_OS_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
-                Some((path, allowed)) => {
-                    seen.insert(path);
-                    out.extend(ratchet_problem(
-                        path,
-                        places.len(),
-                        *allowed,
-                        "lines reaching the OS",
-                        "Core stays pure data and rules (testable, portable): disk access belongs to ecad-store, and the time is passed in",
-                    ));
-                }
-                None => out.extend(places.into_iter().map(|p| {
-                    format!("{p} (Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in)")
-                })),
-            }
-        }
-    }
-    for (path, _) in CORE_OS_ALLOWLIST {
-        if !seen.contains(path) {
-            out.push(format!("{path}: in the Core OS-access allowlist but not found; remove the entry"));
+            out.extend(forbidden_path_places(name, class, &rel, &text).into_iter().map(|p| match class {
+                Class::Core => format!("{p} (ecad-electrical reads a Document and returns data or ops: no CADCraft crate)"),
+                _ => format!("{p} (the engine is reached only through ecad-cadcraft, e.g. ecad_cadcraft::cad)"),
+            }));
         }
     }
     Ok(out)
 }
 
-/// The dependency rules on ECAD's own manifests in `meta` (owner, 2026-11-15, brief 060; CADCraft's
-/// and transitive dependencies are not checked): `anyhow` only in [`ANYHOW_OK`] (dev-dependencies
-/// aside), `tokio` nowhere (ECAD runs no async runtime: commands are synchronous on the project's
-/// lock, and a second runtime beside CADCraft's event loop would split where work happens).
-/// `rayon` needs no rule: ECAD is desktop-only (owner, 2026-11-15).
+/// Direct OS access in Core crates other than [`CORE_OS_OK`] (design 065 §3.1, §4): every source
+/// line that reaches the OS outside the test module, and every dependency on a crate that finds
+/// the user's folders ([`CORE_OS_CRATES`]). A hard zero since the split lane (step 10); lane
+/// 060's ratchet brought it there.
+fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
+    const WHY: &str = "Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in";
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut out = Vec::new();
+    for (name, class, dir, p) in classed_packages(meta)? {
+        if class != Class::Core || name == CORE_OS_OK {
+            continue;
+        }
+        for d in p["dependencies"].as_array().into_iter().flatten() {
+            let dep = d["name"].as_str().unwrap_or_default();
+            if CORE_OS_CRATES.contains(&dep) && d["kind"].as_str() != Some("dev") {
+                out.push(format!("{name} must not depend on {dep} ({WHY})"));
+            }
+        }
+        let Some(dir) = dir else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            out.extend(core_os_places(&rel, &text).into_iter().map(|p| format!("{p} ({WHY})")));
+        }
+    }
+    Ok(out)
+}
+
+/// The crate rules of design 061 §6 (065 §4) on ECAD's own manifests in `meta`; CADCraft's and
+/// transitive dependencies are not checked:
+/// - `anyhow` only in Programs and [`ANYHOW_OK`] (dev-dependencies aside);
+/// - `tokio` nowhere, dev-dependencies included (ECAD runs no async runtime: commands are
+///   synchronous on the project's lock, and a second runtime beside CADCraft's event loop would
+///   split where work happens);
+/// - `rayon` only in [`RAYON_OK`], as a plain dependency;
+/// - `schemars` only in the Engine, plus ecad-model's optional `schema` feature.
 fn dependency_rule_violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
+        let class = class_of(name);
         for d in p["dependencies"].as_array().into_iter().flatten() {
             let dep = d["name"].as_str().unwrap_or_default();
             let dev = d["kind"].as_str() == Some("dev");
+            let plain = d["kind"].is_null() && d["target"].is_null() && d["optional"].as_bool() != Some(true);
             match dep {
-                "anyhow" if !dev && !ANYHOW_OK.contains(&name) => out.push(format!(
-                    "{name} must not depend on anyhow: a library returns its own error type so callers can tell failures apart (only {ANYHOW_OK:?} may)"
+                "anyhow" if !dev && class != Some(Class::Programs) && !ANYHOW_OK.contains(&name) => out.push(format!(
+                    "{name} must not depend on anyhow: a library returns its own error type so callers can tell failures apart (only Programs and {ANYHOW_OK:?} may)"
                 )),
                 "tokio" => out.push(format!("{name} must not depend on tokio: ECAD runs no async runtime beside CADCraft's event loop")),
+                "rayon" if !(RAYON_OK.contains(&name) && plain) => out.push(format!(
+                    "{name}: rayon only in {RAYON_OK:?}, as a plain dependency (normal, not optional, no target table: ECAD is desktop-only)"
+                )),
+                "schemars" if class != Some(Class::Engine) && !schema_feature_dependency(p, d) => out.push(format!(
+                    "{name} must not depend on schemars: only the Engine, and ecad-model through its optional `schema` feature"
+                )),
                 _ => {}
             }
         }
     }
     Ok(out)
+}
+
+/// Whether the dependency `d` of package `p` is ecad-model's `schemars`, optional and enabled by
+/// its `schema` feature alone (design 061 §6).
+fn schema_feature_dependency(p: &Value, d: &Value) -> bool {
+    p["name"].as_str() == Some("ecad-model")
+        && d["kind"].is_null()
+        && d["optional"].as_bool() == Some(true)
+        && enabling_features(p, "schemars") == ["schema"]
+}
+
+/// What is wrong with the README of crate `name` (in layer `class`), `text` being its content if
+/// it exists (design 065 §6): the first heading is `# <name>`, the [`README_SECTIONS`] follow in
+/// order (other headings may come between), and a `Layer:` line names the crate's layer. Headings
+/// inside fenced code blocks are not headings.
+fn readme_problem(name: &str, class: Class, text: Option<&str>) -> Option<String> {
+    let Some(text) = text else { return Some(format!("{name}: no README.md at the crate root (design 065 §6)")) };
+    let mut headings = Vec::new();
+    let mut fenced = false;
+    for l in text.lines().map(str::trim_end) {
+        if l.trim_start().starts_with("```") {
+            fenced = !fenced;
+        } else if !fenced && (l.starts_with("# ") || l.starts_with("## ")) {
+            headings.push(l);
+        }
+    }
+    let title = format!("# {name}");
+    if headings.first() != Some(&title.as_str()) {
+        return Some(format!("{name}: its README must start with the heading `{title}` (design 065 §6)"));
+    }
+    let mut rest = headings.iter().skip(1);
+    if let Some(missing) = README_SECTIONS.iter().find(|s| !rest.any(|h| h == *s)) {
+        return Some(format!("{name}: its README lacks the heading `{missing}`, or has it out of order (design 065 §6)"));
+    }
+    let want = layer_name(class);
+    match text.lines().find_map(|l| l.strip_prefix("Layer:")).map(str::trim) {
+        Some(layer) if layer == want => None,
+        Some(layer) => Some(format!("{name}: its README says `Layer: {layer}`, but the crate is in {want}")),
+        None => Some(format!("{name}: its README has no `Layer: {want}` line (design 065 §6)")),
+    }
+}
+
+/// The README ratchet: `results` holds each workspace member's [`readme_problem`]; a problem
+/// fails unless the member is in `allowlist`, and an allowlist entry whose member passes or is
+/// not in `results` fails too, so the list only shrinks.
+fn readme_ratchet(results: &[(&str, Option<String>)], allowlist: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = results.iter().filter(|(n, _)| !allowlist.contains(n)).filter_map(|(_, p)| p.clone()).collect();
+    for entry in allowlist {
+        match results.iter().find(|(n, _)| n == entry) {
+            Some((_, Some(_))) => {}
+            Some((_, None)) => out.push(format!("{entry}: its README passes; remove it from the README allowlist")),
+            None => out.push(format!("{entry}: in the README allowlist but not a workspace member; remove the entry")),
+        }
+    }
+    out
+}
+
+/// The README check (design 065 §6) over the workspace members in `meta`, with [`README_ALLOWLIST`].
+fn readme_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let results: Vec<(&str, Option<String>)> = classed_packages(meta)?
+        .into_iter()
+        .map(|(name, class, dir, _)| {
+            let text = dir.and_then(|d| std::fs::read_to_string(d.join("README.md")).ok());
+            (name, readme_problem(name, class, text.as_deref()))
+        })
+        .collect();
+    Ok(readme_ratchet(&results, README_ALLOWLIST))
 }
 
 /// The places in one product source file (`rel`: its path from the workspace folder, `/`
@@ -526,52 +710,6 @@ fn ratchet_problem(path: &str, found: usize, allowed: usize, what: &str, fix: &s
         std::cmp::Ordering::Less => Some(format!("{path}: {found} {what}, fewer than the allowlist's {allowed}; lower the count")),
         std::cmp::Ordering::Equal => None,
     }
-}
-
-/// The apps of [`ENGINE_FREE`] in `meta` that use `cadcraft-engine` directly beyond
-/// [`ENGINE_ALLOWLIST`], and the entries that must come down (brief 060).
-fn engine_violations(meta: &Value) -> Result<Vec<String>, String> {
-    let mut out = Vec::new();
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
-        let name = p["name"].as_str().unwrap_or_default();
-        if !ENGINE_FREE.contains(&name) {
-            continue;
-        }
-        let depends = p["dependencies"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|d| d["name"].as_str() == Some("cadcraft-engine") && d["kind"].as_str() != Some("dev"));
-        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
-        let mut files = Vec::new();
-        rust_files(&dir.join("src"), &mut files);
-        let mut found = 0;
-        for f in files {
-            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
-            found += places_matching(name, &text, &["cadcraft_engine"]).len();
-        }
-        match ENGINE_ALLOWLIST.iter().find(|(n, _)| *n == name) {
-            Some((n, allowed)) => {
-                seen.insert(n);
-                if found == 0 && depends && *allowed > 0 {
-                    out.push(format!("{n}: no longer names cadcraft_engine; remove the dependency from its Cargo.toml and its allowlist entry"));
-                } else {
-                    out.extend(ratchet_problem(n, found, *allowed, "source lines naming cadcraft_engine", "reach the engine through ecad-cadcraft"));
-                }
-            }
-            None if depends || found > 0 => {
-                out.push(format!("{name}: an app must not depend on cadcraft-engine directly ({found} source lines); go through ecad-cadcraft"))
-            }
-            None => {}
-        }
-    }
-    for (n, _) in ENGINE_ALLOWLIST {
-        if !seen.contains(n) {
-            out.push(format!("{n}: in the engine allowlist but not found; remove the entry"));
-        }
-    }
-    Ok(out)
 }
 
 /// The lines of `text` (outside `//` comments) that contain one of `patterns`, as `rel:line: text`.
@@ -740,7 +878,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         let class = class_of(name);
-        if !matches!(class, Some(Class::Core | Class::Adapter | Class::Ui | Class::App | Class::Programs | Class::UiKit)) {
+        if !matches!(class, Some(Class::Core | Class::Engine | Class::App | Class::Programs | Class::UiKit)) {
             continue;
         }
         let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
@@ -757,7 +895,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                 _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
             }
             out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
-            if matches!(class, Some(Class::Ui | Class::App | Class::Programs)) {
+            if matches!(class, Some(Class::App | Class::Programs)) {
                 let places = local_style_places(&rel, &text);
                 match STYLE_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
                     Some((path, allowed, brief)) => {
@@ -817,9 +955,10 @@ fn layers() -> Result<(), String> {
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let mut v = layer_violations(&meta)?;
     v.extend(source_violations(&meta)?);
-    v.extend(engine_violations(&meta)?);
+    v.extend(path_violations(&meta)?);
     v.extend(dependency_rule_violations(&meta)?);
     v.extend(core_os_violations(&meta)?);
+    v.extend(readme_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -865,53 +1004,8 @@ fn patches() -> Result<(), String> {
     }
 }
 
-fn wasm() -> Result<(), String> {
-    let root = ecad_root();
-    let meta = Command::new(env!("CARGO"))
-        .args(["metadata", "--format-version", "1", "--no-deps"])
-        .current_dir(&root)
-        .output()
-        .map_err(|e| e.to_string())?;
-    let meta: Value = serde_json::from_slice(&meta.stdout).map_err(|e| e.to_string())?;
-    let present: Vec<&str> = meta["packages"].as_array().into_iter().flatten().filter_map(|p| p["name"].as_str()).collect();
-    let mut cmd = Command::new(env!("CARGO"));
-    cmd.args(["build", "--target", "wasm32-unknown-unknown"]).current_dir(&root);
-    // Warnings are errors, as in CI (`RUSTFLAGS: -D warnings`): code used only off wasm left
-    // dead code on wasm that passed here and failed the QA gate (PR #66). With `--target`,
-    // RUSTFLAGS reaches only the wasm crates, not build scripts or proc macros.
-    let (var, flags) = deny_warnings(std::env::var("CARGO_ENCODED_RUSTFLAGS").ok().as_deref(), std::env::var("RUSTFLAGS").ok().as_deref());
-    cmd.env(var, flags);
-    for c in WASM_CRATES.iter().filter(|c| present.contains(c)) {
-        cmd.args(["-p", c]);
-    }
-    run(&mut cmd)?;
-    println!("wasm: OK");
-    Ok(())
-}
-
-/// The rustflags variable to set and its value: the caller's flags with `-D warnings` added.
-/// Cargo reads `CARGO_ENCODED_RUSTFLAGS` (flags split by `\x1f`) before `RUSTFLAGS`, so a
-/// non-empty one is extended; otherwise `RUSTFLAGS` is. Flags already denying warnings are kept
-/// as they are.
-fn deny_warnings(encoded: Option<&str>, plain: Option<&str>) -> (&'static str, String) {
-    const SEP: char = '\x1f';
-    if let Some(e) = encoded.filter(|e| !e.is_empty()) {
-        let flags: Vec<&str> = e.split(SEP).collect();
-        if flags.windows(2).any(|w| w == ["-D", "warnings"]) {
-            return ("CARGO_ENCODED_RUSTFLAGS", e.to_string());
-        }
-        return ("CARGO_ENCODED_RUSTFLAGS", format!("{e}{SEP}-D{SEP}warnings"));
-    }
-    let p = plain.unwrap_or_default().trim();
-    let flags: Vec<&str> = p.split_whitespace().collect();
-    if flags.windows(2).any(|w| w == ["-D", "warnings"]) {
-        return ("RUSTFLAGS", p.to_string());
-    }
-    ("RUSTFLAGS", if p.is_empty() { "-D warnings".to_string() } else { format!("{p} -D warnings") })
-}
-
 /// Every check of [`ci`] except the tests: formatting, clippy with all targets and features and
-/// with the default ones, layers, the patch guard and wasm. The QA gate's CI runs this in one job
+/// with the default ones, layers and the patch guard. The QA gate's CI runs this in one job
 /// and the tests in sharded nextest jobs (`.github/workflows/ci.yml`), so a check added here
 /// reaches CI without a workflow change.
 fn lint() -> Result<(), String> {
@@ -921,8 +1015,7 @@ fn lint() -> Result<(), String> {
     run(Command::new(cargo).args(["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]).current_dir(&root))?;
     run(Command::new(cargo).args(["clippy", "--workspace", "--", "-D", "warnings"]).current_dir(&root))?;
     layers()?;
-    patches()?;
-    wasm()
+    patches()
 }
 
 fn ci() -> Result<(), String> {
@@ -932,7 +1025,7 @@ fn ci() -> Result<(), String> {
     run(Command::new(env!("CARGO")).args(["test", "--workspace", "--all-features", "--", "--include-ignored"]).current_dir(ecad_root()))
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|lint|ci|bench|demo|test-changed|clean-builds>
+const USAGE: &str = "usage: cargo xtask <layers|patches|lint|ci|bench|demo|test-changed|clean-builds>
   test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default: the branch's upstream, so what
         was not pushed yet; for a branch never pushed, since its merge base with origin/dev;
@@ -941,9 +1034,7 @@ const USAGE: &str = "usage: cargo xtask <layers|patches|wasm|lint|ci|bench|demo|
         pull requests into dev, so workers leave it off); --dry-run only names the crates
   lint
         every check of ci except the tests: fmt, clippy (all features and default), layers,
-        patches, wasm
-  wasm
-        build the ECAD library crates for wasm32-unknown-unknown, warnings as errors (as CI)
+        patches
   clean-builds --root <folder> [--dry-run]
         delete ecad/target and target in each folder under <folder> and under <folder>/_tmp,
         skipping folders a cargo or rustc is using; remove git worktrees whose branch is merged
@@ -1154,7 +1245,6 @@ fn main() -> ExitCode {
     let r = match args.first().map(String::as_str).unwrap_or_default() {
         "layers" => layers(),
         "patches" => patches(),
-        "wasm" => wasm(),
         "lint" => lint(),
         "ci" => ci(),
         "bench" => bench(rest),
@@ -1175,17 +1265,6 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// `cargo xtask wasm` denies warnings like CI does, keeping any flags the caller set.
-    #[test]
-    fn wasm_build_denies_warnings() {
-        assert_eq!(deny_warnings(None, None), ("RUSTFLAGS", "-D warnings".to_string()));
-        assert_eq!(deny_warnings(Some(""), Some("  ")), ("RUSTFLAGS", "-D warnings".to_string()));
-        assert_eq!(deny_warnings(None, Some("-C debuginfo=0")), ("RUSTFLAGS", "-C debuginfo=0 -D warnings".to_string()));
-        assert_eq!(deny_warnings(None, Some("-D warnings")), ("RUSTFLAGS", "-D warnings".to_string()));
-        assert_eq!(deny_warnings(Some("-Cdebuginfo=0"), Some("ignored")), ("CARGO_ENCODED_RUSTFLAGS", "-Cdebuginfo=0\x1f-D\x1fwarnings".to_string()));
-        assert_eq!(deny_warnings(Some("-D\x1fwarnings"), None), ("CARGO_ENCODED_RUSTFLAGS", "-D\x1fwarnings".to_string()));
-    }
 
     #[test]
     fn core_crates_may_not_use_cadcraft() {
@@ -1300,7 +1379,7 @@ mod tests {
         }
     }
 
-    /// Rules 1–3 on this workspace: no violation, and every allowlist entry is still needed.
+    /// Every `layers` rule on this workspace: no violation, and every allowlist entry is still needed.
     #[test]
     fn this_workspace_keeps_developer_tools_apart() {
         let root = ecad_root();
@@ -1309,6 +1388,10 @@ mod tests {
         let meta: Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(layer_violations(&meta).unwrap(), Vec::<String>::new());
         assert_eq!(source_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(path_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(dependency_rule_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(core_os_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(readme_violations(&meta).unwrap(), Vec::<String>::new());
     }
 
     /// A small graph: `core` ← `mid` ← `app`, `mid` ← `bench` (dev only), `lone`, and an upstream
@@ -1531,39 +1614,192 @@ let c = ecad_ui::color(SHELL.text);",
         }
     }
 
-    /// Brief 060: `anyhow` only in apps and xtask, `tokio` nowhere; `rayon` is allowed anywhere.
+    /// Design 061 §6 (065 §4): `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere,
+    /// `rayon` only in model, file, electrical and cadcraft as a plain dependency, `schemars` only
+    /// in the Engine and ecad-model's optional `schema` feature.
     #[test]
-    fn the_dependency_rules_refuse_anyhow_in_libraries_and_tokio() {
+    fn the_dependency_rules_of_design_061() {
         let dep = |name: &str, kind: Value, target: Value| serde_json::json!({"name": name, "kind": kind, "target": target});
-        let rows: &[(&str, Value, usize)] = &[
-            ("ecad-model", dep("anyhow", Value::Null, Value::Null), 1),
-            ("ecad-model", dep("anyhow", "dev".into(), Value::Null), 0),
-            ("ecad-desktop", dep("anyhow", Value::Null, Value::Null), 0),
-            ("ecad-app", dep("anyhow", Value::Null, Value::Null), 1),
-            ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), 0),
-            ("ecad-desktop", dep("tokio", Value::Null, Value::Null), 1),
-            ("ecad-store", dep("tokio", "dev".into(), Value::Null), 1),
-            ("ecad-model", dep("rayon", Value::Null, Value::Null), 0),
-            ("ecad-model", dep("serde", Value::Null, Value::Null), 0),
+        let opt = |name: &str| serde_json::json!({"name": name, "kind": null, "target": null, "optional": true});
+        let none = serde_json::json!({});
+        let schema = serde_json::json!({"schema": ["dep:schemars"]});
+        let both = serde_json::json!({"schema": ["dep:schemars"], "all": ["schemars"]});
+        let wasm: Value = "cfg(not(target_arch = \"wasm32\"))".into();
+        let rows: &[(&str, Value, &Value, usize, &str)] = &[
+            ("ecad-model", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in a library"),
+            ("ecad-model", dep("anyhow", "dev".into(), Value::Null), &none, 0, "anyhow in a library's tests"),
+            ("ecad-desktop", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
+            ("ecad-cli", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
+            ("ecad-app", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the app library"),
+            ("ecad-cadcraft", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the Engine"),
+            ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in xtask"),
+            ("ecad-bench", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in ecad-bench"),
+            ("ecad-inspector", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in another Dev crate"),
+            ("ecad-desktop", dep("tokio", Value::Null, Value::Null), &none, 1, "tokio in a program"),
+            ("ecad-store", dep("tokio", "dev".into(), Value::Null), &none, 1, "tokio in tests"),
+            ("ecad-model", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the model"),
+            ("ecad-electrical", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the rules"),
+            ("ecad-cadcraft", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the Engine"),
+            ("ecad-file", dep("rayon", Value::Null, wasm.clone()), &none, 1, "rayon in a target table"),
+            ("ecad-file", dep("rayon", "dev".into(), Value::Null), &none, 1, "rayon as a dev-dependency"),
+            ("ecad-file", opt("rayon"), &none, 1, "rayon optional"),
+            ("ecad-app", dep("rayon", Value::Null, Value::Null), &none, 1, "rayon in the app"),
+            ("ecad-store", dep("rayon", Value::Null, Value::Null), &none, 1, "rayon in the store"),
+            ("ecad-cadcraft", dep("schemars", Value::Null, Value::Null), &none, 0, "schemars in the Engine"),
+            ("ecad-model", opt("schemars"), &schema, 0, "schemars behind the model's schema feature"),
+            ("ecad-model", dep("schemars", Value::Null, Value::Null), &none, 1, "schemars always on in the model"),
+            ("ecad-model", opt("schemars"), &both, 1, "schemars also enabled by another feature"),
+            ("ecad-file", opt("schemars"), &schema, 1, "schemars in another Core crate"),
+            ("ecad-mcp", dep("schemars", Value::Null, Value::Null), &none, 1, "schemars in a program"),
+            ("ecad-model", dep("serde", Value::Null, Value::Null), &none, 0, "anything else"),
         ];
-        for (pkg, d, n) in rows {
-            let meta = serde_json::json!({"packages": [{"name": pkg, "dependencies": [d]}]});
-            assert_eq!(dependency_rule_violations(&meta).unwrap().len(), *n, "{pkg}: {d}");
+        for (pkg, d, features, n, what) in rows {
+            let meta = serde_json::json!({"packages": [{"name": pkg, "dependencies": [d], "features": features}]});
+            assert_eq!(dependency_rule_violations(&meta).unwrap().len(), *n, "{what}: {pkg}: {d}");
         }
     }
 
-    /// Brief 060: an app that depends on the engine and is not in the allowlist fails `layers`.
+    /// Design 065 §4: App and Programs sources name no `cadcraft_engine` path, ecad-electrical's
+    /// no `cadcraft_` path; comments and longer names do not count, and other layers are free.
     #[test]
-    fn an_app_that_depends_on_the_engine_is_a_violation() {
-        let meta = serde_json::json!({"packages": [
-            {"name": "ecad-cli", "manifest_path": "/nowhere/ecad-cli/Cargo.toml",
-             "dependencies": [{"name": "cadcraft-engine", "kind": null}]},
-            {"name": "ecad-store", "manifest_path": "/nowhere/ecad-store/Cargo.toml",
-             "dependencies": [{"name": "cadcraft-engine", "kind": "dev"}]},
-        ]});
-        let v = engine_violations(&meta).unwrap();
-        assert!(v.iter().any(|m| m.starts_with("ecad-cli: an app must not depend on cadcraft-engine")), "{v:?}");
-        assert!(!v.iter().any(|m| m.starts_with("ecad-store")), "{v:?}");
+    fn forbidden_paths_are_found_in_app_programs_and_the_rules() {
+        let rows: &[(&str, &str, usize)] = &[
+            ("ecad-app", "use cadcraft_engine::Document;", 1),
+            ("ecad-desktop", "fn f(e: &cadcraft_engine::Entity) {}", 1),
+            ("ecad-mcp", "use cadcraft_engine as e;", 1),
+            ("ecad-cli", "use ecad_cadcraft::cad::Entity;", 0),
+            ("ecad-app", "// cadcraft_engine::Document in a comment", 0),
+            ("ecad-app", "use cadcraft_ui_egui::App;", 0),
+            ("ecad-electrical", "use cadcraft_io::dxf;", 1),
+            ("ecad-electrical", "let m = ecad_cadcraft_like::x();", 0),
+            ("ecad-electrical", "use ecad_model::Document; // not cadcraft_engine", 0),
+            ("ecad-model", "use cadcraft_engine::Document;", 0),
+            ("ecad-cadcraft", "use cadcraft_engine::Document;", 0),
+            ("ecad-bench", "use cadcraft_engine::Document;", 0),
+        ];
+        for (krate, text, n) in rows {
+            let class = class_of(krate).unwrap();
+            assert_eq!(forbidden_path_places(krate, class, "x.rs", text).len(), *n, "{krate}: {text}");
+        }
+    }
+
+    /// Design 065 §3.1: a Core crate other than ecad-store may not depend on a crate that finds
+    /// the user's folders; ecad-store and tests may.
+    #[test]
+    fn core_crates_do_not_find_the_users_folders() {
+        let rows: &[(&str, &str, Value, usize)] = &[
+            ("ecad-model", "dirs", Value::Null, 1),
+            ("ecad-electrical", "directories", Value::Null, 1),
+            ("ecad-file", "dirs", "dev".into(), 0),
+            ("ecad-store", "dirs", Value::Null, 0),
+            ("ecad-app", "dirs", Value::Null, 0),
+            ("ecad-model", "serde", Value::Null, 0),
+        ];
+        for (krate, dep, kind, n) in rows {
+            let meta = serde_json::json!({"workspace_root": "", "packages": [{"name": krate, "dependencies": [{"name": dep, "kind": kind}]}]});
+            assert_eq!(core_os_violations(&meta).unwrap().len(), *n, "{krate} -> {dep}");
+        }
+    }
+
+    /// Design 065 §6: a README starts with `# <crate name>`, has the five sections in order and
+    /// names the crate's layer; headings in code blocks do not count.
+    #[test]
+    fn a_readme_has_the_six_headings_and_the_layer() {
+        let sections = "## Purpose\nx\n## Contents\n## Must not depend on\n## Key types\n## How to test\n";
+        let good = format!("# ecad-model\n\nLayer: Core\n\n{sections}");
+        let long_title = format!("# ecad-model: the model\nLayer: Core\n{sections}");
+        let no_layer = format!("# ecad-model\n{sections}");
+        let fenced = format!("# ecad-model\nLayer: Core\n## Purpose\n```sh\n{sections}```\n");
+        let kit = format!("# ecad-tokens\nLayer: UI kit\n{sections}");
+        let xtask = format!("# ecad-xtask\nLayer: Dev\n{sections}");
+        let rows: &[(&str, Class, Option<&str>, bool, &str)] = &[
+            ("ecad-model", Class::Core, Some(&good), true, "the template"),
+            ("ecad-model", Class::Core, None, false, "no README"),
+            ("ecad-model", Class::Engine, Some(&good), false, "the wrong layer"),
+            ("ecad-store", Class::Core, Some(&good), false, "another crate's title"),
+            ("ecad-model", Class::Core, Some(&long_title), false, "a longer title"),
+            (
+                "ecad-model",
+                Class::Core,
+                Some("# ecad-model\nLayer: Core\n## Contents\n## Purpose\n## Must not depend on\n## Key types\n## How to test\n"),
+                false,
+                "sections out of order",
+            ),
+            (
+                "ecad-model",
+                Class::Core,
+                Some("# ecad-model\nLayer: Core\n## Purpose\n## Contents\n## Must not depend on\n## How to test\n"),
+                false,
+                "a section missing",
+            ),
+            ("ecad-model", Class::Core, Some(&no_layer), false, "no Layer line"),
+            (
+                "ecad-model",
+                Class::Core,
+                Some(
+                    "# ecad-model\nLayer: Core\n## Purpose\n### Detail\n## Notes\n## Contents\n## Must not depend on\n## Key types\n## How to test\n",
+                ),
+                true,
+                "extra headings between",
+            ),
+            ("ecad-model", Class::Core, Some(&fenced), false, "sections only in a code block"),
+            ("ecad-tokens", Class::UiKit, Some(&kit), true, "the UI kit"),
+            ("ecad-xtask", Class::Exempt, Some(&xtask), true, "xtask is Dev"),
+        ];
+        for (krate, class, text, ok, what) in rows {
+            let p = readme_problem(krate, *class, *text);
+            assert_eq!(p.is_none(), *ok, "{what}: {p:?}");
+        }
+    }
+
+    /// Design 065 §6: the README allowlist only shrinks: an unlisted failure fails, a listed one
+    /// does not, and a listed crate that passes or is gone must be removed.
+    #[test]
+    fn the_readme_allowlist_only_shrinks() {
+        let fail = || Some("no README".to_string());
+        let rows: Vec<(Vec<(&str, Option<String>)>, &[&str], usize, &str)> = vec![
+            (vec![("a", None), ("b", None)], &[], 0, "all pass"),
+            (vec![("a", fail()), ("b", None)], &[], 1, "an unlisted failure"),
+            (vec![("a", fail()), ("b", None)], &["a"], 0, "a listed failure"),
+            (vec![("a", None)], &["a"], 1, "a listed crate that passes"),
+            (vec![("a", None)], &["gone"], 1, "a listed crate that is gone"),
+            (vec![("a", fail()), ("b", fail())], &["a"], 1, "one listed, one not"),
+        ];
+        for (results, allow, n, what) in rows {
+            assert_eq!(readme_ratchet(&results, allow).len(), n, "{what}");
+        }
+    }
+
+    /// Design 065 §4: App and Programs reach the engine only through ecad-cadcraft; App may
+    /// dev-depend on a program (ecad-app's tests use ecad-desktop's startup), never depend on one.
+    #[test]
+    fn app_and_programs_do_not_use_the_engine_directly() {
+        let rows: &[(&str, &str, Value, usize, &str)] = &[
+            ("ecad-cli", "cadcraft-engine", Value::Null, 1, "a program on the engine"),
+            ("ecad-app", "cadcraft-engine", Value::Null, 1, "the app on the engine"),
+            ("ecad-app", "cadcraft-engine", "dev".into(), 0, "the app's tests on the engine"),
+            ("ecad-app", "ecad-desktop", Value::Null, 1, "the app on a program"),
+            ("ecad-app", "ecad-desktop", "dev".into(), 0, "the app's tests on a program"),
+            ("ecad-app", "cadcraft-ui-egui", Value::Null, 0, "the app on CADCraft's window"),
+            ("ecad-desktop", "ecad-app", Value::Null, 0, "a program on the app"),
+            ("ecad-mcp", "ecad-cli", Value::Null, 0, "a program on another program"),
+            ("ecad-mcp", "cadcraft-mcp", Value::Null, 0, "a program on CADCraft's MCP"),
+            ("ecad-cadcraft", "cadcraft-engine", Value::Null, 0, "the Engine on the engine"),
+            ("ecad-cadcraft", "cadcraft-io", Value::Null, 0, "the Engine on CADCraft's io"),
+            ("ecad-cadcraft", "cadcraft-ui-egui", Value::Null, 1, "the Engine on CADCraft's window"),
+            ("ecad-cadcraft", "cadcraft-fonts", Value::Null, 1, "the Engine on another CADCraft crate"),
+            ("ecad-cadcraft", "cadcraft-ui-egui", "dev".into(), 0, "the Engine's tests on CADCraft's window"),
+            ("ecad-cadcraft", "ecad-app", Value::Null, 1, "the Engine on the app"),
+            ("ecad-cadcraft", "ecad-mcp", Value::Null, 1, "the Engine on a program"),
+            ("ecad-electrical", "ecad-cadcraft", Value::Null, 1, "Core on the Engine"),
+            ("ecad-model", "ecad-app", Value::Null, 1, "Core on the app"),
+            ("ecad-inspect", "ecad-cli", Value::Null, 1, "Core on a program"),
+            ("ecad-xtask", "cadcraft-engine", Value::Null, 0, "xtask on the engine"),
+        ];
+        for (krate, dep, kind, n, what) in rows {
+            let meta = serde_json::json!({"packages": [{"name": krate, "dependencies": [{"name": dep, "kind": kind}]}], "workspace_root": ""});
+            assert_eq!(layer_violations(&meta).unwrap().len(), *n, "{what}: {krate} -> {dep}");
+        }
     }
 
     /// A UI file not in the allowlist that styles locally fails `layers`; one in it does not.
@@ -1617,14 +1853,14 @@ let c = ecad_ui::color(SHELL.text);",
         );
     }
 
-    /// Core and Adapter crates may not depend on ECAD's UI kit or the egui family (design §2).
+    /// Core and Engine crates may not depend on ECAD's UI kit or the egui family (design §2).
     #[test]
-    fn core_and_adapter_crates_may_not_use_the_ui_kit() {
+    fn core_and_engine_crates_may_not_use_the_ui_kit() {
         let rows: &[(&str, &str, usize)] = &[
             ("ecad-model", "ecad-ui", 1),
             ("ecad-cadcraft", "ecad-ui", 1),
             ("ecad-cadcraft", "epaint", 1),
-            ("ecad-mcp", "egui_extras", 1),
+            ("ecad-mcp", "egui_extras", 0),
             ("ecad-model", "ecad-tokens", 1),
             // The Core order (design 065 §1): forward edges only.
             ("ecad-file", "ecad-store", 0),

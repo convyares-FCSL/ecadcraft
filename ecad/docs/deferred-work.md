@@ -39,6 +39,11 @@ started.
 - Consider moving the definition content hash (`definition_hash`, canonical JSON) into
   `ecad-model`, so the electrical rules don't depend on the file format (types lane or later;
   067 step 4, owner option A).
+- Remove ECAD's leftover wasm code now that ECAD is desktop-only (owner, 2026-11-15; design 065
+  §1): the `cfg(target_arch = "wasm32")` branches (`ruzstd` decoding in `ecad-file`, the `chrono`
+  clock, `agent_access`, `same-file`) and, as a separate CI task (house rule 11), the stale
+  `targets: wasm32-unknown-unknown` line and the wasm step name in `.github/workflows/ci.yml`.
+  The crate split (067 step 10) removed only `cargo xtask wasm` and its step in `lint` and `ci`.
 - Pass the branch seed explicitly when the R9/types lanes touch `ProjectV2::create_branch`. The
   crate split (067 step 1c) left its signature alone: `BranchId::from_seed` takes the entropy
   from `ecad_store::random_u128` inside it (overseer, 2026-11-15).
