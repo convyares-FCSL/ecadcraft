@@ -18,6 +18,7 @@ use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
 use ecad_model::{CableId, ComponentId, ConductorId, Document, End, ObjectRef, Op, PageId, Subject};
 
 use crate::project::{Mapped, Project};
+pub use crate::words::Row;
 
 /// What a row edits, as the command that writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,36 +28,6 @@ pub enum Target {
     Devices(Vec<ComponentId>),
     Conductor(ConductorId),
     Cable(CableId),
-}
-
-/// One row: a label and a value box.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Row {
-    /// The property key it edits (`number`, `title`, `description`…).
-    pub key: String,
-    pub label: String,
-    /// The value shown.
-    pub value: String,
-    pub editable: bool,
-    /// The value comes from the project (a page's Function or Location): shown faint.
-    pub inherited: bool,
-    /// Several selected objects differ: `*varies*`.
-    pub varies: bool,
-    /// Suggestions (a combo): Status, Sheet; a function's or location's codes from the list.
-    pub choices: Vec<String>,
-    /// Brief 052 (design 052 §9.1): an unset function or location's proposal from the selected
-    /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
-    /// **Use +CP1** link that sets it.
-    pub proposal: Option<(String, String)>,
-}
-
-impl Row {
-    fn ro(key: &str, label: &str, value: String) -> Row {
-        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new(), proposal: None }
-    }
-    fn rw(key: &str, label: &str, value: String) -> Row {
-        Row { editable: true, ..Row::ro(key, label, value) }
-    }
 }
 
 /// One section: `ECAD · PAGE 105`, its rows, a note and the buttons it offers.

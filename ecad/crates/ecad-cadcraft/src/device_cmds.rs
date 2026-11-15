@@ -73,7 +73,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     }
     // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
     if crate::plc::channels::cell_type(starter).is_some() {
-        return crate::plc::channels::run_place_channel(s, params, starter, at, degrees, mirror);
+        return crate::plc_cmds::channels::run_place_channel(s, params, starter, at, degrees, mirror);
     }
     // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
     if let crate::symbols::Kind::ConnectorHalf { .. } = starter.kind {

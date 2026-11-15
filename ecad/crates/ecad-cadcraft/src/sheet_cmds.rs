@@ -130,8 +130,7 @@ fn set(object: ObjectRef, props: Option<&ecad_model::Properties>, key: &str, aft
 
 // ---------------------------------------------------------------- page numbers
 
-/// Most characters of a page number.
-pub const MAX_NUMBER_CHARS: usize = 12;
+pub use crate::page_types::MAX_NUMBER_CHARS;
 
 /// Check a page number (design 019 §6.1) against every other page's shown number.
 ///

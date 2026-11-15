@@ -27,6 +27,7 @@ use crate::commands::{err, opt_id, plain_style, with_project};
 use crate::defaults::symbols::Field;
 use crate::project::{Mapped, Project};
 pub use crate::symbols::POINT_GRID_MM;
+pub use crate::symbols::update_available;
 use crate::symbols::{self, Join, PROJECT_SYMBOLS, Version};
 
 /// Most shapes a symbol holds (design 048 §3.5).
@@ -1311,15 +1312,6 @@ pub(crate) fn place_project_key(s: &mut Session, params: &Value, key: &str) -> c
         crate::draw::proposals::finish_place(p, pg, plan.component, device.is_some(), &proposed, &mut v);
         Ok(Some(v))
     })
-}
-
-/// Whether placed copy `rep` shows an older version than its lineage's newest (design 048 §8.4).
-pub fn update_available(doc: &Document, rep: RepresentationId) -> Option<(DefinitionId, u64, u64)> {
-    let r = doc.representations.get(&rep)?;
-    let (d, _) = crate::devices::rep_definition(doc, r)?;
-    let o = d.origin.as_ref().filter(|o| o.library == PROJECT_SYMBOLS)?;
-    let n = symbols::newest(doc, o.definition)?;
-    (n.seq > o.library_seq).then_some((n.id, o.library_seq, n.seq))
 }
 
 // ---------------------------------------------------------------- family entries (FP6)

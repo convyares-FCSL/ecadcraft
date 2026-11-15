@@ -22,6 +22,7 @@ use ecad_model::{ComponentId, Document, PageId, Pt, RepresentationId, Subject};
 
 use super::rack::{self, CardType};
 use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
+use crate::text_style::fonts::{self, TextMetrics};
 use crate::text_style::{TextKind, text_style, text_width};
 use crate::xref::{HAlign, Part, Shape, VAlign};
 
@@ -233,16 +234,17 @@ pub fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
     (band / BAND_STEP).ceil() * BAND_STEP
 }
 
-/// Every frame part on `page` (design 051 §2.6).
-pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
+/// Every frame part on `page` (design 051 §2.6), its texts measured with `m` (ecad-cadcraft's
+/// `parts_on_page` passes CADCraft's fonts).
+pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
     let mut out = Vec::new();
     for run in runs_on_page(doc, page) {
-        frame_parts(doc, &run, &mut out);
+        frame_parts(doc, &run, m, &mut out);
     }
     out
 }
 
-fn frame_parts(doc: &Document, run: &Run, out: &mut Vec<Part>) {
+fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Part>) {
     let c = run.card;
     let Some(ty) = super::card_type_of(doc, c) else { return };
     let n = if ty.has_channels() { rack::channel_count(doc, c, ty) } else { 0 };
@@ -255,8 +257,8 @@ fn frame_parts(doc: &Document, run: &Run, out: &mut Vec<Part>) {
     let depth = HEADER_BAND + MARK_BAND + band;
     let bottom = run.top + run.dir * depth;
     // Wide enough for the name block and the type text.
-    let block_w = lines.iter().map(|(t, k)| text_width(doc, *k, t)).fold(0.0, f64::max);
-    let type_w = text_width(doc, TextKind::PartNumber, &ttext);
+    let block_w = lines.iter().map(|(t, k)| fonts::text_width(doc, *k, t, m)).fold(0.0, f64::max);
+    let type_w = fonts::text_width(doc, TextKind::PartNumber, &ttext, m);
     let need = block_w + type_w + 3.0 * INSET_X;
     let (l, mut r) = (run.left, run.right);
     let widened = r - l < need;
@@ -486,3 +488,6 @@ pub fn wide_checks(doc: &Document, c: ComponentId, tag: &str, address: impl Fn(u
         }
     }
 }
+
+// The engine half (design 065 §3), at its old path until step 6 turns this into a facade.
+pub use crate::draw::plc::look::parts_on_page;

@@ -11,11 +11,11 @@ use std::collections::BTreeSet;
 
 use ecad_model::book::Book;
 
-use cadcraft_engine::doc::Handle;
 use ecad_model::{ComponentId, Document, ItemKind, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
 
 use crate::devices::{self, PROPERTIES};
-use crate::project::Project;
+
+pub mod kept;
 
 /// One symbol (representation) of a device, as the list shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -235,7 +235,7 @@ fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_mod
             row: place.as_ref().map(|p| p.row),
             place: place.map_or_else(|| ecad_model::derive::unlocated(style).to_string(), |p| p.text(style)),
             name,
-            update: crate::symbol_cmds::update_available(doc, rid).is_some(),
+            update: crate::symbols::update_available(doc, rid).is_some(),
         },
     )
 }
@@ -330,112 +330,12 @@ fn entry(doc: &Document, c: ComponentId, prefix: Option<String>, book: &Book) ->
 }
 
 /// Where a representation is: a symbol's insertion point, else its first connection point.
-fn position(doc: &Document, r: &ecad_model::Representation) -> Option<Pt> {
+pub fn position(doc: &Document, r: &ecad_model::Representation) -> Option<Pt> {
     if let Some(ItemKind::Symbol(s)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) {
         return Some(s.placement.origin);
     }
     r.connection_points.values().next().copied()
 }
 
-/// For a "go to" from the list: representation `rep`'s page, a point to centre on, and its drawn
-/// handles on that page (empty unless that page is the one shown).
-pub fn symbol_target(p: &Project, rep: RepresentationId) -> Option<(PageId, Option<Pt>, Vec<Handle>)> {
-    let doc = p.ledger.document();
-    let r = doc.representations.get(&rep)?;
-    let mut handles = Vec::new();
-    if let Some(view) = p.pages.get(&r.page).filter(|v| v.uid.is_some()) {
-        handles.extend(r.items.iter().filter_map(|i| view.map.item(*i)));
-        handles.extend(r.connection_points.keys().filter_map(|t| view.map.marker(rep, *t)));
-    }
-    Some((r.page, position(doc, r), handles))
-}
-
-/// The Devices tab's list kept up to date (owner, 2026-11-08): every device, built whole once (on
-/// open, reload or first show), then refreshed only for the devices each change touched ([`devices_touched`], through
-/// [`Project::device_changes_since`]), and renumbered when pages moved. A change that touches no
-/// device does nothing.
-#[derive(Debug, Clone, Default)]
-pub struct DeviceList {
-    pub entries: Vec<DeviceEntry>,
-    /// (project serial, change count) the list is up to date with.
-    seen: Option<(u64, u64)>,
-    /// Full builds so far (on open, on reload, when shown again).
-    pub rebuilds: u64,
-    /// Refreshes that changed the list, and the devices they refreshed.
-    pub updates: u64,
-    pub devices_refreshed: u64,
-}
-
-impl DeviceList {
-    /// Bring the list up to date with `p` (the project numbered `serial` by the caller). Returns
-    /// whether it changed. Filtering is the caller's ([`matches`]): it never rebuilds the list.
-    pub fn sync(&mut self, serial: u64, p: &Project) -> bool {
-        let count = p.change_count();
-        let doc = p.ledger.document();
-        let since = match self.seen {
-            Some((s, n)) if s == serial => Some(n),
-            _ => None,
-        };
-        let changed = match since.and_then(|n| p.device_changes_since(n)) {
-            Some(t) if t.is_empty() => false,
-            Some(t) => self.apply(doc, &t),
-            None => {
-                self.entries = device_entries(doc, "");
-                self.rebuilds += 1;
-                true
-            }
-        };
-        self.seen = Some((serial, count));
-        changed
-    }
-
-    /// Forget how up to date the list is: the next [`DeviceList::sync`] builds it whole.
-    pub fn invalidate(&mut self) {
-        self.seen = None;
-    }
-
-    /// Refresh the devices `t` names, and the page numbers when pages moved.
-    fn apply(&mut self, doc: &Document, t: &DeviceTouch) -> bool {
-        let mut changed = false;
-        let mut resort = false;
-        for c in &t.components {
-            let now = device_entry(doc, *c);
-            let at = self.entries.iter().position(|e| e.id == *c);
-            match (at, now) {
-                (Some(i), Some(e)) => {
-                    if self.entries.get(i) != Some(&e) {
-                        resort |= self.entries.get(i).map(sort_key) != Some(sort_key(&e));
-                        if let Some(slot) = self.entries.get_mut(i) {
-                            *slot = e;
-                        }
-                        changed = true;
-                        self.devices_refreshed += 1;
-                    }
-                }
-                (Some(i), None) => {
-                    self.entries.remove(i);
-                    changed = true;
-                    self.devices_refreshed += 1;
-                }
-                (None, Some(e)) => {
-                    self.entries.push(e);
-                    resort = true;
-                    changed = true;
-                    self.devices_refreshed += 1;
-                }
-                (None, None) => {}
-            }
-        }
-        if t.pages {
-            renumber(doc, &mut self.entries);
-            changed = true;
-        }
-        if resort {
-            self.entries.sort_by_key(sort_key);
-        }
-        if changed {
-            self.updates += 1;
-        }
-        changed
-    }
-}
+// The engine half (design 065 §3), at its old path until step 6 turns this into a facade.
+pub use crate::draw::device_list::{DeviceList, symbol_target};

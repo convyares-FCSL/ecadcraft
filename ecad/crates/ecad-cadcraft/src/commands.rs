@@ -50,12 +50,12 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::look::specs());
     v.extend(crate::default_cmds::specs());
     v.extend(crate::connector_cmds::specs());
-    v.extend(crate::plc::specs());
-    v.extend(crate::bom::specs());
+    v.extend(crate::plc_cmds::specs());
+    v.extend(crate::bom_cmds::specs());
     v.extend(crate::symbol_cmds::specs());
     v.extend(crate::continuation_cmds::specs());
     v.extend(crate::style_cmds::specs());
-    v.extend(crate::plc::page::specs());
+    v.extend(crate::plc_cmds::page::specs());
     for (_, lane) in crate::lanes::LANES {
         v.extend(lane());
     }
@@ -300,8 +300,7 @@ fn end_param(p: &Value) -> Result<End, String> {
     }
 }
 
-/// Most handles one call may name.
-pub(crate) const MAX_HANDLES: usize = 100_000;
+pub(crate) use crate::words::MAX_HANDLES;
 
 /// The `handles` parameter, or the selection when it is absent. Every entry must be a valid hex
 /// handle: a typo is an error, never a silently smaller set.

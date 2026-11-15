@@ -5,10 +5,12 @@
 
 pub mod checks;
 pub mod continuations;
+pub mod device_list;
 pub mod devices;
 pub mod front;
 pub mod generated;
 pub mod locations;
+pub mod plc;
 pub mod proposals;
 pub mod references;
 pub mod text_style;

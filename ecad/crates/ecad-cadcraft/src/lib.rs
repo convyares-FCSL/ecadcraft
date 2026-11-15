@@ -38,6 +38,7 @@ pub mod actions;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod agent_access;
 pub mod bom;
+pub mod bom_cmds;
 pub mod cable_cmds;
 pub mod cables;
 pub mod checks;
@@ -75,8 +76,10 @@ pub mod numbering_cmds;
 pub mod oops;
 pub mod output_cmds;
 pub mod outputs;
+pub mod page_type_cmds;
 pub mod page_types;
 pub mod plc;
+pub mod plc_cmds;
 pub mod preview;
 pub mod printbook;
 pub mod project;

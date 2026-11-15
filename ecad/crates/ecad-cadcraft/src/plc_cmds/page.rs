@@ -17,9 +17,9 @@ use ecad_model::book::{self, Book, FOLDER_KEY, NUMBER_KEY};
 use ecad_model::{ComponentId, Document, Op, Page, PageId, Placement, Pt, Subject};
 use serde_json::{Value, json};
 
-use super::channels::{Join, channels_words, first_number, pins_for, plan_cell, points, roles_of};
-use super::rack::{self, CardType, RackRef};
 use crate::commands::{err, plain_style, with_any_page};
+use crate::plc::channels::{Join, channels_words, first_number, pins_for, plan_cell, points, roles_of};
+use crate::plc::rack::{self, CardType, RackRef};
 
 /// The first cell's distance from the left of the drawing area, mm (design 051 §3.6).
 pub const LEFT_MM: f64 = 40.0;
@@ -102,7 +102,7 @@ pub(crate) fn run_plcpage(s: &mut Session, params: &Value) -> cadcraft_engine::R
         }
         let doc = p.ledger.document();
         let card = rack::card_param(doc, params.get("card"))?;
-        let ty = super::card_type_of(doc, card).ok_or("Not a PLC card.")?;
+        let ty = crate::plc::card_type_of(doc, card).ok_or("Not a PLC card.")?;
         let tag = crate::devices::tag_words(doc, card);
         if ty.is_rack() {
             return Err(format!("{tag} is a rack; Make its page is for a card."));
@@ -112,7 +112,7 @@ pub(crate) fn run_plcpage(s: &mut Session, params: &Value) -> cadcraft_engine::R
         let missing: Vec<u32> = (0..n).filter(|i| !pts.contains_key(i)).collect();
         let body = !body_drawn(doc, card);
         if missing.is_empty() && !body {
-            let pages = super::overview::pages_of(doc, card);
+            let pages = crate::plc::overview::pages_of(doc, card);
             let at = pages.first().map(|p| format!(" ({})", crate::references::page_number_words(doc, *p))).unwrap_or_default();
             return Err(if ty.has_channels() { format!("All {n} channels of {tag} are drawn{at}.") } else { format!("{tag} is drawn{at}.") });
         }
@@ -141,7 +141,7 @@ pub(crate) fn run_plcpage(s: &mut Session, params: &Value) -> cadcraft_engine::R
             f64::from(spec.width) - m.right - 5.0,
             f64::from(spec.height) - m.top - 5.0,
         );
-        let output = super::address::shows_output(ty);
+        let output = crate::plc::address::shows_output(ty);
         let (y0, degrees) = if output { (b + 0.4 * (t - b), 180.0_f64) } else { (b + 0.6 * (t - b), 0.0) };
         let style = plain_style(p);
         let mut x_next = l + LEFT_MM;
@@ -230,7 +230,9 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
                 _ => None,
             })
         });
-        def.and_then(crate::symbols::of_definition).and_then(|s| super::rack::CardType::of_body(s.key)).is_some_and(super::rack::CardType::is_rack)
+        def.and_then(crate::symbols::of_definition)
+            .and_then(|s| crate::plc::rack::CardType::of_body(s.key))
+            .is_some_and(crate::plc::rack::CardType::is_rack)
     };
     let places_rack = ops.iter().any(|op| match op {
         Op::AddItem { item, .. } => matches!(&item.kind, ItemKind::Symbol(s) if is_rack_def(s.definition)),
@@ -240,7 +242,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
         return Ok((None, Vec::new()));
     }
     let has_page = doc.page_order.iter().any(|pg| crate::generated::kind_of(doc, *pg) == Some(crate::generated::GenKind::PlcRack));
-    let other_rack = doc.components.keys().any(|c| super::rack::is_rack(doc, *c));
+    let other_rack = doc.components.keys().any(|c| crate::plc::rack::is_rack(doc, *c));
     if has_page || other_rack {
         return Ok((None, Vec::new()));
     }

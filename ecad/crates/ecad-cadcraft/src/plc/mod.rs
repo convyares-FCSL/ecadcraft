@@ -16,7 +16,6 @@ pub mod exchange;
 pub mod iolist;
 pub mod look;
 pub mod overview;
-pub mod page;
 pub mod rack;
 pub mod sheets;
 pub mod signals;
@@ -24,53 +23,11 @@ pub mod tagtable;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::CommandSpec;
 use ecad_model::{ComponentId, Document, ObjectRef, Op, PageId, Subject};
 use serde_json::{Value, json};
 
 use crate::checks::{Check, Fix, Kind, Object};
 use rack::{CardType, RackRef};
-
-/// The commands of brief 045.
-pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("plcslot", "Card Slot", rack::run_plcslot)
-            .params(
-                "{card: id or tag, rack?: id or tag (null: take the card out of its rack; absent: its own rack, else the only one), \
-slot?: number (absent: the next free slot), swap?: bool (swap with the card in that slot)}",
-            )
-            .noundo(),
-        CommandSpec::new("plcracks", "PLC Racks", rack::run_plcracks)
-            .params("{rack?: id or tag} (each rack with its slots in order, and the cards in no rack; read only)")
-            .noundo(),
-        CommandSpec::new("plcchannels", "Place Channels", channels::run_plcchannels)
-            .params(
-                "{card?: id or tag (absent: a new card), type?: DI|DQ|AI|AO|RTD|IOL (a new card's), first?: channel number, point?: role landed on \
-each wire (e.g. C/Q; default the first, C/Q for IO-Link), from: [x,y], to: [x,y]} (one channel cell on each wire the line crosses, in order; \
-at most 256; a cell with several points spans its own wires when they are spaced as its points; turned 180° where the wires run down), or {card, rest: true, at?: [x,y]} (every channel not drawn yet, \
-as cells in a row, no wires)",
-            )
-            .noundo(),
-        CommandSpec::new("plcchannel", "Channel", channels::run_plcchannel)
-            .params(
-                "{card: id or tag, channel: number as shown, text?: description (null clears), address?: typed address (null clears), \
-pins?: {role: pin}, move_to?: channel number (with terminal?: id; a drawn copy takes that channel)}",
-            )
-            .noundo(),
-        CommandSpec::new("iolist", "I/O List", iolist::run_iolist)
-            .params(
-                "{rack?: id or tag, card?: id or tag, state?: used|reserved|spare, limit?: rows (200, max 2000), after?: row index} \
-(one row per channel of every card, drawn or not; read only)",
-            )
-            .noundo(),
-        CommandSpec::new("plcaddress", "PLC Addresses", address::run_plcaddress)
-            .params(
-                "{rack: id or tag, style?: byte.bit|iec|percent|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its \
-current start), clear?: bool (unpin every card)} or {card: id or tag, start?: byte (null unpins), size?: bytes (null: by type)}",
-            )
-            .noundo(),
-    ]
-}
 
 /// What a PLC Checks row's buttons do (design 045 §9), with [`Fix::Plc`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1158,11 +1115,11 @@ pub fn caption_text(
 /// Properties ▸ Card and ▸ Rack rows of device `c` (design 045 §2.6): a card's Rack (its tag,
 /// never the ID: FP1), Slot and Channels; a rack's Slots and First slot (registry values at object
 /// level, faint when inherited).
-pub fn props_rows(doc: &Document, c: ComponentId, rows: &mut Vec<crate::props::Row>) {
+pub fn props_rows(doc: &Document, c: ComponentId, rows: &mut Vec<crate::words::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
     let props = doc.components.get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
-    let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::props::Row {
+    let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::words::Row {
         key: key.into(),
         label: label.into(),
         value,
@@ -1403,7 +1360,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
 /// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
 pub fn channel_rows(
-    doc: &Document, kept: Option<&Plc>, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::props::Row>,
+    doc: &Document, kept: Option<&Plc>, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::words::Row>,
 ) {
     let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
     if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
@@ -1412,7 +1369,7 @@ pub fn channel_rows(
     let shown = crate::devices::shown_terminals(doc, c, r);
     let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
     let first = channels::first_number(doc, c);
-    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::props::Row {
+    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::words::Row {
         key,
         label: label.into(),
         value,

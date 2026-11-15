@@ -113,9 +113,9 @@ fn content(
         let a = crate::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
         let plc = outputs.map(|o| &o.plc);
         if kind == GenKind::IoList {
-            crate::plc::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+            crate::draw::plc::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
         } else {
-            crate::plc::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+            crate::draw::plc::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
         }
         return d.out;
     }
