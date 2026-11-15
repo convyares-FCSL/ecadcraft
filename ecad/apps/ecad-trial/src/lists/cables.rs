@@ -110,7 +110,8 @@ impl ReportColumns for CablesSource {
             CORES => From::Header("Cores"),
             // Brief 059: a cable not drawn shows its planned ends.
             FROM | TO => From::Derived,
-            GLANDS => From::Placeholder,
+            // Brief 059 (059d): each end's gland, `M20, M20`.
+            GLANDS => From::Derived,
             _ => From::Derived,
         }
     }
@@ -126,6 +127,13 @@ impl ReportColumns for CablesSource {
                 }
             }
             CHECKS if !self.drawn(k) => Cell::Badge("not drawn".into(), Tone::Neutral),
+            GLANDS => match self.info.get(k).map(|i| &i.glands) {
+                Some([None, None]) | None => Cell::read(super::report::DASH),
+                Some([a, b]) => {
+                    let d = super::report::DASH;
+                    Cell::Text(format!("{}, {}", a.as_deref().unwrap_or(d), b.as_deref().unwrap_or(d)))
+                }
+            },
             LENGTH => match r.get(k, "Length").filter(|c| !c.text.is_empty()) {
                 Some(c) => Cell::Text(c.text.clone()),
                 None => Cell::read(super::report::DASH),

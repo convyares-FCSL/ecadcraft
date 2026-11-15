@@ -375,3 +375,30 @@ fn the_picker_lists_cables_not_drawn_first_and_leaves_out_those_slashed_here() {
         assert_eq!(order.first(), Some(&b), "a planned match first");
     }
 }
+
+/// 059d (design 059 §2.2, §6, Q5): glands default from the cable type at both ends and are
+/// overridden per end; a drawn end with none raises `no-gland` (Info); a cable not drawn raises none.
+#[test]
+fn glands_default_from_the_cable_type_and_a_drawn_end_without_one_is_noted() {
+    let mut h = H::new(5916);
+    let k = new_cable(&mut h, json!({}));
+    assert!(checks_of(&mut h, "no-gland").is_empty(), "not drawn: no gland rows");
+    wires(&mut h, 2);
+    slash(&mut h, Some(k)).unwrap();
+    let rows = checks_of(&mut h, "no-gland");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0]["severity"], json!("info"));
+    assert!(rows.iter().any(|r| r["text"].as_str().unwrap_or_default().contains("no gland size at the field end")), "{rows:?}");
+    let ty = h
+        .run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth glanded", "fields": {"gland": "M20", "cross_section": "1.5"}}))
+        .unwrap();
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": ty["id"], "to": {"gland": "M25"}}})).unwrap();
+    let doc = h.doc();
+    assert_eq!(cable_cmds::gland(&doc, k, Side::From), Some(("M20".to_string(), cable_cmds::Source::Type)));
+    assert_eq!(cable_cmds::gland(&doc, k, Side::To), Some(("M25".to_string(), cable_cmds::Source::Here)));
+    assert!(checks_of(&mut h, "no-gland").is_empty());
+    // A cable type's gland changed reaches its users (update map).
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": null}}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "cable", "id": ty["id"], "fields": {"gland": null}})).unwrap();
+    assert_eq!(checks_of(&mut h, "no-gland").len(), 2);
+}

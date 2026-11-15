@@ -609,6 +609,19 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
             fix: Some(Fix::UseDrawing(k, side)),
         });
     }
+    // 059d (design 059 §6): a drawn end with no gland size, its own or its cable type's.
+    for side in Side::BOTH {
+        if gland(doc, k, side).is_none() {
+            out.push(Check {
+                kind: Kind::NoGland,
+                page,
+                at,
+                object: Object::Cable(k),
+                which: format!("{name} has no gland size at the {}.", side.words()),
+                fix: Some(Fix::ShowCableField(k, CableField::Gland(side))),
+            });
+        }
+    }
     out
 }
 

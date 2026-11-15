@@ -118,6 +118,7 @@ fn the_demo_nets_and_wire_numbers() {
     // count of devices without a part number (-S01 among them, design 024 §13); brief 057's open
     // core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used).
     // Brief 052: -K01's function =PUMP is stored, and no box, page or project says =PUMP.
+    // Brief 059: -W01 has no gland size at either end (Info).
     assert_eq!(
         checks,
         [
@@ -126,6 +127,8 @@ fn the_demo_nets_and_wire_numbers() {
             "LonelyContinuation 2/D3 L1",
             "LonelyContinuation 2/D3 L2",
             "LonelyContinuation 2/D3 L3",
+            "NoGland 2/E3 -W01 has no gland size at the cabinet end.",
+            "NoGland 2/E3 -W01 has no gland size at the field end.",
             "Unconnected 3/E3 -M01:PE",
             "NoFunction  10 devices have no function",
             "NoPartNumber  7 devices have no part number"

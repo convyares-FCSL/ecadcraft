@@ -65,3 +65,14 @@ report setting is per view, not stored in the project.
 Not done in 059c: Add to cable's own picker (it has no cable prompt today; `cableadd {cable}` takes
 the free-core rule); after New cable the right panel does not jump to the new cable's Tag box; the
 `matches` mark compares the page's location boxes, not the crossed wires' devices.
+
+## Glands (059d)
+
+- Each end's gland comes from the cable's own **Gland** box in Ends, else its cable type's
+  `gland` (Settings ▸ Standards ▸ Cable types), shown with `from type` or `set here`.
+- The list's **Glands** column reads `M20, M25`; the cable view writes `gland M20` under each end.
+- Checks: a drawn cable end with no gland size is an Info row, `-W01 has no gland size at the field
+  end.`, with **Set gland**. The demo's `-W01` now shows two of them.
+
+Not done in 059d: the Gland box is a text box, not a Select with the usual sizes (that component
+does not exist in `ecad_ui` yet); glands computed from the outer diameter are out of scope (Q5).
