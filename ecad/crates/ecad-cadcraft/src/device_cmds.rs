@@ -141,7 +141,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
         };
         // Brief 052d (design 052 §5.3): the context here proposes a function and a location; an
         // unset device takes it in this transaction, a device with another value is asked about.
-        let proposed = crate::proposals::plan_place(p, params, plan.component, page, origin, None)?;
+        let proposed = crate::draw::proposals::plan_place(p, params, plan.component, page, origin, None)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
@@ -166,7 +166,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         });
-        crate::proposals::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
+        crate::draw::proposals::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
         let doc = p.ledger.document();
         if let Some((t, (r, slot))) = card_slot {
             let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), devices::tag_words(doc, r));

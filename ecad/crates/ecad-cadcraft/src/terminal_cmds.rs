@@ -602,7 +602,7 @@ pub(crate) fn run_place_level(
             ops.extend(l.ops.clone());
         }
         // Brief 052d (design 052 §5.3): the place proposes for the strip.
-        let proposed = crate::proposals::plan_place(p, params, c, page, origin, None)?;
+        let proposed = crate::draw::proposals::plan_place(p, params, c, page, origin, None)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
@@ -646,7 +646,7 @@ pub(crate) fn run_place_level(
                 }
             }
         }
-        crate::proposals::finish_place(p, pg, c, strip.is_some(), &proposed, &mut v);
+        crate::draw::proposals::finish_place(p, pg, c, strip.is_some(), &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

@@ -425,7 +425,7 @@ pub(crate) fn run_place_channel(
             ops.extend(land.ops);
         }
         // Brief 052d (design 052 §5.3): the place proposes for the card.
-        let proposed = crate::proposals::plan_place(p, params, card, page, pl.origin, None)?;
+        let proposed = crate::draw::proposals::plan_place(p, params, card, page, pl.origin, None)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
         p.last_placed = Some((starter.key.to_string(), card));
@@ -446,7 +446,7 @@ pub(crate) fn run_place_channel(
             "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, r), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
-        crate::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);
+        crate::draw::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {
