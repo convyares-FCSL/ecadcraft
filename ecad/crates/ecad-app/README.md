@@ -1,43 +1,38 @@
-# ecad-app: the ECAD application (experiment)
+# ecad-app
 
-> **How to build, run and try it:** [`../../docs/quick-start.md`](../../docs/quick-start.md).
-> That guide is the single maintained set of instructions. It also records which revision was
-> tried, and how: automated checks, an agent's virtual-display run, or by the owner.
+Layer: App
 
-`ecad-app` is CADCraft's own window with the ECAD commands
-installed and one ECAD project open at a time. The program that runs it is `ecad-desktop`
-(`apps/ecad-desktop`: command line, window size and place, start-up timing). It is an experiment for manual trials, not an ECAD application.
+> **How to build, run and try it:** [`docs/quick-start.md`](../../docs/quick-start.md), the single
+> maintained guide. The program that runs this crate is `ecad-desktop`.
 
-**What it adds to CADCraft's window:**
-- A banner naming the experiment, the project, its file and its unsaved changes, with New,
-  Open, Save and Save As.
-- Project files (`.ecad`, persistence stage 2a):
-  - Save writes to the project's file. Save As, and the first Save, asks for a file name in a
-    small dialog of its own, because the app has no native file dialogs.
-  - A project that another session is editing, or one found damaged, opens read-only and can
-    be saved as another file.
-- A Save/Discard/Cancel question when a project with unsaved changes is closed. It replaces
-  CADCraft's prompt for ECAD pages, through CADCraft's public close API.
-- Optional diagnostic snapshots (`--snapshots <folder>`). These are not saved projects.
-- A read-only **debugger** panel (stage 2b, `src/debugger.rs`), opened with **Debugger** in the
-  banner and never shown by default: selected drawing objects → ECAD IDs → model objects →
-  transactions with before/after values → saved record offsets and bytes, with pending changes
-  kept apart from saved history, and replay, projection and file checks on request.
-- An **ECAD** tab in CADCraft's Tool Sets panel, beside Drafting and Modeling (`src/tools.rs`),
-  for testing: one button per implemented ECAD command. It runs Convert to Component (on the
-  selection) and Inspect Project directly, and fills the Command field with an editable template
-  for the others. It goes through the ordinary command path and never runs a placeholder.
+## Purpose
+The ECAD application: the shell, workspaces, panels, dialogs, lists and tabs, on a CADCraft window.
+Everything about a project goes through `ecad-cadcraft`; this crate is what a person sees and
+clicks.
 
-**Not included:**
-- native file dialogs;
-- CADCraft file formats (plain drawings cannot be written);
-- autosave and the control channel;
-- saved window or profile settings;
-- ECAD menus and interactive ECAD prompts.
+## Contents
+- `lib.rs`: `App`, the application on CADCraft's window.
+- `shell/`: the frame: top bar, left and right panels, status bar, tool strip, keys, layout.
+- `actions`: the one table of actions (menus, buttons and shortcuts are built from it).
+- `canvas/`, `preview`: the page canvas and the read-only preview of another page.
+- Panels and dialogs: `project_panel`, `devices_panel`, `checks_panel`, `history_panel`, `settings/`, `lists/`, `library/`, `outputs_ui`, `publish`, `merge_dialog`, `renumber_dialog`, `text_ui`, `sheets_ui`, `release_ui`.
+- `file_ops`, `folder`: New, Open, Save, Save As and Close, with the Save, Discard, Cancel question.
+- `agent/`: live agent access (off by default; banner with Undo session, Pause and Disconnect).
+- `debugger`, `developer`: the read-only debugger and the Developer section.
 
-**Usage:** `ecad-desktop [--snapshots <folder>] [<project.ecad>]` (`cargo run --release -p ecad-desktop`).
+## Must not depend on
+App rules: Core, Engine and UI kit crates, `cadcraft-ui-egui`, `eframe` and `egui`. Never
+`cadcraft-engine` directly (go through `ecad-cadcraft`), and no Programs or Dev crate (except
+through a `dev` feature). Panels and dialogs use only `ecad-ui` components for values.
 
-The code is in `src/lib.rs`, `src/debugger.rs` and `src/tools.rs`. The headless tests include the
-quick-start guide's steps (`tests/all/app.rs`, `the_quick_start_runs_headless`, and
-`tests/all/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); keep them in step.
-`tests/all/tools.rs` covers the ECAD Tool Sets tab.
+## Key types
+`App`, `actions::Action`, `actions::Context`.
+
+## How to test
+```bash
+cargo test -p ecad-app
+```
+Tests are in `tests/all/` and drive the UI headlessly. Two of them follow the quick-start's steps
+(`the_quick_start_runs_headless`, `the_quick_start_debugger_example_runs_headless`); keep
+them in step with the guide. Slow tests are marked `#[ignore = "slow: …"]` and run only at the QA
+gate.
