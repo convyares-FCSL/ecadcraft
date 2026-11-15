@@ -7,11 +7,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 32, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 32;
 
 fn last(c: &mut Client) -> ecad_model::Transaction {
     let t = c.log().last().cloned().unwrap();
@@ -27,7 +26,7 @@ fn hex(v: &Value, key: &str) -> String {
 /// `created: false` with the existing wire; a wire between two open ends removes the folded wire.
 #[test]
 fn wire_merging_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let first = c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
     let r = c.exec("wire", json!({"points": [[50, 0], [50, -20]]}));
     assert_eq!(r["created"], json!(false), "{r}");
@@ -46,7 +45,7 @@ fn wire_merging_through_execute() {
 /// `joinwires`: one `Join wires` transaction by the agent.
 #[test]
 fn joinwires_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
     c.exec("wire", json!({"points": [[50, 0], [50, -20]], "join": false}));
     let n = c.log().len();
@@ -91,7 +90,7 @@ fn pack(c: &mut Client) -> String {
 /// words and records nothing.
 #[test]
 fn cableslash_continuing_and_cablecontinue_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = pack(&mut c);
     let n = c.log().len();
     let m = c.refused("execute", json!({"command": "cablecontinue", "params": {"cable": k, "at": [20, 80], "toward": [40, 80]}}));
@@ -109,7 +108,7 @@ fn cableslash_continuing_and_cablecontinue_through_execute() {
 /// transaction by the agent.
 #[test]
 fn wiresettings_label_rule_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let r = c.exec("wiresettings", json!({"label_rule": "each", "label_min_length": 10}));
     assert_eq!(r["label_rule"], json!("each"), "{r}");
     assert_eq!(r["label_min_length"], json!(10.0));

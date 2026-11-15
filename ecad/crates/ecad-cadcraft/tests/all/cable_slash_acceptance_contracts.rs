@@ -11,6 +11,7 @@ use crate::common;
 
 use std::path::PathBuf;
 
+use crate::common::close_all;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
@@ -307,12 +308,6 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn close_all(s: &mut Session) {
-    while !s.docs.is_empty() {
-        s.execute("close", &json!({"index": 0})).unwrap();
     }
 }
 

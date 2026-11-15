@@ -2,35 +2,24 @@
 //! row and as pins, `place` joining a half, and `pinlabel` each record one transaction by
 //! `Author::Agent(<client>)`; the refusals of §6.1 record nothing; with writes off each is refused.
 
-use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, ComponentId, Op};
+use ecad_mcp::policy;
+use ecad_model::{ComponentId, Op};
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client};
+use crate::common::{assert_one_by_agent, writer};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp 044", 44, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 44;
 
 fn component(v: &Value) -> ComponentId {
     ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap())
 }
 
-/// One more transaction, by the agent; returns its ops.
-fn one_by_agent(c: &mut Client, before: usize) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "one transaction");
-    let tx = log.last().unwrap();
-    assert_eq!(tx.author, Author::Agent(AGENT.into()));
-    tx.ops.clone()
-}
-
 #[test]
 fn connector_row_and_pins_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let n = c.log().len();
     let v = c.exec("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]}));
-    let ops = one_by_agent(&mut c, n);
+    let ops = assert_one_by_agent(&mut c, n, "write").ops;
     let x = component(&v);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).count(), 2);
@@ -44,26 +33,26 @@ fn connector_row_and_pins_by_the_agent() {
     }
     let n = c.log().len();
     let v = c.exec("connector", json!({"halves": "both", "family": "m12", "pins": 4, "layout": "pins", "line": [[90, 200], [130, 200]]}));
-    let ops = one_by_agent(&mut c, n);
+    let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(v["split"].as_array().map(Vec::len), Some(2));
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateConductor { .. })).count(), 2);
 
     // `place {symbol: pinpair, device}` joins and takes the next free pin.
     let n = c.log().len();
     let v = c.exec("place", json!({"symbol": "pinpair", "device": x.hex(), "at": [300, 300]}));
-    one_by_agent(&mut c, n);
+    assert_one_by_agent(&mut c, n, "write");
     assert_eq!(component(&v), x);
     assert_eq!(v["terminals"][0]["pin"], "5", "pins 1-4 are drawn on both halves, so a pin pair takes a new pin");
 }
 
 #[test]
 fn pinlabel_by_the_agent_and_refusals_record_nothing() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let v = c.exec("connector", json!({"halves": "socket", "family": "plain", "pins": 3, "layout": "row", "at": [50, 50]}));
     let x = component(&v);
     let n = c.log().len();
     let r = c.exec("pinlabel", json!({"device": x.hex(), "pin": "3", "to": "PE"}));
-    one_by_agent(&mut c, n);
+    assert_one_by_agent(&mut c, n, "write");
     assert_eq!(r["to"], "PE");
     // §6.1's refusals leave the head where it was.
     let n = c.log().len();

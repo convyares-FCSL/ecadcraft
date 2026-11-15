@@ -5,13 +5,13 @@
 //! hostile input. A probe that found a bug was `#[ignore = "tester 028: <bug>"]` and failed until it
 //! was fixed (all three are fixed and run now).
 
-use cadcraft_engine::Session;
+use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::{CableId, ComponentId, ConductorId, Document, PageId, TerminalId, tag};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{place, reopen, tmp_dir};
 
 struct T {
     h: H,
@@ -19,10 +19,6 @@ struct T {
     k2: ComponentId,
     wires: [ConductorId; 4],
     cable: CableId,
-}
-
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
-    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
 }
 
 /// Fixture T of design 028 §12 (the same geometry as the worker's, built here independently).
@@ -92,28 +88,6 @@ fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
     (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items)
 }
 
-fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    // Spaces and non-ASCII letters, as on a Windows desktop ("C:\Users\…\Schaltpläne 2026").
-    let dir = std::env::temp_dir().join(format!("ecad t028 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
-
 /// AC 10 (design K): every new property (`terminals`, `cores`, `part_number.pe`, `maker.pe`, page
 /// `generated: terminals|cables` and `strip`), a bridge, a PE terminal and renumbered labels survive
 /// save, close and reopen at a Windows-style path; every read is the same; replay equals live.
@@ -148,7 +122,7 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     let path = dir.join("Plan -X01 (Rev A).ecad").display().to_string();
     t.h.run("saveas", json!({"path": path})).unwrap();
     let bytes = std::fs::read(&path).unwrap();
-    close_all(&mut t.h);
+    t.h.close_all();
     drop(t.h);
 
     let mut h2 = reopen(&path, 0x7028_0002);
@@ -161,7 +135,7 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     assert_eq!(after_reads, before_reads, "reads after reopen");
     same_as_built(&mut h2);
     h2.check();
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     // A second open shows the same log (the redb store rewrites its own pages on open, so the
     // bytes are not compared; the records are).
@@ -169,7 +143,7 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     let mut h3 = reopen(&path, 0x7028_0003);
     assert_eq!(h3.head(), before_head);
     assert_eq!(model_parts(&h3.doc()), model_parts(&before_doc));
-    close_all(&mut h3);
+    h3.close_all();
     drop(h3);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -432,7 +406,7 @@ fn an_old_project_opens_unchanged_and_shows_its_strips() {
     }
     let bytes = std::fs::read(&path).unwrap();
     let head = h.head();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     let mut h2 = reopen(&path, 0x7028_0009);
     assert_eq!(h2.head(), head);
@@ -443,12 +417,12 @@ fn an_old_project_opens_unchanged_and_shows_its_strips() {
     assert_eq!(s["spare"], 0, "{plan}");
     assert_eq!(h2.head(), head, "reads record nothing");
     h2.check();
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = bytes;
     let mut again = reopen(&path, 0x7028_000d);
     assert_eq!(again.head(), head, "the log is unchanged by open, read and close");
-    close_all(&mut again);
+    again.close_all();
     drop(again);
     let _ = std::fs::remove_dir_all(&dir);
 }

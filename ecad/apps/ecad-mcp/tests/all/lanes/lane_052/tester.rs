@@ -5,13 +5,14 @@
 use ecad_model::Author;
 use serde_json::{Value, json};
 
-use super::{hex, writer};
+use super::{WRITER_SEED, hex};
+use crate::common::writer;
 use crate::mcp_contracts::AGENT;
 
 /// Every hostile call is refused, the log is unchanged and no message reports a panic.
 #[test]
 fn hostile_location_and_list_input_is_refused_and_writes_nothing() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [50, 50]})), "component");
     c.exec("setlocation", json!({"component": k, "value": "+CP1"}));
     let before = c.log().len();
@@ -51,7 +52,7 @@ fn hostile_location_and_list_input_is_refused_and_writes_nothing() {
 /// document exactly, and the redo gives the merged one back.
 #[test]
 fn an_agent_merge_undoes_exactly() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [50, 50]})), "component");
     c.exec("setlocation", json!({"component": k, "value": "+CP01"}));
     c.exec("designationadd", json!({"aspect": "location", "code": "+CP1"}));
@@ -72,7 +73,7 @@ fn an_agent_merge_undoes_exactly() {
 /// device's own location instead of the override the agent asked for.
 #[test]
 fn a_type_that_is_not_text_is_refused_not_ignored() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [50, 50]})), "component");
     let before = c.log().len();
     for t in [json!(["plug"]), json!(5), json!({"side": "plug"}), json!(true)] {
@@ -86,7 +87,7 @@ fn a_type_that_is_not_text_is_refused_not_ignored() {
 /// the answers that write are refused, and the list still reads.
 #[test]
 fn hostile_proposals_and_answers_over_mcp() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [50, 150], "location": "keep", "function": "keep"})), "component");
     c.exec("setlocation", json!({"component": k, "value": "+CP2"}));
     c.exec("locationbox", json!({"location": "+CP1", "corners": [[20, 100], [200, 220]]}));

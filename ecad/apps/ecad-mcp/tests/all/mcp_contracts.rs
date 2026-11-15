@@ -10,6 +10,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::common::writer;
 use cadcraft_engine::Session;
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_mcp::{EcadMcp, MAX_BATCH, MAX_REQUEST_BYTES, Options, policy};
@@ -81,10 +82,6 @@ impl Client {
     pub(crate) fn doc(&mut self) -> Document {
         self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap()
     }
-}
-
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp", SEED, Options { write: true, agent: None }).unwrap())
 }
 
 pub(crate) fn reader() -> Client {
@@ -212,7 +209,7 @@ fn the_cable_examples_through_mcp_record_the_json_forms_transactions_as_the_agen
     let direct = d.log();
 
     // Through MCP.
-    let mut c = writer();
+    let mut c = writer(SEED);
     let mut docs = vec![c.doc()];
     for (cmd, params) in examples(cable.as_deref()) {
         let before = c.log().len();
@@ -268,7 +265,7 @@ fn the_cable_examples_through_mcp_record_the_json_forms_transactions_as_the_agen
 
 #[test]
 fn the_agent_name_comes_from_the_client_or_from_the_agent_option() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     c.exec("wire", json!({"points": [[0, 0], [10, 0]]}));
     assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
 
@@ -366,7 +363,7 @@ fn a_project_opened_read_only_refuses_writes_even_with_the_write_flag() {
 #[test]
 fn raw_cadcraft_commands_cannot_get_round_ecads_refusals() {
     let mut d = Direct::new();
-    let mut c = writer();
+    let mut c = writer(SEED);
     let before = c.log();
     for cmd in ecad_cadcraft::project::REFUSED_COMMANDS {
         let ui = d.s.execute(cmd, &json!({})).expect_err("refused for a person").to_string();
@@ -429,7 +426,7 @@ fn save_works_only_with_the_write_flag_and_reopening_shows_the_agents_edits() {
         assert_eq!(c.refused("save", json!({})), policy::WRITES_OFF);
     }
     // An unsaved project in memory has no file: Save As stays with the person.
-    let mut c = writer();
+    let mut c = writer(SEED);
     let m = c.refused("save", json!({}));
     assert!(m.contains("no file yet") && m.contains("Save As"), "{m}");
 }
@@ -438,7 +435,7 @@ fn save_works_only_with_the_write_flag_and_reopening_shows_the_agents_edits() {
 
 #[test]
 fn hostile_input_never_panics_and_gets_json_rpc_errors() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let before = c.log();
     let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
     let too_many = Value::Array((0..=MAX_BATCH).map(|i| json!({"jsonrpc": "2.0", "id": i, "method": "ping"})).collect()).to_string();
@@ -514,7 +511,7 @@ fn hostile_input_never_panics_and_gets_json_rpc_errors() {
 
 #[test]
 fn an_oversized_or_non_utf8_line_is_answered_and_skipped() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let mut input = Vec::new();
     input.extend(std::iter::repeat_n(b'x', MAX_REQUEST_BYTES + 10));
     input.push(b'\n');
@@ -623,7 +620,7 @@ fn batch(c: &mut Client, msgs: Vec<Value>) -> Vec<Value> {
 
 #[test]
 fn a_batch_is_one_call_for_the_transaction_cap() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let before = c.doc();
     let replies = batch(&mut c, vec![wire_call(1, 0.0), wire_call(2, 5.0)]);
     assert_ne!(replies[0]["result"]["isError"], json!(true), "the first edit of the line runs: {}", replies[0]);
@@ -638,7 +635,7 @@ fn a_batch_is_one_call_for_the_transaction_cap() {
 
 #[test]
 fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     for y in [0, 5, 10] {
         c.exec("wire", json!({"points": [[0, y], [60, y]]}));
     }
@@ -670,7 +667,7 @@ fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
 
 #[test]
 fn the_first_initialize_names_the_author_and_later_ones_do_not() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let again = c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": "someone else"}}));
     assert!(again.get("result").is_some(), "{again}");
     c.exec("wire", json!({"points": [[0, 0], [10, 0]]}));
@@ -712,7 +709,7 @@ fn stdio_a_clean_exit_releases_the_writer_lock() {
 /// edits are refused.
 #[test]
 fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_changes() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let first = c.doc().page_order[0];
     let p2 = c.exec("newpage", json!({"title": "Field"}));
     let field: ecad_model::PageId = ecad_model::PageId(u128::from_str_radix(p2["page"].as_str().unwrap(), 16).unwrap());
@@ -768,7 +765,7 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
     let direct = d.log();
 
     // Through MCP.
-    let mut c = writer();
+    let mut c = writer(SEED);
     for (cmd, params) in steps(&coil) {
         let before = c.log().len();
         let r = c.exec(cmd, params.clone());
@@ -831,7 +828,7 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
 /// no-field forms of `pageprops` and `projectprops` read with writes off and record nothing.
 #[test]
 fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let page = c.doc().page_order[0].hex();
     let steps: Vec<(&str, Value)> = vec![
         ("pageprops", json!({"number": "100", "title": "Supply"})),
@@ -927,7 +924,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
 #[test]
 fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     use ecad_model::{ObjectRef, Op};
-    let mut c = writer();
+    let mut c = writer(SEED);
     let one = |c: &mut Client, cmd: &str, params: Value| -> (Value, Transaction) {
         let before = c.log().len();
         let r = c.exec(cmd, params.clone());
@@ -1058,7 +1055,7 @@ fn page_handles(c: &mut Client) -> Vec<String> {
 /// off all three are refused before anything runs.
 #[test]
 fn oops_trim_and_classic_array_from_an_agent_are_recorded_or_refused() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let frame = page_handles(&mut c);
     c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
     let wire: Vec<String> = page_handles(&mut c).into_iter().filter(|h| !frame.contains(h)).collect();

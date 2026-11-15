@@ -17,13 +17,10 @@ use ecad_cadcraft::{frame, generated, xref};
 use ecad_model::{ComponentId, Document, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
+use crate::common::place;
 use crate::common::{H, id, pts};
 
 const AWAIT: &str = "tester 033: awaiting build";
-
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
-    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
-}
 
 fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: ComponentId) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1], "device": device.hex()})).unwrap()

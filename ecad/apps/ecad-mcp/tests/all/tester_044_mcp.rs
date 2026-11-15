@@ -8,21 +8,14 @@
 //! implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, Op};
+use ecad_model::Op;
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 fn conn(v: &Value) -> String {
     ["component", "connector", "device"].iter().find_map(|k| v[*k].as_str().map(str::to_string)).unwrap_or_else(|| panic!("no connector ID in {v}"))
-}
-
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    last.ops
 }
 
 fn sides(ops: &[Op]) -> Vec<(String, String)> {
@@ -69,7 +62,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         // (1) The row form: one transaction, §4.6's ops.
         let n = c.log().len();
         let v = c.exec("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [250, 100]}));
-        let ops = one_by_agent(&mut c, n, &format!("connector row → {v}"));
+        let ops = assert_one_by_agent(&mut c, n, &format!("connector row → {v}")).ops;
         let x1 = conn(&v);
         assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1, "{ops:?}");
         let embeds: Vec<&ecad_model::Definition> =
@@ -95,7 +88,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         // (1) The pins form across the three wires: one transaction, the wires split.
         let n = c.log().len();
         let v = c.exec("connector", json!({"halves": "both", "family": "m12", "pins": 4, "layout": "pins", "line": [[90, 200], [130, 200]]}));
-        let ops = one_by_agent(&mut c, n, &format!("connector pins → {v}"));
+        let ops = assert_one_by_agent(&mut c, n, &format!("connector pins → {v}")).ops;
         let x2 = conn(&v);
         assert_eq!(sides(&ops).len(), 6, "pins 1–3 on both sides: {ops:?}");
         assert!(ops.iter().any(|o| matches!(o, Op::CreateConductor { .. })), "the wires are split: {ops:?}");
@@ -103,7 +96,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         // (2) `place {symbol: pinpair, device}` joins and takes the next free pin (4).
         let n = c.log().len();
         let v = c.exec("place", json!({"symbol": "pinpair", "device": x2, "at": [300, 200]}));
-        let ops = one_by_agent(&mut c, n, &format!("place pinpair → {v}"));
+        let ops = assert_one_by_agent(&mut c, n, &format!("place pinpair → {v}")).ops;
         let mut got = sides(&ops);
         got.sort();
         assert_eq!(got, [(".p".to_string(), "4".to_string()), (".s".to_string(), "4".to_string())], "next free pin");
@@ -124,7 +117,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         for (cmd, params) in writes {
             let n = c.log().len();
             let v = c.exec(cmd, params.clone());
-            one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
+            assert_one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
         }
         let d = c.doc();
         let t = d.terminals.iter().find(|(id, _)| id.hex() == s3).map(|(_, t)| t.clone()).expect("S:3 kept its ID");

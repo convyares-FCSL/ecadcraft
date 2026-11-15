@@ -3,6 +3,7 @@
 //! thumbnails, ticks and footer, Devices' grouping with "Not on a page yet" first, History's
 //! sections, the page well's hover preview, and the screenshots for the side-by-side.
 
+use crate::common::{self, Opts};
 use crate::project_panel::{doc, rev3_trial as trial};
 use ecad_trial::Trial;
 use ecad_trial::shell::state::{LeftTab, ShellState};
@@ -40,15 +41,7 @@ fn a_pinned_panel_docks_and_an_unpinned_one_floats_over_the_drawing() {
 }
 
 fn harness() -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        trial(),
-    );
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
 }
 
 fn press(h: &mut Harness<'static, Trial>, at: egui::Pos2) {

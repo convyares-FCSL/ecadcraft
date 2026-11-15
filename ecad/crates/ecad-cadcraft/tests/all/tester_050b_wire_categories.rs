@@ -18,9 +18,9 @@ use serde_json::{Value, json};
 
 use super::tester_050a_style::{
     checks_all, checks_of, code_colour, decoded_ops, field, field_num, field_text, find_obj_mut, inject, inverses_restore, last_tx_json, num, one_tx,
-    op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, tmp_dir, undo,
+    op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, undo,
 };
-use crate::common::{H, id, pts};
+use crate::common::{H, id, pts, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
 

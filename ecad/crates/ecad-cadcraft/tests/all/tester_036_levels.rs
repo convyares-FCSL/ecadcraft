@@ -11,13 +11,13 @@
 
 use std::collections::BTreeMap;
 
-use cadcraft_engine::Session;
+use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::{Author, ComponentId, Document, Op, PageId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{reopen, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
 
@@ -209,34 +209,13 @@ fn symbol_of(d: &Document, t: TerminalId) -> Option<(ecad_model::RepresentationI
         .and_then(|(rid, r)| Some((rid, *r.items.first()?, r.page)))
 }
 
-fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t036 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
-
 /// A hand-made file: save the ledger as it is (after raw commits), then open it as a user would.
 fn reload(mut h: H, tag: &str, seed: u64) -> H {
     let dir = tmp_dir(tag);
     let path = dir.join("hand made.ecad").display().to_string();
     h.cfg(|p| p.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     reopen(&path, seed)
 }
@@ -993,7 +972,7 @@ fn p_save_and_reopen_keep_everything() {
     let path = dir.join("Klemmen -X01 (L N PE).ecad").to_string_lossy().to_string();
     m.h.cfg(|p| p.persistence = Persistence::File);
     m.h.run("saveas", json!({"path": path})).unwrap();
-    close_all(&mut m.h);
+    m.h.close_all();
     let mut h = reopen(&path, 0x7036_0015);
     let head = h.head();
     assert_eq!(model_parts(&h.doc()), model_parts(&before_doc));

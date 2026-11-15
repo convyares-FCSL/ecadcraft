@@ -3,17 +3,14 @@
 //! by `Author::Agent(<client>)` and are refused with writes off; `plcimport {dry_run: true}`,
 //! `plcexport` and `iolist` work with writes off and record nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client};
 
 const TAGS: &str = "name,address,type,comment\nPump_Run,Q0.0,Bool,Pump running\nSpare_1,Q0.3,Bool,Spare one\n";
-
-fn writer(seed: u64) -> Client {
-    Client::new(EcadMcp::in_memory("mcp 056", seed, Options { write: true, agent: None }).unwrap())
-}
 
 fn by_agent(c: &mut Client, command: &str, params: Value) -> Value {
     let n = c.log().len();

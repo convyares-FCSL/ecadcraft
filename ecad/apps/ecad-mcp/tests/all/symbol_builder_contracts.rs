@@ -3,23 +3,14 @@
 //! `Author::Agent(<client>)` with the expected ops, and are refused with writes off with the head
 //! unchanged; `symbolimpact` reads only and is allowed with writes off.
 
-use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, Op};
+use ecad_mcp::policy;
+use ecad_model::Op;
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client};
+use crate::common::{assert_one_by_agent, writer};
+use crate::mcp_contracts::Client;
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp 048", 48, Options { write: true, agent: None }).unwrap())
-}
-
-fn one_by_agent(c: &mut Client, before: usize) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "one transaction");
-    let tx = log.last().unwrap();
-    assert_eq!(tx.author, Author::Agent(AGENT.into()));
-    tx.ops.clone()
-}
+const WRITER_SEED: u64 = 48;
 
 fn float(extra: Value) -> Value {
     let mut p = json!({
@@ -37,10 +28,10 @@ fn float(extra: Value) -> Value {
 
 #[test]
 fn symbol_commands_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let n = c.log().len();
     let v = c.exec("symbolnew", float(json!({})));
-    let ops = one_by_agent(&mut c, n);
+    let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert!(matches!(ops.as_slice(), [Op::EmbedDefinition { .. }]), "{ops:?}");
     let def = v["definition"].as_str().unwrap().to_string();
 
@@ -58,7 +49,7 @@ fn symbol_commands_by_the_agent() {
     // An edit updating one copy: the new version, the copy's item, its component's definition.
     let rep = p1["representation"].as_str().unwrap();
     let v2 = c.exec("symboledit", float(json!({"definition": def, "points": moved, "update": "selected", "copies": [rep]})));
-    let ops = one_by_agent(&mut c, n);
+    let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(v2["version"], 2);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).count(), 1);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetComponentDefinition { .. })).count(), 1);
@@ -67,7 +58,7 @@ fn symbol_commands_by_the_agent() {
     // The other copy is brought up to date: v1 is then unused and removed (FP8).
     let n = c.log().len();
     let u = c.exec("symbolupdate", json!({"lineage": v2["lineage"]}));
-    let ops = one_by_agent(&mut c, n);
+    let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(u["updated"], 1);
     assert!(ops.iter().any(|o| matches!(o, Op::RemoveDefinition { .. })), "{ops:?}");
 
@@ -84,7 +75,7 @@ fn symbol_commands_by_the_agent() {
         json!({"handles": handles, "name": "Corner", "key": "corner", "defaults": {"prefix": "A"},
             "points": [{"key": "1", "at": [200, 200]}], "slots": [{"text": "tag", "at": [195, 205]}]}),
     );
-    let ops = one_by_agent(&mut c, n);
+    let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(m["tag"], "-A01");
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::RemoveItem { .. })).count(), 2);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1);

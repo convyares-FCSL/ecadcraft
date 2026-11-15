@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 
 use crate::common::{H, id, pts};
+use crate::common::{close_all, reopen};
 use ecad_cadcraft::locations::{self, Source};
 use ecad_cadcraft::outputs::{Cell, Group, Outputs, Table, csv};
 use ecad_model::{ComponentId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
@@ -959,24 +960,12 @@ impl Drop for TempDir {
     }
 }
 
-fn close_all(s: &mut cadcraft_engine::Session) {
-    while !s.docs.is_empty() {
-        s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
 /// Run a command without the harness's one-transaction check (switching branches replaces the
 /// ledger), then the project checks.
 fn raw(h: &mut H, cmd: &str, params: Value) -> Result<Value, String> {
     let r = h.s.execute(cmd, &params).map_err(|e| e.to_string());
     h.check();
     r
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    let mut s = cadcraft_engine::Session::empty();
-    let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    H { s, project, trail: Vec::new() }
 }
 
 /// Boxes, own locations, page and project locations and generated pages survive save and reopen;

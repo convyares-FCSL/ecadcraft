@@ -6,24 +6,17 @@
 //! made up (owner, Q11). Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, Op};
+use ecad_model::Op;
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 /// Made-up rating rows; not from any standard.
 const SYNTH: &str = "# made-up values for ECAD tests; not from any standard\ncapacity,E,pvc,3,1.5,21.0\ngrouping,E,4,0.71\nresistance,5,1.5,11.0\n";
 
 fn s(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_else(|| panic!("no {key} in {v}")).to_string()
-}
-
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    last.ops
 }
 
 /// -Q01 (4 A) feeding a lamp; cable -W01 across the wire; returns the wire's conductor ID.
@@ -55,17 +48,17 @@ fn rating_writes_by_the_agent_then_refused_with_writes_off() {
         let w = build(&mut c);
         let n = c.log().len();
         let t = c.exec("ratingtable", json!({"name": "Synthetic", "source": "made up for tests", "csv": SYNTH}));
-        let ops = one_by_agent(&mut c, n, "ratingtable csv");
+        let ops = assert_one_by_agent(&mut c, n, "ratingtable csv").ops;
         assert!(ops.iter().all(|o| o.name() == "SetStyle"), "{ops:?}");
         let id = ["id", "style"].iter().filter_map(|k| t[*k].as_str()).next().unwrap_or_default().to_string();
         c.exec("setdefault", json!({"key": "rating.table", "level": "project", "value": id}));
         let n = c.log().len();
         c.exec("rating", json!({"cable": "-W01", "basis": "table", "method": "E", "ambient": 37, "grouped": 3, "load": "3 A"}));
-        let ops = one_by_agent(&mut c, n, "rating cable");
+        let ops = assert_one_by_agent(&mut c, n, "rating cable").ops;
         assert!(ops.iter().all(|o| matches!(o, Op::SetProperty { .. })), "only SetProperty: {ops:?}");
         let n = c.log().len();
         c.exec("rating", json!({"wire": w, "basis": "manual", "manual": "10 A", "bundling": 0.85}));
-        one_by_agent(&mut c, n, "rating wire");
+        assert_one_by_agent(&mut c, n, "rating wire");
         // One undo restores the wire's rating keys.
         let d0 = c.doc();
         c.exec("rating", json!({"wire": w, "manual": "12 A"}));

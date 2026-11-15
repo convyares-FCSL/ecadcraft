@@ -8,6 +8,7 @@ use ecad_cadcraft::strips::Strips;
 use ecad_model::{Author, CableId, ComponentId, ConductorId, End, Op, PageId, TerminalId};
 use serde_json::{Value, json};
 
+use crate::common::place;
 use crate::common::{H, id, pts};
 
 /// Fixture T's objects.
@@ -18,10 +19,6 @@ struct T {
     wires: [ConductorId; 4],
     cable: CableId,
     m1: ComponentId,
-}
-
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
-    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
 }
 
 /// Fixture T (design 028 §12): `+CP1` over the top half, `+FIELD` over the bottom half; `-K01`

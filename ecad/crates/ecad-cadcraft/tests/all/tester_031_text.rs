@@ -12,21 +12,18 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use cadcraft_engine::Input;
 use cadcraft_engine::doc::{Common, EntityKind, HAlign, Lineweight, Text, VAlign};
 use cadcraft_engine::geom::Vec2;
-use cadcraft_engine::{Input, Session};
-use ecad_cadcraft::{Persistence, ProjectHandle};
+use ecad_cadcraft::Persistence;
 use ecad_model::{Author, ComponentId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{place, reopen, tmp_dir};
 
 // ---------------------------------------------------------------------------------------------
 // Helpers
-
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
-    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
-}
 
 fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: ComponentId) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1], "device": device.hex()})).unwrap()
@@ -229,36 +226,12 @@ fn centre(b: Bx) -> (f64, f64) {
     ((b.0.0 + b.1.0) / 2.0, (b.0.1 + b.1.1) / 2.0)
 }
 
-fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t031 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    // As `H::new`: run alone (as nextest runs every test), nothing else has installed ECAD's commands.
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
-
 fn save_and_reopen(h: H, dir: &std::path::Path, name: &str, seed: u64) -> H {
     let mut h = h;
     h.cfg(|p| p.persistence = Persistence::File);
     let path = dir.join(name).display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     reopen(&path, seed)
 }
@@ -1045,7 +1018,7 @@ fn t10_a_moved_tag_keeps_its_place_through_move_rotate_renumber_save() {
     assert!(!near(bx(&r4).0, (155.0, 215.0)));
     assert!(h2.doc().components.values().all(|c| !c.properties.contains_key(&key)));
     h2.check();
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1251,7 +1224,7 @@ fn t11_justified_text_is_recorded_and_reopens_centred() {
     h2.activate(page);
     check_drawn(&mut h2);
     h2.check();
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1280,7 +1253,7 @@ fn t11_an_old_file_opens_and_saves_unchanged() {
     h.check();
     let mut h2 = save_and_reopen(h, &dir, "old resaved.ecad", 0x7031_1104);
     assert_eq!(model_parts(&h2.doc()), model_parts(&doc));
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -4,6 +4,7 @@
 //! dependencies once instead of once per file.
 
 // Lanes in flight add their modules in `lanes/`, not to the list below (see `lanes/mod.rs`).
+mod common;
 mod lanes;
 
 mod agent_banner_ui;

@@ -6,11 +6,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 33, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 33;
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
@@ -29,7 +28,7 @@ fn coil_with_contacts(c: &mut Client, at: [f64; 2]) -> String {
 
 #[test]
 fn an_automatic_table_clears_the_title_block() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     // Low on the page: the table below the coil would cross the title block (top line 50 mm).
     let k = coil_with_contacts(&mut c, [75.0, 70.0]);
     let t = c.exec("contacts", json!({"component": k}));
@@ -52,7 +51,7 @@ fn an_automatic_table_clears_the_title_block() {
 
 #[test]
 fn a_table_the_user_placed_stays_and_is_a_check() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = coil_with_contacts(&mut c, [75.0, 120.0]);
     // Into the title block, by Move Mirror Table: one transaction by the agent.
     c.exec("mirrormove", json!({"component": k, "at": [75.0, 45.0]}));
@@ -71,7 +70,7 @@ fn a_table_the_user_placed_stays_and_is_a_check() {
 
 #[test]
 fn table_is_refused_on_an_ecad_page_in_clean_words() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let before = c.log();
     let m = c.refused("execute", json!({"command": "table", "params": {"at": [100, 100], "rows": 2, "cols": 2}}));
     assert!(m.contains(ecad_cadcraft::convert::TABLE_REFUSED), "{m}");
@@ -94,7 +93,7 @@ fn with_writes_off_the_move_is_refused_and_contacts_reads() {
 
 #[test]
 fn continuation_sheets_are_numbered_taken_and_printed_whole() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let contents = c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
     let page = hex(&contents, "page");
     let last = c.log().last().cloned().unwrap();
@@ -147,7 +146,7 @@ fn kept(c: &mut Client, kind: ecad_cadcraft::checks::Kind) -> usize {
 
 #[test]
 fn the_title_block_row_follows_a_sheet_change() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let page = c.doc().page_order[0].hex();
     c.exec("pageprops", json!({"page": page, "sheet": "A2"}));
     let k = coil_with_contacts(&mut c, [440.0, 100.0]);
@@ -171,7 +170,7 @@ fn the_title_block_row_follows_a_sheet_change() {
 
 #[test]
 fn continuation_rows_are_kept_and_an_unrelated_edit_leaves_them_alone() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
     let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.outputs().continuation_builds).unwrap()).unwrap();
     let start = builds(&mut c);

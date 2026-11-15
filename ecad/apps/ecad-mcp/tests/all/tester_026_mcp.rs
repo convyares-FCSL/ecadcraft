@@ -9,11 +9,10 @@ use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{ComponentId, Document, tag};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{Client, TempDir};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("t026", 0x0E_CAD0_7026, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 0x0E_CAD0_7026;
 
 fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> String {
     let mut p = json!({"symbol": symbol, "at": at});
@@ -55,7 +54,7 @@ fn is_error(v: &Value) -> bool {
 
 /// A project with two provisional coils and a filled revision row.
 fn provisional_project() -> (Client, String, String) {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("numbering", json!({"provisional": true}));
     let a = place(&mut c, "coil", [100.0, 100.0], None);
     let b = place(&mut c, "coil", [200.0, 100.0], None);
@@ -89,7 +88,7 @@ fn an_edit_before_issue_finalise_in_one_line_is_refused_and_taken_back() {
 /// reachable before 026): the issue is taken back with `undoissue`, so nothing stays issued.
 #[test]
 fn an_edit_before_a_plain_issue_in_one_line_is_refused_and_taken_back() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     revision(&mut c, "A");
     let replies = batch(&mut c, vec![exec_call(1, "wire", json!({"points": [[0, 0], [60, 0]]})), exec_call(2, "issuerevision", json!({}))]);
     assert!(!is_error(&replies[0]), "{}", replies[0]);
@@ -143,7 +142,7 @@ fn the_exception_is_only_issuerevision_with_finalise() {
 /// provisional, `"finalise"` records the issue alone.
 #[test]
 fn issue_finalise_that_is_refused_records_nothing_and_without_provisional_records_one() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("numbering", json!({"provisional": true}));
     let a = place(&mut c, "coil", [100.0, 100.0], None);
     let n = c.log().len();

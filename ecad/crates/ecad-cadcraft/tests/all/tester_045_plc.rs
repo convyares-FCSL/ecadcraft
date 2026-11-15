@@ -14,12 +14,12 @@
 
 use std::collections::BTreeMap;
 
-use cadcraft_engine::Session;
-use ecad_cadcraft::{Persistence, ProjectHandle};
+use ecad_cadcraft::Persistence;
 use ecad_model::{Author, ComponentId, Document, ObjectRef, Op, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{reopen, tmp_dir};
 
 mod address;
 mod channels;
@@ -222,34 +222,13 @@ pub(crate) fn rekey_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_k
     raw(h, vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }]);
 }
 
-pub(crate) fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t045 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-pub(crate) fn reopen(path: &str, seed: u64) -> H {
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
-
 /// Save to a file, close, reopen as a user would (also the hand-made-file path after raw commits).
 pub(crate) fn reload(mut h: H, tag: &str, seed: u64) -> H {
     let dir = tmp_dir(tag);
     let path = dir.join("PLC -A01 (Rack).ecad").display().to_string();
     h.cfg(|p| p.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     reopen(&path, seed)
 }

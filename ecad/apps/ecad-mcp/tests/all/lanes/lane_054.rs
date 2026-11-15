@@ -2,15 +2,14 @@
 //! `deletepage` through MCP. Each write records one transaction by `Author::Agent(<client>)` that
 //! one `u` undoes, and is refused with writes off.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::policy;
 use ecad_model::{Author, Document, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp054", 0x054, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 0x054;
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
@@ -38,7 +37,7 @@ fn one_by_agent(c: &mut Client, cmd: &str, params: Value, names: &[&str]) -> Val
 
 #[test]
 fn page_type_commands_record_one_transaction_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let first = c.doc().page_order[0].hex();
     let v = one_by_agent(&mut c, "newpage", json!({"type": "network", "after": first}), &["AddPage"]);
     let net = hex(&v, "page");

@@ -6,11 +6,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 0x33_07, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 0x33_07;
 
 fn last_by_agent(c: &mut Client) -> ecad_model::Transaction {
     let last = c.log().last().cloned().unwrap();
@@ -52,7 +51,7 @@ fn wire(c: &mut Client, y: f64) {
 
 #[test]
 fn ac9_the_pending_marker_follows_the_undo_stack() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     wire(&mut c, 100.0);
     assert_eq!(rev(&mut c), "-", "no issued revision: no marker");
     c.exec("revision", json!({"description": "First issue", "drawn": "CVA"}));
@@ -111,7 +110,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
 
 #[test]
 fn ac10_revision_columns_and_custom_fields() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     wire(&mut c, 100.0);
     c.exec("projectprops", json!({"revision_columns": "rev, date, ecr:ECR, description, drawn"}));
     let last = last_by_agent(&mut c);
@@ -175,7 +174,7 @@ fn tags(c: &mut Client) -> Vec<String> {
 
 #[test]
 fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     for x in [40, 80, 120] {
         c.exec("place", json!({"symbol": "coil", "at": [x, 150]}));
     }
@@ -211,7 +210,7 @@ fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
 
 #[test]
 fn ac12_renumber_keeps_typed_letters() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("projectprops", json!({"tag_case": "typed"}));
     let a = c.exec("place", json!({"symbol": "coil", "at": [40, 150]}));
     let b = c.exec("place", json!({"symbol": "coil", "at": [80, 150]}));
@@ -269,7 +268,7 @@ fn ac9_the_pending_marker_survives_save_and_reopen() {
 
 #[test]
 fn a_placed_provisional_tag_follows_the_dash() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("projectprops", json!({"tag_dash": false, "provisional": true}));
     c.exec("place", json!({"symbol": "coil", "at": [40, 150]}));
     assert_eq!(tags(&mut c), ["K?1"], "no leading - on an automatic provisional tag");

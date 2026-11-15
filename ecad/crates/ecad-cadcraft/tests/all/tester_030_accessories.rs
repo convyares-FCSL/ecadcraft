@@ -9,15 +9,16 @@
 
 use std::collections::BTreeMap;
 
+use cadcraft_engine::Input;
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
-use cadcraft_engine::{Input, Session};
+use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::{ComponentId, Document, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{place, reopen, tmp_dir};
 
 struct A {
     h: H,
@@ -26,10 +27,6 @@ struct A {
     /// `-X01:1…4` at x 100, 150, 200, 250 on y 170.
     t: [TerminalId; 4],
     coil: ComponentId,
-}
-
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
-    h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
 }
 
 /// 028's fixture T after its checks B, C and G (design 030 §12): `-X01:1…4` on the first page, a
@@ -251,27 +248,6 @@ fn extent(lines: &[Drawn]) -> (f64, f64, f64, f64) {
 
 fn near(a: f64, b: f64) -> bool {
     (a - b).abs() < 0.05
-}
-
-fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t030 {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
 }
 
 fn has_acc_or_link_key(d: &Document) -> bool {
@@ -813,7 +789,7 @@ fn j_save_reopen_keeps_everything() {
     a.h.cfg(|p| p.persistence = Persistence::File);
     let path = dir.join("Klemmen -X01 (Rev A).ecad").display().to_string();
     a.h.run("saveas", json!({"path": path})).unwrap();
-    close_all(&mut a.h);
+    a.h.close_all();
     drop(a.h);
     let mut h2 = reopen(&path, 0x7030_000d);
     assert_eq!(h2.head(), before_head, "open adds no transaction");
@@ -822,7 +798,7 @@ fn j_save_reopen_keeps_everything() {
     assert_eq!(h2.head(), before_head, "reads record nothing");
     same_as_built(&mut h2);
     h2.check();
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -839,7 +815,7 @@ fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
     a.h.run("saveas", json!({"path": path})).unwrap();
     let head = a.h.head();
     let before = reads(&mut a.h);
-    close_all(&mut a.h);
+    a.h.close_all();
     drop(a.h);
     let mut h2 = reopen(&path, 0x7030_000f);
     assert_eq!(h2.head(), head);
@@ -849,11 +825,11 @@ fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
     assert!(!has_acc_or_link_key(&h2.doc()));
     assert_eq!(h2.head(), head, "reads record nothing");
     h2.check();
-    close_all(&mut h2);
+    h2.close_all();
     drop(h2);
     let mut again = reopen(&path, 0x7030_0010);
     assert_eq!(again.head(), head);
-    close_all(&mut again);
+    again.close_all();
     drop(again);
     let _ = std::fs::remove_dir_all(&dir);
 }

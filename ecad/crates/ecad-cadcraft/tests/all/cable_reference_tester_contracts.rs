@@ -17,6 +17,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use crate::common::close_all;
 use cadcraft_engine::doc::{Drawing, EntityKind};
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
@@ -195,12 +196,6 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn close_all(s: &mut Session) {
-    while !s.docs.is_empty() {
-        s.execute("close", &json!({"index": 0})).unwrap();
     }
 }
 
