@@ -583,15 +583,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                     prim::pill(ui, c, *tone);
                 }
             }
-            // Brief 057 (owner): Tick Not used and Go to the open end, for each open core.
+            // Brief 057 (owner): Go to the open end, for each open core (the core table's Not
+            // used toggle is right there, so no tick button here).
             for f in &d.core_fixes {
-                ui.horizontal(|ui| {
-                    for (k, words) in [crate::checks_panel::TICK_NOT_USED, crate::checks_panel::GO_TO_OPEN_END].into_iter().enumerate() {
-                        if ui.add_enabled(writable || k == 1, prim::Button::new(words).small()).clicked() {
-                            out.push(Out::Panel(crate::project_panel::Action::CoreFix(*f, k)));
-                        }
-                    }
-                });
+                if ui.add(prim::Button::new(crate::checks_panel::GO_TO_OPEN_END).small()).clicked() {
+                    out.push(Out::Panel(crate::project_panel::Action::CoreFix(*f, 1)));
+                }
             }
             ui.add_space(space::S);
             rule(ui);

@@ -149,9 +149,9 @@ pub const STATUS: ColumnId = ColumnId(5);
 pub const SIZE: ColumnId = ColumnId(6);
 pub const FIELD_WIRE: ColumnId = ColumnId(7);
 pub const UNUSED: ColumnId = ColumnId(8);
-/// The Not used tick's words (a toggle button in the core table).
-pub const NOT_USED_OFF: &str = "\u{2610} Not used";
-pub const NOT_USED_ON: &str = "\u{2611} Not used";
+/// The Not used tick: a plain toggle in the core table (the column's header names it).
+pub const NOT_USED_OFF: &str = "\u{2610}";
+pub const NOT_USED_ON: &str = "\u{2611}";
 
 /// One cable's cores (`Outputs::core_table`).
 #[derive(Debug)]
