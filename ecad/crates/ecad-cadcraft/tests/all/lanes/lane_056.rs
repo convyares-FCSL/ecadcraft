@@ -319,20 +319,51 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
 }
 
 #[test]
-fn the_card_type_changes_the_body_in_one_transaction() {
+fn a_type_with_fewer_channels_than_the_signals_in_use_is_refused_in_words() {
     let F { mut h, a03 } = p56(5621);
+    let head = h.head();
+    // -A03 (DQ, 16 channels) has 9 signals (channels 0–8); an AO card has 4 channels.
+    let e = h.run("plccardtype", json!({"card": "-A03", "type": "AO"})).unwrap_err();
+    assert_eq!(e, "-A03 has 9 signals; an AO card has 4 channels. Move or remove 5 signals first.");
+    assert_eq!(h.head(), head, "refused: nothing recorded");
+    let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
+    assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Dq));
+    let e = h.run("plccardtype", json!({"card": "-A03", "type": "RTD"})).unwrap_err();
+    assert_eq!(e, "-A03 has 9 signals; an RTD card has 4 channels. Move or remove 5 signals first.");
+    // A described but unwired channel counts as a signal too.
+    h.run("plcchannel", json!({"card": "-A03", "channel": 12, "text": "Spare valve"})).unwrap();
+    let e = h.run("plccardtype", json!({"card": "-A03", "type": "AI"})).unwrap_err();
+    assert_eq!(e, "-A03 has 10 signals; an AI card has 4 channels. Move or remove 6 signals first.");
+    assert_eq!(h.head(), head + 1, "only the description was recorded");
+}
+
+#[test]
+fn a_type_change_keeps_tags_and_descriptions_and_changes_the_signal_type() {
+    let F { mut h, a03 } = p56(5622);
     h.run("plcchannel", json!({"card": "-A03", "channel": 4, "safe": "on"})).unwrap();
     let head = h.head();
-    let v = h.run("plccardtype", json!({"card": "-A03", "type": "AO"})).unwrap();
+    // DQ to DI: 16 channels each, so every signal fits.
+    let v = h.run("plccardtype", json!({"card": "-A03", "type": "DI"})).unwrap();
     assert_eq!(h.head(), head + 1, "{v}");
-    assert_eq!(v["message"], "-A03 is now a AO card.");
+    assert_eq!(v["message"], "-A03 is now a DI card. Its channels become digital inputs (they were digital outputs); tags and descriptions stay.");
     let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
-    assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Ao));
-    assert!(!h.doc().components[&a03].properties.contains_key("plc.ch.4.safe"), "`on` is not an analogue safe state");
+    assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Di));
+    let p = h.doc().components[&a03].properties.clone();
+    assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"), "tags stay");
+    assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve open"), "descriptions stay");
+    assert!(!p.contains_key("plc.ch.4.safe"), "an input has no safe state");
+    let rows = rows(&mut h, "-A03");
+    assert_eq!(rows.len(), 16, "no channel beyond the card's");
+    assert_eq!(rows[2]["type"], "DI");
     same_as_built(&mut h);
     h.cmdline("u");
     let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
     assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Dq), "u undoes it");
+    assert_eq!(h.doc().components[&a03].properties.get("plc.ch.4.safe").map(String::as_str), Some("on"));
+    // An AO card with room: -A05 (AO, 4 channels) to DQ.
+    h.run("plcchannel", json!({"card": "-A05", "channel": 0, "tag": "Damper_Pos", "text": "Damper position"})).unwrap();
+    let v = h.run("plccardtype", json!({"card": "-A05", "type": "DQ"})).unwrap();
+    assert!(v["message"].as_str().unwrap().contains("Its channels become digital outputs (they were analogue outputs)"), "{v}");
     let e = h.run("plccardtype", json!({"card": "-A03", "type": "CPU"})).unwrap_err();
     assert!(e.contains("DI, DQ, AI, AO, RTD or IOL"), "{e}");
     let e = h.run("plccardtype", json!({"card": "-A01", "type": "DI"})).unwrap_err();

@@ -653,10 +653,37 @@ pub fn merge_ops(doc: &Document, from: ComponentId, into: ComponentId) -> Vec<Op
 /// body's symbol is swapped and nothing it is wired to moves.
 pub const IO_TYPES: [CardType; 6] = [CardType::Di, CardType::Dq, CardType::Ai, CardType::Ao, CardType::Rtd, CardType::Iol];
 
+/// `a DQ card`, `an AO card`.
+pub fn with_article(t: CardType) -> String {
+    let noun = t.noun();
+    let an = matches!(t, CardType::Ai | CardType::Ao | CardType::Iol | CardType::Im | CardType::Rtd);
+    format!("{} {noun}", if an { "an" } else { "a" })
+}
+
+/// What a card type's channels are: `digital outputs`, `analogue inputs`.
+pub fn signal_words(t: CardType) -> &'static str {
+    match t {
+        CardType::Di => "digital inputs",
+        CardType::Dq => "digital outputs",
+        CardType::Ai => "analogue inputs",
+        CardType::Ao => "analogue outputs",
+        CardType::Rtd => "RTD inputs",
+        CardType::Iol => "IO-Link ports",
+        _ => "channels",
+    }
+}
+
+/// What a type change does to the signals, for the confirm step and the echo: `Its channels
+/// become analogue outputs (they were digital outputs); tags and descriptions stay.`
+pub fn change_words(from: CardType, to: CardType) -> String {
+    format!("Its channels become {} (they were {}); tags and descriptions stay.", signal_words(to), signal_words(from))
+}
+
 /// `plccardtype {card, type}`: change what an I/O card is, in one transaction. Its body symbols
 /// show the new type's body; the component's own symbol follows; a description that was the old
 /// body's name becomes the new one's; safe states the new type cannot hold are cleared. Channel
-/// cells already drawn keep their own symbols (a `channel-type` Check says so).
+/// cells already drawn keep their own symbols (a `channel-type` Check says so). Refused, in words,
+/// when a signal (a channel in use, named or drawn) sits at or past the new type's channel count.
 pub(crate) fn run_plccardtype(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let word = params.get("type").and_then(Value::as_str).ok_or_else(|| err("`type` (DI, DQ, AI, AO, RTD or IOL) is required"))?;
     let to = CardType::parse(word).filter(|t| IO_TYPES.contains(t)).ok_or_else(|| err("`type` is DI, DQ, AI, AO, RTD or IOL"))?;
@@ -669,7 +696,24 @@ pub(crate) fn run_plccardtype(s: &mut Session, params: &Value) -> cadcraft_engin
             return Err(format!("{who} is a {}; only an I/O card's type can be changed.", from.noun()));
         }
         if from == to {
-            return Ok(json!({"card": c.hex(), "changed": false, "message": format!("{who} is a {} already.", to.noun())}));
+            return Ok(json!({"card": c.hex(), "changed": false, "message": format!("{who} is {} already.", with_article(to))}));
+        }
+        // No signal may be left on a channel the new type does not have (overseer's look check of
+        // 2026-11-14): a channel in use, named or drawn at or past the new count refuses it.
+        let room = channel_count(doc, c, to);
+        let chans = crate::plc::channel_data(doc, c);
+        let in_use = |ch: &crate::plc::ChannelData| ch.used || ch.mark().is_some() || !ch.points.is_empty();
+        let signals = chans.values().filter(|ch| in_use(ch)).count();
+        let outside = chans.iter().filter(|(i, ch)| **i >= room && in_use(ch)).count();
+        if outside > 0 {
+            let n = |k: usize, one: &str, many: &str| if k == 1 { format!("1 {one}") } else { format!("{k} {many}") };
+            return Err(format!(
+                "{who} has {}; {} has {}. Move or remove {} first.",
+                n(signals, "signal", "signals"),
+                with_article(to),
+                n(usize::try_from(room).unwrap_or(usize::MAX), "channel", "channels"),
+                n(outside, "signal", "signals")
+            ));
         }
         let new_starter = crate::symbols::by_key(to.body()).ok_or("No card body for that type.")?;
         let mut ops = Vec::new();
@@ -729,7 +773,12 @@ pub(crate) fn run_plccardtype(s: &mut Session, params: &Value) -> cadcraft_engin
             }
         }
         p.apply_edit(pg, "plccardtype", "Card type", ops)?;
-        Ok(json!({"card": c.hex(), "changed": true, "type": to.code(), "message": format!("{who} is now a {}.", to.noun())}))
+        Ok(json!({
+            "card": c.hex(),
+            "changed": true,
+            "type": to.code(),
+            "message": format!("{who} is now {}. {}", with_article(to), change_words(from, to)),
+        }))
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {
         s.echo(m.to_string());

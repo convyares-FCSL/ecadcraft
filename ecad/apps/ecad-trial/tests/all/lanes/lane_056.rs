@@ -231,10 +231,30 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     );
     let parts = ecad_cadcraft::bom::part_set(&doc(&mut h), a03);
     assert_eq!(parts.len(), 2, "the main part and the accessory: {parts:?}");
-    // The type: one transaction through the segmented control's command.
+    // The type: picking one shows the confirm step, which says what happens to the signals.
+    use ecad_cadcraft::plc::rack::CardType;
+    let before = head_of(&mut h);
     h.get_by_label("ecad.plc.card.editor.type.ao").click();
     h.run_steps(4);
-    assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(ecad_cadcraft::plc::rack::CardType::Ao), "the card is now an AO card");
+    assert_eq!(view(&h).card_editor.pending_type, Some(CardType::Ao));
+    let confirm = "Change -A03 to an AO card? Its channels become analogue outputs (they were digital outputs); tags and descriptions stay.";
+    assert!(h.query_by_label(confirm).is_some(), "the confirm step says what changes");
+    assert_eq!(head_of(&mut h), before, "nothing yet");
+    // Nine signals do not fit an AO card's four channels: refused under Type, nothing written.
+    h.get_by_label("Change type").click();
+    h.run_steps(4);
+    assert_eq!(head_of(&mut h), before);
+    assert!(h.query_by_label("-A03 has 9 signals; an AO card has 4 channels. Move or remove 5 signals first.").is_some(), "the refusal shows");
+    assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Dq));
+    take(&h, &deltas, "056-card-type-refused.png");
+    // DI has room: one transaction; tags and descriptions stay.
+    h.get_by_label("ecad.plc.card.editor.type.di").click();
+    h.run_steps(4);
+    h.get_by_label("Change type").click();
+    h.run_steps(4);
+    assert_eq!(head_of(&mut h), before + 1);
+    assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Di), "the card is now a DI card");
+    assert_eq!(doc(&mut h).components[&a03].properties.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"));
     assert_eq!(start_byte("%Q4.0"), Some(Some(4)));
     assert_eq!(start_byte("IW64"), Some(Some(64)));
     assert_eq!(start_byte(""), Some(None), "empty unpins");

@@ -69,6 +69,8 @@ pub struct State {
     accessory: Option<[String; 3]>,
     /// A refusal and the field it belongs to.
     error: Option<(&'static str, String)>,
+    /// A type picked and waiting for **Change type** (the confirm step says what changes).
+    pub pending_type: Option<CardType>,
 }
 
 impl State {
@@ -257,18 +259,45 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, i: usize) {
             w::section(ui, &mut folded, full, "plc.identity", "Identity", "", false, |ui| {
                 let types: Vec<&str> = IO_TYPES.iter().map(|t| t.code()).collect();
                 let at = info.ty.and_then(|ty| IO_TYPES.iter().position(|t| *t == ty));
+                let shown = st.pending_type.and_then(|p| IO_TYPES.iter().position(|t| *t == p)).or(at);
                 w::row(ui, "Type", |ui| {
                     if at.is_some() {
                         let why = if writable { "" } else { super::plc::WRITES_OFF };
-                        if let Some(k) = w::segmented(ui, &types, at, writable, &format!("{PANEL}.type"), why)
+                        if let Some(k) = w::segmented(ui, &types, shown, writable, &format!("{PANEL}.type"), why)
                             && let Some(to) = IO_TYPES.get(k)
                         {
-                            lines.push(("type", format!("plccardtype {}", json!({"card": c.hex(), "type": to.code()}))));
+                            st.pending_type = (Some(*to) != info.ty).then_some(*to);
+                            st.error = None;
                         }
                     } else {
                         ui.label(w::rich(ui, info.ty.map_or("", |t| overview::type_name(t)), ecad_ui::tokens::ui_type::BODY, w::text_2()));
                     }
                 });
+                // The confirm step (overseer's look check): what the change does to the signals.
+                if let (Some(to), Some(from)) = (st.pending_type, info.ty) {
+                    let words = format!(
+                        "Change {} to {}? {}",
+                        info.tag,
+                        ecad_cadcraft::plc::rack::with_article(to),
+                        ecad_cadcraft::plc::rack::change_words(from, to)
+                    );
+                    ui.add(egui::Label::new(w::rich(ui, words, ecad_ui::tokens::ui_type::SMALL, w::text_2())).wrap());
+                    let (yes, no) = ui
+                        .horizontal(|ui| {
+                            let yes = ui.push_id(format!("{PANEL}.type.confirm"), |ui| w::button(ui, "Change type", true, None)).inner.clicked();
+                            (yes, w::button(ui, "Cancel", false, None).clicked())
+                        })
+                        .inner;
+                    if yes {
+                        lines.push(("type", format!("plccardtype {}", json!({"card": c.hex(), "type": to.code()}))));
+                    }
+                    if yes || no {
+                        st.pending_type = None;
+                    }
+                }
+                if let Some(("type", m)) = st.error.as_ref().map(|(k, m)| (*k, m)) {
+                    ui.label(w::rich(ui, m, ecad_ui::tokens::ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+                }
                 field(ui, &mut st, &mut lines, c, writable, "tag", "ID", "-A03", "");
                 field(ui, &mut st, &mut lines, c, writable, "description", "Description", "What the card is for", "");
                 w::row(ui, "Rack", |ui| {
