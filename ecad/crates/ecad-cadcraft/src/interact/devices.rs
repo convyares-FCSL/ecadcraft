@@ -664,6 +664,7 @@ impl Interactive for Place {
             // The project's sizes (design 031 §3.2), as the page will draw them.
             let Ok(sizes) = read(s, |p, _| Ok(devices::TagSizes::of(p.ledger.document()))) else { return out };
             for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at, sizes) {
+                let (ha, va) = (crate::convert::engine_halign(ha), crate::convert::engine_valign(va));
                 let e = devices::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
                 out.push(preview_entity(s, e.kind, TERMINAL_ACI));
             }

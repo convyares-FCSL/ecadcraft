@@ -1142,8 +1142,8 @@ pub fn caption_text(
             value,
             at,
             height,
-            halign: cadcraft_engine::doc::HAlign::Left,
-            valign: cadcraft_engine::doc::VAlign::Top,
+            halign: ecad_model::TextHAlign::Left,
+            valign: ecad_model::TextVAlign::Top,
             aci: None,
             own: None,
         },
@@ -1321,34 +1321,34 @@ pub fn channel_texts(
             return;
         }
         let (h, v) = if horizontal && role == TextRole::ChannelText {
-            let v = if upside { cadcraft_engine::doc::VAlign::Bottom } else { cadcraft_engine::doc::VAlign::Top };
-            (cadcraft_engine::doc::HAlign::Center, v)
+            let v = if upside { ecad_model::TextVAlign::Bottom } else { ecad_model::TextVAlign::Top };
+            (ecad_model::TextHAlign::Center, v)
         } else if upside && role == TextRole::ChannelText {
             // Above the card, reading upwards from 2 over its frame.
-            (cadcraft_engine::doc::HAlign::Left, cadcraft_engine::doc::VAlign::Middle)
+            (ecad_model::TextHAlign::Left, ecad_model::TextVAlign::Middle)
         } else if upside {
             // Turned with the cell, the anchor's sides swap: swap the alignment back.
             let h = match a.h {
-                crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Right,
-                crate::symbols::HAlign::Centre => cadcraft_engine::doc::HAlign::Center,
-                crate::symbols::HAlign::Right => cadcraft_engine::doc::HAlign::Left,
+                crate::symbols::HAlign::Left => ecad_model::TextHAlign::Right,
+                crate::symbols::HAlign::Centre => ecad_model::TextHAlign::Center,
+                crate::symbols::HAlign::Right => ecad_model::TextHAlign::Left,
             };
             let v = match a.v {
-                crate::symbols::VAlign::Bottom => cadcraft_engine::doc::VAlign::Top,
-                crate::symbols::VAlign::Middle => cadcraft_engine::doc::VAlign::Middle,
-                crate::symbols::VAlign::Top => cadcraft_engine::doc::VAlign::Bottom,
+                crate::symbols::VAlign::Bottom => ecad_model::TextVAlign::Top,
+                crate::symbols::VAlign::Middle => ecad_model::TextVAlign::Middle,
+                crate::symbols::VAlign::Top => ecad_model::TextVAlign::Bottom,
             };
             (h, v)
         } else {
             let h = match a.h {
-                crate::symbols::HAlign::Left => cadcraft_engine::doc::HAlign::Left,
-                crate::symbols::HAlign::Centre => cadcraft_engine::doc::HAlign::Center,
-                crate::symbols::HAlign::Right => cadcraft_engine::doc::HAlign::Right,
+                crate::symbols::HAlign::Left => ecad_model::TextHAlign::Left,
+                crate::symbols::HAlign::Centre => ecad_model::TextHAlign::Center,
+                crate::symbols::HAlign::Right => ecad_model::TextHAlign::Right,
             };
             let v = match a.v {
-                crate::symbols::VAlign::Bottom => cadcraft_engine::doc::VAlign::Bottom,
-                crate::symbols::VAlign::Middle => cadcraft_engine::doc::VAlign::Middle,
-                crate::symbols::VAlign::Top => cadcraft_engine::doc::VAlign::Top,
+                crate::symbols::VAlign::Bottom => ecad_model::TextVAlign::Bottom,
+                crate::symbols::VAlign::Middle => ecad_model::TextVAlign::Middle,
+                crate::symbols::VAlign::Top => ecad_model::TextVAlign::Top,
             };
             (h, v)
         };

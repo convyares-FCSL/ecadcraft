@@ -99,7 +99,8 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
     }
 }
 
-fn engine_halign(h: TextHAlign) -> HAlign {
+/// The engine's horizontal alignment of an ECAD one.
+pub fn engine_halign(h: TextHAlign) -> HAlign {
     match h {
         TextHAlign::Left => HAlign::Left,
         TextHAlign::Center => HAlign::Center,
@@ -107,12 +108,33 @@ fn engine_halign(h: TextHAlign) -> HAlign {
     }
 }
 
-fn engine_valign(v: TextVAlign) -> VAlign {
+/// The engine's vertical alignment of an ECAD one.
+pub fn engine_valign(v: TextVAlign) -> VAlign {
     match v {
         TextVAlign::Baseline => VAlign::Baseline,
         TextVAlign::Bottom => VAlign::Bottom,
         TextVAlign::Middle => VAlign::Middle,
         TextVAlign::Top => VAlign::Top,
+    }
+}
+
+/// The ECAD horizontal alignment of an engine one: centre and middle are centre, and the
+/// engine's aligned and fit (which ECAD never writes) count as left, as ECAD's text rules read them.
+pub fn model_halign(h: HAlign) -> TextHAlign {
+    match h {
+        HAlign::Center | HAlign::Middle => TextHAlign::Center,
+        HAlign::Right => TextHAlign::Right,
+        HAlign::Left | HAlign::Aligned | HAlign::Fit => TextHAlign::Left,
+    }
+}
+
+/// The ECAD vertical alignment of an engine one.
+pub fn model_valign(v: VAlign) -> TextVAlign {
+    match v {
+        VAlign::Baseline => TextVAlign::Baseline,
+        VAlign::Bottom => TextVAlign::Bottom,
+        VAlign::Middle => TextVAlign::Middle,
+        VAlign::Top => TextVAlign::Top,
     }
 }
 

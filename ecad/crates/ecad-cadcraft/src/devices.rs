@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAlign};
+use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle, Text, VAlign as EVAlign};
 use cadcraft_engine::geom::Vec3;
 use ecad_model::derive::terminal_positions;
 use ecad_model::tag::{self, TAG_KEY};
@@ -27,6 +27,7 @@ use ecad_model::{
     Component, ComponentId, Definition, DefinitionId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
+use ecad_model::{TextHAlign as HAlign, TextVAlign as VAlign};
 use serde_json::{Value, json};
 
 use crate::symbols::{self, Kind, STARTERS, Starter};
@@ -1248,17 +1249,7 @@ fn slot_texts(
     use crate::text_style::{TextKind, text_style, width_in};
     let props = doc.components.get(&c).map(|x| &x.properties);
     let prop = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
-    let h = |a: ecad_model::TextHAlign| match a {
-        ecad_model::TextHAlign::Left => HAlign::Left,
-        ecad_model::TextHAlign::Center => HAlign::Center,
-        ecad_model::TextHAlign::Right => HAlign::Right,
-    };
-    let v = |a: ecad_model::TextVAlign| match a {
-        ecad_model::TextVAlign::Baseline => VAlign::Baseline,
-        ecad_model::TextVAlign::Bottom => VAlign::Bottom,
-        ecad_model::TextVAlign::Middle => VAlign::Middle,
-        ecad_model::TextVAlign::Top => VAlign::Top,
-    };
+    let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {
         let (of, kind, value, aci) = match slot.text.as_str() {
@@ -1311,7 +1302,15 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
 pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
-    let mut e = text_entity_with(&t.value, t.at, t.height, t.halign, t.valign, handle, TAG_LAYER);
+    let mut e = text_entity_with(
+        &t.value,
+        t.at,
+        t.height,
+        crate::convert::engine_halign(t.halign),
+        crate::convert::engine_valign(t.valign),
+        handle,
+        TAG_LAYER,
+    );
     match &t.own {
         // Brief 050a: the device's own text style (its height is already the text's).
         Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
@@ -1328,9 +1327,9 @@ pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Hand
 }
 
 /// A justified text entity.
-pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: HAlign, valign: VAlign, handle: Handle, layer: &str) -> Entity {
+pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: EHAlign, valign: EVAlign, handle: Handle, layer: &str) -> Entity {
     let p = Vec3::new(at.x, at.y, 0.0);
-    let justified = !(halign == HAlign::Left && valign == VAlign::Baseline);
+    let justified = !(halign == EHAlign::Left && valign == EVAlign::Baseline);
     Entity {
         handle,
         common: Common { layer: layer.into(), ..Common::default() },

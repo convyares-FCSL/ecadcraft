@@ -12,7 +12,7 @@
 //!
 //! This module draws nothing and stores nothing.
 
-use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, StyleRef};
+use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
 
 use crate::defaults::{self, Entry, Scope, text as d};
 
@@ -32,9 +32,32 @@ pub struct TextStyle {
     /// `ECAD-<KIND>-BOLD` ([`kind_style_name`]). Setting only this name on an entity is not enough
     /// for bold in the stroke-font fallback: use [`apply`].
     pub style_name: &'static str,
-    /// Brief 050a (046 Q8): the style's colour on the sheet drawn on, or `None` for ink. A mono
-    /// print prints ink regardless.
-    pub colour: Option<cadcraft_engine::doc::color::Rgb>,
+    /// Brief 050a (046 Q8): the style's colour, or `None` for ink. The engine draws it in its
+    /// colour on the sheet drawn on; a mono print prints ink regardless.
+    pub colour: Option<TextColour>,
+}
+
+/// A text style's colour (brief 050a), before the sheet is known: a colour of its own, or a colour
+/// code whose colour depends on the sheet (design 065 §3, cut 4: the engine turns it into a
+/// CADCraft colour when it draws, `look::text_colour_rgb`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextColour {
+    /// `#RRGGBB`.
+    Rgb(u8, u8, u8),
+    /// A colour code: its first colour, an index into [`crate::words::CODE_COLOURS`].
+    Code(usize),
+}
+
+/// A colour field's value as a [`TextColour`]: `None` for `none` (ink) and anything unknown.
+pub fn text_colour(value: &str) -> Option<TextColour> {
+    let t = value.trim();
+    if t.eq_ignore_ascii_case("none") {
+        return None;
+    }
+    if let Some((r, g, b)) = crate::styles::hex_rgb(t) {
+        return Some(TextColour::Rgb(r, g, b));
+    }
+    crate::words::colour_code(t).map(|(first, _)| TextColour::Code(first))
 }
 
 /// A text weight.
@@ -237,7 +260,7 @@ pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
         Some(_) => kind_style_name(kind, weight),
         None => weight.style_name(),
     };
-    let colour = f("colour").and_then(|r| crate::look::colour_rgb(&r.text(), crate::look::projection_sheet()));
+    let colour = f("colour").and_then(|r| text_colour(&r.text()));
     TextStyle { height, weight, style_name, colour }
 }
 
@@ -320,7 +343,7 @@ fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_linewei
         t.style = s.style_name.to_string();
     }
     // Brief 050a: a style's colour (ink otherwise; a mono print prints ink regardless).
-    if let Some(rgb) = s.colour {
+    if let Some(rgb) = s.colour.and_then(|c| crate::look::text_colour_rgb(c, crate::look::projection_sheet())) {
         e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
     }
     if let (Weight::Bold, Some(lw)) = (s.weight, bold_lineweight) {
@@ -724,55 +747,50 @@ pub fn dim_hidden(e: &mut cadcraft_engine::doc::Entity) {
 // ---------------------------------------------------------------- Justification and boxes
 
 /// A two-letter justification code (`L`/`C`/`R` then `T`/`M`/`B`; baseline counts as `B`).
-pub fn justify_code(h: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign) -> String {
-    use cadcraft_engine::doc::{HAlign, VAlign};
+pub fn justify_code(h: TextHAlign, v: TextVAlign) -> String {
     let a = match h {
-        HAlign::Center | HAlign::Middle => 'C',
-        HAlign::Right => 'R',
+        TextHAlign::Center => 'C',
+        TextHAlign::Right => 'R',
         _ => 'L',
     };
     let b = match v {
-        VAlign::Top => 'T',
-        VAlign::Middle => 'M',
-        VAlign::Bottom | VAlign::Baseline => 'B',
+        TextVAlign::Top => 'T',
+        TextVAlign::Middle => 'M',
+        TextVAlign::Bottom | TextVAlign::Baseline => 'B',
     };
     format!("{a}{b}")
 }
 
 /// The alignment a two-letter code names (any case); `None` for anything else.
-pub fn parse_justify(code: &str) -> Option<(cadcraft_engine::doc::HAlign, cadcraft_engine::doc::VAlign)> {
-    use cadcraft_engine::doc::{HAlign, VAlign};
+pub fn parse_justify(code: &str) -> Option<(TextHAlign, TextVAlign)> {
     let c = code.trim().to_ascii_uppercase();
     let mut it = c.chars();
     let h = match it.next()? {
-        'L' => HAlign::Left,
-        'C' => HAlign::Center,
-        'R' => HAlign::Right,
+        'L' => TextHAlign::Left,
+        'C' => TextHAlign::Center,
+        'R' => TextHAlign::Right,
         _ => return None,
     };
     let v = match it.next()? {
-        'T' => VAlign::Top,
-        'M' => VAlign::Middle,
-        'B' => VAlign::Bottom,
+        'T' => TextVAlign::Top,
+        'M' => TextVAlign::Middle,
+        'B' => TextVAlign::Bottom,
         _ => return None,
     };
     it.next().is_none().then_some((h, v))
 }
 
 /// The box of a one-line text of `width` and `height` at `at` with this justification.
-pub fn text_box(
-    width: f64, height: f64, at: ecad_model::Pt, h: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign,
-) -> (ecad_model::Pt, ecad_model::Pt) {
-    use cadcraft_engine::doc::{HAlign, VAlign};
+pub fn text_box(width: f64, height: f64, at: ecad_model::Pt, h: TextHAlign, v: TextVAlign) -> (ecad_model::Pt, ecad_model::Pt) {
     let x0 = match h {
-        HAlign::Center | HAlign::Middle => at.x - width / 2.0,
-        HAlign::Right => at.x - width,
+        TextHAlign::Center => at.x - width / 2.0,
+        TextHAlign::Right => at.x - width,
         _ => at.x,
     };
     let y0 = match v {
-        VAlign::Top => at.y - height,
-        VAlign::Middle => at.y - height / 2.0,
-        VAlign::Bottom | VAlign::Baseline => at.y,
+        TextVAlign::Top => at.y - height,
+        TextVAlign::Middle => at.y - height / 2.0,
+        TextVAlign::Bottom | TextVAlign::Baseline => at.y,
     };
     (ecad_model::Pt::new(x0, y0), ecad_model::Pt::new(x0 + width, y0 + height))
 }
@@ -896,7 +914,7 @@ impl Obstacles {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BlockPlace {
     pub rect: TextBox,
-    pub halign: cadcraft_engine::doc::HAlign,
+    pub halign: TextHAlign,
     /// Stored by Move Text (§6.4).
     pub moved: bool,
     /// No candidate was free (§6.3): the block overlaps something.
@@ -906,10 +924,9 @@ pub struct BlockPlace {
 impl BlockPlace {
     /// The alignment point of a line whose top is at `top`: left, centre or right of the box.
     pub fn line_at(&self, top: f64) -> ecad_model::Pt {
-        use cadcraft_engine::doc::HAlign;
         let x = match self.halign {
-            HAlign::Right => self.rect.1.x,
-            HAlign::Center | HAlign::Middle => (self.rect.0.x + self.rect.1.x) / 2.0,
+            TextHAlign::Right => self.rect.1.x,
+            TextHAlign::Center => (self.rect.0.x + self.rect.1.x) / 2.0,
             _ => self.rect.0.x,
         };
         ecad_model::Pt::new(x, top)
@@ -918,8 +935,8 @@ impl BlockPlace {
     /// The justification code of the block (its halign and the vertical anchor `v`).
     pub fn code(&self, v: char) -> String {
         let h = match self.halign {
-            cadcraft_engine::doc::HAlign::Right => 'R',
-            cadcraft_engine::doc::HAlign::Center | cadcraft_engine::doc::HAlign::Middle => 'C',
+            TextHAlign::Right => 'R',
+            TextHAlign::Center => 'C',
             _ => 'L',
         };
         format!("{h}{v}")
@@ -927,42 +944,40 @@ impl BlockPlace {
 }
 
 /// The box of a block `w` × `h` anchored at `at` with a two-letter justification.
-pub fn block_rect(at: ecad_model::Pt, w: f64, h: f64, halign: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign) -> TextBox {
-    use cadcraft_engine::doc::{HAlign, VAlign};
+pub fn block_rect(at: ecad_model::Pt, w: f64, h: f64, halign: TextHAlign, v: TextVAlign) -> TextBox {
     let x0 = match halign {
-        HAlign::Right => at.x - w,
-        HAlign::Center | HAlign::Middle => at.x - w / 2.0,
+        TextHAlign::Right => at.x - w,
+        TextHAlign::Center => at.x - w / 2.0,
         _ => at.x,
     };
     let y1 = match v {
-        VAlign::Top => at.y,
-        VAlign::Middle => at.y + h / 2.0,
-        VAlign::Bottom | VAlign::Baseline => at.y + h,
+        TextVAlign::Top => at.y,
+        TextVAlign::Middle => at.y + h / 2.0,
+        TextVAlign::Bottom | TextVAlign::Baseline => at.y + h,
     };
     (ecad_model::Pt::new(x0, y1 - h), ecad_model::Pt::new(x0 + w, y1))
 }
 
 /// The candidates of design 031 §6.2 for a block `w` × `h` beside a symbol box `(lo, hi)`, in
 /// order: (box, halign).
-pub fn candidates(lo: ecad_model::Pt, hi: ecad_model::Pt, vertical: bool, w: f64, h: f64, gap: f64) -> [(TextBox, cadcraft_engine::doc::HAlign); 5] {
-    use cadcraft_engine::doc::HAlign;
+pub fn candidates(lo: ecad_model::Pt, hi: ecad_model::Pt, vertical: bool, w: f64, h: f64, gap: f64) -> [(TextBox, TextHAlign); 5] {
     use ecad_model::Pt;
     let cx = (lo.x + hi.x) / 2.0;
     let cy = (lo.y + hi.y) / 2.0;
     let r = |x0: f64, y0: f64| (Pt::new(x0, y0), Pt::new(x0 + w, y0 + h));
-    let left_top = (r(lo.x - gap - w, hi.y - h), HAlign::Right);
-    let left_mid = (r(lo.x - gap - w, cy - h / 2.0), HAlign::Right);
-    let right_top = (r(hi.x + gap, hi.y - h), HAlign::Left);
-    let right_mid = (r(hi.x + gap, cy - h / 2.0), HAlign::Left);
-    let above = (r(cx - w / 2.0, hi.y + gap), HAlign::Center);
-    let above_left = (r(lo.x, hi.y + gap), HAlign::Left);
-    let below = (r(cx - w / 2.0, lo.y - gap - h), HAlign::Center);
+    let left_top = (r(lo.x - gap - w, hi.y - h), TextHAlign::Right);
+    let left_mid = (r(lo.x - gap - w, cy - h / 2.0), TextHAlign::Right);
+    let right_top = (r(hi.x + gap, hi.y - h), TextHAlign::Left);
+    let right_mid = (r(hi.x + gap, cy - h / 2.0), TextHAlign::Left);
+    let above = (r(cx - w / 2.0, hi.y + gap), TextHAlign::Center);
+    let above_left = (r(lo.x, hi.y + gap), TextHAlign::Left);
+    let below = (r(cx - w / 2.0, lo.y - gap - h), TextHAlign::Center);
     if vertical { [left_top, left_mid, right_top, above, below] } else { [above, above_left, below, left_mid, right_mid] }
 }
 
 /// A stored text place (`"x,y,J"`, design 031 §6.4): the point in the symbol's own frame and the
 /// justification. `None` for anything that does not parse.
-pub fn parse_at(v: &str) -> Option<(ecad_model::Pt, cadcraft_engine::doc::HAlign, cadcraft_engine::doc::VAlign)> {
+pub fn parse_at(v: &str) -> Option<(ecad_model::Pt, TextHAlign, TextVAlign)> {
     let mut it = v.split(',');
     let x: f64 = it.next()?.trim().parse().ok()?;
     let y: f64 = it.next()?.trim().parse().ok()?;
@@ -974,7 +989,7 @@ pub fn parse_at(v: &str) -> Option<(ecad_model::Pt, cadcraft_engine::doc::HAlign
 }
 
 /// The stored form of a text place.
-pub fn at_text(p: ecad_model::Pt, h: cadcraft_engine::doc::HAlign, v: cadcraft_engine::doc::VAlign) -> String {
+pub fn at_text(p: ecad_model::Pt, h: TextHAlign, v: TextVAlign) -> String {
     let r = |x: f64| (x * 1e6).round() / 1e6;
     format!("{},{},{}", r(p.x), r(p.y), justify_code(h, v))
 }

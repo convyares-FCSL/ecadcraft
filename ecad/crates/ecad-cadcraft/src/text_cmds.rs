@@ -717,7 +717,7 @@ fn run_movetext(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
             Some(to) => {
                 let (h, v) = justify
                     .or_else(|| current.as_ref().map(|t| (t.text.halign, t.text.valign)))
-                    .unwrap_or((cadcraft_engine::doc::HAlign::Left, cadcraft_engine::doc::VAlign::Top));
+                    .unwrap_or((ecad_model::TextHAlign::Left, ecad_model::TextVAlign::Top));
                 let local = crate::text_style::to_local(&pl, to).ok_or(BAD_POINT)?;
                 Some(crate::text_style::at_text(local, h, v))
             }

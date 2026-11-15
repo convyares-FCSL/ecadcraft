@@ -1321,6 +1321,18 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
         .collect()
 }
 
+/// A text style's colour as drawn on `sheet` (brief 050a): its own colour, or its colour code's
+/// first colour on that sheet, as [`colour_rgb`] draws the stored value.
+pub fn text_colour_rgb(c: crate::text_style::TextColour, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
+    match c {
+        crate::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
+        crate::text_style::TextColour::Code(i) => {
+            let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
+            crate::words::CODE_COLOURS.get(i).map(|(_, _, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
+        }
+    }
+}
+
 /// A colour field's value as drawn on `sheet`: `None` for `none` (ink) and anything unknown.
 pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     let t = value.trim();
