@@ -38,16 +38,18 @@ const A3_W: f64 = 390.0;
 const OVERLAY: &str = crate::convert::MARKER_LAYER;
 /// Board 1.16's sizes, millimetres on A3: block titles, body text, captions, the customer line;
 /// a line of text; a block's title band; the gap between blocks; a legend cell and its row.
-const BLOCK_TITLE_MM: f64 = 4.5;
-const BODY_MM: f64 = 3.2;
+const BLOCK_TITLE_MM: f64 = 5.0;
+const BODY_MM: f64 = 3.5;
 const CAPTION_MM: f64 = 2.4;
 const CUSTOMER_MM: f64 = 3.8;
-const LINE_MM: f64 = 6.5;
+const LINE_MM: f64 = 7.0;
 const HEAD_MM: f64 = 16.0;
 const BLOCK_GAP_MM: f64 = 8.0;
-const CELL_W_MM: f64 = 16.0;
-const CELL_H_MM: f64 = 12.0;
+const CELL_W_MM: f64 = 18.0;
+const CELL_H_MM: f64 = 13.0;
 const CELL_ROW_MM: f64 = 17.0;
+/// Most legend columns; the cells spread evenly over the rows they need (8 cells: two rows of 4),
+/// so no row is left half empty (owner, review of 054).
 const LEGEND_COLUMNS: usize = 5;
 /// `ecad.front.derived` and `ecad.front.typed` in ACI (blue, orange).
 const DERIVED_ACI: u8 = 5;
@@ -832,6 +834,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let (big, small_cell) = ((CELL_W_MM * s, CELL_H_MM * s, CELL_ROW_MM * s), (10.0 * s, 7.0 * s, 10.0 * s));
     let legend_room = (y - b) - row1 - row3 - gap * [row1, row3].iter().filter(|h| **h > 0.0).count() as f64;
     let rows_needed = cells.len().div_ceil(LEGEND_COLUMNS).max(1);
+    let columns = cells.len().div_ceil(rows_needed).clamp(3, LEGEND_COLUMNS);
     let legend_h_for = |row_h: f64, rows: usize| head_h + row_h * rows as f64 + pad;
     let (mut cw, mut ch, mut row_h) = big;
     if legend_h_for(row_h, rows_needed) > legend_room {
@@ -884,14 +887,14 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         if cells.is_empty() {
             d.text((bl + 4.0 * s, yy), small, "No symbols yet.", HAlign::Left, Some(LABEL_ACI), Some(br - bl));
         }
-        let col_w = (br - bl - 8.0 * s) / LEGEND_COLUMNS as f64;
-        let mut take = cells.len().min(legend_rows * LEGEND_COLUMNS);
+        let col_w = (br - bl - 8.0 * s) / columns as f64;
+        let mut take = cells.len().min(legend_rows * columns);
         if take < cells.len() && take > 0 {
             take -= 1;
         }
         for (i, c) in cells.iter().take(take).enumerate() {
-            let cx = bl + 4.0 * s + col_w * (i % LEGEND_COLUMNS) as f64;
-            let cy = yy + line_h / 2.0 - row_h * (i / LEGEND_COLUMNS) as f64 - row_h / 2.0;
+            let cx = bl + 4.0 * s + col_w * (i % columns) as f64;
+            let cy = yy + line_h / 2.0 - row_h * (i / columns) as f64 - row_h / 2.0;
             let cell = (cx, cy - ch / 2.0, cx + cw, cy + ch / 2.0);
             match c {
                 Cell::Symbol(id, _) => symbol(&mut d, doc, *id, cell),
@@ -902,8 +905,8 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         }
         if take < cells.len() {
             let i = take;
-            let cx = bl + 4.0 * s + col_w * (i % LEGEND_COLUMNS) as f64;
-            let cy = yy + line_h / 2.0 - row_h * (i / LEGEND_COLUMNS) as f64 - row_h / 2.0;
+            let cx = bl + 4.0 * s + col_w * (i % columns) as f64;
+            let cy = yy + line_h / 2.0 - row_h * (i / columns) as f64 - row_h / 2.0;
             d.text((cx, cy), small, &format!("and {} more", cells.len() - take), HAlign::Left, Some(LABEL_ACI), Some(col_w));
         }
         fit.shown = take;

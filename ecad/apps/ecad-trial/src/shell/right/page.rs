@@ -229,14 +229,21 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, v: &PageView, writable: bool, full
         });
     }
     widgets::section(ui, &mut folded, full, "page.sheet", "Sheet", "from page type", false, |ui| {
-        widgets::read(ui, "Type", &v.type_name, "ecad.page.sheet.type");
+        // The type with a small Edit… like the block rows: Settings ▸ Pages and sheets at it.
+        widgets::row(ui, "Type", |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let b = ui.add(ecad_ui::prim::Button::new("Edit\u{2026}").small()).on_hover_text("Settings \u{25b8} Pages and sheets");
+                b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, GOTO_TYPE));
+                if b.clicked() {
+                    todo.push(Do::Settings(v.type_id.clone()));
+                }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(widgets::rich(ui, &v.type_name, ui_type::BODY, widgets::text_2())).truncate())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.page.sheet.type"));
+                });
+            });
+        });
         widgets::read(ui, "Title block", &v.title_block, "ecad.page.sheet.titleblock");
-        ui.add_space(space::XS);
-        let b = ui.add(ecad_ui::prim::Button::new("Change in Pages and sheets").small());
-        b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, GOTO_TYPE));
-        if b.clicked() {
-            todo.push(Do::Settings(v.type_id.clone()));
-        }
     });
     t.settings.page_tab.folded = folded;
     // The shared table editor (design 054 §8.1a).

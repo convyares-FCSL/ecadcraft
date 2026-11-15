@@ -122,6 +122,8 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     assert!(h.query_by_label("ecad.page.block.notes").is_some(), "the Page tab on the cover");
     assert!(h.query_by_label("ecad.page.front.contents").is_some());
     assert!(h.query_by_label(ecad_trial::shell::right::page::NOTES).is_none(), "no inline notes box (owner, fix round)");
+    // The rail's first button names what the panel shows (owner, review of 054): a page here.
+    assert_eq!(ecad_trial::shell::right::shows_word(h.state_mut()), "Page");
     take(&h, &deltas, "054-cover.png");
     // The font check at 100 % (96 px to 25.4 mm): the notes and the wire colours, top left.
     ok(&mut h, "zoom c 160,215 230");

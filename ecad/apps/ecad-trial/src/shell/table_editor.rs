@@ -7,7 +7,7 @@
 //! turns the rows into one command (one transaction, one `u`). Esc and Cancel write nothing.
 
 use ecad_ui::tokens::{space, ui_type};
-use eframe::egui::{self, Key, Modifiers, vec2};
+use eframe::egui::{self, Key, vec2};
 
 use crate::shell::bar;
 
@@ -89,24 +89,15 @@ impl TableEditor {
     /// Draw it and answer the person's clicks and keys.
     pub fn show(&mut self, ctx: &egui::Context, check: impl Fn(&[Row]) -> Result<(), String>) -> Outcome {
         let s = ecad_ui::SHELL;
-        let mut out = Outcome::None;
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
-            return Outcome::Cancel;
-        }
         let checked = check(&self.rows);
         let edit = self.caps.edit && self.writable;
-        let mut open = true;
-        egui::Window::new(self.title.clone())
-            .id(egui::Id::unique(EDITOR))
-            .collapsible(false)
-            .resizable(true)
-            .default_width(560.0)
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                ui.interact(ui.max_rect(), egui::Id::unique((EDITOR, "ground")), egui::Sense::hover())
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Dialog, true, EDITOR));
+        let (caps, writable) = (self.caps, self.writable);
+        let why = checked.as_ref().err().cloned().or_else(|| self.error.clone());
+        let title = self.title.clone();
+        let shown = ecad_ui::dialog::Dialog::new(egui::Id::unique(EDITOR), &title, EDITOR).width(560.0).show(
+            ctx,
+            |ui| {
+                let mut out = None;
                 let mut remove = None;
                 let mut swap = None;
                 egui::ScrollArea::vertical().max_height(420.0).auto_shrink([false, true]).show(ui, |ui| {
@@ -178,35 +169,37 @@ impl TableEditor {
                         let b = ecad_ui::control::link(ui, words);
                         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, LINK));
                         if b.clicked() {
-                            out = Outcome::Link;
+                            out = Some(Outcome::Link);
                         }
                     }
                 });
-                let why = checked.as_ref().err().cloned().or_else(|| self.error.clone());
                 if let Some(e) = &why {
                     ui.label(egui::RichText::new(e).small().color(ecad_ui::color(s.error)));
                 }
-                ui.add_space(space::S);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let read_only = self.caps == Caps::READ;
-                    if !read_only {
-                        let can = self.writable && checked.is_ok();
-                        let b = ui.add_enabled(can, ecad_ui::prim::Button::new("Save").kind(ecad_ui::prim::Kind::Primary).small());
-                        b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can, SAVE));
-                        if b.clicked() || (can && ui.input(|i| i.modifiers.command && i.key_pressed(Key::Enter))) {
-                            out = Outcome::Save;
-                        }
+                out
+            },
+            |ui| {
+                let mut out = None;
+                let read_only = caps == Caps::READ;
+                if !read_only {
+                    let can = writable && checked.is_ok();
+                    let b = ui.add_enabled(can, ecad_ui::prim::Button::new("Save").kind(ecad_ui::prim::Kind::Primary).small());
+                    b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can, SAVE));
+                    if b.clicked() || (can && ui.input(|i| i.modifiers.command && i.key_pressed(Key::Enter))) {
+                        out = Some(Outcome::Save);
                     }
-                    let c = ui.add(ecad_ui::prim::Button::new(if read_only { "Close" } else { "Cancel" }).small());
-                    c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CANCEL));
-                    if c.clicked() {
-                        out = Outcome::Cancel;
-                    }
-                });
-            });
-        if !open {
+                }
+                let c = ui.add(ecad_ui::prim::Button::new(if read_only { "Close" } else { "Cancel" }).small());
+                c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CANCEL));
+                if c.clicked() {
+                    out = Some(Outcome::Cancel);
+                }
+                out
+            },
+        );
+        if shown.closed {
             return Outcome::Cancel;
         }
-        out
+        shown.footer.or(shown.body).unwrap_or(Outcome::None)
     }
 }

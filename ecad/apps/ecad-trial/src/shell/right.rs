@@ -319,6 +319,28 @@ fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) ->
     out
 }
 
+/// The word on the rail's first button: what the properties panel shows (owner, review of 054):
+/// `Page` for a page or a generated page, `Device` for a device, `Wire`, `Cable` and so on for
+/// the other selections. The button's accessible name stays [`rail_label`].
+pub fn shows_word(t: &mut Trial) -> &'static str {
+    if t.settings.inspector.device.is_some() {
+        return "Device";
+    }
+    if t.settings.inspector.page_words.is_some() || page::current(t).is_some() {
+        return "Page";
+    }
+    let kind = t.props.lock().ok().and_then(|sh| sh.view.sections.first().map(|s| s.kind));
+    match kind {
+        None | Some("page") => "Page",
+        Some("wire") => "Wire",
+        Some("cable" | "reference") => "Cable",
+        Some("box") => "Box",
+        Some("link") => "Link",
+        Some("objects") => "Objects",
+        Some(_) => RightTab::Device.label(),
+    }
+}
+
 /// The collapsed rail: one labelled button per tab, each with a ‹ mark; Checks carries a dot
 /// when there are problems. A press expands the panel on that tab.
 fn rail(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, open: bool) {
@@ -342,7 +364,8 @@ fn rail(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, open: bool) {
         };
         let icon_rect = Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON));
         ecad_ui::icons::paint(ui.painter(), icon_rect, icon, if on { ecad_ui::color(s.accent_text) } else { ink });
-        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, tab.label(), super::bar::font(ui, label_style), ink);
+        let word = if tab == RightTab::Device { shows_word(t) } else { tab.label() };
+        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, word, super::bar::font(ui, label_style), ink);
         let mark = Rect::from_center_size(pos2(r.left() + 4.0, icon_rect.center().y), vec2(8.0, 8.0));
         // ‹ opens towards the canvas; › while open (the strip's marks, mirrored).
         let chevron = if on { Icon::ChevronRight } else { Icon::ChevronLeft };
