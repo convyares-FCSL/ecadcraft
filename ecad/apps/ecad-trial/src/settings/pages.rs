@@ -678,7 +678,7 @@ fn panel(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writa
     // Design 054 §3.4: Checks and references.
     let summary = if row.checks { "on" } else { "off" };
     section(ui, "checks", "Checks and references", summary, |ui| {
-        prow(ui, "Checks and references", |ui| {
+        prow(ui, "Checks", |ui| {
             if switch(ui, row.checks, writable, CHECKS).clicked() {
                 todo.push(Do::Set(row.id.clone(), vec![("checks", Some(if row.checks { "off" } else { "on" }.into()))]));
             }
