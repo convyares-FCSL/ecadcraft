@@ -210,7 +210,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     h.get_by_label("ecad.plc.tile.2").click();
     h.run_steps(4);
     let a03 = tagged(&mut h, "-A03");
-    for label in ["tag", "description", "slot", "function", "location", "start", "maker", "part_number"] {
+    for label in ["tag", "description", "rack", "slot", "function", "location", "start", "rule", "maker", "part_number"] {
         assert!(h.query_by_label(&format!("ecad.plc.card.editor.{label}")).is_some(), "{label}");
     }
     // The commands the fields run, each one transaction.

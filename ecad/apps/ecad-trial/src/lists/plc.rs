@@ -1045,11 +1045,16 @@ impl IoView {
                     PathKind::Export { .. } => "Save the tag table as",
                 };
                 ui.label(egui::RichText::new(label).size(ty.size).color(ecad_ui::color(s.text_2)));
-                ecad_ui::prim::Field::new(&mut row.path, ecad_ui::prim::FieldKind::Text, "Tag table file").width(420.0).show(ui);
+                // Three label columns wide: room for a path, in the components' sizes.
+                ecad_ui::control::TextEntry::new(&mut row.path, "Tag table file")
+                    .placeholder("Tag table file")
+                    .width(3.0 * ecad_ui::tokens::size::LABEL_COLUMN)
+                    .show(ui);
                 let ok = match &mut row.kind {
                     PathKind::Import => ecad_ui::prim::button(ui, "Import", ecad_ui::prim::Kind::Primary).clicked(),
                     PathKind::Export { all, .. } => {
-                        ui.checkbox(all, "All racks");
+                        ecad_ui::control::Toggle::new(all, "All racks").show(ui);
+                        ui.label(egui::RichText::new("All racks").size(ty.size).color(ecad_ui::color(s.text_2)));
                         ecad_ui::prim::button(ui, "Export", ecad_ui::prim::Kind::Primary).clicked()
                     }
                 };

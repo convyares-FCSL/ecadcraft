@@ -3,8 +3,10 @@
 //! slot, function and location), Addresses (start, rule), Detailed page, and Parts with its
 //! accessories.
 //!
-//! Built from the inspector's shared widgets (`shell::right::widgets`): no colour or size of its
-//! own, so the inspector's look applies here too.
+//! Built only from the `ecad_ui` components (`docs/design/components.md`): Type is a
+//! `Segmented`, Rack a `Select`, ID, Description, Slot, Function, Location, Start, Maker and Part
+//! number are `TextEntry`s, and values read from the drawing (a type it can't change, the address
+//! rule) are plain `read_text`. No colour or size of its own.
 //!
 //! Every edit is one command, as typed at the command line: `plccardtype`, `setprop` (`tag`,
 //! `description`, `function`, `location`, `maker`, `part_number`), `plcslot`, `plcaddress`,
@@ -22,6 +24,8 @@ use ecad_model::{ComponentId, PageId};
 use eframe::egui::{self, Rect, vec2};
 use serde_json::json;
 
+use ecad_ui::control::{Decor, Select, TextEntry, read_text};
+
 use crate::Trial;
 use crate::shell::right::widgets as w;
 
@@ -29,6 +33,8 @@ use crate::shell::right::widgets as w;
 pub const PANEL: &str = "ecad.plc.card.editor";
 /// The greyed catalogue button's reason.
 pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
+/// The Rack choice for a card in no rack.
+pub const NO_RACK: &str = "None";
 /// The Detailed page note (board 2.03).
 pub const PAGE_NOTE: &str = "A card can be drawn across several pages. Each channel remembers which.";
 
@@ -208,7 +214,12 @@ fn field(
     let invalid = st.error.as_ref().is_some_and(|(k, _)| *k == key);
     let Some(entry) = st.fields.get_mut(key) else { return };
     let r = w::row(ui, label, |ui| {
-        ui.add_enabled_ui(writable, |ui| w::input(ui, &mut entry.1, placeholder, hint, &format!("{PANEL}.{key}"), invalid)).inner
+        let name = format!("{PANEL}.{key}");
+        ui.add_enabled_ui(writable, |ui| {
+            // The card's ID is its key identity value: bold (components.md).
+            TextEntry::new(&mut entry.1, &name).placeholder(placeholder).hint(hint).bold(key == "tag").invalid(invalid.then_some("")).show(ui)
+        })
+        .inner
     });
     let done = r.lost_focus() || (r.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
     if done
@@ -270,7 +281,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, i: usize) {
                             st.error = None;
                         }
                     } else {
-                        ui.label(w::rich(ui, info.ty.map_or("", |t| overview::type_name(t)), ecad_ui::tokens::ui_type::BODY, w::text_2()));
+                        read_text(ui, info.ty.map_or("", |t| overview::type_name(t)), Decor::default(), &format!("{PANEL}.type"));
                     }
                 });
                 // The confirm step (overseer's look check): what the change does to the signals.
@@ -301,17 +312,18 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, i: usize) {
                 field(ui, &mut st, &mut lines, c, writable, "tag", "ID", "-A03", "");
                 field(ui, &mut st, &mut lines, c, writable, "description", "Description", "What the card is for", "");
                 w::row(ui, "Rack", |ui| {
-                    let current = info.rack.clone().unwrap_or_else(|| "None".into());
-                    ui.add_enabled_ui(writable, |ui| {
-                        egui::ComboBox::from_id_salt(format!("{PANEL}.rack")).selected_text(&current).width(ui.available_width()).show_ui(ui, |ui| {
-                            for r in info.racks.iter().map(String::as_str).chain(["None"]) {
-                                if ui.selectable_label(r == current, r).clicked() && r != current {
-                                    let rack = if r == "None" { serde_json::Value::Null } else { json!(r) };
-                                    lines.push(("rack", format!("plcslot {}", json!({"card": c.hex(), "rack": rack}))));
-                                }
-                            }
-                        });
-                    });
+                    let options: Vec<&str> = info.racks.iter().map(String::as_str).chain([NO_RACK]).collect();
+                    let current = info.rack.as_deref().unwrap_or(NO_RACK);
+                    let at = options.iter().position(|o| *o == current).unwrap_or(options.len().saturating_sub(1));
+                    let mut picked = at;
+                    let r = ui.add_enabled_ui(writable, |ui| Select::new(&mut picked, &options, &format!("{PANEL}.rack")).show(ui)).inner;
+                    if r.changed()
+                        && picked != at
+                        && let Some(to) = options.get(picked)
+                    {
+                        let rack = if *to == NO_RACK { serde_json::Value::Null } else { json!(to) };
+                        lines.push(("rack", format!("plcslot {}", json!({"card": c.hex(), "rack": rack}))));
+                    }
                 });
                 field(ui, &mut st, &mut lines, c, writable, "slot", "Slot", "", "");
                 field(ui, &mut st, &mut lines, c, writable, "function", "Function", "", info.function.1);
@@ -320,9 +332,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, i: usize) {
             // Addresses (board 2.03).
             w::section(ui, &mut folded, full, "plc.addresses", "Addresses", "", false, |ui| {
                 field(ui, &mut st, &mut lines, c, writable, "start", "Start", "", if info.pinned { "pinned" } else { "automatic" });
+                // The rule is the project's (Settings ▸ PLC), read here.
                 w::row(ui, "Rule", |ui| {
-                    let mut rule = "Follow slot order".to_string();
-                    ui.add_enabled_ui(false, |ui| w::input(ui, &mut rule, "", &info.rule, &format!("{PANEL}.rule"), false));
+                    read_text(ui, "Follow slot order", Decor { hint: &info.rule, ..Decor::default() }, &format!("{PANEL}.rule"));
                 });
             });
             // Detailed page (board 2.03).
@@ -370,7 +382,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, i: usize) {
                 if let Some(mut form) = st.accessory.take() {
                     for (k, label) in ["Description", "Part number", "Maker"].iter().enumerate() {
                         if let Some(buf) = form.get_mut(k) {
-                            w::row(ui, label, |ui| w::input(ui, buf, "", "", &format!("{PANEL}.accessory.{k}"), false));
+                            w::row(ui, label, |ui| TextEntry::new(buf, &format!("{PANEL}.accessory.{k}")).show(ui));
                         }
                     }
                     let (add, cancel) =
