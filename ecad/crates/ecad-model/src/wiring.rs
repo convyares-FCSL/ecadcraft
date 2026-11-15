@@ -590,8 +590,13 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
     order.sort();
     let mut alloc = Allocator::default();
     let mut out = Vec::new();
+    let off = crate::sheet::checks_off_pages(doc);
     for (_, id) in order {
         let Some(net) = conn.net(id) else { continue };
+        // Brief 054 (design 054 §3.4): a net drawn only on Plain pages is not numbered.
+        if !off.is_empty() && only_on(doc, net, &off) {
+            continue;
+        }
         if let Some((number, fixed)) = decide(doc, id, net, potential_changed.contains(&id), &mut alloc)
             && !carries(net, &number, fixed)
         {
@@ -599,6 +604,20 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
         }
     }
     out
+}
+
+/// Whether every route of `net`'s conductors is on a page of `pages` (and it has one).
+fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<crate::id::PageId>) -> bool {
+    let mut any = false;
+    for c in &net.conductors {
+        for (_, r) in doc.representations_of(crate::doc::Subject::Conductor(*c)) {
+            if !pages.contains(&r.page) {
+                return false;
+            }
+            any = true;
+        }
+    }
+    any
 }
 
 /// The number net `id` should carry, and whether fixed; `None` to leave it as it is.

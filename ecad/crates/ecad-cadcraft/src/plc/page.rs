@@ -245,7 +245,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
         return Ok((None, Vec::new()));
     }
     let kind = crate::generated::GenKind::PlcRack;
-    let (id, _, mut more) = crate::sheet_cmds::new_page_ops(p, kind.title().to_string(), None, None)?;
+    let (id, _, mut more) = crate::sheet_cmds::new_page_ops_at(p, kind.title().to_string(), None, None, None)?;
     for op in &mut more {
         if let Op::AddPage { page, .. } = op {
             page.properties.insert(crate::generated::KEY.into(), kind.value().into());

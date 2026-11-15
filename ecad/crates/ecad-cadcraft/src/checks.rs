@@ -218,6 +218,19 @@ pub enum Kind {
     /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
     /// has no length.
     WireAllowance,
+    /// Brief 054 (design 054 §9): a page's `page.type` names no page type.
+    PageTypeUnknown,
+    /// Brief 054: a page type record holds a value its field does not take.
+    PageTypeField,
+    /// Brief 054: a `folder.<id>.start` names no folder or is not 1–6 digits.
+    FolderStartUnknown,
+    /// Brief 054 (design 054 §4.4): a folder's run of numbers reaches another run's.
+    FolderRunsOverlap,
+    /// Brief 054b (design 054 §6.3, Q6): the cover's symbol legend shows fewer symbols than are
+    /// used.
+    CoverLegendCut,
+    /// Brief 054b (design 054 §6.4): stored cover notes past the bounds, read cut.
+    CoverNotesCut,
     /// Brief 057 (design 057 §7).
     RatingUnder,
     /// Brief 057 (design 057 §7).
@@ -268,7 +281,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 100] = [
+    pub const ALL: [Kind; 106] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -346,6 +359,12 @@ impl Kind {
         Kind::CategoryUnknown,
         Kind::CategoryPotentialTwice,
         Kind::WireAllowance,
+        Kind::PageTypeUnknown,
+        Kind::PageTypeField,
+        Kind::FolderStartUnknown,
+        Kind::FolderRunsOverlap,
+        Kind::CoverLegendCut,
+        Kind::CoverNotesCut,
         Kind::RatingUnder,
         Kind::RatingTooHot,
         Kind::RatingLoadOver,
@@ -451,6 +470,12 @@ impl Kind {
             Kind::CategoryUnknown => "category-unknown",
             Kind::CategoryPotentialTwice => "category-potential-twice",
             Kind::WireAllowance => "wire-allowance",
+            Kind::PageTypeUnknown => "page-type-unknown",
+            Kind::PageTypeField => "page-type-field",
+            Kind::FolderStartUnknown => "folder-start-unknown",
+            Kind::FolderRunsOverlap => "folder-runs-overlap",
+            Kind::CoverLegendCut => "cover-legend-cut",
+            Kind::CoverNotesCut => "cover-notes-cut",
             Kind::RatingUnder => "rating-under",
             Kind::RatingTooHot => "rating-too-hot",
             Kind::RatingLoadOver => "rating-load-over",
@@ -562,6 +587,12 @@ impl Kind {
             Kind::CategoryUnknown => "Wire category not found; drawn without one",
             Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
             Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
+            Kind::PageTypeUnknown => "Page type not found; drawn as its usual type",
+            Kind::PageTypeField => "Page type value not read; its usual value is used",
+            Kind::FolderStartUnknown => "Folder start number not read",
+            Kind::FolderRunsOverlap => "A folder's page numbers run into another folder's",
+            Kind::CoverLegendCut => "The cover's symbol legend does not show every symbol",
+            Kind::CoverNotesCut => "The cover's notes are past 40 notes of 400 characters; the rest are not shown",
             Kind::RatingUnder => "Wire or cable rated below its protective device",
             Kind::RatingTooHot => "Conductor at or above its maximum temperature",
             Kind::RatingLoadOver => "Load above the protective device's rating",
@@ -643,6 +674,10 @@ impl Kind {
             | Kind::ArticleConflict
             | Kind::PartForMissing
             | Kind::CategoryPotentialTwice
+            | Kind::PageTypeUnknown
+            | Kind::PageTypeField
+            | Kind::FolderRunsOverlap
+            | Kind::CoverNotesCut
             | Kind::WireThroughCard
             | Kind::RatingLoadOver
             | Kind::VoltdropOver
@@ -742,6 +777,8 @@ pub enum Fix {
     DropMissingFor(ComponentId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 054 (design 054 §9): a page type or folder start row's fix.
+    Page(crate::page_types::PageFix),
     /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
     ShowRating(crate::rating::RatedSubject),
     /// Brief 057: **Use 2.5 mm²**: the conductor's own `cross_section`.
@@ -796,6 +833,11 @@ impl Check {
             | Kind::StyleLimits
             | Kind::CategoryPotentialTwice
             | Kind::WireAllowance
+            | Kind::PageTypeUnknown
+            | Kind::PageTypeField
+            | Kind::FolderStartUnknown
+            | Kind::FolderRunsOverlap
+            | Kind::CoverLegendCut
             | Kind::CoreOpen
             | Kind::TitleValueCut
             | Kind::TitleBindingUnknown
@@ -848,6 +890,14 @@ impl Check {
             "text": self.what(),
             "which": self.which,
             "where": self.locator(doc),
+            // Brief 054: the command a page type or folder start fix runs.
+            "fix": match self.fix {
+                Some(Fix::Page(f)) => {
+                    let (command, params) = f.command();
+                    json!({"label": f.label(), "command": command, "params": params})
+                }
+                _ => Value::Null,
+            },
         })
     }
 }
@@ -867,6 +917,8 @@ pub enum Key {
     Page(PageId),
     /// Brief 050a: the style rows (unknown styles, old settings, limits).
     Styles,
+    /// Brief 054b: the cover's rows (legend cut, notes cut), refreshed when the cover changes.
+    Cover,
     /// Brief 057: a rated subject's own rows.
     Rating(crate::rating::RatedSubject),
     /// Brief 057: the count rows, unread devices and the rating table's own rows.
@@ -1555,6 +1607,8 @@ pub struct Checks {
     /// Bumped only when some row actually changed (an update that re-checked subjects and found
     /// the same rows leaves it), for views that show the rows themselves (the Release dialog).
     pub changed: u64,
+    /// Brief 054: the pages whose type has checks and references off.
+    off: BTreeSet<PageId>,
     /// Brief 057: the kept rating results and their indexes (design 057 §10).
     pub rating: crate::rating::Kept,
 }
@@ -1562,7 +1616,7 @@ pub struct Checks {
 impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
     pub fn build(doc: &Document, tol: f64) -> Self {
-        let mut ch = Checks::default();
+        let mut ch = Checks { off: ecad_model::sheet::checks_off_pages(doc), ..Checks::default() };
         for c in doc.conductors.keys() {
             ch.grid.insert(doc, *c);
         }
@@ -1593,6 +1647,7 @@ impl Checks {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
+        ch.set(Key::Cover, crate::front::check_rows(doc));
         // Brief 057.
         ch.rating = crate::rating::Kept::build(doc);
         let rows: Vec<(crate::rating::RatedSubject, Vec<Check>)> =
@@ -1608,7 +1663,17 @@ impl Checks {
         ch
     }
 
-    fn set(&mut self, key: Key, v: Vec<Check>) {
+    /// Brief 054b: work out the cover's rows again (after a change the cover's map names).
+    pub fn set_cover(&mut self, doc: &Document) {
+        self.set(Key::Cover, crate::front::check_rows(doc));
+        self.revision += 1;
+    }
+
+    fn set(&mut self, key: Key, mut v: Vec<Check>) {
+        // Brief 054 (design 054 §3.4): no electrical row on a page with checks and references off.
+        if !self.off.is_empty() && !matches!(key, Key::Styles | Key::Cover | Key::TitleBlocks) {
+            v.retain(|c| c.page.is_none_or(|p| !self.off.contains(&p)));
+        }
         let same = match self.by_key.get(&key) {
             Some(old) => *old == v,
             None => v.is_empty(),
@@ -1685,6 +1750,7 @@ impl Checks {
     pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
         let mut s = Scope::default();
         s.collect(before, ops, &self.grid);
+        s.checks_pages(before, ops);
         s
     }
 
@@ -1692,6 +1758,7 @@ impl Checks {
     /// adding what the ops themselves name in this state.
     pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, tol: f64) {
         scope.collect(doc, ops, &self.grid);
+        scope.checks_pages(doc, ops);
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build(doc, tol) };
             return;
@@ -1819,6 +1886,16 @@ pub struct Scope {
     designations: bool,
     /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
     title_blocks: bool,
+}
+
+impl Scope {
+    /// Brief 054: whether the set of pages with checks off may change (then everything is checked
+    /// again).
+    fn checks_pages(&mut self, doc: &Document, ops: &[Op]) {
+        if crate::page_types::checks_changed(doc, ops) {
+            self.all = true;
+        }
+    }
 }
 
 impl Scope {

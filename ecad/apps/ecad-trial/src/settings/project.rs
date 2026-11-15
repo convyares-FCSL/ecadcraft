@@ -20,7 +20,7 @@ use crate::sheets_ui::{Out, Part, Popout};
 use crate::shell::bar;
 
 /// Pages and sheets' two tabs.
-pub const TABS: [&str; 2] = ["Sheets and numbering", "Text styles"];
+pub const TABS: [&str; 2] = ["Page types", "Text styles"];
 /// Said where a project is needed.
 pub const NO_PROJECT: &str = "No project is open.";
 /// Save and Cancel (042's popout names).
@@ -282,12 +282,16 @@ pub fn pages(t: &mut Trial, ui: &mut egui::Ui) {
         t.settings.section = if i == 1 { super::Section::TextStyles } else { super::Section::Pages };
     }
     ui.add_space(space::M);
-    ui.set_max_width(900.0);
-    if text {
-        ecad_ui::prim::read_value(ui, "Each kind of text: its height, weight and font, and whether it is shown. Also listed in Standards.");
-        ui.add_space(space::S);
+    // Brief 054 (design 054 §5): the page type table; rev 3's sheet and numbering rows are folded
+    // under it.
+    if !text {
+        super::pages::show(t, ui);
+        return;
     }
-    body(t, ui, Popout::Settings, if text { Part::Text } else { Part::Settings });
+    ui.set_max_width(900.0);
+    ecad_ui::prim::read_value(ui, "Each kind of text: its height, weight and font, and whether it is shown. Also listed in Standards.");
+    ui.add_space(space::S);
+    body(t, ui, Popout::Settings, Part::Text);
 }
 
 /// The copy of `popout` drawn as `part`, filled first if there is none of that popout.

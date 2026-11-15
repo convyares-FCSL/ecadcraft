@@ -32,6 +32,9 @@ pub const DUPLICATE: &str = "Duplicate";
 pub const DELETE_PAGES: &str = "Delete the selected pages";
 /// The placeholders' reason (no command yet duplicates or deletes a page).
 pub const NOT_YET: &str = "Not available yet";
+/// Brief 054: a folder row's menu items and the Book header's Renumber pages.
+pub const START_NUMBER: &str = "Start number…";
+pub const RENUMBER_PAGES: &str = "Renumber pages";
 /// The accessible label of a page row's checkbox: `Select page 04`.
 pub fn pick_label(number: &str) -> String {
     format!("Select page {number}")
@@ -130,6 +133,14 @@ pub enum Action {
     },
     /// Rename this page in the name box (the row's right-click menu).
     RenameInBox(PageId),
+    /// Brief 054: `folderprops {folder, start}` (`None` clears).
+    SetFolderStart(FolderId, Option<String>),
+    /// Brief 054: `renumberpages {folder?}`.
+    RenumberPages(Option<FolderId>),
+    /// Brief 054: `deletepage {pages}` (generated pages only).
+    DeletePages(Vec<PageId>),
+    /// Brief 054: a Checks fix's command line (a page type or folder start fix).
+    RunLine(String),
     /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
     GotoCheck(Box<ecad_cadcraft::checks::Check>),
     /// Checks tab: `junction {at}` on this page.
@@ -370,6 +381,13 @@ pub struct ProjectPanel {
     pub picked: BTreeSet<PageId>,
     /// The search text; while set, only the pages it finds are shown, without their folders.
     pub find: String,
+    /// Brief 054: each folder's start number, and the generated pages (Delete takes only those),
+    /// read again when the project's change count moves.
+    pub starts: std::collections::BTreeMap<FolderId, String>,
+    pub generated: BTreeSet<PageId>,
+    pub starts_at: Option<u64>,
+    /// A folder's start number being typed in place (design 054 §4.3).
+    pub start_edit: Option<InPlace<FolderId>>,
 }
 
 impl ProjectPanel {
@@ -875,6 +893,11 @@ impl ProjectPanel {
             self.folder_field(ui, field, out);
             return;
         }
+        // Brief 054 (design 054 §4.3): the start number field over the row's right part.
+        if self.start_edit.as_ref().is_some_and(|r| r.of == id) {
+            let field = Rect::from_min_max(pos2(rect.right() - 90.0, rect.top() + 4.0), pos2(rect.right() - 4.0, rect.bottom() - 4.0));
+            self.start_field(ui, field, out);
+        }
         let add = Rect::from_center_size(pos2(rect.right() - 10.0, y), vec2(20.0, 20.0));
         let count = p.text(
             pos2(add.left() - 8.0, y),
@@ -883,9 +906,21 @@ impl ProjectPanel {
             crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
             ink(s.text_3),
         );
-        let room = (count.left() - folder.right() - 14.0).max(0.0);
+        // Brief 054: the folder's start number, grey after its name (`Schematic  100`).
+        let start = self.starts.get(&id).cloned();
+        let start_w = start.as_ref().map_or(0.0, |n| 10.0 + 8.0 * n.len() as f32);
+        let room = (count.left() - folder.right() - 14.0 - start_w).max(0.0);
         let shown = cut(ui, name, &font, room);
-        p.text(pos2(folder.right() + 6.0, y), egui::Align2::LEFT_CENTER, shown, font, ink(s.text_2));
+        let named = p.text(pos2(folder.right() + 6.0, y), egui::Align2::LEFT_CENTER, shown, font, ink(s.text_2));
+        if let Some(n) = start {
+            p.text(
+                pos2(named.right() + 10.0, y),
+                egui::Align2::LEFT_CENTER,
+                n,
+                crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+                ink(s.text_3),
+            );
+        }
         // The +: a new page in this group (added after the row, so it takes the click first).
         let add_label = add_in_label(name);
         if crate::shell::bar::icon_button(ui, add, ecad_ui::tokens::Icon::Plus, &add_label, 12.0, writable).clicked() {
@@ -925,6 +960,17 @@ impl ProjectPanel {
                 out.push(Action::RenumberFolder(id));
                 ui.close();
             }
+            // Brief 054 (design 054 §4.3, §4.4): the folder's start number, and its pages
+            // renumbered from it.
+            if ui.add_enabled(writable, egui::Button::new(START_NUMBER)).clicked() {
+                let text = self.starts.get(&id).cloned().unwrap_or_default();
+                self.start_edit = Some(InPlace { of: id, text: text.clone(), error: None, old: text });
+                ui.close();
+            }
+            if ui.add_enabled(writable, egui::Button::new(RENUMBER_PAGES)).clicked() {
+                out.push(Action::RenumberPages(Some(id)));
+                ui.close();
+            }
         });
     }
 
@@ -937,6 +983,22 @@ impl ProjectPanel {
                 out.push(Action::RenameFolder(folder, text));
             } else {
                 self.folder_rename = None;
+            }
+        }
+    }
+
+    /// The start-number field on a folder row (brief 054): Enter writes it (empty clears), Esc
+    /// cancels.
+    fn start_field(&mut self, ui: &mut egui::Ui, rect: Rect, out: &mut Vec<Action>) {
+        let Some(r) = &mut self.start_edit else { return };
+        let folder = r.of;
+        let label = format!("ecad.book.folder.start.{}", folder.hex());
+        if let Some((text, done)) = in_place(ui, rect, &label, &label, r) {
+            if done {
+                let t = text.trim().to_string();
+                out.push(Action::SetFolderStart(folder, (!t.is_empty()).then_some(t)));
+            } else {
+                self.start_edit = None;
             }
         }
     }
@@ -1174,7 +1236,20 @@ impl ProjectPanel {
                     .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, MOVE_TO_GROUP));
                 });
                 ui.add(ecad_ui::prim::Button::new(DUPLICATE).small().disabled(NOT_YET));
-                ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, DELETE_PAGES).disabled(NOT_YET));
+                // Brief 054 (design 054 §8.3): Delete takes generated pages only.
+                let generated = picked.iter().all(|p| self.generated.contains(p));
+                let del = ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, DELETE_PAGES);
+                let del = if !writable {
+                    del.disabled(READ_ONLY)
+                } else if generated {
+                    del
+                } else {
+                    del.disabled(ecad_cadcraft::page_types::DRAWN_PAGE)
+                };
+                if ui.add(del).clicked() && writable && generated {
+                    out.push(Action::DeletePages(picked.clone()));
+                    self.picked.clear();
+                }
             });
         });
     }

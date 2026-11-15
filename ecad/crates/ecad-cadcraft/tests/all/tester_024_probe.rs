@@ -902,8 +902,10 @@ fn contents_follow_pages_and_overflow() {
     let t = texts(&doc, c);
     assert!(t.iter().any(|x| x == "Contents (2/2)"), "{t:?}");
     assert!(t.iter().any(|x| x == "P42"), "the last page is listed: {t:?}");
+    // Brief 054b (design 054 §6): the cover draws blocks; its revisions are the issued rows, and it
+    // no longer counts sheets.
     let t = texts(&doc, cover);
-    assert!(t.contains(&"47 sheets".to_string()), "{t:?}");
+    assert!(t.contains(&"Symbol legend".to_string()), "{t:?}");
 }
 
 /// The revision list shows every issued revision, newest first, and follows `undoissue`.
@@ -921,12 +923,14 @@ fn revision_list_follows_issuerevision_and_undo() {
     let b = t.iter().position(|x| x == "2026-11-12");
     assert!(a.is_some() && b.is_some() && b < a, "newest first: {t:?}");
     assert!(t.iter().any(|x| x.starts_with("First, \"issue\"")), "{t:?}");
-    assert!(texts(&doc, cover).contains(&"Revision B, 2026-11-12".to_string()), "{:?}", texts(&doc, cover));
+    // Brief 054b (design 054 §6): the cover draws blocks; its revisions are the issued rows, and it
+    // no longer counts sheets.
+    assert!(texts(&doc, cover).contains(&"2026-11-12".to_string()), "{:?}", texts(&doc, cover));
     h.run("undoissue", json!({})).unwrap();
     let doc = h.doc();
     let t = texts(&doc, r);
     assert!(!t.contains(&"Second".to_string()) && t.contains(&"2026-11-01".to_string()), "{t:?}");
-    assert!(texts(&doc, cover).contains(&"Revision A, 2026-11-01".to_string()));
+    assert!(!texts(&doc, cover).contains(&"2026-11-12".to_string()), "the cover drops the undone issue");
     // 45 issued revisions: two sheets.
     for i in 0..45 {
         h.run("projectprops", json!({"title": format!("t{i}")})).unwrap();

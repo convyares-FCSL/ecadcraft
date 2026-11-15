@@ -75,6 +75,7 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => cp::REMOVE,
         Fix::MoveTable(_) => cp::MOVE_TABLE,
         Fix::RenumberPage(_) => cp::RENUMBER_PAGE,
+        Fix::Page(f) => f.label(),
         Fix::MoveToNextFree(_) => cp::MOVE_NEXT_FREE,
         Fix::MoveToNewPosition(_) => cp::MOVE_NEW_POSITION,
         Fix::LevelMissing(..) => cp::DROP_MISSING_LEVELS,

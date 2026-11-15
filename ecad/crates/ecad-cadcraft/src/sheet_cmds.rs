@@ -162,18 +162,28 @@ pub fn check_number(
 /// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
 /// book position `position`.
 pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&crate::outputs::Outputs>) -> String {
+    default_number_from(doc, book, before, position, outputs, None)
+}
+
+/// [`default_number`], or for the first page of a folder with a start number (brief 054, design
+/// 054 §4.3) that start when it is free, else the next free after it. Leading zeros keep their
+/// width (`01` gives `01`, `02`), from the start or from the page before.
+pub fn default_number_from(
+    doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&crate::outputs::Outputs>, start: Option<&str>,
+) -> String {
     // Brief 033: every sheet's number, continuation sheets included, is in use.
     let used: BTreeSet<String> =
         book.order.iter().flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
     let step = u64::from(doc.settings.page_number_step.max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
-    let start = digits.as_deref().and_then(|d| d.parse::<u64>().ok());
-    let (mut n, step) = match start {
-        Some(s) => (s.saturating_add(step), step),
-        None => (position as u64, 1),
+    let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
+    let (mut n, step, width) = match (from_start, digits.as_deref().and_then(|d| d.parse::<u64>().ok().map(|n| (n, d)))) {
+        (Some((s, w)), _) => (s, step, w),
+        (None, Some((s, d))) => (s.saturating_add(step), step, if d.len() > 1 && d.starts_with('0') { d.len() } else { 0 }),
+        (None, None) => (position as u64, 1, 0),
     };
     for _ in 0..100_000 {
-        let t = n.to_string();
+        let t = format!("{n:0width$}");
         if !used.contains(&t) && t.len() <= MAX_NUMBER_CHARS {
             return t;
         }
@@ -391,6 +401,8 @@ fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         let index = doc.folder_order.iter().position(|f| *f == folder).ok_or("no such folder")?;
         ops.push(Op::RemoveFolder { id: folder, folder: old.clone(), index });
+        // Brief 054 (design 054 §4.3): its start number goes with it.
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &crate::page_types::start_key(folder), None));
         let to = match old.parent.and_then(|f| doc.folders.get(&f)) {
             Some(f) => format!("\"{}\"", f.name),
             None => "the top level".into(),
@@ -455,9 +467,42 @@ pub(crate) fn run_movepage_folder(s: &mut Session, params: &Value) -> cadcraft_e
     })
 }
 
+/// Where a new page goes (brief 054, design 054 §4.2): right after `after` in its folder, else
+/// last in `folder`. Its folder, its index in the page order, and (the page before it, its book
+/// position).
+///
+/// # Errors
+/// No such page to add after.
+pub fn new_page_at(
+    doc: &Document, book: &Book, folder: Option<FolderId>, after: Option<PageId>,
+) -> Result<(Option<FolderId>, usize, (Option<PageId>, usize)), String> {
+    Ok(match after {
+        Some(a) => {
+            let i = doc.page_order.iter().position(|x| *x == a).ok_or("No such page to add after.")?;
+            let f = book::folder_of(doc, a).filter(|f| doc.folders.contains_key(f));
+            (f, i + 1, (Some(a), book.position(a).unwrap_or(0) + 1))
+        }
+        None => (folder, doc.page_order.len(), new_page_place(doc, book, folder)),
+    })
+}
+
+/// The number a new page placed by [`new_page_at`] gets (design 054 §4.3): the first page of a
+/// folder with a start number takes it; every other page the next after the page before it.
+pub fn next_number(
+    doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&crate::outputs::Outputs>,
+) -> String {
+    let (before, position) = place;
+    let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
+    let start = folder.filter(|_| first).and_then(|f| crate::page_types::start_of(doc, f));
+    default_number_from(doc, book, before, position, outputs, start.as_deref())
+}
+
 /// The ops of `newpage {title, number?, folder?}`, the new page's ID and number.
-pub(crate) fn new_page_ops(
-    p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>,
+/// The page is placed right after page `after` in its folder when given (brief 054, design
+/// 054 §4.2: the page well's +), else last in `folder`. The first page of a folder with a start
+/// number takes it (design 054 §4.3).
+pub(crate) fn new_page_ops_at(
+    p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>, after: Option<PageId>,
 ) -> Result<(PageId, String, Vec<Op>), String> {
     if crate::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
@@ -466,22 +511,19 @@ pub(crate) fn new_page_ops(
     let outputs = p.outputs.as_ref();
     existing(doc, folder)?;
     let book = Book::of(doc);
+    let (folder, index, place) = new_page_at(doc, &book, folder, after)?;
     let number = match number.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(n) => {
             check_number(doc, &book, None, &n, outputs)?;
             n
         }
-        None => {
-            let (before, position) = new_page_place(doc, &book, folder);
-            default_number(doc, &book, before, position, outputs)
-        }
+        None => next_number(doc, &book, folder, place, outputs),
     };
     let mut page = Page::new(title);
     page.properties.insert(NUMBER_KEY.into(), number.clone());
     if let Some(f) = folder {
         page.properties.insert(FOLDER_KEY.into(), f.hex());
     }
-    let index = doc.page_order.len();
     let id: PageId = p.ids.fresh();
     Ok((id, number, vec![Op::AddPage { id, page, index }]))
 }
@@ -510,6 +552,8 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&cra
         "folder": folder.map(FolderId::hex),
         "folder_path": folder_path(doc, folder),
         "generated": prop(crate::generated::KEY),
+        // Brief 054: the page's type, resolved (design 054 §2.3).
+        "type": crate::styles::page::type_of(doc, page).text(),
         "sheets": crate::generated::sheets(doc, page, outputs),
         "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, outputs),
     })
@@ -656,6 +700,13 @@ pub const MAX_KEY_CHARS: usize = 40;
 pub const MAX_STEP: u32 = 1000;
 
 /// Whether `key` is a free property (not one of [`PROJECT_KEYS`], a revision or a folder key).
+/// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
+/// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters (design 054 §6.4).
+pub const COVER_NOTES: &str = "cover.notes";
+pub const MAX_COVER_NOTES: usize = 40;
+pub const MAX_COVER_NOTE_CHARS: usize = 400;
+pub const COVER_NOTES_TOO_LONG: &str = "The cover takes up to 40 notes of 400 characters.";
+
 fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     // Brief 052: the project's list of functions and locations changes through its commands.
     if crate::designations::is_list_property(key) {
@@ -686,6 +737,10 @@ fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     }
     // Brief 036: the registry's terminal defaults are project properties of their entry's key.
     if key.starts_with("terminal.") && crate::defaults::find(key).is_some() {
+        return Ok(());
+    }
+    // Brief 054 (FP4, design 054 §8.1a): the cover's notes and its table editor rows.
+    if key == COVER_NOTES || key == crate::front::WIRE_ROWS_KEY || key == crate::front::LEGEND_ROWS_KEY {
         return Ok(());
     }
     let n = key.chars().count();
@@ -895,6 +950,24 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                 check_free_key(doc, k)?;
                 let v = match v {
                     Value::Null => None,
+                    // Brief 054 (FP4, design 054 §6.4): the cover's notes, one per line, bounded.
+                    Value::String(t) if k == COVER_NOTES => {
+                        let lines: Vec<&str> = t.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+                        if lines.len() > MAX_COVER_NOTES || lines.iter().any(|l| l.chars().count() > MAX_COVER_NOTE_CHARS) {
+                            return Err(COVER_NOTES_TOO_LONG.into());
+                        }
+                        (!lines.is_empty()).then(|| {
+                            lines.join(
+                                "
+",
+                            )
+                        })
+                    }
+                    // Brief 054 (design 054 §8.1a): the cover's table editor rows.
+                    Value::String(t) if k == crate::front::WIRE_ROWS_KEY || k == crate::front::LEGEND_ROWS_KEY => {
+                        crate::front::check_overrides(t)?;
+                        (!t.trim().is_empty()).then(|| t.trim_end().to_string())
+                    }
                     // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
                     Value::String(t) => match crate::accessories::project_rule(doc, k, Some(t)) {
                         Some(r) => r?,

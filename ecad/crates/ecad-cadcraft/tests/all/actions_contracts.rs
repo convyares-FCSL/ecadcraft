@@ -140,6 +140,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "makesymbol",
     // Brief 049.
     "contcaption",
+    // Brief 054.
+    "folderprops",
+    "renumberpages",
+    "deletepage",
     // Brief 057.
     "rating",
     "ratingtable",

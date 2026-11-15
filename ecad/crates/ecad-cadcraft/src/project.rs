@@ -630,6 +630,8 @@ pub struct Project {
     frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
     /// An op of the update map was committed since the frame was drawn.
     frame_stale: bool,
+    /// Brief 054b: the wire categories in use, kept while the project has a cover.
+    cover_uses: Option<crate::front::Uses>,
     /// Brief 033 (design 033 §6): the drawing changed since the newest issued revision, as the
     /// title block shows it; worked out on first use and after every change.
     pub pending: bool,
@@ -1224,6 +1226,7 @@ impl Project {
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            cover_uses: None,
             pending: false,
             pending_known: false,
             frame_builds: 0,
@@ -1320,6 +1323,7 @@ impl Project {
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            cover_uses: None,
             pending: false,
             pending_known: false,
             frame_builds: 0,
@@ -1457,6 +1461,7 @@ impl Project {
             goto_ring: None,
             frame: None,
             frame_stale: false,
+            cover_uses: None,
             pending: false,
             pending_known: false,
             frame_builds: 0,
@@ -2251,15 +2256,52 @@ impl Project {
     /// ([`Project::update_outputs`]), and the cover, contents and revision pages
     /// ([`crate::generated::touches`] on the transaction's ops). The page list is read only when
     /// the ops can change such a page.
-    fn generated_touched(&self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
+    fn generated_touched(&mut self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
         use crate::generated::GenKind;
         let mut out = outputs;
         let doc = self.ledger.document();
         let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let kinds: Vec<GenKind> =
-            [GenKind::Cover, GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
+        let mut kinds: Vec<GenKind> = [GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
+        // Brief 054b (design 054 §10.2): the cover's map reads the document after the commit
+        // (a definition's or the cables' count crossing zero).
+        let has_cover = doc.page_order.iter().any(|p| crate::generated::kind_of(doc, *p) == Some(GenKind::Cover));
+        // Brief 054b (design 054 §10.1): the wire categories in use, kept while there is a cover;
+        // the legend redraws only when a category's count crosses zero.
+        let wires = match (&mut self.cover_uses, has_cover) {
+            (Some(u), true) => u.update(doc, ops),
+            (None, true) => {
+                self.cover_uses = Some(crate::front::Uses::build(doc));
+                true
+            }
+            (_, false) => {
+                self.cover_uses = None;
+                false
+            }
+        };
+        let doc = self.ledger.document();
+        let cover = has_cover && (wires || crate::front::touches(doc, ops));
+        if cover {
+            kinds.push(GenKind::Cover);
+        }
         if !kinds.is_empty() {
             out.extend(doc.page_order.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some_and(|k| kinds.contains(&k))));
+        }
+        if cover
+            && let Some((p, _, _)) = &self.frame
+            && crate::generated::kind_of(doc, *p) == Some(GenKind::Cover)
+        {
+            self.frame_stale = true;
+        }
+        // Brief 054b: the cover's Checks rows follow the cover (a cover added or removed too).
+        let cover_page = |op: &Op| match op {
+            Op::AddPage { page, .. } | Op::RemovePage { page, .. } => page.properties.get(crate::generated::KEY).map(String::as_str) == Some("cover"),
+            _ => false,
+        };
+        if cover || ops.iter().any(cover_page) {
+            let doc = self.ledger.document();
+            if let Some(c) = self.checks.as_mut() {
+                c.set_cover(doc);
+            }
         }
         out
     }

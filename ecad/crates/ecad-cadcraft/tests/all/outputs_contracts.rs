@@ -354,10 +354,12 @@ fn cover_contents_and_revision_list_show_the_project() {
             .collect()
     };
     let c = text(cover);
-    assert!(c.contains(&"Pump panel".to_string()) && c.contains(&"D-100".to_string()) && c.contains(&"Not issued".to_string()), "{c:?}");
-    assert!(c.contains(&"4 sheets".to_string()), "{c:?}");
+    // Brief 054b (design 054 §6): the cover draws blocks; its revisions are the issued rows, and it
+    // no longer counts sheets.
+    assert!(c.contains(&"Pump panel · Electrical documentation".to_string()) && c.contains(&"D-100".to_string()), "{c:?}");
+    assert!(c.contains(&"No revisions issued yet.".to_string()), "{c:?}");
     let t = text(contents);
-    assert!(t.contains(&"Cover".to_string()) && t.contains(&"Contents".to_string()) && t.contains(&"Revision list".to_string()), "{t:?}");
+    assert!(t.contains(&"Cover".to_string()) && t.contains(&"Contents".to_string()) && t.contains(&"Revision history".to_string()), "{t:?}");
     let r = text(revs);
     assert!(r.contains(&"No revisions issued yet.".to_string()), "{r:?}");
 }

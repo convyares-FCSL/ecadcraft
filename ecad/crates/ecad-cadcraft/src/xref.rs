@@ -439,10 +439,16 @@ pub fn terminal_points(doc: &Document, c: ComponentId, r: &Representation) -> Ve
 
 /// Device `c` as the reference rule sees it: O(its representations).
 pub fn device(doc: &Document, c: ComponentId) -> Device {
-    let head = crate::reps::head(doc, c);
+    // Brief 054 (design 054 §3.4): the first head on a page with checks and references on.
+    let head =
+        crate::reps::heads(doc, c).into_iter().find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::sheet::page_checks(doc, r.page)));
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Component(c)) {
+        // Brief 054 (design 054 §3.4): a symbol on a Plain page has no references.
+        if !ecad_model::sheet::page_checks(doc, r.page) {
+            continue;
+        }
         if raw_class(doc, r) != Class::Child {
             continue;
         }
@@ -471,6 +477,10 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
         && crate::connectors::is_connector(doc, c)
     {
         return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
+    }
+    // Brief 054 (design 054 §3.4): a symbol on a Plain page is in no device's group.
+    if matches!(r.subject, Subject::Component(_)) && !ecad_model::sheet::page_checks(doc, r.page) {
+        return None;
     }
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
@@ -1354,6 +1364,8 @@ impl RefIndex {
             Group::Device(c) => {
                 let mut head_seen = false;
                 doc.representations_of(Subject::Component(c))
+                    // Brief 054 (design 054 §3.4): no references to or from a Plain page.
+                    .filter(|(_, r)| ecad_model::sheet::page_checks(doc, r.page))
                     .filter_map(|(id, r)| match raw_class(doc, r) {
                         Class::Head if !head_seen => {
                             head_seen = true;
@@ -1639,9 +1651,17 @@ impl Scope {
                     self.devices.insert(*c);
                 }
                 Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
                 {
                     self.devices.extend(idx.devices_on(doc, *p));
+                }
+                // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
+                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                    if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
+                        for p in pages {
+                            self.devices.extend(idx.devices_on(doc, p));
+                        }
+                    }
                 }
                 Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
                     self.moved(doc, idx, ops, &mut moved);
@@ -1691,9 +1711,16 @@ impl Scope {
             // Brief 049: what continuation arrows the op could change.
             match op {
                 Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
+                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
                 {
                     self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                }
+                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                    if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
+                        for p in pages {
+                            self.names.extend(crate::continuations::names_on(doc, idx, p));
+                        }
+                    }
                 }
                 Op::SetProjectSettings { before, after }
                     if before.reference_style != after.reference_style || before.sheet != after.sheet || before.length_unit != after.length_unit =>
@@ -1807,6 +1834,12 @@ impl Watch {
     pub fn finish(mut self, doc: &Document, idx: &mut RefIndex, ops: &[Op]) -> Outcome {
         self.groups.extend(RefIndex::groups_named(doc, ops));
         idx.refresh(doc, &self.groups);
+        // Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
+        // groups of every device on it: the index is made again and every device page redrawn.
+        if crate::page_types::checks_changed(doc, ops) {
+            *idx = RefIndex::build(doc);
+            self.scope.wide = true;
+        }
         if ecad_model::ledger::verify_mode()
             && let Err(e) = idx.verify(doc)
         {
