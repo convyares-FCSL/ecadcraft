@@ -27,7 +27,7 @@ use ecad_model::{CableId, ComponentId, Document, ObjectRef, Op, PageId};
 
 use crate::accessories::Acc;
 use crate::defaults::strip_pages as entries;
-use crate::outputs::Outputs;
+use crate::outputs::kept::Outputs;
 use crate::strips::{PlanItem, StripData, Strips, TermRow};
 
 /// Gap between the tag box and the first column.

@@ -13,7 +13,7 @@ use ecad_model::{ComponentId, Document, PageId, Pt};
 use serde_json::{Value, json};
 
 use super::rack::RackRef;
-use super::{CardData, Plc, channels, state_word};
+use super::{CardData, channels, kept::Plc, state_word};
 use crate::outputs::{Cell, Table};
 
 /// Said by the release when the project has no card with channels (design 045 §8.3).

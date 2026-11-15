@@ -13,7 +13,7 @@ use crate::symbols::Starter;
 /// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
 /// (brief 045, review of #84, 3); measured with CADCraft's fonts
 /// ([`crate::devices::all_texts_measured`]).
-pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::plc::Plc>) -> Vec<PageText> {
+pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>) -> Vec<PageText> {
     crate::devices::all_texts_measured(doc, page, plc, &EngineMetrics)
 }
 

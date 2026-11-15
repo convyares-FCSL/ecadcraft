@@ -80,8 +80,9 @@ fn run_renumberpages(s: &mut Session, params: &Value) -> cadcraft_engine::Result
         }
         let doc = p.ledger.document();
         let outputs = p.outputs.as_ref();
-        let plan = renumber(doc, outputs, scope);
-        let overlaps: Vec<String> = overlaps(doc, outputs).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
+        let plan = renumber(doc, crate::draw::outputs::kept_of(outputs), scope);
+        let overlaps: Vec<String> =
+            overlaps(doc, crate::draw::outputs::kept_of(outputs)).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
         if plan.is_empty() {
             let line = "Page numbers already in order.".to_string();
             pg.echo(line.clone());

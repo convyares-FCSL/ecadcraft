@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 
 use crate::checks::{Check, Kind, Object};
 use crate::generated::{self, GenKind};
-use crate::outputs::Outputs;
+use crate::outputs::kept::Outputs;
 use crate::styles::page as ptype;
 
 /// Most characters of a page number.
@@ -116,7 +116,7 @@ type Runs = BTreeMap<Option<FolderId>, Vec<(PageId, usize)>>;
 fn runs(doc: &Document, book: &Book, outputs: Option<&Outputs>) -> Runs {
     let mut out: Runs = BTreeMap::new();
     for p in &book.order {
-        out.entry(run_of(doc, *p)).or_default().push((*p, generated::sheets(doc, *p, outputs).max(1)));
+        out.entry(run_of(doc, *p)).or_default().push((*p, generated::sheets_of(doc, *p, outputs).max(1)));
     }
     out
 }

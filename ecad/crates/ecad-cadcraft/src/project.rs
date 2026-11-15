@@ -941,7 +941,7 @@ pub fn project_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_kept(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
-    hidden_text: bool, plc: Option<&crate::plc::Plc>,
+    hidden_text: bool, plc: Option<&crate::plc::kept::Plc>,
 ) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
@@ -3065,7 +3065,7 @@ fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &
 /// `None` when that could be any page (op kinds other than item, representation, attachment and
 /// new-object ops). Reference texts on other pages are [`crate::references::Snapshot`]'s part.
 /// Brief 045: `plc`, the kept PLC model when built, gives a rack's cards without a walk.
-pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::Plc>) -> Option<BTreeSet<PageId>> {
+pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::kept::Plc>) -> Option<BTreeSet<PageId>> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {

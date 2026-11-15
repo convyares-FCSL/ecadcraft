@@ -28,7 +28,8 @@ use ecad_model::book::{self, Book};
 use ecad_model::sheet::unit_scale;
 use ecad_model::{Document, ObjectRef, Op, PageId, Pt};
 
-use crate::outputs::{Group, Outputs};
+use crate::outputs::Group;
+use crate::outputs::kept::Outputs;
 
 /// The page property that names a generated page's kind.
 pub const KEY: &str = "generated";
@@ -231,7 +232,7 @@ mod tests {
 }
 
 /// How many sheets `page` prints on.
-pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize {
+pub fn sheets_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize {
     let rows = match kind_of(doc, page) {
         None | Some(GenKind::Cover) => return 1,
         Some(GenKind::Contents) => doc.page_order.len(),
@@ -273,14 +274,14 @@ pub fn sheet_number(number: &str, i: usize) -> String {
 /// The numbers of every sheet of `page` (one for an ordinary page), its shown number first.
 pub fn sheet_numbers(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> Vec<String> {
     let n = book.number(doc, page);
-    (0..sheets(doc, page, outputs)).map(|i| sheet_number(&n, i)).collect()
+    (0..sheets_of(doc, page, outputs)).map(|i| sheet_number(&n, i)).collect()
 }
 
 /// The number column of `page` where pages are listed (contents): `400`, or `400–402` for a
 /// generated page of several sheets.
 pub fn number_range(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> String {
     let n = book.number(doc, page);
-    match sheets(doc, page, outputs) {
+    match sheets_of(doc, page, outputs) {
         0 | 1 => n,
         k => format!("{n}\u{2013}{}", sheet_number(&n, k - 1)),
     }
@@ -291,7 +292,7 @@ pub fn number_range(doc: &Document, book: &Book, page: PageId, outputs: Option<&
 pub fn continuation_of(doc: &Document, book: &Book, number: &str, outputs: Option<&Outputs>) -> Option<(PageId, usize)> {
     book.order.iter().filter(|p| kind_of(doc, **p).is_some()).find_map(|p| {
         let n = book.number(doc, *p);
-        (1..sheets(doc, *p, outputs)).find(|i| sheet_number(&n, *i).eq_ignore_ascii_case(number.trim())).map(|i| (*p, i))
+        (1..sheets_of(doc, *p, outputs)).find(|i| sheet_number(&n, *i).eq_ignore_ascii_case(number.trim())).map(|i| (*p, i))
     })
 }
 
@@ -314,7 +315,7 @@ pub fn continuation_checks(doc: &Document, outputs: Option<&Outputs>) -> Vec<cra
     }
     let mut out = Vec::new();
     for p in book.order.iter().filter(|p| kind_of(doc, **p).is_some()) {
-        let n = sheets(doc, *p, outputs);
+        let n = sheets_of(doc, *p, outputs);
         if n < 2 {
             continue;
         }
@@ -339,9 +340,9 @@ pub fn continuation_checks(doc: &Document, outputs: Option<&Outputs>) -> Vec<cra
 }
 
 /// How many sheets the whole book has (Total).
-pub fn book_sheets(doc: &Document, outputs: Option<&Outputs>) -> usize {
+pub fn book_sheets_of(doc: &Document, outputs: Option<&Outputs>) -> usize {
     let extra: usize =
-        doc.pages.iter().filter(|(_, p)| p.properties.contains_key(KEY)).map(|(id, _)| sheets(doc, *id, outputs).saturating_sub(1)).sum();
+        doc.pages.iter().filter(|(_, p)| p.properties.contains_key(KEY)).map(|(id, _)| sheets_of(doc, *id, outputs).saturating_sub(1)).sum();
     doc.page_order.len() + extra
 }
 
@@ -752,11 +753,11 @@ impl Laid {
 }
 
 /// The sheet windows of `page` in model coordinates: (bottom-left, top-right) per sheet.
-pub fn sheet_windows(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<(Pt, Pt)> {
+pub fn sheet_windows_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<(Pt, Pt)> {
     let spec = ecad_model::sheet::sheet_of(doc, page);
     let k = unit_scale(doc.settings.length_unit);
     let (w, h) = (f64::from(spec.width), f64::from(spec.height));
-    (0..sheets(doc, page, outputs))
+    (0..sheets_of(doc, page, outputs))
         .map(|i| {
             let x0 = (w + SHEET_GAP) * i as f64;
             (Pt::new(x0 * k, 0.0), Pt::new((x0 + w) * k, h * k))
@@ -776,4 +777,4 @@ pub fn flagged(doc: &Document, pages: &BTreeSet<PageId>, outputs: Option<&Output
         .sum()
 }
 
-pub use crate::draw::generated::{Draw, input_of, missing_mark, page_parts, parts_of, parts_of_pending};
+pub use crate::draw::generated::{Draw, book_sheets, input_of, missing_mark, page_parts, parts_of, parts_of_pending, sheet_windows, sheets};

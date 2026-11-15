@@ -434,7 +434,7 @@ fn box_section(doc: &Document, b: ComponentId) -> Section {
 }
 
 fn device_section(
-    doc: &Document, plc: Option<&crate::plc::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
+    doc: &Document, plc: Option<&crate::plc::kept::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
 ) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();

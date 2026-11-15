@@ -8,6 +8,7 @@ use ecad_model::sheet::unit_scale;
 use ecad_model::{Document, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
+use crate::draw::outputs::kept_of;
 use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextLook};
 use crate::generated::*;
 use crate::outputs::Outputs;
@@ -120,7 +121,7 @@ fn content(
         return d.out;
     }
     // The table and its sheets are laid out once per page, not once per sheet (brief 053).
-    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, outputs));
+    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, kept_of(outputs)));
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
@@ -285,4 +286,20 @@ pub fn parts_of_pending(doc: &Document, page: PageId, outputs: Option<&Outputs>,
     let (input, total) = input_of(doc, page, outputs);
     let input = input.with_pending(doc, pending);
     page_parts(doc, page, &input, outputs, total)
+}
+
+/// How many sheets `page` prints on: [`crate::generated::sheets_of`] with the project's kept
+/// report models.
+pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize {
+    sheets_of(doc, page, kept_of(outputs))
+}
+
+/// How many sheets the whole book has (Total): [`crate::generated::book_sheets_of`].
+pub fn book_sheets(doc: &Document, outputs: Option<&Outputs>) -> usize {
+    book_sheets_of(doc, kept_of(outputs))
+}
+
+/// The sheet windows of `page` in model coordinates: [`crate::generated::sheet_windows_of`].
+pub fn sheet_windows(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<(Pt, Pt)> {
+    sheet_windows_of(doc, page, kept_of(outputs))
 }

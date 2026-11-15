@@ -230,7 +230,7 @@ pub fn shows_output(ty: CardType) -> bool {
 /// Card `c`'s automatic address of channel `i` (input; and output for IO-Link), worked out from the
 /// document (texts, commands).
 pub fn of_channel(
-    doc: &Document, c: ComponentId, i: u32, kept: Option<&super::Plc>, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, Block>>,
+    doc: &Document, c: ComponentId, i: u32, kept: Option<&super::kept::Plc>, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, Block>>,
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };
     let Some(ty) = super::card_type_of(doc, c) else { return (None, None) };

@@ -15,7 +15,7 @@ use ecad_model::{ComponentId, Document, PageId, Subject};
 use serde_json::{Value, json};
 
 use super::rack::{CardType, RackRef};
-use super::{CardData, Plc, PlcFix, RackData};
+use super::{CardData, PlcFix, RackData, kept::Plc};
 use crate::checks::{Fix, Object};
 
 /// Most tiles one rack shows (the free tile included): a rack is at most [`super::rack::MAX_SLOT`]

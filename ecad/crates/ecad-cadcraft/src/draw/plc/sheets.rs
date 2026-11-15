@@ -9,7 +9,7 @@ use crate::frame::{LABEL_ACI, THIN_WEIGHT, TextLook};
 use crate::generated::{Draw, ROW_MM};
 use crate::plc::overview::{self, Square, Tile, TileKind};
 use crate::plc::sheets::*;
-use crate::plc::{Plc, iolist};
+use crate::plc::{iolist, kept::Plc};
 use crate::text_style::{Look, TextKind};
 
 /// The cells of one I/O row, in [`IO_COLUMNS`] order.

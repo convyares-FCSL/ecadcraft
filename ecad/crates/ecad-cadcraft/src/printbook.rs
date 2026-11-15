@@ -95,7 +95,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&Outputs>) ->
                     keep.insert(i);
                     continue;
                 }
-                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, outputs)
+                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, crate::draw::outputs::kept_of(outputs))
                     && let Some(at) = b.position(owner).and_then(|n| n.checked_sub(1))
                 {
                     keep.insert(at);
@@ -357,7 +357,7 @@ pub fn print(
     done.notes.extend(pending_note(doc, o.pending));
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
-    done.flagged = crate::generated::flagged(doc, &generated, outputs);
+    done.flagged = crate::generated::flagged(doc, &generated, crate::draw::outputs::kept_of(outputs));
     let mut noted = BTreeSet::new();
     for s in sheets.iter().filter(|s| !s.exact) {
         if noted.insert(s.page) {
@@ -435,7 +435,7 @@ pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usiz
     let Ok(r) = resolve_with(doc, scope, p.outputs.as_ref()) else { return (0, Vec::new(), 0) };
     let sheets = r.pages.iter().map(|pg| crate::generated::sheets(doc, *pg, p.outputs.as_ref())).sum();
     let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| crate::generated::kind_of(doc, *pg).is_some()).collect();
-    (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.outputs.as_ref()))
+    (sheets, r.unknown, crate::generated::flagged(doc, &generated, crate::draw::outputs::kept_of(p.outputs.as_ref())))
 }
 
 /// Install CADCraft's file hooks (reading, writing and the PDF plotter) for an ECAD app, as

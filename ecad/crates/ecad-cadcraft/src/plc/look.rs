@@ -23,7 +23,7 @@ use ecad_model::{ComponentId, Document, PageId, Pt, RepresentationId, Subject};
 use super::rack::{self, CardType};
 use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
 use crate::text_style::fonts::{self, TextMetrics};
-use crate::text_style::{TextKind, text_style, text_width};
+use crate::text_style::{TextKind, text_style};
 use crate::xref::{HAlign, Part, Shape, VAlign};
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
@@ -456,7 +456,9 @@ pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<c
 /// `plc-text-wide` rows of card `c` (design 051 §2.5): one per run whose addresses are wider than
 /// its cells, or whose header or mark band texts are deeper than the band, at the project's text
 /// styles. Nothing is shrunk: the style is the user's.
-pub fn wide_checks(doc: &Document, c: ComponentId, tag: &str, address: impl Fn(u32) -> Option<String>, out: &mut Vec<crate::checks::Check>) {
+pub fn wide_checks(
+    doc: &Document, c: ComponentId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextMetrics, out: &mut Vec<crate::checks::Check>,
+) {
     let pin = text_style(doc, TextKind::PointLabel).height;
     let addr_h = text_style(doc, TextKind::Address).height;
     let deep = 1.0 + pin + 1.0 + pin > HEADER_BAND || 1.0 + addr_h + 2.0 + 3.0 > MARK_BAND;
@@ -469,7 +471,7 @@ pub fn wide_checks(doc: &Document, c: ComponentId, tag: &str, address: impl Fn(u
             } else {
                 continue;
             };
-            let wide = (first..=last).take(256).any(|i| address(i).is_some_and(|a| text_width(doc, TextKind::Address, &a) > cell_w - 2.0));
+            let wide = (first..=last).take(256).any(|i| address(i).is_some_and(|a| fonts::text_width(doc, TextKind::Address, &a, m) > cell_w - 2.0));
             if !(wide || deep) {
                 continue;
             }

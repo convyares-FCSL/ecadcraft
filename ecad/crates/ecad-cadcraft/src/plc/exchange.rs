@@ -22,7 +22,7 @@ use ecad_model::{ComponentId, Document, ObjectRef, Op};
 
 use super::channels::ch_key;
 use super::tagtable::{self, Caps, Read, TagFormat, TagRow};
-use super::{CardData, Plc, iolist, signals};
+use super::{CardData, iolist, kept::Plc, signals};
 
 /// The transaction label of an import.
 pub const IMPORT_LABEL: &str = "Import an I/O list";

@@ -150,7 +150,7 @@ pub fn check_number(
         }
     }
     // Brief 033 (design 033 §5.3): a generated page's continuation numbers are taken too.
-    if let Some((owner, i)) = crate::generated::continuation_of(doc, book, number, outputs)
+    if let Some((owner, i)) = crate::generated::continuation_of(doc, book, number, crate::draw::outputs::kept_of(outputs))
         && Some(owner) != page
     {
         return Err(crate::generated::continuation_taken(doc, number, owner, i));
@@ -172,8 +172,12 @@ pub fn default_number_from(
     doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&crate::outputs::Outputs>, start: Option<&str>,
 ) -> String {
     // Brief 033: every sheet's number, continuation sheets included, is in use.
-    let used: BTreeSet<String> =
-        book.order.iter().flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
+    let used: BTreeSet<String> = book
+        .order
+        .iter()
+        .flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, crate::draw::outputs::kept_of(outputs)))
+        .map(|n| n.to_ascii_lowercase())
+        .collect();
     let step = u64::from(doc.settings.page_number_step.max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
@@ -539,7 +543,7 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&cra
         // Brief 054: the page's type, resolved (design 054 §2.3).
         "type": crate::styles::page::type_of(doc, page).text(),
         "sheets": crate::generated::sheets(doc, page, outputs),
-        "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, outputs),
+        "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, crate::draw::outputs::kept_of(outputs)),
     })
 }
 

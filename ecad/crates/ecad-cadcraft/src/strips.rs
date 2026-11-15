@@ -47,7 +47,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::derive::Place;
 use ecad_model::{CableId, CableMember, ComponentId, ConductorId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId};
 
-use crate::outputs::{Outputs, PageCx};
+use crate::outputs::PageCx;
+use crate::outputs::kept::Outputs;
 use crate::symbols::Kind;
 
 /// The strip property that offers positions (FP1).

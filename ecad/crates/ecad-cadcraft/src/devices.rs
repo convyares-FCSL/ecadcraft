@@ -1037,7 +1037,7 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// for that representation. PLC addresses are read from the kept model `plc` when there is one
 /// (brief 045, review of #84, 3), and `m` measures the texts (the C wrappers
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
-pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::Plc>, m: &dyn TextMetrics) -> Vec<PageText> {
+pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn TextMetrics) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
     use crate::text_style::fonts::width_in;
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};

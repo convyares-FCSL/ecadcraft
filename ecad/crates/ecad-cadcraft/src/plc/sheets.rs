@@ -13,7 +13,7 @@
 use ecad_model::{Document, PageId};
 
 use super::overview::{self, Square, Tile, TileKind};
-use super::{CardData, Plc, iolist};
+use super::{CardData, iolist, kept::Plc};
 use crate::generated::ROWS_PER_SHEET;
 
 /// A sheet's drawing area in paper millimetres, and the A3 column scale.
