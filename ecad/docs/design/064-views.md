@@ -1,6 +1,7 @@
 # Design 064: one update pipeline for derived views (R9)
 
-Status: Draft for the owner's approval (designer, 2026-11-15). Brief: `docs/briefs/064-views.md`.
+Status: Approved (owner, 2026-11-15: all ten decisions in §14 as recommended). §2's crate
+targets will be renamed to the crate map of lane 065 once that map is approved. Brief: `docs/briefs/064-views.md`.
 Source: finding 1 and row R9 of the 2026-11 code review (not committed). This is an internal design
 with no new controls. Its user-facing promise: nothing a person sees changes, except that views
 can no longer go stale after an edit that a hand-written list forgot.
@@ -616,6 +617,9 @@ away here. After 064:
    needed: `Area::of` classifies the string once per effect.
 
 ## 14. Owner decisions
+
+**Approved (owner, 2026-11-15): all ten as recommended.** That includes D1–D3 closed in this
+lane, T1 and T2 fixed in step 11, and the bench targets in decision 10.
 
 1. **Where the trait lives.** `Effect` and `DerivedView` both go in ecad-model (`effect.rs`,
    `view.rs`), so neither moves at the crate split, and `Views` goes in ecad-cadcraft

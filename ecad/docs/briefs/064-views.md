@@ -1,7 +1,7 @@
 # Brief 064: One update pipeline for derived views (R9)
 
-Status: Draft (designer, 2026-11-15). Not to be started before the owner approves it and design
-064's decisions (§14).
+Status: Approved (owner, 2026-11-15: design 064 §14, all ten decisions as recommended). The
+crate targets in step 2 and rule 3 will be renamed to lane 065's crate map once it is approved.
 Branch: `feature/views`, from `origin/dev` after the check-kinds table (R7, lane 060) and the types
 lane (`StyleCatalogue`, `keys.rs`) have merged.
 Designer: **yes** (`docs/design/064-views.md`). Tester: **required** (commit path, `translate.rs`'s
@@ -126,6 +126,8 @@ Ops, the format, commands, anything a person sees. Turning trial lists into `Der
 Parallelism inside Checks or reports. Tag high-water and designation uses. Narrowing
 `Document`'s fields (R10). 058's layouts, which build on this afterwards (design §11).
 
-## Open (owner)
+## Owner decisions
 
-Design 064 §14, decisions 1–10.
+Design 064 §14, decisions 1–10: approved as recommended (owner, 2026-11-15). That covers D1–D3
+fixed in this lane, T1 and T2 in step 11, and the bench targets: no worse than `dev` +10% on the
+edit rows, and pipeline overhead under 0.2 ms on medium.
