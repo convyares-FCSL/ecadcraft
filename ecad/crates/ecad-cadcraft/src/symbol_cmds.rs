@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use crate::commands::{err, opt_id, plain_style, with_project};
 use crate::defaults::symbols::Field;
 use crate::project::{Mapped, Project};
+pub use crate::symbols::POINT_GRID_MM;
 use crate::symbols::{self, Join, PROJECT_SYMBOLS, Version};
 
 /// Most shapes a symbol holds (design 048 §3.5).
@@ -46,9 +47,6 @@ const MAX_VERTICES: usize = 10_000;
 const MAX_POINT_TEXT: usize = 32;
 /// Positions closer than this are one spot.
 const TOL: f64 = 1e-6;
-
-/// The point grid of the builder, the default of `symbol.point_grid` (design 048 §7.1, Q6).
-pub const POINT_GRID_MM: f64 = 5.0;
 
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {

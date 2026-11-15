@@ -1316,7 +1316,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
                 k.members
                     .iter()
                     .find(|m| m.conductor == c)
-                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS)))
+                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),

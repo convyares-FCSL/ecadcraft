@@ -242,7 +242,7 @@ impl Block {
 pub fn colour_words(code: &str) -> String {
     const WORDS: [&str; 14] =
         ["black", "brown", "red", "orange", "yellow", "green", "blue", "violet", "grey", "white", "pink", "gold", "turquoise", "silver"];
-    match crate::look::colour_code(code) {
+    match crate::words::colour_code(code) {
         Some((a, b)) => {
             let w = |i: usize| WORDS.get(i).copied().unwrap_or_default();
             match b {
@@ -665,7 +665,7 @@ fn title(d: &mut Draw, r: R, text: &str, look: TextLook, s: f64) -> f64 {
 /// A filled swatch (the insulation colour) with a thin ink outline; a two-colour code as halves.
 fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, code: &str) {
     let rgb = |i: usize| {
-        crate::look::CODE_COLOURS.get(i).map(|(_, _, paper, _)| {
+        crate::words::CODE_COLOURS.get(i).map(|(_, _, paper, _)| {
             let c = crate::look::rgb(*paper);
             cadcraft_engine::doc::color::nearest_aci(c)
         })
@@ -677,7 +677,7 @@ fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, code: &str) {
         let kind = EntityKind::Solid(Solid { corners: [v(a.x, a.y), v(b.x, a.y), v(a.x, b.y), v(b.x, b.y)] });
         d.out.push(Part { kind, weight: None, aci, layer: LAYER });
     };
-    match crate::look::colour_code(code) {
+    match crate::words::colour_code(code) {
         Some((a, Some(b))) => {
             fill(d, at.0, at.0 + w / 2.0, rgb(a));
             fill(d, at.0 + w / 2.0, at.0 + w, rgb(b));

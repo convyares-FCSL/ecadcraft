@@ -11,7 +11,8 @@
 //!
 //! This module reads and plans; the commands commit (`crate::sheet_cmds`).
 
-use ecad_model::{Document, ObjectRef, Op};
+use ecad_model::book::MAX_FOLDER_DEPTH;
+use ecad_model::{Document, FolderId, ObjectRef, Op};
 
 /// The editable fields of a revision, in table order.
 pub const FIELDS: [&str; 6] = ["rev", "date", "description", "drawn", "checked", "approved"];
@@ -434,17 +435,27 @@ pub fn issue_in(ops: &[Op]) -> Option<(String, u32)> {
     })
 }
 
-/// Today's date `YYYY-MM-DD` (UTC; the trial fills the local date in the dialog), or `None`
-/// where there is no clock.
-pub fn today() -> Option<String> {
-    date_of_ms(crate::project::now_ms()?)
-}
-
 /// The UTC date `YYYY-MM-DD` of `ms` milliseconds since 1970-01-01, through `chrono` (house rule);
 /// `None` beyond what it represents.
 pub fn date_of_ms(ms: u64) -> Option<String> {
     let t = chrono::DateTime::from_timestamp_millis(i64::try_from(ms).ok()?)?;
     Some(t.format("%Y-%m-%d").to_string())
+}
+
+/// `Schematic layouts / Spare circuits` (empty at the top level).
+pub fn folder_path(doc: &Document, folder: Option<FolderId>) -> String {
+    let mut names = Vec::new();
+    let mut at = folder;
+    while let Some(f) = at {
+        let Some(x) = doc.folders.get(&f) else { break };
+        names.push(x.name.clone());
+        if names.len() > MAX_FOLDER_DEPTH {
+            break;
+        }
+        at = x.parent;
+    }
+    names.reverse();
+    names.join(" / ")
 }
 
 #[cfg(test)]

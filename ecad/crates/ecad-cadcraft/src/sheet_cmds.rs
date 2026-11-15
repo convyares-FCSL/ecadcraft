@@ -19,6 +19,7 @@ use serde_json::{Map, Value, json};
 use crate::commands::{err, id, opt_id, with_any_page, with_project};
 use crate::frame::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
 use crate::project::Project;
+pub use crate::revisions::folder_path;
 use crate::revisions::{self, FIELDS};
 
 /// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
@@ -262,22 +263,6 @@ fn height(doc: &Document, folder: FolderId) -> usize {
         todo.extend(doc.subfolders(f).into_iter().map(|c| (c, h + 1)));
     }
     best
-}
-
-/// `Schematic layouts / Spare circuits` (empty at the top level).
-pub fn folder_path(doc: &Document, folder: Option<FolderId>) -> String {
-    let mut names = Vec::new();
-    let mut at = folder;
-    while let Some(f) = at {
-        let Some(x) = doc.folders.get(&f) else { break };
-        names.push(x.name.clone());
-        if names.len() > MAX_FOLDER_DEPTH {
-            break;
-        }
-        at = x.parent;
-    }
-    names.reverse();
-    names.join(" / ")
 }
 
 fn opt_folder(p: &Value, key: &str) -> Result<Option<FolderId>, String> {
@@ -1214,7 +1199,7 @@ pub fn plan_issue(p: &Project, params: &Value) -> Result<IssuePlan, String> {
     }
     let mut date = row.get("date").to_string();
     if date.is_empty() {
-        date = revisions::today().unwrap_or_default();
+        date = today().unwrap_or_default();
         if !date.is_empty() {
             ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
         }
@@ -1294,4 +1279,10 @@ fn run_undoissue(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Va
         }
         Ok(json!({"rev": rev, "undone": true}))
     })
+}
+
+/// Today's date `YYYY-MM-DD` (UTC; the trial fills the local date in the dialog), or `None`
+/// where there is no clock.
+pub fn today() -> Option<String> {
+    revisions::date_of_ms(crate::project::now_ms()?)
 }

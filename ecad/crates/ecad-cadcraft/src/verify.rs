@@ -166,7 +166,7 @@ pub fn verify_page_pending(
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
     // Brief 040: a two-colour wire's dashes, derived from its route like the labels.
-    let budget = crate::look::dash_budget(doc, page);
+    let budget = crate::words::dash_budget(doc, page);
     for r in crate::look::coloured_routes(doc, page, Some(map), crate::look::projection_sheet()) {
         if !budget.dashed.contains(&r.rep) {
             continue;

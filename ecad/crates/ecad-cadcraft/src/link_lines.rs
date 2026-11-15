@@ -71,7 +71,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
         let here: BTreeMap<(String, u32), Pt> = crate::strips::drawn_points(doc, c)
             .into_iter()
             .filter(|(t, _, p, _)| *p == page && crate::terminal_types::level_of(doc, *t).1 != Some('o'))
-            .map(|(t, _, _, at)| ((crate::interact::position_label(doc, t), crate::terminal_types::level_of(doc, t).0), at))
+            .map(|(t, _, _, at)| ((crate::terminal_types::position_label(doc, t), crate::terminal_types::level_of(doc, t).0), at))
             .collect();
         // Cross-level links (design 036 §5.4): a dog-leg between the levels shown, else stubs.
         for (n, p) in &found {

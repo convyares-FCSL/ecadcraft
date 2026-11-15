@@ -420,7 +420,7 @@ pub(crate) fn run_place_channel(
         let cell = plan_cell(&mut p.ids, page, style, def, starter, card, &j, pl, &mut ops)?;
         let mut wire = None;
         if let (Some((_, on)), Some((_, t0, _, _))) = (landing, cell.terminals.first()) {
-            let land = crate::terminal_cmds::plan_land(doc, &mut p.ids, page, on, *t0)?;
+            let land = crate::connectors::plan_land(doc, &mut p.ids, page, on, *t0)?;
             wire = Some(land.conductor);
             ops.extend(land.ops);
         }
@@ -703,9 +703,9 @@ pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::sla
 /// kept, as before.
 ///
 /// # Errors
-/// As [`crate::terminal_cmds::plan_land`].
+/// As [`crate::connectors::plan_land`].
 fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, String> {
-    let land = crate::terminal_cmds::plan_land(doc, ids, page, on, t)?;
+    let land = crate::connectors::plan_land(doc, ids, page, on, t)?;
     let Some(cond) = doc.conductors.get(&land.conductor) else { return Ok(land.ops) };
     if !doc.cables_of(land.conductor).is_empty() {
         return Ok(land.ops);

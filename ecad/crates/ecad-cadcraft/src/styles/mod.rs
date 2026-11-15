@@ -499,29 +499,16 @@ pub fn with_fields(before: Option<&StyleRecord>, name: Option<&str>, fields: &[(
 /// (`RD`, `BLU`), or `#rrggbb`.
 pub fn is_colour(s: &str) -> bool {
     let t = s.trim();
-    t.eq_ignore_ascii_case("none") || hex_rgb(t).is_some() || crate::look::colour_code(t).is_some_and(|(_, two)| two.is_none())
+    t.eq_ignore_ascii_case("none") || hex_rgb(t).is_some() || crate::words::colour_code(t).is_some_and(|(_, two)| two.is_none())
 }
 
-fn hex_rgb(t: &str) -> Option<(u8, u8, u8)> {
+pub fn hex_rgb(t: &str) -> Option<(u8, u8, u8)> {
     let h = t.strip_prefix('#')?;
     if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let n = u32::from_str_radix(h, 16).ok()?;
     Some(((n >> 16) as u8, (n >> 8) as u8, n as u8))
-}
-
-/// A colour field's value as drawn on `sheet`: `None` for `none` (ink) and anything unknown.
-pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
-    let t = value.trim();
-    if t.eq_ignore_ascii_case("none") {
-        return None;
-    }
-    if let Some((r, g, b)) = hex_rgb(t) {
-        return Some(cadcraft_engine::doc::color::Rgb(r, g, b));
-    }
-    let w = crate::look::wire_colours(t, sheet)?;
-    Some(crate::look::rgb(w.solid))
 }
 
 /// A text value of a resolved field (`""` for a number).

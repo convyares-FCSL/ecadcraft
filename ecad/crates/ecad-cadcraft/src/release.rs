@@ -1160,7 +1160,7 @@ fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String
 
 /// The tags of the cables shown fan (the manifest's `cable_views`).
 fn fan_tags(doc: &Document, fan: &BTreeSet<ecad_model::CableId>) -> Vec<String> {
-    fan.iter().filter(|k| doc.cables.contains_key(k)).map(|k| crate::views::cable_title(doc, *k)).collect()
+    fan.iter().filter(|k| doc.cables.contains_key(k)).map(|k| crate::cables::cable_title(doc, *k)).collect()
 }
 
 /// The words of a finished release.

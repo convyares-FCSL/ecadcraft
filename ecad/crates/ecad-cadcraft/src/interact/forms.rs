@@ -924,8 +924,8 @@ impl CableSlash {
             // Brief 059 (design 059 §5.6): onto a cable not drawn, the cores the wires get, in
             // order, so the order is seen before the commit; more wires than free cores is refused.
             let (text, refused) = match cable {
-                Some(k) if !refused && doc.cables.contains_key(&k) && !crate::cable_cmds::is_drawn(doc, k) => {
-                    let tag = crate::views::cable_title(doc, k);
+                Some(k) if !refused && doc.cables.contains_key(&k) && !crate::cables::is_drawn(doc, k) => {
+                    let tag = crate::cables::cable_title(doc, k);
                     match crate::cable_cmds::assign_cores(doc, k, n) {
                         Ok(cores) => {
                             let labels: Vec<String> = cores.into_iter().flatten().collect();
@@ -934,7 +934,7 @@ impl CableSlash {
                         Err(e) => (format!("-> refused: {e}"), true),
                     }
                 }
-                Some(k) if !refused && doc.cables.contains_key(&k) => (format!("{text}, continuing {}", crate::views::cable_title(doc, k)), false),
+                Some(k) if !refused && doc.cables.contains_key(&k) => (format!("{text}, continuing {}", crate::cables::cable_title(doc, k)), false),
                 _ => (text, refused),
             };
             let (mut join, mut block) = (Vec::new(), Vec::new());
@@ -985,7 +985,7 @@ impl CableSlash {
             let doc = p.ledger.document();
             let k = crate::cable_cmds::cable_named(doc, text).map_err(|e| e.to_string())?;
             if doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == page && r.role == "slash") {
-                return Err(format!("{} already has a slash on this page.", crate::views::cable_title(doc, k)));
+                return Err(format!("{} already has a slash on this page.", crate::cables::cable_title(doc, k)));
             }
             Ok(k)
         })
@@ -996,10 +996,10 @@ impl CableSlash {
     fn picked_words(s: &Session, k: CableId) -> String {
         read(s, |p, _| {
             let doc = p.ledger.document();
-            let tag = crate::views::cable_title(doc, k);
+            let tag = crate::cables::cable_title(doc, k);
             Ok(match crate::strips::cable_cores(doc, k).and_then(|c| c.offer) {
-                Some(o) if !crate::cable_cmds::is_drawn(doc, k) => format!("Slash the wires of {tag} ({} cores).", o.len()),
-                _ if !crate::cable_cmds::is_drawn(doc, k) => format!("Slash the wires of {tag}."),
+                Some(o) if !crate::cables::is_drawn(doc, k) => format!("Slash the wires of {tag} ({} cores).", o.len()),
+                _ if !crate::cables::is_drawn(doc, k) => format!("Slash the wires of {tag}."),
                 _ => format!("Slash the wires that continue {tag} here."),
             })
         })
@@ -1174,7 +1174,7 @@ impl CableView {
                     && seen.insert(k)
                 {
                     let one_wire = !crate::views::offers_fan(doc, k);
-                    out.push((k, p.view_of(k), one_wire, crate::views::cable_title(doc, k)));
+                    out.push((k, p.view_of(k), one_wire, crate::cables::cable_title(doc, k)));
                 }
             }
             Ok(out)
@@ -1226,7 +1226,7 @@ impl CableView {
                     let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(NOT_A_CABLE)?;
                     let doc = proj.ledger.document();
                     let k = cable_named(doc, m)?;
-                    Ok((k, proj.view_of(k), !crate::views::offers_fan(doc, k), crate::views::cable_title(doc, k)))
+                    Ok((k, proj.view_of(k), !crate::views::offers_fan(doc, k), crate::cables::cable_title(doc, k)))
                 })
                 .map_err(other)?;
                 if current == View::Traditional && one_wire {
@@ -1319,7 +1319,7 @@ impl CableCore {
                 };
                 let cable = read(s, |p, _| {
                     let doc = p.ledger.document();
-                    Ok(doc.cables_of(w).first().map(|k| crate::views::cable_title(doc, *k)).unwrap_or_default())
+                    Ok(doc.cables_of(w).first().map(|k| crate::cables::cable_title(doc, *k)).unwrap_or_default())
                 })
                 .unwrap_or_default();
                 match r.get("core").and_then(Value::as_str) {
@@ -1415,7 +1415,7 @@ impl CableFan {
 
     fn commit_join(s: &mut Session, cable: CableId, end: &str, at: Value) -> R<Step> {
         let r = commit(s, "cablefan", &json!({"cable": cable.hex(), "end": end, "at": at}))?;
-        let title = read(s, |p, _| Ok(crate::views::cable_title(p.ledger.document(), cable))).unwrap_or_default();
+        let title = read(s, |p, _| Ok(crate::cables::cable_title(p.ledger.document(), cable))).unwrap_or_default();
         match r.get("at").and_then(Value::as_array) {
             Some(a) => s.echo(format!(
                 "Cable {title} now joins end {end} at {}, {}.",

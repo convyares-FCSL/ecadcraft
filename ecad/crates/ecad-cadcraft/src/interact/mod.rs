@@ -48,6 +48,8 @@ use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Form, ItemKin
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
+use crate::terminal_types::short;
+pub use crate::terminal_types::{position_label, terminal_name};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 
@@ -211,28 +213,6 @@ pub(crate) fn terminal_for(s: &Session, p: Vec2) -> Option<(TerminalId, Pt, Stri
     })
     .ok()
     .flatten()
-}
-
-fn short(hex: &str) -> &str {
-    hex.get(..8).unwrap_or(hex)
-}
-
-/// A terminal's name: its label, or `terminal <first 8 hex digits>`.
-pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
-    // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
-    match crate::terminal_types::shown_label(doc, t) {
-        Some(l) => l,
-        None => format!("connection point {}", short(&t.hex())),
-    }
-}
-
-/// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
-/// accessories and renumbering name. [`terminal_name`] is what a person sees.
-pub fn position_label(doc: &Document, t: TerminalId) -> String {
-    match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
-        Some(l) => l,
-        None => format!("connection point {}", short(&t.hex())),
-    }
 }
 
 /// The default name of the next terminal of component `c`: the smallest positive integer not
@@ -665,7 +645,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: ConductorId) -> Option<String> {
     let core = doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.as_deref()?;
-    (!core.trim().is_empty()).then(|| crate::look::shorten(core, crate::look::MAX_CORE_CHARS))
+    (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
 }
 
 /// A cable slash (design 004 §7.3, design 009 §8): its tag, ID, designation, type and reference
@@ -675,7 +655,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let mut lines = vec![format!("Cable {}", cable.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", k.hex())];
     for (key, label) in [("designation", "Designation"), ("type", "Type")] {
         if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
-            lines.push(format!("{label}: {}", crate::look::shorten(v, 64)));
+            lines.push(format!("{label}: {}", crate::words::shorten(v, 64)));
         }
     }
     let refs: Vec<String> = doc

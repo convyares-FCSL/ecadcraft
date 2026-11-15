@@ -1694,6 +1694,9 @@ pub fn bounds(d: &Definition) -> (Pt, Pt) {
     (lo, hi)
 }
 
+/// The point grid of the builder, the default of `symbol.point_grid` (design 048 §7.1, Q6).
+pub const POINT_GRID_MM: f64 = 5.0;
+
 #[cfg(test)]
 mod tests {
     use super::*;

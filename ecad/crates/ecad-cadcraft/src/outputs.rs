@@ -554,7 +554,7 @@ impl Scope {
                     if let Some((_, k, true)) = crate::designations::parse_list_property(key) {
                         self.renamed.insert(k.to_string());
                         // Brief 059: the cables planning an end there show its new code.
-                        self.cables.extend(crate::cable_cmds::planning(doc, k));
+                        self.cables.extend(crate::cables::planning(doc, k));
                     }
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {
@@ -1432,7 +1432,7 @@ impl Outputs {
                 EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
             }
             _ => {
-                let label = crate::interact::terminal_name(doc, t);
+                let label = crate::terminal_types::terminal_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
                 // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
@@ -1647,13 +1647,10 @@ impl Outputs {
                 tails,
                 from_devices,
                 to_devices,
-                drawn: crate::cable_cmds::is_drawn(doc, k),
-                planned: crate::cable_cmds::Side::BOTH.map(|side| crate::cable_cmds::plan_words(doc, k, side)),
-                glands: crate::cable_cmds::Side::BOTH.map(|side| crate::cable_cmds::gland(doc, k, side).map(|(g, _)| g)),
-                shield: crate::cable_cmds::shield(doc, k)
-                    .map(|(w, _)| w)
-                    .filter(|w| *w != crate::cable_cmds::Shield::None)
-                    .map(|w| w.word().to_string()),
+                drawn: crate::cables::is_drawn(doc, k),
+                planned: crate::cables::Side::BOTH.map(|side| crate::cables::plan_words(doc, k, side)),
+                glands: crate::cables::Side::BOTH.map(|side| crate::cables::gland(doc, k, side).map(|(g, _)| g)),
+                shield: crate::cables::shield(doc, k).map(|(w, _)| w).filter(|w| *w != crate::cables::Shield::None).map(|w| w.word().to_string()),
             },
         );
     }

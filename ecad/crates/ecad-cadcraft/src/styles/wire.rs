@@ -30,7 +30,7 @@ fn any_text(_: &str) -> bool {
 /// `wire` (the insulation colour, 040), `ink`, or one IEC 60757 colour code.
 pub fn is_line_colour(s: &str) -> bool {
     let t = s.trim();
-    t.eq_ignore_ascii_case("wire") || t.eq_ignore_ascii_case("ink") || crate::look::colour_code(t).is_some_and(|(_, two)| two.is_none())
+    t.eq_ignore_ascii_case("wire") || t.eq_ignore_ascii_case("ink") || crate::words::colour_code(t).is_some_and(|(_, two)| two.is_none())
 }
 
 const TEXT24: Kind = Kind::Parsed { max_chars: 24, parse: any_text };

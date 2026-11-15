@@ -393,7 +393,7 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let number = book.number(doc, page);
     let mut rows = vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.clone()).unwrap_or_default())];
     let folder = ecad_model::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
-    let path = crate::sheet_cmds::folder_path(doc, folder);
+    let path = crate::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
         // Brief 052: stored as entry keys, shown as codes.
@@ -513,7 +513,7 @@ fn device_section(
             } else {
                 r.connection_points.keys().copied().collect()
             };
-            let labels: Vec<String> = shown.iter().map(|t| crate::interact::terminal_name(doc, *t)).collect();
+            let labels: Vec<String> = shown.iter().map(|t| crate::terminal_types::terminal_name(doc, *t)).collect();
             let mut this = name;
             if !labels.is_empty() {
                 this.push(' ');
@@ -893,7 +893,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
     let mut rows = wiring;
     rows.push(Row::ro("from", "From", end_words(doc, w, End::A)));
     rows.push(Row::ro("to", "To", end_words(doc, w, End::B)));
-    let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::views::cable_title(doc, k)).collect();
+    let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::cables::cable_title(doc, k)).collect();
     rows.push(Row::ro("cables", "Cables", if cables.is_empty() { "none".into() } else { cables.join(", ") }));
     rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default()));
     rows.extend(free_rows(
@@ -937,7 +937,7 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
     };
     rows.push(Row::ro("usedspare", "Used / Spare", used));
     Section {
-        title: format!("ECAD · CABLE {}", crate::views::cable_title(doc, k)),
+        title: format!("ECAD · CABLE {}", crate::cables::cable_title(doc, k)),
         kind: "cable",
         target: Some(Target::Cable(k)),
         rows,
@@ -982,7 +982,7 @@ fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section
     let this = refs.iter().find(|x| x.reference == r);
     let others: Vec<String> = refs.iter().filter(|x| x.reference != r).map(|x| x.locator()).collect();
     let rows = vec![
-        Row::ro("cable", "Cable", crate::views::cable_title(doc, k)),
+        Row::ro("cable", "Cable", crate::cables::cable_title(doc, k)),
         Row::ro("this", "This end", this.map_or_else(|| "?".into(), |x| x.locator())),
         Row::ro("others", "Other ends", if others.is_empty() { "none".into() } else { others.join(", ") }),
     ];

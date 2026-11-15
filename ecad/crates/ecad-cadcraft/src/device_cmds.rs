@@ -121,7 +121,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
         let mut plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
         let land = match (landing, plan.terminals.first()) {
             (Some(on), Some((_, _, t))) => {
-                let land = crate::terminal_cmds::plan_land(p.ledger.document(), &mut p.ids, page, on, *t)?;
+                let land = crate::connectors::plan_land(p.ledger.document(), &mut p.ids, page, on, *t)?;
                 plan.ops.extend(land.ops.clone());
                 Some((*t, land))
             }

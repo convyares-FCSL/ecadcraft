@@ -32,7 +32,7 @@ pub const MAX_COLOURS: usize = 64;
 /// A comma-separated list of IEC 60757 colour codes, 1 to [`MAX_COLOURS`] of them.
 pub fn colour_list(s: &str) -> Option<Vec<String>> {
     let v: Vec<String> = s.split(',').map(|c| c.trim().to_ascii_uppercase()).collect();
-    (!v.is_empty() && v.len() <= MAX_COLOURS && v.iter().all(|c| crate::look::colour_code(c).is_some())).then_some(v)
+    (!v.is_empty() && v.len() <= MAX_COLOURS && v.iter().all(|c| crate::words::colour_code(c).is_some())).then_some(v)
 }
 
 fn is_colour_list(s: &str) -> bool {
@@ -98,10 +98,10 @@ fn is_shield(s: &str) -> bool {
 }
 
 /// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
-/// zero-width) characters ([`crate::cable_cmds::is_hidden`], tester 059 f4).
+/// zero-width) characters ([`crate::cables::is_hidden`], tester 059 f4).
 pub fn is_gland(s: &str) -> bool {
     let t = s.trim();
-    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(crate::cable_cmds::is_hidden)
+    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(crate::cables::is_hidden)
 }
 
 /// An outer diameter: a number of millimetres from 1 to 200.

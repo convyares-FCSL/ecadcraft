@@ -148,7 +148,7 @@ impl RatedSubject {
                         .and_then(|n| ecad_model::wiring::net_number(doc, n))
                         .unwrap_or_else(|| "wire".into())
                 }),
-            RatedSubject::Cable(k) => crate::views::cable_title(doc, k),
+            RatedSubject::Cable(k) => crate::cables::cable_title(doc, k),
         }
     }
 }

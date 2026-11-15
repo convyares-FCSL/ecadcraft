@@ -561,7 +561,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
                 .map(|p| {
                     let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
                     let title = doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default();
-                    row(vec![number_range(doc, &b, *p, outputs), title, crate::sheet_cmds::folder_path(doc, folder)])
+                    row(vec![number_range(doc, &b, *p, outputs), title, crate::revisions::folder_path(doc, folder)])
                 })
                 .collect();
             (vec![("Page", 25.0), ("Title", 220.0), ("Folder", 145.0)], rows)

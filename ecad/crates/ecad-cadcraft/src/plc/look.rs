@@ -425,7 +425,7 @@ pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<c
                     .flatten()
                     .find(|x| **x != t)
                     .map(|x| {
-                        let name = crate::interact::terminal_name(doc, *x);
+                        let name = crate::terminal_types::terminal_name(doc, *x);
                         match doc.terminals.get(x).and_then(|t| crate::devices::tag_of(doc, t.component)) {
                             Some(_) if !name.contains(':') => {
                                 format!("{}:{name}", doc.terminals.get(x).map(|t| crate::devices::tag_words(doc, t.component)).unwrap_or_default())

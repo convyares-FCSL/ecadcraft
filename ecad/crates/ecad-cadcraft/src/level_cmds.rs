@@ -12,6 +12,8 @@ use ecad_model::{ComponentId, Document, ItemKind, ObjectRef, Op, Representation,
 use serde_json::{Value, json};
 
 use crate::commands::{err, opt_id, opt_typed, with_project};
+pub use crate::strips::FUSE_DEVICE;
+pub use crate::strips::is_fuse_device;
 use crate::terminal_types as tt;
 
 /// The commands this module adds.
@@ -187,19 +189,6 @@ fn run_termlabel(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
 }
 
 // ---------------------------------------------------------------- toposition (§3.5)
-
-/// The starter key of a fuse terminal device (brief 034).
-pub const FUSE_DEVICE: &str = "fuseterm";
-
-/// Whether `c` is a brief 034 fuse terminal device (its own definition is `fuseterm`).
-pub fn is_fuse_device(doc: &Document, c: ComponentId) -> bool {
-    doc.components
-        .get(&c)
-        .and_then(|x| x.definition)
-        .and_then(|d| doc.definitions.get(&d))
-        .and_then(crate::symbols::of_definition)
-        .is_some_and(|s| s.key == FUSE_DEVICE)
-}
 
 /// What `toposition` would do: the ops, the strip and position, and what goes with the device.
 pub struct ToPosition {

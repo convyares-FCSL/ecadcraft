@@ -463,9 +463,9 @@ pub enum Fix {
     AssignCable(CableId),
     /// Brief 059: **Use the drawing**: set that end's plan to its drawn location (one `cableedit`),
     /// or **Go to** that end.
-    UseDrawing(CableId, crate::cable_cmds::Side),
+    UseDrawing(CableId, crate::cables::Side),
     /// Brief 059: **Set gland** / **Show**: focus that row of the cable's Details pane.
-    ShowCableField(CableId, crate::cable_cmds::CableField),
+    ShowCableField(CableId, crate::cables::CableField),
 }
 
 /// One row of the Checks list.
@@ -1001,17 +1001,17 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
         }
     }
     // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
-    if let Some(code) = crate::look::conductor_colour(doc, c).filter(|code| crate::look::colour_code(code).is_none()) {
+    if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| crate::words::colour_code(code).is_none()) {
         let (page, at) = conductor_place(doc, c, None);
-        let code = crate::look::shorten(code.trim(), crate::look::MAX_CODE_CHARS);
+        let code = crate::words::shorten(code.trim(), crate::words::MAX_CODE_CHARS);
         out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Conductor(c), which: format!("{which} {code}"), fix: None });
     }
     out
 }
 
-/// The checks of `page` as a whole: brief 040's dash budget ([`crate::look::dash_budget`]).
+/// The checks of `page` as a whole: brief 040's dash budget ([`crate::words::dash_budget`]).
 pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
-    let left = crate::look::dash_budget(doc, page).left_out;
+    let left = crate::words::dash_budget(doc, page).left_out;
     if left.is_empty() {
         return Vec::new();
     }
@@ -1242,7 +1242,7 @@ pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
-    let which = format!("{} /?", crate::views::cable_title(doc, k));
+    let which = format!("{} /?", crate::cables::cable_title(doc, k));
     vec![Check { kind: Kind::OrphanReference, page: Some(r.page), at, object: Object::Reference(*rid), which, fix: None }]
 }
 
@@ -1257,9 +1257,9 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
     let mut out = Vec::new();
     // Brief 059 (design 059 §6): a cable not drawn yet has one Info row and no core rows; its
     // planned ends and glands are not checked until it is drawn.
-    let drawn = crate::cable_cmds::is_drawn(doc, k);
+    let drawn = crate::cables::is_drawn(doc, k);
     if !drawn && doc.cables.contains_key(&k) {
-        let name = crate::views::cable_title(doc, k);
+        let name = crate::cables::cable_title(doc, k);
         out.push(Check {
             kind: Kind::CableNotDrawn,
             page: None,
@@ -1269,12 +1269,12 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
             fix: Some(Fix::AssignCable(k)),
         });
     }
-    out.extend(crate::cable_cmds::value_checks(doc, k, drawn));
+    out.extend(crate::cables::value_checks(doc, k, drawn));
     // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
     let open = if drawn { crate::styles::cable::open_cores(doc, k) } else { Vec::new() };
     if !open.is_empty() {
         let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-        let name = crate::views::cable_title(doc, k);
+        let name = crate::cables::cable_title(doc, k);
         for (i, o) in open.into_iter().enumerate() {
             // Brief 059 (design 059 §6): an unwired core is "not assigned".
             let which = if o.unwired {
@@ -1296,7 +1296,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
     let (bad, n) = crate::styles::cable::bad_unused(doc, k);
     if n > 0 {
         let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-        let name = crate::views::cable_title(doc, k);
+        let name = crate::cables::cable_title(doc, k);
         let more = if n > bad.len() { format!(" (and {} more)", n - bad.len()) } else { String::new() };
         for (key, v) in &bad {
             out.push(Check {
@@ -1811,7 +1811,7 @@ impl Scope {
                     self.designations = true;
                     if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
                         // Brief 059: the cables planning an end there (their rows name its code).
-                        self.cables.extend(crate::cable_cmds::planning(doc, entry));
+                        self.cables.extend(crate::cables::planning(doc, entry));
                         for (c, x) in &doc.components {
                             if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
                                 self.components.insert(*c);

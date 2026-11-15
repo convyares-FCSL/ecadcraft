@@ -160,7 +160,7 @@ pub static POINT_GRID: Entry = Entry {
     group: "Symbols",
     brief: "048",
     kind: Kind::Length { min: 1.0, max: 10.0 },
-    builtin: Value::Length(crate::symbol_cmds::POINT_GRID_MM),
+    builtin: Value::Length(crate::symbols::POINT_GRID_MM),
     levels: SP,
     project: ProjectSource::Property,
 };

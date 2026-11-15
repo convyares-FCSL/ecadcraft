@@ -97,7 +97,7 @@ impl CableRef {
         let orphan = r.get("orphan").and_then(Value::as_bool).unwrap_or(true);
         let line = read(s, |p, page| {
             let doc = p.ledger.document();
-            Ok(format!("Reference for cable {} placed on {}.", crate::views::cable_title(doc, k), refs::page_number_words(doc, page)))
+            Ok(format!("Reference for cable {} placed on {}.", crate::cables::cable_title(doc, k), refs::page_number_words(doc, page)))
         })
         .unwrap_or_else(|_| "Reference placed.".into());
         s.echo(line);
@@ -213,7 +213,7 @@ fn latest_orphan(p: &Project) -> Option<(CableId, String)> {
         Some(id) => orphans.iter().find(|r| r.reference == id),
         None => orphans.last(),
     }?;
-    Some((r.cable, crate::views::cable_title(doc, r.cable)))
+    Some((r.cable, crate::cables::cable_title(doc, r.cable)))
 }
 
 /// Most orphan references `List` shows.
@@ -254,7 +254,7 @@ impl Continue {
                 .map(|r| {
                     format!(
                         "{} on {} ({}): {}",
-                        crate::views::cable_title(doc, r.cable),
+                        crate::cables::cable_title(doc, r.cable),
                         refs::page_number_words(doc, r.page),
                         r.locator(),
                         crate::slash::wires(r.wires_here)

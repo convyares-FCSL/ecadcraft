@@ -26,62 +26,6 @@ use ecad_tokens::Icon;
 
 use crate::interact::kind::Target;
 
-/// The kinds of thing a wheel is for (spec §5).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ObjectKind {
-    /// A device's symbol (a tagged or untagged component, not a terminal strip).
-    Device,
-    /// A wire, away from its ends.
-    Wire,
-    /// A wire's end (attached or loose).
-    WireEnd,
-    /// A terminal of a terminal strip (the DIN-rail device), or the strip's link line.
-    Terminal,
-    /// A cable's slash or fan.
-    Cable,
-    /// A text: a device's tag, a wire's label, or free text.
-    Text,
-    /// A cable reference end or a device cross-reference.
-    Reference,
-    /// The page where nothing is under the cursor.
-    EmptyPage,
-    /// A page's row in the Pages tab.
-    PageRow,
-    /// More than one object selected, or plain drawn geometry.
-    Mixed,
-}
-
-impl ObjectKind {
-    pub const ALL: [ObjectKind; 10] = [
-        ObjectKind::Device,
-        ObjectKind::Wire,
-        ObjectKind::WireEnd,
-        ObjectKind::Terminal,
-        ObjectKind::Cable,
-        ObjectKind::Text,
-        ObjectKind::Reference,
-        ObjectKind::EmptyPage,
-        ObjectKind::PageRow,
-        ObjectKind::Mixed,
-    ];
-
-    /// Its name in words.
-    pub const fn words(self) -> &'static str {
-        match self {
-            ObjectKind::Device => "device",
-            ObjectKind::Wire => "wire",
-            ObjectKind::WireEnd => "wire end",
-            ObjectKind::Terminal => "terminal",
-            ObjectKind::Cable => "cable",
-            ObjectKind::Text => "text",
-            ObjectKind::Reference => "reference",
-            ObjectKind::EmptyPage => "page",
-            ObjectKind::PageRow => "page row",
-            ObjectKind::Mixed => "selection",
-        }
-    }
-}
-
 /// A wheel slot, clockwise from the top (spec §5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Slot {
@@ -548,6 +492,7 @@ const fn slot(
     Action { id, command, params, label, icon, group: None, wheel, key: None, search: &[], searchable: true, enabled }
 }
 
+pub use crate::kinds::ObjectKind;
 use ObjectKind as K;
 use Slot as S;
 

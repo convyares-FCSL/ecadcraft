@@ -48,7 +48,7 @@ fn strip_of(doc: &Document, strip: Option<ComponentId>, terminal: Option<Termina
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
             let term = doc.terminals.get(&t).ok_or("No such terminal.")?;
-            (term.component, Some(crate::interact::position_label(doc, t)))
+            (term.component, Some(crate::terminal_types::position_label(doc, t)))
         }
         (None, None) => return Err("`strip` or `terminal` (hex id) is required".into()),
     };
@@ -423,7 +423,7 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
             let mut cross_levels: Vec<u32> = Vec::new();
             for t in &picks {
                 let (lv, _) = crate::terminal_types::level_of(doc, *t);
-                let pos = crate::interact::position_label(doc, *t);
+                let pos = crate::terminal_types::position_label(doc, *t);
                 if lv != level {
                     if prev.as_deref() == Some(pos.as_str()) && labels.len() == 1 {
                         if cross_levels.is_empty() {
@@ -435,7 +435,7 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                     let ty = crate::terminal_types::type_of_terminal(doc, *t);
                     return Err(format!(
                         "{} is on level {}; this link is on level {}. Pick level {} terminals, or Enter to finish.",
-                        crate::terminal_cmds::terminal_words(doc, *t),
+                        crate::strips::terminal_words(doc, *t),
                         crate::terminal_types::level_name(doc, c, ty, lv),
                         crate::terminal_types::level_name(doc, c, ty, level),
                         crate::terminal_types::level_name(doc, c, ty, level)
@@ -448,11 +448,11 @@ fn run_jumper(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
                 if term.component != c {
                     return Err(format!(
                         "{} is on another strip; a link stays on one strip. Pick a terminal of {}.",
-                        crate::terminal_cmds::terminal_words(doc, *t),
+                        crate::strips::terminal_words(doc, *t),
                         strip_words(doc, c)
                     ));
                 }
-                let l = crate::interact::position_label(doc, *t);
+                let l = crate::terminal_types::position_label(doc, *t);
                 let add = match (&prev, skip) {
                     (Some(a), false) => range_between(&order, a, &l),
                     _ => vec![l.clone()],

@@ -27,6 +27,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::{Mapped, Project};
 use crate::slash::{self, MAX_CABLE_MEMBERS};
+pub use crate::strips::core_label;
 use crate::views::{self, View};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
@@ -759,21 +760,6 @@ fn other_value(doc: &ecad_model::Document, object: ObjectRef, key: &str, value: 
     })
 }
 
-/// A core label as given (design 009 §5.4): trimmed; empty or only spaces clears it (`None`).
-///
-/// # Errors
-/// Longer than [`crate::look::MAX_CORE_CHARS`] characters, or a control character, in words.
-pub fn core_label(text: Option<&str>) -> Result<Option<String>, String> {
-    let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
-    if t.chars().any(char::is_control) {
-        return Err("A core label cannot contain control characters.".into());
-    }
-    if t.chars().count() > crate::look::MAX_CORE_CHARS {
-        return Err(format!("A core label can be at most {} characters.", crate::look::MAX_CORE_CHARS));
-    }
-    Ok(Some(t.to_string()))
-}
-
 /// The `core` of one entry: a string or `null`.
 fn core_value(v: Option<&Value>) -> Result<Option<String>, String> {
     match v {
@@ -1022,7 +1008,7 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         // next free core, in the order given.
         // Brief 059 (design 059 §4.3): onto a cable not drawn yet, never more wires than free cores.
         if let Some(k) = existing
-            && !crate::cable_cmds::is_drawn(doc, k)
+            && !crate::cables::is_drawn(doc, k)
         {
             crate::cable_cmds::assign_cores(doc, k, conductors.len())?;
         }
@@ -1074,7 +1060,7 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         };
         // Brief 059 (FD5): a cable not drawn yet is assigned, not continued.
         if let Some(k) = existing
-            && !crate::cable_cmds::is_drawn(doc, k)
+            && !crate::cables::is_drawn(doc, k)
         {
             return crate::cable_cmds::run_slash_assign(p, pg, page, k, from, to, &found);
         }
@@ -1521,7 +1507,7 @@ fn run_cablegoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         let message = format!(
             "{}, at the other end of cable {} ({}).",
             crate::references::page_words(doc, there.page).replacen("page", "Page", 1),
-            crate::views::cable_title(doc, there.cable),
+            crate::cables::cable_title(doc, there.cable),
             there.locator()
         );
         let page = there.page;

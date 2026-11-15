@@ -339,7 +339,7 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
 
 /// Brief 050a: the frame style's line colour of `page` as drawn, or `None` for ink.
 pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc::color::Rgb> {
-    crate::styles::colour_rgb(&crate::styles::frame::frame_look(doc, page).colour, crate::look::projection_sheet())
+    crate::look::colour_rgb(&crate::styles::frame::frame_look(doc, page).colour, crate::look::projection_sheet())
 }
 
 /// [`entity`] in the frame style's line colour `rgb` (brief 050a): the frame's own lines take it;

@@ -888,7 +888,7 @@ pub fn styled_label_entity(
             _ => crate::text_style::STYLE_REGULAR.into(),
         };
     }
-    if let Some(rgb) = f("colour").and_then(|r| crate::styles::colour_rgb(&r.text(), crate::look::projection_sheet())) {
+    if let Some(rgb) = f("colour").and_then(|r| crate::look::colour_rgb(&r.text(), crate::look::projection_sheet())) {
         e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
     }
     e
@@ -910,7 +910,7 @@ pub fn style_boxes(
         let Some(e) = item_handle(b.item).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
         e.common.linetype = look.linetype.into();
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(look.lineweight).unwrap_or(25));
-        if let Some(rgb) = crate::styles::colour_rgb(&look.colour, crate::look::projection_sheet()) {
+        if let Some(rgb) = crate::look::colour_rgb(&look.colour, crate::look::projection_sheet()) {
             e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
         }
     }

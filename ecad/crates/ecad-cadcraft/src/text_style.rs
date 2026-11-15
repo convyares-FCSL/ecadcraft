@@ -237,7 +237,7 @@ pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
         Some(_) => kind_style_name(kind, weight),
         None => weight.style_name(),
     };
-    let colour = f("colour").and_then(|r| crate::styles::colour_rgb(&r.text(), crate::look::projection_sheet()));
+    let colour = f("colour").and_then(|r| crate::look::colour_rgb(&r.text(), crate::look::projection_sheet()));
     TextStyle { height, weight, style_name, colour }
 }
 

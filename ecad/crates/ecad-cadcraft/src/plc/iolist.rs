@@ -163,7 +163,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 let at = shown.and_then(|(_, r)| r.connection_points.get(o).copied()).or(at);
                 targets.push(Target {
                     device: crate::devices::tag_words(doc, term.component),
-                    point: crate::interact::terminal_name(doc, *o),
+                    point: crate::terminal_types::terminal_name(doc, *o),
                     place: place.unwrap_or_default(),
                     through,
                     page: shown.map(|(_, r)| r.page),

@@ -416,7 +416,7 @@ pub fn notation_size(kind: &str) -> Option<f64> {
 /// Unreadable text, no cores, more than [`MAX_CORES`], an empty or repeated list entry.
 pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
     let t = text.trim();
-    if t.chars().count() > MAX_CORES * (crate::look::MAX_CORE_CHARS + 1) {
+    if t.chars().count() > MAX_CORES * (crate::words::MAX_CORE_CHARS + 1) {
         return Err(format!("A cable offers at most {MAX_CORES} cores."));
     }
     let upper = t.to_ascii_uppercase();
@@ -445,8 +445,7 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
     }
     let mut out: Vec<String> = Vec::new();
     for part in t.split(',') {
-        let label =
-            crate::commands::core_label(Some(part)).map_err(|e| format!("{e} {}", cores_refusal(text)))?.ok_or_else(|| cores_refusal(text))?;
+        let label = crate::strips::core_label(Some(part)).map_err(|e| format!("{e} {}", cores_refusal(text)))?.ok_or_else(|| cores_refusal(text))?;
         if out.iter().any(|x| x.eq_ignore_ascii_case(&label)) {
             return Err(format!("The core list names {label} twice. Write each core once."));
         }
@@ -973,7 +972,7 @@ impl Strips {
             if is_strip(doc, *c) {
                 s.set(doc, *c, o, cx);
             }
-            if crate::level_cmds::is_fuse_device(doc, *c) {
+            if crate::strips::is_fuse_device(doc, *c) {
                 s.fuse_devices.insert(*c);
             }
         }
@@ -990,7 +989,7 @@ impl Strips {
     pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<ComponentId>) -> bool {
         let mut changed = false;
         for c in devices {
-            changed |= if crate::level_cmds::is_fuse_device(doc, *c) { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
+            changed |= if crate::strips::is_fuse_device(doc, *c) { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
         }
         changed
     }
@@ -1640,7 +1639,7 @@ fn far_words(doc: &Document, w: ConductorId, mine: End) -> (String, Option<Compo
             let name = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
             (format!("{name} >"), Some(c))
         }
-        _ => (crate::terminal_cmds::terminal_words(doc, t), Some(c)),
+        _ => (crate::strips::terminal_words(doc, t), Some(c)),
     }
 }
 
@@ -1667,7 +1666,7 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
         } else {
             ty.word.to_string()
         };
-        lines.push(format!("{}  {kind}  {}", crate::terminal_cmds::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
+        lines.push(format!("{}  {kind}  {}", crate::strips::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
             let far_t = doc.conductors.get(&w).and_then(|x| {
@@ -1677,7 +1676,7 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
                 })
             });
             if let Some(o) = far_t.filter(|o| *o != t && mine.contains(o)) {
-                bridged.push(crate::interact::terminal_name(doc, o));
+                bridged.push(crate::terminal_types::terminal_name(doc, o));
                 continue;
             }
             let (target, far) = far_words(doc, w, end);
@@ -1738,6 +1737,45 @@ pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
 pub fn plan_lines(s: &StripData) -> usize {
     1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>() + s.acc.gap_rows()
 }
+
+/// A core label as given (design 009 §5.4): trimmed; empty or only spaces clears it (`None`).
+///
+/// # Errors
+/// Longer than [`crate::words::MAX_CORE_CHARS`] characters, or a control character, in words.
+pub fn core_label(text: Option<&str>) -> Result<Option<String>, String> {
+    let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
+    if t.chars().any(char::is_control) {
+        return Err("A core label cannot contain control characters.".into());
+    }
+    if t.chars().count() > crate::words::MAX_CORE_CHARS {
+        return Err(format!("A core label can be at most {} characters.", crate::words::MAX_CORE_CHARS));
+    }
+    Ok(Some(t.to_string()))
+}
+
+/// `-X01:3`.
+pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
+    let c = doc.terminals.get(&t).map(|x| x.component);
+    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    if let Some(name) = crate::connectors::pin_name(doc, t) {
+        return name;
+    }
+    let tag = c.and_then(|c| crate::devices::tag_of(doc, c)).unwrap_or("?");
+    format!("{tag}:{}", crate::terminal_types::terminal_name(doc, t))
+}
+
+/// Whether `c` is a brief 034 fuse terminal device (its own definition is `fuseterm`).
+pub fn is_fuse_device(doc: &Document, c: ComponentId) -> bool {
+    doc.components
+        .get(&c)
+        .and_then(|x| x.definition)
+        .and_then(|d| doc.definitions.get(&d))
+        .and_then(crate::symbols::of_definition)
+        .is_some_and(|s| s.key == FUSE_DEVICE)
+}
+
+/// The starter key of a fuse terminal device (brief 034).
+pub const FUSE_DEVICE: &str = "fuseterm";
 
 #[cfg(test)]
 mod tests {

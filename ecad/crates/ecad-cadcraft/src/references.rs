@@ -233,7 +233,7 @@ pub fn page_number_words(doc: &Document, page: PageId) -> String {
 
 /// `Cable C1` in messages: its tag, else `8a3f19c0…`.
 pub fn cable_words(doc: &Document, cable: CableId) -> String {
-    format!("Cable {}", crate::views::cable_title(doc, cable))
+    format!("Cable {}", crate::cables::cable_title(doc, cable))
 }
 
 // ---------------------------------------------------------------- refusals (design 010 §4.4)
@@ -262,7 +262,7 @@ pub fn drawn_here(doc: &Document, cable: CableId) -> String {
 pub fn none_can_continue(doc: &Document, cable: CableId) -> String {
     format!(
         "None of cable {}'s wires can continue: each is connected at both ends or already drawn on this page.",
-        crate::views::cable_title(doc, cable)
+        crate::cables::cable_title(doc, cable)
     )
 }
 /// R9.
@@ -454,7 +454,7 @@ pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: Represen
     let here = refs.iter().find(|r| r.reference == this);
     let there = refs.iter().find(|r| r.reference == plan.source);
     let cable = here.map(|r| r.cable).or(there.map(|r| r.cable));
-    let title = cable.map(|k| crate::views::cable_title(doc, k)).unwrap_or_default();
+    let title = cable.map(|k| crate::cables::cable_title(doc, k)).unwrap_or_default();
     let mut out = vec![format!(
         "Cable {title} continued on {} with {}; this end shows {} and the end on {} now shows {}.",
         page_number_words(doc, page),
@@ -490,7 +490,7 @@ fn orphaned_line_in(doc: &Document, now: &[CableReference], before: &BTreeSet<Re
         [] => None,
         [one] => Some(format!(
             "Cable {}'s reference on {} now has no other end.",
-            crate::views::cable_title(doc, one.cable),
+            crate::cables::cable_title(doc, one.cable),
             page_number_words(doc, one.page)
         )),
         many => Some(format!("{} cable references now have no other end.", many.len())),
@@ -746,7 +746,7 @@ impl Snapshot {
 pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<String>> {
     let refs = cable_references(doc);
     let r = refs.iter().find(|r| r.reference == reference)?;
-    let title = crate::views::cable_title(doc, r.cable);
+    let title = crate::cables::cable_title(doc, r.cable);
     let place = |x: &CableReference| match (&x.column_label, &x.row_label) {
         (Some(c), Some(row)) => {
             format!("{}, column {c}, row {row}, {}", page_words(doc, x.page), crate::slash::wires(x.wires_here))
@@ -791,7 +791,7 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &eca
         .get(&term.component)
         .and_then(|x| x.properties.get("tag").cloned())
         .unwrap_or_else(|| format!("{}…", term.component.hex().get(..8).unwrap_or_default()));
-    Some(format!("{comp}:{}", crate::interact::terminal_name(doc, t)))
+    Some(format!("{comp}:{}", crate::terminal_types::terminal_name(doc, t)))
 }
 
 /// The debugger's `Cable references` diagnostics (design 010 §8): one line per orphan, one per
@@ -801,7 +801,7 @@ pub fn diagnostics(doc: &Document) -> Vec<String> {
     let mut out: Vec<String> = refs
         .iter()
         .filter(|r| r.orphan)
-        .map(|r| format!("Orphan: cable {} on {} ({})", crate::views::cable_title(doc, r.cable), page_number_words(doc, r.page), r.text))
+        .map(|r| format!("Orphan: cable {} on {} ({})", crate::cables::cable_title(doc, r.cable), page_number_words(doc, r.page), r.text))
         .collect();
     if out.is_empty() {
         out.push("No orphan references.".into());
@@ -919,7 +919,7 @@ pub fn cable_tagged(doc: &Document, typed: &str) -> Option<CableId> {
 
 /// `-W04` in messages: the cable's title.
 fn title(doc: &Document, cable: CableId) -> String {
-    crate::views::cable_title(doc, cable)
+    crate::cables::cable_title(doc, cable)
 }
 
 /// Most wires a refusal names before `+n`.

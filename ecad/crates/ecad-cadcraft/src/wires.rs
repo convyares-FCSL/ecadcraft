@@ -70,7 +70,7 @@ pub(crate) fn colour_routes(
     }
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     // The page's dash budget: past it a two-colour wire keeps its first colour only (Checks says).
-    let budget = crate::look::dash_budget(doc, page);
+    let budget = crate::words::dash_budget(doc, page);
     let mut dashes = Vec::new();
     for r in routes {
         let Some(route) = r.handle else { continue };
@@ -123,7 +123,7 @@ pub(crate) fn route_dashes(r: &crate::look::ColouredRoute, route: &Common) -> Ve
     let Some(second) = r.colours.dashes else { return Vec::new() };
     let (on, off) = (f64::from(ecad_drawing_style::wire::DASH_ON_MM), f64::from(ecad_drawing_style::wire::DASH_OFF_MM));
     let common = Common { layer: DASH_LAYER.into(), color: Color::True(crate::look::rgb(second)), ..route.clone() };
-    crate::look::dash_segments(&r.points, on, off)
+    crate::words::dash_segments(&r.points, on, off)
         .into_iter()
         .map(|(a, b)| Entity {
             handle: Handle::default(),

@@ -106,7 +106,7 @@ fn run_refgoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                 Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
                 _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
             },
-            Subject::Cable(k) => format!("the other end of cable {}", crate::views::cable_title(doc, k)),
+            Subject::Cable(k) => format!("the other end of cable {}", crate::cables::cable_title(doc, k)),
             Subject::Conductor(_) => "the reference".into(),
         };
         let message = format!("{}, {what} ({place}).", crate::references::page_words(doc, tr.page).replacen("page", "Page", 1));
