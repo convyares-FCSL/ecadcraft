@@ -22,7 +22,8 @@ fn every_text_colour_meets_4_5_to_1_on_its_background() {
 }
 
 /// UI rev 3 (board 1.17): the light shell's text colours reach 4.5:1 on their backgrounds too,
-/// and every token is a colour of its own set (none left at Graphite's dark value).
+/// and every token is a colour of its own set (none left at Graphite's dark value), except the
+/// accent and the white ink on it, which are the same in both.
 #[test]
 fn the_light_shell_meets_4_5_to_1_on_its_backgrounds() {
     let light = ecad_tokens::LIGHT;
@@ -35,7 +36,7 @@ fn the_light_shell_meets_4_5_to_1_on_its_backgrounds() {
     assert!(failing.is_empty(), "below 4.5:1: {failing:?}");
     assert!(light.text.contrast(light.panel) > 12.0, "dark text on a light panel");
     for ((name, d), (_, l)) in GRAPHITE.rows().into_iter().zip(light.rows()) {
-        assert!(name == "shell.accent" || d != l, "{name} has a light value of its own");
+        assert!(name == "shell.accent" || name == "shell.on_accent" || d != l, "{name} has a light value of its own");
     }
 }
 

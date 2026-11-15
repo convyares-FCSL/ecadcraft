@@ -47,6 +47,11 @@ pub struct Shell {
     pub cable: Color,
     /// Links and connection points in lists.
     pub connect: Color,
+    /// Ink on the accent and on a filled status ground: the primary button's label, a tick in a
+    /// selected box, a count on a coloured badge.
+    pub on_accent: Color,
+    /// Ink on the agent's colour: the `AI` chip's letters.
+    pub ai_ink: Color,
 }
 
 const ACCENT: Color = Color::hex(0x2F6BE0);
@@ -77,6 +82,8 @@ pub const GRAPHITE: Shell = Shell {
     agent: Color::hex(0xB9E34A),
     cable: Color::hex(0xB48CFF),
     connect: Color::hex(0x45CFD3),
+    on_accent: WHITE,
+    ai_ink: Color::hex(0x14180A),
 };
 
 /// The light shell (UI rev 3, board 1.17): the same meanings as [`GRAPHITE`] on a light ground.
@@ -103,6 +110,8 @@ pub const LIGHT: Shell = Shell {
     agent: Color::hex(0x4A7200),
     cable: Color::hex(0x6A35C8),
     connect: Color::hex(0x066A6E),
+    on_accent: WHITE,
+    ai_ink: WHITE,
 };
 
 /// Opacity of the light shell's soft fill, %: 18 % reads too strong on a light ground (board 1.17's
@@ -111,7 +120,7 @@ pub const LIGHT_SOFT_PERCENT: u8 = 12;
 
 impl Shell {
     /// Every token as `(name, colour)`, in the spec's order; names as in `tokens.md` (`shell.text_2`).
-    pub fn rows(&self) -> [(&'static str, Color); 20] {
+    pub fn rows(&self) -> [(&'static str, Color); 22] {
         [
             ("shell.bg", self.bg),
             ("shell.panel", self.panel),
@@ -133,6 +142,8 @@ impl Shell {
             ("shell.agent", self.agent),
             ("shell.cable", self.cable),
             ("shell.connect", self.connect),
+            ("shell.on_accent", self.on_accent),
+            ("shell.ai_ink", self.ai_ink),
         ]
     }
 
@@ -166,8 +177,9 @@ impl Shell {
         for (t, tc) in status {
             out.extend(grounds.iter().take(4).map(|(g, gc)| (t, tc, *g, *gc)));
         }
-        // The primary button's label.
-        out.push(("white", WHITE, "accent", self.accent));
+        // The primary button's label, and the AI chip's letters.
+        out.push(("on_accent", self.on_accent, "accent", self.accent));
+        out.push(("ai_ink", self.ai_ink, "agent", self.agent));
         out
     }
 }

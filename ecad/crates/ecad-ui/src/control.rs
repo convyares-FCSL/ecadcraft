@@ -569,7 +569,7 @@ impl<'a> Toggle<'a> {
             p.rect_filled(t, corner(radius::pill(t.height())), color(ground));
             let k = t.height() / 2.0 - space::XXS;
             let cx = if on { t.right() - t.height() / 2.0 } else { t.left() + t.height() / 2.0 };
-            let knob = if enabled { ecad_tokens::WHITE } else { s.text_3 };
+            let knob = if enabled { s.on_accent } else { s.text_3 };
             p.circle_filled(pos2(cx, t.center().y), k, color(knob));
             if enabled && self.look.focused(&r) {
                 p.rect_stroke(t, corner(radius::pill(t.height())), Stroke::new(line::FOCUS_RING_PX, color(s.accent_text)), StrokeKind::Outside);

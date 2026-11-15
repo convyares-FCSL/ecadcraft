@@ -9,6 +9,7 @@
 use ecad_tokens::{Icon, line, radius, size, space, ui_type};
 use egui::{Align, Context, Frame, Id, Key, Layout, Margin, Modifiers, Stroke, Ui, vec2};
 
+use crate::prim::Kind;
 use crate::style::{corner, shadow};
 use crate::{SHELL, color, fonts};
 
@@ -33,6 +34,29 @@ pub struct Shown<B, F> {
     pub closed: bool,
 }
 
+/// One button of a dialog's footer (laid right to left: add the primary first). `kind` is
+/// [`Kind::Primary`] for the one action that answers the dialog, [`Kind::Danger`] when that
+/// action deletes or discards, [`Kind::Secondary`] for Cancel and the rest. `name` is its
+/// accessible name; `disabled` says why it cannot be pressed yet.
+///
+/// # Example
+/// ```
+/// # egui::__run_test_ui(|ui| {
+/// use ecad_ui::dialog::action;
+/// use ecad_ui::prim::Kind;
+/// let ok = action(ui, "Merge", Kind::Primary, "ecad.merge.ok", Some("Choose for 2 conflicts first")).clicked();
+/// let cancel = action(ui, "Cancel", Kind::Secondary, "ecad.merge.cancel", None).clicked();
+/// # let _ = (ok, cancel);
+/// # });
+/// ```
+pub fn action(ui: &mut Ui, label: &str, kind: Kind, name: &str, disabled: Option<&str>) -> egui::Response {
+    let mut b = crate::prim::Button::new(label).kind(kind);
+    if let Some(why) = disabled {
+        b = b.disabled(why);
+    }
+    ui.add(b).accessible_name(name)
+}
+
 /// The close cross's accessible name.
 pub const CLOSE: &str = "ecad.dialog.close";
 
@@ -42,10 +66,20 @@ impl<'a> Dialog<'a> {
         Self { id, title, name, width: 480.0 }
     }
 
-    /// The content's width, px.
+    /// The content's width, px. Prefer [`Self::small`] or [`Self::medium`].
     pub fn width(mut self, width: f32) -> Self {
         self.width = width;
         self
+    }
+
+    /// A small dialog, [`size::DIALOG_S`] wide: a question, a name to type.
+    pub fn small(self) -> Self {
+        self.width(size::DIALOG_S)
+    }
+
+    /// The usual dialog, [`size::DIALOG_M`] wide: a short form, a list to choose from.
+    pub fn medium(self) -> Self {
+        self.width(size::DIALOG_M)
     }
 
     /// Draw it centred over the dimmed page: `body` under the title, `footer` laid right to left

@@ -47,6 +47,8 @@ operating system's setting. Code reads the one in use through `ecad_ui::SHELL`.
 | `shell.agent` | `#B9E34A` | `#4A7200` | Agent presence and agent-made changes |
 | `shell.cable` | `#B48CFF` | `#6A35C8` | Cable names in lists |
 | `shell.connect` | `#45CFD3` | `#066A6E` | Links and connection points in lists |
+| `shell.on_accent` | `#FFFFFF` | `#FFFFFF` | Ink on the accent and on a filled status ground (primary button label, a ticked box) |
+| `shell.ai_ink` | `#14180A` | `#FFFFFF` | Ink on the agent's colour: the `AI` chip's letters |
 
 | Token | Value | Use |
 | --- | --- | --- |
@@ -55,7 +57,7 @@ operating system's setting. Code reads the one in use through `ecad_ui::SHELL`.
 
 Every text colour reaches 4.5:1 on the backgrounds it is used on (`Shell::text_pairs`, tested):
 `text`, `text_2` and `accent_text` on every ground; `text_3` on `bg`, `panel` and `raised`; the
-status and list colours on every ground but `active`; white on `accent`. The same holds for the
+status and list colours on every ground but `active`; `on_accent` on `accent`; `ai_ink` on `agent`. The same holds for the
 light shell (tested too); its status and list colours are darker than Graphite's for that reason.
 
 ## Sheet colours
@@ -178,6 +180,9 @@ px at 100 % UI scale (`ecad_tokens::space`, `ecad_tokens::size`).
 | `size.icon_button` | `28 px` | Icon button outside the tool strip |
 | `size.icon` | `16 px` | Icon grid |
 | `size.label_column` | `96 px` | The label column of a panel's value rows (inspector, Project panel) |
+| `size.chevron` | `16 px` | A section header's fold chevron |
+| `size.dialog_s` | `400 px` | A small dialog's content width: a question, a name to type |
+| `size.dialog_m` | `560 px` | A dialog's usual content width: a short form, a list to choose from |
 
 ## Radii
 
