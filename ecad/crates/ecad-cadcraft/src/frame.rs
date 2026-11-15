@@ -12,16 +12,13 @@
 //!
 //! This module has no UI and records nothing.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::doc::{Common, Entity, EntityKind, Handle, Lineweight, Text, color::Color};
-use cadcraft_engine::doc::{HAlign, VAlign};
-use cadcraft_engine::geom::Vec3;
+use cadcraft_engine::doc::{Common, Entity, EntityKind, Handle, Lineweight, color::Color};
 use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY};
-use ecad_model::sheet::{Grid, MARGIN_MM, SheetSpec, TITLE_BLOCK_MM, TOP_MARGIN_MM, unit_scale};
-use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt};
+use ecad_model::sheet::{SheetSpec, unit_scale};
+use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
-use crate::convert::kind_for_primitive;
 use crate::text_style::{Look, TextKind, Weight};
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
@@ -101,6 +98,13 @@ pub struct FrameInput {
     pub text: FrameText,
     /// Brief 050a: the page's frame style (line weights, colour, grid labels).
     pub look: crate::styles::frame::FrameLook,
+    /// Brief 055: the block the frame draws (its own, or the house block for this sheet).
+    pub block: crate::title_block::Block,
+    /// Brief 055: the project properties the block's fields read, by key (empty when unset): the
+    /// block's bound key set (design 055 §10.1).
+    pub project: BTreeMap<String, String>,
+    /// Brief 055: the newest issued revision's fields the block's fields read (besides `rev`).
+    pub newest: BTreeMap<String, String>,
 }
 
 /// A text kind's look where ECAD draws in paper millimetres (frame, generated pages): its height
@@ -138,6 +142,9 @@ pub struct FrameText {
     pub main: TextLook,
     pub page: TextLook,
     pub rev: TextLook,
+    /// Brief 055: the lineweight bold is drawn with in the title fonts, for a block's bold texts
+    /// when the main style is not bold itself.
+    pub bold_weight: Option<u16>,
 }
 
 impl FrameText {
@@ -153,6 +160,7 @@ impl FrameText {
             main: t(TextKind::TitleMain),
             page: t(TextKind::TitlePage),
             rev: t(TextKind::TitleRev),
+            bold_weight: look.fonts_for(TextKind::TitleMain).bold_lineweight,
         }
     }
 }
@@ -166,8 +174,27 @@ impl FrameInput {
         let issued = crate::revisions::issued(doc);
         let rev_columns = crate::revisions::columns(doc);
         let next_page = book.next(page);
-        // Checked there, so the frame and the references always use the same sheet.
+        // Checked there, so the frame and the references always use the same sheet (brief 055:
+        // the frame's own sheet first).
         let sheet = ecad_model::sheet::sheet_of(doc, page);
+        let text = FrameText::of(doc);
+        let look = crate::styles::frame::frame_look(doc, page);
+        // The block may be borrowed from another frame (overseer ruling: page, page type, frame).
+        let id = ecad_model::sheet::title_block_style(doc, page);
+        let block = crate::title_block::block_of(doc, &id, &sheet, &look.margins, &text);
+        let (project, newest) = crate::title_block::bind::read(doc, &block.layout);
+        // The rows the block's tables can show.
+        let rows = block
+            .layout
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                ecad_model::title_block::BlockItem::RevTable { rows, .. } => Some(usize::from(*rows)),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
+            .min(usize::from(ecad_model::title_block::MAX_TABLE_ROWS));
         FrameInput {
             sheet,
             unit: doc.settings.length_unit,
@@ -183,11 +210,14 @@ impl FrameInput {
             next_page,
             next: next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n)),
             total: book.order.len().to_string(),
-            revisions: issued.iter().take(TABLE_ROWS).map(|r| rev_columns.iter().map(|c| r.get(&c.field).to_string()).collect()).collect(),
+            revisions: issued.iter().take(rows).map(|r| rev_columns.iter().map(|c| r.get(&c.field).to_string()).collect()).collect(),
             rev_columns,
             pending: false,
-            text: FrameText::of(doc),
-            look: crate::styles::frame::frame_look(doc, page),
+            text,
+            look,
+            block,
+            project,
+            newest,
         }
     }
 }
@@ -199,6 +229,15 @@ impl FrameInput {
         self.pending = pending;
         self.rev = crate::revisions::rev_box(doc, pending);
         self
+    }
+
+    /// Brief 055 (FP4): the keep-out strip at the bottom of the frame, mm: the block's height
+    /// (the built-in's 40 mm), never more than the frame's height. As
+    /// `ecad_model::sheet::keep_out`.
+    pub fn keep_out(&self) -> f64 {
+        let h = self.block.layout.height().unwrap_or(ecad_model::sheet::TITLE_BLOCK_MM);
+        let m = self.look.margins;
+        h.min((f64::from(self.sheet.height) - m.bottom - m.top).max(0.0))
     }
 }
 
@@ -219,9 +258,14 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         // look and its texts' styles).
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
         Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text",
-        Op::SetStandard { before, after } => before.is_none() != after.is_none(),
+        // Review of #110, 2: switching one standard for another may change its frame records and
+        // its `print.frame.style`.
+        Op::SetStandard { before, after } => before != after,
+        // Brief 055 (design 055 §10.1): a project key the block's fields read (its bound key
+        // set), the defaults pages inherit, and the revision keys; any other key redraws nothing.
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
-            [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
+            shown.project.contains_key(key.as_str())
+                || [FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
                 // Brief 033 (design 033 §9.1).
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
@@ -291,55 +335,6 @@ pub fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_engine::d
     e
 }
 
-/// Draws in the frame's own coordinates (origin at the top-left corner of the title block, the
-/// layout of design 019 §4), placed so the paper's bottom-left corner is the model origin.
-struct Draw {
-    k: f64,
-    out: Vec<Part>,
-}
-
-/// Where the frame's own origin sits on the paper, in millimetres.
-const OFFSET: (f64, f64) = (MARGIN_MM, MARGIN_MM + TITLE_BLOCK_MM);
-
-impl Draw {
-    fn p(&self, x: f64, y: f64) -> Pt {
-        Pt::new((x + OFFSET.0) * self.k, (y + OFFSET.1) * self.k)
-    }
-    fn line(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
-        let kind = kind_for_primitive(&Primitive::Line { a: self.p(a.0, a.1), b: self.p(b.0, b.1) });
-        self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
-    }
-    fn rect(&mut self, a: (f64, f64), b: (f64, f64), weight: u16, aci: Option<u8>) {
-        let v = vec![self.p(a.0, a.1), self.p(b.0, a.1), self.p(b.0, b.1), self.p(a.0, b.1)];
-        let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
-        self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
-    }
-    /// Text at `at` (millimetres), `height` mm, aligned; fitted into `room` mm when given.
-    fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) {
-        if value.is_empty() {
-            return;
-        }
-        let height = look.mm;
-        let (shown, wf) = fit(value, height, room);
-        let at = self.p(at.0, at.1);
-        let pt = Vec3::new(at.x, at.y, 0.0);
-        let left_base = matches!(align, (HAlign::Left, VAlign::Baseline));
-        let kind = EntityKind::Text(Text {
-            insert: pt,
-            align_pt: if left_base { None } else { Some(pt) },
-            height: height * self.k,
-            value: shown,
-            rotation: 0.0,
-            width_factor: wf,
-            oblique: 0.0,
-            style: look.style.into(),
-            halign: align.0,
-            valign: align.1,
-        });
-        self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
-    }
-}
-
 /// Roughly how wide a character of the standard font is, per unit height.
 const CHAR_WIDTH: f64 = 0.8;
 /// The narrowest width factor a title-block text is squeezed to before it is cut.
@@ -347,7 +342,7 @@ const MIN_WIDTH_FACTOR: f64 = 0.6;
 
 /// `value` fitted in `room` mm at `height` (design 019 §4): narrowed down to
 /// [`MIN_WIDTH_FACTOR`], then cut with `…`.
-pub(crate) fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
+pub fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     let Some(room) = room.filter(|r| *r > 0.0) else { return (value.to_string(), 1.0) };
     let n = value.chars().count() as f64;
     let wide = n * height * CHAR_WIDTH;
@@ -365,144 +360,41 @@ pub(crate) fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) 
 }
 
 /// How a page's frame and title block are drawn from what they show (owner note of 2026-11-08:
-/// users will define their own borders and title blocks). [`BuiltIn`] is the one layout today; a
-/// user-defined template becomes another implementation, chosen per project or page.
+/// users will define their own borders and title blocks). Brief 055: the frame style's block
+/// ([`FrameInput::block`]) is the user-defined part; [`BuiltIn`] draws the border and that block.
 pub trait FrameLayout: Send + Sync {
     /// Every line and text of the frame `input` describes, in model coordinates (the paper's
     /// bottom-left corner at the origin).
     fn parts(&self, input: &FrameInput) -> Vec<Part>;
 }
 
-/// The built-in frame and title block (design 019 §3, §4).
+/// The frame drawn from its style: border, zones, centre marks and the block (design 055 §3).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BuiltIn;
 
 impl FrameLayout for BuiltIn {
     fn parts(&self, input: &FrameInput) -> Vec<Part> {
-        built_in(input)
+        drawn(input).0
     }
 }
 
-/// Every line and text of the frame `input` describes, with the built-in layout.
+/// Every line and text of the frame `input` describes.
 pub fn parts(input: &FrameInput) -> Vec<Part> {
     BuiltIn.parts(input)
 }
 
-fn built_in(input: &FrameInput) -> Vec<Part> {
-    let s = input.sheet;
-    let k = unit_scale(input.unit);
-    let grid = Grid::new(s, LengthUnit::Millimetre);
-    let (w, h) = (f64::from(s.width), f64::from(s.height));
-    let a = grid.area_width();
-    // The frame's top edge and bottom edge in the frame's own coordinates.
-    let top = h - MARGIN_MM - TOP_MARGIN_MM - TITLE_BLOCK_MM;
-    let bottom = -TITLE_BLOCK_MM;
-    let mut d = Draw { k, out: Vec::new() };
-    let ml = (HAlign::Middle, VAlign::Middle);
-    let left = (HAlign::Left, VAlign::Baseline);
-    let tl = (HAlign::Left, VAlign::Top);
-    // Paper edge, frame, title block's top line.
-    // Brief 050a: the frame style's weights (019's FRAME_WEIGHT and THIN_WEIGHT in the built-in).
-    let (border, inner) = (input.look.border, input.look.inner);
-    d.rect((-MARGIN_MM, -TITLE_BLOCK_MM - MARGIN_MM), (w - MARGIN_MM, h - TITLE_BLOCK_MM - MARGIN_MM), inner, Some(LABEL_ACI));
-    d.rect((0.0, -TITLE_BLOCK_MM), (a, top), border, None);
-    d.line((0.0, 0.0), (a, 0.0), border, None);
-    // Grid: zones over the whole frame (title-block area included), counted from the top-left;
-    // ticks and labels on all four sides.
-    let (cw, rh) = (grid.column_width(), grid.row_height());
-    for ci in 0..s.columns {
-        let x0 = f64::from(ci) * cw;
-        let c = grid.column_number(ci);
-        if ci > 0 {
-            d.line((x0, top), (x0, top + 3.0), inner, None);
-            d.line((x0, bottom), (x0, bottom - 3.0), inner, None);
-        }
-        if input.look.grid_labels {
-            let label = grid.column_label(c);
-            d.text((x0 + cw / 2.0, top + TOP_MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
-            d.text((x0 + cw / 2.0, bottom - MARGIN_MM / 2.0), input.text.grid, &label, ml, None, None);
-        }
-    }
-    for ri in 0..s.rows {
-        let y1 = top - f64::from(ri) * rh;
-        let r = grid.row_number(ri);
-        if ri > 0 {
-            d.line((0.0, y1), (-3.0, y1), inner, None);
-            d.line((a, y1), (a + 3.0, y1), inner, None);
-        }
-        if input.look.grid_labels {
-            let label = grid.row_label(r);
-            d.text((-MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
-            d.text((a + MARGIN_MM / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
-        }
-    }
-
-    // Title block (design 019 §4): the revision table stretches; the middle and right blocks keep
-    // their widths against the right edge.
-    let x_r = a - 110.0;
-    let x_m = a - 230.0;
-    let t = x_m;
-    // Brief 033 (design 033 §7.3): the project's revision columns across the table.
-    let (widths, _) = crate::revisions::widths(&input.rev_columns, t);
-    let mut cols = vec![0.0];
-    for w in &widths {
-        let last = cols.last().copied().unwrap_or(0.0);
-        cols.push(last + w);
-    }
-    let thin = inner;
-    for x in cols.iter().skip(1) {
-        d.line((*x, -TITLE_BLOCK_MM), (*x, 0.0), thin, None);
-    }
-    for i in 1..=TABLE_ROWS {
-        let y = -5.0 * i as f64;
-        d.line((0.0, y), (t, y), thin, None);
-    }
-    for (i, c) in input.rev_columns.iter().enumerate() {
-        let x = cols.get(i).copied().unwrap_or_default();
-        let w = widths.get(i).copied().unwrap_or_default();
-        d.text((x + 1.0, -1.0), input.text.caption, &c.header, tl, Some(LABEL_ACI), Some(w - 2.0));
-    }
-    for (row, rev) in input.revisions.iter().enumerate() {
-        let y = -5.0 * (row + 2) as f64 + 1.25;
-        for (i, value) in rev.iter().enumerate() {
-            let (x0, x1) = (cols.get(i).copied().unwrap_or_default(), cols.get(i + 1).copied().unwrap_or_default());
-            d.text((x0 + 1.0, y), input.text.value, value, left, None, Some(x1 - x0 - 2.0));
-        }
-    }
-    // Middle block.
-    d.line((x_r, -TITLE_BLOCK_MM), (x_r, 0.0), thin, None);
-    for y in [-10.0, -20.0, -30.0] {
-        d.line((x_m, y), (x_r, y), thin, None);
-    }
-    let boxes = [
-        ((x_m, -10.0), (x_r, 0.0), "Project", input.project_title.as_str(), input.text.main),
-        ((x_m, -20.0), (x_r, -10.0), "Customer", input.customer.as_str(), input.text.value),
-        ((x_m, -30.0), (x_r, -20.0), "Drawing no.", input.drawing_number.as_str(), input.text.value),
-        ((x_m, -40.0), (x_r, -30.0), "Status", input.status.as_str(), input.text.value),
-        ((x_r, -10.0), (a, 0.0), "Page title", input.page_title.as_str(), input.text.main),
-        ((x_r, -20.0), (x_r + 55.0, -10.0), "Function", input.function.as_str(), input.text.value),
-        ((x_r + 55.0, -20.0), (a, -10.0), "Location", input.location.as_str(), input.text.value),
-        ((x_r + 65.0, -30.0), (a, -20.0), "Next", input.next.as_str(), input.text.value),
-        ((x_r + 65.0, -40.0), (a, -30.0), "Total", input.total.as_str(), input.text.value),
-    ];
-    // Right block lines.
-    d.line((x_r, -10.0), (a, -10.0), thin, None);
-    d.line((x_r, -20.0), (a, -20.0), thin, None);
-    d.line((x_r + 65.0, -30.0), (a, -30.0), thin, None);
-    d.line((x_r + 55.0, -20.0), (x_r + 55.0, -10.0), thin, None);
-    d.line((x_r + 40.0, -40.0), (x_r + 40.0, -20.0), thin, None);
-    d.line((x_r + 65.0, -40.0), (x_r + 65.0, -20.0), thin, None);
-    for (lo, hi, label, value, height) in boxes {
-        d.text((lo.0 + 1.0, hi.1 - 1.0), input.text.caption, label, tl, Some(LABEL_ACI), None);
-        d.text((lo.0 + 1.0, lo.1 + 1.5), height, value, left, None, Some(hi.0 - lo.0 - 2.0));
-    }
-    for ((x0, x1), label, value, height) in
-        [((x_r, x_r + 40.0), "Page", input.page.as_str(), input.text.page), ((x_r + 40.0, x_r + 65.0), "Rev", input.rev.as_str(), input.text.rev)]
-    {
-        d.text((x0 + 1.0, -21.0), input.text.caption, label, tl, Some(LABEL_ACI), None);
-        d.text(((x0 + x1) / 2.0, -31.0), height, value, ml, None, Some(x1 - x0 - 2.0));
-    }
-    d.out
+/// [`parts`], and what drawing the block found (items skipped, fields cut).
+pub fn drawn(input: &FrameInput) -> (Vec<Part>, crate::title_block::layout::Drawn) {
+    use crate::title_block::layout;
+    let mut pen = layout::Pen::new(unit_scale(input.unit));
+    layout::border(&mut pen, input);
+    let l = &input.block.layout;
+    let origin = match input.look.block {
+        crate::styles::frame::BlockAt::BottomFull => (input.look.margins.left, input.look.margins.bottom),
+        crate::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
+    };
+    let d = layout::block(&mut pen, input, l, origin);
+    (pen.out, d)
 }
 
 #[cfg(test)]

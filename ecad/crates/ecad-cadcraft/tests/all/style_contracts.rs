@@ -257,7 +257,7 @@ fn a_style_change_marks_only_the_pages_of_its_users() {
         catalogue: "text".into(),
         id,
         before: None,
-        after: Some(StyleRecord { name: String::new(), fields: [("height".to_string(), "4".to_string())].into() }),
+        after: Some(StyleRecord { name: String::new(), fields: [("height".to_string(), "4".to_string())].into(), body: None }),
     };
     // Nobody uses it: no page.
     assert_eq!(styles::pages_touched(&doc, &set(large.clone())), Some(Default::default()));
@@ -285,7 +285,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
                 catalogue: "text".into(),
                 id: StyleRef::Own(i + 1),
                 before: None,
-                after: Some(StyleRecord { name: format!("S{i}"), fields: Default::default() }),
+                after: Some(StyleRecord { name: format!("S{i}"), fields: Default::default(), body: None }),
             });
         }
         let fields = (0..100).map(|i| (format!("f{i}"), "x".repeat(300))).collect();
@@ -294,14 +294,14 @@ fn a_hostile_style_document_opens_draws_and_reports() {
             catalogue: "location".into(),
             id: StyleRef::Own(9),
             before: None,
-            after: Some(StyleRecord { name: long.clone(), fields }),
+            after: Some(StyleRecord { name: long.clone(), fields, body: None }),
         });
         ops.push(Op::SetStyle {
             layer: StyleLayer::Project,
             catalogue: "cable".into(),
             id: StyleRef::Own(10),
             before: None,
-            after: Some(StyleRecord { name: "Future".into(), fields: Default::default() }),
+            after: Some(StyleRecord { name: "Future".into(), fields: Default::default(), body: None }),
         });
         ops.push(Op::SetProperty {
             object: ObjectRef::Component(k1),

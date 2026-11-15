@@ -17,6 +17,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
+use crate::title_block::StyleBody;
 
 /// The most styles a layer may hold per catalogue. Guard, not a default: it keeps a hostile
 /// file from making the catalogue tables and the users index unbounded. Records past it are kept
@@ -147,12 +148,42 @@ impl<'de> Deserialize<'de> for StyleRef {
 /// What a standard or a project stores about one style (design 050 §2.3): its name and the
 /// fields it sets. For a built-in style the name is empty and the record holds only the fields
 /// it overrides. Unknown field keys are kept and ignored.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+///
+/// Brief 055 (FP1): a `frame` record may carry a typed [`StyleBody`], its title block; left out
+/// while absent, so older files read and save the same. Merge treats the record, body included,
+/// as one unit.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct StyleRecord {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: Properties,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<StyleBody>,
+}
+
+impl StyleRecord {
+    /// A record with `name` and `fields`, without a body.
+    pub fn new(name: impl Into<String>, fields: Properties) -> StyleRecord {
+        StyleRecord { name: name.into(), fields, body: None }
+    }
+
+    /// Its title block, if its body holds one.
+    pub fn title_block(&self) -> Option<&crate::title_block::TitleBlockLayout> {
+        self.body.as_ref()?.title_block.as_ref()
+    }
+
+    /// Its stored value of `key`, within the bounds: at most [`MAX_FIELDS_PER_STYLE`] fields
+    /// (by key order) count, and a value longer than [`MAX_FIELD_CHARS`] counts as absent.
+    pub fn field(&self, key: &str) -> Option<&str> {
+        let v = self.fields.get(key)?;
+        if self.fields.len() > MAX_FIELDS_PER_STYLE
+            && self.fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
+        {
+            return None;
+        }
+        (v.chars().count() <= MAX_FIELD_CHARS).then_some(v.as_str())
+    }
 }
 
 /// A layer's style records: catalogue word → style → record.
@@ -181,7 +212,7 @@ pub struct StandardHeader {
 pub const BASED_ON_IEC: &str = "iec";
 
 /// A project's copy of a standard (design 050 §2.3, FP1).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Standard {
     pub header: StandardHeader,
     /// Registry values at the Standard level, by registry key (`tags.coil.prefix` → `K`).
@@ -202,6 +233,17 @@ impl Standard {
 /// The record `layer` holds for `(catalogue, id)` in `doc`, if any.
 pub fn record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: &str, id: &StyleRef) -> Option<&'a StyleRecord> {
     layer_of(doc, layer)?.get(catalogue)?.get(id)
+}
+
+/// The record `layer` holds for `(catalogue, id)`, within [`MAX_STYLES_PER_CATALOGUE`]: past the
+/// bound a record counts as absent (by ID order). The rank costs at most the bound.
+pub fn bounded_record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: &str, id: &StyleRef) -> Option<&'a StyleRecord> {
+    let map = layer_of(doc, layer)?.get(catalogue)?;
+    let r = map.get(id)?;
+    if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
+        return None;
+    }
+    Some(r)
 }
 
 /// The style records of `layer` in `doc` (`None` for the standard layer without a standard).

@@ -32,7 +32,14 @@ fn shown(h: &mut H, cursor: Vec2) -> String {
 }
 
 fn edge(h: &H, x: f64) -> Handle {
-    h.s.doc().unwrap().model.iter().find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == x && l.b.x == x)).map(|e| e.handle).unwrap()
+    h.s.doc()
+        .unwrap()
+        .model
+        .iter()
+        // Brief 055: the house block's revision table has a column line at x 40 too.
+        .find(|e| e.common.layer != ecad_cadcraft::frame::LAYER && matches!(&e.kind, EntityKind::Line(l) if l.a.x == x && l.b.x == x))
+        .map(|e| e.handle)
+        .unwrap()
 }
 
 fn rect(h: &mut H, x0: f64) -> ComponentId {
