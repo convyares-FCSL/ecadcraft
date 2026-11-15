@@ -150,6 +150,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "designationremove",
     "conflicts",
     "functionbox",
+    // Brief 055.
+    "titleblocks",
+    "titleblock",
+    "titleblockimport",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

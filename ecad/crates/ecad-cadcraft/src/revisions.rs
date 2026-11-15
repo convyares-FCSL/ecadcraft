@@ -82,9 +82,9 @@ pub const MAX_COLUMNS_CHARS: usize = 600;
 /// Description is never narrowed below this before the other columns are (design 033 §7.1).
 pub const MIN_DESCRIPTION_MM: f64 = 30.0;
 /// The revision table's width on A3, millimetres (design 019 §4).
-pub const A3_TABLE_MM: f64 = 170.0;
+pub const A3_TABLE_MM: f64 = 200.0;
 /// Said when the fixed widths leave Description too narrow.
-pub const NARROWED: &str = "Columns are narrowed to fit the 170 mm revision table on A3.";
+pub const NARROWED: &str = "Columns are narrowed to fit the 200 mm revision table on A3.";
 
 /// The headers of the built-in fields, in [`FIELDS`] order.
 const BUILTIN_HEADERS: [&str; 6] = ["Rev", "Date", "Description", "Drawn", "Checked", "Approved"];
@@ -487,7 +487,12 @@ mod tests {
         {
             doc.properties.insert(COLUMNS_KEY.into(), v);
             let cols = columns(&doc);
-            assert_eq!(cols.iter().map(|c| c.field.as_str()).collect::<Vec<_>>(), FIELDS, "the built-in six");
+            // Brief 055 (FP5): the built-in columns, ECR after Rev.
+            assert_eq!(
+                cols.iter().map(|c| c.field.as_str()).collect::<Vec<_>>(),
+                ["rev", "ecr", "date", "description", "drawn", "checked", "approved"],
+                "the built-in columns"
+            );
         }
         for v in ["", "x", "STAR?"] {
             doc.properties.insert(PENDING_KEY.into(), v.into());

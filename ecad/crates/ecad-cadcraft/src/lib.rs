@@ -91,6 +91,8 @@ pub mod terminal_cmds;
 pub mod terminal_types;
 pub mod text_cmds;
 pub mod text_style;
+pub mod title_block;
+pub mod title_block_cmds;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]

@@ -79,6 +79,10 @@ impl eframe::App for App {
         if let Some(d) = self.0.library.to_save() {
             storage.set_string(ecad_trial::library::draft::DRAFTS_KEY, d);
         }
+        // Brief 055 (design 055 §4.2): the title block editor's drafts.
+        if let Some(d) = self.0.library.tb.to_save() {
+            storage.set_string(ecad_trial::library::title_blocks::draft::DRAFTS_KEY, d);
+        }
     }
     fn auto_save_interval(&self) -> std::time::Duration {
         // Saved on change, debounced to once a second (design 038 §5.4).
@@ -166,6 +170,7 @@ fn main() -> eframe::Result {
             let stored = |k: &str| cc.storage.and_then(|s| s.get_string(k));
             trial.shell.load(stored(ecad_trial::shell::state::SHELL_KEY).as_deref(), stored(ecad_trial::shell::state::VIEWS_KEY).as_deref());
             trial.library.load(stored(ecad_trial::library::draft::DRAFTS_KEY).as_deref());
+            trial.library.tb.load(stored(ecad_trial::library::title_blocks::draft::DRAFTS_KEY).as_deref());
             // Brief 035: agent access on for this run (not remembered).
             if let Some(port) = control {
                 trial.agent.control_flag(port);

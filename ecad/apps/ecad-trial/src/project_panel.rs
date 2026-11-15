@@ -209,6 +209,10 @@ pub enum Action {
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
+    /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
+    EditTitleBlock(PageId, u16),
+    ClearPageSheet(PageId),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),

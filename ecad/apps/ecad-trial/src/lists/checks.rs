@@ -89,6 +89,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::IgnoreConnector(..) => cp::IGNORE,
         Fix::UseArticle(..) => cp::USE_FOR_ALL,
         Fix::DropMissingFor(..) => cp::REMOVE,
+        Fix::EditTitleBlock(..) => cp::EDIT_BLOCK,
+        Fix::ClearPageSheet(_) => cp::CLEAR_PAGE_SHEET,
     }]
 }
 

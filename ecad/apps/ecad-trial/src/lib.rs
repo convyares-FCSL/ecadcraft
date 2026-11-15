@@ -1923,6 +1923,10 @@ impl Trial {
                 }
             }
             A::OpenStandards(word) => self.open_standards_at(word),
+            A::EditTitleBlock(page, item) => self.open_title_blocks(Some((page, item))),
+            A::ClearPageSheet(page) => {
+                let _ = self.run_line(&format!("pageprops {}", serde_json::json!({"page": page, "sheet": null})));
+            }
             A::ShowCables => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {

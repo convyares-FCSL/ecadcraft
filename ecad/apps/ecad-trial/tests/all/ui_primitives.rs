@@ -76,3 +76,43 @@ fn the_showcase_screenshot_for_the_owner() {
         eprintln!("no wgpu adapter: screenshot skipped");
     }
 }
+
+/// The value components' gallery (`ecad_ui::showcase::components`, style guide
+/// `docs/design/components.md`): every component is there in every state, on Graphite and on the
+/// light shell, and an editable value answers as an input while a read value does not. Writes
+/// `components-dark.png` and `components-light.png` to `$ECAD_TESTER_SHOTS` when it names a folder.
+#[test]
+fn the_component_gallery_shows_every_component_in_both_themes() {
+    for (theme, name) in [(ecad_ui::Theme::Dark, "components-dark.png"), (ecad_ui::Theme::Light, "components-light.png")] {
+        let deltas: Deltas = Arc::default();
+        let mut first = true;
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1460.0, 640.0)).renderer(Collect(deltas.clone())).build_ui_state(
+            move |ui, s: &mut ecad_ui::showcase::Showcase| {
+                if std::mem::take(&mut first) {
+                    ecad_ui::fonts::install(ui.ctx(), cadcraft_ui_egui::theme::font_definitions("en"));
+                }
+                ecad_ui::set_theme(theme);
+                ecad_ui::style::apply(ui.ctx());
+                egui::Frame::NONE.fill(ecad_ui::color(ecad_ui::SHELL.panel)).inner_margin(ecad_ui::tokens::space::PANEL_PADDING).show(ui, |ui| {
+                    ecad_ui::showcase::components(ui, s);
+                });
+            },
+            ecad_ui::showcase::Showcase::default(),
+        );
+        h.run_steps(4);
+        for label in ["Text entry", "Number with unit", "Selector", "Colour", "Value with hint", "Read value", "Toggle", "\u{2192} 2/C1"] {
+            assert!(h.query_all_by_label(label).next().is_some(), "{label} in the gallery");
+        }
+        // Editable: an input; read-only: plain text, never an input.
+        let inputs = h.query_all_by_role_and_label(egui::accesskit::Role::TextInput, "Text entry").count();
+        assert_eq!(inputs, 5, "editable, hover, focus, disabled and empty are inputs");
+        let read = h.query_all_by_role_and_label(egui::accesskit::Role::Label, "Text entry").count();
+        assert_eq!(read, 1, "the read-only text entry is plain text");
+        if let Some(dir) = std::env::var_os("ECAD_TESTER_SHOTS")
+            && shot(&h, &deltas, &std::path::PathBuf::from(dir).join(name)).is_none()
+        {
+            eprintln!("no wgpu adapter: {name} skipped");
+        }
+    }
+    ecad_ui::set_theme(ecad_ui::Theme::Dark);
+}

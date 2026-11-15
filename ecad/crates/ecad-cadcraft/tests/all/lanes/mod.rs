@@ -7,3 +7,4 @@
 //! move into `main.rs`'s list and this file holds only this comment again.
 mod lane_052;
 mod lane_053;
+mod lane_055;

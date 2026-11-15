@@ -107,6 +107,19 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
         }
     };
     for op in ops {
+        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so the places of
+        // the devices on them.
+        match crate::title_block::frame_reach(doc, op) {
+            crate::title_block::Reach::Pages(ps) => {
+                for p in ps {
+                    for (_, r) in doc.representations_on(p) {
+                        component(&r.subject);
+                    }
+                }
+            }
+            crate::title_block::Reach::Wide => pages = true,
+            crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
+        }
         match op {
             Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
                 component(&Subject::Component(*id))
