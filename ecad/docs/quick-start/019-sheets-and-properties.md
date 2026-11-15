@@ -16,7 +16,7 @@ read-only. Section 5H describes it; 5D, 5E and 5G changed with it (texts such as
   A–G and J), `ecad/crates/ecad-model/tests/all/sheet_contracts.rs` (folders and their
   invariants), the round trip in `ecad/crates/ecad-file/tests/all/records_contracts.rs`, check I in
   `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and
-  `ecad/apps/ecad-trial/tests/all/sheets_ui.rs` (the tree, the Properties section, both dialogs,
+  `ecad/crates/ecad-app/tests/all/sheets_ui.rs` (the tree, the Properties section, both dialogs,
   Rev A and the undo question, by the UI in a headless 1280×800 window, with the eight `019-*.png`
   screenshots).
 - *Agent-observed:* the worker rendered the `019-*.png` screenshots headless (wgpu) and looked at

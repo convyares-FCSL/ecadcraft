@@ -1,7 +1,7 @@
 //! egui's style from the tokens (design §3.2): visuals, spacing and text styles for **both** egui
 //! themes from the shell in use ([`crate::set_theme`]: Graphite or light), so the shell has the
 //! appearance the person chose whatever the operating system prefers. Run [`apply`] once at start, and again when the host re-applies its own style (the
-//! trial does it when CADCraft's theme or language changes, until U2's `style` switch keeps
+//! desktop app does it when CADCraft's theme or language changes, until U2's `style` switch keeps
 //! CADCraft from touching the style at all).
 
 use ecad_tokens::{line, radius, shadow, space, ui_type};

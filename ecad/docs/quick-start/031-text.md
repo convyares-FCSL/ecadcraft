@@ -25,7 +25,7 @@ reference ends at the reference height (2.0 mm); a copied symbol keeps its own t
   registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
   (drawn sizes and styles, redraw, a font change then an edit),
   `ecad/apps/ecad-mcp/tests/all/text_contracts.rs` (`textstyle`, `defaults`, the `text.` key
-  refusals, writes off) and `ecad/apps/ecad-trial/tests/all/text_ui.rs` (the Text section).
+  refusals, writes off) and `ecad/crates/ecad-app/tests/all/text_ui.rs` (the Text section).
 - *Agent-observed:* the worker looked at the headless screenshot `031-text-section.png`; no agent
   has clicked through the live window.
 - *Owner-tried:* not yet.

@@ -37,7 +37,7 @@ pub(crate) fn tag(h: &mut H, c: ComponentId) -> String {
 pub(crate) fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().plc.clone();
-        (kept, Outputs::build(p.ledger.document()).plc)
+        (kept, Outputs::build(p.ledger.document()).plc.clone())
     });
     assert!(kept.same_as(&built), "the kept PLC model differs from a rebuild");
 }

@@ -20,7 +20,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   results, limitations or the revision and environment it records. Keep automated checks,
   agent-observed runs and steps the owner has personally tried clearly apart, and never record a
   step as owner-tried unless the owner reported it. Other READMEs link to it rather than repeat
-  it. The headless tests `the_quick_start_trial_runs_headless` and
+  it. The headless tests `the_quick_start_runs_headless` and
   `the_quick_start_debugger_example_runs_headless` follow its steps.
 - The debugger is read-only: it reaches a project only through `ProjectHandle` reads under
   `try_lock`, copies what it shows and releases the lock before drawing, and runs replay, projection
@@ -102,12 +102,10 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     (so every test must still compile), and the fast tests of the crates the pull request changed
     and of every crate that depends on them (`cargo xtask test-changed --base origin/dev
     --with-dependents`; owner, 2026-11-12). The full suite (what `cargo xtask ci` runs, with the
-    slow set and wasm, root CADCraft, Linux and Windows) runs on pull requests into `main`, on
+    slow set, root CADCraft, Linux and Windows) runs on pull requests into `main`, on
     pushes to `main` and by hand (`workflow_dispatch`), with the large bench; CI splits it into
     `cargo xtask lint` and sharded cargo-nextest jobs (`.config/nextest.toml`), and Windows leaves
-    out the in-memory slow tests named there. Run wasm locally (`cargo xtask wasm`, warnings as errors
-    like CI) only when a change could affect it (dependencies, `cfg(target_arch)`, code built
-    only off wasm, platform code in `ecad-model`/`ecad-store`/`ecad-file`/`ecad-cadcraft`).
+    out the in-memory slow tests named there.
 - **Builds (owner decision, 2026-11-08, replaces the shared folder of 2026-11-01):** each checkout
   builds into **its own** folder, so builds running at the same time never mix: leave
   `CARGO_TARGET_DIR` unset, and cargo uses that checkout's own `ecad/target` (git-ignored). The
@@ -145,8 +143,17 @@ cargo xtask patches               # only when files outside ecad/ changed
   When a change touches files outside `ecad/`, the worker also builds and clippies CADCraft's
   root workspace (in its own `target`), and the tester runs the affected
   CADCraft crates' tests.
-- `ecad-model`, `ecad-store` and `ecad-file` must never depend on a `cadcraft-*` crate. Only
-  `ecad-cadcraft` touches the engine.
+- **Layers (design 065, `docs/design/crates.md` §1 and §4).** **Core** (what a project is and
+  means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`, `ecad-inspect`,
+  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-cadcraft`. **UI kit**: `ecad-ui`,
+  `ecad-tokens`. **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
+  `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` under `dev/`, and `xtask`.
+  A crate uses only layers above it; `cargo xtask layers` enforces the table.
+- No Core crate depends on a `cadcraft-*` crate. Only `ecad-cadcraft` touches the engine; App and
+  Programs reach it through `ecad_cadcraft::cad`.
+- **ECAD is desktop-only (owner ruling, 2026-11-15):** no web or wasm product, so no ECAD crate
+  has to build for wasm and there is no `cargo xtask wasm`. CADCraft's own wasm build is not
+  affected.
 - **Derived views scale with what changed (owner decision, 2026-11-08).** Anything derived from the
   model (reference texts, page projections, lists, panels) states what it depends on and is
   updated from the objects a commit touched (brief 013's touched set and indexes). It never

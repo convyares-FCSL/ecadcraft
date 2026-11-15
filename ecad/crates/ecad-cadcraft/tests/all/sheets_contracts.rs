@@ -343,7 +343,7 @@ fn a_read_only_project_refuses_writes() {
     s.h.run("issuerevision", json!({})).unwrap();
     s.h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::Unavailable);
     // The command path refuses writes the same way for every ECAD command while a project is
-    // read-only (`ecad-mcp` and the trial rely on it); reading and opening a revision work.
+    // read-only (`ecad-mcp` and the desktop app rely on it); reading and opening a revision work.
     let v = s.h.run("projectprops", json!({})).unwrap();
     assert_eq!(v["revisions"][0]["rev"], "A");
     s.h.run("openrevision", json!({"rev": "A"})).unwrap();

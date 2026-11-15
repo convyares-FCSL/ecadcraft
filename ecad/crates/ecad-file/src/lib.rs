@@ -18,11 +18,14 @@
 //!   distinguishing our own failed bytes from external changes.
 //! - **Files on disk** ([`disk`], native only): open with the writer lock, Save, and Save As by
 //!   temporary file, rename and folder flush; interrupted trailing bytes preserved in a sidecar.
+//! - **Binding** ([`binding`]): a project bound to its version 2 file (open, Save, Save As,
+//!   status) and the checks on a path typed for one; the caller passes the home folder.
 //!
 //! Excluded until later stages: library files beyond their header and chain seed (stage 3), checkpoints (disabled; their
 //! trust contract is unresolved), and other codecs.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod binding;
 pub mod canonical;
 pub mod chain;
 pub mod codec;

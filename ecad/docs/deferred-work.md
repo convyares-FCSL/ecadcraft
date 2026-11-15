@@ -25,6 +25,22 @@ started.
   (the debugger, the Tool Sets seam X8 and later work have changed files outside `ecad/` since the
   proposal was written against `baee1b8`), then get the owner's approval for implementation.
 
+## The commands in `history` and `merging` move to `cmd/` (lane 067 step 11)
+
+- **What:** lane 067 step 11 moved ecad-cadcraft's commands into `cmd/` (`commands.rs` →
+  `cmd/mod.rs`, each `*_cmds.rs` → `cmd/<area>.rs`, `plc_cmds/` → `cmd/plc/`, and `release.rs`'s
+  `specs`, `run_prerelease` and `run_release` → `cmd/release.rs`). The `specs` and `run_*`
+  functions of `history.rs` (`run_history`, `run_steps`, `run_pointinfo`, `run_version`,
+  `run_showpoint`, `run_closepoint`, `run_restore`, `run_branches`, `run_branch`,
+  `run_renamebranch`, `run_switchbranch`, `run_archivebranch`, `run_reopenbranch`), `merging.rs`
+  (`run_merge`, `run_undomerge`) stayed: they use private helpers of their modules (`node_json`,
+  `branch_json`, `kind_word`, `fork_of`, `from_text`, `unanswered_refusal`, …), so moving them
+  would split logic or widen visibility, not be a clean move.
+- **When:** with the R6 lane (typed command parameters, `docs/design/crates.md` §2.1), which
+  rewrites each command's JSON form anyway; move them to `cmd/history.rs` and `cmd/merging.rs`
+  then.
+- **Status:** deferred by the lane 067 brief (2026-11-15); nothing else depends on it.
+
 ## Versioned built-in defaults: at the v1 format freeze (brief 066, owner 2026-11-15)
 
 - **What:** while ECAD is pre-alpha there is one built-in defaults set, edited freely, and every
@@ -60,6 +76,17 @@ started.
 - **Stage 4 (checkpoints) is on hold** until stage 3 (libraries) and the core domain features
   are settled (owner, 2026-11-08). On the benchmark's large tier, about 13 s to open 170,000
   transactions is acceptable for now.
+- Consider moving the definition content hash (`definition_hash`, canonical JSON) into
+  `ecad-model`, so the electrical rules don't depend on the file format (types lane or later;
+  067 step 4, owner option A).
+- Remove ECAD's leftover wasm code now that ECAD is desktop-only (owner, 2026-11-15; design 065
+  §1): the `cfg(target_arch = "wasm32")` branches (`ruzstd` decoding in `ecad-file`, the `chrono`
+  clock, `agent_access`, `same-file`) and, as a separate CI task (house rule 11), the stale
+  `targets: wasm32-unknown-unknown` line and the wasm step name in `.github/workflows/ci.yml`.
+  The crate split (067 step 10) removed only `cargo xtask wasm` and its step in `lint` and `ci`.
+- Pass the branch seed explicitly when the R9/types lanes touch `ProjectV2::create_branch`. The
+  crate split (067 step 1c) left its signature alone: `BranchId::from_seed` takes the entropy
+  from `ecad_store::random_u128` inside it (overseer, 2026-11-15).
 
 ## Small performance follow-ups (found by briefs 012-014, owner 2026-11-08)
 

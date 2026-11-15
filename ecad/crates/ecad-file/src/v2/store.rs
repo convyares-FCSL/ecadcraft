@@ -97,6 +97,19 @@ fn builder(flag: &Arc<AtomicBool>) -> Builder {
     b
 }
 
+/// redb's read-only open (`Builder::open_read_only`, which opens the file for reading and hands it
+/// to a `FileBackend`), on a handle ecad-store opened: ecad-file reaches the disk only through
+/// ecad-store (design 065 §3.1).
+///
+/// The writable open stays redb's path-based `Builder::open`, a named exception: redb 4.5 has no
+/// public open-existing over a backend, and `create_with_backend` would initialise an empty file
+/// as a new database where `open` refuses it.
+#[cfg(not(target_arch = "wasm32"))]
+fn open_read_only(b: &Builder, path: &std::path::Path) -> Result<ReadOnlyDatabase, redb::DatabaseError> {
+    let file = ecad_store::disk::FileMedium::open(path, false)?.into_file();
+    b.open_read_only_with_backend(redb::backends::FileBackend::new(file)?)
+}
+
 fn poisoned() -> StoreError {
     StoreError::Engine("the database handle's lock is poisoned".into())
 }
@@ -123,7 +136,7 @@ impl Store {
     /// removed).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn create(path: &std::path::Path) -> Result<Self, StoreError> {
-        let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(path).map_err(|e| {
+        let file = ecad_store::disk::FileMedium::create_new(path).map(ecad_store::disk::FileMedium::into_file).map_err(|e| {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
                 StoreError::Refused(format!("{} already exists; it is never overwritten", path.display()))
             } else {
@@ -140,7 +153,7 @@ impl Store {
             Ok(me)
         })();
         if made.is_err() {
-            let _ = std::fs::remove_file(path);
+            let _ = ecad_store::disk::remove_file(path);
         }
         made
     }
@@ -150,7 +163,7 @@ impl Store {
         let path = path.to_path_buf();
         Box::new(move || {
             let b = builder(&Arc::new(AtomicBool::new(false)));
-            Ok(if writable { Db::Writable(b.open(&path).map_err(open_err)?) } else { Db::ReadOnly(b.open_read_only(&path).map_err(open_err)?) })
+            Ok(if writable { Db::Writable(b.open(&path).map_err(open_err)?) } else { Db::ReadOnly(open_read_only(&b, &path).map_err(open_err)?) })
         })
     }
 
@@ -162,7 +175,7 @@ impl Store {
     pub fn open(path: &std::path::Path, writable: bool) -> Result<Self, StoreError> {
         let flag = Arc::new(AtomicBool::new(false));
         let b = builder(&flag);
-        let db = if writable { Db::Writable(b.open(path).map_err(open_err)?) } else { Db::ReadOnly(b.open_read_only(path).map_err(open_err)?) };
+        let db = if writable { Db::Writable(b.open(path).map_err(open_err)?) } else { Db::ReadOnly(open_read_only(&b, path).map_err(open_err)?) };
         Ok(Self::new(db, Self::reopen_path(path, writable), flag.load(Ordering::SeqCst)))
     }
 

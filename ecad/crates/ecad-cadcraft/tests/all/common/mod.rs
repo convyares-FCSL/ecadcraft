@@ -128,7 +128,7 @@ impl H {
         self.pv(|p, pg| pg.index_of(p.pages.get(&page)?.uid?))
     }
 
-    /// Make `page` the active page, as a click on its row in the trial's Project panel does
+    /// Make `page` the active page, as a click on its row in the desktop app's Project panel does
     /// (brief 016: one page window, the page projected into it).
     pub fn activate(&mut self, page: PageId) {
         self.project.open_page(&mut self.s, page).expect("page shown");

@@ -9,9 +9,10 @@ interface is styled locally: ECAD UI code takes colours, sizes and fonts only fr
 through `ecad-ui` (`cargo xtask layers` checks it).
 
 **These tables are checked.** A test in `ecad-tokens` (`tests/all/doc_sync.rs`) reads every table
-under "Tokens" below and compares each row's name and value with the constant of the same name,
-both ways: a row without a constant, a constant without a row, or a different value fails. Change
-the constant and the row together.
+under "Tokens" below (the screen's look) and compares each row's name and value with the constant
+of the same name, both ways: a row without a constant, a constant without a row, or a different
+value fails. A test in `ecad-drawing-style` does the same for the tables under "Drawing style"
+(how a page is drawn; design 065 §1.1). Change the constant and the row together.
 
 Design specs refer to a token by its name here (`shell.text_2`, `sheet.connection_point`,
 `size.control`). CADCraft's own theme (`../crates/ui-egui/src/theme.rs`, `theme::Tokens`) is
@@ -60,60 +61,6 @@ Every text colour reaches 4.5:1 on the backgrounds it is used on (`Shell::text_p
 status and list colours on every ground but `active`; `on_accent` on `accent`; `ai_ink` on `agent`. The same holds for the
 light shell (tested too); its status and list colours are darker than Graphite's for that reason.
 
-## Sheet colours
-
-The paper sheet (`ecad_tokens::sheet::PAPER`, the default) and the dark sheet (`DARK`), the same
-meanings in a second set. Ink prints; overlay never does, except the missing-data warning
-(`sheet::prints`). Markers are drawn at a fixed screen size and do not scale with zoom. The
-canvas switches to these in U4a.
-
-| Token | Paper | Dark | Prints | Marker |
-| --- | --- | --- | --- | --- |
-| `sheet.sheet` | `#F6F4EF` | `#1B1D21` | no | none |
-| `sheet.ink` | `#16191D` | `#E4E6E9` | yes | none |
-| `sheet.ink_2` | `#5A616B` | `#9299A3` | yes | none |
-| `sheet.grid` | `#D6D2C6` | `#30333A` | no | none |
-| `sheet.connection_point` | `#0A8F94` | `#45CFD3` | no | ring, 8 px |
-| `sheet.wire_end_attached` | `#17A05B` | `#55D68B` | no | dot, 5 px |
-| `sheet.loose_end` | `#7C8591` | `#8B94A1` | no | square, 7 px |
-| `sheet.cable` | `#7A3FE0` | `#B48CFF` | yes | slash |
-| `sheet.error` | `#D7281E` | `#FF6B5E` | no | disc |
-| `sheet.warning` | `#A86400` | `#F2B84B` | no | triangle |
-| `sheet.missing_data` | `#A86400` | `#F2B84B` | yes | triangle |
-| `sheet.provisional` | `#CF1F7A` | `#FF7AB8` | yes | dotted underline |
-| `sheet.terminal_link` | `#0A8F94` | `#45CFD3` | yes | dashed bar |
-| `sheet.selection` | `#1F6FEB` | `#5B9BFF` | no | outline |
-| `sheet.placement_preview` | `#1F6FEB` | `#5B9BFF` | no | outline |
-| `sheet.agent_write` | `#5F8F00` | `#B9E34A` | no | dashed outline |
-
-The selection is filled at 12 % (`sheet.selection_fill`), the placement preview at 8 %
-(`sheet.preview_fill`). Page thumbnails and the page menu's previews are drawn in neutral greys
-on either sheet (`sheet.thumbnail_paper`, `sheet.preview_paper`, `sheet.thumbnail_ink`).
-
-| Token | Value |
-| --- | --- |
-| `sheet.selection_fill` | `12 %` |
-| `sheet.preview_fill` | `8 %` |
-| `sheet.thumbnail_paper` | `#E8E8E8` |
-| `sheet.preview_paper` | `#ECECEC` |
-| `sheet.thumbnail_ink` | `#464646` |
-
-## Wire colours
-
-Default wire category colours (`ecad_tokens::wire`), changeable in Standards (U4c). A two-colour
-wire or core is drawn in both colours: the first solid, the second laid over it as dashes.
-
-| Token | Paper | Dark |
-| --- | --- | --- |
-| `wire.power` | `#16191D` | `#E4E6E9` |
-| `wire.dc_24v` | `#23408F` | `#8FB0FF` |
-| `wire.pe` | `#2F8F3A with #E3B800 dashes` | `#6FD67A with #F2D34B dashes` |
-
-| Token | Value |
-| --- | --- |
-| `wire.dash_on` | `2 mm` |
-| `wire.dash_off` | `2 mm` |
-
 ## UI type
 
 IBM Plex Sans, px at 100 % UI scale (`ecad_tokens::ui_type`). egui family `ui`, and the first
@@ -129,23 +76,6 @@ face of `Proportional`.
 | `ui_type.object` | `20 / 26 px` | `600` | The selected object's name, screen titles |
 | `ui_type.micro` | `9 / 12 px` | `400` | Point keys and slot labels on symbol drawings in the Library |
 | `ui_type.lead` | `14 / 20 px` | `400` | An empty screen's hint |
-
-## Sheet text
-
-Barlow Semi Condensed, egui family `sheet` (`ecad_tokens::sheet_type`). Sizes are **cap
-heights** on paper (owner answer 9); the font size is the cap height divided by 0.70, Barlow Semi
-Condensed's cap height in em. Nothing is enlarged for the screen. The sheet switches to these in
-U4a. (The spec's table writes 2.15 mm for the terminal label; 1.5 / 0.70 is 2.14 mm.)
-
-| Token | Cap height | Font size | Weight | Use |
-| --- | --- | --- | --- | --- |
-| `sheet_type.tag` | `2.5 mm` | `3.57 mm` | `600` | Device tag |
-| `sheet_type.label` | `1.6 mm` | `2.29 mm` | `400` | Pin label, wire label, reference, continuation |
-| `sheet_type.terminal_label` | `1.5 mm` | `2.14 mm` | `400` | Terminal label, description |
-| `sheet_type.title_block_label` | `1.4 mm` | `2.00 mm` | `400` | Title block label |
-| `sheet_type.zone_label` | `2 mm` | `2.86 mm` | `400` | Zone label |
-| `sheet_type.page_title` | `3.5 mm` | `5.00 mm` | `600` | Page title |
-| `sheet_type.page_number` | `4.2 mm` | `6.00 mm` | `600` | Page number |
 
 ## Spacing and sizes
 
@@ -207,8 +137,9 @@ px (`ecad_tokens::radius`). A pill is fully rounded: half its height.
 
 ## Line weights
 
-UI lines in screen px; canvas lines in mm on paper, scaling with zoom with a floor of 1 px on
-screen (`ecad_tokens::line`).
+UI lines in screen px (`ecad_tokens::line`). Canvas lines are in mm on paper: they are part of
+the drawing style ("Line weights on the page" below), and `line.screen_floor` is the thinnest a
+canvas line is drawn on screen.
 
 | Token | Value | Use |
 | --- | --- | --- |
@@ -216,20 +147,6 @@ screen (`ecad_tokens::line`).
 | `line.icon_stroke` | `1.5 px` | Icon stroke on a 16 px grid, round caps and joins |
 | `line.focus_ring` | `2 px` | Focus ring, `shell.accent_text` |
 | `line.screen_floor` | `1 px` | Thinnest canvas line on screen |
-| `line.symbol` | `0.35 mm` | Symbol outline |
-| `line.control_wire` | `0.4 mm` | Control wire |
-| `line.power_wire` | `0.6 mm` | Power wire, PE |
-| `line.frame` | `0.5 mm` | Frame |
-| `line.rule` | `0.2 mm` | Title block and table rules |
-| `line.mechanical_link` | `0.25 mm` | Mechanical link |
-| `line.mechanical_link_dash` | `1.2 mm` | Mechanical link dash |
-| `line.mechanical_link_gap` | `1 mm` | Mechanical link gap |
-| `line.cable_slash` | `0.5 mm` | Cable slash |
-| `line.terminal_link` | `0.6 mm` | Terminal link (jumper) bar |
-| `line.terminal_link_dash` | `1.8 mm` | Terminal link dash |
-| `line.terminal_link_gap` | `1.4 mm` | Terminal link gap |
-| `line.selection` | `0.5 mm` | Selection outline |
-| `line.agent_write` | `0.6 mm` | Agent's last write outline |
 
 ## Wheel and shadow
 
@@ -328,6 +245,106 @@ Tool icons echo the schematic.
 | `icon.location_box` | Location tools | A dashed box with a marked corner (UI rev 3: the Location group) |
 | `icon.device_grid` | Devices panel | Three squares and a plus (UI rev 3: the Devices panel) |
 | `icon.share` | Share | An arrow rising out of a tray (UI rev 3: the top bar) |
+
+# Drawing style
+
+How a page is drawn and printed (design 065 §1.1): sheet and canvas colours, wire colours, sheet
+text, and line weights on the page. The code is the crate `ecad-drawing-style` (Core), which the
+engine, `ecad-ui` and the app all read; a test in that crate (`tests/all/doc_sync.rs`) checks these
+tables the same way as the screen tokens above.
+
+## Sheet colours
+
+The paper sheet (`ecad_drawing_style::sheet::PAPER`, the default) and the dark sheet (`DARK`),
+the same meanings in a second set. Ink prints; overlay never does, except the missing-data warning
+(`sheet::prints`). Markers are drawn at a fixed screen size and do not scale with zoom. The
+canvas switches to these in U4a.
+
+| Token | Paper | Dark | Prints | Marker |
+| --- | --- | --- | --- | --- |
+| `sheet.sheet` | `#F6F4EF` | `#1B1D21` | no | none |
+| `sheet.ink` | `#16191D` | `#E4E6E9` | yes | none |
+| `sheet.ink_2` | `#5A616B` | `#9299A3` | yes | none |
+| `sheet.grid` | `#D6D2C6` | `#30333A` | no | none |
+| `sheet.connection_point` | `#0A8F94` | `#45CFD3` | no | ring, 8 px |
+| `sheet.wire_end_attached` | `#17A05B` | `#55D68B` | no | dot, 5 px |
+| `sheet.loose_end` | `#7C8591` | `#8B94A1` | no | square, 7 px |
+| `sheet.cable` | `#7A3FE0` | `#B48CFF` | yes | slash |
+| `sheet.error` | `#D7281E` | `#FF6B5E` | no | disc |
+| `sheet.warning` | `#A86400` | `#F2B84B` | no | triangle |
+| `sheet.missing_data` | `#A86400` | `#F2B84B` | yes | triangle |
+| `sheet.provisional` | `#CF1F7A` | `#FF7AB8` | yes | dotted underline |
+| `sheet.terminal_link` | `#0A8F94` | `#45CFD3` | yes | dashed bar |
+| `sheet.selection` | `#1F6FEB` | `#5B9BFF` | no | outline |
+| `sheet.placement_preview` | `#1F6FEB` | `#5B9BFF` | no | outline |
+| `sheet.agent_write` | `#5F8F00` | `#B9E34A` | no | dashed outline |
+
+The selection is filled at 12 % (`sheet.selection_fill`), the placement preview at 8 %
+(`sheet.preview_fill`). Page thumbnails and the page menu's previews are drawn in neutral greys
+on either sheet (`sheet.thumbnail_paper`, `sheet.preview_paper`, `sheet.thumbnail_ink`).
+
+| Token | Value |
+| --- | --- |
+| `sheet.selection_fill` | `12 %` |
+| `sheet.preview_fill` | `8 %` |
+| `sheet.thumbnail_paper` | `#E8E8E8` |
+| `sheet.preview_paper` | `#ECECEC` |
+| `sheet.thumbnail_ink` | `#464646` |
+
+## Wire colours
+
+Default wire category colours (`ecad_drawing_style::wire`), changeable in Standards (U4c). A
+two-colour wire or core is drawn in both colours: the first solid, the second laid over it as dashes.
+
+| Token | Paper | Dark |
+| --- | --- | --- |
+| `wire.power` | `#16191D` | `#E4E6E9` |
+| `wire.dc_24v` | `#23408F` | `#8FB0FF` |
+| `wire.pe` | `#2F8F3A with #E3B800 dashes` | `#6FD67A with #F2D34B dashes` |
+
+| Token | Value |
+| --- | --- |
+| `wire.dash_on` | `2 mm` |
+| `wire.dash_off` | `2 mm` |
+
+## Sheet text
+
+Barlow Semi Condensed, egui family `sheet` (`ecad_drawing_style::sheet_type`). Sizes are **cap
+heights** on paper (owner answer 9); the font size is the cap height divided by 0.70, Barlow Semi
+Condensed's cap height in em. Nothing is enlarged for the screen. The sheet switches to these in
+U4a. (The spec's table writes 2.15 mm for the terminal label; 1.5 / 0.70 is 2.14 mm.)
+
+| Token | Cap height | Font size | Weight | Use |
+| --- | --- | --- | --- | --- |
+| `sheet_type.tag` | `2.5 mm` | `3.57 mm` | `600` | Device tag |
+| `sheet_type.label` | `1.6 mm` | `2.29 mm` | `400` | Pin label, wire label, reference, continuation |
+| `sheet_type.terminal_label` | `1.5 mm` | `2.14 mm` | `400` | Terminal label, description |
+| `sheet_type.title_block_label` | `1.4 mm` | `2.00 mm` | `400` | Title block label |
+| `sheet_type.zone_label` | `2 mm` | `2.86 mm` | `400` | Zone label |
+| `sheet_type.page_title` | `3.5 mm` | `5.00 mm` | `600` | Page title |
+| `sheet_type.page_number` | `4.2 mm` | `6.00 mm` | `600` | Page number |
+
+## Line weights on the page
+
+Canvas lines in mm on paper, scaling with zoom with a floor of `line.screen_floor` on screen
+(`ecad_drawing_style::line`).
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `line.symbol` | `0.35 mm` | Symbol outline |
+| `line.control_wire` | `0.4 mm` | Control wire |
+| `line.power_wire` | `0.6 mm` | Power wire, PE |
+| `line.frame` | `0.5 mm` | Frame |
+| `line.rule` | `0.2 mm` | Title block and table rules |
+| `line.mechanical_link` | `0.25 mm` | Mechanical link |
+| `line.mechanical_link_dash` | `1.2 mm` | Mechanical link dash |
+| `line.mechanical_link_gap` | `1 mm` | Mechanical link gap |
+| `line.cable_slash` | `0.5 mm` | Cable slash |
+| `line.terminal_link` | `0.6 mm` | Terminal link (jumper) bar |
+| `line.terminal_link_dash` | `1.8 mm` | Terminal link dash |
+| `line.terminal_link_gap` | `1.4 mm` | Terminal link gap |
+| `line.selection` | `0.5 mm` | Selection outline |
+| `line.agent_write` | `0.6 mm` | Agent's last write outline |
 
 # Canvas tokens in use until U4a (`ecad.*`)
 

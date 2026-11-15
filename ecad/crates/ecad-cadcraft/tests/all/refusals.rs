@@ -203,7 +203,7 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     app.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K9"})).unwrap();
     assert_eq!(app.session.docs.len(), 1, "one page window (brief 016)");
     assert_eq!(app.session.docs[0].path.as_deref(), Some("demo.ecad"), "the page window carries the project path");
-    // The trial's `keep_open` (design 016 section 4.1): closing the page window asks nothing and
+    // The desktop app's `keep_open` (design 016 section 4.1): closing the page window asks nothing and
     // the project stays open, unsaved, with no page shown; showing a page opens the window again.
     h.project.configure(&mut app.session, |p| p.keep_open = true).unwrap();
     app.request_close(Some(0));

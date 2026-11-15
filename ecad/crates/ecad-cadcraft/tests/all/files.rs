@@ -139,7 +139,7 @@ fn file_names_are_checked_and_completed() {
     assert!(normalize("plan.dxf").unwrap_err().contains(".ecad"));
     assert_eq!(normalize("a/b").unwrap(), "a/b.ecad");
     assert_eq!(normalize("a/B.ECAD").unwrap(), "a/B.ECAD");
-    // `~` is the home folder from the user profile, not `HOME` (see `apps/ecad-trial/tests/all/paths_contracts.rs`).
+    // `~` is the home folder from the user profile, not `HOME` (see `crates/ecad-app/tests/all/paths_contracts.rs`).
     if let Some(home) = ecad_cadcraft::home() {
         assert_eq!(normalize("~/p").unwrap(), format!("{}.ecad", home.join("p").display()));
     }

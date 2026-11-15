@@ -228,7 +228,7 @@ pub enum Changed<K> {
     All,
 }
 
-/// The rows a table shows. Implemented by each column set (`ecad-trial`'s `lists`).
+/// The rows a table shows. Implemented by each column set (`ecad-app`'s `lists`).
 pub trait TableSource {
     /// The object's ID: the row ↔ object link.
     type Key: Copy + Ord + Hash + Debug;

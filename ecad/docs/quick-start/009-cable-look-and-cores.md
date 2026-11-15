@@ -15,6 +15,6 @@ trunk joins the middle of each spine, and **Cable Join** slides it up or down th
 the file format is unchanged: a core label is the existing member `core` field, set with the
 existing member ops. For this branch there are automated checks only, written with the branch,
 and reference screenshots rendered headless for the owner to approve
-(`ecad/apps/ecad-trial/tests/reference/009-*.png`, and `005-fan.png` redrawn in the new look);
+(`ecad/crates/ecad-app/tests/reference/009-*.png`, and `005-fan.png` redrawn in the new look);
 nobody has run it on a display yet. In this combined trial with brief 010 the marker shows 010's
 live reference text (such as `/2.1`, or a red `/?` while the end has no other end).

@@ -49,10 +49,7 @@ fn show(p: &Path) -> String {
 
 /// Whether `a` and `b` name the same existing file.
 pub fn same_file(a: &Path, b: &Path) -> bool {
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => false,
-    }
+    ecad_store::disk::same_path(a, b)
 }
 
 /// A version 2 project opened from disk.

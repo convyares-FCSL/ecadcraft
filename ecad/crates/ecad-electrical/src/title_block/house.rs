@@ -1,0 +1,101 @@
+//! The built-in house block (brief 055, design 055 §3, FP3).
+//!
+//! Our own arrangement of what a good drawing's title block holds: a revision grid with an ECR
+//! column, a red status field, the function and location, page, next and total counters, the
+//! page title and the drawing number, a logo box with an owner line. 40 mm high, as 019's block,
+//! so nothing on a page moves. Columns from the right: counters 30 mm, drawing 90 mm (its Rev box 25 mm), project
+//! 80 mm; the revision table takes the rest. Rows from the top: 15, 12.5 and 12.5 mm.
+//!
+//! The text sizes are the frame's text styles (`FrameText`), so Standards ▸ Text styles still
+//! changes them on the built-in.
+
+use ecad_model::sheet::TITLE_BLOCK_MM;
+use ecad_model::title_block::{
+    Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, MAX_TEXT_MM, MIN_TEXT_MM, Newest, Rect, Source, TextLook, TitleBlockLayout,
+};
+
+use crate::frames::{FrameText, TABLE_ROWS};
+
+/// Widths of the fixed columns, right to left (mm).
+pub const COUNTERS_MM: f64 = 30.0;
+pub const DRAWING_MM: f64 = 90.0;
+pub const PROJECT_MM: f64 = 80.0;
+/// The Rev box's width (mm): wide enough for 033's `E (draft)` at the Rev size.
+pub const REV_MM: f64 = 25.0;
+/// Heights of the rows, top to bottom (mm).
+pub const TOP_ROW_MM: f64 = 15.0;
+pub const ROW_MM: f64 = 12.5;
+/// Narrowest revision table the house block keeps (mm).
+pub const MIN_TABLE_MM: f64 = 60.0;
+
+fn look(size: f64, bold: bool, align: Align) -> TextLook {
+    // The text styles keep their own bounds; a block keeps its own (design 055 §1.3).
+    let size = if size.is_finite() { size.clamp(MIN_TEXT_MM, MAX_TEXT_MM) } else { 2.5 };
+    TextLook { size: (size * 100.0).round() / 100.0, bold, align, colour: Ink::Ink }
+}
+
+fn field(at: Rect, source: Source, key: &str, label: &str, look: TextLook) -> BlockItem {
+    BlockItem::Field { at, bind: Binding::new(source, key), label: Some(label.to_string()), look, if_empty: IfEmpty::Blank }
+}
+
+fn line(a: (f64, f64), b: (f64, f64)) -> BlockItem {
+    BlockItem::Line { a, b, weight: LineWeight::Thin }
+}
+
+/// The house block for a frame `width` mm wide, with `text`'s sizes. Narrower frames than the
+/// fixed columns need keep the revision table at [`MIN_TABLE_MM`] and let the block run past the
+/// frame's left edge (a look, never a failure).
+pub fn house(width: f64, text: &FrameText) -> TitleBlockLayout {
+    let fixed = COUNTERS_MM + DRAWING_MM + PROJECT_MM;
+    let w = if width.is_finite() { width.max(fixed + MIN_TABLE_MM) } else { fixed + MIN_TABLE_MM };
+    let h = TITLE_BLOCK_MM;
+    let r = w;
+    let (xc, xd, xp) = (r - COUNTERS_MM, r - COUNTERS_MM - DRAWING_MM, r - fixed);
+    let (y1, y2) = (h - TOP_ROW_MM, h - TOP_ROW_MM - ROW_MM);
+    let value = text.value.mm;
+    let main = text.main.mm;
+    let mut items = vec![
+        BlockItem::Line { a: (0.0, h), b: (r, h), weight: LineWeight::Thick },
+        // Column dividers, full height.
+        line((xc, 0.0), (xc, h)),
+        line((xd, 0.0), (xd, h)),
+        line((xp, 0.0), (xp, h)),
+        // Row dividers of the three right columns.
+        line((xp, y1), (r, y1)),
+        line((xp, y2), (r, y2)),
+        // Drawing column: Drawing no. | Rev, then Function | Location | Size.
+        line((r - COUNTERS_MM - REV_MM, y2), (r - COUNTERS_MM - REV_MM, y1)),
+        line((xd + 32.5, 0.0), (xd + 32.5, y2)),
+        line((r - COUNTERS_MM - REV_MM, 0.0), (r - COUNTERS_MM - REV_MM, y2)),
+        // Project column: Customer | Status.
+        line((xp + 45.0, 0.0), (xp + 45.0, y2)),
+        // The revision table: header and rows, newest at the top.
+        BlockItem::RevTable { at: Rect::new(0.0, 0.0, xp, h), rows: TABLE_ROWS as u8, header: true, newest: Newest::Top },
+        // Counters.
+        field(Rect::new(xc, y1, COUNTERS_MM, TOP_ROW_MM), Source::Page, "number", "Page", look(text.page.mm, true, Align::Centre)),
+        field(Rect::new(xc, y2, COUNTERS_MM, ROW_MM), Source::Page, "next", "Next", look(value, false, Align::Centre)),
+        field(Rect::new(xc, 0.0, COUNTERS_MM, ROW_MM), Source::Page, "total", "Of", look(value, false, Align::Centre)),
+        // Drawing.
+        field(Rect::new(xd, y1, DRAWING_MM, TOP_ROW_MM), Source::Page, "title", "Title", look(main, true, Align::Left)),
+        field(Rect::new(xd, y2, DRAWING_MM - REV_MM, ROW_MM), Source::Project, "drawing_number", "Drawing no.", look(main, true, Align::Left)),
+        field(Rect::new(r - COUNTERS_MM - REV_MM, y2, REV_MM, ROW_MM), Source::Revision, "rev", "Rev", look(text.rev.mm, true, Align::Centre)),
+        field(Rect::new(xd, 0.0, 32.5, ROW_MM), Source::Page, "function", "Function", look(value, false, Align::Left)),
+        field(Rect::new(xd + 32.5, 0.0, 32.5, ROW_MM), Source::Page, "location", "Location", look(value, false, Align::Left)),
+        field(Rect::new(r - COUNTERS_MM - REV_MM, 0.0, REV_MM, ROW_MM), Source::Print, "sheet", "Size", look(value, false, Align::Centre)),
+        // Project: a logo box and the owner line, the project, the customer and the status.
+        BlockItem::Logo { at: Rect::new(xp + 2.0, y1 + 4.0, PROJECT_MM - 4.0, TOP_ROW_MM - 5.0), name: String::new(), prims: Vec::new() },
+        BlockItem::Field {
+            at: Rect::new(xp + 2.0, y1 + 0.5, PROJECT_MM - 4.0, 3.0),
+            bind: Binding::new(Source::Project, "company"),
+            label: None,
+            look: look(text.caption.mm, false, Align::Centre),
+            if_empty: IfEmpty::Blank,
+        },
+        field(Rect::new(xp, y2, PROJECT_MM, ROW_MM), Source::Project, "title", "Project", look(main, true, Align::Left)),
+        field(Rect::new(xp, 0.0, 45.0, ROW_MM), Source::Project, "customer", "Customer", look(value, false, Align::Left)),
+    ];
+    let mut status = look(value, true, Align::Left);
+    status.colour = Ink::Red;
+    items.push(field(Rect::new(xp + 45.0, 0.0, 35.0, ROW_MM), Source::Project, "status", "Status", status));
+    TitleBlockLayout { size: (w, h), items }
+}

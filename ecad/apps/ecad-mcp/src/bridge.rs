@@ -12,7 +12,7 @@
 //!   `not-run` / `may-have-run` states. Its wording is turned into ECAD's
 //!   ([`reword`]).
 //!
-//! Excluded: the window's side (the trial's `agent` module), and launching (see
+//! Excluded: the window's side (the desktop app's `agent` module), and launching (see
 //! [`crate::launch`]).
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -22,16 +22,15 @@ use std::time::Duration;
 use cadcraft_mcp::{Backend, Remote};
 use serde_json::{Value, json};
 
-/// The port the trial listens on by default (design 035 §17, 1).
-pub const DEFAULT_PORT: u16 = ecad_cadcraft::agent_access::DEFAULT_PORT;
+/// The port the desktop app listens on by default (design 035 §17, 1).
+pub const DEFAULT_PORT: u16 = ecad_cadcraft::agent::access::DEFAULT_PORT;
 /// How long the probe waits for the window to accept.
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 /// How long `ecad.bye` may take when the server stops.
 pub const BYE_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// The upstream control methods the window answers over the bridge besides `ecad.*` (design
-/// 035 §4.3); everything else is refused there without running.
-pub const ALLOWED_METHODS: &[&str] = &["drawing.inspect", "engine.commands", "ui.render", "ui.screenshot", "ping", "control.methods"];
+// The words the window shares (design 065 §3, cut 12), at their old paths.
+pub use ecad_cadcraft::agent::bridge::{ALLOWED_METHODS, SAY_HELLO, not_offered};
 
 /// Where the server's calls go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +114,7 @@ pub fn new_session_id() -> String {
 /// One server's connection to the window.
 pub struct Link {
     pub port: u16,
-    /// Open the trial when nothing answers (`--launch`).
+    /// Open the desktop app when nothing answers (`--launch`).
     pub launch: bool,
     pub mode: Mode,
     /// The session id sent with every `ecad.*` request.
@@ -124,9 +123,6 @@ pub struct Link {
     /// The window's last `ecad.hello` reply.
     pub hello: Option<Value>,
 }
-
-/// Said when the window does not know the session (it restarted): the client says hello again.
-pub const SAY_HELLO: &str = "say ecad.hello first";
 
 impl Link {
     /// A link to `port`, undecided.
@@ -257,18 +253,6 @@ impl Link {
             let _ = BufReader::new(&s).take(4096).read_line(&mut reply);
         }
     }
-}
-
-/// Said when a method is not offered over ECAD's port (also by the window, design 035 §4.3).
-pub fn not_offered(method: &str) -> String {
-    let why = match method {
-        m if m.starts_with("cmdline.") => "ECAD changes go through execute only",
-        "app.open" | "app.save" | "app.quit" => "files stay with the person",
-        m if m.starts_with("ui.") => "the agent does not use the person's mouse and keyboard",
-        m if m.starts_with("engine.") => "ECAD changes go through ecad.execute only",
-        _ => "not one of ECAD's methods",
-    };
-    format!("not offered over ECAD's port: {why}")
 }
 
 #[cfg(test)]

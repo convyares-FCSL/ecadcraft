@@ -35,6 +35,8 @@ fn child_probe() {
     if std::env::var_os("ECAD_TEST_CHILD").is_none() {
         return;
     }
+    // The program passes the switch in (design 065 §3.1); here the test harness is the program.
+    ledger::set_verify_invariants(ledger::verify_switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()));
     let doc = invalid_checkpoint();
     assert!(doc.check().is_err(), "the checkpoint is invalid");
     let mut ledger = Ledger::from_checkpoint(doc, 0, Vec::new(), 1).unwrap();

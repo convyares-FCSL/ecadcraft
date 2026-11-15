@@ -68,8 +68,10 @@ layer has to build for wasm. The `cargo xtask wasm` check of the ECAD crates exi
 of CADCraft's "never break wasm" rule. It goes in the split lane (§5, step 10). CADCraft's own
 wasm build, and any `ECAD-SEAM` in CADCraft files, are not affected.
 
-Inside Core, the order is: `ecad-drawing-style` and `ecad-model` at the top, then `ecad-store`,
-`ecad-electrical`, `ecad-inspect`, then `ecad-file`.
+Inside Core, the order is: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
+`ecad-inspect`, then `ecad-electrical` (owner, 2026-11-15, split lane step 4). A Core crate depends
+only on Core crates before it in this order; `cargo xtask layers` refuses the rest, so a cycle
+such as `ecad-file` → `ecad-electrical` cannot be written.
 
 - `ecad-model`: the document, ops, ledger, merge, numbering, derived nets and references.
 - `ecad-store`: storage under the file: pages of bytes, the lock.
@@ -82,8 +84,10 @@ Inside Core, the order is: `ecad-drawing-style` and `ecad-model` at the top, the
 - `ecad-tokens` (UI kit): how the screen looks: shell colours, spacing, radii, shadows, icons,
   UI type sizes.
 
-`ecad-electrical` depends on `ecad-model` and `ecad-drawing-style` only, not on the store or the
-file.
+`ecad-electrical` depends on `ecad-model`, `ecad-drawing-style` and `ecad-file`, and makes no OS
+calls itself. The file edge exists because a starter symbol's definition carries its content hash
+(`ecad_file::definition_hash`, the canonical JSON of the file format; owner, 2026-11-15, option A).
+Moving that hash into `ecad-model` is listed in `docs/deferred-work.md`.
 
 ### 1.1 Drawing style and UI tokens (owner call 1)
 
@@ -222,6 +226,11 @@ crate edges already point at other modules going to E.
 | `xref` | 2,321 | 1 | split | Parse, classify, places and table are E. Drawing (`HAlign`, `VAlign`) is C. | `project::Mapped` stays C. `text_style` split (cut 4). |
 | `xref_cmds` | 211 | 7 | C | Commands. | — |
 
+**Since step 11:** `commands` is `cmd/mod.rs` (the registry and shared helpers), each `<area>_cmds` is
+`cmd/<area>` (`wire_cmds` → `cmd::wire`) and `plc_cmds/` is `cmd/plc/`. The old paths that other crates
+use stay as re-exports in `lib.rs`. `release`'s two commands are `cmd/release`; the `run_*` commands in
+`history` and `merging` stay there for now (`docs/deferred-work.md`).
+
 **Size.** E receives about 35,000–40,000 lines, C keeps about 45,000, and about 1,100 go to
 ecad-app (`actions`).
 
@@ -298,6 +307,15 @@ module and no `cadcraft_*` import. That is the condition for moving it.
 9. **`front`.** `check_rows` and the legend contents go to E. Drawing the cover stays in C.
 10. **`title_block` and `frame`.** `bind`, `checks`, `house`, `frame::fit` and `frame::touches`
     go to E. `layout` and `dxf` stay in C.
+    **Fonts (owner, 2026-11-15, split lane step 4, option F2).** `FrameInput::of` builds the
+    frame's text looks, whose bold lineweight exists only when CADCraft does not find the font on
+    this machine, and `title_block::checks` and `checks` (E) build frame inputs. So font knowledge
+    reaches E through one trait, `TextMetrics` in ecad-electrical (is a family found; the width of
+    a text), implemented by ecad-cadcraft over CADCraft's fonts. `Fonts`, `Look`, `width_in` and
+    `FrameText` move to E and take `&dyn TextMetrics`; so do the rules that lay out or check text
+    (frame, title block checks, device text placement, Checks). ecad-cadcraft keeps wrappers with
+    today's signatures, so callers and tests do not change. E does no font lookup and no OS call
+    (the Core OS ratchet stays at 0), and E's own tests use a fixed-width test `TextMetrics`.
 11. **The boundary leak.** ecad-cadcraft gets `pub mod cad`, a short list of re-exports:
     `Vec`, `Bounds`, `Handle`, `Space`, `Session`, `View`, `Input`, `entity_bounds`,
     `extent_bounds` and `find_command` (what the apps and the MCP use today). ecad-app and
@@ -382,6 +400,62 @@ ecad-file 10. The split lane brings both to **0** (step 1c). When it creates eca
 At the end of the lane (step 10) the ratchet becomes the §4 rule: zero for every Core crate except
 ecad-store, with no allowlist beyond named redb exceptions, if any.
 
+### 3.2 v1 removal (step 12, owner 2026-11-15)
+
+Pre-v1 there is no old-format compatibility: the redb container (`ecad-file/src/v2/`) is the only
+`.ecad` format kept. Survey at `df5c1e72`, before anything is deleted. **Status: stopped at the
+survey**, because removing v1 reaches past the agreed knock-ons (marked **beyond** below).
+
+**Goes (ecad-file):** `codec` (JSON Lines framing), `read` (`open_project`, `OpenReport`,
+`Outcome`, `Check`, `RecordSpan`…), `write` (`ProjectFile`, `SaveOutcome`, `AttemptSummary`…), the
+v1 `disk` (`DiskProject`), `record::Header` and the v1 container constants (`CODEC "jsonl/1"`,
+`CONTAINER_VERSION 1`, `MAX_LINE`, `MAX_RECORDS`), `v2/convert.rs` (`convert_file`, `sniff`,
+`Major`), `binding`'s `needs_conversion` / `convert`, the golden file
+`tests/golden/project-v1.ecad`, and the v1-only tests (`disk_contracts`, `disk_edge_contracts`,
+`incremental_acceptance`, `recovery_contracts`, `save_contracts`, the v1 parts of
+`records_contracts`, `canonical_contracts`, `symbol_definition_contracts`, and the conversion tests
+in `container_v2` and `container_recovery`). **ecad-cli:** `ecad upgrade` and its test.
+
+**Stays, renamed neutrally:** `v1.rs` (the record types `Op`, `Primitive`, `Definition`, `TxKind`…:
+the redb format stores every transaction as these records) → `records`; `record.rs`'s
+`tx_value`, `decode_tx`, `check_limits`, `seq_and_prev`, `SCHEMA_VERSION`, `definition_hash`
+(pinned by a known-hash test); `canonical`, `chain`, `crc`. From the v1 `disk`, `ReadOnly`,
+`JUST_ENDED`, `holder_record` (used by `v2/disk.rs`) and `utc` (used by ecad-app's debugger and
+ecad-bench's report) move to a neutral module. `v2::schema::LinkV1` stays: it is part of the
+version 2 format (a converted file's link), read and verified, just never written again.
+
+**Agreed knock-ons:** ecad-bench `generate.rs` writes v1 (to the redb format); its
+`generator_contracts`, `tester_contracts` and `lane_benchv2` read v1 or convert; its open, edit and
+save timings are measured on the v1 file. ecad-cadcraft `debug.rs`'s saved-record view
+(`read_record`, line ~864). The app's conversion offer (`binding::needs_conversion` / `convert`).
+
+**Beyond the knock-ons (why step 12 stopped):**
+1. **ecad-cadcraft runtime: `Persistence::TestStore`.** `Project::create` defaults to it;
+   `MemoryStore` saves through v1's `ProjectFile` over a `MemoryMedium`, `Project::open_from` /
+   `ProjectHandle::open_from` reopen v1 bytes, `Project::open_report` keeps v1's `OpenReport`.
+   Used by ecad-cadcraft tests (`experiment`, `refusals` (a CRC-damaged v1 file opens read-only),
+   `cable_reference_contracts`, `cable_slash_acceptance_contracts`, `sheets_contracts`,
+   `tester_033_print`) and by every test that saves a project made with `Project::create`.
+   Needs a decision: an in-memory or temporary redb store in its place, or no test store.
+2. **ecad-cadcraft `debug.rs` beyond the saved-record view:** the file snapshot carries v1's
+   `Header`, `AttemptSummary` / `AttemptStage` and `RecordSpan`s and a v1 `open_report`, shown by
+   ecad-app's debugger (Header and "Opening found" rows) and serialised as JSON.
+3. **dev/ecad-inspector:** `export-jsonl` (CLI, the `export_jsonl` protocol call and the HTML
+   page's Export JSONL button) writes a v1 file with `codec` and `Header`; `cli.rs` and
+   `source.rs` detect a v1 file with `convert::sniff` and offer `ecad upgrade`; its tests build
+   v1 files and convert them as fixtures (`common.rs`), and read the export back with
+   `open_project` (`cli_contracts`).
+4. **A v1 fixture used by redb tests:** ecad-cadcraft's `tester_024_probe`
+   (`the_golden_v1_project_opens_and_reports_build`) and `lanes/lane_057_tester` convert
+   `ecad-file/tests/golden/project-v1.ecad` and test the redb project made from it.
+5. **Docs:** `docs/quick-start.md` §7B (open a version 1 project, `ecad upgrade`), the
+   `export-jsonl` and inspector drop steps, the bench's "version 1" timings and the limitation
+   "the `.ecad` format is version 1"; `docs/spec/eep-0002.md` (the v1 spec, marked current) and
+   `eep-0003.md` §11 and §16 (v2 hashes defined over v1 canonical JSON; migration from v1).
+
+Not affected: ecad-mcp (its tools and tests use `Persistence::File` and `v2` only), ecad-model,
+ecad-store, ecad-electrical (only `definition_hash`).
+
 ---
 
 ## 4. Guard rules for `cargo xtask layers`
@@ -391,7 +465,7 @@ in `xtask/src/main.rs` changes as follows:
 
 | Layer | Crates | May depend on (normal deps) | Must not |
 |---|---|---|---|
-| Core | model, store, file, electrical, inspect, drawing-style | Core crates above it in the §1 order; crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, `ecad-tokens`, Engine, App, Programs, Dev |
+| Core | model, drawing-style, store, file, inspect, electrical | Core crates before it in the §1 order (model → drawing-style → store → file → inspect → electrical); crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, `ecad-tokens`, Engine, App, Programs, Dev |
 | Engine | ecad-cadcraft | Core; `cadcraft-engine`, `cadcraft-io` | UI crates, `ecad-ui`, `ecad-tokens`, `cadcraft-ui-egui`, App, Programs, Dev |
 | UI kit | ecad-ui, ecad-tokens | `ecad-tokens`: `ecad-drawing-style` only. `ecad-ui`: `egui`, `epaint`, `egui_extras`, `ecad-tokens`, `ecad-drawing-style` (`UIKIT_ALLOWED` gains `ecad-drawing-style`) | everything else |
 | App | ecad-app | Core, Engine, UI kit; `cadcraft-ui-egui`, `eframe`, `egui` | `cadcraft-engine` directly, Programs, Dev (except through its `dev` feature) |

@@ -48,8 +48,11 @@ use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Form, ItemKin
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
+use crate::terminal_types::short;
+pub use crate::terminal_types::{position_label, terminal_name};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
+pub use crate::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
 
 pub(crate) use accessories::{accessory, jumper};
 pub(crate) use bom_item::bomitem;
@@ -65,10 +68,6 @@ pub(crate) use xrefs::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
-/// Typed coordinates beyond this (or not finite) are refused (design §9).
-pub const MAX_COORD: f64 = 1e12;
-/// Refusal of a point that is not finite or out of range.
-pub const OUT_OF_RANGE: &str = "Point out of range.";
 /// Refusal while a paper-space layout is shown: ECAD objects live in the page's model space.
 pub const PAPER_SPACE: &str = "Switch to the Model tab to draw ECAD objects.";
 
@@ -118,7 +117,7 @@ pub(crate) fn read<R>(s: &Session, f: impl FnOnce(&Project, PageId) -> Result<R,
     let p = guard.as_any_mut().downcast_mut::<Project>().ok_or(NOT_OWNED)?;
     let page = p.page_of(uid).ok_or(NOT_OWNED)?;
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
-        return Err(crate::commands::UNAVAILABLE.into());
+        return Err(crate::cmd::UNAVAILABLE.into());
     }
     f(p, page)
 }
@@ -211,28 +210,6 @@ pub(crate) fn terminal_for(s: &Session, p: Vec2) -> Option<(TerminalId, Pt, Stri
     })
     .ok()
     .flatten()
-}
-
-fn short(hex: &str) -> &str {
-    hex.get(..8).unwrap_or(hex)
-}
-
-/// A terminal's name: its label, or `terminal <first 8 hex digits>`.
-pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
-    // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
-    match crate::terminal_types::shown_label(doc, t) {
-        Some(l) => l,
-        None => format!("connection point {}", short(&t.hex())),
-    }
-}
-
-/// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
-/// accessories and renumbering name. [`terminal_name`] is what a person sees.
-pub fn position_label(doc: &Document, t: TerminalId) -> String {
-    match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
-        Some(l) => l,
-        None => format!("connection point {}", short(&t.hex())),
-    }
 }
 
 /// The default name of the next terminal of component `c`: the smallest positive integer not
@@ -383,16 +360,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // Brief 040: colours and sizes from `ecad-tokens` by meaning, on the sheet in use. An orphan
     // reference (error) and an end that looks connected (warning) are painted by the app in
     // shapes these marks lack (`look::painted_marks`); none of them is an entity, so none prints.
-    use ecad_tokens::marker::{CONNECTION_POINT_PX, LOOSE_END_PX, WIRE_END_ATTACHED_PX};
+    use ecad_drawing_style::marker::{CONNECTION_POINT_PX, LOOSE_END_PX, WIRE_END_ATTACHED_PX};
     let Some(page) = p.page_of(uid) else { return Vec::new() };
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
         return Vec::new();
     }
     let sheet = crate::look::sheet();
-    let colour = |m: ecad_tokens::Meaning| crate::look::rgb(sheet.color(m));
+    let colour = |m: ecad_drawing_style::Meaning| crate::look::rgb(sheet.color(m));
     let doc = p.ledger.document();
     let positions = terminal_positions(doc, page);
-    let ring = colour(ecad_tokens::Meaning::ConnectionPoint);
+    let ring = colour(ecad_drawing_style::Meaning::ConnectionPoint);
     let mut out: Vec<Mark> = positions
         .iter()
         .map(|(_, _, at)| Mark { at: v2(*at), shape: MarkShape::Ring, size: CONNECTION_POINT_PX, stroke: 1.0, color: ring })
@@ -414,18 +391,18 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
                 // mark here: its connection is not on this page.
                 Some(t) => {
                     if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t) {
-                        let color = colour(ecad_tokens::Meaning::WireEndAttached);
+                        let color = colour(ecad_drawing_style::Meaning::WireEndAttached);
                         out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }
                 }
                 None => {
-                    let color = colour(ecad_tokens::Meaning::LooseEnd);
+                    let color = colour(ecad_drawing_style::Meaning::LooseEnd);
                     out.push(Mark { at: v2(at), shape: MarkShape::Square, size: LOOSE_END_PX, stroke: 1.0, color });
                 }
             }
         }
     }
-    let cable = colour(ecad_tokens::Meaning::Cable);
+    let cable = colour(ecad_drawing_style::Meaning::Cable);
     let map = p.pages.get(&page).map(|v| &v.map);
     let shown = |i| map.is_some_and(|m| m.item(i).is_some());
     out.extend(crate::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
@@ -445,9 +422,9 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
     if let Some((_, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
         let color = colour(match sev {
-            crate::checks::Severity::Error => ecad_tokens::Meaning::Error,
-            crate::checks::Severity::Warning => ecad_tokens::Meaning::Warning,
-            crate::checks::Severity::Info => ecad_tokens::Meaning::Ink2,
+            crate::checks::Severity::Error => ecad_drawing_style::Meaning::Error,
+            crate::checks::Severity::Warning => ecad_drawing_style::Meaning::Warning,
+            crate::checks::Severity::Info => ecad_drawing_style::Meaning::Ink2,
         });
         out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
     }
@@ -457,9 +434,6 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
 fn tag(props: &ecad_model::Properties) -> Option<&str> {
     props.get("tag").map(String::as_str)
 }
-
-/// Most lines a hover description shows.
-pub const MAX_HOVER_LINES: usize = 12;
 
 /// What hovering drawing object `h` on page drawing `uid` shows (design §4.3): its name or ID and
 /// its connections, or `None` for plain geometry and objects ECAD does not know. Read only.
@@ -496,7 +470,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 t.parts.get(usize::try_from(i).ok()?)?.row
             });
             match row {
-                Some(i) => crate::xref::row_lines(doc, c, i)?,
+                Some(i) => crate::xref::row_lines(doc, c, i, &crate::draw::text_style::EngineMetrics)?,
                 None if crate::xref::device(doc, c).head == Some(r) => crate::xref::head_lines(doc, c, r),
                 None => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             }
@@ -665,7 +639,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: ConductorId) -> Option<String> {
     let core = doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.as_deref()?;
-    (!core.trim().is_empty()).then(|| crate::look::shorten(core, crate::look::MAX_CORE_CHARS))
+    (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
 }
 
 /// A cable slash (design 004 §7.3, design 009 §8): its tag, ID, designation, type and reference
@@ -675,7 +649,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let mut lines = vec![format!("Cable {}", cable.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", k.hex())];
     for (key, label) in [("designation", "Designation"), ("type", "Type")] {
         if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
-            lines.push(format!("{label}: {}", crate::look::shorten(v, 64)));
+            lines.push(format!("{label}: {}", crate::words::shorten(v, 64)));
         }
     }
     let refs: Vec<String> = doc

@@ -3,6 +3,10 @@
 Status: Draft, for the owner's decision. Docs only; no code or `Cargo.toml` changes come with it.
 Author: designer. Date: 2026-11-15. Lanes (R0 to R10) are those of `_tmp/code-review-2026-11.md`.
 
+**Update (split lane 067, 2026-11-15).** ECAD is desktop-only (owner ruling; design 065,
+`docs/design/crates.md` §1), so "rayon native only" and its sequential twin no longer apply: `rayon`
+is a plain dependency where it is allowed, and `cargo xtask layers` checks the §6 rules.
+
 **Goal.** The refactor lanes need to know, before they start, which standard crates they may use and
 where each goes, so no worker picks a dependency one lane at a time.
 
@@ -53,7 +57,7 @@ where each goes, so no worker picks a dependency one lane at a time.
 | petgraph | MIT OR Apache-2.0 | 0.8.3 via `tree_magic_mini` | yes | **no** (for now) | none |
 | kurbo | Apache-2.0 OR MIT | 0.13.1 via `peniko`, `write-fonts` | yes | **no** | none |
 | tokio | MIT | 1.53.2 (`rt`, `time`) via `wasm-bindgen-futures` | partial | **no** | none |
-| rayon | MIT OR Apache-2.0 | 1.12.0 via `cadcraft-render`; CADCraft says `"1"` | **native only** | **adopt now**, native-only | new lane R11 |
+| rayon | MIT OR Apache-2.0 | 1.12.0 via `cadcraft-render`; CADCraft says `"1"` | **native only** | **adopt now** (no wasm `cfg`: desktop-only) | new lane R11 |
 | parking_lot | MIT OR Apache-2.0 | 0.12.5 via eframe, wgpu | yes | **no** | none |
 | gix | MIT OR Apache-2.0 | no | no | **no** | none |
 | rmcp | Apache-2.0 | no | no | **no** | none |
@@ -162,15 +166,12 @@ where each goes, so no worker picks a dependency one lane at a time.
   network or async I/O to run; the work is CPU-bound. An async runtime would add a second scheduler
   next to egui's frame loop and make wasm harder. Keep it out of every ECAD `Cargo.toml`.
 
-### rayon. Adopt now, native only.
+### rayon. Adopt now.
 - **Licence / lock.** MIT OR Apache-2.0; 1.12.0 (rayon-core 1.13.0); CADCraft's root says `rayon = "1"`
   and `cadcraft-render` uses it (`pipeline.rs:148`, `viewports.rs:132`); `acadrust` also. Same version
   for ECAD, and it is already compiled, so no new crate in a normal build.
-- **wasm. The risk.** `wasm32-unknown-unknown` has no threads by default: rayon compiles, but the
-  global pool cannot start workers. Do not depend on its fallback behaviour. Follow what the repo
-  already does with `zstd` (`ecad-file/Cargo.toml`, `[target.'cfg(not(target_arch = "wasm32"))']`):
-  declare `rayon` only for non-wasm targets and keep a **sequential twin** behind one small function.
-  `cargo xtask wasm` then stays green by construction and the lane proves it by running it.
+- **wasm.** Not needed: ECAD is desktop-only (owner, 2026-11-15; design 065). `rayon` is a plain
+  dependency, with no `cfg(not(wasm32))` table and no sequential twin.
 - **Replaces.** `par_map` (`ecad-file/src/v2/chunks.rs:459-485`, about 30 lines of manual grouping,
   scoped threads and re-sorting) with `par_iter().map().collect()` (order is kept); the block at
   `ecad-model/src/index.rs:126-136`. Neither needs a pool the app owns.
@@ -268,15 +269,18 @@ where each goes, so no worker picks a dependency one lane at a time.
 
 | Crate (ECAD) | thiserror | anyhow | rayon | schemars | miette | insta |
 |---|---|---|---|---|---|---|
-| ecad-model | yes | no | non-wasm only | `schema` feature (ids) | no | no |
+| ecad-model | yes | no | yes | `schema` feature (ids) | no | no |
 | ecad-store | if it needs an error type | no | no | no | no | no |
-| ecad-file | yes | no | non-wasm only | no | later (derive) | no |
+| ecad-file | yes | no | yes | no | later (derive) | no |
 | ecad-inspect, ecad-tokens, ecad-ui | no | no | no | no | no | ui screenshots stay `egui_kittest` |
-| ecad-cadcraft | yes (`CmdError`) | no | non-wasm only | yes | later | dev-dep, later |
+| ecad-cadcraft | yes (`CmdError`) | no | yes | yes | later | dev-dep, later |
 | ecad-bench, apps, xtask | no | yes | no | no | `fancy` in `ecad-cli` only, later | no |
 
 `cargo xtask layers` should gain a one-line check per rule above (R0's "ratchets" are the place): no
-`anyhow` in a library `Cargo.toml`, no `tokio`, no `rayon` outside a `cfg(not(wasm32))` table.
+`anyhow` in a library `Cargo.toml`, no `tokio`, `rayon` only in the crates above (and
+`ecad-electrical`, design 065) as a plain dependency, `schemars` only in the Engine and
+`ecad-model`'s `schema` feature. Done in the split lane (067 step 10). ECAD is desktop-only (065),
+so no rule is about wasm.
 
 ## 7. Updates to the lane plan
 

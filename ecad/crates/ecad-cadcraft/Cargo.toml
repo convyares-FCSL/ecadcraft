@@ -20,11 +20,11 @@ fault-injection = []
 translate-oracle = []
 # `ProjectHandle::apply_ops`, for tests that build objects no command makes yet (brief 010's
 # cable reference ends). Enabled only for tests, through the dev-dependencies below; never in a
-# release or the trial (brief 009 review S3). Delete once brief 010's `cableref` is merged.
+# release or the desktop app (brief 009 review S3). Delete once brief 010's `cableref` is merged.
 test-ops = []
 # `test_support::ProjectBuilder` (brief 062): builds the small projects tests start from, with the same
 # commands a user runs. Enabled only for tests (this crate's own, through the dev-dependencies below);
-# never in a release or the trial.
+# never in a release or the desktop app.
 test-support = []
 
 [dependencies]
@@ -32,9 +32,11 @@ ecad-model = { workspace = true }
 ecad-store = { workspace = true }
 ecad-file = { workspace = true }
 ecad-inspect = { workspace = true }
-# Brief 040: canvas colours and markers (`look::sheet`, `overlay_marks`) from the tokens.
-# Brief 041: the action table names its icons (ecad-tokens is plain data, no UI toolkit).
-ecad-tokens = { path = "../ecad-tokens" }
+# The electrical rules (design 065 §5 step 6), re-exported under their old module names.
+ecad-electrical = { workspace = true }
+# Brief 040: canvas colours and markers (`look::sheet`, `overlay_marks`), the sheet font and wire
+# dashes, from the drawing style (design 065 §1.1).
+ecad-drawing-style = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 # Brief 024: Print Book installs CADCraft's PDF plotter as the engine's plot hook (no PDF code in
 # ECAD); already in the graph through `cadcraft-mcp`.

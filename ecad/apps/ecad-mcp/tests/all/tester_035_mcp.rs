@@ -3,8 +3,8 @@
 //! implementation: names of the new API are guesses, gathered in [`connect_server`] and
 //! [`launch`] so phase 2 adapts them in one place.
 //!
-//! The bridged checks (a real trial on the port) are in the trial's `tester_035_bridge` module:
-//! `ecad-trial` depends on `ecad-mcp`, not the other way round.
+//! The bridged checks (a real desktop app on the port) are in the desktop app's `tester_035_bridge` module:
+//! `ecad-app` depends on `ecad-mcp` (for its tests), not the other way round.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -185,11 +185,11 @@ fn an_oversized_line_is_capped_in_connect_mode_too() {
 // ---------- §9.3: --launch (unit) ----------
 
 #[test]
-fn launch_finds_the_trial_in_order_and_starts_it_with_the_port() {
+fn launch_finds_the_desktop_in_order_and_starts_it_with_the_port() {
     use ecad_mcp::launch;
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
-    let exe = launch::trial_file_name();
+    let exe = launch::desktop_file_name();
     // Folders under this platform's root: a `C:` folder holds the PATH separator on Unix, where
     // `join_paths` refuses it.
     let root = if cfg!(windows) { PathBuf::from(r"C:\") } else { PathBuf::from("/") };
@@ -199,19 +199,19 @@ fn launch_finds_the_trial_in_order_and_starts_it_with_the_port() {
     let on_path = root.join("on path").join(exe);
     let path_var = std::env::join_paths([root.join("nowhere"), root.join("on path")]).unwrap();
     let all = |p: &Path| p == env_path || p == beside || p == on_path;
-    // ECAD_TRIAL first, then beside ecad-mcp, then PATH.
-    assert_eq!(launch::find_trial(Some(env_path.clone().into()), Some(&server), Some(path_var.clone()), all), Some(env_path.clone()));
-    assert_eq!(launch::find_trial(None, Some(&server), Some(path_var.clone()), all), Some(beside.clone()));
-    assert_eq!(launch::find_trial(None, Some(&server), Some(path_var.clone()), |p: &Path| p == on_path), Some(on_path.clone()));
-    assert_eq!(launch::find_trial(None, Some(&server), None, |_: &Path| false), None);
-    // An ECAD_TRIAL that names nothing is not silently replaced by another copy.
-    assert_eq!(launch::find_trial(Some(OsString::from(r"C:\missing\x.exe")), Some(&server), Some(path_var), all), None);
-    assert_eq!(launch::NOT_FOUND, "--launch could not find ecad-trial; set ECAD_TRIAL to its path.");
+    // ECAD_DESKTOP first, then beside ecad-mcp, then PATH.
+    assert_eq!(launch::find_desktop(Some(env_path.clone().into()), Some(&server), Some(path_var.clone()), all), Some(env_path.clone()));
+    assert_eq!(launch::find_desktop(None, Some(&server), Some(path_var.clone()), all), Some(beside.clone()));
+    assert_eq!(launch::find_desktop(None, Some(&server), Some(path_var.clone()), |p: &Path| p == on_path), Some(on_path.clone()));
+    assert_eq!(launch::find_desktop(None, Some(&server), None, |_: &Path| false), None);
+    // An ECAD_DESKTOP that names nothing is not silently replaced by another copy.
+    assert_eq!(launch::find_desktop(Some(OsString::from(r"C:\missing\x.exe")), Some(&server), Some(path_var), all), None);
+    assert_eq!(launch::NOT_FOUND, "--launch could not find ecad-desktop; set ECAD_DESKTOP to its path.");
     // The arguments: --control <port>, then the project when one was given.
-    assert_eq!(launch::trial_args(47823, None), vec!["--control".to_string(), "47823".to_string()]);
-    assert_eq!(launch::trial_args(5000, Some(r"C:\p q\a b.ecad")), vec!["--control".to_string(), "5000".into(), r"C:\p q\a b.ecad".into()]);
+    assert_eq!(launch::desktop_args(47823, None), vec!["--control".to_string(), "47823".to_string()]);
+    assert_eq!(launch::desktop_args(5000, Some(r"C:\p q\a b.ecad")), vec!["--control".to_string(), "5000".into(), r"C:\p q\a b.ecad".into()]);
     // The command: null stdio (never the MCP stream).
-    let cmd = launch::command(&beside, &launch::trial_args(47823, None));
+    let cmd = launch::command(&beside, &launch::desktop_args(47823, None));
     let args: Vec<&std::ffi::OsStr> = cmd.get_args().collect();
     assert_eq!(args, ["--control", "47823"]);
     // Linux without a display: refused in words; Windows always has one.

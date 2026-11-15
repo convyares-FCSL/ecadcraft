@@ -4,10 +4,10 @@
 use std::collections::BTreeSet;
 
 use crate::common::{H, id};
-use cadcraft_engine::doc::{EntityKind, HAlign};
+use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::continuations::{self, CAPTION_KEY, CAPTION_RULE, TEXT_DERIVED};
 use ecad_cadcraft::project::Mapped;
-use ecad_cadcraft::xref::{self, Group, Places, RefIndex, Shape};
+use ecad_cadcraft::xref::{self, Group, HAlign, Places, RefIndex, Shape};
 use ecad_model::{ComponentId, ObjectRef, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
@@ -508,7 +508,7 @@ fn the_reference_text_is_ink_2_and_the_caption_ink() {
             d.model.iter().find(|e| e.handle == hd).map(|e| e.common.color).unwrap()
         })
     };
-    let ink2 = ecad_tokens::sheet::PAPER.color(ecad_tokens::Meaning::Ink2);
+    let ink2 = ecad_drawing_style::sheet::PAPER.color(ecad_drawing_style::Meaning::Ink2);
     assert_eq!(colour_of(&mut f.h, 0), Color::True(cadcraft_engine::doc::color::Rgb(ink2.r, ink2.g, ink2.b)));
     assert_eq!(colour_of(&mut f.h, 1), Color::ByLayer, "the bracket");
     assert_eq!(colour_of(&mut f.h, 4), Color::ByLayer, "the caption");

@@ -373,7 +373,7 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     // Rotated: the tag sits above the contact, centred.
     let page = h.first_page();
     let above = h.p(|p| {
-        devices::texts_on_page(p.ledger.document(), page).into_iter().any(|t| t.of == TextOf::Tag && t.halign == cadcraft_engine::doc::HAlign::Center)
+        devices::texts_on_page(p.ledger.document(), page).into_iter().any(|t| t.of == TextOf::Tag && t.halign == ecad_model::TextHAlign::Center)
     });
     assert!(above);
 }

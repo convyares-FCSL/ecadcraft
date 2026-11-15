@@ -1,0 +1,1472 @@
+//! The **Project** panel (brief 016, design 016 §2–§3, §7): the project's pages in page order on
+//! the far left, one click to make a page the active page, and the page actions (new, rename,
+//! reorder, preview) through the existing page commands. Since the app's top banner was removed
+//! (owner, 2026-11-08) its header also holds the project's status, file actions and the
+//! experiment note.
+//!
+//! The panel only reads: it keeps a copy of the rows ([`ecad_cadcraft::PageRow`]) and rebuilds it
+//! when the project's change count moves (one integer compared per frame; a rebuild reads
+//! `page_order` and page titles only). The list is virtualised, so a frame draws only the visible
+//! rows whatever the page count. Everything it does is returned as [`Action`]s for the app to
+//! run through the command path.
+//!
+//! Excluded: deleting pages (no command exists), lists of cables, components or references.
+
+use std::collections::BTreeSet;
+
+use cadcraft_ui_egui::icons::{self, Icon};
+use ecad_cadcraft::{PageRow, TreeRow};
+use ecad_model::{FolderId, PageId};
+use eframe::egui::{self, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke, pos2, vec2};
+
+/// Row height (design 016 §2.2).
+pub const ROW_H: f32 = 20.0;
+/// Book's row height (UI rev 3, board 1.02): with thumbnails, and as a plain list.
+pub const THUMB_ROW_H: f32 = 36.0;
+pub const LIST_ROW_H: f32 = 26.0;
+/// Book's search field, its multi-select footer and its buttons (board 1.02).
+pub const FIND: &str = "Find a page";
+pub const CLEAR_PICKED: &str = "Clear";
+pub const MOVE_TO_GROUP: &str = "Move to group";
+pub const DUPLICATE: &str = "Duplicate";
+pub const DELETE_PAGES: &str = "Delete the selected pages";
+/// The placeholders' reason (no command yet duplicates or deletes a page).
+pub const NOT_YET: &str = "Not available yet";
+/// Brief 054: a folder row's menu items and the Book header's Renumber pages.
+pub const START_NUMBER: &str = "Start number…";
+pub const RENUMBER_PAGES: &str = "Renumber pages";
+/// The accessible label of a page row's checkbox: `Select page 04`.
+pub fn pick_label(number: &str) -> String {
+    format!("Select page {number}")
+}
+/// A page number as Book shows it: a plain number padded to two digits (`2` → `02`).
+pub fn padded(number: &str) -> String {
+    if !number.is_empty() && number.len() < 2 && number.chars().all(|c| c.is_ascii_digit()) { format!("{number:0>2}") } else { number.to_string() }
+}
+/// `text` cut with `…` to `width` in `font` (the panels' rows).
+pub fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
+    cut(ui, text, font, width)
+}
+/// The accessible label of a group row's +: `New page in Power`.
+pub fn add_in_label(name: &str) -> String {
+    format!("New page in {name}")
+}
+/// Width of the collapsed strip.
+pub const STRIP_W: f32 = 22.0;
+/// Accessible labels of the header buttons (design 016 §8 names them `ecad.project.*`).
+pub const NEW_PAGE: &str = "New page";
+/// Brief 024: the Reports and Print Book buttons.
+pub const REPORTS: &str = "Reports: BOM, wires and cables";
+pub const PRINT_BOOK: &str = "Print Book: every page to one PDF";
+pub const MOVE_UP: &str = "Move page up";
+pub const MOVE_DOWN: &str = "Move page down";
+pub const PREVIEW: &str = "Preview page";
+pub const COLLAPSE: &str = "Collapse the Project panel";
+pub const EXPAND: &str = "Project";
+/// Accessible label of the rename field.
+pub const RENAME: &str = "Page title";
+/// Said where writing is disabled.
+pub const READ_ONLY: &str = "The project is read-only.";
+/// Said by Preview with no row picked.
+pub const PICK_FIRST: &str = "Click a page first.";
+/// Said when the active page itself is asked for a preview.
+pub const ALREADY_SHOWN: &str = "This page is already shown.";
+/// Accessible labels of the header's brief 019 buttons (design 019 §10).
+pub const NEW_FOLDER: &str = "New folder";
+/// The project popouts of the header (owner, fix round of 2026-11-08).
+pub const PROJECT_INFO: &str = "Project info";
+pub const PROJECT_SETTINGS: &str = "Project settings";
+pub const REVISIONS: &str = "Revisions";
+/// The folder menu's entry for a folder inside a folder.
+pub const NEW_SUB_FOLDER: &str = "New sub-folder";
+/// Accessible label of the page-number field.
+pub const NUMBER: &str = "Page number";
+/// Accessible label of the folder-name field.
+pub const FOLDER_NAME: &str = "Folder name";
+/// Accessible label of Back to current (design 019 §7.3).
+pub const BACK_TO_CURRENT: &str = "Back to current";
+/// Said when a folder is dragged into itself.
+pub const INSIDE_ITSELF: &str = "A folder cannot go inside itself.";
+/// Indent per folder level, in points (design 019 §5.2).
+pub const INDENT: f32 = 12.0;
+
+/// The accessible label of a folder row: `Folder Schematic layouts: 3 pages`.
+pub fn folder_label(name: &str, pages: usize) -> String {
+    format!("Folder {name}: {pages} page{}", if pages == 1 { "" } else { "s" })
+}
+
+/// The accessible label of row `number` with `title`: `Page 2: Field`.
+pub fn row_label(number: &str, title: &str) -> String {
+    format!("Page {number}: {title}")
+}
+
+/// What the user asked the panel for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    /// Make this page the active page (`openpage`).
+    Open(PageId),
+    /// `newpage` titled with its number, then rename it in place.
+    New,
+    /// `renamepage` with this title (trimmed by the command).
+    Rename(PageId, String),
+    /// `movepage` to this 1-based place.
+    Move(PageId, usize),
+    /// Open (or close, when it is shown) the preview of this page.
+    Preview(PageId),
+    /// Header file actions, moved from the app's banner.
+    NewProject,
+    OpenProject,
+    Save,
+    SaveAs,
+    CloseProject,
+    /// Devices tab: show the first symbol's page and select every one of these symbols on it (a
+    /// device's symbols, in the list's order).
+    GotoSymbols(Vec<ecad_model::RepresentationId>),
+    /// Devices tab: `setprop` of a device property (brief 018's rules; `merge` takes another
+    /// device's tag by making this device part of it).
+    SetDeviceProperty {
+        component: ecad_model::ComponentId,
+        key: &'static str,
+        value: String,
+        /// Brief 026: how a taken tag is resolved (`swap`, `merge`, `next`).
+        conflict: Option<&'static str>,
+    },
+    /// Rename this page in the name box (the row's right-click menu).
+    RenameInBox(PageId),
+    /// Brief 054: `folderprops {folder, start}` (`None` clears).
+    SetFolderStart(FolderId, Option<String>),
+    /// Brief 054: `renumberpages {folder?}`.
+    RenumberPages(Option<FolderId>),
+    /// Brief 054: `deletepage {pages}` (generated pages only).
+    DeletePages(Vec<PageId>),
+    /// Brief 054: a Checks fix's command line (a page type or folder start fix).
+    RunLine(String),
+    /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
+    GotoCheck(Box<ecad_cadcraft::checks::Check>),
+    /// Checks tab: `junction {at}` on this page.
+    AddJunction(PageId, ecad_model::Pt),
+    /// Checks tab (brief 032): `joinwires {at}` on this page.
+    JoinWires(PageId, ecad_model::Pt),
+    /// Checks tab: `renumberwires {scope: "unnumbered"}`.
+    NumberThem,
+    /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).
+    Finalise,
+    /// Checks tab (brief 033): show this row (a table over the title block), then start Move
+    /// Mirror Table.
+    MoveTable(Box<ecad_cadcraft::checks::Check>),
+    /// Checks tab (brief 033): open this page's number field in the Pages list.
+    RenumberPage(PageId),
+    /// Devices tab (brief 026): open the Renumber dialog.
+    Renumber,
+    /// Brief 019: `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`
+    /// the end).
+    MoveInto {
+        page: PageId,
+        folder: Option<FolderId>,
+        index: Option<usize>,
+    },
+    /// `movefolder {folder, parent}`.
+    MoveFolder {
+        folder: FolderId,
+        parent: Option<FolderId>,
+    },
+    /// `newfolder {name: "New folder", parent}`, then rename it in place.
+    NewFolder(Option<FolderId>),
+    /// `renamefolder`.
+    RenameFolder(FolderId, String),
+    /// `deletefolder`.
+    DeleteFolder(FolderId),
+    /// Brief 026: open Renumber with this folder chosen.
+    RenumberFolder(FolderId),
+    /// New page in this folder (the name box, then `newpage {title, folder}`).
+    NewPageIn(Option<FolderId>),
+    /// `pageprops {page, number}`.
+    SetNumber(PageId, String),
+    /// Open the Project info, Project settings or Revisions popout.
+    ProjectInfo,
+    ProjectSettings,
+    Revisions,
+    /// Leave the revision view (design 019 §7.3).
+    BackToCurrent,
+    /// Preview this page of the revision opened read-only.
+    RevisionPage(PageId),
+    /// Brief 020a: something the History tab asked for.
+    History(crate::history_panel::Do),
+    /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
+    UseContext(ecad_model::ComponentId, ecad_cadcraft::designations::Aspect),
+    /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
+    /// inspector shows its row.
+    GoToDevice(ecad_model::ComponentId),
+    /// Brief 052: Checks' **Show in Settings**: Settings ▸ Project info.
+    ShowDesignations,
+    /// Brief 024: Checks' **Show**: Reports, BOM, Only ?.
+    ShowReports,
+    /// Brief 024: open the Reports window.
+    Reports,
+    /// Brief 024: open Print Book, scoped to this folder when given.
+    PrintBook(Option<FolderId>),
+    /// Brief 027: the Release dialog for the pending revision.
+    Release,
+    /// Brief 024: `newpage {generated}`.
+    NewGenerated(ecad_cadcraft::generated::GenKind),
+    /// Brief 046: `newpage {generated: "terminals", style: "graphic"}`.
+    NewStripPage,
+    /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
+    /// **Show** (Reports ▸ Cables, Only ?).
+    OfferDrawn(ecad_model::ComponentId),
+    RenumberStrip(ecad_model::ComponentId),
+    SetCores(ecad_model::CableId),
+    NextFreeCore(ecad_model::ConductorId),
+    ShowCables,
+    /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
+    OpenStandards(&'static str),
+    /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
+    /// Choose a table, Show the rated wires).
+    RatingFix(ecad_cadcraft::checks::Fix),
+    /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
+    CoreFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 059: a cable manager row's button `k` (Assign in the drawing… / Remove, Use the drawing /
+    /// Go to, Set gland, Show).
+    CableFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
+    /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
+    EditTitleBlock(PageId, u16),
+    ClearPageSheet(PageId),
+    /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
+    /// Split link / Remove partition, Drop missing positions / Delete link).
+    AccessoryFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
+    PlaceMates(ecad_model::ComponentId, ecad_cadcraft::symbols::Side),
+    /// Brief 041: a page row's right-click opens its wheel here (screen point).
+    PageWheel(PageId, egui::Pos2),
+    /// UI rev 3 (board 1.03): the Devices panel's Project →, Project ▸ Device list.
+    ProjectDevices,
+}
+
+/// A field typed in place over a row: a page number or a folder name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InPlace<T> {
+    pub of: T,
+    pub text: String,
+    pub error: Option<String>,
+    old: String,
+}
+
+/// One row of the Pages list as drawn: a folder, a page (index into the page rows), or the
+/// `(empty)` line of an open folder with nothing in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vis {
+    Folder(usize),
+    Page(usize),
+    Empty(FolderId, usize),
+}
+
+/// Accessible label of the Developer section's header ([`crate::developer`]).
+pub const DEVELOPER: &str = crate::developer::HEADER;
+
+/// The panel's two tabs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Tab {
+    #[default]
+    Pages,
+    Devices,
+    /// Brief 022.
+    Checks,
+    /// Brief 020a.
+    History,
+}
+
+/// Accessible labels of the tabs.
+pub const PAGES_TAB: &str = "Pages";
+pub const DEVICES_TAB: &str = "Devices";
+
+/// A rename in place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rename {
+    pub page: PageId,
+    pub text: String,
+    /// The command's refusal, shown under the field.
+    pub error: Option<String>,
+    /// The title the field opened with (selected when it opens).
+    old: String,
+}
+
+/// A row being dragged.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Drag {
+    page: PageId,
+    from: usize,
+    /// The gap the row would land in (0 = before the first row), while over the list.
+    gap: Option<usize>,
+    /// Brief 019: a folder is being dragged instead of a page.
+    folder: Option<FolderId>,
+    /// The folder row the pointer is over (drop into it).
+    onto: Option<FolderId>,
+}
+
+/// What the header shows about the project, read by the app each frame.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Header {
+    /// `None`: no project is open.
+    pub name: Option<String>,
+    /// The banner's old status line.
+    pub status: String,
+    /// Read-only and unconfirmed-save warnings.
+    pub warnings: Vec<String>,
+    pub read_only: bool,
+    /// The experiment note, as one small line.
+    pub note: &'static str,
+    /// Snapshots can be exported (`--snapshots`).
+    pub snapshots: bool,
+    /// Brief 020a: the branch shown, once the project has more than one branch.
+    pub branch: Option<String>,
+    /// The branch bar's text, on a branch other than `main` (`Branch "Option B" · from Rev A`).
+    pub branch_bar: Option<String>,
+    /// The parent's name, for Merge into… and Update from… (brief 020b).
+    pub parent: Option<String>,
+    /// Brief 027: the pending rev, and the kept Checks' errors and warnings (`None` until the
+    /// Checks are kept: the badge never builds them).
+    pub release: Option<(String, Option<(usize, usize)>)>,
+}
+
+/// The panel's state.
+#[derive(Debug, Default)]
+pub struct ProjectPanel {
+    /// Pages or Devices.
+    pub tab: Tab,
+    /// The Devices tab.
+    pub devices: crate::devices_panel::DevicesPanel,
+    /// The Checks tab (brief 022).
+    pub checks: crate::checks_panel::ChecksPanel,
+    /// The History tab (brief 020a).
+    pub history: crate::history_panel::HistoryPanel,
+    /// The copy of the project's pages.
+    rows: Vec<PageRow>,
+    /// The project change count the copy was taken at, and which project (its pointer value).
+    seen: Option<(u64, u64)>,
+    /// The active page, read each frame.
+    pub active: Option<PageId>,
+    /// The page previewed now, for its row's icon.
+    pub previewed: Option<PageId>,
+    /// The keyboard cursor (a row index).
+    pub cursor: Option<usize>,
+    /// After a click in the panel, it takes Up/Down/Enter/F2/Space/Alt+arrows/Esc (design §3.3).
+    pub armed: bool,
+    pub rename: Option<Rename>,
+    drag: Option<Drag>,
+    /// Scroll the row with this index into view on the next frame.
+    reveal: Option<usize>,
+    /// How many times the copy was rebuilt (tests: only when the project changed).
+    pub rebuilds: u64,
+    /// How many rows the last frame laid out (tests: the list is virtualised).
+    pub rows_drawn: usize,
+    /// A message under the header for one action (for example "Click a page first.").
+    pub note: Option<String>,
+    /// Brief 019: the Pages tree (folders and pages in book order).
+    tree: Vec<TreeRow>,
+    /// Pages changed by a commit while another page was shown: their rows show a dot until the
+    /// page is shown (brief 038). Kept by the shell from the change feed.
+    pub changed: BTreeSet<PageId>,
+    /// Folders folded in this session.
+    pub folded: BTreeSet<FolderId>,
+    /// The rows drawn now (folds applied), rebuilt only after a change or a fold.
+    visible: Vec<Vis>,
+    /// A page number or folder name being typed in place.
+    pub number_edit: Option<InPlace<PageId>>,
+    pub folder_rename: Option<InPlace<FolderId>>,
+    /// The revision opened read-only: the bar's text (design 019 §7.3).
+    pub revision: Option<String>,
+    /// Whether the tree has a folder (worked out on each new tree, not per row).
+    folders_present: bool,
+    /// UI rev 3 (board 1.02): Book shows thumbnails (else a plain list), set by the shell.
+    pub thumbnails: bool,
+    /// Pages ticked for moving (never the same look as the open page).
+    pub picked: BTreeSet<PageId>,
+    /// The search text; while set, only the pages it finds are shown, without their folders.
+    pub find: String,
+    /// Brief 054: each folder's start number, and the generated pages (Delete takes only those),
+    /// read again when the project's change count moves.
+    pub starts: std::collections::BTreeMap<FolderId, String>,
+    pub generated: BTreeSet<PageId>,
+    pub starts_at: Option<u64>,
+    /// A folder's start number being typed in place (design 054 §4.3).
+    pub start_edit: Option<InPlace<FolderId>>,
+}
+
+impl ProjectPanel {
+    /// The height of Book's rows (thumbnails or list).
+    pub fn row_h(&self) -> f32 {
+        if self.thumbnails { THUMB_ROW_H } else { LIST_ROW_H }
+    }
+
+    /// The rows of the copy.
+    pub fn rows(&self) -> &[PageRow] {
+        &self.rows
+    }
+
+    /// Bring the copy up to date: `count` is the project's page list version
+    /// (`Project::page_list_version`), `project` names the project, `rows` reads the rows (called
+    /// only when either differs from the copy's).
+    pub fn sync(&mut self, project: u64, count: u64, rows: impl FnOnce() -> Option<Vec<TreeRow>>) {
+        if self.seen == Some((project, count)) {
+            return;
+        }
+        if let Some(r) = rows() {
+            self.set_tree(r);
+            self.seen = Some((project, count));
+            self.rebuilds += 1;
+            if let Some(c) = self.cursor
+                && c >= self.rows.len()
+            {
+                self.cursor = self.rows.len().checked_sub(1);
+            }
+            if self.rename.as_ref().is_some_and(|r| !self.rows.iter().any(|x| x.id == r.page)) {
+                self.rename = None;
+            }
+        }
+    }
+
+    /// Take a new tree: the page rows and the drawn rows follow.
+    pub fn set_tree(&mut self, tree: Vec<TreeRow>) {
+        self.rows = tree
+            .iter()
+            .filter_map(|r| match r {
+                TreeRow::Page(p) => Some(p.clone()),
+                TreeRow::Folder { .. } => None,
+            })
+            .collect();
+        self.tree = tree;
+        self.relayout();
+    }
+
+    /// The tree as copied.
+    pub fn tree(&self) -> &[TreeRow] {
+        &self.tree
+    }
+
+    /// Fold or unfold `folder` (nothing recorded).
+    pub fn toggle_fold(&mut self, folder: FolderId) {
+        if !self.folded.remove(&folder) {
+            self.folded.insert(folder);
+        }
+        self.relayout();
+    }
+
+    /// The rows to draw: folded folders hide what is inside them; an open empty folder shows
+    /// `(empty)`. O(tree rows).
+    fn relayout(&mut self) {
+        self.folders_present = self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }));
+        let find = self.find.trim().to_lowercase();
+        if !find.is_empty() {
+            self.visible = self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.title.to_lowercase().contains(&find) || r.number.to_lowercase().contains(&find))
+                .map(|(i, _)| Vis::Page(i))
+                .collect();
+            return;
+        }
+        let mut out = Vec::with_capacity(self.tree.len());
+        let mut hide_below: Option<usize> = None;
+        let mut page_i = 0usize;
+        for (i, r) in self.tree.iter().enumerate() {
+            let depth = match r {
+                TreeRow::Folder { depth, .. } => *depth,
+                TreeRow::Page(p) => p.depth + 1,
+            };
+            if hide_below.is_some_and(|d| depth > d) {
+                if matches!(r, TreeRow::Page(_)) {
+                    page_i += 1;
+                }
+                continue;
+            }
+            hide_below = None;
+            match r {
+                TreeRow::Folder { id, depth, .. } => {
+                    out.push(Vis::Folder(i));
+                    if self.folded.contains(id) {
+                        hide_below = Some(*depth);
+                    } else {
+                        let has_child = self.tree.get(i + 1).is_some_and(|n| match n {
+                            TreeRow::Folder { depth: d, .. } => d > depth,
+                            TreeRow::Page(p) => p.depth + 1 > *depth,
+                        });
+                        if !has_child {
+                            out.push(Vis::Empty(*id, *depth));
+                        }
+                    }
+                }
+                TreeRow::Page(_) => {
+                    out.push(Vis::Page(page_i));
+                    page_i += 1;
+                }
+            }
+        }
+        self.visible = out;
+        self.folders_present = self.tree.iter().any(|r| matches!(r, TreeRow::Folder { .. }));
+    }
+
+    /// Whether the project has folders (the list is then a tree).
+    fn has_folders(&self) -> bool {
+        self.folders_present
+    }
+
+    /// The folder new pages and folders go in: the cursor row's, else the active page's.
+    pub fn target_folder(&self) -> Option<FolderId> {
+        let row = self.cursor.or_else(|| self.active.and_then(|a| self.index_of(a)));
+        row.and_then(|i| self.rows.get(i)).and_then(|r| r.folder)
+    }
+
+    /// Open the rename field on folder `folder` with its name selected.
+    pub fn start_folder_rename(&mut self, folder: FolderId) {
+        let name = self.tree.iter().find_map(|r| match r {
+            TreeRow::Folder { id, name, .. } if *id == folder => Some(name.clone()),
+            _ => None,
+        });
+        if let Some(name) = name {
+            self.folder_rename = Some(InPlace { of: folder, text: name.clone(), error: None, old: name });
+        }
+    }
+
+    /// Forget the project (it was closed).
+    pub fn clear(&mut self) {
+        *self = ProjectPanel { tab: self.tab, folded: std::mem::take(&mut self.folded), ..ProjectPanel::default() };
+    }
+
+    /// The row being dragged and the gap it would land in (0 = before the first row), if any.
+    pub fn dragging(&self) -> Option<(PageId, Option<usize>)> {
+        self.drag.map(|d| (d.page, d.gap))
+    }
+
+    /// The row index of `page`.
+    pub fn index_of(&self, page: PageId) -> Option<usize> {
+        self.rows.iter().position(|r| r.id == page)
+    }
+
+    /// Open the rename field on `page` with its title selected.
+    /// Open `page`'s number field in place (brief 033: a Checks row's **Renumber…**).
+    pub fn start_number_edit(&mut self, page: PageId) {
+        if let Some(i) = self.index_of(page) {
+            let number = self.rows.get(i).map(|r| r.number.clone()).unwrap_or_default();
+            self.number_edit = Some(InPlace { of: page, text: number.clone(), error: None, old: number });
+            self.cursor = Some(i);
+            self.reveal = Some(i);
+        }
+    }
+
+    pub fn start_rename(&mut self, page: PageId) {
+        if let Some(i) = self.index_of(page) {
+            let title = self.rows.get(i).map(|r| r.title.clone()).unwrap_or_default();
+            self.rename = Some(Rename { page, text: title.clone(), error: None, old: title });
+            self.cursor = Some(i);
+            self.reveal = Some(i);
+        }
+    }
+
+    /// Scroll `page`'s row into view on the next frame.
+    pub fn reveal(&mut self, page: PageId) {
+        self.reveal = self.index_of(page);
+    }
+
+    /// The row the header's Move and Preview act on: the cursor row, else the active row.
+    fn target(&self) -> Option<usize> {
+        self.cursor.or_else(|| self.active.and_then(|a| self.index_of(a)))
+    }
+
+    /// The body of the tab shown ([`ProjectPanel::tab`]) in the shell's left panel (Pages,
+    /// Devices, History) or drawer (Checks). Returns the actions asked for this frame.
+    pub fn show(&mut self, ui: &mut egui::Ui, header: &Header) -> Vec<Action> {
+        let mut out = Vec::new();
+        let t = crate::shell::left::colours();
+        let panel_rect = ui.max_rect();
+        let writable = header.name.is_some() && !header.read_only;
+        if header.name.is_none() {
+            ecad_ui::prim::read_value(ui, "No project open.");
+            self.rows_drawn = 0;
+            return out;
+        }
+        // Brief 020a: the branch bar on a branch other than main (design 020 §3.6).
+        if let Some(bar) = &header.branch_bar {
+            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(bar).small().strong()).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.branch"));
+                    let parent = header.parent.clone().unwrap_or_else(|| "main".into());
+                    let branch = header.branch.clone().unwrap_or_default();
+                    let can = writable && !header.read_only;
+                    let merge = ui
+                        .add_enabled(can, egui::Button::new(RichText::new(format!("Merge into {parent}…")).small()))
+                        .on_hover_text(format!("Bring this branch's changes into {parent}: a preview first, then one step on {parent}"))
+                        .accessible_name("ecad.project.branch.merge");
+                    if merge.clicked() {
+                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": branch, "into": parent}))));
+                    }
+                    let update = ui
+                        .add_enabled(can, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
+                        .on_hover_text(format!("Bring {parent}'s changes into this branch: a preview first, then one step here"))
+                        .accessible_name("ecad.project.branch.update");
+                    if update.clicked() {
+                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": parent, "into": branch}))));
+                    }
+                });
+            });
+            let r = shown.response.rect;
+            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
+        }
+        // The revision opened read-only (design 019 §7.3): its bar and Back to current.
+        if let Some(bar) = self.revision.clone() {
+            let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(&bar).small().strong()).wrap())
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.project.revision"));
+                    if ui.small_button(BACK_TO_CURRENT).clicked() {
+                        out.push(Action::BackToCurrent);
+                    }
+                });
+            });
+            // `ecad.revision-bar`: a 3 px accent bar on its left.
+            let r = shown.response.rect;
+            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
+        }
+        // Writes are off while an issued revision is open read-only.
+        let writable = writable && self.revision.is_none();
+        match self.tab {
+            Tab::Devices => {
+                out.extend(self.devices.show_panel(ui, writable));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::Checks => {
+                out.extend(self.checks.show(ui, writable));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::History => {
+                // Writes are off while a point is shown read-only, as for the revision view.
+                out.extend(self.history.show(ui, writable, header.read_only, header));
+                self.rows_drawn = 0;
+                return out;
+            }
+            Tab::Pages => {}
+        }
+        self.keyboard(ui, writable, &mut out);
+
+        // Find a page (board 1.02).
+        let before = self.find.clone();
+        ecad_ui::prim::Field::new(&mut self.find, ecad_ui::prim::FieldKind::Search, FIND).placeholder(FIND).show(ui);
+        if self.find != before {
+            self.relayout();
+        }
+        ui.add_space(4.0);
+        for w in &header.warnings {
+            ui.add(egui::Label::new(RichText::new(w).small().color(t.warn)).wrap());
+        }
+        if let Some(n) = &self.note {
+            ui.label(RichText::new(n).small().color(t.text_dim));
+        }
+        let rh = self.row_h();
+        // The footer under the rows: the multi-select actions while pages are ticked, else New
+        // page and New group.
+        let footer_h = if self.picked.is_empty() { 36.0 } else { 70.0 };
+        let list_h = (ui.available_height() - footer_h).max(rh);
+
+        // The rows, virtualised: only the visible ones are laid out.
+        let n = self.visible.len();
+        let reveal = self.reveal.take().and_then(|pi| self.visible.iter().position(|v| *v == Vis::Page(pi)));
+        let mut area = egui::ScrollArea::vertical().id_salt("ecad.project.list").max_height(list_h).auto_shrink([false, false]);
+        if let Some(i) = reveal {
+            // Keep the revealed row inside the visible band (show_rows scrolls by offset).
+            let h = ui.available_height().max(rh);
+            let top = i as f32 * rh;
+            let state = egui::scroll_area::State::load(ui.ctx(), ui.make_persistent_id("ecad.project.list"));
+            let now = state.map_or(0.0, |s| s.clamped_offset().y);
+            let want = if top < now {
+                top
+            } else if top + rh > now + h {
+                top + rh - h
+            } else {
+                now
+            };
+            area = area.vertical_scroll_offset(want.max(0.0));
+        }
+        // Rows are exactly rh apart (the reveal and drag maths count on it).
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let mut drawn = 0;
+        let drag_before = self.drag;
+        let list = area.show_rows(ui, rh, n, |ui, range| {
+            // Rows are as wide as the panel (the content never widens it).
+            ui.set_max_width(panel_rect.width());
+            let mut first_top: Option<f32> = None;
+            for vi in range.clone() {
+                let Some(vis) = self.visible.get(vi).copied() else { continue };
+                drawn += 1;
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), rh), Sense::click_and_drag());
+                first_top.get_or_insert(rect.top() - (vi - range.start) as f32 * rh);
+                match vis {
+                    Vis::Page(i) => {
+                        let Some(row) = self.rows.get(i).cloned() else { continue };
+                        let indent = if self.has_folders() && self.find.trim().is_empty() { row.depth as f32 * INDENT } else { 0.0 };
+                        let inner = Rect::from_min_max(pos2(rect.left() + indent, rect.top()), rect.max);
+                        self.row(ui, inner, resp, i, &row, writable, &mut out);
+                    }
+                    Vis::Folder(ti) => {
+                        if let Some(TreeRow::Folder { id, name, depth, pages, .. }) = self.tree.get(ti).cloned() {
+                            self.folder_row(ui, rect, resp, (id, &name, depth, pages), writable, &mut out);
+                        }
+                    }
+                    Vis::Empty(_, depth) => {
+                        let x = rect.left() + depth as f32 * INDENT + INDENT + 4.0;
+                        ui.painter().text(
+                            pos2(x, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            "(empty)",
+                            egui::TextStyle::Monospace.resolve(ui.style()),
+                            t.text_faint,
+                        );
+                    }
+                }
+            }
+            // The insertion line of a drag in progress.
+            if let (Some(d), Some(top)) = (self.drag, first_top)
+                && let Some(g) = d.gap
+            {
+                let y = top + g as f32 * rh;
+                let r = ui.max_rect();
+                ui.painter().hline(r.x_range(), y, Stroke::new(2.0, t.accent));
+            }
+            first_top
+        });
+        self.rows_drawn = drawn;
+        // The empty space under the rows: right-click for a new page or folder at the top level.
+        if let Some(top) = list.inner {
+            let r = list.inner_rect;
+            let below = Rect::from_min_max(pos2(r.left(), (top + n as f32 * rh).max(r.top())), r.max);
+            if below.height() > 4.0 {
+                let resp = ui.interact(below, egui::Id::unique("ecad.project.empty"), Sense::click());
+                resp.context_menu(|ui| {
+                    if ui.add_enabled(writable, egui::Button::new("New page…")).clicked() {
+                        out.push(Action::New);
+                        ui.close();
+                    }
+                    if ui.add_enabled(writable, egui::Button::new(NEW_FOLDER)).clicked() {
+                        out.push(Action::NewFolder(None));
+                        ui.close();
+                    }
+                });
+            }
+        }
+
+        // Dragging: where the row would land, auto-scroll near the edges, drop or cancel.
+        if let Some(mut d) = self.drag {
+            let pointer = ui.ctx().pointer_latest_pos();
+            let inside = pointer.filter(|p| list.inner_rect.contains(*p));
+            d.gap = match (inside, list.inner) {
+                (Some(p), Some(top)) => Some((((p.y - top) / rh).round().max(0.0) as usize).min(n)),
+                _ => None,
+            };
+            // Over the middle of a folder row: into that folder.
+            d.onto = match (inside, list.inner) {
+                (Some(p), Some(top)) => {
+                    let f = (p.y - top) / rh;
+                    let (row, frac) = (f.floor().max(0.0) as usize, f - f.floor());
+                    match self.visible.get(row) {
+                        Some(Vis::Folder(ti)) if (0.25..0.75).contains(&frac) => match self.tree.get(*ti) {
+                            Some(TreeRow::Folder { id, .. }) => Some(*id),
+                            _ => None,
+                        },
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some(p) = inside {
+                let edge = 24.0;
+                if p.y < list.inner_rect.top() + edge {
+                    ui.scroll_with_delta(vec2(0.0, rh));
+                } else if p.y > list.inner_rect.bottom() - edge {
+                    ui.scroll_with_delta(vec2(0.0, -rh));
+                }
+                ui.ctx().request_repaint();
+            }
+            let released = ui.input(|i| i.pointer.any_released());
+            let esc = ui.input(|i| i.key_pressed(Key::Escape));
+            if esc {
+                self.drag = None;
+            } else if released {
+                self.drag = None;
+                if let Some(folder) = d.folder {
+                    let parent = d.onto.or_else(|| d.gap.and_then(|g| self.folder_at_gap(g)));
+                    // Onto itself is sent too, so the command says why it is refused.
+                    if parent == Some(folder) || parent != self.parent_of(folder) {
+                        out.push(Action::MoveFolder { folder, parent });
+                    }
+                } else if let Some(f) = d.onto {
+                    out.push(Action::MoveInto { page: d.page, folder: Some(f), index: None });
+                } else if let Some(g) = d.gap {
+                    if self.has_folders() {
+                        let (folder, index) = self.place_at_gap(g, d.page);
+                        out.push(Action::MoveInto { page: d.page, folder, index });
+                    } else {
+                        let to = if g > d.from { g - 1 } else { g };
+                        if to != d.from && to < n {
+                            out.push(Action::Move(d.page, to + 1));
+                        }
+                    }
+                }
+            } else if drag_before.is_some() {
+                self.drag = Some(d);
+            }
+        }
+
+        self.footer(ui, panel_rect, writable, list.inner_rect.bottom(), &mut out);
+
+        // A click elsewhere (the drawing) disarms the panel.
+        if ui.input(|i| i.pointer.any_pressed()) && ui.ctx().pointer_interact_pos().is_some_and(|p| !panel_rect.contains(p)) {
+            self.armed = false;
+        }
+        out
+    }
+
+    /// The parent of `folder`.
+    fn parent_of(&self, folder: FolderId) -> Option<FolderId> {
+        self.tree.iter().find_map(|r| match r {
+            TreeRow::Folder { id, parent, .. } if *id == folder => *parent,
+            _ => None,
+        })
+    }
+
+    /// The folder a row dropped in gap `g` lands in: the folder of the row after the gap (a page's
+    /// folder; for a folder row, its parent, after that parent's pages; an `(empty)` line's
+    /// folder), else of the row before it.
+    fn folder_at_gap(&self, g: usize) -> Option<FolderId> {
+        let of = |v: Option<&Vis>| match v {
+            Some(Vis::Page(i)) => Some(self.rows.get(*i).and_then(|r| r.folder)),
+            Some(Vis::Folder(ti)) => match self.tree.get(*ti) {
+                Some(TreeRow::Folder { parent, .. }) => Some(*parent),
+                _ => None,
+            },
+            Some(Vis::Empty(f, _)) => Some(Some(*f)),
+            None => None,
+        };
+        of(self.visible.get(g)).or_else(|| of(g.checked_sub(1).and_then(|i| self.visible.get(i)))).flatten()
+    }
+
+    /// Where a page dropped in gap `g` goes: its folder and its 1-based place among that folder's
+    /// pages (`None`: the end), with `page` itself left out of the count.
+    fn place_at_gap(&self, g: usize, page: PageId) -> (Option<FolderId>, Option<usize>) {
+        let folder = self.folder_at_gap(g);
+        let before = match self.visible.get(g) {
+            Some(Vis::Page(i)) => self.rows.get(*i).filter(|r| r.folder == folder).map(|r| r.id),
+            _ => None,
+        };
+        let index = before.map(|b| self.rows.iter().filter(|r| r.folder == folder && r.id != page).take_while(|r| r.id != b).count() + 1);
+        (folder, index)
+    }
+
+    /// One folder row: chevron, name, `(n)`; click folds, double-click renames, drag moves it,
+    /// right-click offers the folder's actions.
+    fn folder_row(
+        &mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, (id, name, depth, pages): (FolderId, &str, usize, usize), writable: bool,
+        out: &mut Vec<Action>,
+    ) {
+        let t = crate::shell::left::colours();
+        let label = folder_label(name, pages);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
+        let p = ui.painter_at(rect);
+        let target = self.drag.and_then(|d| d.onto) == Some(id);
+        if target {
+            p.rect_stroke(rect.shrink(0.5), 0.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+        } else if resp.hovered() {
+            p.rect_filled(rect, 0.0, t.chrome);
+        }
+        let x = rect.left() + (depth.saturating_sub(1)) as f32 * INDENT + 2.0;
+        let y = rect.center().y;
+        let ink = |c| ecad_ui::color(c);
+        let s = ecad_ui::SHELL;
+        let chev = Rect::from_min_size(pos2(x, y - 5.0), vec2(10.0, 10.0));
+        let folded = self.folded.contains(&id);
+        ecad_ui::icons::paint(&p, chev, if folded { ecad_ui::tokens::Icon::ChevronRight } else { ecad_ui::tokens::Icon::ChevronDown }, ink(s.text_3));
+        // UI rev 3 (board 1.02): a group is a folder icon, its name, its page count and a +.
+        let folder = Rect::from_min_size(pos2(chev.right() + 6.0, y - 7.0), vec2(14.0, 14.0));
+        ecad_ui::icons::paint(&p, folder, ecad_ui::tokens::Icon::Folder, ink(s.text_3));
+        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY_EMPHASIS);
+        if self.folder_rename.as_ref().is_some_and(|r| r.of == id) {
+            let field = Rect::from_min_max(pos2(folder.right() + 6.0, rect.top() + 4.0), pos2(rect.right() - 4.0, rect.bottom() - 4.0));
+            self.folder_field(ui, field, out);
+            return;
+        }
+        // Brief 054 (design 054 §4.3): the start number field over the row's right part.
+        if self.start_edit.as_ref().is_some_and(|r| r.of == id) {
+            let field = Rect::from_min_max(pos2(rect.right() - 90.0, rect.top() + 4.0), pos2(rect.right() - 4.0, rect.bottom() - 4.0));
+            self.start_field(ui, field, out);
+        }
+        let add = Rect::from_center_size(pos2(rect.right() - 10.0, y), vec2(20.0, 20.0));
+        let count = p.text(
+            pos2(add.left() - 8.0, y),
+            egui::Align2::RIGHT_CENTER,
+            pages.to_string(),
+            crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+            ink(s.text_3),
+        );
+        // Brief 054: the folder's start number, grey after its name (`Schematic  100`).
+        let start = self.starts.get(&id).cloned();
+        let start_w = start.as_ref().map_or(0.0, |n| 10.0 + 8.0 * n.len() as f32);
+        let room = (count.left() - folder.right() - 14.0 - start_w).max(0.0);
+        let shown = cut(ui, name, &font, room);
+        let named = p.text(pos2(folder.right() + 6.0, y), egui::Align2::LEFT_CENTER, shown, font, ink(s.text_2));
+        if let Some(n) = start {
+            p.text(
+                pos2(named.right() + 10.0, y),
+                egui::Align2::LEFT_CENTER,
+                n,
+                crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+                ink(s.text_3),
+            );
+        }
+        // The +: a new page in this group (added after the row, so it takes the click first).
+        let add_label = add_in_label(name);
+        if crate::shell::bar::icon_button(ui, add, ecad_ui::tokens::Icon::Plus, &add_label, 12.0, writable).clicked() {
+            out.push(Action::NewPageIn(Some(id)));
+            return;
+        }
+        if resp.drag_started() && writable {
+            self.drag = Some(Drag { page: PageId(0), from: usize::MAX, gap: None, folder: Some(id), onto: None });
+        }
+        if resp.double_clicked() || resp.triple_clicked() {
+            if writable {
+                self.start_folder_rename(id);
+            }
+        } else if resp.clicked() {
+            self.armed = true;
+            self.toggle_fold(id);
+        }
+        resp.context_menu(|ui| {
+            if ui.add_enabled(writable, egui::Button::new("New page here")).clicked() {
+                out.push(Action::NewPageIn(Some(id)));
+                ui.close();
+            }
+            if ui.add_enabled(writable, egui::Button::new(NEW_SUB_FOLDER)).clicked() {
+                out.push(Action::NewFolder(Some(id)));
+                ui.close();
+            }
+            if ui.add_enabled(writable, egui::Button::new("Rename").shortcut_text("F2")).clicked() {
+                self.start_folder_rename(id);
+                ui.close();
+            }
+            if ui.add_enabled(writable, egui::Button::new("Delete folder")).clicked() {
+                out.push(Action::DeleteFolder(id));
+                ui.close();
+            }
+            // Brief 026 (design 026 §3): Renumber with this folder chosen.
+            if ui.add_enabled(writable, egui::Button::new("Renumber in this folder…")).clicked() {
+                out.push(Action::RenumberFolder(id));
+                ui.close();
+            }
+            // Brief 054 (design 054 §4.3, §4.4): the folder's start number, and its pages
+            // renumbered from it.
+            if ui.add_enabled(writable, egui::Button::new(START_NUMBER)).clicked() {
+                let text = self.starts.get(&id).cloned().unwrap_or_default();
+                self.start_edit = Some(InPlace { of: id, text: text.clone(), error: None, old: text });
+                ui.close();
+            }
+            if ui.add_enabled(writable, egui::Button::new(RENUMBER_PAGES)).clicked() {
+                out.push(Action::RenumberPages(Some(id)));
+                ui.close();
+            }
+        });
+    }
+
+    /// The folder-name field over a folder row: Enter renames, Esc cancels.
+    fn folder_field(&mut self, ui: &mut egui::Ui, rect: Rect, out: &mut Vec<Action>) {
+        let Some(r) = &mut self.folder_rename else { return };
+        if let Some((text, done)) = in_place(ui, rect, "ecad.project.foldername", FOLDER_NAME, r) {
+            let folder = r.of;
+            if done {
+                out.push(Action::RenameFolder(folder, text));
+            } else {
+                self.folder_rename = None;
+            }
+        }
+    }
+
+    /// The start-number field on a folder row (brief 054): Enter writes it (empty clears), Esc
+    /// cancels.
+    fn start_field(&mut self, ui: &mut egui::Ui, rect: Rect, out: &mut Vec<Action>) {
+        let Some(r) = &mut self.start_edit else { return };
+        let folder = r.of;
+        let label = format!("ecad.book.folder.start.{}", folder.hex());
+        if let Some((text, done)) = in_place(ui, rect, &label, &label, r) {
+            if done {
+                let t = text.trim().to_string();
+                out.push(Action::SetFolderStart(folder, (!t.is_empty()).then_some(t)));
+            } else {
+                self.start_edit = None;
+            }
+        }
+    }
+
+    /// The page-number field over a row's number: Enter writes it, Esc cancels.
+    fn number_field(&mut self, ui: &mut egui::Ui, rect: Rect, out: &mut Vec<Action>) {
+        let Some(r) = &mut self.number_edit else { return };
+        if let Some((text, done)) = in_place(ui, rect, "ecad.project.number", NUMBER, r) {
+            let page = r.of;
+            if done {
+                out.push(Action::SetNumber(page, text));
+            } else {
+                self.number_edit = None;
+            }
+        }
+    }
+
+    /// One row (UI rev 3, board 1.02): checkbox, thumbnail (in thumbnail view), number, title and
+    /// states, and its clicks. The open page has a 3 px blue bar, a blue outline on its thumbnail
+    /// and a blue number; a ticked page a ticked checkbox and a plain grey ground, so the two never
+    /// look alike.
+    #[allow(clippy::too_many_arguments)]
+    fn row(&mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, i: usize, row: &PageRow, writable: bool, out: &mut Vec<Action>) {
+        let t = crate::shell::left::colours();
+        let s = ecad_ui::SHELL;
+        let active = self.active == Some(row.id);
+        let picked = self.picked.contains(&row.id);
+        let label = row_label(&row.number, &row.title);
+        let resp = if row.duplicate { resp.on_hover_text(format!("Two pages are numbered {}.", row.number)) } else { resp };
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, &label));
+        // The row's ground runs under the indent too.
+        let full = Rect::from_min_max(pos2(ui.max_rect().left(), rect.top()), rect.max);
+        let p = ui.painter_at(full);
+        let dragging = self.drag.is_some_and(|d| d.page == row.id);
+        if active {
+            p.rect_filled(full, 0.0, ecad_ui::color(s.accent_soft));
+            p.rect_filled(Rect::from_min_size(full.min, vec2(3.0, full.height())), 0.0, t.accent);
+        } else if picked {
+            p.rect_filled(full, 0.0, ecad_ui::color(if resp.hovered() { s.hover } else { s.raised }));
+        } else if resp.hovered() {
+            p.rect_filled(full, 0.0, t.chrome);
+        }
+        if self.armed && self.cursor == Some(i) {
+            p.rect_stroke(full.shrink(0.5), 0.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+        }
+        let fade = |c: Color32| if dragging { c.gamma_multiply(0.5) } else { c };
+        let y = rect.center().y;
+        // The checkbox: ticks the page for the footer's actions.
+        let check = Rect::from_center_size(pos2(rect.left() + 10.0, y), vec2(14.0, 14.0));
+        crate::shell::glyphs::checkbox(&p, check, picked, t.accent, ecad_ui::color(s.line_strong), ecad_ui::color(s.text_3).gamma_multiply(0.6));
+        let mut x = check.right() + 8.0;
+        if self.thumbnails {
+            let thumb = Rect::from_min_size(pos2(x, y - 13.0), vec2(38.0, 26.0));
+            let outline = active.then_some(t.accent);
+            crate::shell::glyphs::thumbnail(
+                &p,
+                thumb,
+                ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER),
+                ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
+                outline,
+            );
+            x = thumb.right() + 8.0;
+        }
+        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
+        // Two pages shown with one number (only from old data): the number in `ecad.orphan`.
+        let number_colour = if row.duplicate {
+            t.error
+        } else if active {
+            t.accent_text
+        } else {
+            t.text_dim
+        };
+        let num = p.text(pos2(x, y), egui::Align2::LEFT_CENTER, padded(&row.number), font.clone(), fade(number_colour));
+        let previewed = self.previewed == Some(row.id);
+        let changed = self.changed.contains(&row.id);
+        let right = rect.right() - if previewed { 18.0 } else { 4.0 } - if changed { 12.0 } else { 0.0 };
+        if changed {
+            // Changed while elsewhere: a dot in the change tint (`accent_text`).
+            p.circle_filled(pos2(right + 6.0, y), 3.0, t.accent_text);
+        }
+        if previewed {
+            let r = Rect::from_center_size(pos2(rect.right() - 10.0, y), vec2(12.0, 12.0));
+            icons::paint(&p, r, Icon::Preview, true);
+        }
+
+        if self.number_edit.as_ref().is_some_and(|r| r.of == row.id) {
+            let field = Rect::from_min_max(pos2(x, rect.top() + 4.0), pos2(num.right() + 6.0, rect.bottom() - 4.0));
+            self.number_field(ui, field, out);
+        }
+        let title_x = num.right() + 8.0;
+        let renaming = self.rename.as_ref().is_some_and(|r| r.page == row.id);
+        if renaming {
+            let field = Rect::from_min_max(pos2(title_x, rect.top() + 4.0), pos2(right, rect.bottom() - 4.0));
+            self.rename_field(ui, field, out);
+            return;
+        }
+        let mut title = row.title.clone();
+        if row.unavailable {
+            title.push_str(" (unavailable)");
+        }
+        let width = (right - title_x).max(0.0);
+        let shown = cut(ui, &title, &font, width);
+        let was_cut = shown != title;
+        p.text(pos2(title_x, y), egui::Align2::LEFT_CENTER, shown, font, fade(t.text));
+
+        // The checkbox's own click (added after the row, so it takes the click first).
+        let pick = ui.interact(check.expand(3.0), ui.scope_id().with(("ecad.book.pick", row.id)), Sense::click());
+        let pick_label = pick_label(&row.number);
+        pick.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, picked, &pick_label));
+        if pick.clicked() {
+            self.toggle_pick(row.id);
+            return;
+        }
+        // A title cut with `…` shows in full on hover.
+        let resp = if was_cut { resp.on_hover_text(format!("Page {}: {}", row.number, row.title)) } else { resp };
+        if self.revision.is_some() {
+            // A revision opened read-only: a click previews the page as it was.
+            if resp.clicked() {
+                out.push(Action::RevisionPage(row.id));
+            }
+            return;
+        }
+        if resp.drag_started() && writable {
+            self.drag = Some(Drag { page: row.id, from: i, gap: None, folder: None, onto: None });
+        }
+        // A click just before a double-click makes egui count three: either renames. On the
+        // number, it edits the number (design 019 §5.3).
+        if resp.double_clicked() || resp.triple_clicked() {
+            let on_number = resp.interact_pointer_pos().is_some_and(|p| p.x < num.right());
+            if writable && on_number {
+                self.number_edit = Some(InPlace { of: row.id, text: row.number.clone(), error: None, old: row.number.clone() });
+            } else if writable {
+                self.start_rename(row.id);
+            }
+        } else if resp.clicked() && ui.input(|i| i.modifiers.command) {
+            // Ctrl+click ticks the page, as its checkbox does.
+            self.toggle_pick(row.id);
+        } else if resp.clicked() {
+            self.armed = true;
+            self.cursor = Some(i);
+            if !active {
+                out.push(Action::Open(row.id));
+            }
+        }
+        // Brief 041: the page row's wheel (Open, Rename, Page properties, Preview, New page, New
+        // folder); moving stays Alt+Up/Down and drag.
+        if resp.secondary_clicked() {
+            self.armed = true;
+            self.cursor = Some(i);
+            out.push(Action::PageWheel(row.id, resp.interact_pointer_pos().unwrap_or(resp.rect.center())));
+        }
+    }
+
+    /// Tick or untick `page`.
+    pub fn toggle_pick(&mut self, page: PageId) {
+        if !self.picked.remove(&page) {
+            self.picked.insert(page);
+        }
+    }
+
+    /// The footer under the rows (board 1.02): while pages are ticked, how many with Clear, then
+    /// Move to group, Duplicate and Delete; otherwise New page (and its kinds) and New group.
+    fn footer(&mut self, ui: &mut egui::Ui, r: Rect, writable: bool, top: f32, out: &mut Vec<Action>) {
+        let t = crate::shell::left::colours();
+        let s = ecad_ui::SHELL;
+        let area = Rect::from_min_max(pos2(r.left() - 8.0, top.max(r.top())), pos2(r.right() + 8.0, r.bottom()));
+        ui.painter().hline(area.x_range(), area.top() + 0.5, Stroke::new(1.0, ecad_ui::color(s.line)));
+        let inner = area.shrink2(vec2(8.0, 6.0));
+        // Pages no longer in the book drop out of the ticks.
+        if !self.picked.is_empty() {
+            let rows = &self.rows;
+            self.picked.retain(|p| rows.iter().any(|r| r.id == *p));
+        }
+        let read_only = if writable { None } else { Some(READ_ONLY) };
+        crate::shell::in_rect(ui, inner, "ecad.book.footer", |ui| {
+            ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+            if self.picked.is_empty() {
+                ui.horizontal(|ui| {
+                    let new_page = ecad_ui::prim::Button::new(NEW_PAGE).small();
+                    let new_page = match read_only {
+                        Some(why) => new_page.disabled(why),
+                        None => new_page,
+                    };
+                    if ui.add(new_page).clicked() {
+                        self.armed = true;
+                        out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
+                    }
+                    self.kinds_menu(ui, writable, out);
+                    let new_group = ecad_ui::prim::Button::new(NEW_FOLDER).kind(ecad_ui::prim::Kind::Quiet).small();
+                    let new_group = match read_only {
+                        Some(why) => new_group.disabled(why),
+                        None => new_group,
+                    };
+                    if ui.add(new_group).clicked() {
+                        self.armed = true;
+                        out.push(Action::NewFolder(self.target_folder()));
+                    }
+                });
+                return;
+            }
+            let n = self.picked.len();
+            ui.horizontal(|ui| {
+                let words = format!("{n} page{} selected", if n == 1 { "" } else { "s" });
+                ui.label(RichText::new(words).color(t.text));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(ecad_ui::prim::Button::new(CLEAR_PICKED).kind(ecad_ui::prim::Kind::Quiet).small()).clicked() {
+                        self.picked.clear();
+                    }
+                });
+            });
+            ui.horizontal(|ui| {
+                let picked: Vec<PageId> = self.rows.iter().filter(|r| self.picked.contains(&r.id)).map(|r| r.id).collect();
+                let folders: Vec<(FolderId, String)> = self
+                    .tree
+                    .iter()
+                    .filter_map(|r| match r {
+                        TreeRow::Folder { id, name, .. } => Some((*id, name.clone())),
+                        TreeRow::Page(_) => None,
+                    })
+                    .collect();
+                ui.add_enabled_ui(writable, |ui| {
+                    ui.menu_button(format!("{MOVE_TO_GROUP} \u{25be}"), |ui| {
+                        for (f, name) in folders {
+                            if ui.button(&name).clicked() {
+                                out.extend(picked.iter().map(|p| Action::MoveInto { page: *p, folder: Some(f), index: None }));
+                                ui.close();
+                            }
+                        }
+                        if ui.button("No group").clicked() {
+                            out.extend(picked.iter().map(|p| Action::MoveInto { page: *p, folder: None, index: None }));
+                            ui.close();
+                        }
+                    })
+                    .response
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, MOVE_TO_GROUP));
+                });
+                ui.add(ecad_ui::prim::Button::new(DUPLICATE).small().disabled(NOT_YET));
+                // Brief 054 (design 054 §8.3): Delete takes generated pages only.
+                let generated = picked.iter().all(|p| self.generated.contains(p));
+                let del = ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, DELETE_PAGES);
+                let del = if !writable {
+                    del.disabled(READ_ONLY)
+                } else if generated {
+                    del
+                } else {
+                    del.disabled(ecad_cadcraft::page_types::DRAWN_PAGE)
+                };
+                if ui.add(del).clicked() && writable && generated {
+                    out.push(Action::DeletePages(picked.clone()));
+                    self.picked.clear();
+                }
+            });
+        });
+    }
+
+    /// New page of a kind (brief 024, design 024 §5.1): page, the generated kinds, terminal strips.
+    fn kinds_menu(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
+        ui.add_enabled_ui(writable, |ui| {
+            ui.menu_button(RichText::new("\u{25be}").small(), |ui| {
+                if ui.button("Page").clicked() {
+                    out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
+                    ui.close();
+                }
+                for k in ecad_cadcraft::generated::GenKind::ALL {
+                    let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", k.value()));
+                    if b.clicked() {
+                        out.push(Action::NewGenerated(k));
+                        ui.close();
+                    }
+                    // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
+                    if k == ecad_cadcraft::generated::GenKind::Terminals {
+                        let b = ui.button(ecad_cadcraft::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
+                        if b.clicked() {
+                            out.push(Action::NewStripPage);
+                            ui.close();
+                        }
+                    }
+                }
+            })
+            .response
+            .on_hover_text("New page of a kind: page, cover, contents, revision list, BOM by location")
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.project.newpage.kind"));
+        });
+    }
+
+    /// Ask to move row `from` to index `to` (0-based); the cursor follows it.
+    fn move_row(&mut self, from: usize, to: usize, out: &mut Vec<Action>) {
+        if let Some(r) = self.rows.get(from)
+            && to < self.rows.len()
+            && to != from
+        {
+            out.push(Action::Move(r.id, to + 1));
+            self.cursor = Some(to);
+            self.reveal = Some(to);
+            self.armed = true;
+        }
+    }
+
+    /// The rename field over a row's title: Enter or a click elsewhere renames, Esc cancels.
+    fn rename_field(&mut self, ui: &mut egui::Ui, rect: Rect, out: &mut Vec<Action>) {
+        let Some(r) = &mut self.rename else { return };
+        let id = egui::Id::unique("ecad.project.rename");
+        let opening = egui::TextEdit::load_state(ui.ctx(), id).is_none();
+        let error = r.error.is_some();
+        let edit = egui::TextEdit::singleline(&mut r.text)
+            .id(id)
+            .font(egui::TextStyle::Monospace.resolve(ui.style()))
+            .margin(egui::Margin::symmetric(2, 0))
+            .frame(
+                egui::Frame::NONE
+                    .stroke(Stroke::new(1.0, if error { crate::shell::left::colours().error } else { crate::shell::left::colours().accent })),
+            );
+        let resp = ui.put(rect, edit).accessible_name(RENAME);
+        if opening {
+            resp.request_focus();
+            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(r.old.chars().count()));
+                state.cursor.set_char_range(Some(all));
+                state.store(ui.ctx(), id);
+            }
+        }
+        if let Some(e) = &r.error {
+            egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
+                .show(|ui| ui.label(RichText::new(e).small().color(crate::shell::left::colours().error)));
+        }
+        if resp.lost_focus() {
+            let esc = ui.input(|i| i.key_pressed(Key::Escape));
+            // The key that ended the edit is the field's: CADCraft's command line, laid out after
+            // the panel, must not take it too (Enter there repeats the last command).
+            ui.input_mut(|i| {
+                i.consume_key(Modifiers::NONE, Key::Enter);
+                i.consume_key(Modifiers::NONE, Key::Escape);
+            });
+            let page = r.page;
+            let text = r.text.trim().to_string();
+            let same = text == r.old;
+            ui.ctx().data_mut(|d| d.remove::<egui::text_edit::TextEditState>(id));
+            if esc || same {
+                self.rename = None;
+            } else {
+                // The app runs `renamepage`; a refusal reopens the field with the message.
+                out.push(Action::Rename(page, text));
+            }
+        }
+    }
+
+    /// The keys the armed panel takes before CADCraft's command line sees them (design §3.3).
+    fn keyboard(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
+        if !self.armed || self.rename.is_some() || self.rows.is_empty() {
+            return;
+        }
+        if ui.ctx().egui_wants_keyboard_input() {
+            return;
+        }
+        let n = self.rows.len();
+        let page_rows = ((ui.available_height() / self.row_h()).floor() as usize).max(1);
+        let cur = self.target().unwrap_or(0).min(n - 1);
+        let take = |k: Key, m: Modifiers| ui.ctx().input_mut(|i| i.consume_key(m, k));
+        let mut moved = None;
+        if take(Key::ArrowUp, Modifiers::ALT) {
+            if writable && cur > 0 {
+                self.move_row(cur, cur - 1, out);
+            }
+        } else if take(Key::ArrowDown, Modifiers::ALT) {
+            if writable && cur + 1 < n {
+                self.move_row(cur, cur + 1, out);
+            }
+        } else if take(Key::ArrowUp, Modifiers::NONE) {
+            moved = Some(cur.saturating_sub(1));
+        } else if take(Key::ArrowDown, Modifiers::NONE) {
+            moved = Some((cur + 1).min(n - 1));
+        } else if take(Key::Home, Modifiers::NONE) {
+            moved = Some(0);
+        } else if take(Key::End, Modifiers::NONE) {
+            moved = Some(n - 1);
+        } else if take(Key::PageUp, Modifiers::NONE) {
+            moved = Some(cur.saturating_sub(page_rows));
+        } else if take(Key::PageDown, Modifiers::NONE) {
+            moved = Some((cur + page_rows).min(n - 1));
+        } else if take(Key::Enter, Modifiers::NONE) {
+            if let Some(r) = self.rows.get(cur) {
+                out.push(Action::Open(r.id));
+            }
+        } else if take(Key::F2, Modifiers::NONE) {
+            if let Some(r) = self.rows.get(cur).map(|r| r.id)
+                && writable
+            {
+                self.start_rename(r);
+            }
+        } else if take(Key::Escape, Modifiers::NONE) {
+            self.armed = false;
+        } else if take(Key::Space, Modifiers::NONE) {
+            // Space also arrives as text, which CADCraft's command line takes as Enter.
+            ui.ctx().input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t == " ")));
+            if let Some(r) = self.rows.get(cur) {
+                out.push(Action::Preview(r.id));
+            }
+        } else if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_) | egui::Event::Key { pressed: true, .. }))) {
+            // Any other key goes to the command line and disarms the panel.
+            self.armed = false;
+        }
+        if let Some(m) = moved {
+            self.cursor = Some(m);
+            self.reveal = Some(m);
+        }
+    }
+}
+
+/// A field typed over a row (`edit` holds its text and the refusal shown under it). Returns
+/// `Some((text, true))` to commit (Enter or a click elsewhere, text changed), `Some((_, false))`
+/// to cancel (Esc or unchanged), `None` while typing.
+fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut InPlace<T>) -> Option<(String, bool)> {
+    let id = egui::Id::unique(id);
+    let opening = egui::TextEdit::load_state(ui.ctx(), id).is_none();
+    let colour = if edit.error.is_some() { crate::shell::left::colours().error } else { crate::shell::left::colours().accent };
+    let field = egui::TextEdit::singleline(&mut edit.text)
+        .id(id)
+        .font(egui::TextStyle::Monospace.resolve(ui.style()))
+        .margin(egui::Margin::symmetric(2, 0))
+        .frame(egui::Frame::NONE.stroke(Stroke::new(1.0, colour)));
+    let resp = ui.put(rect, field).accessible_name(label);
+    if opening {
+        resp.request_focus();
+        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+            let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(edit.old.chars().count()));
+            state.cursor.set_char_range(Some(all));
+            state.store(ui.ctx(), id);
+        }
+    }
+    if let Some(e) = &edit.error {
+        egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), id.with("error"), egui::PopupAnchor::Position(rect.left_bottom()))
+            .show(|ui| ui.label(RichText::new(e).small().color(crate::shell::left::colours().error)));
+    }
+    if !resp.lost_focus() {
+        return None;
+    }
+    let esc = ui.input(|i| i.key_pressed(Key::Escape));
+    ui.input_mut(|i| {
+        i.consume_key(Modifiers::NONE, Key::Enter);
+        i.consume_key(Modifiers::NONE, Key::Escape);
+    });
+    ui.ctx().data_mut(|d| d.remove::<egui::text_edit::TextEditState>(id));
+    let text = edit.text.trim().to_string();
+    if esc || text == edit.old {
+        return Some((text, false));
+    }
+    Some((text, true))
+}
+
+/// `text` cut with `…` to fit `width` in `font`.
+fn cut(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
+    let fits = |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x) <= width;
+    if fits(text) {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let (mut lo, mut hi) = (0usize, chars.len());
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let s: String = chars.iter().take(mid).chain(std::iter::once(&'…')).collect();
+        if fits(&s) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    chars.iter().take(lo).chain(std::iter::once(&'…')).collect()
+}

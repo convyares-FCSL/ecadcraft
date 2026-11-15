@@ -1535,24 +1535,6 @@ fn r13_old_version_1_halves_stay_separate() {
 
 // ------------------------------------------------------------------------------- Place group (041)
 
-/// §4.1: Place ▸ Connector is one action in the Place group, slot 2, starting `connector`, found by
-/// its search words; the device wheel and the terminal wheel gain §9.3's slots.
-#[test]
-fn place_connector_action_row() {
-    use ecad_cadcraft::actions::{self, ACTIONS, ToolGroup};
-    let a = ACTIONS.iter().find(|a| a.id == "place.connector").expect("place.connector");
-    assert_eq!(a.command, "connector");
-    assert_eq!(a.label, "Connector");
-    // UI rev 3: Place became the Device group (Symbol, Connector); Terminal is its own group.
-    assert!(matches!(a.group, Some((ToolGroup::Device, 1))), "{:?}", a.group);
-    let place: Vec<&str> = ToolGroup::Device.tools().iter().map(|a| a.label).collect();
-    assert_eq!(place, ["Symbol", "Connector"]);
-    for w in ["connector", "plug", "socket", "d-sub", "m12", "mated"] {
-        assert!(actions::search(w, 20).iter().any(|x| x.id == "place.connector"), "search {w:?}");
-    }
-    assert!(ACTIONS.iter().any(|a| a.command == "pinlabel"), "Rename pin on the terminal wheel");
-}
-
 /// Writes off (row 14) is in the MCP lane test; programmatic calls never open a dialog: the JSON
 /// form with only `at` uses the registry's answers.
 #[test]

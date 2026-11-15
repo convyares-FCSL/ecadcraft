@@ -131,7 +131,7 @@ impl Interactive for MirrorMove {
     fn begin(&mut self, s: &mut Session) -> R<Step> {
         safely(s, "mirrormove", |s| {
             let found: std::collections::BTreeSet<ComponentId> =
-                s.selection().iter().take(crate::commands::MAX_HANDLES).filter_map(|h| Self::choose(s, *h).ok()).collect();
+                s.selection().iter().take(crate::cmd::MAX_HANDLES).filter_map(|h| Self::choose(s, *h).ok()).collect();
             if found.len() == 1 {
                 self.device = found.into_iter().next();
             }

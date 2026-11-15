@@ -18,6 +18,7 @@ use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
 use ecad_model::{CableId, ComponentId, ConductorId, Document, End, ObjectRef, Op, PageId, Subject};
 
 use crate::project::{Mapped, Project};
+pub use crate::words::Row;
 
 /// What a row edits, as the command that writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,36 +28,6 @@ pub enum Target {
     Devices(Vec<ComponentId>),
     Conductor(ConductorId),
     Cable(CableId),
-}
-
-/// One row: a label and a value box.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Row {
-    /// The property key it edits (`number`, `title`, `description`…).
-    pub key: String,
-    pub label: String,
-    /// The value shown.
-    pub value: String,
-    pub editable: bool,
-    /// The value comes from the project (a page's Function or Location): shown faint.
-    pub inherited: bool,
-    /// Several selected objects differ: `*varies*`.
-    pub varies: bool,
-    /// Suggestions (a combo): Status, Sheet; a function's or location's codes from the list.
-    pub choices: Vec<String>,
-    /// Brief 052 (design 052 §9.1): an unset function or location's proposal from the selected
-    /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
-    /// **Use +CP1** link that sets it.
-    pub proposal: Option<(String, String)>,
-}
-
-impl Row {
-    fn ro(key: &str, label: &str, value: String) -> Row {
-        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new(), proposal: None }
-    }
-    fn rw(key: &str, label: &str, value: String) -> Row {
-        Row { editable: true, ..Row::ro(key, label, value) }
-    }
 }
 
 /// One section: `ECAD · PAGE 105`, its rows, a note and the buttons it offers.
@@ -393,7 +364,7 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let number = book.number(doc, page);
     let mut rows = vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.clone()).unwrap_or_default())];
     let folder = ecad_model::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
-    let path = crate::sheet_cmds::folder_path(doc, folder);
+    let path = crate::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
         // Brief 052: stored as entry keys, shown as codes.
@@ -463,7 +434,7 @@ fn box_section(doc: &Document, b: ComponentId) -> Section {
 }
 
 fn device_section(
-    doc: &Document, plc: Option<&crate::plc::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
+    doc: &Document, plc: Option<&crate::plc::kept::Plc>, devices: &BTreeSet<ComponentId>, symbol: Option<ecad_model::RepresentationId>,
 ) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
@@ -513,7 +484,7 @@ fn device_section(
             } else {
                 r.connection_points.keys().copied().collect()
             };
-            let labels: Vec<String> = shown.iter().map(|t| crate::interact::terminal_name(doc, *t)).collect();
+            let labels: Vec<String> = shown.iter().map(|t| crate::terminal_types::terminal_name(doc, *t)).collect();
             let mut this = name;
             if !labels.is_empty() {
                 this.push(' ');
@@ -893,7 +864,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
     let mut rows = wiring;
     rows.push(Row::ro("from", "From", end_words(doc, w, End::A)));
     rows.push(Row::ro("to", "To", end_words(doc, w, End::B)));
-    let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::views::cable_title(doc, k)).collect();
+    let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::cables::cable_title(doc, k)).collect();
     rows.push(Row::ro("cables", "Cables", if cables.is_empty() { "none".into() } else { cables.join(", ") }));
     rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default()));
     rows.extend(free_rows(
@@ -937,7 +908,7 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
     };
     rows.push(Row::ro("usedspare", "Used / Spare", used));
     Section {
-        title: format!("ECAD · CABLE {}", crate::views::cable_title(doc, k)),
+        title: format!("ECAD · CABLE {}", crate::cables::cable_title(doc, k)),
         kind: "cable",
         target: Some(Target::Cable(k)),
         rows,
@@ -982,7 +953,7 @@ fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section
     let this = refs.iter().find(|x| x.reference == r);
     let others: Vec<String> = refs.iter().filter(|x| x.reference != r).map(|x| x.locator()).collect();
     let rows = vec![
-        Row::ro("cable", "Cable", crate::views::cable_title(doc, k)),
+        Row::ro("cable", "Cable", crate::cables::cable_title(doc, k)),
         Row::ro("this", "This end", this.map_or_else(|| "?".into(), |x| x.locator())),
         Row::ro("others", "Other ends", if others.is_empty() { "none".into() } else { others.join(", ") }),
     ];
@@ -1043,7 +1014,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         let own = own.filter(|v| entry.parse(v).is_some());
         let default = format!("Default ({})", shown_words(inherited).to_ascii_lowercase());
         let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
-        let label = format!("{group}: {}", crate::text_cmds::kind_words(*kind));
+        let label = format!("{group}: {}", crate::cmd::text::kind_words(*kind));
         let mut r = Row::rw(&key, &label, value);
         r.inherited = own.is_none();
         r.choices = vec![default, "Shown".into(), "Hidden".into()];

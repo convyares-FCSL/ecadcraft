@@ -77,7 +77,7 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 }
 
 fn same_as_built(h: &mut H) {
-    let (kept, built) = h.cfg(|p| (p.outputs().plc.clone(), Outputs::build(p.ledger.document()).plc));
+    let (kept, built) = h.cfg(|p| (p.outputs().plc.clone(), Outputs::build(p.ledger.document()).plc.clone()));
     assert!(kept.same_as(&built), "the kept PLC model differs from a rebuild");
 }
 

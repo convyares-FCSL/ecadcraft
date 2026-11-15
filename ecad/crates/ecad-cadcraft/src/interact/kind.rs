@@ -16,7 +16,7 @@ use cadcraft_engine::geom::Vec2;
 use ecad_model::{CableId, ComponentId, ConductorId, Document, End, PageId, RepresentationId, Subject, TerminalId};
 
 use super::{capture, pick, pixel, pt, read, route_ends, terminal_name};
-use crate::actions::ObjectKind;
+use crate::kinds::ObjectKind;
 use crate::project::{Mapped, Project};
 
 /// The object a wheel was opened on.

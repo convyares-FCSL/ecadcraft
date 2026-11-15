@@ -21,7 +21,7 @@ history as version 1 JSON Lines. The debugger gains **Storage** and **Branches**
   (`ecad upgrade`), `ecad/dev/ecad-inspector/tests/all/cli_contracts.rs` (every `ecadinspect`
   view, `export-jsonl` read back by version 1; moved there by brief 029), and the
   debugger checks in `ecad/crates/ecad-cadcraft/tests/all/debugger.rs` and
-  `ecad/apps/ecad-trial/tests/all/debugger.rs`.
+  `ecad/crates/ecad-app/tests/all/debugger.rs`.
 - *Agent-observed:* the worker ran the crash suite and the benchmark; no agent has clicked through
   the live window.
 - *Owner-tried:* not yet.

@@ -17,7 +17,7 @@ from a standard.
 
 ## Try it (made-up values)
 
-Run `cargo run --release -p ecad-trial`, open a project with a breaker, a contactor and a cable
+Run `cargo run --release -p ecad-desktop`, open a project with a breaker, a contactor and a cable
 (the demo of the main guide works), and type at the command line:
 
 1. **A panel wire on the Datasheet basis.** Give the Power L category a made-up datasheet rating:
@@ -58,7 +58,7 @@ The same through commands and MCP: `rating {wire|cable, …}` (one transaction),
 `cargo test -p ecad-cadcraft lane_057` (the design's worked examples on synthetic values, the
 parsers' hostile inputs, the CSV import refusals, no shipped values, the update map),
 `cargo test -p ecad-mcp lane_057` (one agent transaction per write, refusals with writes off) and
-`cargo test -p ecad-trial lane_057` (the Rating rows of boards 2.05 and 2.06; with
+`cargo test -p ecad-app lane_057` (the Rating rows of boards 2.05 and 2.06; with
 `ECAD_TESTER_SHOTS` set, screenshots).
 
 ## Not built yet

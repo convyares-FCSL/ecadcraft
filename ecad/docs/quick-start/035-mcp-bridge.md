@@ -26,12 +26,12 @@ you turn it on; when off, nothing listens.
 1. **Build once** (from `ecad/`):
 
    ```sh
-   cargo build --release -p ecad-mcp -p ecad-trial
+   cargo build --release -p ecad-mcp -p ecad-desktop
    ```
 2. **Turn agent access on in the trial.** Open the trial, unfold **Developer** at the bottom of
    the Project panel, and set **Agent access** to **Read and change** (port 47823). The status
    says `● Listening on 127.0.0.1:47823`. Once only: it is remembered in `agent-access.json` in
-   your ECAD settings folder (never in a project). `ecad-trial --control 47823` turns it on for
+   your ECAD settings folder (never in a project). `ecad-desktop --control 47823` turns it on for
    one run instead, without remembering it. **Read only** lets an agent read but not change or
    save.
 3. **Register the server for every folder** (user scope). Native Windows:
@@ -76,7 +76,7 @@ take back only its own steps. One agent changes the project at a time; others re
 
 The line is deliberately plain: the agent banner's look and place come with the new UI shell.
 
-- *Automated checks:* `ecad/apps/ecad-trial/tests/all/bridge_contracts.rs` (a live trial and an
+- *Automated checks:* `ecad/crates/ecad-app/tests/all/bridge_contracts.rs` (a live trial and an
   `ecad-mcp --connect` server: authors per call, refusals byte-identical to headless, the person
   restored after refused, failing and panicking calls, the cap with batches, Read only and no
   `--write`, the busy rule, raw methods and the token, the agent-undo rule, one writer, modes,

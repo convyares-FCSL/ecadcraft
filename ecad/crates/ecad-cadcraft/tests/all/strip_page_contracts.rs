@@ -108,7 +108,7 @@ fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let o = p.outputs().clone();
         let built = StripPages::build(p.ledger.document(), &o.strips);
-        (o.strip_pages, built)
+        (o.strip_pages.clone(), built)
     });
     assert!(kept.same_as(&built), "strip pages differ from a rebuild");
 }

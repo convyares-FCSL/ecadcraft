@@ -2,7 +2,7 @@
 //!
 //! It composes CADCraft's MCP server (`cadcraft-mcp`) from ECAD's side, with no upstream change:
 //! one headless CADCraft session with the ECAD commands installed and one ECAD project open, as
-//! the trial does. On top of CADCraft's server it adds:
+//! the desktop app does. On top of CADCraft's server it adds:
 //!
 //! - **a write gate** ([`policy`]): read-only unless started with `--write`, and read-only
 //!   whatever the flag when the project opened read-only. Writes reach the project only through
@@ -30,50 +30,30 @@
 pub mod args;
 pub mod bridge;
 pub mod demo;
-pub mod gate;
 pub mod launch;
-pub mod policy;
-pub mod tools;
+
+// The gate, policy and tools live in `ecad_cadcraft::agent` (design 065 §3, cut 12), shared with
+// the window's live bridge; their old paths here keep working.
+pub use ecad_cadcraft::agent::{gate, policy, tools};
 
 use std::cell::RefCell;
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
-use cadcraft_engine::Session;
 use cadcraft_mcp::{Backend, Headless, Server};
+use ecad_cadcraft::cad::Session;
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::Author;
 use serde_json::{Value, json};
 
-/// Longest request line, in bytes; a longer line is answered with an Invalid Request error and
-/// skipped without being kept in memory.
-pub const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
-/// Most messages in one JSON-RPC batch.
-pub const MAX_BATCH: usize = 64;
-/// Most transactions one tool call may record. One `execute` runs one command, which records at
-/// most one; a call that records more is undone and refused.
-pub const MAX_TRANSACTIONS_PER_CALL: usize = 1;
-/// Longest agent name recorded as an author, in characters.
-pub const MAX_AGENT_NAME: usize = 64;
-/// The author name before (or without) a client name.
-pub const UNNAMED_AGENT: &str = "unnamed MCP client";
+pub use ecad_cadcraft::agent::{
+    CADCRAFT_TOOLS, MAX_AGENT_NAME, MAX_BATCH, MAX_REQUEST_BYTES, MAX_TRANSACTIONS_PER_CALL, UNNAMED_AGENT, UNREADABLE, agent_name, author_text,
+    not_offered,
+};
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const INVALID_PARAMS: i64 = -32602;
-
-/// CADCraft's tools that ECAD's server offers; the others are refused as unknown tools.
-pub const CADCRAFT_TOOLS: &[&str] = &["execute", "list_commands", "inspect_drawing", "query_entities", "find_text", "render"];
-
-/// Said when an agent asks for a CADCraft tool ECAD's server does not offer.
-pub fn not_offered(name: &str) -> String {
-    let why = match name {
-        "command_line" | "script" | "cancel" => " ECAD changes go through `execute` only (one command with JSON parameters per call).",
-        "new_drawing" | "open" => " The project is opened by the person who starts the server.",
-        _ => "",
-    };
-    format!("unknown tool `{name}`.{why} `tools/list` shows the tools this server offers.")
-}
 
 /// How the server was asked to run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -83,35 +63,6 @@ pub struct Options {
     /// The author name to record instead of the client's own name (`--agent`).
     pub agent: Option<String>,
 }
-
-/// Characters that change how text is shown without being visible: bidirectional overrides and
-/// isolates, zero-width spaces and joiners, and the byte-order mark. An author name never holds
-/// them, so a name cannot pose as another.
-fn invisible(c: char) -> bool {
-    matches!(
-        c,
-        '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'
-    )
-}
-
-/// An author name as recorded: control, bidirectional and zero-width characters dropped, spaces
-/// trimmed, at most [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
-pub fn agent_name(given: &str) -> String {
-    let s: String = given.chars().filter(|c| !c.is_control() && !invisible(*c)).take(MAX_AGENT_NAME).collect();
-    let s = s.trim();
-    if s.is_empty() { UNNAMED_AGENT.to_string() } else { s.to_string() }
-}
-
-/// How a transaction's author is shown (as the debugger shows it).
-pub fn author_text(a: &Author) -> String {
-    match a {
-        Author::User => "user".into(),
-        Author::Agent(n) => format!("agent {n}"),
-    }
-}
-
-/// Said when the project cannot be read to check a call; the call is refused (fail closed).
-pub const UNREADABLE: &str = "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
 
 /// Opens the headless session and its project when the first headless call needs it
 /// (`--connect`: a project the window may have open is never locked before then).
@@ -359,7 +310,7 @@ fn install() -> Result<(), String> {
     ecad_cadcraft::install();
     // Brief 024: `printbook` plots through CADCraft's PDF plotter.
     ecad_cadcraft::printbook::install_io();
-    if cadcraft_engine::find_command("wire").is_none() {
+    if ecad_cadcraft::cad::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
     }
     Ok(())
@@ -457,7 +408,7 @@ impl EcadMcp {
         Self::build(None, Some(opener), Some(bridge::Link::new(port, launch)), opts)
     }
 
-    /// Open the project file at `path` (`~` and a missing `.ecad` are handled as in the trial).
+    /// Open the project file at `path` (`~` and a missing `.ecad` are handled as in the desktop app).
     /// Returns the server and what opening found, in words. A project another session is editing,
     /// or a damaged one, opens read-only: writes are then refused whatever `opts.write` says.
     ///

@@ -1,5 +1,5 @@
 //! A builder for the small projects most tests start from (brief 062), behind the `test-support`
-//! cargo feature. Never part of a release or the trial: only tests enable the feature.
+//! cargo feature. Never part of a release or the desktop app: only tests enable the feature.
 //!
 //! ```ignore
 //! let built = ProjectBuilder::new(7)

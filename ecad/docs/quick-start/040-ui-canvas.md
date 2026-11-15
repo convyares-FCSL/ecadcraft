@@ -1,7 +1,7 @@
 # 040: the canvas (U4a), how to try it
 
 Brief [`040-ui-canvas.md`](../briefs/040-ui-canvas.md); choices and tokens in
-[`design/040.md`](../design/040.md). Start the trial as usual (`cargo run -p ecad-trial --release
+[`design/040.md`](../design/040.md). Start the trial as usual (`cargo run -p ecad-desktop --release
 -- <project.ecad>`).
 
 ## What changed

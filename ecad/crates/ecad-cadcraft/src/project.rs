@@ -4,6 +4,7 @@
 //! engine is a CADCraft document whose drawing is a projection of the ECAD document; the
 //! [`HandleMap`] relates its handles to ECAD IDs and lives only in the session (proposal §13).
 
+use crate::draw::text_style::LookApply as _;
 use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
@@ -512,7 +513,7 @@ impl MemoryStore {
 }
 
 /// What Save and Save As report when the project has no persistence.
-pub const SAVE_UNAVAILABLE: &str = "Saving is not available in the ECAD trial: project persistence is not implemented. \
+pub const SAVE_UNAVAILABLE: &str = "Saving is not available in the ECAD desktop app: project persistence is not implemented. \
 Nothing was written and the project is still unsaved. Closing it discards the design.";
 
 /// A copy of the project's meaning taken when objects were put on the clipboard.
@@ -574,7 +575,7 @@ pub struct Project {
     /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
     pub author: Author,
     /// Closing the page window leaves the project open with no active page (design 016 §4.1)
-    /// instead of closing the project. Off by default (tests, MCP); the trial turns it on and off
+    /// instead of closing the project. Off by default (tests, MCP); the desktop app turns it on and off
     /// again while it closes the project or quits, so unsaved work is always asked about.
     pub keep_open: bool,
     /// The page shown in the page window, if any.
@@ -613,13 +614,13 @@ pub struct Project {
     /// The report models (brief 024, [`crate::outputs`]): built on first show (Reports, a BOM
     /// page, Checks) and then kept from each change's ops; `None` until then.
     pub outputs: Option<crate::outputs::Outputs>,
-    /// `reports` asked for the Reports window (the trial opens it and clears this).
+    /// `reports` asked for the Reports window (the desktop app opens it and clears this).
     pub open_reports: bool,
-    /// Brief 035: `agentaccess` asked for this agent access preference (the trial applies it and
+    /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
     /// clears this).
     #[cfg(not(target_arch = "wasm32"))]
     pub agent_access_request: Option<crate::agent_access::Preference>,
-    /// Brief 035: the trial's agent access state as `agentaccess` reports it (set by the trial).
+    /// Brief 035: the desktop app's agent access state as `agentaccess` reports it (set by the desktop app).
     #[cfg(not(target_arch = "wasm32"))]
     pub agent_access_status: Option<crate::agent_access::Status>,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
@@ -642,20 +643,20 @@ pub struct Project {
     /// ([`Project::refresh_page`]; tests: a commit that touched another page projects nothing).
     pub projections: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
-    pub revision_view: Option<crate::sheet_cmds::RevisionView>,
+    pub revision_view: Option<crate::cmd::sheet::RevisionView>,
     /// How many transactions the command now running may record, when its caller caps them (an
     /// agent's call through MCP); `None` for no cap. Commands that write files check it before
     /// they write (brief 027's release), so nothing reaches the disk that the cap would take back.
     pub tx_budget: Option<usize>,
-    /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the trial's
+    /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the desktop app's
     /// confirmation, used by the next undo only.
     pub confirm_issue_undo: bool,
-    /// The question an undo across an issue is waiting on, for the trial's popup.
+    /// The question an undo across an issue is waiting on, for the desktop app's popup.
     pub issue_undo_question: Option<String>,
     /// Plain `u` across a merge stops and asks (design 020 §4.3): set by `undomerge`, used by
     /// the next undo only.
     pub confirm_merge_undo: bool,
-    /// The question an undo across a merge is waiting on, for the trial's popup.
+    /// The question an undo across a merge is waiting on, for the desktop app's popup.
     pub merge_undo_question: Option<String>,
     /// The merge last prepared (its states and scope), kept while nothing it read changes
     /// (brief 020b).
@@ -773,7 +774,15 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
 pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
     let mut e = match &part.shape {
         crate::xref::Shape::Text { at, value, height, halign, valign, rotation } => {
-            let mut e = crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER);
+            let mut e = crate::devices::text_entity_with(
+                value,
+                *at,
+                *height,
+                crate::draw::xref::engine_halign(*halign),
+                crate::draw::xref::engine_valign(*valign),
+                handle,
+                crate::devices::TAG_LAYER,
+            );
             // Brief 049 (FP3): a continuation's reference reads along its wire; every other part
             // keeps 0, so its entity is unchanged.
             if let EntityKind::Text(t) = &mut e.kind {
@@ -932,7 +941,7 @@ pub fn project_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_kept(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
-    hidden_text: bool, plc: Option<&crate::plc::Plc>,
+    hidden_text: bool, plc: Option<&crate::plc::kept::Plc>,
 ) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers.values() {
@@ -1009,9 +1018,9 @@ pub fn project_page_kept(
         map.insert_item(id, h);
     }
     // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
-    crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    crate::draw::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
     // Brief 050b: wire routes in their category's line type and weight.
-    crate::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
+    crate::draw::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
     // Brief 050a: location box outlines in their location style.
     crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();
@@ -2350,7 +2359,7 @@ impl Project {
         // they bring back).
         let mut ops = ops;
         let rack_page = if kind.is_none() && numbering {
-            let (id, more) = crate::plc::page::rack_page_ops(self, &ops)?;
+            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops)?;
             ops.extend(more);
             id
         } else {
@@ -2363,7 +2372,7 @@ impl Project {
         // References are derived for the cables and devices the ops could touch only (briefs 014,
         // 025).
         let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
@@ -2408,7 +2417,7 @@ impl Project {
     fn finish_watch(&mut self, watch: crate::xref::Watch) -> crate::xref::Outcome {
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let mut out = watch.finish(ledger.document(), &mut self.xref, ops);
+        let mut out = watch.finish(ledger.document(), &mut self.xref, ops, &crate::draw::text_style::EngineMetrics);
         let head = ledger.head();
         // Brief 044 (design 044 §11.1): the connector index, from the ops; verify mode compares it
         // with a rebuild.
@@ -2682,7 +2691,7 @@ impl DocumentOwner for Project {
         }
         if view.unavailable {
             self.restore(pg, c.uid, page);
-            return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
+            return Verdict::Refuse(crate::cmd::UNAVAILABLE.into());
         }
         // OOPS brings back only the plain drawing the last erase on this page removed (brief 023).
         if c.command == "oops" && !self.oops.allows(c.uid, page, &last, &now) {
@@ -2742,7 +2751,7 @@ impl DocumentOwner for Project {
         // References are derived for the cables the ops could touch only, once before and once
         // after the commit (brief 014): a move of a component outside any cable derives none.
         let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse, &crate::draw::text_style::EngineMetrics);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
@@ -2844,7 +2853,7 @@ impl DocumentOwner for Project {
 
     fn close_needs_prompt(&self, _uid: u64) -> bool {
         // Closing the page window closes the project (experiment choice, proposal §18.4), which
-        // prompts when unsaved; with `keep_open` (the trial, design 016 §4.1) it only hides the
+        // prompts when unsaved; with `keep_open` (the desktop app, design 016 §4.1) it only hides the
         // page and the project stays open, so nothing is lost and nothing is asked.
         self.unsaved() && self.open_pages() <= 1 && !self.keep_open
     }
@@ -2956,7 +2965,7 @@ impl Project {
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);
@@ -2971,7 +2980,7 @@ impl Project {
             && !std::mem::take(&mut self.confirm_issue_undo)
         {
             let date = self.ledger.document().properties.get(&crate::revisions::key(n, "date")).cloned();
-            let mut q = crate::sheet_cmds::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
+            let mut q = crate::cmd::sheet::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
             // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
             if self.ledger.document().properties.contains_key(&crate::revisions::key(n, crate::revisions::RELEASED)) {
                 q.push_str(" Its release folder stays on disk.");
@@ -3056,7 +3065,7 @@ fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &
 /// `None` when that could be any page (op kinds other than item, representation, attachment and
 /// new-object ops). Reference texts on other pages are [`crate::references::Snapshot`]'s part.
 /// Brief 045: `plc`, the kept PLC model when built, gives a rack's cards without a walk.
-pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::Plc>) -> Option<BTreeSet<PageId>> {
+pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::kept::Plc>) -> Option<BTreeSet<PageId>> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {

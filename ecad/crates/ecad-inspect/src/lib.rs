@@ -45,7 +45,7 @@ pub enum EventKind {
     Redo,
     Saved,
     SaveFailed,
-    /// Save or Save As on a project without persistence (the desktop trial): nothing was written.
+    /// Save or Save As on a project without persistence (the desktop desktop app): nothing was written.
     SaveUnavailable,
     /// Projection failed after the ledger accepted a transaction (PROJ-02 follows).
     ProjectionFailed,

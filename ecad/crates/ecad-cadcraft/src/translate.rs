@@ -27,6 +27,7 @@ use ecad_model::{
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
+use crate::wires::{ShownOnce, first_near};
 
 /// Everything the translation reads. The ledger is borrowed mutably only to preview proposed
 /// ops in place ([`Ledger::with_applied`]); the translation never changes it.
@@ -110,30 +111,6 @@ fn preview<R>(ledger: &mut Ledger, ops: &[Op], read: impl FnOnce(&Document) -> R
 /// The terminal shown at `at` on `page`, if any.
 pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Option<TerminalId> {
     first_near(&terminal_positions(doc, page), at, tol)
-}
-
-/// The first terminal of `shown` (as [`terminal_positions`] lists them) within `tol` of `at`.
-fn first_near(shown: &[(TerminalId, RepresentationId, Pt)], at: Pt, tol: f64) -> Option<TerminalId> {
-    shown.iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| *t)
-}
-
-/// [`terminal_at`] for many points on one document: the terminal positions are worked out on
-/// first use and kept, so an edit that moves many route ends lists them once, not once per end.
-pub(crate) struct ShownOnce<'a> {
-    doc: &'a Document,
-    page: PageId,
-    shown: Option<Vec<(TerminalId, RepresentationId, Pt)>>,
-}
-
-impl<'a> ShownOnce<'a> {
-    pub(crate) fn new(doc: &'a Document, page: PageId) -> Self {
-        Self { doc, page, shown: None }
-    }
-
-    pub(crate) fn terminal_at(&mut self, at: Pt, tol: f64) -> Option<TerminalId> {
-        let (doc, page) = (self.doc, self.page);
-        first_near(self.shown.get_or_insert_with(|| terminal_positions(doc, page)), at, tol)
-    }
 }
 
 /// What a set of proposed ops could move on a page, worked out on the document before them.

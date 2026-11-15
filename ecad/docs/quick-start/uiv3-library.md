@@ -58,7 +58,7 @@ project. Listed in the index of `docs/quick-start.md` (phase-end tidy-up after M
 
 ## Checks
 
-- `cargo test -p ecad-trial uiv3_library`: Settings between the bars and its list; the Library's
+- `cargo test -p ecad-app uiv3_library`: Settings between the bars and its list; the Library's
   tabs, Source filter and no rail; Publish's ticks choosing Print Book's pages.
-- Screenshots: `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-trial uiv3_library` writes
+- Screenshots: `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-app uiv3_library` writes
   `uiv3-F-<board>-ours.png` for each board.

@@ -3,7 +3,7 @@
 //! The developer debugger follows one trail: **selected drawing objects → ECAD IDs → model objects
 //! → the transactions that touched them, with before/after values → where each transaction's
 //! record sits in the saved file, and its bytes.** This module supplies the data; the panel that
-//! shows it is in the trial app.
+//! shows it is in the desktop app app.
 //!
 //! # Semantics
 //! - **Coherent and short.** [`ProjectHandle::debug_snapshot`] copies what the panel shows out of
@@ -1316,7 +1316,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
                 k.members
                     .iter()
                     .find(|m| m.conductor == c)
-                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::look::shorten(x, crate::look::MAX_CORE_CHARS)))
+                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),

@@ -103,7 +103,7 @@ impl LocationBox {
 
     fn outline(&self, cursor: Option<Pt>) -> Vec<Pt> {
         match (self.mode, self.points.as_slice(), cursor) {
-            (Mode::Rectangle, [a], Some(c)) => crate::output_cmds::rectangle(*a, c),
+            (Mode::Rectangle, [a], Some(c)) => crate::cmd::output::rectangle(*a, c),
             (Mode::Polyline, pts, c) => {
                 let mut v = pts.to_vec();
                 v.extend(c);

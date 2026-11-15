@@ -41,7 +41,7 @@ What brief 042 changed, and how to try it by clicking. Listed in the index of
 ## Try it
 
 1. Run the trial with a project, for example
-   `cargo run --release -p ecad-trial -- C:\dev\ecad-projects\<project>.ecad`, or the demo project
+   `cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\<project>.ecad`, or the demo project
    built in `docs/quick-start.md`.
 2. **Owner check.** Click **Standard: IEC (built in)** in the status bar. Search `coil`, click
    **Tag prefix: Contactor / relay coil**. Type `Q` in **Project value** and read the line under
@@ -60,6 +60,6 @@ What brief 042 changed, and how to try it by clicking. Listed in the index of
 ## Checks run (worker, not owner-tried)
 
 `cargo test -p ecad-cadcraft defaults_contracts` (setdefault over the whole registry, refusals, chain,
-users), `cargo test -p ecad-mcp defaults_contracts` (MCP author and writes off), `cargo test -p ecad-trial
+users), `cargo test -p ecad-mcp defaults_contracts` (MCP author and writes off), `cargo test -p ecad-app
 standards_ui` (Settings opening and Esc, Standards, inspector, update map), and the fast tests of the
 three crates.

@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+pub use crate::cables::cable_title;
 use ecad_model::{CableId, Document, PageId, ProjectId};
 use serde_json::{Map, Value, json};
 
@@ -131,14 +132,6 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
 /// can be drawn, and core labels and reference ends for every cable, by cable.
 pub fn drawings_on_page(doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64) -> BTreeMap<CableId, crate::look::CableDrawing> {
     crate::look::cables_on_page(doc, page, fan, tol, &crate::look::font_width)
-}
-
-/// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
-pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.properties.get("tag")) {
-        Some(t) => t.clone(),
-        None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
-    }
 }
 
 /// `Cable C1 now shown in fan view.`

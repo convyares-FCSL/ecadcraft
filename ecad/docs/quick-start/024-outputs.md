@@ -20,7 +20,7 @@ location. Section 5K describes it.
   generated pages and overflow, Print Book; every edit's kept models equal a fresh build),
   `ecad/apps/ecad-mcp/tests/all/outputs_contracts.rs` (MCP writes as the agent, refused with writes
   off; reports and printing read), `ecad/apps/ecad-mcp/tests/all/demo.rs`
-  (`the_demo_locations_reports_and_generated_pages`), and `ecad/apps/ecad-trial/tests/all/outputs_ui.rs`
+  (`the_demo_locations_reports_and_generated_pages`), and `ecad/crates/ecad-app/tests/all/outputs_ui.rs`
   (the windows, headless, with screenshots).
 - *Agent-observed:* the worker looked at the headless screenshots `024-*.png`; no agent has
   clicked through the live window.

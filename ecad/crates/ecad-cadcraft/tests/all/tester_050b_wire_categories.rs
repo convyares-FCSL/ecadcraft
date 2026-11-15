@@ -12,8 +12,8 @@
 use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_cadcraft::{look, printbook, wires};
+use ecad_drawing_style::sheet::PAPER;
 use ecad_model::{ConductorId, ObjectRef, Op, PageId};
-use ecad_tokens::sheet::PAPER;
 use serde_json::{Value, json};
 
 use super::tester_050a_style::{

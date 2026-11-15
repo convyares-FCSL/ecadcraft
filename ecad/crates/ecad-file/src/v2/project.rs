@@ -1801,7 +1801,7 @@ impl ProjectV2 {
             r.tx(at, seq)?.map(|(_, c, _)| c).ok_or_else(|| BranchError::Refused(format!("Step {seq} is not stored.")))?
         };
         drop(r);
-        let id = BranchId::random();
+        let id = BranchId::from_seed(ecad_store::random_u128());
         let seed = chain::branch_seed(self.project.0, &id.0, &fork_chain);
         let rec = BranchRecord {
             name: name.clone(),

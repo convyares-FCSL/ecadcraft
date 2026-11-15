@@ -43,7 +43,7 @@ impl Caption {
             let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Ok(Vec::new()) };
             Ok(hs
                 .iter()
-                .take(crate::commands::MAX_HANDLES)
+                .take(crate::cmd::MAX_HANDLES)
                 .map(|h| {
                     let rep = match map.get(*h) {
                         Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(_, r)| r),

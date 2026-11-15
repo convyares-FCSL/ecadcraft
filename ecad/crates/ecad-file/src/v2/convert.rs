@@ -91,11 +91,7 @@ const REDB_MAGIC: &[u8] = b"redb";
 /// # Errors
 /// The file cannot be read.
 pub fn sniff(path: &Path) -> std::io::Result<Major> {
-    use std::io::Read;
-    let mut head = [0u8; 9];
-    let mut f = std::fs::File::open(path)?;
-    let n = f.read(&mut head)?;
-    Ok(sniff_bytes(head.get(..n).unwrap_or_default()))
+    Ok(sniff_bytes(&ecad_store::disk::read_head(path, 9)?))
 }
 
 /// The major of a file starting with `head`.
@@ -135,10 +131,11 @@ pub fn convert_file(source: &Path, output: Option<&Path>, writer: &str) -> Resul
     if crate::v2::disk::same_file(source, &output) {
         return Err("the output must be a new file, not the source".into());
     }
-    if output.exists() {
+    if ecad_store::disk::exists(&output) {
         return Err(format!("{} already exists; it is never overwritten", output.display()));
     }
-    let bytes = std::fs::read(source).map_err(|e| format!("could not read {}: {e}", source.display()))?;
+    // The v1 reader's own cap: a larger file never opened as a project.
+    let bytes = ecad_store::disk::read_all(source, ecad_store::disk::MAX_FILE).map_err(|e| format!("could not read {}: {e}", source.display()))?;
     if sniff_bytes(&bytes) != Major::V1 {
         return Err(format!("{} is not a version 1 project file", source.display()));
     }
@@ -202,7 +199,7 @@ pub fn convert_file(source: &Path, output: Option<&Path>, writer: &str) -> Resul
             source_hash: link.hash.clone(),
             head: link.hash,
             bytes_before: bytes.len() as u64,
-            bytes_after: std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0),
+            bytes_after: ecad_store::disk::len(&output).unwrap_or(0),
             omitted,
             named_versions,
             verified: true,

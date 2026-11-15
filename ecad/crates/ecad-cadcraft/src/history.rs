@@ -28,10 +28,10 @@ use ecad_model::{Document, Op, Transaction, TxKind};
 use serde_json::{Value, json};
 
 use crate::access::Pages;
-use crate::commands::{err, with_any_page, with_project};
+use crate::cmd::sheet::{RevisionView, next_view_id};
+use crate::cmd::{err, with_any_page, with_project};
 use crate::project::Project;
 use crate::revisions;
-use crate::sheet_cmds::{RevisionView, next_view_id};
 
 /// Longest version name, in characters (design 020 §2.5.1).
 pub const MAX_VERSION_NAME: usize = 100;

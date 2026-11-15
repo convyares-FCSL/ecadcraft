@@ -15,7 +15,7 @@ another net; the Project panel has a **Checks** tab. Section 5I describes it, on
   `ecad/crates/ecad-cadcraft/tests/all/wiring_contracts.rs` (T, crossing, labels, stable numbers,
   one row per seeded fault, the kept Checks list against a fresh build),
   `ecad/apps/ecad-mcp/tests/all/demo.rs` (the demo's numbers) and `mcp_contracts.rs` (every new
-  command through MCP), `ecad/apps/ecad-trial/tests/all/checks_ui.rs` (the Checks tab by label,
+  command through MCP), `ecad/crates/ecad-app/tests/all/checks_ui.rs` (the Checks tab by label,
   go-to, Add junction, and the `022-*.png` screenshots).
 - *Agent-observed:* the worker rendered the `022-*.png` screenshots headless (wgpu) and looked at
   them; no agent has clicked through the live window.

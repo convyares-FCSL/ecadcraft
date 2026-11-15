@@ -7,7 +7,7 @@
 //! `cadcraft-render` (with the project released). Nothing here changes the project, a page
 //! window, a selection or any history.
 //!
-//! Excluded: terminal and wire-end marks (the trial's overlay), grips, selection and any editing.
+//! Excluded: terminal and wire-end marks (the desktop app's overlay), grips, selection and any editing.
 
 use std::collections::BTreeSet;
 

@@ -1,5 +1,5 @@
 //! The primitives showcase (brief 037 scope 7): one page drawing every primitive in every state,
-//! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The trial
+//! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The desktop app
 //! hosts it as a hidden developer page, `ui.primitives`.
 
 use ecad_tokens::{Icon, space, ui_type};
@@ -221,7 +221,7 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
             }
         });
     };
-    let swatch = Some((crate::tokens::sheet::PAPER.ink, None));
+    let swatch = Some((ecad_drawing_style::sheet::PAPER.ink, None));
     line(ui, "Text entry", &mut |ui, i| {
         let mut t = if i == 5 { String::new() } else { state.text.clone() };
         let e = TextEntry::new(&mut t, "Text entry").hint("auto").bold(true);
@@ -407,7 +407,7 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
     ui.horizontal(|ui| {
         crate::panel::label(ui, "Table cells");
         for cell in [
-            crate::table::Cell::Colour(vec![crate::tokens::sheet::PAPER.ink], "BK".into()),
+            crate::table::Cell::Colour(vec![ecad_drawing_style::sheet::PAPER.ink], "BK".into()),
             crate::table::Cell::Colour(vec![crate::tokens::Color::hex(0x2e7d32), crate::tokens::Color::hex(0xf9d825)], "GNYE".into()),
             crate::table::Cell::Toggle(false),
             crate::table::Cell::Toggle(true),
