@@ -2,11 +2,14 @@
 //!
 //! - [`style`]: egui's visuals, spacing and text styles from `ecad-tokens` (the shell in use,
 //!   Graphite or light: [`set_theme`]).
+//! - [`control`]: the component set for values (text entry, number with unit, selector, toggle,
+//!   value box, read value, link), one per kind of control, every state from tokens.
 //! - [`fonts`]: IBM Plex Sans (interface) and Barlow Semi Condensed (sheet), embedded, registered
 //!   on top of the font set the host app gives.
 //! - [`prim`]: the nine primitives (button, icon button, pill, chip, badge, field, segmented
 //!   control, key cap, row) and [`prim::read_value`], [`prim::provisional`].
 //! - [`icons`]: the shell's icons, painted in code.
+//! - [`panel`]: a right-hand panel's section headers, value rows, status pill and rules.
 //! - [`showcase`]: one page drawing every primitive in every state (for screenshots).
 //! - [`table`]: the one table every manager uses (brief 039): sort, filter, group, multi-select,
 //!   inline edit, go-to, change tint, CSV; virtualised.
@@ -18,8 +21,10 @@
 //! dependency (layer class UiKit): it draws widgets from tokens and nothing else.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod control;
 pub mod fonts;
 pub mod icons;
+pub mod panel;
 pub mod prim;
 pub mod showcase;
 pub mod style;

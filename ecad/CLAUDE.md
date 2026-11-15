@@ -101,9 +101,11 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   - **CI:** pull requests into `dev` run the quick check on Linux: fmt, clippy with all targets
     (so every test must still compile), and the fast tests of the crates the pull request changed
     and of every crate that depends on them (`cargo xtask test-changed --base origin/dev
-    --with-dependents`; owner, 2026-11-12). The full suite (`cargo xtask ci` with the slow set and
-    wasm, root CADCraft, Linux and Windows) runs on pull requests into `main`, on pushes to `main`,
-    and by hand (`workflow_dispatch`). Run wasm locally (`cargo xtask wasm`, warnings as errors
+    --with-dependents`; owner, 2026-11-12). The full suite (what `cargo xtask ci` runs, with the
+    slow set and wasm, root CADCraft, Linux and Windows) runs on pull requests into `main`, on
+    pushes to `main` and by hand (`workflow_dispatch`), with the large bench; CI splits it into
+    `cargo xtask lint` and sharded cargo-nextest jobs (`.config/nextest.toml`), and Windows leaves
+    out the in-memory slow tests named there. Run wasm locally (`cargo xtask wasm`, warnings as errors
     like CI) only when a change could affect it (dependencies, `cfg(target_arch)`, code built
     only off wasm, platform code in `ecad-model`/`ecad-store`/`ecad-file`/`ecad-cadcraft`).
 - **Builds (owner decision, 2026-11-08, replaces the shared folder of 2026-11-01):** each checkout
@@ -171,6 +173,16 @@ cargo xtask patches               # only when files outside ecad/ changed
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items
   document `# Semantics`, `# Errors`, `# Example` where useful; contract tests are table-driven in
   `tests/all/<area>_contracts.rs`.
+- **Components (owner, 2026-11-15).** Panels and dialogs use only `ecad_ui` components for values
+  (`docs/design/components.md`): `control::TextEntry` (text, or a number with its unit),
+  `control::Select`, `prim::Segmented`, `control::Toggle`, `control::ValueBox` (a value with its
+  hint), `control::read_text` / `prim::read_value` (read from the drawing), `control::link`,
+  `panel::status_pill`, `panel::section_header`, `prim::Button`. No hand-rolled `egui` labels or
+  inputs for values. Anything the person can change looks editable at a glance; a read value never
+  looks like an input. `cargo xtask layers` fails on a new raw `egui::TextEdit` or `ComboBox` in an
+  ECAD UI crate; the files that still have them are allowlisted with counts that only fall. A
+  missing component is added to `ecad_ui` and its gallery (`showcase::components`), not drawn in the
+  panel.
 - Versions: product `0.3.0-dev` (`dev` carries the next release with `-dev`; the QA gate drops
   the suffix and the tag follows), release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format
   versions independent of the product version.

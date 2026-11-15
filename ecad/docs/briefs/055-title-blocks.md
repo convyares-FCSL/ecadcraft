@@ -136,3 +136,54 @@ only in 0.2.2; PNG/JPEG image support comes in 0.4.0.
 
 Still the owner's check on the PR: the house block on the sample project beside `dev`, and the editor beside
 board 3.05.
+
+## 055c: a title block built from elements
+
+Status: **Approved** (owner, 2026-11-14: design 055c §13 answered; overseer, 2026-11-14: FD1–FD6
+approved). Starts after 055 merges.
+
+Design: [`docs/design/055c.md`](../design/055c.md). Follows owner feedback of 2026-11-14 on the 055b
+editor. (The earlier "055c, logos and Import DXF" landed with 055b; this 055c replaces that name.)
+
+**Goal.** A title block is built from ready elements (revision table, field, revision field,
+title, notice, text, logo, custom field), dragged from a palette onto a grid, sized and set per type. The
+sheet frame (paper, border, zones, margins, where the block sits) and the title block become two
+libraries. A page type picks one of each, and a page can override either. References and zones come
+from the frame only.
+
+**Why.** The owner: 055b is "a bunch of lines, then you add the field". A review of the owner's 43
+reference drawings (9 templates; notes kept outside the repository) found the same elements in all
+of them, in different arrangements, and found the same blocks on different sheets and zone grids.
+
+**§0 files touched** (design 055c §6): `ecad-model/src/title_block.rs` (elements replace items) and
+`sheet.rs` (`title_block_style`'s own chain); `ecad-cadcraft/src/title_block/{layout,house,checks}.rs`,
+`title_block_cmds.rs`, `defaults/styles.rs` (one choice entry); the `ecad-file` arms; the trial's
+`library/title_blocks/` (canvas and draft replaced, frame editor new) and `settings/standards.rs`
+(a Title blocks tab); `lane_055c` tests; bench rows. Not touched: CADCraft, `ecad-store`, CI.
+
+**Scope.** Two catalogues and two resolvers (design §2); eight element types with their settings
+and presets (§3); the title block editor and the frame editor, one transaction per edit (§4); the
+house block re-expressed as elements, drawing the same parts as 055a (§5); commands, checks, update
+maps, bench (§7–§9).
+
+**Acceptance.** Design 055c §10 rows A–N, house parity (A) first.
+
+**FD items (overseer).** Design §12: FD1 the `title_block` catalogue; FD2 `print.title_block.style`
+and built-in `house`; FD3 the page's `title_block` names a block, with no fallback to the frame; FD4
+the element body replacing 055a's items; FD5 frames carry no body; FD6 `checked_date` and
+`approved_date` revision fields. No new op. **Approved (overseer, 2026-11-14): FD1–FD6**, FD4 as
+amended by the owner's Q3 and Q9 answers; FD4 and FD5 amended again by Q8 (no stretch, `bottom_full` retired, keep-out is the block's rectangle), approved by the overseer (2026-11-14).
+
+**Parts.** 055c-1 model and drawing (M), 055c-2 title block editor (M–L), 055c-3 frame editor (S–M).
+
+**Tester.** Yes (format and resolution change).
+
+**Owner (Carl, 2026-11-14)**, design 055c §13: Q1 two libraries yes (reverses 055 Q1); Q2 drop
+055b's line bodies yes; **Q3 no**: custom revision columns such as ECR are added to the project's
+revision model, and the block's table only shows, hides and styles the project's columns (width, row
+height, text size); Q4 one transaction per gesture yes (reverses 055 Q4); Q5 no overlap yes; **Q6**:
+the drawing number is the pack number, one project field, with no composite and no page-level
+suffix; Q7 2.5 mm grid yes; **Q8 no stretch**: every width is set by the user (columns drive the block's size), a wider sheet gets its own block by Duplicate, the keep-out follows the block's actual size, and a block wider than the frame is a Checks warning; **Q9 no** Approvals
+element: each revision item (current revision, date, description, ECR, drawn, checked, approved and
+their dates) is its own placeable field, with a palette preset that drops several; Q10 plain page
+type yes, routed to 054.

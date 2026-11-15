@@ -64,6 +64,16 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
                     continue;
                 }
                 let Some(l) = &body.title_block else { continue };
+                // Tester 055 (§12.1 J, §1.3): a size past the bounds is drawn with the built-in's
+                // keep-out strip; say so.
+                if !l.size_ok() {
+                    let which = format!(
+                        "{name}'s title block size is out of bounds (1 to {} mm wide, 1 to {} mm high); its pages keep the built-in's 40 mm strip.",
+                        ecad_model::title_block::MAX_COORD_MM,
+                        ecad_model::title_block::MAX_BLOCK_HEIGHT_MM
+                    );
+                    out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
+                }
                 let (_, skipped) = l.usable();
                 let unknown = l.bindings().filter(|b| !super::bind::known(b)).count();
                 let n = unknown + skipped.items;

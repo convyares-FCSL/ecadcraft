@@ -54,6 +54,7 @@ fn the_editor_drops_a_field_saves_once_and_keeps_built_ins_read_only() {
     }
     h.state_mut().open_title_blocks(None);
     h.run_steps(4);
+    assert!(h.query_by_label(title_blocks::CANVAS).is_some(), "the canvas is named (§5)");
     // The built-in is listed first and read only (I).
     let first = h.state().library.tb.rows.first().map(|r| r.id.clone());
     assert_eq!(first.as_deref(), Some("sheet"));
