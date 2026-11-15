@@ -16,6 +16,8 @@ use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, S
 
 use crate::defaults::{self, Entry, Scope, text as d};
 
+pub mod fonts;
+
 /// The CADCraft text style of regular ECAD text (the project font, regular).
 pub const STYLE_REGULAR: &str = "Standard";
 /// The CADCraft text style of bold ECAD text (the project font, bold).

@@ -14,7 +14,7 @@ use ecad_model::title_block::{
     Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, MAX_TEXT_MM, MIN_TEXT_MM, Newest, Rect, Source, TextLook, TitleBlockLayout,
 };
 
-use crate::frame::{FrameText, TABLE_ROWS};
+use crate::frames::{FrameText, TABLE_ROWS};
 
 /// Widths of the fixed columns, right to left (mm).
 pub const COUNTERS_MM: f64 = 30.0;

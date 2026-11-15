@@ -24,7 +24,7 @@ use ecad_model::title_block::BlockItem;
 use ecad_model::{Document, ObjectRef, Op, PageId};
 
 use crate::checks::{Check, Fix, Kind, Object};
-use crate::frame::FrameInput;
+use crate::frames::FrameInput;
 
 /// Most pages the cut check reads (a guard on a hostile file; the check stays bounded).
 pub const MAX_PAGES: usize = 10_000;
@@ -193,7 +193,7 @@ fn cut_rows(doc: &Document) -> Vec<Check> {
         let id = sheet::title_block_style(doc, *page);
         // One input per frame, borrowed block and sheet.
         let key = (format!("{} {}", sheet::frame_style(doc, *page).text(), id.text()), sheet::sheet_of(doc, *page).text());
-        let base = bases.entry(key).or_insert_with(|| FrameInput::of(doc, *page, &book));
+        let base = bases.entry(key).or_insert_with(|| FrameInput::with(doc, *page, &book, crate::frames::FrameText::sizes(doc)));
         let mut inp = page_input(doc, &book, base, *page);
         inp.total = base.total.clone();
         for i in cut_fields(&inp) {

@@ -26,6 +26,7 @@
 //!
 //! This module reads the document and plans ops; it commits nothing itself.
 
+use crate::draw::text_style::LookApply as _;
 use std::collections::BTreeMap;
 
 use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAlign};

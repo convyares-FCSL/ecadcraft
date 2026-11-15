@@ -17,6 +17,7 @@
 //!
 //! This module builds ops and words; it commits nothing and holds no UI.
 
+use crate::draw::text_style::LookApply as _;
 use std::collections::{BTreeMap, BTreeSet};
 
 use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle, Text, VAlign as EVAlign};

@@ -13,7 +13,8 @@ use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect, T
 use ecad_model::{LengthUnit, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, LABEL_ACI, LAYER, Part, TextLook};
+use crate::frame::{LABEL_ACI, LAYER, Part, TextLook};
+use crate::frames::FrameInput;
 
 /// `ecad.title-red`: ACI 1, red (a field's Red colour; house style: the status).
 pub const RED_ACI: u8 = 1;

@@ -58,6 +58,7 @@ pub mod devices;
 pub mod draw;
 pub mod file;
 pub mod frame;
+pub mod frames;
 pub mod front;
 pub mod generated;
 pub mod history;

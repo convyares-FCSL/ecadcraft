@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::Document;
 use ecad_model::title_block::{Binding, IfEmpty, Source, TitleBlockLayout};
 
-use crate::frame::FrameInput;
+use crate::frames::FrameInput;
 
 /// The project keys the palette names (design 055 §4.3).
 pub const PROJECT_KEYS: [&str; 5] = ["title", "customer", "drawing_number", "status", "company"];

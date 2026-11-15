@@ -25,7 +25,7 @@ use ecad_model::sheet::{self, Margins, SheetSpec};
 use ecad_model::title_block::TitleBlockLayout;
 use ecad_model::{Document, PageId, StyleRef};
 
-use crate::frame::FrameText;
+use crate::frames::FrameText;
 
 /// A page's block as drawn: the layout, whether it is the built-in's, and the frame style.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,7 +52,7 @@ pub fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margi
 /// The block `page` shows.
 pub fn page_block(doc: &Document, page: PageId) -> Block {
     let id = sheet::title_block_style(doc, page);
-    block_of(doc, &id, &sheet::sheet_of(doc, page), &sheet::margins_of(doc, page), &FrameText::of(doc))
+    block_of(doc, &id, &sheet::sheet_of(doc, page), &sheet::margins_of(doc, page), &FrameText::sizes(doc))
 }
 
 /// What an op can change of the pages' grids and keep-out strips through their frames (brief 055,

@@ -4,6 +4,7 @@
 //! engine is a CADCraft document whose drawing is a projection of the ECAD document; the
 //! [`HandleMap`] relates its handles to ECAD IDs and lives only in the session (proposal §13).
 
+use crate::draw::text_style::LookApply as _;
 use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};

@@ -25,6 +25,7 @@
 //!
 //! This module records nothing; [`plan_box`] and [`plan_from_item`] only build ops.
 
+use crate::draw::text_style::LookApply as _;
 use std::collections::BTreeMap;
 
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
