@@ -258,3 +258,4 @@ fn go_to_and_numbering_share_one_drawing_order() {
 }
 
 mod stored;
+mod tester;

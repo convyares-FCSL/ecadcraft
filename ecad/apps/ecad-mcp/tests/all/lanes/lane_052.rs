@@ -70,3 +70,5 @@ fn with_writes_off_the_location_writes_are_refused_and_the_list_reads() {
     c.exec("designations", json!({}));
     assert_eq!(c.log().len(), before.len());
 }
+
+mod tester;
