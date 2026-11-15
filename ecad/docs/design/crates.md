@@ -302,6 +302,15 @@ module and no `cadcraft_*` import. That is the condition for moving it.
 9. **`front`.** `check_rows` and the legend contents go to E. Drawing the cover stays in C.
 10. **`title_block` and `frame`.** `bind`, `checks`, `house`, `frame::fit` and `frame::touches`
     go to E. `layout` and `dxf` stay in C.
+    **Fonts (owner, 2026-11-15, split lane step 4, option F2).** `FrameInput::of` builds the
+    frame's text looks, whose bold lineweight exists only when CADCraft does not find the font on
+    this machine, and `title_block::checks` and `checks` (E) build frame inputs. So font knowledge
+    reaches E through one trait, `TextMetrics` in ecad-electrical (is a family found; the width of
+    a text), implemented by ecad-cadcraft over CADCraft's fonts. `Fonts`, `Look`, `width_in` and
+    `FrameText` move to E and take `&dyn TextMetrics`; so do the rules that lay out or check text
+    (frame, title block checks, device text placement, Checks). ecad-cadcraft keeps wrappers with
+    today's signatures, so callers and tests do not change. E does no font lookup and no OS call
+    (the Core OS ratchet stays at 0), and E's own tests use a fixed-width test `TextMetrics`.
 11. **The boundary leak.** ecad-cadcraft gets `pub mod cad`, a short list of re-exports:
     `Vec`, `Bounds`, `Handle`, `Space`, `Session`, `View`, `Input`, `entity_bounds`,
     `extent_bounds` and `find_command` (what the apps and the MCP use today). ecad-app and
