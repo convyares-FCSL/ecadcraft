@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 
 use crate::commands::{err, opt_id, with_any_page, with_project};
 use crate::defaults::{self, Entry, Level, Resolved, Scope, Source};
+pub use crate::text_style::kind_words;
 use crate::text_style::{Fonts, TextKind};
 
 /// Refusals (design 031 §10.1).
@@ -489,22 +490,6 @@ pub fn show_level(doc: &Document, params: &Value) -> Result<ShowLevel, String> {
         return doc.pages.contains_key(&p).then_some(ShowLevel::Page(p)).ok_or_else(|| format!("No page {}.", p.hex()));
     }
     Ok(ShowLevel::Project)
-}
-
-/// Words for a kind in labels and echoes: `tag`, `connection point labels`…
-pub fn kind_words(kind: TextKind) -> &'static str {
-    match kind {
-        TextKind::Tag => "tag",
-        TextKind::PointLabel => "connection point labels",
-        TextKind::Description => "description",
-        TextKind::PartNumber => "part number",
-        TextKind::ContinuationName => "continuation name",
-        TextKind::Reference => "references",
-        TextKind::ContinuationCaption => "continuation captions",
-        TextKind::LocationLabel => "location labels",
-        TextKind::WireLabel => "wire labels",
-        _ => kind.word(),
-    }
 }
 
 /// The ops of one `showtext` change: `[]` when it is already so.

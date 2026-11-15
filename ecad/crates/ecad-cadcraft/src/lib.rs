@@ -55,6 +55,7 @@ pub mod designations;
 mod device_cmds;
 pub mod device_list;
 pub mod devices;
+pub mod draw;
 pub mod file;
 pub mod frame;
 pub mod front;
