@@ -359,10 +359,10 @@ pub(crate) fn tabs(ui: &mut egui::Ui, symbol: bool) -> bool {
 
 /// A symbol drawn in `r` on a light tile (the sheet's paper), or a plain tile.
 fn thumb(ui: &egui::Ui, r: Rect, sym: Option<&symbols::Starter>) {
-    let paper = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet);
+    let paper = ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet);
     ui.painter().rect_filled(r, ecad_ui::style::corner(radius::CHIP), paper);
     if let Some(d) = sym.and_then(|s| s.definition().ok()) {
-        crate::library::browser::paint_symbol(ui.painter(), r.shrink(space::XS), d, ecad_ui::color(ecad_ui::tokens::sheet::PAPER.ink), None);
+        crate::library::browser::paint_symbol(ui.painter(), r.shrink(space::XS), d, ecad_ui::color(ecad_drawing_style::sheet::PAPER.ink), None);
     }
 }
 

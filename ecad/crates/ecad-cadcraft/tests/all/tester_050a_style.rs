@@ -18,8 +18,8 @@ use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_cadcraft::defaults::{self, Kind, Level, Scope, Source};
 use ecad_cadcraft::text_style::{self, TextKind};
 use ecad_cadcraft::{Persistence, printbook};
+use ecad_drawing_style::sheet::PAPER;
 use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId, Transaction};
-use ecad_tokens::sheet::PAPER;
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -144,7 +144,7 @@ pub(crate) fn reproject(h: &mut H) {
     h.check();
 }
 
-pub(crate) fn rgb(c: ecad_tokens::Color) -> Rgb {
+pub(crate) fn rgb(c: ecad_drawing_style::Color) -> Rgb {
     Rgb(c.r, c.g, c.b)
 }
 

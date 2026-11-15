@@ -91,7 +91,7 @@ impl Meaning {
 ///
 /// # Example
 /// ```
-/// use ecad_tokens::sheet::{prints, Meaning};
+/// use ecad_drawing_style::sheet::{prints, Meaning};
 /// assert!(prints(Meaning::Ink));
 /// assert!(!prints(Meaning::Selection));
 /// ```

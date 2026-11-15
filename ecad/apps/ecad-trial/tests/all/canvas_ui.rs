@@ -50,11 +50,11 @@ fn painted_text(h: &Harness<'static, Trial>, needle: &str) -> bool {
 #[test]
 fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_command_away() {
     let mut h = harness();
-    let paper = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet);
+    let paper = ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet);
     {
         let t = h.state();
         assert_eq!(t.cad.options.model_background, Some(paper), "#F6F4EF");
-        assert_eq!(t.cad.options.selection_color, Some(ecad_ui::color(ecad_ui::tokens::sheet::PAPER.selection)));
+        assert_eq!(t.cad.options.selection_color, Some(ecad_ui::color(ecad_drawing_style::sheet::PAPER.selection)));
         assert!(!t.cad.ui.show_viewcube && !t.cad.ui.show_ucs_icon, "no ViewCube, no UCS icon");
         assert!(!t.cad.session.settings.gridmode, "CADCraft's grid off: ECAD paints the dots");
     }
@@ -67,7 +67,7 @@ fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_com
     click(&mut h, "Run");
     h.run_steps(2);
     assert_eq!(h.state().shell_state().sheet, Sheet::Dark);
-    assert_eq!(h.state().cad.options.model_background, Some(ecad_ui::color(ecad_ui::tokens::sheet::DARK.sheet)));
+    assert_eq!(h.state().cad.options.model_background, Some(ecad_ui::color(ecad_drawing_style::sheet::DARK.sheet)));
     let stored = h.state().shell_state().to_stored();
     assert_eq!(ShellState::from_stored(Some(&stored)).0.sheet, Sheet::Dark, "kept with the shell state");
     assert_eq!(ShellState::from_stored(Some("{}")).0.sheet, Sheet::Paper, "paper by default");

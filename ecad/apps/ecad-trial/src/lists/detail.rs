@@ -112,7 +112,7 @@ impl Prop {
 /// A wire colour code's swatch in its insulation colours (the paper sheet's, on either shell:
 /// black insulation stays black); none for a code that is not a colour.
 fn swatch(code: &str) -> Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)> {
-    let sheet = &ecad_ui::tokens::sheet::PAPER;
+    let sheet = &ecad_drawing_style::sheet::PAPER;
     ecad_cadcraft::look::wire_colours(code, sheet).map(|c| (c.solid, c.dashes))
 }
 

@@ -1157,24 +1157,24 @@ pub fn set_dark_sheet(dark: bool) {
     DARK_SHEET.store(dark, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// The sheet in use: [`ecad_tokens::sheet::PAPER`] unless [`set_dark_sheet`] chose the dark one.
-pub fn sheet() -> &'static ecad_tokens::Sheet {
-    if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_tokens::sheet::DARK } else { &ecad_tokens::sheet::PAPER }
+/// The sheet in use: [`ecad_drawing_style::sheet::PAPER`] unless [`set_dark_sheet`] chose the dark one.
+pub fn sheet() -> &'static ecad_drawing_style::Sheet {
+    if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_drawing_style::sheet::DARK } else { &ecad_drawing_style::sheet::PAPER }
 }
 
 thread_local! {
     /// A sheet the projection uses instead of the one in use ([`with_paper`]: printing).
-    static PROJECTION_SHEET: std::cell::Cell<Option<&'static ecad_tokens::Sheet>> = const { std::cell::Cell::new(None) };
+    static PROJECTION_SHEET: std::cell::Cell<Option<&'static ecad_drawing_style::Sheet>> = const { std::cell::Cell::new(None) };
 }
 
 /// The sheet a page is projected for: [`sheet`], or paper while [`with_paper`] runs.
-pub fn projection_sheet() -> &'static ecad_tokens::Sheet {
+pub fn projection_sheet() -> &'static ecad_drawing_style::Sheet {
     PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
 }
 
 /// Keeps the sheet [`pin_sheet`] read for this thread until it is dropped.
 #[derive(Debug)]
-pub struct SheetPin(Option<&'static ecad_tokens::Sheet>);
+pub struct SheetPin(Option<&'static ecad_drawing_style::Sheet>);
 
 impl Drop for SheetPin {
     fn drop(&mut self) {
@@ -1194,7 +1194,7 @@ pub fn pin_sheet() -> SheetPin {
 /// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
 /// the screen shows).
 pub fn with_paper<R>(f: impl FnOnce() -> R) -> R {
-    let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_tokens::sheet::PAPER)));
+    let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_drawing_style::sheet::PAPER)));
     let r = f();
     PROJECTION_SHEET.with(|c| c.set(before));
     r
@@ -1241,17 +1241,17 @@ fn run_canvassheet(s: &mut cadcraft_engine::Session, params: &serde_json::Value)
 }
 
 /// A token colour as CADCraft's RGB.
-pub fn rgb(c: ecad_tokens::Color) -> cadcraft_engine::doc::color::Rgb {
+pub fn rgb(c: ecad_drawing_style::Color) -> cadcraft_engine::doc::color::Rgb {
     cadcraft_engine::doc::color::Rgb(c.r, c.g, c.b)
 }
 
 /// `ecad.wire_colour.*` (design `040.md` §2): the colour each IEC 60757 code draws in, on the
 /// paper and the dark sheet. Black draws in ink, so it shows on both sheets; white draws as a warm
 /// grey on paper. Codes as `ecad_model::wiring::COLOUR_CODES` (the single colours).
-pub const CODE_COLOURS: [(&str, &str, ecad_tokens::Color, ecad_tokens::Color); 14] = {
-    use ecad_tokens::Color as C;
+pub const CODE_COLOURS: [(&str, &str, ecad_drawing_style::Color, ecad_drawing_style::Color); 14] = {
+    use ecad_drawing_style::Color as C;
     [
-        ("BK", "BLK", ecad_tokens::sheet::PAPER.ink, ecad_tokens::sheet::DARK.ink),
+        ("BK", "BLK", ecad_drawing_style::sheet::PAPER.ink, ecad_drawing_style::sheet::DARK.ink),
         ("BN", "BRN", C::hex(0x8A4B1F), C::hex(0xC9895A)),
         ("RD", "RED", C::hex(0xC62828), C::hex(0xFF7A70)),
         ("OG", "ORG", C::hex(0xD96800), C::hex(0xFFA34D)),
@@ -1312,11 +1312,11 @@ pub fn colour_code(code: &str) -> Option<(usize, Option<usize>)> {
 
 /// How a wire of colour `code` is drawn on `sheet`: its solid colour, and the dashes' colour for a
 /// two-colour code; `None` for an unknown code (drawn in ink).
-pub fn wire_colours(code: &str, sheet: &ecad_tokens::Sheet) -> Option<ecad_tokens::wire::WireColors> {
-    let dark = sheet.sheet == ecad_tokens::sheet::DARK.sheet;
+pub fn wire_colours(code: &str, sheet: &ecad_drawing_style::Sheet) -> Option<ecad_drawing_style::wire::WireColors> {
+    let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
     let colour = |i: usize| CODE_COLOURS.get(i).map(|(_, _, paper, on_dark)| if dark { *on_dark } else { *paper });
     let (a, b) = colour_code(code)?;
-    Some(ecad_tokens::wire::WireColors { solid: colour(a)?, dashes: b.and_then(colour) })
+    Some(ecad_drawing_style::wire::WireColors { solid: colour(a)?, dashes: b.and_then(colour) })
 }
 
 /// The colour code a conductor's route is drawn in (brief 050b, design 050 §5.5): its wire
@@ -1340,7 +1340,7 @@ pub struct ColouredRoute {
     /// The handle the route is drawn with on the page (to leave a selected wire to CADCraft).
     pub handle: Option<cadcraft_engine::doc::Handle>,
     pub points: Vec<Pt>,
-    pub colours: ecad_tokens::wire::WireColors,
+    pub colours: ecad_drawing_style::wire::WireColors,
 }
 
 /// Most routes [`coloured_routes`] returns for one page.
@@ -1350,7 +1350,9 @@ pub const MAX_COLOURED_ROUTES: usize = 20_000;
 /// not drawn (a cable in fan view hides its members) and plain black wires (ink already) are left
 /// out. `map`: the page's handles when it is projected (routes it does not draw are left out).
 /// Display and print only; nothing is stored.
-pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_tokens::Sheet) -> Vec<ColouredRoute> {
+pub fn coloured_routes(
+    doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_drawing_style::Sheet,
+) -> Vec<ColouredRoute> {
     let mut out = Vec::new();
     let looks = crate::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
@@ -1384,7 +1386,7 @@ pub fn coloured_routes(doc: &Document, page: PageId, map: Option<&crate::project
 pub const MAX_DASHES: usize = 4_000;
 
 /// The dashes of a two-colour wire along `points`: `on` long, `off` apart, starting with a dash
-/// at the first point (spec: 2 mm on, 2 mm off, `ecad_tokens::wire`). At most [`MAX_DASHES`];
+/// at the first point (spec: 2 mm on, 2 mm off, `ecad_drawing_style::wire`). At most [`MAX_DASHES`];
 /// none when a length is not positive and finite.
 pub fn dash_segments(points: &[Pt], on: f64, off: f64) -> Vec<(Pt, Pt)> {
     let mut out = Vec::new();
@@ -1455,7 +1457,7 @@ pub struct DashBudget {
 
 /// The [`DashBudget`] of `page`.
 pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
-    let (on, off) = (f64::from(ecad_tokens::wire::DASH_ON_MM), f64::from(ecad_tokens::wire::DASH_OFF_MM));
+    let (on, off) = (f64::from(ecad_drawing_style::wire::DASH_ON_MM), f64::from(ecad_drawing_style::wire::DASH_OFF_MM));
     let mut out = DashBudget::default();
     let mut total: usize = 0;
     let looks = crate::styles::wire::WireLooks::new(doc);

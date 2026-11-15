@@ -121,7 +121,7 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
 pub(crate) fn route_dashes(r: &crate::look::ColouredRoute, route: &Common) -> Vec<Entity> {
     use cadcraft_engine::doc::color::Color;
     let Some(second) = r.colours.dashes else { return Vec::new() };
-    let (on, off) = (f64::from(ecad_tokens::wire::DASH_ON_MM), f64::from(ecad_tokens::wire::DASH_OFF_MM));
+    let (on, off) = (f64::from(ecad_drawing_style::wire::DASH_ON_MM), f64::from(ecad_drawing_style::wire::DASH_OFF_MM));
     let common = Common { layer: DASH_LAYER.into(), color: Color::True(crate::look::rgb(second)), ..route.clone() };
     crate::look::dash_segments(&r.points, on, off)
         .into_iter()

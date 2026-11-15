@@ -10,13 +10,13 @@ use ecad_cadcraft::checks::Kind;
 use ecad_cadcraft::interact::overlay_marks;
 use ecad_cadcraft::look::{self, Painted};
 use ecad_cadcraft::printbook;
+use ecad_drawing_style::sheet::PAPER;
 use ecad_model::{ConductorId, Pt};
-use ecad_tokens::sheet::PAPER;
 use serde_json::json;
 
 use crate::common::{H, id, pts, small_project};
 
-fn rgb(c: ecad_tokens::Color) -> Rgb {
+fn rgb(c: ecad_drawing_style::Color) -> Rgb {
     Rgb(c.r, c.g, c.b)
 }
 
@@ -41,8 +41,12 @@ fn colour_codes_are_one_or_two_colours() {
         assert_eq!(one(code), want, "{code}");
     }
     let gnye = look::wire_colours("GNYE", &PAPER).unwrap();
-    assert_eq!((gnye.solid, gnye.dashes), (ecad_tokens::wire::PE.paper.solid, ecad_tokens::wire::PE.paper.dashes), "GNYE is the PE look");
-    assert_eq!(look::wire_colours("BU", &PAPER).map(|w| w.solid), Some(ecad_tokens::wire::DC_24V.paper.solid));
+    assert_eq!(
+        (gnye.solid, gnye.dashes),
+        (ecad_drawing_style::wire::PE.paper.solid, ecad_drawing_style::wire::PE.paper.dashes),
+        "GNYE is the PE look"
+    );
+    assert_eq!(look::wire_colours("BU", &PAPER).map(|w| w.solid), Some(ecad_drawing_style::wire::DC_24V.paper.solid));
     assert_eq!(look::wire_colours("BK", &PAPER).map(|w| w.solid), Some(PAPER.ink), "black is ink");
 }
 
@@ -96,12 +100,13 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     let doc = h.doc();
     let routes = h.p(|p| look::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
     let r = routes.iter().find(|r| r.conductor == w).expect("the GNYE wire is coloured");
-    assert_eq!((r.colours.solid, r.colours.dashes), (ecad_tokens::wire::PE.paper.solid, ecad_tokens::wire::PE.paper.dashes));
+    assert_eq!((r.colours.solid, r.colours.dashes), (ecad_drawing_style::wire::PE.paper.solid, ecad_drawing_style::wire::PE.paper.dashes));
     assert!(r.handle.is_some(), "drawn on the page");
 
     // On the page (the projection, so it is ink: drawn, picked and printed like the wire): the
     // route in green, yellow dashes over it mapped to the conductor; picking a dash picks the wire.
-    let (green, yellow) = (Color::True(rgb(ecad_tokens::wire::PE.paper.solid)), Color::True(rgb(ecad_tokens::wire::PE.paper.dashes.unwrap())));
+    let (green, yellow) =
+        (Color::True(rgb(ecad_drawing_style::wire::PE.paper.solid)), Color::True(rgb(ecad_drawing_style::wire::PE.paper.dashes.unwrap())));
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let route = r.handle.unwrap();
     assert_eq!(ents.iter().find(|e| e.handle == route).map(|e| e.common.color), Some(green));
@@ -250,7 +255,7 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
     let dashes = ents.iter().filter(|e| e.common.layer == ecad_cadcraft::wires::DASH_LAYER).count();
     assert!(dashes > 0 && dashes <= look::MAX_PAGE_DASHES, "{dashes} dashes");
     // Every wire still has its first colour.
-    let green = Color::True(rgb(ecad_tokens::wire::PE.paper.solid));
+    let green = Color::True(rgb(ecad_drawing_style::wire::PE.paper.solid));
     let handles: Vec<_> = wires.iter().map(|w| h.route_handle(page, *w)).collect();
     let coloured = handles.iter().filter(|r| ents.iter().any(|e| e.handle == **r && e.common.color == green)).count();
     assert_eq!(coloured, wires.len());

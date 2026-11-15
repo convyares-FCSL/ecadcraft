@@ -46,8 +46,8 @@ fn the_light_switch_turns_the_shell_light_and_is_remembered() {
 #[test]
 fn the_sheet_colour_menu_offers_paper_follow_and_dark_and_follow_follows_the_theme() {
     let mut h = harness();
-    let paper = Some(ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet));
-    let dark = Some(ecad_ui::color(ecad_ui::tokens::sheet::DARK.sheet));
+    let paper = Some(ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet));
+    let dark = Some(ecad_ui::color(ecad_drawing_style::sheet::DARK.sheet));
     assert_eq!(background(&h), paper, "paper by default");
     h.get_by_label(status_bar::SHEET_COLOUR).click();
     h.run_steps(2);

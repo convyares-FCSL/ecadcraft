@@ -43,8 +43,8 @@ enum Class {
     /// May use anything.
     Ui,
     /// ECAD's interface kit (design `ui-architecture.md` §2): may use egui, epaint and
-    /// egui_extras and the token crate, but no `cadcraft-*` crate and no other ECAD crate, so the
-    /// widgets stay swappable, build for wasm and test without wgpu.
+    /// egui_extras, the token crate and the drawing style (design 065 §1.1), but no `cadcraft-*`
+    /// crate and no other ECAD crate, so the widgets stay swappable and test without wgpu.
     UiKit,
     /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
     /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
@@ -56,9 +56,11 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-model", Class::Core),
     ("ecad-store", Class::Core),
     ("ecad-file", Class::Core),
+    ("ecad-drawing-style", Class::Core),
     ("ecad-cadcraft", Class::Adapter),
     ("ecad-inspect", Class::Core),
-    ("ecad-tokens", Class::Core),
+    // The screen tokens (design 065 §1.1); the drawing style is `ecad-drawing-style`.
+    ("ecad-tokens", Class::UiKit),
     ("ecad-ui", Class::UiKit),
     ("ecad-bench", Class::Dev),
     ("ecad-cli", Class::Ui),
@@ -68,6 +70,11 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-inspector", Class::Dev),
     ("ecad-xtask", Class::Exempt),
 ];
+
+/// Dependencies that break the layer rules for now, each with the step of the crate split (design
+/// 065 §5) that removes it. An entry no longer needed fails `layers`.
+const LAYER_EXCEPTIONS: &[(&str, &str, &str)] =
+    &[("ecad-cadcraft", "ecad-tokens", "the action table's icons; `actions` moves to ecad-app with the app split (step 9)")];
 
 /// Product crates whose `dev` feature may be on by default (owner, 2026-11-12, design 029 Q1: the
 /// trial app's debugger, while the trial is the only app).
@@ -210,7 +217,7 @@ const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-mcp", 5), ("ecad-trial", 54)
 /// Core crates that must not reach the file system, the environment, processes, the network or
 /// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is
 /// testable and portable; disk access belongs to `ecad-store`, and the time is passed in.
-const CORE_PURE: &[&str] = &["ecad-model", "ecad-file"];
+const CORE_PURE: &[&str] = &["ecad-model", "ecad-file", "ecad-drawing-style"];
 
 /// Direct OS access in Core code ([`CORE_PURE`]), each matched where it starts a name.
 const CORE_OS: &[&str] =
@@ -239,10 +246,11 @@ const UI_CRATES: &[&str] =
     &["cadcraft-ui-egui", "craft-ui", "egui", "epaint", "egui_extras", "eframe", "egui-wgpu", "wgpu", "winit", "rfd", "ecad-ui"];
 
 /// Library crates that must build for wasm.
-const WASM_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-cadcraft", "ecad-tokens", "ecad-ui"];
+const WASM_CRATES: &[&str] =
+    &["ecad-model", "ecad-store", "ecad-file", "ecad-inspect", "ecad-drawing-style", "ecad-cadcraft", "ecad-tokens", "ecad-ui"];
 
 /// What a UiKit crate may depend on, besides dev-dependencies (design §2).
-const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens"];
+const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens", "ecad-drawing-style"];
 
 fn ecad_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
@@ -297,6 +305,7 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
     let pkgs = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
     let root = meta["workspace_root"].as_str().unwrap_or_default();
     let mut out = Vec::new();
+    let mut used_exceptions: BTreeSet<(&str, &str)> = BTreeSet::new();
     for p in pkgs {
         let name = p["name"].as_str().unwrap_or_default();
         let Some(class) = class_of(name) else {
@@ -318,7 +327,9 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
                 Class::UiKit => !dev && !UIKIT_ALLOWED.contains(&dep),
                 Class::Ui | Class::Dev | Class::Exempt => false,
             };
-            if bad {
+            if bad && !dev && LAYER_EXCEPTIONS.iter().any(|(n, d, _)| *n == name && *d == dep) {
+                used_exceptions.insert((name, dep));
+            } else if bad {
                 out.push(format!("{name} ({class:?}) must not depend on {dep}"));
             }
             let product = matches!(class, Class::Core | Class::Adapter | Class::Ui | Class::UiKit);
@@ -328,6 +339,14 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             {
                 out.push(why);
             }
+        }
+    }
+    // A stale exception is reported only for the real workspace (the tests' small graphs leave
+    // the excepted dependency out).
+    let present = |n: &str| !root.is_empty() && pkgs.iter().any(|p| p["name"].as_str() == Some(n));
+    for (name, dep, why) in LAYER_EXCEPTIONS {
+        if present(name) && !used_exceptions.contains(&(*name, *dep)) {
+            out.push(format!("{name} -> {dep}: a layer exception ({why}) that is no longer needed; remove it"));
         }
     }
     Ok(out)
@@ -1571,7 +1590,7 @@ let c = ecad_ui::color(SHELL.text);",
             ("ecad-cadcraft", "ecad-ui", 1),
             ("ecad-cadcraft", "epaint", 1),
             ("ecad-mcp", "egui_extras", 1),
-            ("ecad-model", "ecad-tokens", 0),
+            ("ecad-model", "ecad-tokens", 1),
             ("ecad-cadcraft", "ecad-tokens", 0),
             ("ecad-trial", "ecad-ui", 0),
         ];

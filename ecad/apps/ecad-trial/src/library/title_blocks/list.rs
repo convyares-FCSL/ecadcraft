@@ -386,7 +386,7 @@ fn row_menu(ui: &mut egui::Ui, r: &super::Row, writable: bool, acts: &mut Vec<Ac
 pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
     let s = ecad_ui::SHELL;
     let p = ui.painter();
-    p.rect(rect, 2.0, ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
+    p.rect(rect, 2.0, ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
     let (w, h) = l.size;
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
         return;
@@ -397,7 +397,7 @@ pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
     let bw = (w * k) as f32;
     let bh = (h * k) as f32;
     let o = pos2(inner.right() - bw, inner.bottom());
-    let ink = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.ink);
+    let ink = ecad_ui::color(ecad_drawing_style::sheet::PAPER.ink);
     p.rect_stroke(Rect::from_min_max(inner.min, inner.max), 0.0, Stroke::new(0.8, ink), egui::StrokeKind::Inside);
     p.rect_stroke(Rect::from_min_max(pos2(o.x, o.y - bh), pos2(o.x + bw, o.y)), 0.0, Stroke::new(0.8, ink), egui::StrokeKind::Inside);
     for item in l.items.iter().take(200) {

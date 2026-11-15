@@ -156,7 +156,7 @@ fn head(t: &mut Trial) -> Option<u64> {
 /// for network, a tree for single-line, plate and door for panel, a ruled table for report. An own
 /// type takes the glyph of what it holds.
 pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
-    let (paper, ink) = (ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_PAPER), ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_INK));
+    let (paper, ink) = (ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
     p.rect_filled(r, 2.0, paper);
     let st = egui::Stroke::new(1.0, ink);
     let i = r.shrink2(vec2(r.width() * 0.12, r.height() * 0.16));

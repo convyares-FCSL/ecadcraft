@@ -20,7 +20,7 @@ impl SheetText {
     ///
     /// # Example
     /// ```
-    /// assert!((ecad_tokens::sheet_type::TAG.font_size_mm() - 3.57).abs() < 0.005);
+    /// assert!((ecad_drawing_style::sheet_type::TAG.font_size_mm() - 3.57).abs() < 0.005);
     /// ```
     pub fn font_size_mm(self) -> f32 {
         self.cap_mm / CAP_HEIGHT_EM

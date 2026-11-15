@@ -1,13 +1,11 @@
 //! `ecad/docs/design/tokens.md` and the constants agree (brief 037, acceptance criterion 1;
 //! design §3.1): every row of the "Tokens" tables names a constant and shows its value, and every
-//! constant has a row. The `ecad.*` rows after it are retired in U4a and not checked.
+//! constant has a row. The "Drawing style" tables after them are checked by `ecad-drawing-style`'s
+//! own test (design 065 §1.1); the `ecad.*` rows after those are retired in U4a and not checked.
 
 use std::collections::BTreeMap;
 
-use ecad_tokens::marker::{self, Shape};
-use ecad_tokens::sheet::{self, DARK, Meaning, PAPER, prints};
-use ecad_tokens::wire::{self, WireColors};
-use ecad_tokens::{Icon, line, radius, shadow, sheet_type, size, space, ui_type, wheel};
+use ecad_tokens::{Icon, line, radius, shadow, size, space, ui_type, wheel};
 
 const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/design/tokens.md"));
 
@@ -34,35 +32,6 @@ fn doc_rows(text: &str) -> Vec<(String, Vec<String>)> {
 
 fn px(v: f32) -> String {
     format!("{v} px")
-}
-fn mm(v: f32) -> String {
-    format!("{v} mm")
-}
-fn wire_colors(w: WireColors) -> String {
-    match w.dashes {
-        Some(d) => format!("{} with {} dashes", w.solid.to_hex(), d.to_hex()),
-        None => w.solid.to_hex(),
-    }
-}
-fn marker_text(m: Meaning) -> String {
-    let mk = marker::marker(m);
-    let shape = match mk.shape {
-        Shape::None => "none",
-        Shape::Ring => "ring",
-        Shape::Dot => "dot",
-        Shape::Square => "square",
-        Shape::Slash => "slash",
-        Shape::Disc => "disc",
-        Shape::Triangle => "triangle",
-        Shape::DottedUnderline => "dotted underline",
-        Shape::DashedBar => "dashed bar",
-        Shape::Outline => "outline",
-        Shape::DashedOutline => "dashed outline",
-    };
-    match mk.size_px {
-        Some(s) => format!("{shape}, {}", px(s)),
-        None => shape.to_string(),
-    }
 }
 /// `WorkspaceDraw` → `workspace_draw`.
 fn snake(name: &str) -> String {
@@ -92,40 +61,13 @@ fn constants() -> BTreeMap<String, Vec<String>> {
     }
     put("shell.soft".into(), vec![format!("{} %", ecad_tokens::shell::SOFT_PERCENT)]);
     put("shell.light_soft".into(), vec![format!("{} %", ecad_tokens::shell::LIGHT_SOFT_PERCENT)]);
-    for meaning in Meaning::ALL {
-        put(
-            format!("sheet.{}", meaning.name()),
-            vec![
-                PAPER.color(meaning).to_token(),
-                DARK.color(meaning).to_token(),
-                if prints(meaning) { "yes" } else { "no" }.into(),
-                marker_text(meaning),
-            ],
-        );
-    }
-    put("sheet.selection_fill".into(), vec![format!("{} %", sheet::SELECTION_FILL_PERCENT)]);
-    put("sheet.preview_fill".into(), vec![format!("{} %", sheet::PREVIEW_FILL_PERCENT)]);
-    put("sheet.thumbnail_paper".into(), vec![sheet::THUMBNAIL_PAPER.to_token()]);
-    put("sheet.preview_paper".into(), vec![sheet::PREVIEW_PAPER.to_token()]);
-    put("sheet.thumbnail_ink".into(), vec![sheet::THUMBNAIL_INK.to_token()]);
-    for (name, cat) in [("wire.power", wire::POWER), ("wire.dc_24v", wire::DC_24V), ("wire.pe", wire::PE)] {
-        put(name.into(), vec![wire_colors(cat.paper), wire_colors(cat.dark)]);
-    }
-    put("wire.dash_on".into(), vec![mm(wire::DASH_ON_MM)]);
-    put("wire.dash_off".into(), vec![mm(wire::DASH_OFF_MM)]);
     for (name, s) in ui_type::ALL {
         put(name.into(), vec![format!("{} / {} px", s.size, s.line), s.weight.to_string()]);
-    }
-    for (name, s) in sheet_type::ALL {
-        put(name.into(), vec![mm(s.cap_mm), format!("{:.2} mm", s.font_size_mm()), s.weight.to_string()]);
     }
     for (name, v) in space::ALL.iter().chain(size::ALL.iter()).chain(radius::ALL.iter()).chain(line::PX.iter()) {
         put((*name).into(), vec![px(*v)]);
     }
     put("radius.pill".into(), vec!["full".into()]);
-    for (name, v) in line::MM {
-        put(name.into(), vec![mm(v)]);
-    }
     put("wheel.outer_radius".into(), vec![px(wheel::OUTER_RADIUS)]);
     put("wheel.inner_radius".into(), vec![px(wheel::INNER_RADIUS)]);
     put("wheel.slots".into(), vec![wheel::SLOTS.to_string()]);

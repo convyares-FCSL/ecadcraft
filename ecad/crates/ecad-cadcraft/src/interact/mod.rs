@@ -383,16 +383,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // Brief 040: colours and sizes from `ecad-tokens` by meaning, on the sheet in use. An orphan
     // reference (error) and an end that looks connected (warning) are painted by the app in
     // shapes these marks lack (`look::painted_marks`); none of them is an entity, so none prints.
-    use ecad_tokens::marker::{CONNECTION_POINT_PX, LOOSE_END_PX, WIRE_END_ATTACHED_PX};
+    use ecad_drawing_style::marker::{CONNECTION_POINT_PX, LOOSE_END_PX, WIRE_END_ATTACHED_PX};
     let Some(page) = p.page_of(uid) else { return Vec::new() };
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
         return Vec::new();
     }
     let sheet = crate::look::sheet();
-    let colour = |m: ecad_tokens::Meaning| crate::look::rgb(sheet.color(m));
+    let colour = |m: ecad_drawing_style::Meaning| crate::look::rgb(sheet.color(m));
     let doc = p.ledger.document();
     let positions = terminal_positions(doc, page);
-    let ring = colour(ecad_tokens::Meaning::ConnectionPoint);
+    let ring = colour(ecad_drawing_style::Meaning::ConnectionPoint);
     let mut out: Vec<Mark> = positions
         .iter()
         .map(|(_, _, at)| Mark { at: v2(*at), shape: MarkShape::Ring, size: CONNECTION_POINT_PX, stroke: 1.0, color: ring })
@@ -414,18 +414,18 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
                 // mark here: its connection is not on this page.
                 Some(t) => {
                     if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t) {
-                        let color = colour(ecad_tokens::Meaning::WireEndAttached);
+                        let color = colour(ecad_drawing_style::Meaning::WireEndAttached);
                         out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }
                 }
                 None => {
-                    let color = colour(ecad_tokens::Meaning::LooseEnd);
+                    let color = colour(ecad_drawing_style::Meaning::LooseEnd);
                     out.push(Mark { at: v2(at), shape: MarkShape::Square, size: LOOSE_END_PX, stroke: 1.0, color });
                 }
             }
         }
     }
-    let cable = colour(ecad_tokens::Meaning::Cable);
+    let cable = colour(ecad_drawing_style::Meaning::Cable);
     let map = p.pages.get(&page).map(|v| &v.map);
     let shown = |i| map.is_some_and(|m| m.item(i).is_some());
     out.extend(crate::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
@@ -445,9 +445,9 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
     if let Some((_, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
         let color = colour(match sev {
-            crate::checks::Severity::Error => ecad_tokens::Meaning::Error,
-            crate::checks::Severity::Warning => ecad_tokens::Meaning::Warning,
-            crate::checks::Severity::Info => ecad_tokens::Meaning::Ink2,
+            crate::checks::Severity::Error => ecad_drawing_style::Meaning::Error,
+            crate::checks::Severity::Warning => ecad_drawing_style::Meaning::Warning,
+            crate::checks::Severity::Info => ecad_drawing_style::Meaning::Ink2,
         });
         out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
     }

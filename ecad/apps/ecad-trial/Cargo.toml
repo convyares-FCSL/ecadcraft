@@ -17,6 +17,8 @@ ecad-model = { workspace = true }
 ecad-file = { workspace = true }
 # Brief 037: the style, fonts and primitives of ECAD's interface.
 ecad-ui = { path = "../../crates/ecad-ui" }
+# The sheet colours the canvas paints (design 065 §1.1).
+ecad-drawing-style = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`

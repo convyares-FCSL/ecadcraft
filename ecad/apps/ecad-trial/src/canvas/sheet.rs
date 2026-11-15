@@ -24,7 +24,7 @@ pub fn screen_rect(xf: &Xf, lo: ecad_model::Pt, hi: ecad_model::Pt) -> Rect {
 }
 
 /// Paint the surround, the shadow and the grid of the sheet `frames` (drawing units) in `rect`.
-pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_ui::tokens::Sheet, frames: &[(ecad_model::Pt, ecad_model::Pt)], rect: Rect) {
+pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, frames: &[(ecad_model::Pt, ecad_model::Pt)], rect: Rect) {
     let sheets: Vec<Rect> = frames.iter().map(|(lo, hi)| screen_rect(xf, *lo, *hi)).filter(|r| r.is_positive() && r.is_finite()).collect();
     let Some(outer) = sheets.iter().copied().reduce(|a, b| a.union(b)) else { return };
     surround(p, rect, outer);
@@ -57,7 +57,7 @@ fn surround(p: &egui::Painter, rect: Rect, sheet: Rect) {
 }
 
 /// The dot grid inside `sheet` (screen), clipped to what shows.
-fn dots(p: &egui::Painter, xf: &Xf, tokens: &ecad_ui::tokens::Sheet, sheet: Rect) {
+fn dots(p: &egui::Painter, xf: &Xf, tokens: &ecad_drawing_style::Sheet, sheet: Rect) {
     let pitch = GRID_MM * xf.scale;
     if !pitch.is_finite() || pitch < MIN_PITCH_PX || xf.twist != 0.0 {
         return;

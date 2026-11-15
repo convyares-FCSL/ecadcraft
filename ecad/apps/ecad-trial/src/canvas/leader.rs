@@ -18,7 +18,7 @@ pub struct Leader {
 
 /// Paint `leader` while it is live, fading out; drop it once its second is over. Whether it is
 /// still live (repaint next frame).
-pub fn paint(p: &egui::Painter, sheet: &ecad_ui::tokens::Sheet, leader: &mut Option<Leader>, now: f64) -> bool {
+pub fn paint(p: &egui::Painter, sheet: &ecad_drawing_style::Sheet, leader: &mut Option<Leader>, now: f64) -> bool {
     let Some(l) = *leader else { return false };
     let age = now - l.since;
     if !(0.0..SECONDS).contains(&age) {

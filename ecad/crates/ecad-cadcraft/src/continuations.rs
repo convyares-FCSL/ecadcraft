@@ -333,7 +333,7 @@ fn reference_part(a: &Arrow, value: String, s: &Settings) -> Part {
 /// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
 pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
     if part.index == REF_INDEX && arrow(doc, part.rep).is_some() {
-        let ink2 = crate::look::projection_sheet().color(ecad_tokens::Meaning::Ink2);
+        let ink2 = crate::look::projection_sheet().color(ecad_drawing_style::Meaning::Ink2);
         e.common.color = cadcraft_engine::doc::color::Color::True(crate::look::rgb(ink2));
     }
 }

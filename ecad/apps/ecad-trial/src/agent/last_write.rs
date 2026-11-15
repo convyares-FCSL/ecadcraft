@@ -20,8 +20,9 @@ use std::time::Instant;
 
 use cadcraft_engine::doc::geom::Bounds2;
 use ecad_cadcraft::checks::Object;
+use ecad_drawing_style::sheet;
 use ecad_model::{ObjectRef, PageId, TxId};
-use ecad_ui::tokens::{Color, line, sheet, space, ui_type};
+use ecad_ui::tokens::{Color, line, space, ui_type};
 use eframe::egui;
 
 use crate::Trial;

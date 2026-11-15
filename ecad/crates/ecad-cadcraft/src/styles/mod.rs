@@ -512,7 +512,7 @@ fn hex_rgb(t: &str) -> Option<(u8, u8, u8)> {
 }
 
 /// A colour field's value as drawn on `sheet`: `None` for `none` (ink) and anything unknown.
-pub fn colour_rgb(value: &str, sheet: &ecad_tokens::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
+pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     let t = value.trim();
     if t.eq_ignore_ascii_case("none") {
         return None;

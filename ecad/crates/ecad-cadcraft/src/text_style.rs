@@ -496,11 +496,15 @@ fn default_family() -> &'static str {
 
 /// The sheet font's faces as given to CADCraft's font table.
 static SHEET_FACES: [cadcraft_engine::fonts::ttf::EmbeddedFace; 2] = [
-    cadcraft_engine::fonts::ttf::EmbeddedFace { family: ecad_tokens::sheet_font::FAMILY, style: "Regular", bytes: ecad_tokens::sheet_font::REGULAR },
     cadcraft_engine::fonts::ttf::EmbeddedFace {
-        family: ecad_tokens::sheet_font::FAMILY,
+        family: ecad_drawing_style::sheet_font::FAMILY,
+        style: "Regular",
+        bytes: ecad_drawing_style::sheet_font::REGULAR,
+    },
+    cadcraft_engine::fonts::ttf::EmbeddedFace {
+        family: ecad_drawing_style::sheet_font::FAMILY,
         style: "SemiBold",
-        bytes: ecad_tokens::sheet_font::SEMIBOLD,
+        bytes: ecad_drawing_style::sheet_font::SEMIBOLD,
     },
 ];
 

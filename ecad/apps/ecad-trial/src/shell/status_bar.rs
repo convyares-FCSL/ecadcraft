@@ -608,8 +608,8 @@ fn hover_preview(t: &Trial, ui: &egui::Ui, button: Rect, page: PageId, number: &
         super::glyphs::preview(
             ui.painter(),
             sheet,
-            ecad_ui::color(ecad_ui::tokens::sheet::PREVIEW_PAPER),
-            ecad_ui::color(ecad_ui::tokens::sheet::THUMBNAIL_INK),
+            ecad_ui::color(ecad_drawing_style::sheet::PREVIEW_PAPER),
+            ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
         );
         let y = sheet.bottom() + 16.0;
         let x = card.left() + space::M;
@@ -723,8 +723,8 @@ fn sheet_hint(sheet: crate::canvas::Sheet) -> &'static str {
 /// The small sheet swatch: paper, dark, or for Follow paper and dark split on the diagonal.
 fn sheet_swatch(painter: &egui::Painter, r: Rect, sheet: crate::canvas::Sheet) {
     let s = ecad_ui::SHELL;
-    let paper = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet);
-    let dark = ecad_ui::color(ecad_ui::tokens::sheet::DARK.sheet);
+    let paper = ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet);
+    let dark = ecad_ui::color(ecad_drawing_style::sheet::DARK.sheet);
     match sheet {
         crate::canvas::Sheet::Paper => {
             painter.rect_filled(r, 1.5, paper);
