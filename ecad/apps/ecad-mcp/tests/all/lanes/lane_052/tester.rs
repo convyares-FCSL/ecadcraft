@@ -81,3 +81,61 @@ fn a_type_that_is_not_text_is_refused_not_ignored() {
         assert_eq!(c.log().len(), before, "type {t}: nothing written");
     }
 }
+
+/// Brief 052d over MCP: hostile proposal parameters are refused and write nothing; with writes off
+/// the answers that write are refused, and the list still reads.
+#[test]
+fn hostile_proposals_and_answers_over_mcp() {
+    let mut c = writer();
+    let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [50, 150], "location": "keep", "function": "keep"})), "component");
+    c.exec("setlocation", json!({"component": k, "value": "+CP2"}));
+    c.exec("locationbox", json!({"location": "+CP1", "corners": [[20, 100], [200, 220]]}));
+    let before = c.log().len();
+    let long = format!("+{}", "Z".repeat(10_000));
+    let many: Vec<Value> = (0..100_001).map(|_| json!(k)).collect();
+    let mut accepted: Vec<String> = Vec::new();
+    for (cmd, params) in [
+        ("place", json!({"symbol": "coil", "at": [80, 150], "location": long})),
+        ("place", json!({"symbol": "coil", "at": [80, 150], "location": {"x": 1}})),
+        ("place", json!({"symbol": "coil", "at": [80, 150], "function": "=\u{0}"})),
+        ("locationbox", json!({"location": "+CP3", "corners": [[20, 100], [200, 220]], "proposal": "explode"})),
+        ("conflicts", json!({"answer": "move", "components": many})),
+        ("conflicts", json!({"answer": "move", "components": ["zz"]})),
+        ("conflicts", json!({"answer": "half"})),
+        ("conflicts", json!({"answer": "yes"})),
+    ] {
+        let r = c.call("execute", json!({"command": cmd, "params": params.clone()}));
+        let text = r["content"][0]["text"].as_str().unwrap_or_default().to_lowercase();
+        assert!(!text.contains("internal error") && !text.contains("panick"), "{cmd}: {text}");
+        if r["isError"] != json!(true) {
+            accepted.push(format!(
+                "{cmd} {} -> {}",
+                params.to_string().chars().take(80).collect::<String>(),
+                text.chars().take(300).collect::<String>()
+            ));
+        }
+        assert!(text.len() < 2_000, "{cmd}: the answer echoes the hostile input");
+    }
+    assert!(accepted.is_empty(), "accepted: {accepted:?}");
+    assert_eq!(c.log().len(), before, "nothing written");
+    // The conflict made by the box is still answerable by the agent: one transaction, its author.
+    c.exec("conflicts", json!({"answer": "move"}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    assert_eq!(log.last().map(|t| t.author.clone()), Some(Author::Agent(AGENT.into())));
+}
+
+/// With writes off, `conflicts` reads, and Move and Half are refused.
+#[test]
+fn with_writes_off_conflict_answers_are_refused() {
+    let mut c = crate::mcp_contracts::reader();
+    let before = c.log().len();
+    c.exec("conflicts", json!({}));
+    for answer in ["move", "half"] {
+        let m = c.refused("execute", json!({"command": "conflicts", "params": {"answer": answer}}));
+        assert_eq!(m, ecad_mcp::policy::WRITES_OFF, "{answer}");
+    }
+    let m = c.refused("execute", json!({"command": "place", "params": {"symbol": "coil", "at": [0, 0], "location": "move"}}));
+    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(c.log().len(), before);
+}

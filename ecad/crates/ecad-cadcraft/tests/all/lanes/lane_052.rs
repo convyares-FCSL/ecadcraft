@@ -260,3 +260,4 @@ fn go_to_and_numbering_share_one_drawing_order() {
 mod proposed;
 mod stored;
 mod tester;
+mod tester_d;
