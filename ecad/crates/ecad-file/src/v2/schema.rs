@@ -83,19 +83,11 @@ impl BranchId {
         Some(BranchId(n.to_be_bytes()))
     }
 
-    /// A new random branch ID (overseer FQ7: random 128-bit), from the operating system's
-    /// randomness through the standard library's hasher keys.
-    pub fn random() -> Self {
-        use std::hash::{BuildHasher, Hasher};
-        let mut id = [0u8; 16];
-        for (i, half) in id.chunks_mut(8).enumerate() {
-            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_usize(i);
-            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-            h.write_u128(t);
-            half.copy_from_slice(&h.finish().to_be_bytes());
-        }
-        BranchId(id)
+    /// The branch ID made from `seed` (overseer FQ7: random 128-bit). The caller passes the
+    /// randomness, from `ecad_store::random_u128` (design 065 §3.1: ecad-file reads no OS
+    /// randomness or clock itself).
+    pub fn from_seed(seed: u128) -> Self {
+        BranchId(seed.to_be_bytes())
     }
 }
 

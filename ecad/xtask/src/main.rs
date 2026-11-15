@@ -224,16 +224,9 @@ const CORE_OS: &[&str] =
     &["std::fs", "fs::", "std::env", "env::var", "std::process", "std::net", "SystemTime::now", "Instant::now", "Utc::now", "Local::now"];
 
 /// Core files that still reach the OS directly ([`CORE_OS`]): the number of lines that do (test
-/// modules aside), seeded on 2026-11-15 (brief 060). The counts only fall; the split lane takes
-/// them to none, and a file not listed that reaches the OS is a violation.
-const CORE_OS_ALLOWLIST: &[(&str, usize)] = &[
-    ("crates/ecad-file/src/disk.rs", 3),
-    ("crates/ecad-file/src/v2/convert.rs", 3),
-    ("crates/ecad-file/src/v2/disk.rs", 1),
-    ("crates/ecad-file/src/v2/schema.rs", 1),
-    ("crates/ecad-file/src/v2/store.rs", 2),
-    ("crates/ecad-model/src/dev.rs", 1),
-];
+/// modules aside), seeded on 2026-11-15 (brief 060). The counts only fall; the split lane took
+/// them to none (design 065 §5 step 1c), and a file not listed that reaches the OS is a violation.
+const CORE_OS_ALLOWLIST: &[(&str, usize)] = &[];
 
 /// Crates that may use `anyhow` (owner, 2026-11-15, brief 060): the apps and xtask. A library
 /// returns its own error type, so a caller can react to the kind of failure (review 2026-11,

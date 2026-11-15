@@ -312,7 +312,7 @@ pub struct Base {
     pub history: Arc<dyn History>,
 }
 
-pub use crate::dev::verify_mode;
+pub use crate::dev::{set_verify_invariants, switch_on as verify_switch_on, verify_mode};
 
 /// How much a replay checks after each transaction ([`Ledger::replay_checked_from`]), whatever
 /// the build's verify mode.

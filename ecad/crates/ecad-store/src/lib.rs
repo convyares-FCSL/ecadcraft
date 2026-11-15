@@ -12,7 +12,10 @@
 //!
 //! - [`disk`] (native only): [`FileMedium`], a file on disk as a medium; [`WriterLock`], the
 //!   operating-system lock that makes one session the writer; and the steps of an atomic
-//!   replacement (temporary file, rename, folder flush).
+//!   replacement (temporary file, rename, folder flush). It is also where `ecad-file` reaches the
+//!   disk and the clock for everything else (design 065 §3.1: only ecad-store touches the OS):
+//!   whole and partial reads, file lengths, path comparison, the lock holder record.
+//! - [`random_u128`]: the operating system's randomness, for new IDs.
 //!
 //! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes
 //!   since the last flush), for the version 2 container's crash tests.
@@ -147,4 +150,20 @@ impl Medium for MemoryMedium {
     fn read_all(&self) -> io::Result<Vec<u8>> {
         Ok(self.bytes.clone())
     }
+}
+
+/// A random 128-bit value from the operating system's randomness (through the standard library's
+/// hasher keys) and the clock: the entropy for new IDs such as `ecad-file`'s branch IDs (design
+/// 065 §3.1). Built on every target, as the branch IDs were before.
+pub fn random_u128() -> u128 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut id = [0u8; 16];
+    for (i, half) in id.chunks_mut(8).enumerate() {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_usize(i);
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        h.write_u128(t);
+        half.copy_from_slice(&h.finish().to_be_bytes());
+    }
+    u128::from_be_bytes(id)
 }

@@ -36,6 +36,9 @@ started.
 - **Stage 4 (checkpoints) is on hold** until stage 3 (libraries) and the core domain features
   are settled (owner, 2026-11-08). On the benchmark's large tier, about 13 s to open 170,000
   transactions is acceptable for now.
+- Pass the branch seed explicitly when the R9/types lanes touch `ProjectV2::create_branch`. The
+  crate split (067 step 1c) left its signature alone: `BranchId::from_seed` takes the entropy
+  from `ecad_store::random_u128` inside it (overseer, 2026-11-15).
 
 ## Small performance follow-ups (found by briefs 012-014, owner 2026-11-08)
 

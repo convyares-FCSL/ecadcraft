@@ -406,3 +406,86 @@ pub fn write_new_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     }
     r
 }
+
+impl FileMedium {
+    /// The open file, giving up the medium (for a caller that hands the handle to another
+    /// storage engine, such as redb's `FileBackend`; design 065 §3.1).
+    pub fn into_file(self) -> File {
+        self.file
+    }
+}
+
+/// Seconds since 1970 by this computer's clock (0 if the clock is before 1970). The one clock
+/// read of ECAD's file layer: `ecad-file` stamps lock records with it (design 065 §3.1).
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// What a writer records in the lock file about itself: `writer`, this process's id and
+/// `now_secs` (seconds since 1970, passed in) as a UTC date and time.
+pub fn holder_record(writer: &str, now_secs: u64) -> String {
+    format!("{writer}, process {}, since {}", std::process::id(), utc(now_secs))
+}
+
+/// `secs` since 1970 as a UTC date and time, `YYYY-MM-DD hh:mm:ss UTC`.
+pub fn utc(secs: u64) -> String {
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02} UTC", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
+/// Whether `a` and `b` name the same existing file (both paths resolved; `false` if either
+/// cannot be).
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
+/// Whether something is at `path`.
+pub fn exists(path: &Path) -> bool {
+    path.exists()
+}
+
+/// The first bytes of the file at `path`: up to `n`, fewer if the file is shorter or one read
+/// returns fewer.
+///
+/// # Errors
+/// The file cannot be opened or read.
+pub fn read_head(path: &Path, n: usize) -> io::Result<Vec<u8>> {
+    let mut head = vec![0u8; n];
+    let got = File::open(path)?.read(&mut head)?;
+    head.truncate(got);
+    Ok(head)
+}
+
+/// The whole file at `path`, refused if it is larger than `cap` bytes.
+///
+/// # Errors
+/// The file cannot be read, or it is larger than `cap`.
+pub fn read_all(path: &Path, cap: u64) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    File::open(path)?.take(cap.saturating_add(1)).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > cap {
+        return Err(io::Error::other(format!("the file is larger than {cap} bytes")));
+    }
+    Ok(bytes)
+}
+
+/// The length of the file at `path`, in bytes.
+///
+/// # Errors
+/// Its metadata cannot be read.
+pub fn len(path: &Path) -> io::Result<u64> {
+    Ok(std::fs::metadata(path)?.len())
+}
