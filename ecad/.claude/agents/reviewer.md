@@ -20,6 +20,10 @@ Check the branch's diff against `dev` for:
   commit, undo or redo is a serious finding. Each must have an update map (see "Derived views
   scale with what changed" in `ecad/CLAUDE.md`) and a test that an unrelated edit leaves it
   untouched.
+- Panels and dialogs: every value the person can change is an `ecad_ui` control (box, chevron,
+  toggle); every read value is plain `read_text`/`read_value`; no raw `egui::TextEdit`,
+  `ComboBox`, bare `ui.label` for a settable value, or hand-drawn switch. `cargo xtask layers`
+  covers the first two; the rest is by reading.
 
 Report findings ranked most serious first, each with file, line and the concrete failure it could
 cause. Say plainly if there is nothing worth raising.

@@ -22,6 +22,8 @@ Rules:
   shell-specific scripts, any `#[cfg(unix)]` code needs a working `#[cfg(windows)]` counterpart or a
   documented reason.
 - Never-crash rules from `ecad/CLAUDE.md` apply.
+- Values in panels and dialogs: `ecad_ui` components only (`docs/design/components.md`). Check the
+  panel in both themes against the gallery (`ui_primitives::the_component_gallery_…`).
 - Write or update tests for what you build, but do not mark the brief done yourself: the owner (or
   the tester, where `ecad/CLAUDE.md` calls for one) decides that.
 - Build in the feature folder's own build folder (`CARGO_TARGET_DIR` unset,
