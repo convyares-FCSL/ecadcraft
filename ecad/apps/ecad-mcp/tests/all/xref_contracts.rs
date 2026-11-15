@@ -7,11 +7,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 25, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 25;
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
@@ -25,7 +24,7 @@ fn last_by_agent(c: &mut Client) -> Vec<Op> {
 
 #[test]
 fn cross_reference_commands_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let coil = c.exec("place", json!({"symbol": "coil", "at": [75, 180]}));
     let k1 = hex(&coil, "component");
     c.exec("place", json!({"symbol": "power3", "at": [125, 180], "device": k1}));

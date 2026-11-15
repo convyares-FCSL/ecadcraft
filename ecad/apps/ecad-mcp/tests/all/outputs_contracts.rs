@@ -3,19 +3,17 @@
 //! are refused with writes off; `bom`, `wirelist`, `cablelist` and `printbook` (no `path`) read
 //! with writes off and record nothing; `devices` shows `location_from`; a `path` is refused.
 
-use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::json;
 
-use crate::mcp_contracts::{AGENT, Client, reader};
+use crate::common::writer;
+use crate::mcp_contracts::{AGENT, reader};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp-024", 0x24_0011, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 0x24_0011;
 
 #[test]
 fn locations_boxes_and_generated_pages_record_as_the_agent_and_reports_read_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}));
     let q = c.exec("place", json!({"symbol": "coil", "at": [150, 100]}));
     let (k, q) = (k["component"].as_str().unwrap().to_string(), q["component"].as_str().unwrap().to_string());

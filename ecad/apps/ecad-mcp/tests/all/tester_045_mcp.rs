@@ -8,21 +8,14 @@
 //! and design before the implementation; ignored until phase 2.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, Op};
+use ecad_model::Op;
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_else(|| panic!("no {key} in {v}")).to_string()
-}
-
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    last.ops
 }
 
 fn sets_key(ops: &[Op], key: &str) -> bool {
@@ -55,7 +48,7 @@ struct Ids {
 fn writes_a(c: &mut Client) -> Ids {
     let n = c.log().len();
     let rack = c.exec("place", json!({"symbol": "plccpu", "at": [100, 200]}));
-    one_by_agent(c, n, "place plccpu");
+    assert_one_by_agent(c, n, "place plccpu");
     let rack = hex(&rack, "component");
     // Brief 051: the pack's 20 mm pitch.
     for x in [100, 120, 140, 160] {
@@ -63,25 +56,25 @@ fn writes_a(c: &mut Client) -> Ids {
     }
     let n = c.log().len();
     let di = c.exec("place", json!({"symbol": "plcdi", "at": [140, 200], "rack": rack, "slot": 2}));
-    let ops = one_by_agent(c, n, "place card body with rack and slot");
+    let ops = assert_one_by_agent(c, n, "place card body with rack and slot").ops;
     assert!(sets_key(&ops, "plc.rack") && sets_key(&ops, "plc.slot"), "{ops:?}");
     let di = hex(&di, "component");
     let n = c.log().len();
     let ai = hex(&c.exec("place", json!({"symbol": "plcai", "at": [180, 200]})), "component");
-    one_by_agent(c, n, "place card body, defaults");
+    assert_one_by_agent(c, n, "place card body, defaults");
     let n = c.log().len();
     let v = c.exec("plcslot", json!({"card": ai, "slot": 5}));
-    one_by_agent(c, n, "plcslot");
+    assert_one_by_agent(c, n, "plcslot");
     assert!(v.to_string().contains("-A01"), "replies name the rack by tag: {v}");
     let n = c.log().len();
     c.exec("plcslot", json!({"card": ai, "slot": 2, "swap": true}));
-    one_by_agent(c, n, "plcslot swap");
+    assert_one_by_agent(c, n, "plcslot swap");
     let n = c.log().len();
     c.exec("setprop", json!({"component": di, "key": "plc.channels", "value": "8"}));
-    one_by_agent(c, n, "setprop plc.channels");
+    assert_one_by_agent(c, n, "setprop plc.channels");
     let n = c.log().len();
     c.exec("setdefault", json!({"key": "plc.slots", "level": "project", "value": 16}));
-    one_by_agent(c, n, "setdefault plc.slots");
+    assert_one_by_agent(c, n, "setdefault plc.slots");
     Ids { rack, di, ai }
 }
 
@@ -90,21 +83,21 @@ fn writes_b(c: &mut Client, ids: &Ids) {
     let (rack, di, ai) = (&ids.rack, &ids.di, &ids.ai);
     let n = c.log().len();
     let v = c.exec("plcchannels", json!({"card": di, "from": [90, 400], "to": [170, 400]}));
-    let ops = one_by_agent(c, n, "plcchannels fence");
+    let ops = assert_one_by_agent(c, n, "plcchannels fence").ops;
     assert!(ops.iter().filter(|o| matches!(o, Op::AddTerminal { .. })).count() >= 4, "{v}");
     let n = c.log().len();
     c.exec("plcchannels", json!({"card": di, "rest": true, "at": [300, 400]}));
-    one_by_agent(c, n, "plcchannels rest");
+    assert_one_by_agent(c, n, "plcchannels rest");
     let n = c.log().len();
     c.exec("place", json!({"symbol": "chai", "at": [100, 300], "device": ai, "channel": 2}));
-    one_by_agent(c, n, "place cell with device and channel");
+    assert_one_by_agent(c, n, "place cell with device and channel");
     let n = c.log().len();
     c.exec("plcchannel", json!({"card": di, "channel": 1, "text": "Door closed", "address": "I9.9"}));
-    let ops = one_by_agent(c, n, "plcchannel");
+    let ops = assert_one_by_agent(c, n, "plcchannel").ops;
     assert!(sets_key(&ops, "plc.ch.1.text") && sets_key(&ops, "plc.ch.1.address"), "{ops:?}");
     let n = c.log().len();
     c.exec("plcchannel", json!({"card": ai, "channel": 2, "pins": {"+": "21"}}));
-    one_by_agent(c, n, "plcchannel pins");
+    assert_one_by_agent(c, n, "plcchannel pins");
     for (what, p) in [
         ("plcaddress style", json!({"rack": rack, "style": "iec"})),
         ("plcaddress starts", json!({"rack": rack, "input_start": 10, "output_start": 20})),
@@ -114,11 +107,11 @@ fn writes_b(c: &mut Client, ids: &Ids) {
     ] {
         let n = c.log().len();
         c.exec("plcaddress", p);
-        one_by_agent(c, n, what);
+        assert_one_by_agent(c, n, what);
     }
     let n = c.log().len();
     c.exec("setdefault", json!({"key": "plc.address.style", "level": "object", "component": rack, "value": "slot"}));
-    one_by_agent(c, n, "setdefault plc.address.style");
+    assert_one_by_agent(c, n, "setdefault plc.address.style");
 }
 
 /// 045a AC 7: the a-writes by the agent; reopened with writes off they are refused, and

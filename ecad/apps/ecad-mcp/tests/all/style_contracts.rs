@@ -4,15 +4,14 @@
 //! the document; `styles` and `standard {}` read with writes off. `standard {from}` names another
 //! project file, which agents may not read (the server's file rule): refused in words.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::policy;
 use ecad_model::Author;
 use serde_json::json;
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp 050", 50, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 50;
 
 /// Run `command` as the agent: one transaction labelled `label`, and one undo restores the
 /// document as it was.
@@ -35,7 +34,7 @@ fn one_undoable(c: &mut Client, command: &str, params: serde_json::Value, label:
 
 #[test]
 fn the_style_commands_record_one_transaction_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}))["component"].as_str().unwrap().to_string();
     one_undoable(&mut c, "standard", json!({"new": "House"}), "Make standard House");
     one_undoable(&mut c, "standard", json!({"name": "House 2026"}), "Rename standard House 2026");
@@ -91,7 +90,7 @@ fn writes_are_refused_with_writes_off_and_the_reads_still_answer() {
 /// Brief 050b (design 050 §6.8): `category` and `wire {category}` by the agent.
 #[test]
 fn category_and_wire_with_a_category_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let w = c.exec("wire", json!({"points": [[10, 150], [60, 150]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
     one_undoable(&mut c, "category", json!({"conductor": w, "value": "signal"}), "Category Signal");
     let n = c.log().len();

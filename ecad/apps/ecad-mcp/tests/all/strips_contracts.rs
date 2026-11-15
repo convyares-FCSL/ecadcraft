@@ -8,11 +8,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 28, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 28;
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
@@ -26,7 +25,7 @@ fn last_by_agent(c: &mut Client) -> (String, Vec<Op>) {
 
 #[test]
 fn terminal_strip_commands_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let mut wires = Vec::new();
     for x in [100, 120, 140] {
         let w = c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));

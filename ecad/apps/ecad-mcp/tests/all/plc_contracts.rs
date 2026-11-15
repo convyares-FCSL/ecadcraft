@@ -2,15 +2,12 @@
 //! transaction by `Author::Agent(<client>)` and is refused with writes off; the reads work with
 //! writes off and record nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client};
-
-fn writer(seed: u64) -> Client {
-    Client::new(EcadMcp::in_memory("mcp 045", seed, Options { write: true, agent: None }).unwrap())
-}
 
 /// One write: one more transaction, by the agent.
 fn by_agent(c: &mut Client, command: &str, params: Value) -> Value {

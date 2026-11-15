@@ -8,10 +8,11 @@
 
 use ecad_cadcraft::symbols::{self, STARTER_LIBRARY};
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, ComponentId, ObjectRef, Op};
+use ecad_model::{ComponentId, ObjectRef, Op};
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 /// (key, prefix, labels in order) for every new key of design 034 §3–§6.
 fn table() -> Vec<(String, &'static str, Vec<String>)> {
@@ -72,15 +73,6 @@ fn table() -> Vec<(String, &'static str, Vec<String>)> {
     v
 }
 
-/// The command added exactly one transaction, by the agent; its ops.
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    last.ops
-}
-
 fn labels(v: &Value) -> Vec<String> {
     v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
@@ -115,7 +107,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
                 let at = [200 * ((2 * i + round) % 8), 100 * ((2 * i + round) / 8) + 50];
                 let n = c.log().len();
                 let v = c.exec("place", json!({"symbol": key, "at": at}));
-                let ops = one_by_agent(&mut c, n, &format!("place {key} round {round}"));
+                let ops = assert_one_by_agent(&mut c, n, &format!("place {key} round {round}")).ops;
                 let e = embeds(&ops);
                 if round == 0 {
                     assert_eq!(e.len(), 1, "{key}: one EmbedDefinition: {ops:?}");
@@ -152,21 +144,21 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
         for (key, x, want) in [("co", 30, vec!["11", "12", "14"]), ("no", 60, vec!["23", "24"]), ("co", 90, vec!["31", "32", "34"])] {
             let n = c.log().len();
             let v = c.exec("place", json!({"symbol": key, "at": [x, 2000], "device": k1.hex()}));
-            one_by_agent(&mut c, n, &format!("join {key}"));
+            assert_one_by_agent(&mut c, n, &format!("join {key}"));
             assert_eq!(labels(&v), want, "{key}");
         }
 
         // §12 item 3: ratings.
         let n = c.log().len();
         c.exec("setprop", json!({"component": fb.hex(), "key": "rating.3", "value": "2A"}));
-        assert!(sets(&one_by_agent(&mut c, n, "rating.3"), "rating.3", "2A"));
+        assert!(sets(&assert_one_by_agent(&mut c, n, "rating.3").ops, "rating.3", "2A"));
         let n = c.log().len();
         let m = c.refused("execute", json!({"command": "setprop", "params": {"component": fb.hex(), "key": "rating.13", "value": "2A"}}));
         assert!(m.contains(&format!("{fb_tag} has no fuse 13.")), "{m}");
         assert_eq!(c.log().len(), n, "refused: head unchanged");
         let n = c.log().len();
         c.exec("setprop", json!({"component": rcbo.hex(), "key": "rating", "value": "13A C 30mA"}));
-        assert!(sets(&one_by_agent(&mut c, n, "rating"), "rating", "13A C 30mA"));
+        assert!(sets(&assert_one_by_agent(&mut c, n, "rating").ops, "rating", "13A C 30mA"));
 
         // §12 item 5: hostile input, each an error, nothing recorded.
         let n = c.log().len();

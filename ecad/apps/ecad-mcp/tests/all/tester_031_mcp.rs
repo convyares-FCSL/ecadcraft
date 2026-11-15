@@ -7,23 +7,15 @@
 //! gave before. Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 const RESERVED: &str = "is set with Text styles (textstyle, showtext, movetext).";
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
-}
-
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    last.ops
 }
 
 /// The representation holding the item a `place` returned.
@@ -70,7 +62,7 @@ fn text_writes_by_the_agent_then_refused_with_writes_off() {
         for (cmd, params) in writes {
             let n = c.log().len();
             let v = c.exec(cmd, params.clone());
-            let ops = one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
+            let ops = assert_one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}")).ops;
             assert!(!ops.is_empty(), "{cmd} {params}");
         }
         // Reads record nothing, with writes on.

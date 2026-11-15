@@ -3,21 +3,14 @@
 //! refused with writes off. Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, ConductorId, Op};
+use ecad_model::{ConductorId, Op, Transaction};
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
-}
-
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> (String, Vec<Op>) {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    (last.label, last.ops)
 }
 
 fn conductor(h: &str) -> ConductorId {
@@ -69,7 +62,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         let first = hex(&a, "conductor");
         let n = c.log().len();
         let b = c.exec("wire", json!({"points": [[50, 0], [50, -20]]}));
-        let (label, ops) = one_by_agent(&mut c, n, "wire merge");
+        let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "wire merge");
         assert_eq!(label, "Wire");
         assert!(!ops.iter().any(|o| matches!(o, Op::CreateConductor { .. })), "{ops:?}");
         assert_eq!(b["created"], json!(false), "{b}");
@@ -83,7 +76,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         let right = hex(&c.exec("wire", json!({"points": [[100, 200], [r.0, r.1]]})), "conductor");
         let n = c.log().len();
         let v = c.exec("wire", json!({"points": [[50, 200], [100, 200]]}));
-        let (label, ops) = one_by_agent(&mut c, n, "wire fold");
+        let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "wire fold");
         assert_eq!(label, "Wire");
         assert_eq!(v["created"], json!(false), "{v}");
         assert_eq!(hex(&v, "conductor"), left, "{v}");
@@ -103,7 +96,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         c.exec("wire", json!({"points": [[250, 0], [250, -20]], "join": false}));
         let n = c.log().len();
         let j = c.exec("joinwires", json!({"at": [250, 0]}));
-        let (label, _) = one_by_agent(&mut c, n, "joinwires");
+        let Transaction { label, ops: _, .. } = assert_one_by_agent(&mut c, n, "joinwires");
         assert_eq!(label, "Join wires");
         assert_eq!(j["how"], "merged", "{j}");
         let survivor = hex(&j, "conductor");
@@ -111,7 +104,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         // `wiresettings`: one SetProjectSettings transaction.
         let n = c.log().len();
         let s = c.exec("wiresettings", json!({"label_rule": "each", "label_min_length": 10}));
-        let (_, ops) = one_by_agent(&mut c, n, "wiresettings");
+        let Transaction { label: _, ops, .. } = assert_one_by_agent(&mut c, n, "wiresettings");
         assert!(ops.iter().all(|o| matches!(o, Op::SetProjectSettings { .. })) && !ops.is_empty(), "{ops:?}");
         assert_eq!(s["label_rule"], "each", "{s}");
         assert_eq!(s["label_min_length"], json!(10.0), "{s}");
@@ -128,7 +121,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         // LinkRepresentation, no CreateCable.
         let n = c.log().len();
         let v = c.exec("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"}));
-        let (label, ops) = one_by_agent(&mut c, n, "cableslash continue");
+        let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "cableslash continue");
         assert_eq!(label, "Cable slash");
         assert_eq!(v["continued"], json!(true), "{v}");
         assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3, "{ops:?}");
