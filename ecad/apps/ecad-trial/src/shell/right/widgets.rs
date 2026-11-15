@@ -5,13 +5,13 @@
 
 use std::collections::BTreeSet;
 
-use ecad_ui::tokens::{radius, space, ui_type};
-use eframe::egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
+use ecad_ui::tokens::{space, ui_type};
+use eframe::egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, vec2};
 
 /// The label column's width.
-pub const LABEL_W: f32 = 96.0;
-/// A value box's height.
-pub const FIELD_H: f32 = 28.0;
+pub const LABEL_W: f32 = ecad_ui::tokens::size::LABEL_COLUMN;
+/// A row's height (a value box is `size::CONTROL_SMALL`, centred in it).
+pub const FIELD_H: f32 = ecad_ui::tokens::size::CONTROL;
 
 pub fn font(ui: &egui::Ui, style: ecad_ui::tokens::ui_type::TypeStyle) -> egui::FontId {
     ecad_ui::fonts::font(ui.ctx(), style)
@@ -40,9 +40,7 @@ pub fn rich(ui: &egui::Ui, s: impl Into<String>, style: ui_type::TypeStyle, colo
 
 /// A hairline across the panel (between sections), from edge to edge of `full`.
 pub fn rule(ui: &mut egui::Ui, full: egui::Rangef) {
-    let y = ui.cursor().top();
-    ui.painter().hline(full, y + 0.5, Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line()));
-    ui.add_space(1.0);
+    ecad_ui::panel::hairline(ui, full);
 }
 
 /// Accessible name of a section's header.
@@ -60,21 +58,9 @@ pub fn section(
     let open_key = format!("!{id}");
     let is_folded = if start_folded { !folded.contains(&open_key) } else { folded.contains(id) };
     ui.add_space(space::S);
-    let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(vec2(w, 26.0), Sense::click());
+    let resp = ecad_ui::panel::section_header(ui, !is_folded, title, summary);
     let name = section_name(id);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
-    let p = ui.painter();
-    let chevron = Rect::from_center_size(pos2(rect.left() + 6.0, rect.center().y), vec2(10.0, 10.0));
-    let icon = if is_folded { ecad_ui::tokens::Icon::ChevronRight } else { ecad_ui::tokens::Icon::ChevronDown };
-    ecad_ui::icons::paint(p, chevron, icon, if resp.hovered() { text() } else { text_2() });
-    p.text(pos2(rect.left() + 20.0, rect.center().y), egui::Align2::LEFT_CENTER, title, font(ui, ui_type::BODY_EMPHASIS), text());
-    if !summary.is_empty() {
-        let g = p.layout_no_wrap(summary.to_string(), font(ui, ui_type::SMALL), text_3());
-        let room = (rect.width() - 30.0 - title.len() as f32 * 7.5).max(40.0);
-        let shown = if g.size().x > room { ellipsis(summary, (room / 6.5) as usize) } else { summary.to_string() };
-        p.text(pos2(rect.right(), rect.center().y), egui::Align2::RIGHT_CENTER, shown, font(ui, ui_type::SMALL), text_3());
-    }
     if resp.clicked() {
         if start_folded {
             if !folded.remove(&open_key) {
@@ -85,11 +71,10 @@ pub fn section(
         }
     }
     if !is_folded {
-        ui.add_space(space::XS);
+        ui.add_space(ecad_ui::panel::BODY_GAP);
         body(ui);
     }
-    ui.add_space(space::S);
-    rule(ui, full);
+    ecad_ui::panel::rule(ui, full);
     !is_folded
 }
 
@@ -106,9 +91,10 @@ pub fn ellipsis(text: &str, n: usize) -> String {
 /// A row: the grey label in its column, then `add` in the rest.
 pub fn row<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.horizontal(|ui| {
-        ui.set_min_height(FIELD_H + 4.0);
-        let (lr, _) = ui.allocate_exact_size(vec2(LABEL_W, FIELD_H), Sense::hover());
-        ui.painter().text(pos2(lr.left(), lr.center().y), egui::Align2::LEFT_CENTER, label, font(ui, ui_type::SMALL), text_2());
+        ui.set_min_height(FIELD_H);
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ecad_ui::panel::label(ui, label);
+        ui.spacing_mut().item_spacing.x = space::S;
         add(ui)
     })
     .inner
@@ -123,93 +109,27 @@ pub fn read(ui: &mut egui::Ui, label: &str, value: &str, name: &str) -> Response
     })
 }
 
-/// The box a value set here sits in: raised, rounded, `w` wide; returns its rect.
+/// The box a value set here sits in (`ecad_ui::panel::field_box`), `w` wide in a row's height;
+/// returns the box.
 pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
     let (rect, _) = ui.allocate_exact_size(vec2(w, FIELD_H), Sense::hover());
-    ui.painter().rect_filled(rect, ecad_ui::style::corner(radius::FIELD), raised());
-    rect
+    ecad_ui::panel::field_box(ui, rect, "").0
 }
 
-/// A text input inside a field box with an optional grey `hint` at its right (`auto`, `from
-/// page`). Returns the edit's response.
+/// A text entry (`ecad_ui::control::TextEntry`) with an optional grey `hint` at its right
+/// (`auto`, `from page`); `invalid` marks it (the caller shows the message under the row).
+/// Returns the edit's response.
 pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: bool) -> Response {
-    let w = ui.available_width();
-    let rect = field_box(ui, w);
-    let hint_w =
-        if hint.is_empty() { 0.0 } else { ui.painter().layout_no_wrap(hint.to_string(), font(ui, ui_type::SMALL), text_3()).size().x + space::M };
-    // One line of text, centred in the box.
-    let body = font(ui, ui_type::BODY);
-    let line_h = ui.fonts_mut(|f| f.row_height(&body)) + 2.0;
-    let top = rect.center().y - line_h / 2.0;
-    let edit_rect = Rect::from_min_max(pos2(rect.left() + space::M, top), pos2(rect.right() - space::M - hint_w, top + line_h));
-    let mut edit = egui::TextEdit::singleline(buf).frame(egui::Frame::NONE).font(font(ui, ui_type::BODY)).text_color(text());
-    if !placeholder.is_empty() {
-        edit = edit.hint_text(rich(ui, placeholder, ui_type::BODY, text_3()));
-    }
-    let r = ui.put(edit_rect, edit);
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, name));
-    if !hint.is_empty() {
-        ui.painter().text(pos2(rect.right() - space::M, rect.center().y), egui::Align2::RIGHT_CENTER, hint, font(ui, ui_type::SMALL), text_3());
-    }
-    if invalid {
-        ui.painter().rect_stroke(
-            rect,
-            ecad_ui::style::corner(radius::FIELD),
-            Stroke::new(1.0, ecad_ui::color(ecad_ui::SHELL.error)),
-            StrokeKind::Outside,
-        );
-    } else if r.has_focus() {
-        ui.painter().rect_stroke(
-            rect,
-            ecad_ui::style::corner(radius::FIELD),
-            Stroke::new(1.0, ecad_ui::color(ecad_ui::SHELL.accent_text)),
-            StrokeKind::Inside,
-        );
-    }
-    r
+    ecad_ui::control::TextEntry::new(buf, name).placeholder(placeholder).hint(hint).invalid(invalid.then_some("")).show(ui)
 }
 
-/// A segmented control `w` wide. `enabled` false draws it read from the drawing (grey, no
-/// clicks). Returns the segment clicked.
+/// A segmented control as wide as the row (`ecad_ui::prim::Segmented`). `enabled` false shows it
+/// read from the drawing (no clicks); `why` is its tooltip. Each segment is named
+/// `<name>.<its text in lower case>`. Returns the segment clicked, also the selected one.
 pub fn segmented(ui: &mut egui::Ui, items: &[&str], selected: Option<usize>, enabled: bool, name: &str, why: &str) -> Option<usize> {
-    let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(vec2(w, FIELD_H), Sense::hover());
-    let s = ecad_ui::SHELL;
-    let p = ui.painter().clone();
-    p.rect(
-        rect,
-        ecad_ui::style::corner(radius::BUTTON),
-        ecad_ui::color(s.bg),
-        Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line()),
-        StrokeKind::Inside,
-    );
-    let n = items.len().max(1) as f32;
-    let seg_w = (rect.width() - 4.0) / n;
-    let mut out = None;
-    for (i, item) in items.iter().enumerate() {
-        let r = Rect::from_min_size(pos2(rect.left() + 2.0 + i as f32 * seg_w, rect.top() + 2.0), vec2(seg_w, rect.height() - 4.0));
-        let resp = ui.interact(r, egui::Id::unique((name, i)), if enabled { Sense::click() } else { Sense::hover() });
-        let label = format!("{name}.{}", item.to_lowercase());
-        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, enabled, selected == Some(i), &label));
-        let on = selected == Some(i);
-        if on {
-            p.rect_filled(r, ecad_ui::style::corner(radius::SEGMENT), ecad_ui::color(s.active));
-        } else if enabled && resp.hovered() {
-            p.rect_filled(r, ecad_ui::style::corner(radius::SEGMENT), ecad_ui::color(s.hover));
-        }
-        let ink = match (enabled, on) {
-            (true, true) => text(),
-            (true, false) => text_2(),
-            (false, true) => text_2(),
-            (false, false) => text_3(),
-        };
-        p.text(r.center(), egui::Align2::CENTER_CENTER, *item, font(ui, if on { ui_type::BODY_EMPHASIS } else { ui_type::BODY }), ink);
-        let resp = if why.is_empty() { resp } else { resp.on_hover_text(why) };
-        if enabled && resp.clicked() {
-            out = Some(i);
-        }
-    }
-    out
+    // Out of range when nothing is selected, so no segment shows as chosen.
+    let mut i = selected.unwrap_or(items.len());
+    ecad_ui::prim::Segmented::new(&mut i, items).fill_width().read_only(!enabled).name(name).hover_text(why).show(ui).clicked
 }
 
 /// A small button (secondary, or primary for a check's first fix); `disabled` gives the reason it
@@ -223,24 +143,12 @@ pub fn button(ui: &mut egui::Ui, label: &str, primary: bool, disabled: Option<&s
     ui.add(b)
 }
 
-/// A one-line status pill: a tick or a dot, then the words.
+/// A one-line status pill (`ecad_ui::panel::status_pill`): a tick or a dot, then the words, then
+/// `after` in the label grey.
 pub fn status_pill(ui: &mut egui::Ui, ok: bool, words: &str, after: &str, name: &str) -> Response {
-    let s = ecad_ui::SHELL;
     ui.horizontal(|ui| {
-        let g = ui.painter().layout_no_wrap(words.to_string(), font(ui, ui_type::SMALL), text_2());
-        let (rect, r) = ui.allocate_exact_size(vec2(g.size().x + 30.0, 22.0), Sense::hover());
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, name));
-        let p = ui.painter();
-        p.rect_filled(rect, ecad_ui::style::corner(radius::pill(rect.height())), ecad_ui::color(s.raised));
-        let mark = pos2(rect.left() + 12.0, rect.center().y);
-        if ok {
-            let c = ecad_ui::color(s.ok);
-            p.line_segment([mark + vec2(-3.5, 0.0), mark + vec2(-1.0, 2.5)], Stroke::new(1.5, c));
-            p.line_segment([mark + vec2(-1.0, 2.5), mark + vec2(4.0, -3.0)], Stroke::new(1.5, c));
-        } else {
-            p.circle_filled(mark, 3.5, ecad_ui::color(s.error));
-        }
-        p.galley(pos2(rect.left() + 22.0, rect.center().y - g.size().y / 2.0), g, text_2());
+        let tone = if ok { ecad_ui::prim::Tone::Ok } else { ecad_ui::prim::Tone::Error };
+        let r = ecad_ui::panel::status_pill(ui, tone, words, name);
         if !after.is_empty() {
             ui.label(rich(ui, after, ui_type::SMALL, text_3()));
         }
