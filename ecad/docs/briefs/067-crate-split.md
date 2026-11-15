@@ -30,3 +30,30 @@ work as designed, or anything would change the `.ecad` format or add an op, stop
 `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D
 warnings`, `cargo xtask layers` and `cargo xtask test-changed`. Never the whole workspace or the
 slow set.
+
+## Step 5: closure check (read-only, run 2026-11-15 at c8f8bafb)
+
+The E set (design 065 §2.1 "E" rows and the E halves of the split modules) is:
+accessories, bom, cables, checks, connectors, continuations, defaults, designations, device_list,
+devices, frames, front, generated, kinds, link_lines, locations, outputs, page_types, plc,
+proposals, rating, references, reps, revisions, slash, strips, styles, symbols, terminal_types,
+text_style, title_block, wires, words, xref. Every other module of ecad-cadcraft is C.
+
+Two checks, both passed with nothing to report:
+
+1. **Grep.** In the E set's files, outside lines `pub use crate::draw::…;` (the C halves at their
+   old paths until step 6's facades), no line names `cadcraft_engine`, `cadcraft_io` or
+   `crate::<C module>`. The only hits were doc comments that point at C modules; step 6 turns their
+   intra-doc links into plain text.
+
+   ```sh
+   cd crates/ecad-cadcraft/src
+   E="accessories checks connectors defaults designations link_lines outputs proposals rating reps revisions slash strips styles symbols terminal_types words cables kinds text_style frames bom continuations device_list devices front generated locations page_types plc references title_block wires xref"
+   files=$(for m in $E; do [ -f $m.rs ] && echo $m.rs; [ -d $m ] && find $m -name '*.rs'; done)
+   C=$( (ls *.rs | sed 's/\.rs$//'; ls -d */ | tr -d /) | while read c; do echo " $E " | grep -q " $c " || echo $c; done | grep -v '^lib$' | paste -sd'|')
+   grep -nE "cadcraft_(engine|io)|crate::($C)\b" $files | grep -v ':pub use crate::draw::' | grep -v '//[!/]'
+   ```
+
+2. **Build.** The E set copied alone into a scratch crate (dependencies ecad-model,
+   ecad-drawing-style, serde, serde_json, chrono; the `pub use crate::draw::` lines dropped) builds
+   with no error.
