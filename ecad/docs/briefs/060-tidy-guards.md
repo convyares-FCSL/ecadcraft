@@ -30,10 +30,16 @@ report if one looks necessary. Persisted words (check kinds' words, property key
    `add_space(<digit>` and `vec2(<digit>`, seeded from today's numbers. Add a ratchet on direct
    `cadcraft-engine` dependencies of `ecad-trial`, `ecad-bench` and `ecad-mcp` (owner ruling: apps
    stop depending on the engine directly; app→app dependencies are allowed).
-5. **Wire label height** (owner ruling): the registry built-in 1.6 (`defaults/text.rs`) is legacy;
-   2.5, as in `look.rs` `LABEL_HEIGHT`, is right. Make 2.5 the built-in and remove the duplicate
-   constant, so there is one source.
+5. ~~Wire label height~~ **Dropped** (overseer, 2026-11-15). The registry built-in is
+   `ecad_model::wiring::DEFAULT_LABEL_HEIGHT` (1.6), which ecad-file v1 also uses as the serde
+   default and skips writing, so changing it changes what saved files mean. `look::LABEL_HEIGHT`
+   (2.5) is the cable look's layout height, not a duplicate. Whether wire labels should default to
+   2.5 goes back to the owner, for a defaults-as-data lane.
 6. Remove the duplicated `strippage.` doc line in `defaults/mod.rs`.
+7. **Dependency rules in `xtask layers`** (owner, 2026-11-15), on ECAD's own manifests only:
+   `anyhow` only in the apps (`ecad-cli`, `ecad-mcp`, `ecad-trial`, `ecad-bench`) and xtask;
+   `tokio` in no ECAD crate; `rayon` only under `cfg(not(target_arch = "wasm32"))`. Each rule says
+   what it prevents.
 
 ## Part 2: R7, check kinds as one table (after Part 1 is pushed)
 
