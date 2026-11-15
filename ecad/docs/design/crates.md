@@ -170,7 +170,7 @@ crate edges already point at other modules going to E.
 | `device_cmds` | 368 | 8 | C | Commands. | — |
 | `device_list` | 441 | 1 | split | The Devices tab rows are E. "Go to" selects engine handles, C. | `Handle` stays C. |
 | `devices` | 1,637 | 3 | split | Tags, prefixes, properties and starters are E. Text placement and colour index are C. | `text_style` split (cut 4). `project::Project` becomes `&Document`. `look::framed` moves to E. |
-| `file` | 426 | 0 | F | Binding a project to its `.ecad` file, plus path helpers (`home`, `expand_home`, `normalize`, `same_path`). Uses only ecad-file and ecad-model. | Clean. Goes to `ecad_file::binding`; C re-exports it. |
+| `file` | 426 | 0 | split | Binding a project to its `.ecad` file, plus path helpers. It uses only ecad-file and ecad-model, but it reads the home folder and canonicalizes paths (§3.1). | `FileStatus`, `Binding`, `normalize_with` (pure, given the home folder) and the messages go to F (`ecad_file::binding`). `same_path` goes to ecad-store. `home` stays C. C re-exports all of them. |
 | `frame` | 435 | 6 | C | Draws the sheet frame. | `fit` and `touches` (geometry over the model) move to E for `title_block::checks`. |
 | `front` | 987 | 3 | split | The cover's content (legends, notes, check rows) is E. Drawing it is C. | Cut 9. |
 | `generated` | 1,055 | 2 | split | Generated-page kinds, sheets and continuation checks are E. Drawing is C. | `convert::kind_for_primitive` and `frame::touches` stay C. |
@@ -315,6 +315,75 @@ module and no `cadcraft_*` import. That is the condition for moving it.
 
 ---
 
+### 3.1 OS and file-system access in Core (owner rule, 2026-11-15)
+
+Wasm is gone, but the discipline it gave stays. **Core crates do no file-system or OS access
+directly. Only `ecad-store` touches the disk.** The clock, randomness, the process id,
+environment variables and config switches are passed in by the caller, from Engine, App or a
+Program. Threads are allowed (rayon, or `std::thread::scope` until 061 replaces it), because
+they compute and touch nothing outside the process.
+
+What breaks the rule today. The counts are lines outside `#[cfg(test)]`; `ecad-store`,
+`ecad-inspect` and `ecad-tokens` are not counted.
+
+**ecad-model: 1.**
+
+| Where | What | Cut |
+|---|---|---|
+| `dev.rs:22` | Reads `ECAD_VERIFY_INVARIANTS` from the environment. | A switch passed in: `ecad_model::dev::set_verify_invariants(bool)`, an atomic set once by the program at start-up, which reads the variable itself (App, Programs, test harness). The feature gate stays as it is. |
+
+**ecad-file: 10.** The choice: **ecad-file works on handles and bytes that ecad-store supplies**.
+The v2 container's file handling does not move into ecad-store. ecad-store must not learn the
+`.ecad` format, and it already has almost every call needed: `DiskFile::open` and `create_new`,
+`replace`, `remove_file`, `sync_dir`, the lock, `FileIdentity` and `temp_path`. ecad-file keeps
+the format (records, chunks, redb schema, verify, convert) and calls ecad-store for every disk
+operation.
+
+| Where | What | Cut |
+|---|---|---|
+| `disk.rs:169-170` (`holder_record`) | `SystemTime::now`, `process::id` | The lock holder record is ecad-store's business. It moves to `ecad_store::disk::holder_record(writer, now_secs)`, the process id is read there, and the time is passed in. |
+| `disk.rs:228`, `v2/disk.rs:52` (`same_file`) | `fs::canonicalize` | `ecad_store::disk::same_path(a, b)`, built on `FileIdentity`. |
+| `v2/convert.rs:96` (`sniff`) | `File::open` | `ecad_store::disk::read_head(path, n)`. |
+| `v2/convert.rs:141` | `fs::read` | `ecad_store::disk::read_all(path, cap)`. |
+| `v2/convert.rs:205` | `fs::metadata` | `ecad_store::disk::len(path)`. |
+| `v2/schema.rs:94` (`BranchId::random`) | `SystemTime::now` (and `RandomState`, which reads OS entropy) | `BranchId::from_seed(u128)`. The caller passes a seed made from its clock and entropy. C already has `session_seed`. |
+| `v2/store.rs:126` (`Store::create`) | `OpenOptions::create_new` | `ecad_store::disk::DiskFile::create_new(path)` plus a new `into_file()`, then redb's `FileBackend` on that handle. |
+| `v2/store.rs:143` | `fs::remove_file` | `ecad_store::disk::remove_file`. |
+
+The guard does not count redb's own path-based `Builder::open` and `open_read_only` in
+`v2/store.rs:153, 165`, but they are OS access too. The worker moves them onto a store-supplied
+handle (`create_with_backend(FileBackend::new(file))`) where redb 4.5 allows it. Any call that
+must stay path-based is listed by name as an exception in the guard, with the reason.
+
+**ecad-cadcraft.** A broad grep finds 68 lines, but 20 are false matches (`refs::` matching
+`fs::`, and `ProjectFile::` calls). The 48 real lines are all in modules that **stay in Engine**:
+the engine and the commands may touch the disk.
+
+| Module (lines) | What | Stays in C / cut before E |
+|---|---|---|
+| `release` (17) | Writes the stamped release folder: staging, manifest, rename. | Stays C. |
+| `views` (7) | The per-user settings file and its folder (environment). | Stays C. `cable_title` moves to E (pure; already in §2.1). |
+| `agent_access` (4) | The agent preference file. | Stays C (`agent`). |
+| `debug` (4), `translate_oracle` (4) | Debugger file reads; the oracle's log path from the environment, and abort. | Stay C (dev features). |
+| `rating_cmds` (3) | Reads and writes the rating dataset CSV. | Stays C. The parse and `to_csv` are already in `rating/dataset` (E, no I/O). |
+| `plc/exchange` (2) | `read_file` and `write_file` for tag import and export. | Cut: `export_rows`, `read_tags`, `plan_fill` and the formats go to E (bytes in, bytes out). `read_file`, `write_file`, `run_plcimport` and `run_plcexport` go to C (`plc_cmds/exchange`). |
+| `title_block/dxf` (2) | Reads the DXF file. | Stays C (already C in §2.1). |
+| `project` (2) | `now_ms` (clock) and the process id for `session_seed`. | Stays C. It is the clock and seed source that E receives (cut 8). |
+| `file` (2) | `env::home_dir`, `fs::canonicalize`. | Split (§2.1): `home` stays C; `same_path` goes to ecad-store. |
+| `history` (1) | The local time-zone offset (`chrono::Local`). | Stays C. |
+
+**ecad-electrical starts at zero.** No module in the E set of §2.1 makes a direct OS call today.
+Their only indirect reach is the clock through `project::now_ms` (cut 8) and the `plc/exchange`
+file helpers (cut above). Step 5's closure check also refuses these patterns in the E set.
+
+**Ratchet.** Lane 060 adds a count-can-only-fall guard with today's numbers: ecad-model 1 and
+ecad-file 10. The split lane brings both to **0** (step 1c). When it creates ecad-electrical
+(step 6), it registers the crate at **0**, and `ecad-drawing-style` and `ecad-inspect` at 0 too.
+At the end of the lane (step 10) the ratchet becomes the §4 rule: zero for every Core crate except
+ecad-store, with no allowlist beyond named redb exceptions, if any.
+
+---
+
 ## 4. Guard rules for `cargo xtask layers`
 
 Today's `Class` enum (Core, Adapter, Ui, UiKit, Dev, Exempt) becomes the layer names. The table
@@ -343,6 +412,13 @@ raw egui):
 - **No wasm check.** `WASM_CRATES` and `cargo xtask wasm` are removed for the ECAD crates (§5,
   step 10). CADCraft's own wasm build is not affected.
 
+- **No OS access in Core** (owner, 2026-11-15; §3.1). In Core sources other than `ecad-store`,
+  outside `#[cfg(test)]` and `tests/`, `layers` refuses `std::fs`, `std::env`, `std::process`,
+  `std::net`, `SystemTime`, `Instant::now`, `RandomState`, `chrono::Local`, `Utc::now`,
+  `home_dir`, `canonicalize`, `File::`, `OpenOptions` and any `dirs`/`directories` crate.
+  Threads and rayon are allowed. Until step 10 this is lane 060's count-can-only-fall ratchet,
+  and from step 10 it is zero.
+
 Dependency rules from lane 061 (§6 there), one check each:
 
 - **No `anyhow` in a library.** `anyhow` may appear only in Programs, `xtask` and `ecad-bench`'s
@@ -370,18 +446,19 @@ tests E through C.
 |---|---|---|
 | 1 | **Folder moves.** `crates/ecad-bench` → `dev/ecad-bench` (class Dev). xtask table, CI and docs paths. | No code change. |
 | 1b | **Token split (§1.1).** New `crates/ecad-drawing-style` (Core) takes `sheet`, `sheet_font`, `sheet_type`, `wire`, `marker`, the mm half of `line`, and `Color`. `ecad-tokens` keeps the screen tokens and is reclassed UI kit. Paths change in ecad-cadcraft (8 files), ecad-ui (2), ecad-trial (a few). The doc-sync test splits with the tables. | Path changes only. Both doc-sync tests pass. |
+| 1c | **Core OS cuts** (§3.1): ecad-model's switch; ecad-file's ten calls onto ecad-store (`holder_record`, `same_path`, `read_head`, `read_all`, `len`, `into_file`); `BranchId::from_seed`; the redb opens. Lane 060's ratchet goes to 0 for both crates. Independent of the cadcraft cuts. File-format code: the tester covers it. | Calls move, behaviour doesn't. The v2 file tests pass. |
 | 2 | **Cuts 1, 2, 3, 8, 13** in ecad-cadcraft: helpers out of `interact`, `commands`, `*_cmds` and `look` into the modules that will go to E, with re-exports. | Pure moves inside one crate. |
 | 3 | **Cut 4** (`text_style`), two commits. | Same. |
 | 4 | **Cuts 5, 6, 7, 9, 10**: `draw/` modules in C. Domain functions take `&Document`. | Same. Engine imports leave the E modules. |
 | 5 | **Closure check.** A temporary xtask check, or a script in the brief, lists the E set and fails on any `crate::<C module>` or `cadcraft_` in it. It must pass before step 6. | Read-only check. |
-| 6 | **Create `ecad-electrical`** (Core) and `git mv` the E set in one commit. Fix `crate::` paths. ecad-cadcraft re-exports each moved module under its old name (`pub use ecad_electrical::strips;`), so apps and tests do not change. `file` moves to `ecad_file::binding` the same way. | The re-exports keep every path working. |
+| 6 | **Create `ecad-electrical`** (Core, OS-access count 0) and `git mv` the E set in one commit. Fix `crate::` paths. ecad-cadcraft re-exports each moved module under its old name (`pub use ecad_electrical::strips;`), so apps and tests do not change. `file`'s F half moves to `ecad_file::binding` the same way, and `same_path` to ecad-store. | The re-exports keep every path working. |
 | 7 | **Cut 11**: `ecad_cadcraft::cad`. Apps and ecad-mcp switch paths and drop `cadcraft-engine`. | Path changes only. |
 | 8 | **Cut 12**: `ecad_cadcraft::agent`. ecad-trial drops `ecad-mcp`. | MCP contract tests and the bridge tests unchanged. |
 | 9 | **App split.** ecad-trial's library becomes `crates/ecad-app` (`Trial` → `App`), and `apps/ecad-desktop` keeps `main`, `window`, `startup` and `args`. Cut 13's action table moves in. Update `docs/quick-start.md` (`cargo run -p ecad-desktop`), the CI, `xtask demo`, `ecad-mcp`'s `--launch` binary name, `DEV_BY_DEFAULT` and the raw-egui allowlist paths. | The trial tests move with the library. |
 | 10 | **Guards and wasm.** The §4 table, source checks and 061 rules in `layers`; the README check (§6) and the READMEs. **Remove the ECAD wasm check:** `WASM_CRATES`, `cargo xtask wasm` and its step in `cargo xtask ci`, and the ECAD wasm job in CI. `ecad/CLAUDE.md`: add the §1 vocabulary and the desktop-only ruling. Remove its wasm lines: the "Run wasm locally (`cargo xtask wasm` …) only when a change could affect it …" sentence, and "with the slow set and wasm" in the CI paragraph. 061's design and lane rules lose "rayon native only". Existing `cfg(target_arch = "wasm32")` branches (`ruzstd` decoding in `ecad-file`, `chrono` clock, `agent_access`, `same-file`) stay working. Removing them is a later clean-up, listed in `docs/deferred-work.md`, not part of this lane. | The new rules pass on the result of steps 1–9. |
 | 11 | **Drop the re-exports** from step 6 that only tests and apps use. Callers say `ecad_electrical::…`. This step is optional, and can be left for the phase-end tidy-up. | Path changes only. |
 
-Tester: yes. Steps 4 and 6 touch the projection and `translate.rs` neighbours. The tester runs
+Tester: yes. Step 1c changes the file reader and writer; steps 4 and 6 touch the projection and `translate.rs` neighbours. The tester runs
 ecad-cadcraft's and ecad-trial's fast tests and the medium bench (open and first page), and
 compares the result with `dev`.
 
@@ -462,6 +539,9 @@ All decisions below are approved. The owner answered the five calls on 2026-11-1
    xtask (§6).
 9. **Order:** after 060–063 merge, before the R9 worker. R9's `derived/` goes straight into
    ecad-electrical.
+10. **No OS access in Core** (owner rule, 2026-11-15; §3.1, §4). Only ecad-store touches the disk.
+    The clock, entropy, environment and switches are passed in, and rayon is fine. ecad-file works
+    on handles and bytes from ecad-store. Lane 060's ratchet reaches zero within the split lane.
 
 ### The owner's answers to the calls
 
