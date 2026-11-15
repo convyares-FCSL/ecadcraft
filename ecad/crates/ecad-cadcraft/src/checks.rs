@@ -1316,6 +1316,23 @@ pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
             });
         }
     }
+    // Tester re-check 2, item 4: `unused.` keys a file made elsewhere holds that ECAD does not read.
+    let (bad, n) = crate::styles::cable::bad_unused(doc, k);
+    if n > 0 {
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let name = crate::views::cable_title(doc, k);
+        let more = if n > bad.len() { format!(" (and {} more)", n - bad.len()) } else { String::new() };
+        for (key, v) in &bad {
+            out.push(Check {
+                kind: Kind::RatingBadValue,
+                page,
+                at,
+                object: Object::Cable(k),
+                which: format!("{name} has {key} '{v}', which ECAD does not read{more}"),
+                fix: None,
+            });
+        }
+    }
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
     if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
