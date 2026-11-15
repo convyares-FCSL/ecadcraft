@@ -137,8 +137,13 @@ fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> F
     inp.page = book.number(doc, page);
     inp.next_page = book.next(page);
     inp.next = inp.next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n));
-    inp.function = inherited(FUNCTION_KEY);
-    inp.location = inherited(LOCATION_KEY);
+    // Brief 052: stored as entry keys of the project's list; shown as codes.
+    let shown = |k: &str| {
+        let v = inherited(k);
+        if v.is_empty() { v } else { crate::designations::display(doc, k, &v) }
+    };
+    inp.function = shown(FUNCTION_KEY);
+    inp.location = shown(LOCATION_KEY);
     inp
 }
 

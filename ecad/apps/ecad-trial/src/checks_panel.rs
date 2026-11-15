@@ -26,8 +26,11 @@ pub const JOIN: &str = "Join";
 pub const NUMBER_THEM: &str = "Number them";
 /// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
-/// Brief 024's fix buttons.
-pub const USE_BOX_LOCATION: &str = "Use the box's location";
+/// Brief 052's fix buttons (design 052 §6).
+pub const USE_CONTEXT: &str = "Use it";
+pub const SET_LOCATION: &str = "Set location";
+pub const SET_FUNCTION: &str = "Set function";
+pub const SHOW_IN_SETTINGS: &str = "Show in Settings";
 pub const SHOW: &str = "Show";
 /// Brief 050a: a style row's fix opens Settings ▸ Standards.
 pub const GO_TO_STANDARDS: &str = "Go to Standards";
@@ -47,6 +50,9 @@ pub const IGNORE: &str = "Ignore";
 pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
+/// Brief 057 (owner): an open core's two fixes.
+pub const TICK_NOT_USED: &str = "Tick Not used";
+pub const GO_TO_OPEN_END: &str = "Go to the open end";
 pub const REMOVE: &str = "Remove";
 /// Brief 033: start Move Mirror Table for a table over the title block.
 pub const MOVE_TABLE: &str = "Move table…";
@@ -76,6 +82,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::LinkAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
         Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
+        Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
@@ -217,6 +224,10 @@ impl ChecksPanel {
 
     /// Button `k` of row `r`'s fix `f`, as an action.
     pub(crate) fn fix(r: &Row, f: Fix, k: usize) -> Option<Action> {
+        // Brief 057: an open core's Tick Not used / Go to the open end.
+        if let Fix::CoreOpen(..) = f {
+            return Some(Action::CoreFix(f, k));
+        }
         if pair(f).is_some() {
             return Some(Action::AccessoryFix(f, k));
         }
@@ -225,7 +236,9 @@ impl ChecksPanel {
             (Fix::Join(at), Some(page)) => Action::JoinWires(page, at),
             (Fix::NumberThem, _) => Action::NumberThem,
             (Fix::Finalise, _) => Action::Finalise,
-            (Fix::UseBoxLocation(c), _) => Action::UseBoxLocation(c),
+            (Fix::UseContext(c, a), _) => Action::UseContext(c, a),
+            (Fix::SetDesignation(c, _), _) => Action::GoToDevice(c),
+            (Fix::ShowDesignations, _) => Action::ShowDesignations,
             (Fix::ShowReports, _) => Action::ShowReports,
             (Fix::OfferDrawn(c), _) => Action::OfferDrawn(c),
             (Fix::RenumberStrip(c), _) => Action::RenumberStrip(c),
@@ -233,6 +246,18 @@ impl ChecksPanel {
             (Fix::NextFreeCore(w), _) => Action::NextFreeCore(w),
             (Fix::ShowCables, _) => Action::ShowCables,
             (Fix::OpenStandards(w), _) => Action::OpenStandards(w),
+            // Brief 057.
+            (
+                Fix::ShowRating(_)
+                | Fix::UseSize(..)
+                | Fix::PickCableType(..)
+                | Fix::SetBasis(..)
+                | Fix::ClearProtectedBy(_)
+                | Fix::ChooseRatingTable
+                | Fix::ShowRatedWires
+                | Fix::CoreOpen(..),
+                _,
+            ) => Action::RatingFix(f),
             (
                 Fix::LinkOnNonStrip(_)
                 | Fix::MoveToNextFree(_)

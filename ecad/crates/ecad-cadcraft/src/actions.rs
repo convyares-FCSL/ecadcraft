@@ -621,7 +621,7 @@ pub const ACTIONS: &[Action] = &[
     tool("draw.circle", "circle", "Circle", Icon::Circle, ToolGroup::Draw, 3, &["geometry"]),
     tool("draw.arc", "arc", "Arc", Icon::Arc, ToolGroup::Draw, 4, &["geometry"]),
     tool("box.location", "locationbox", "Location box", Icon::LocationBox, ToolGroup::Location, 0, &["location", "+"]),
-    coming_tool("box.function", "Function box", Icon::Box, ToolGroup::Location, 1),
+    tool("box.function", "functionbox", "Function box", Icon::Box, ToolGroup::Location, 1, &["function", "="]),
     coming_tool("box.both", "Function and location box", Icon::Box, ToolGroup::Location, 2),
     coming_tool("box.outline", "Device or PLC outline", Icon::Rectangle, ToolGroup::Location, 3),
     tool("text.text", "text", "Text", Icon::Text, ToolGroup::Text, 0, &["free text"]),
@@ -961,6 +961,16 @@ const fn search_only(
 /// ECAD commands no action shows, each with the reason (design §7.2: nothing is defined twice,
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
+    // Brief 052 (design 052 §5.7, §9.1, §9.4): the inspector's Location and Function rows, and
+    // Settings ▸ Project info's Functions and locations card.
+    ("setlocation", "Inspector ▸ Device: Location rows"),
+    ("conflicts", "The prompt strip's conflict list: Move and Leave"),
+    ("setfunction", "Inspector ▸ Device: Function row"),
+    ("designations", "Settings ▸ Project info: Functions and locations"),
+    ("designationadd", "Settings ▸ Project info: + Add"),
+    ("designationedit", "Settings ▸ Project info: a code or description cell"),
+    ("designationmerge", "Settings ▸ Project info: Merge into…"),
+    ("designationremove", "Settings ▸ Project info: Remove"),
     ("setdefault", "Settings ▸ Standards (U4c)"),
     // Brief 050a: the standard header and the style detail on Settings ▸ Standards.
     ("standard", "Settings ▸ Standards: the standard header"),
@@ -1037,6 +1047,11 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("makesymbol", "the builder's Save (048c's Make symbol)"),
     // Brief 049 (design 049 §5.1): no wheel slot.
     ("contcaption", "the command line and the inspector's Caption row"),
+    // Brief 057 (design 057 §2, §5.3): the Rating section of Project ▸ Wires and Cables, and
+    // Settings ▸ Standards ▸ Rating tables; no wheel slot.
+    ("rating", "the Rating section of Project ▸ Wires and Cables"),
+    ("ratingtable", "Settings ▸ Standards ▸ Rating tables"),
+    ("ratings", "a read; the Rating sections show the same results"),
 ];
 
 /// The action with this id.

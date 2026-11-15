@@ -20,10 +20,14 @@ pub const NOT_YET: &str = "Not available yet";
 
 /// The props rows the Device tab places in its own sections; every other row of a device goes to
 /// Notes and attributes (the Layout tab takes the contact table and the texts).
-const PLACED: [&str; 11] = [
+const PLACED: [&str; 15] = [
     "tag",
     "function",
     "location",
+    "location.socket",
+    "location.plug",
+    "location.terminal",
+    "rep_type",
     "description",
     "maker",
     "part_number",
@@ -166,10 +170,22 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
             let hint = match key {
                 "tag" if fixed => "fixed",
                 "tag" => "auto",
-                "location" | "function" if row.inherited || row.value.is_empty() => "from page",
+                // Brief 052 (design 052 §9.1): stored on the device or nothing; never inherited.
+                "location" | "function" if row.value.is_empty() => "?",
                 _ => "",
             };
             fields::prop(ui, sh, target, "device", row, label, hint);
+            // The overrides under Location (design 052 §5.2): a connector's halves, a field
+            // device's terminals.
+            if key == "location" {
+                for o in s.rows.iter().filter(|r| r.key.starts_with("location.")) {
+                    fields::prop(ui, sh, target, "device", o, &o.label, if o.inherited { "device" } else { "" });
+                }
+            }
+        }
+        // Brief 052 (design 052 §3.5): the selected symbol's type.
+        if let Some(row) = find(s, "rep_type") {
+            w::read(ui, "Symbol type", &row.value, "ecad.inspector.rep_type");
         }
         w::row(ui, "Symbol", |ui| {
             ui.label(w::rich(ui, &d.symbol_name, ui_type::BODY, w::text()));

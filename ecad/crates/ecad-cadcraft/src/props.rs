@@ -42,13 +42,17 @@ pub struct Row {
     pub inherited: bool,
     /// Several selected objects differ: `*varies*`.
     pub varies: bool,
-    /// Suggestions (a combo): Status, Sheet.
+    /// Suggestions (a combo): Status, Sheet; a function's or location's codes from the list.
     pub choices: Vec<String>,
+    /// Brief 052 (design 052 §9.1): an unset function or location's proposal from the selected
+    /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
+    /// **Use +CP1** link that sets it.
+    pub proposal: Option<(String, String)>,
 }
 
 impl Row {
     fn ro(key: &str, label: &str, value: String) -> Row {
-        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new() }
+        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new(), proposal: None }
     }
     fn rw(key: &str, label: &str, value: String) -> Row {
         Row { editable: true, ..Row::ro(key, label, value) }
@@ -322,15 +326,13 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
                 }
             }
         }
-        // An inherited location (brief 024) reads the main symbol's page (its boxes and
-        // `location`) and the project's.
+        // Brief 052: codes come from the project's list, and an unset value's proposal from the
+        // selected symbol's page (its boxes and values) and the project's.
         v.deps.insert(ObjectRef::Project);
         // Brief 045: a card's Rack row shows its rack's tag.
         v.deps.extend(k.devices.iter().filter_map(|c| crate::plc::props_deps(doc, *c)));
-        for c in &k.devices {
-            if let Some((_, r)) = crate::locations::main_rep(doc, *c) {
-                v.deps.insert(ObjectRef::Page(r.page));
-            }
+        if let Some(r) = k.symbol.and_then(|s| doc.representations.get(&s)) {
+            v.deps.insert(ObjectRef::Page(r.page));
         }
         match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
             [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
@@ -394,16 +396,18 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let path = crate::sheet_cmds::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
-        let mut r = match prop(key) {
+        // Brief 052: stored as entry keys, shown as codes.
+        let shown = |v: Option<String>| v.map(|v| crate::designations::display(doc, key, &v));
+        let mut r = match shown(prop(key)) {
             Some(v) => Row::rw(key, label, v),
             None => {
-                let inherited = doc.properties.get(key).cloned();
+                let inherited = shown(doc.properties.get(key).cloned());
                 let mut r = Row::rw(key, label, inherited.as_ref().map(|v| format!("{v} (project)")).unwrap_or_default());
                 r.inherited = inherited.is_some();
                 r
             }
         };
-        r.choices.clear();
+        r.choices = codes(doc, key);
         rows.push(r);
     }
     let mut sheet = Row::rw(
@@ -421,11 +425,27 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     Section { title: format!("ECAD · PAGE {number}"), kind: "page", target: Some(Target::Page(page)), rows, note: None, buttons: Vec::new() }
 }
 
-/// A location box (design 024 §3.5): Location (editable), Vertices and Devices inside.
+/// The codes of `key`'s aspect in the project's list, offered as completions (design 052 §9.1).
+fn codes(doc: &Document, key: &str) -> Vec<String> {
+    crate::designations::Aspect::of_property(key)
+        .map(|a| crate::designations::entries(doc, a).into_iter().map(|e| e.code).collect())
+        .unwrap_or_default()
+}
+
+/// A location box (design 024 §3.5, design 052 §5.8): Function and Location (editable, either may
+/// be empty), Vertices and Devices inside.
 fn box_section(doc: &Document, b: ComponentId) -> Section {
     let shape = doc.representations_of(Subject::Component(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
-    let location = doc.components.get(&b).and_then(|c| c.properties.get(LOCATION_KEY)).cloned().unwrap_or_default();
-    let mut rows = vec![Row::rw(LOCATION_KEY, "Location", location.clone())];
+    let shown =
+        |key: &str| doc.components.get(&b).and_then(|c| c.properties.get(key)).map(|v| crate::designations::display(doc, key, v)).unwrap_or_default();
+    let location = shown(LOCATION_KEY);
+    let mut rows = Vec::new();
+    for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
+        let mut r = Row::rw(key, label, shown(key));
+        r.choices = codes(doc, key);
+        rows.push(r);
+    }
+    let location = shape.as_ref().map_or(location, |s| crate::locations::label_of(s).0);
     if let Some(s) = &shape {
         rows.push(Row::ro("vertices", "Vertices", s.vertices.len().to_string()));
         let (n, keeps) = crate::locations::inside_counts(doc, s);
@@ -450,23 +470,31 @@ fn device_section(
     for (key, label) in crate::devices::PROPERTIES {
         let values: BTreeSet<Option<&String>> = devices.iter().map(|c| doc.components.get(c).and_then(|x| x.properties.get(key))).collect();
         let varies = values.len() > 1;
-        let value = if varies { "*varies*".into() } else { values.into_iter().next().flatten().cloned().unwrap_or_default() };
+        let value = if varies {
+            "*varies*".into()
+        } else {
+            // Brief 052: a function or location shows its code (`?` for a key with no entry).
+            values.into_iter().next().flatten().map(|v| crate::designations::display(doc, key, v)).unwrap_or_default()
+        };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
-        // Brief 024 (design 024 §3.4): with no own value, the inherited location and its source,
-        // faint; `?` when there is none.
-        if key == LOCATION_KEY && !varies && r.value.is_empty() {
-            let shown: BTreeSet<String> = devices.iter().map(|c| crate::locations::resolve(doc, *c).shown(doc)).collect();
-            r.inherited = true;
-            match shown.len() {
-                1 => r.value = shown.into_iter().next().unwrap_or_default(),
-                _ => {
-                    r.value = "*varies*".into();
-                    r.varies = true;
-                }
+        // Brief 052 (design 052 §9.1): an unset function or location is `?`, with the selected
+        // symbol's context offered as **Use +CP1**. Nothing is inherited.
+        if let Some(a) = crate::designations::Aspect::of_property(key) {
+            r.choices = codes(doc, key);
+            if !varies && r.value.is_empty() {
+                r.proposal = proposal(doc, a, symbol);
             }
         }
         rows.push(r);
+        // The overrides (design 052 §5.2, §9.1): a connector's halves; a non-strip device's
+        // terminal symbols.
+        if key == LOCATION_KEY
+            && one
+            && let Some(c) = devices.iter().next().copied()
+        {
+            override_rows(doc, c, &mut rows);
+        }
         // Brief 026 (design §4, §9): Fixed beside Tag; greyed for a provisional tag.
         if key == "tag" && one {
             let c = devices.iter().next().copied();
@@ -492,6 +520,8 @@ fn device_section(
                 this.push_str(&labels.join("/"));
             }
             rows.push(Row::ro("symbol", "This symbol", this));
+            // Brief 052 (design 052 §3.5): the symbol's type, from its definition.
+            rows.push(Row::ro("rep_type", "Symbol", crate::reps::rep_type(doc, r).word().to_string()));
             let book = Book::of(doc);
             let grid = ecad_model::sheet::Grid::of(doc, r.page);
             let at = r
@@ -543,6 +573,43 @@ fn device_section(
         rows,
         note: if one { None } else { Some("Tags are one per device.".into()) },
         buttons,
+    }
+}
+
+/// The proposal for an unset aspect `a`: the selected symbol's context (design 052 §9.1).
+fn proposal(doc: &Document, a: crate::designations::Aspect, symbol: Option<ecad_model::RepresentationId>) -> Option<(String, String)> {
+    let r = symbol.and_then(|s| doc.representations.get(&s))?;
+    let ctx = crate::locations::rep_context_in(doc, a, r, &mut crate::locations::BoxCache::default());
+    let code = ctx.value?;
+    let from = match ctx.source {
+        crate::locations::Source::Box { page, .. } => format!("From the box on {}", ecad_model::book::page_number(doc, page)),
+        crate::locations::Source::Page(p) => format!("From page {}", ecad_model::book::page_number(doc, p)),
+        _ => "From the project".to_string(),
+    };
+    Some((code, from))
+}
+
+/// The override rows of device `c` (design 052 §9.1): **Location (socket)** and **Location
+/// (plug)** for a connector; **Terminals in** for a device other than a strip with terminal
+/// symbols. An unset override shows the device's value faint, `(device)`.
+fn override_rows(doc: &Document, c: ComponentId, rows: &mut Vec<Row>) {
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    let device = crate::locations::resolve(doc, c).value.unwrap_or_else(|| "?".into());
+    let mut row = |key: &str, label: &str| {
+        let mut r = match props.and_then(|p| p.get(key)) {
+            Some(v) => Row::rw(key, label, crate::designations::display(doc, key, v)),
+            None => Row { inherited: true, ..Row::rw(key, label, format!("{device} (device)")) },
+        };
+        r.choices = codes(doc, LOCATION_KEY);
+        rows.push(r);
+    };
+    if crate::connectors::is_connector(doc, c) {
+        row("location.socket", "Location (socket)");
+        row("location.plug", "Location (plug)");
+    } else if !crate::strips::is_strip(doc, c)
+        && doc.representations_of(Subject::Component(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == crate::reps::RepType::Terminal)
+    {
+        row("location.terminal", "Terminals in");
     }
 }
 

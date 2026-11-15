@@ -530,11 +530,21 @@ fn t13_a_cable_continued_on_a_second_page() {
     // Offer exactly three cores, the page-1 labels (or 1,2,3 when the slash gave none).
     let offer: Vec<String> = labels.iter().enumerate().map(|(i, l)| l.clone().unwrap_or_else(|| (i + 1).to_string())).collect();
     f.h.run("setprop", json!({"cable": f.cable.hex(), "key": "cores", "value": offer.join(",")})).unwrap();
-    // Locations, so the cable list's from and to have something to name (design §3.5).
-    f.h.activate(f.p1);
-    f.h.run("locationbox", json!({"location": "+CP1", "corners": [[50, 80], [200, 150]]})).unwrap();
+    // Locations, so the cable list's from and to have something to name (design §3.5). Brief 052:
+    // set on the devices (a box would only propose).
+    let doc = f.h.doc();
+    let tagged = |pre: &str| -> Vec<String> {
+        doc.components
+            .keys()
+            .filter(|c| ecad_cadcraft::devices::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
+            .map(|c| c.hex())
+            .collect()
+    };
+    let (near, far) = (tagged("-X0"), tagged("-X5"));
+    assert_eq!((near.len(), far.len()), (3, 3), "fixture: -X01…03 and -X51…53");
+    f.h.run("setlocation", json!({"components": near, "value": "+CP1"})).unwrap();
+    f.h.run("setlocation", json!({"components": far, "value": "+FIELD"})).unwrap();
     f.h.activate(f.p2);
-    f.h.run("locationbox", json!({"location": "+FIELD", "corners": [[50, 80], [200, 150]]})).unwrap();
     let before = f.h.doc();
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
     assert_eq!(r["continued"], json!(true), "{r}");

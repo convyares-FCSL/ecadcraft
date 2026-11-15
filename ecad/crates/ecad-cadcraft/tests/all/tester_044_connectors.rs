@@ -1035,6 +1035,8 @@ fn r07_registry_area_and_description_defaults() {
 fn r08_bom_one_row_per_drawn_half() {
     let mut c = fixture_c(0x7044_0070);
     let x1 = with_x01(&mut c);
+    // Brief 052: the +FIELD box on page 101 only proposes; the connector stores its location.
+    step(&mut c.h, "setlocation", json!({"component": x1.hex(), "value": "+FIELD"}));
     let (_x2, _) = with_x02(&mut c);
     step(&mut c.h, "setprop", json!({"component": x1.hex(), "key": "half.s.part_number", "value": "SKT-4"}));
     step(&mut c.h, "setprop", json!({"component": x1.hex(), "key": "half.s.maker", "value": "Acme"}));
@@ -1056,6 +1058,7 @@ fn r08_bom_one_row_per_drawn_half() {
             .unwrap(),
     );
     let lt = tag(&c.h.doc(), lone);
+    step(&mut c.h, "setlocation", json!({"component": lone.hex(), "value": "+CP1"}));
     assert_eq!(bom_rows(&mut c.h, &format!("{lt}.P")).len(), 1);
     assert!(bom_rows(&mut c.h, &format!("{lt}.S")).is_empty());
     assert_eq!(s(&bom_rows(&mut c.h, &format!("{lt}.P"))[0]["location"]), "+CP1");
@@ -1068,16 +1071,24 @@ fn r08_bom_one_row_per_drawn_half() {
     same_as_built(&mut c.h);
 }
 
-/// §8.2: halves in different locations: socket in `+FIELD`, plug in `+CP1`, with nothing typed;
-/// `half.p.location` beats the box; `location` on the connector beats both boxes.
+/// §8.2, brief 052 (design 052 §5.2): with nothing typed, both halves have no location, though the
+/// boxes around them propose `+FIELD` (socket) and `+CP1` (plug); `location` on the connector
+/// reaches both halves; `half.p.location` (the override `location.plug`) beats it for the plug.
 #[test]
-fn r08_two_locations_for_one_connector() {
+fn r08_a_half_location_is_its_override_else_the_connector() {
     let mut c = fixture_c(0x7044_0071);
     let x = conn_of(&c.h.run("connector", json!({"halves": "socket", "pins": 4, "layout": "row", "at": [100, 100], "page": c.p101.hex()})).unwrap());
     c.h.activate(c.p102);
     c.h.run("connector", json!({"device": x.hex(), "halves": "plug", "layout": "row", "at": [100, 100], "page": c.p102.hex()})).unwrap();
-    assert_eq!(s(&bom_rows(&mut c.h, "-X01.S")[0]["location"]), "+FIELD");
-    assert_eq!(s(&bom_rows(&mut c.h, "-X01.P")[0]["location"]), "+CP1");
+    assert_eq!(s(&bom_rows(&mut c.h, "-X01.S")[0]["location"]), "", "nothing typed: no location");
+    assert_eq!(s(&bom_rows(&mut c.h, "-X01.P")[0]["location"]), "");
+    let d = c.h.doc();
+    let proposed = |side: ecad_cadcraft::symbols::Side| {
+        let r = ecad_cadcraft::reps::goto(&d, x, Some(side)).unwrap();
+        ecad_cadcraft::locations::rep_context(&d, &d.representations[&r], &mut ecad_cadcraft::locations::BoxCache::default()).value
+    };
+    assert_eq!(proposed(ecad_cadcraft::symbols::Side::Socket).as_deref(), Some("+FIELD"), "the box on 101 proposes");
+    assert_eq!(proposed(ecad_cadcraft::symbols::Side::Plug).as_deref(), Some("+CP1"), "the box on 102 proposes");
     step(&mut c.h, "setprop", json!({"component": x.hex(), "key": "location", "value": "+JB1"}));
     assert_eq!(s(&bom_rows(&mut c.h, "-X01.S")[0]["location"]), "+JB1");
     assert_eq!(s(&bom_rows(&mut c.h, "-X01.P")[0]["location"]), "+JB1");

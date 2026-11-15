@@ -22,6 +22,7 @@ pub mod history;
 pub mod measure;
 pub mod outputs;
 pub mod plc;
+pub mod ratings;
 pub mod release;
 pub mod report;
 pub mod strips;

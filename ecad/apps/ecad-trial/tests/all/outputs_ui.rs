@@ -55,7 +55,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 fn main_symbol(h: &mut H, tag: &str) -> ecad_model::RepresentationId {
     let d = doc(h);
     let c = d.components_tagged(tag)[0];
-    ecad_cadcraft::locations::main_rep(&d, c).unwrap().0
+    ecad_cadcraft::reps::goto(&d, c, None).unwrap()
 }
 
 #[test]
@@ -72,14 +72,31 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
 
-    // 1. -K01's coil: Location +CP1 (project), shown faint in Properties.
+    // 1. -K01's coil: brief 052d, it took the project's +CP1 when it was placed (a proposal, now
+    // stored on the device); nothing is inherited, so no proposal is offered for it any more.
     let k1 = main_symbol(&mut h, "-K01");
     h.state_mut().goto_symbol(k1).unwrap();
     h.run_steps(4);
     let rows = h.state().props.lock().unwrap().view.sections.clone();
     let loc = rows.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == "location").unwrap().clone();
-    assert_eq!((loc.value.as_str(), loc.inherited), ("+CP1 (project)", true), "{loc:?}");
+    assert_eq!((loc.value.as_str(), loc.inherited), ("+CP1", false), "{loc:?}");
+    assert_eq!(loc.proposal, None, "{loc:?}");
     save(&h, &deltas, "024-props-location.png");
+    // Take every device's proposal (its go-to symbol's context), as the user would, so the rest
+    // of the demo has its locations stored.
+    let d = doc(&mut h);
+    let mut proposed: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for c in d.components.keys().copied().filter(|c| ecad_cadcraft::locations::is_device(&d, *c)) {
+        let Some(r) = ecad_cadcraft::reps::goto(&d, c, None) else { continue };
+        let ctx = ecad_cadcraft::locations::rep_context(&d, &d.representations[&r], &mut ecad_cadcraft::locations::BoxCache::default());
+        if let Some(v) = ctx.value {
+            proposed.entry(v).or_default().push(c.hex());
+        }
+    }
+    assert!(proposed.contains_key("+CP1"), "{proposed:?}");
+    for (v, cs) in proposed {
+        ok(&mut h, &format!(r#"setlocation {{"components":{},"value":"{v}"}}"#, serde_json::json!(cs)));
+    }
 
     // 2. Page 3: the box +JB1 round -X02, a polyline box added, and -K01's NC contact prefixed.
     let p3 = page(&mut h, 2);
@@ -87,7 +104,11 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     ok(&mut h, r#"locationbox {"location":"+JB2","points":[[110,60],[150,60],[160,75],[150,92],[110,92]]}"#);
     let d = doc(&mut h);
     let m1 = d.components_tagged("-M01")[0];
-    assert_eq!(ecad_cadcraft::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"));
+    // Brief 052: the new box proposes +JB2 for -M01; its stored location does not change.
+    let m1_rep = ecad_cadcraft::reps::goto(&d, m1, None).unwrap();
+    let m1_ctx = ecad_cadcraft::locations::rep_context(&d, &d.representations[&m1_rep], &mut ecad_cadcraft::locations::BoxCache::default());
+    assert_eq!(m1_ctx.value.as_deref(), Some("+JB2"));
+    assert_ne!(ecad_cadcraft::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"), "a box gives nothing");
     let texts: Vec<String> = h
         .state()
         .cad
@@ -101,26 +122,30 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
             _ => None,
         })
         .collect();
-    assert!(texts.contains(&"+CP1-K01".to_string()), "{texts:?}");
+    // Brief 052 (design 052 §5.8): -K01's stored function =PUMP differs from the page's (none),
+    // so it shows before the location; -M01 keeps its stored +FIELD inside the new +JB2 box.
+    assert!(texts.contains(&"=PUMP+CP1-K01".to_string()), "{texts:?}");
+    assert!(texts.contains(&"+FIELD-M01".to_string()), "{texts:?}");
     assert!(texts.contains(&"+JB1".to_string()) && texts.contains(&"+JB2".to_string()), "box labels");
     view(&mut h, 30.0, 45.0, 175.0, 160.0);
     save(&h, &deltas, "024-location-box.png");
     save(&h, &deltas, "024-prefix.png");
 
-    // 3. An own location in a box: Checks warns; Use the box's location fixes it in one step.
+    // 3. Brief 052: a stored location none of its symbols is in: Checks warns; Use it sets the
+    // box's in one step.
     let x2 = doc(&mut h).components_tagged("-X02")[0];
     ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"location","value":"+CP9"}}"#, x2.hex()));
     h.state_mut().panel.tab = project_panel::Tab::Checks;
     h.run_steps(4);
     let rows = h.state().panel.checks.rows().to_vec();
-    assert!(rows.iter().any(|r| r.check.kind == Kind::OwnLocation), "{rows:?}");
+    assert!(rows.iter().any(|r| r.check.kind == Kind::LocationUnused), "{rows:?}");
     save(&h, &deltas, "024-check-own-location.png");
     let before = doc(&mut h);
-    h.state_mut().panel_action(project_panel::Action::UseBoxLocation(x2));
+    h.state_mut().panel_action(project_panel::Action::UseContext(x2, ecad_cadcraft::designations::Aspect::Location));
     h.run_steps(3);
     assert_ne!(doc(&mut h), before, "one step");
     let d = doc(&mut h);
-    assert_eq!(ecad_cadcraft::locations::resolve(&d, x2).source.word(), "box");
+    assert_eq!(ecad_cadcraft::locations::resolve(&d, x2).source.word(), "device");
 
     // 4. Reports: the BOM has devices only, -S01 flagged; wires; cables.
     h.state_mut().panel_action(project_panel::Action::Reports);

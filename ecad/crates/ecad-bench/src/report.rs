@@ -317,7 +317,7 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
         out.push_str(&format!(
             "\nOutputs on {} {} ({} devices; box holds {}): reportfirst {:.1} ms, locset {:.2} ms, boxmove {:.2} ms \
              (plain move {:.2} ms), symin {:.2} ms, projloc {:.2} ms, bomupd {:.2} ms, wireupd {:.2} ms; most rows one edit \
-             recomputed: {}\n",
+             recomputed: {}; renamebench {:.2} ms, mergebench {:.2} ms ({} users)\n",
             r.tier,
             r.variant,
             o.devices,
@@ -330,7 +330,10 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             o.projloc_ms,
             o.bomupd_ms,
             o.wireupd_ms,
-            o.work
+            o.work,
+            o.renamebench_ms,
+            o.mergebench_ms,
+            o.designation_users
         ));
         // Brief 047 (design 047 §10).
         let b = &o.bom;
@@ -598,6 +601,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "reportfirst_ms": o.reportfirst_ms, "locset_ms": o.locset_ms, "boxmove_ms": o.boxmove_ms,
                     "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,
                     "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms,
+                    "renamebench_ms": o.renamebench_ms, "mergebench_ms": o.mergebench_ms, "designation_users": o.designation_users,
                     "work": o.work, "devices": o.devices, "inside": o.inside,
                 })),
                 "release": r.release.as_ref().map(|o| json!({

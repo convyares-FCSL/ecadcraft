@@ -48,6 +48,7 @@ pub const AREAS: &[&str] = &[
     "location",
     "continuation",
     "plc",
+    "rating",
 ];
 
 pub mod bom;
@@ -55,6 +56,7 @@ pub mod connectors;
 pub mod continuations;
 pub mod plc;
 pub mod print;
+pub mod rating;
 pub mod strip_pages;
 pub mod styles;
 pub mod symbols;
@@ -370,6 +372,7 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         symbols::BUILDER_ENTRIES,
         continuations::ENTRIES,
         plc::ENTRIES,
+        rating::ENTRIES,
     ]
     .into_iter()
     .flatten()

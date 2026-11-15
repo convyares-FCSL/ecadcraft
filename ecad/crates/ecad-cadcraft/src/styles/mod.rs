@@ -30,9 +30,11 @@ use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject};
 
 use crate::defaults::{self, Kind, Resolved, Scope, Source, Value};
 
+pub mod cable;
 pub mod checks;
 pub mod frame;
 pub mod location;
+pub mod ratingtable;
 pub mod text;
 pub mod wire;
 
@@ -108,6 +110,8 @@ pub static CATALOGUES: &[&Catalogue] = &[
     &location::CATALOGUE,
     &frame::CATALOGUE,
     &wire::CATALOGUE,
+    &cable::CATALOGUE,
+    &ratingtable::CATALOGUE,
 ];
 
 /// The catalogue with this word.
@@ -133,16 +137,26 @@ pub fn record<'a>(doc: &'a Document, layer: StyleLayer, catalogue: &str, id: &St
     Some(r)
 }
 
+/// The longest value field `key` of `catalogue` may hold: [`MAX_FIELD_CHARS`], except a rating
+/// table's rows (brief 057, FP8), which hold a CSV data set of at most
+/// [`crate::rating::dataset::MAX_BYTES`]. Guard: it keeps every stored value bounded.
+pub fn field_cap(catalogue: &str, key: &str) -> usize {
+    match (catalogue, key) {
+        (ratingtable::WORD, ratingtable::ROWS) => crate::rating::dataset::MAX_BYTES,
+        _ => MAX_FIELD_CHARS,
+    }
+}
+
 /// A record's stored value of `key`, within the bounds (at most [`MAX_FIELDS_PER_STYLE`] fields,
-/// values of at most [`MAX_FIELD_CHARS`] characters).
-fn stored<'a>(r: &'a StyleRecord, key: &str) -> Option<&'a str> {
+/// values of at most [`field_cap`] characters).
+fn stored<'a>(r: &'a StyleRecord, catalogue: &str, key: &str) -> Option<&'a str> {
     let v = r.fields.get(key)?;
     if r.fields.len() > MAX_FIELDS_PER_STYLE
         && r.fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
     {
         return None;
     }
-    (v.chars().count() <= MAX_FIELD_CHARS).then_some(v.as_str())
+    (v.chars().nth(field_cap(catalogue, key)).is_none()).then_some(v.as_str())
 }
 
 /// Whether `id` names a style of `catalogue` in `doc`: a built-in one, or a record in the project
@@ -164,10 +178,10 @@ pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, o
     if let Some(value) = cat.project_field.and_then(|read| read(doc, id, f.key)).filter(|v| defaults::accepts(f.kind, v)) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Project, cat.word, id).and_then(|r| stored(r, f.key)).and_then(parse) {
+    if let Some(value) = record(doc, StyleLayer::Project, cat.word, id).and_then(|r| stored(r, cat.word, f.key)).and_then(parse) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Standard, cat.word, id).and_then(|r| stored(r, f.key)).and_then(parse) {
+    if let Some(value) = record(doc, StyleLayer::Standard, cat.word, id).and_then(|r| stored(r, cat.word, f.key)).and_then(parse) {
         return Resolved { value, from: Source::Standard };
     }
     if let Some(value) = cat.builtin(id).and_then(|b| b.value(f.key)) {
@@ -326,6 +340,10 @@ pub fn users(doc: &Document, catalogue: &str, id: &StyleRef) -> Count {
     let Some(cat) = self::catalogue(catalogue) else { return Count::default() };
     let value = id.text();
     let mut c = Count::default();
+    // Brief 057: a cable's `cable_type` is a plain cable property (cables have no registry level).
+    if cat.word == cable::WORD {
+        c.explicit = cable::users(doc, id).len();
+    }
     for entry in (cat.choices)() {
         c.explicit += doc.style_users(entry.key, &value).count();
         c.implicit += implicit(doc, cat, entry, id);
@@ -432,8 +450,13 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     if r.fields.len() > MAX_FIELDS_PER_STYLE {
         return Err(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields."));
     }
-    if r.fields.values().any(|v| v.chars().count() > MAX_FIELD_CHARS) {
-        return Err(format!("A field value is at most {MAX_FIELD_CHARS} characters."));
+    if let Some((k, _)) = r.fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.word, k)).is_some()) {
+        return Err(format!("{k} is at most {} characters.", field_cap(cat.word, k)));
+    }
+    // Brief 057 (design 057 §3.1): a rating's reference temperature is below the conductor's
+    // maximum.
+    if let Some(why) = crate::rating::check_style(cat.word, r) {
+        return Err(why);
     }
     // 050b (design 050 §5.4): one category per potential.
     if cat.word == "wire"
@@ -523,7 +546,8 @@ mod tests {
                 assert!(matches!(e.kind, Kind::Style(w) if w == c.word), "{}", e.key);
                 // 050b: the category choice's built-in is `none`, no category.
                 let b = StyleRef::parse(&builtin_word(e));
-                let none = c.word == "wire" && builtin_word(e) == wire::NONE;
+                // 057: no cable type and no rating table, either.
+                let none = matches!(c.word, "wire" | "cable" | "ratingtable") && builtin_word(e) == wire::NONE;
                 assert!(none || b.as_ref().is_some_and(|b| c.builtin(b).is_some()), "{}: built-in names no built-in style", e.key);
             }
         }

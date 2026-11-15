@@ -115,14 +115,19 @@ fn the_demo_nets_and_wire_numbers() {
     let points = ecad_cadcraft::wires::net_points(&doc, k04);
     assert_eq!(points, ["-H01:X1", "-K01:14", "-K01:A1", "-S02:14"], "{points:?}");
     // Checks: -M01:PE, and the three L continuations whose partners are not drawn; brief 024's
-    // count of devices without a part number (-S01 among them, design 024 §13).
+    // count of devices without a part number (-S01 among them, design 024 §13); brief 057's open
+    // core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used).
+    // Brief 052: -K01's function =PUMP is stored, and no box, page or project says =PUMP.
     assert_eq!(
         checks,
         [
+            "CoreOpen 2/E3 -W01 core GNYE has no wire; connect it, or tick Not used",
+            "FunctionUnused 2/E1 -K01 is =PUMP, but none of its symbols is in =PUMP",
             "LonelyContinuation 2/D3 L1",
             "LonelyContinuation 2/D3 L2",
             "LonelyContinuation 2/D3 L3",
             "Unconnected 3/E3 -M01:PE",
+            "NoFunction  10 devices have no function",
             "NoPartNumber  7 devices have no part number"
         ],
         "{checks:#?}"
@@ -135,19 +140,43 @@ fn the_demo_nets_and_wire_numbers() {
 fn the_demo_locations_reports_and_generated_pages() {
     let mut mcp = EcadMcp::in_memory("demo", 0xDE30, Options { write: true, agent: None }).unwrap();
     demo::run(&mut mcp, demo::COMMANDS).unwrap_or_else(|e| panic!("{e}"));
-    let doc = mcp.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap();
-    let at = |tag: &str| {
-        let l = ecad_cadcraft::locations::resolve(&doc, doc.components_tagged(tag)[0]);
-        (l.value.unwrap_or_default(), l.source.word())
+    let read = |mcp: &mut EcadMcp| mcp.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap();
+    let doc = read(&mut mcp);
+    // Brief 052 (design 052 §5.1): nothing is inherited; the project, the page and the box only
+    // propose, at each device's go-to symbol.
+    let proposal = |doc: &ecad_model::Document, tag: &str| {
+        let c = doc.components_tagged(tag)[0];
+        let r = &doc.representations[&ecad_cadcraft::reps::goto(doc, c, None).unwrap()];
+        let x = ecad_cadcraft::locations::rep_context(doc, r, &mut ecad_cadcraft::locations::BoxCache::default());
+        (ecad_cadcraft::locations::resolve(doc, c).value, x.value.unwrap_or_default(), x.source.word())
     };
-    assert_eq!(at("-K01"), ("+CP1".to_string(), "project"));
-    assert_eq!(at("-G01"), ("+CP1".to_string(), "project"));
-    assert_eq!(at("-M01"), ("+FIELD".to_string(), "page"));
-    assert_eq!(at("-X02"), ("+JB1".to_string(), "box"));
-    // -K01's NC contact on page 3 reads +CP1-K01; its coil on page 2 reads -K01.
+    // Brief 052d: each device took its proposal when placed; the demo's +JB1 box moved -X02.
+    let s = |v: &str| Some(v.to_string());
+    assert_eq!(proposal(&doc, "-K01"), (s("+CP1"), "+CP1".to_string(), "project"));
+    assert_eq!(proposal(&doc, "-G01"), (s("+CP1"), "+CP1".to_string(), "project"));
+    assert_eq!(proposal(&doc, "-M01"), (s("+FIELD"), "+FIELD".to_string(), "page"));
+    assert_eq!(proposal(&doc, "-X02"), (s("+JB1"), "+JB1".to_string(), "box"));
+    // Accept every device's proposal, as a person does from the inspector's Use link.
+    let tagged: Vec<(ecad_model::ComponentId, String)> = doc
+        .components
+        .keys()
+        .filter(|c| ecad_cadcraft::locations::is_device(&doc, **c))
+        .filter_map(|c| {
+            let r = &doc.representations[&ecad_cadcraft::reps::goto(&doc, *c, None)?];
+            ecad_cadcraft::locations::rep_context(&doc, r, &mut ecad_cadcraft::locations::BoxCache::default()).value.map(|v| (*c, v))
+        })
+        .collect();
+    for (c, v) in tagged {
+        mcp.with_session(|s, _| s.execute("setlocation", &serde_json::json!({"component": c.hex(), "value": v})).map(|_| ()))
+            .unwrap()
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
+    let doc = read(&mut mcp);
+    // -K01 (=PUMP, +CP1): its NC contact on page 3 (+FIELD) reads =PUMP+CP1-K01; its coil on page
+    // 2 =PUMP-K01 (no page or project function).
     let texts = |i: usize| -> Vec<String> { ecad_cadcraft::devices::texts_on_page(&doc, doc.page_order[i]).into_iter().map(|t| t.value).collect() };
-    assert!(texts(2).contains(&"+CP1-K01".to_string()), "{:?}", texts(2));
-    assert!(texts(1).contains(&"-K01".to_string()));
+    assert!(texts(2).contains(&"=PUMP+CP1-K01".to_string()), "{:?}", texts(2));
+    assert!(texts(1).contains(&"=PUMP-K01".to_string()), "{:?}", texts(1));
     // Reports: no wire on the BOM; the cable row.
     let o = ecad_cadcraft::outputs::Outputs::build(&doc);
     let bom = o.bom(ecad_cadcraft::outputs::Group::Location);

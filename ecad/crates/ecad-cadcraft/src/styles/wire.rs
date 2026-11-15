@@ -67,7 +67,12 @@ static FIELDS: &[Field] = &[
     Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(""), over: None },
-    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, builtin: Value::Number(0.0), over: None },
+    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, builtin: Value::Number(0.0), over: None }, // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the category's wires.
+    crate::rating::fields::RATED_CURRENT,
+    crate::rating::fields::RATED_AT,
+    crate::rating::fields::MAX_TEMPERATURE,
+    crate::rating::fields::MATERIAL,
+    crate::rating::fields::CONDUCTOR_CLASS,
 ];
 
 const fn cat(id: &'static str, name: &'static str, values: &'static [(&'static str, Value<'static>)]) -> Builtin {

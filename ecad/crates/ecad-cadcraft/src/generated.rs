@@ -932,7 +932,15 @@ fn content(
     let mut last_dot: Option<(usize, f64)> = None;
     for row in page_rows {
         if row.heading {
-            d.text((l + 1.0, y - ROW_MM / 2.0), heading, row.cells.first().map_or("", String::as_str), HAlign::Left, None, Some(r - l - 2.0));
+            let text = row.cells.first().map_or("", String::as_str);
+            if text == MISSING {
+                // Brief 052 (tester 052, finding 6): devices with no location head a `?` group,
+                // flagged like a missing cell: the mark in the first column's width.
+                let w = widths.first().copied().unwrap_or(r - l).min(r - l);
+                d.out.extend(missing_mark(doc, d.p(l, y - ROW_MM), d.p(l + w, y), d.k, heading));
+            } else {
+                d.text((l + 1.0, y - ROW_MM / 2.0), heading, text, HAlign::Left, None, Some(r - l - 2.0));
+            }
             last_dot = None;
         } else {
             let mut x = l;

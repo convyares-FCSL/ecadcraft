@@ -145,6 +145,8 @@ struct Section {
     /// Greyed buttons with their reason.
     later: Vec<(&'static str, &'static str)>,
     note: Option<&'static str>,
+    /// Brief 057: the Rating section's result (drawn by [`super::rating`]).
+    rating: Option<super::rating::Panel>,
 }
 
 /// The panel's contents.
@@ -156,6 +158,8 @@ struct Detail {
     go: Option<(String, Go)>,
     /// Its checks (an empty list: "No checks on …").
     checks: Vec<(String, Tone)>,
+    /// Brief 057 (owner): the open cores' fixes, as buttons under the checks.
+    core_fixes: Vec<ecad_cadcraft::checks::Fix>,
     /// The Devices row's property editor goes after the head.
     editor: bool,
     sections: Vec<Section>,
@@ -210,6 +214,7 @@ fn device(t: &Trial, c: ComponentId) -> Option<Detail> {
         go,
         checks,
         editor: true,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Symbol",
@@ -268,6 +273,7 @@ fn terminal(t: &Trial, k: super::terminals::TermKey) -> Option<Detail> {
         go: row.go.map(|(pg, at)| (place.clone(), Go::Place(pg, at))),
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Identity",
@@ -325,6 +331,7 @@ fn channel(t: &Trial, k: super::plc::IoKey) -> Option<Detail> {
         go,
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Signal",
@@ -382,6 +389,7 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
         go: v.gos.get(k).copied().flatten().map(|(pg, at)| (page.clone(), Go::Place(pg, at))),
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Identity",
@@ -404,6 +412,7 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
                 ],
                 ..Section::default()
             },
+            rating_section(t, v.source.rating(k), &v.source.rating.methods),
             Section {
                 title: "Ends",
                 props: vec![later("Ferrules", CABLE_MANAGER_COMES), later("Marker", CABLE_MANAGER_COMES), later("Length", CABLE_MANAGER_COMES)],
@@ -411,6 +420,20 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
             },
         ],
     })
+}
+
+/// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
+/// result. A wire or cable with no rating data shows none, so a project that does not rate is
+/// not nagged.
+fn rating_section(_t: &Trial, r: Option<&ecad_cadcraft::rating::Rating>, methods: &[&'static str]) -> Section {
+    let Some(r) = r else { return Section::default() };
+    let methods = if methods.is_empty() { ecad_cadcraft::rating::dataset::METHODS.to_vec() } else { methods.to_vec() };
+    Section {
+        title: "Rating",
+        hint: r.summary(),
+        rating: Some(super::rating::Panel { rating: r.clone(), methods, writable: false }),
+        ..Section::default()
+    }
 }
 
 fn cable(t: &Trial, k: usize) -> Option<Detail> {
@@ -421,6 +444,14 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
     let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
     let mut checks: Vec<(String, Tone)> =
         rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default();
+    // Brief 057 (owner rule): each open core, as an error, with its two fixes.
+    let mut core_fixes = Vec::new();
+    for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
+        checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
+        if let Some(cable) = v.ids.get(k) {
+            core_fixes.push(ecad_cadcraft::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
+        }
+    }
     let spare = rows.text(k, "Spare");
     if spare.parse::<u32>().is_ok_and(|n| n > 0) {
         checks.push((format!("{spare} spare core{}.", if spare == "1" { "" } else { "s" }), Tone::Neutral));
@@ -433,6 +464,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
         go: v.gos.get(k).copied().flatten().map(|(pg, at)| ("Page".to_string(), Go::Place(pg, at))),
         checks,
         editor: false,
+        core_fixes,
         sections: vec![
             Section {
                 title: "Identity",
@@ -453,6 +485,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
                 ],
                 ..Section::default()
             },
+            rating_section(t, v.source.rating(k), &v.source.rating.methods),
             Section {
                 title: "Ends",
                 props: vec![
@@ -483,6 +516,7 @@ fn report(t: &Trial, k: usize) -> Option<Detail> {
         go: None,
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Contents",
@@ -558,6 +592,8 @@ fn section_head(ui: &mut egui::Ui, id: egui::Id, title: &str, hint: &str) -> boo
 enum Out {
     Go(Go),
     Panel(crate::project_panel::Action),
+    /// Brief 057: a `rating` call from the Rating section.
+    Run(&'static str, serde_json::Value),
 }
 
 /// Draw the right panel for the Project workspace in `rect`.
@@ -605,6 +641,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                     panel::status_pill(ui, *tone, c, c);
                 }
             }
+            // Brief 057 (owner): Go to the open end, for each open core (the core table's Not
+            // used toggle is right there, so no tick button here).
+            for f in &d.core_fixes {
+                if ui.add(prim::Button::new(crate::checks_panel::GO_TO_OPEN_END).small()).clicked() {
+                    out.push(Out::Panel(crate::project_panel::Action::CoreFix(*f, 1)));
+                }
+            }
             ui.add_space(space::S);
             rule(ui);
             if d.editor {
@@ -614,9 +657,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                 }
                 rule(ui);
             }
-            for sec in &d.sections {
+            for sec in d.sections.iter().filter(|s| !s.title.is_empty()) {
                 let id = egui::Id::unique(("ecad.project.detail", sec.title));
                 if section_head(ui, id, sec.title, &sec.hint) {
+                    if let Some(rp) = &sec.rating {
+                        let rp = super::rating::Panel { writable, ..rp.clone() };
+                        out.extend(super::rating::show(ui, &rp).into_iter().map(|(c, v)| Out::Run(c, v)));
+                    }
                     for p in &sec.props {
                         prop_row(ui, p);
                     }
@@ -650,6 +697,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             }
             Out::Go(Go::Place(pg, at)) => t.goto_place(pg, at),
             Out::Panel(a) => t.panel_action(a),
+            Out::Run(cmd, params) => {
+                let _ = t.run_value(cmd, params);
+            }
         }
     }
 }

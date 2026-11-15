@@ -364,8 +364,13 @@ fn noun(s: &Starter) -> &'static str {
         "lamp" => "lamp",
         "motor3" | "motor1" => "motor",
         "trafo" => "transformer",
-        _ => "main symbol",
+        _ => "head symbol",
     }
+}
+
+/// The noun of head representation `h`, for "already has a …" and "has two …s".
+pub(crate) fn head_noun(doc: &Document, h: RepresentationId) -> &'static str {
+    doc.representations.get(&h).and_then(|r| rep_starter(doc, r)).map_or("head symbol", noun)
 }
 
 // ---------------------------------------------------------------- labels (§3.1)
@@ -411,14 +416,9 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             Err(format!("A {} joins a connector only: place it with Place ▸ Connector, or name a connector.", s.name.to_lowercase()))
         }
         Kind::Fixed { exclusive } => {
-            if exclusive {
-                let has = doc
-                    .representations_of(Subject::Component(c))
-                    .filter_map(|(_, r)| rep_starter(doc, r))
-                    .find(|x| matches!(x.kind, Kind::Fixed { exclusive: true }));
-                if let Some(x) = has {
-                    return Err(format!("{who} already has a {}.", noun(x)));
-                }
+            // Design 052 §3.4: the device's head by type, whichever symbol was placed first.
+            if exclusive && let Some(h) = crate::reps::head(doc, c) {
+                return Err(format!("{who} already has a {}.", head_noun(doc, h)));
             }
             let labels = s.labels();
             if let Some(l) = labels.iter().find(|l| used.contains(*l)) {
@@ -518,7 +518,7 @@ pub fn plan_place(
                     subject: Subject::Component(c),
                     page,
                     form: Form::Symbol,
-                    role: "main".into(),
+                    role: s.key.into(),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
@@ -605,10 +605,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     let mut new_terminal: BTreeMap<TerminalId, TerminalId> = BTreeMap::new();
     let mut ops_add = Vec::new();
     let mut ops_reps = Vec::new();
-    let mut exclusive_taken = doc
-        .representations_of(Subject::Component(into))
-        .filter_map(|(_, r)| rep_starter(doc, r))
-        .any(|x| matches!(x.kind, Kind::Fixed { exclusive: true }));
+    let mut exclusive_taken = crate::reps::head(doc, into).is_some();
     let who = tag_words(doc, into);
     // `into`'s point names, unlabelled points by their key (review of #92, 1).
     let into_labels: BTreeSet<String> = doc.terminals_of(into).map(|(t, _)| label_of(doc, t)).collect();
@@ -685,7 +682,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
             };
             cps.insert(nt, *at);
         }
-        let role = if r.role == "main" { starter.map_or_else(|| r.role.clone(), |s| s.key.to_string()) } else { r.role.clone() };
+        let role = r.role.clone();
         let nr: RepresentationId = ids.fresh();
         renamed.push((*rid, nr));
         ops_reps.push((
@@ -1461,10 +1458,14 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
     reps.sort_by_key(|(n, rid, _)| (*n, *rid));
     let mut v = json!({ "component": c.hex() });
     for (key, _) in PROPERTIES {
-        v[key] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
+        // Brief 052: a function or location shows its code; its stored key is `<key>_key`.
+        v[key] = props.get(key).map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
+        if crate::designations::Aspect::of_property(key).is_some() {
+            v[format!("{key}_key")] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
+        }
     }
-    // Brief 024 (design 024 §3.4): the location shown and where it comes from, and each symbol's
-    // context.
+    // Brief 052 (design 052 §5.1): the location stored (never derived), and each symbol's own
+    // location (overrides, §5.2) and context (what a box or page there proposes).
     let mut boxes = crate::locations::BoxCache::default();
     let loc = crate::locations::resolve_with(doc, c, &mut boxes);
     v["location_shown"] = loc.value.map_or(Value::Null, Value::String);
@@ -1472,6 +1473,8 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
     for (_, rid, x) in &mut reps {
         if let Some(r) = doc.representations.get(rid) {
             x["context"] = crate::locations::rep_context(doc, r, &mut boxes).value.map_or(Value::Null, Value::String);
+            x["location"] = crate::locations::rep_location(doc, c, r).value.map_or(Value::Null, Value::String);
+            x["type"] = json!(crate::reps::rep_type(doc, r).word());
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
@@ -1570,8 +1573,10 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    if loc.value.is_some() || props.contains_key("function") {
-        lines.push(format!("Location: {words}   Function: {}", get("function")));
+    if loc.key.is_some() || props.contains_key("function") {
+        let function = crate::locations::resolve_function(doc, c);
+        let function = if function.key.is_some() { function.text() } else { String::new() };
+        lines.push(format!("Location: {words}   Function: {function}"));
     }
     if let Some(r) = doc.representations.get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());

@@ -203,8 +203,17 @@ impl FrameInput {
             drawing_number: prop(DRAWING_NUMBER),
             status: prop(STATUS),
             page_title: doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default(),
-            function: inherited(FUNCTION_KEY),
-            location: inherited(LOCATION_KEY),
+            // Brief 052: stored as entry keys of the project's list; the title block shows codes.
+            function: crate::designations::shown_text(
+                doc,
+                crate::designations::Aspect::Function,
+                Some(&inherited(FUNCTION_KEY)).filter(|v| !v.is_empty()).map(String::as_str),
+            ),
+            location: crate::designations::shown_text(
+                doc,
+                crate::designations::Aspect::Location,
+                Some(&inherited(LOCATION_KEY)).filter(|v| !v.is_empty()).map(String::as_str),
+            ),
             page: book.number(doc, page),
             rev: crate::revisions::rev_box(doc, false),
             next_page,
@@ -261,6 +270,17 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         // Review of #110, 2: switching one standard for another may change its frame records and
         // its `print.frame.style`.
         Op::SetStandard { before, after } => before != after,
+        // Brief 052 (design 052 §8.2a, tester 052 finding 1): a rename in the project's list
+        // reaches the title block when it shows the entry's old code.
+        Op::SetProperty { object: ObjectRef::Project, key, before, .. } if crate::designations::is_list_property(key) => {
+            crate::designations::parse_list_property(key).is_some_and(|(a, _, is_code)| {
+                let field = match a {
+                    crate::designations::Aspect::Function => &shown.function,
+                    crate::designations::Aspect::Location => &shown.location,
+                };
+                is_code && before.as_deref().is_some_and(|b| b == field || shown.project.values().any(|v| v == b))
+            })
+        }
         // Brief 055 (design 055 §10.1): a project key the block's fields read (its bound key
         // set), the defaults pages inherit, and the revision keys; any other key redraws nothing.
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {

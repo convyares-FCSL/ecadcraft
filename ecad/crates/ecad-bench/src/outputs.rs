@@ -12,6 +12,10 @@
 //! - **symin**: one symbol moved into the box and out again.
 //! - **projloc**: the project's `location` changed (the one project-wide case: devices whose
 //!   location comes from the project).
+//! - **renamebench** (brief 052, design 052 §8.4): an entry of the project's list used by up to
+//!   500 devices renamed (one `SetProperty`; its users' pages redrawn or marked stale, their rows
+//!   re-keyed). **mergebench**: an entry used by as many devices merged into another (one
+//!   `SetProperty` per user).
 //! - **bomupd**: a part-number edit with the models kept (Reports and a BOM page open).
 //! - **wireupd**: a wire added between two connection points (then undone).
 //!
@@ -39,6 +43,11 @@ pub struct MeasuredOutputs {
     pub plainmove_ms: f64,
     pub symin_ms: f64,
     pub projloc_ms: f64,
+    /// Brief 052 (design 052 §8.4): a rename and a merge of an entry used by `designation_users`
+    /// devices.
+    pub renamebench_ms: f64,
+    pub mergebench_ms: f64,
+    pub designation_users: usize,
     pub bomupd_ms: f64,
     pub wireupd_ms: f64,
     /// The most rows an ordinary edit recomputed, and the devices in the project.
@@ -200,6 +209,28 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         }
         out.projloc_ms = median(&mut projloc);
         out.bomupd_ms = median(&mut bomupd);
+        // Brief 052 (design 052 §8.4): rename and merge an entry used by up to 500 devices.
+        let users: Vec<String> = devices.iter().take(500).map(|c| c.hex()).collect();
+        out.designation_users = users.len();
+        run(&mut s, "setlocation", json!({"components": users, "value": "+R0"}))?;
+        let mut renamebench = Vec::new();
+        let mut mergebench = Vec::new();
+        for i in 0..runs {
+            renamebench.push(timed(
+                &mut s,
+                "designationedit",
+                json!({"aspect": "location", "code": format!("+R{i}"), "to": format!("+R{}", i + 1)}),
+            )?);
+            out.work = out.work.max(work(&project, &mut s));
+            run(&mut s, "setlocation", json!({"components": users, "value": format!("+M{i}")}))?;
+            mergebench.push(timed(
+                &mut s,
+                "designationmerge",
+                json!({"aspect": "location", "from": format!("+M{i}"), "into": format!("+R{}", i + 1)}),
+            )?);
+        }
+        out.renamebench_ms = median(&mut renamebench);
+        out.mergebench_ms = median(&mut mergebench);
         // A wire between two free points (then undone).
         let mut wireupd = Vec::new();
         for _ in 0..runs {

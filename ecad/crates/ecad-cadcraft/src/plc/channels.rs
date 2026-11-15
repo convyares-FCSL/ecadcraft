@@ -424,6 +424,9 @@ pub(crate) fn run_place_channel(
             wire = Some(land.conductor);
             ops.extend(land.ops);
         }
+        // Brief 052d (design 052 §5.3): the place proposes for the card.
+        let proposed = crate::proposals::plan_place(p, params, card, page, pl.origin, None)?;
+        ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
         p.last_placed = Some((starter.key.to_string(), card));
         let doc = p.ledger.document();
@@ -431,7 +434,7 @@ pub(crate) fn run_place_channel(
         let pins: Vec<String> = cell.terminals.iter().map(|(_, _, pin, _)| pin.clone()).collect();
         let on = wire.map(|w| format!(" on wire {}", crate::slash::wire_name(doc, w))).unwrap_or_default();
         let message = format!("Placed {card_tag} channel {} ({}){on}.", j.index + first, pins_words(&pins));
-        Ok(json!({
+        let mut v = json!({
             "component": card.hex(),
             "tag": card_tag,
             "joined": !new,
@@ -442,7 +445,9 @@ pub(crate) fn run_place_channel(
             "symbol": starter.key,
             "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, r), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
-        }))
+        });
+        crate::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);
+        Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {
         s.echo(m.to_string());

@@ -282,19 +282,20 @@ pub(crate) fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::s
 }
 
 /// Plan one terminal symbol of `strip` labelled `label` at `at` (a join: its own connection
-/// point keyed by its label, as 018's joins are).
+/// point keyed by its label, as 018's joins are). `first`: a new strip's first symbol, which shows
+/// the definition's own point. Every symbol's role is its starter key (design 052 §4).
 #[allow(clippy::too_many_arguments)]
 fn terminal_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: ComponentId, label: &str, at: Pt, main: bool, role: &str,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: ComponentId, label: &str, at: Pt, first: bool, role: &str,
     ops: &mut Vec<Op>,
 ) -> TerminalId {
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let key = if main { "1".to_string() } else { label.to_string() };
+    let key = if first { "1".to_string() } else { label.to_string() };
     ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key) } });
     let placement = Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
     let mut cps = BTreeMap::new();
-    if !main {
+    if !first {
         cps.insert(t, Pt::new(0.0, 0.0));
     }
     ops.push(Op::LinkRepresentation {
@@ -303,7 +304,7 @@ fn terminal_symbol(
             subject: Subject::Component(strip),
             page,
             form: Form::Symbol,
-            role: if main { "main".into() } else { role.into() },
+            role: role.into(),
             items: vec![item],
             connection_points: cps,
         },
@@ -739,6 +740,9 @@ pub(crate) fn run_place_level(
         if let Some(l) = &land {
             ops.extend(l.ops.clone());
         }
+        // Brief 052d (design 052 §5.3): the place proposes for the strip.
+        let proposed = crate::proposals::plan_place(p, params, c, page, origin, None)?;
+        ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
         let doc = p.ledger.document();
@@ -781,6 +785,7 @@ pub(crate) fn run_place_level(
                 }
             }
         }
+        crate::proposals::finish_place(p, pg, c, strip.is_some(), &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

@@ -19,12 +19,14 @@
 //! Each view keeps an update map (design §8): a full rebuild only on first show, reload or a feed
 //! that rolled over; otherwise only the keys a commit touched are patched.
 
+pub mod cable_view;
 pub mod cables;
 pub mod card_editor;
 pub mod checks;
 pub mod detail;
 pub mod devices;
 pub mod plc;
+pub mod rating;
 pub mod report;
 pub mod reports;
 pub mod standards;
