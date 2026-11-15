@@ -1,51 +1,54 @@
-# ECAD workspace
+# ECAD
 
-All ECAD code lives here, as a Cargo workspace separate from CADCraft's (the parent directory).
+ECAD is an electrical CAD application built on CADCraft's drawing platform. It is **pre-alpha** and
+**desktop-only** (Windows and Linux). The last release is `ecad-v0.2.0` (14 November 2026); this
+branch carries the next one, `0.3.0-dev`. All ECAD code lives here, as a Cargo workspace separate
+from CADCraft's (the parent directory), which it uses by path.
 
-> **Status: bounded integration experiment, not an application.**
-> - **The only desktop program is a trial harness** (`apps/ecad-trial`). It is CADCraft's window
->   with the ECAD commands and one ECAD project at a time. **To build, run and try it, see
->   [`docs/quick-start.md`](docs/quick-start.md)**, the single maintained guide. It also records
->   what has been tried, and how.
-> - **Projects are saved as `.ecad` files** (persistence stage 2a): Open, Save and Save As, a
->   writer lock, and recovery from interrupted or damaged files. Native Windows and Linux are
->   supported: keep projects in a local folder (`C:\dev\ecad-projects` on Windows, the Linux home
->   folder on Linux and under WSL); other file systems are unverified.
-> - **A read-only debugger panel** (stage 2b) in the trial follows a selected object to its
->   ECAD IDs, model objects, transactions (with before/after values) and saved record bytes,
->   and keeps pending changes apart from saved history. The static inspector still loads
->   exported JSON snapshots (`ecad-inspect/2`).
+What it does today (the plan, release by release, is in [`docs/roadmap.md`](docs/roadmap.md)):
 
-Postponed work (the upstream sync policy of PR #5, libraries, checkpoints) is listed in
-[`docs/deferred-work.md`](docs/deferred-work.md).
+- **Projects as `.ecad` files**, with Open, Save and Save As, a writer lock, recovery from damaged
+  files, an undo history that is saved with the project, and branches of that history.
+- **Devices, wires and cables:** tagged components with several symbols each, wire categories and
+  numbers, cables and their cores, connectors with mating halves.
+- **Terminal strips and PLC:** strip pages built from the drawing; PLC racks, cards, channels and an I/O list.
+- **Checks and reports:** rule checks, wire and cable ratings, a bill of materials, and the PDF book.
+- **Agents over MCP:** an agent can read a project and, if allowed, draw in the running app. Its
+  edits are recorded under its own name.
 
-CADCraft crates are used by path; upstream files change only through the patches listed in
-[`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
+## Run it
 
-| Crate | Role | Depends on CADCraft |
-| --- | --- | --- |
-| `ecad-model` | authoritative document, typed IDs, ops, transactions, history | no |
-| `ecad-store` | storage media: the `Medium` trait, an in-memory medium with fault injection, and (native only) files on disk, the writer lock and the steps of an atomic replacement | no |
-| `ecad-file` | the `.ecad` format, version 1: records, canonical JSON, CRC and hash chain, JSON Lines, open with recovery, save with retry; on disk (native only): open with the writer lock, Save, Save As by temporary file and rename | no |
-| `ecad-inspect` | read-only snapshots and the runtime event log for developers | no |
-| `ecad-cadcraft` | adapter: projection, handle map, commit translation, ECAD commands, debugger snapshots and checks (provisional) | yes |
-| `apps/ecad-trial` | desktop trial harness: CADCraft's window plus one ECAD project, with Open, Save and Save As, and the debugger panel | yes (UI) |
-| `xtask` | `cargo xtask ci`: fmt, clippy, tests (slow set included), layering, upstream patch guard, wasm; `cargo xtask test-changed`: fast tests of the crates not pushed yet (`--with-dependents`: and the crates that depend on them, run by CI on PRs into dev); `cargo xtask wasm`: wasm build, warnings as errors; `cargo xtask clean-builds`: delete build folders and merged worktrees | — |
+**To build, run and try the app, see [`docs/quick-start.md`](docs/quick-start.md)**, the single
+maintained guide. The desktop program is currently `ecad-trial` (being renamed `ecad-desktop`).
+
+## Structure
+
+The code is split into crates in six layers, from the project model at the bottom to the programs
+at the top. See [`crates/README.md`](crates/README.md) for the layers, the rules between them
+(`cargo xtask layers`) and a README for every crate.
+
+## Commands
 
 ```sh
 cd ecad
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
-cargo xtask ci                                         # all gates, slow tests included (QA gate)
-cargo xtask test-changed                               # fast tests of the crates not pushed yet
-cargo xtask test-changed --base origin/dev --with-dependents   # and their dependents (CI runs this on PRs into dev)
-cargo xtask wasm                                       # library crates for wasm, warnings as errors (as CI)
-cargo test -p ecad-cadcraft --all-features                            # the integration experiment
-cargo run -p ecad-cadcraft --example experiment_snapshots -- ../target/ecad-snapshots
-# then open dev/ecad-inspector/page/index.html and load the snapshots
+cargo xtask test-changed       # fast tests of the crates you changed and have not pushed
+cargo xtask layers             # the layer rules and the crate READMEs
+cargo xtask ci                 # everything, slow tests included (the QA gate)
+cargo xtask bench              # the load benchmark (release build)
+cargo xtask clean-builds --root C:\dev\ecad-features   # delete build folders
 ```
 
-Docs: [`docs/quick-start.md`](docs/quick-start.md) (run and try the app),
-[`docs/experiment-report.md`](docs/experiment-report.md),
-[`docs/environments.md`](docs/environments.md), and the architecture proposal in
-`../docs/document-architecture-proposal.md`. Versions: product `0.3.0-dev`; incorporated
-CADCraft commit in [`UPSTREAM.md`](UPSTREAM.md); format versions are independent.
+How and when each check runs is in [`CLAUDE.md`](CLAUDE.md).
+
+## Docs
+
+- [`docs/quick-start.md`](docs/quick-start.md): run and try the app.
+- [`docs/roadmap.md`](docs/roadmap.md) and [`docs/features.md`](docs/features.md): what is planned and which branch holds each feature.
+- [`docs/glossary.md`](docs/glossary.md): the words used in everything a person sees.
+- [`docs/deferred-work.md`](docs/deferred-work.md): postponed work.
+- [`../docs/document-architecture-proposal.md`](../docs/document-architecture-proposal.md): the architecture.
+- [`docs/experiment-report.md`](docs/experiment-report.md): the report of the first integration experiment (October 2026), kept as history.
+- [`UPSTREAM.md`](UPSTREAM.md) is the CADCraft commit in use; upstream files change only through the patches in [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
+
+Format versions are independent of the product version.
