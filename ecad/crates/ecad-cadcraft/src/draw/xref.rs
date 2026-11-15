@@ -26,18 +26,6 @@ pub fn engine_valign(v: VAlign) -> cadcraft_engine::doc::VAlign {
     }
 }
 
-impl PartialEq<cadcraft_engine::doc::HAlign> for HAlign {
-    fn eq(&self, other: &cadcraft_engine::doc::HAlign) -> bool {
-        engine_halign(*self) == *other
-    }
-}
-
-impl PartialEq<cadcraft_engine::doc::VAlign> for VAlign {
-    fn eq(&self, other: &cadcraft_engine::doc::VAlign) -> bool {
-        engine_valign(*self) == *other
-    }
-}
-
 /// The table under device `dev`'s head (design 025 §4.2), laid out with CADCraft's fonts
 /// ([`crate::xref::table_measured`]).
 pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {

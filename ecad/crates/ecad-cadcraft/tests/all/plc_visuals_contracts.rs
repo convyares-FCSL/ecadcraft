@@ -388,7 +388,7 @@ fn f_a_card_at_180_keeps_its_name_block_upright_above() {
             _ => None,
         })
         .expect("the tag in the name block");
-    assert_eq!(tag.1, cadcraft_engine::doc::VAlign::Top, "top left, under the far edge");
+    assert_eq!(tag.1, ecad_cadcraft::xref::VAlign::Top, "top left, under the far edge");
     assert!(tag.0.y > runs[0].top, "above the points");
 }
 

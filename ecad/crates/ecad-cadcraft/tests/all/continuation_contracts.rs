@@ -4,10 +4,10 @@
 use std::collections::BTreeSet;
 
 use crate::common::{H, id};
-use cadcraft_engine::doc::{EntityKind, HAlign};
+use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::continuations::{self, CAPTION_KEY, CAPTION_RULE, TEXT_DERIVED};
 use ecad_cadcraft::project::Mapped;
-use ecad_cadcraft::xref::{self, Group, Places, RefIndex, Shape};
+use ecad_cadcraft::xref::{self, Group, HAlign, Places, RefIndex, Shape};
 use ecad_model::{ComponentId, ObjectRef, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 

@@ -1,0 +1,25 @@
+[package]
+name = "ecad-electrical"
+description = "The electrical rules of an ECAD project: devices, wires, cables, terminals, references, checks, reports and the page layouts they decide, without a drawing engine (design 065 §1)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-model = { workspace = true }
+ecad-drawing-style = { workspace = true }
+# A starter symbol's definition carries its content hash (`ecad_file::definition_hash`; design 065
+# §1, owner 2026-11-15, option A).
+ecad-file = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Revision dates (calendar only; no clock: the time is passed in).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode, brief 013).
+ecad-model = { workspace = true, features = ["verify-invariants"] }

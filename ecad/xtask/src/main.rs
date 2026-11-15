@@ -223,7 +223,7 @@ const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-mcp", 5), ("ecad-trial", 54)
 /// Core crates that must not reach the file system, the environment, processes, the network or
 /// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is
 /// testable and portable; disk access belongs to `ecad-store`, and the time is passed in.
-const CORE_PURE: &[&str] = &["ecad-model", "ecad-file", "ecad-drawing-style"];
+const CORE_PURE: &[&str] = &["ecad-model", "ecad-file", "ecad-drawing-style", "ecad-electrical"];
 
 /// Direct OS access in Core code ([`CORE_PURE`]), each matched where it starts a name.
 const CORE_OS: &[&str] =
@@ -1375,12 +1375,23 @@ mod tests {
         let pick = |f: &str| crates_to_test(&meta, &repo, &[f.to_string()], true).unwrap();
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspect", "ecad-inspector", "ecad-mcp", "ecad-model", "ecad-trial"]
+            [
+                "ecad-bench",
+                "ecad-cadcraft",
+                "ecad-cli",
+                "ecad-electrical",
+                "ecad-file",
+                "ecad-inspect",
+                "ecad-inspector",
+                "ecad-mcp",
+                "ecad-model",
+                "ecad-trial"
+            ]
         );
         assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store", "ecad-trial"]
+            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-electrical", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store", "ecad-trial"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());

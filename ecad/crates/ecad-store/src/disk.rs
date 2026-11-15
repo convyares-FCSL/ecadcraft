@@ -452,6 +452,21 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// Whether `a` and `b` name the same file or folder: their canonical paths when both exist,
+/// otherwise their spelling (ignoring case and the separator on Windows). Unlike [`same_path`],
+/// two paths that do not exist yet can match.
+pub fn same_path_or_spelling(a: &Path, b: &Path) -> bool {
+    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        return x == y;
+    }
+    if cfg!(windows) {
+        let fold = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+        fold(a) == fold(b)
+    } else {
+        a == b
+    }
+}
+
 /// Whether something is at `path`.
 pub fn exists(path: &Path) -> bool {
     path.exists()

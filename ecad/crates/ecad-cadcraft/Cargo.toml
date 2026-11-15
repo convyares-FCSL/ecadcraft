@@ -32,6 +32,8 @@ ecad-model = { workspace = true }
 ecad-store = { workspace = true }
 ecad-file = { workspace = true }
 ecad-inspect = { workspace = true }
+# The electrical rules (design 065 §5 step 6), re-exported under their old module names.
+ecad-electrical = { workspace = true }
 # Brief 040: canvas colours and markers (`look::sheet`, `overlay_marks`), the sheet font and wire
 # dashes, from the drawing style (design 065 §1.1).
 ecad-drawing-style = { workspace = true }
