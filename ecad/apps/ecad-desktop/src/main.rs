@@ -1,9 +1,9 @@
-//! `ecad-desktop`: the ECAD desktop program, still a trial harness (experiment). It runs
+//! `ecad-desktop`: the ECAD desktop program, still an experiment. It runs
 //! ecad-app's [`ecad_app::App`] in an eframe window.
 //!
 //! Usage: `ecad-desktop [--snapshots <dir>] [<project.ecad>]`
 //!
-//! With a project file, the trial opens it; otherwise it starts a new, unsaved project.
+//! With a project file, the app opens it; otherwise it starts a new, unsaved project.
 //! `--snapshots <dir>` enables exporting inspector snapshots (a banner button, before a project is
 //! discarded, and at exit). Snapshots are diagnostic files, not saved projects.
 //! See `ecad/docs/quick-start.md` for building, running and the manual trial.
@@ -11,7 +11,7 @@
 //! `ECAD_STARTUP_TIMING=1` prints start-up timing marks on stderr and writes them to
 //! `ecad-startup-<time>.json` in the snapshots folder (or the temp folder); see [`ecad_desktop::startup`].
 //!
-//! Release builds on Windows open no console window beside the trial, as CADCraft's desktop app;
+//! Release builds on Windows open no console window beside the app, as CADCraft's desktop app;
 //! their `--help`, `--version` and usage errors are then not shown (use a debug build).
 #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -167,27 +167,27 @@ fn main() -> eframe::Result {
                     });
                 }
             }
-            let mut trial = App::start(snapshots, project.as_deref(), timing.as_mut())?;
+            let mut app = App::start(snapshots, project.as_deref(), timing.as_mut())?;
             // Brief 038: the shell's remembered state and page views; `--cad-ui` turns the
             // developer switch on.
-            trial.shell.state.cad_chrome = cad_ui;
+            app.shell.state.cad_chrome = cad_ui;
             let stored = |k: &str| cc.storage.and_then(|s| s.get_string(k));
-            trial.shell.load(stored(ecad_app::shell::state::SHELL_KEY).as_deref(), stored(ecad_app::shell::state::VIEWS_KEY).as_deref());
-            trial.library.load(stored(ecad_app::library::draft::DRAFTS_KEY).as_deref());
-            trial.library.tb.load(stored(ecad_app::library::title_blocks::draft::DRAFTS_KEY).as_deref());
+            app.shell.load(stored(ecad_app::shell::state::SHELL_KEY).as_deref(), stored(ecad_app::shell::state::VIEWS_KEY).as_deref());
+            app.library.load(stored(ecad_app::library::draft::DRAFTS_KEY).as_deref());
+            app.library.tb.load(stored(ecad_app::library::title_blocks::draft::DRAFTS_KEY).as_deref());
             // Brief 035: agent access on for this run (not remembered).
             if let Some(port) = control {
-                trial.agent.control_flag(port);
+                app.agent.control_flag(port);
             }
             if let Some(rs) = &cc.wgpu_render_state {
-                trial.cad.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
+                app.cad.set_wgpu(rs, eframe::egui_wgpu::depth_format_from_bits(0, STENCIL_BITS));
             }
             if let Some(t) = &mut timing {
                 t.mark(Step::SetWgpu);
             }
             let timing =
-                timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), trial.home.as_deref()), built: false });
-            Ok(Box::new(Desktop(trial, timing, window::FirstFit::new(restoring))))
+                timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), app.home.as_deref()), built: false });
+            Ok(Box::new(Desktop(app, timing, window::FirstFit::new(restoring))))
         }),
     )
 }

@@ -155,7 +155,7 @@ fn the_home_folder_is_known_without_the_home_variable() {
     assert!(!normalized.starts_with('~'));
 }
 
-fn trial_with_home(home: Option<&Path>) -> App {
+fn app_with_home(home: Option<&Path>) -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
@@ -182,7 +182,7 @@ fn files_save_and_reopen_under_awkward_folder_names() {
         let folder = d.0.join(name);
         std::fs::create_dir_all(&folder).unwrap();
         let typed = folder.join("demo").display().to_string();
-        let mut t = trial_with_home(None);
+        let mut t = app_with_home(None);
         assert_eq!(save_as(&mut t, &typed), None, "{typed}");
         let want = ecad(&folder.join("demo"));
         assert_eq!(t.status().unwrap().file.path.as_deref(), Some(want.as_str()));
@@ -197,7 +197,7 @@ fn files_save_and_reopen_under_awkward_folder_names() {
 fn tilde_paths_save_under_the_home_folder_with_either_separator() {
     let home = TempDir::new("home");
     for (typed, file) in [("~/first", "first.ecad"), (r"~\second", "second.ecad")] {
-        let mut t = trial_with_home(Some(&home.0));
+        let mut t = app_with_home(Some(&home.0));
         assert_eq!(save_as(&mut t, typed), None, "{typed}");
         let want = home.0.join(file).display().to_string();
         assert_eq!(t.status().unwrap().file.path.as_deref(), Some(want.as_str()), "{typed}");
@@ -213,7 +213,7 @@ fn tilde_paths_save_under_the_home_folder_with_either_separator() {
 fn no_folder_named_tilde_is_ever_made() {
     let cwd = std::env::current_dir().unwrap();
     let before = cwd.join("~").exists();
-    let mut t = trial_with_home(None);
+    let mut t = app_with_home(None);
     for typed in ["~/ecad-projects/demo", r"~\ecad-projects\demo", "~/demo"] {
         let e = save_as(&mut t, typed).unwrap_or_default();
         assert!(e.contains(HOME_UNKNOWN), "{typed}: {e}");
@@ -228,7 +228,7 @@ fn no_folder_named_tilde_is_ever_made() {
 #[test]
 fn the_default_folder_is_created_under_the_home_folder() {
     let home = TempDir::new("default");
-    let mut t = trial_with_home(Some(&home.0));
+    let mut t = app_with_home(Some(&home.0));
     let _ = t.cad.run("qsave", Value::Null);
     t.after_logic();
     assert_eq!(t.dialog().map(|d| d.1.to_string()).as_deref(), Some("~/ecad-projects/untitled.ecad"));
@@ -244,7 +244,7 @@ fn the_default_folder_is_created_under_the_home_folder() {
 
 #[test]
 fn the_dialog_suggests_the_platform_default_folder() {
-    let mut t = trial_with_home(None);
+    let mut t = app_with_home(None);
     let _ = t.cad.run("qsave", Value::Null);
     t.after_logic();
     let (kind, suggested, _) = t.dialog().unwrap();
@@ -264,7 +264,7 @@ fn the_dialog_suggests_the_platform_default_folder() {
 #[test]
 fn a_case_variant_spelling_of_the_own_file_is_the_same_file() {
     let d = TempDir::new("case");
-    let mut t = trial_with_home(None);
+    let mut t = app_with_home(None);
     let own = d.0.join("Demo.ecad").display().to_string();
     assert_eq!(save_as(&mut t, &own), None);
     t.cad.run("wire", json!({"points": [[0, 10], [40, 10]]})).unwrap();
@@ -289,7 +289,7 @@ fn a_case_variant_spelling_of_the_own_file_is_the_same_file() {
 #[test]
 fn a_reserved_device_name_is_refused_with_a_message() {
     let d = TempDir::new("reserved");
-    let mut t = trial_with_home(None);
+    let mut t = app_with_home(None);
     for name in ["CON.ecad", "con", "Nul.ecad", "LPT1"] {
         let typed = d.0.join(name).display().to_string();
         let e = save_as(&mut t, &typed).unwrap_or_default();
@@ -302,7 +302,7 @@ fn a_reserved_device_name_is_refused_with_a_message() {
 #[test]
 fn the_banner_names_the_file_as_saved() {
     let home = TempDir::new("banner");
-    let mut t = trial_with_home(Some(&home.0));
+    let mut t = app_with_home(Some(&home.0));
     assert!(status_line(&t.status().unwrap()).contains("not saved to a file yet, 1 change not saved."));
     assert_eq!(save_as(&mut t, "~/demo"), None);
     let file = home.0.join("demo.ecad").display().to_string();

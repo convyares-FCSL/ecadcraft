@@ -1,4 +1,4 @@
-//! Brief 028 headless in the trial (design 028 §12): fixture T, Place Terminals, a bridge, the
+//! Brief 028 headless in the app (design 028 §12): fixture T, Place Terminals, a bridge, the
 //! strip's offer, the Reports Terminals and Cables tabs, a terminal plan page and the Checks rows
 //! with their fixes. Screenshots are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu
 //! adapter exists; they are for the owner's approval, never committed.
@@ -35,7 +35,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 }
 
 #[test]
-fn terminal_strips_in_the_trial() {
+fn terminal_strips_in_the_app() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);

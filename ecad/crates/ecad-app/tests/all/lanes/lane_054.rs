@@ -1,8 +1,8 @@
-//! Brief 054a in the trial (design 054 §4.1, §5; AC13, AC14): Settings ▸ Pages and sheets writes
+//! Brief 054a in the app (design 054 §4.1, §5; AC13, AC14): Settings ▸ Pages and sheets writes
 //! one `setstyle` per control and lists the six types; the + Page picker adds a typed page after
 //! the open one, Esc writes nothing, and Panel layout is disabled.
 
-use crate::project_panel::{active, build, click, doc, head, ok, trial};
+use crate::project_panel::{active, build, click, doc, head, new_app, ok};
 
 use ecad_app::settings::{Section, pages};
 use ecad_app::shell::new_page;
@@ -13,7 +13,7 @@ use egui_kittest::kittest::Queryable;
 
 #[test]
 fn pages_and_sheets_lists_the_types_and_each_control_writes_one_setstyle() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     h.set_size(eframe::egui::vec2(1920.0, 1080.0));
     h.state_mut().open_settings(Section::Pages);
     h.run_steps(4);
@@ -43,7 +43,7 @@ fn pages_and_sheets_lists_the_types_and_each_control_writes_one_setstyle() {
 
 #[test]
 fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     ok(&mut h, r#"newpage {"title":"two"}"#);
     let d = doc(&mut h);
     let (p1, p2) = (d.page_order[0], d.page_order[1]);
@@ -86,7 +86,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
 fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     use crate::project_panel::{Deltas, take};
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     h.set_size(eframe::egui::vec2(1920.0, 1080.0));
     h.state_mut().cad.session.viewport_px = (1920.0, 1080.0);
     ok(

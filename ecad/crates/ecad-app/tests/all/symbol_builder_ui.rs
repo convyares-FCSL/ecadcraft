@@ -1,4 +1,4 @@
-//! Brief 048b and 048c in the trial at 1920 × 1080: the symbol builder in the Library (its tools,
+//! Brief 048b and 048c in the app at 1920 × 1080: the symbol builder in the Library (its tools,
 //! Details and Missing list, Save as version 1), the "Before saving" review in the drawer with a
 //! clash (Update selected pre-selected), Make symbol from lines on a page with its offers, the
 //! wheel's Edit and Make symbol slots, Update and Compare from Properties, and the owner's
@@ -18,7 +18,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, head, trial};
+use crate::project_panel::{doc, head, new_app};
 
 type H = Harness<'static, App>;
 
@@ -32,7 +32,7 @@ fn shell(deltas: Option<crate::mouse_tester::Deltas>) -> H {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h

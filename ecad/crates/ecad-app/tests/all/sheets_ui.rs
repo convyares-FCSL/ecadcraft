@@ -1,4 +1,4 @@
-//! Brief 019 in the trial (design 019 §12, checks C–F and J by the UI), headless with
+//! Brief 019 in the app (design 019 §12, checks C–F and J by the UI), headless with
 //! egui_kittest in a 1280×800 window: the Pages tree with folders, the Properties section drawn
 //! through CADCraft's seam, the Project Properties and Revisions dialogs, opening Rev A
 //! read-only, and the question a plain `u` across an issue stops at. The reference screenshots
@@ -7,7 +7,7 @@
 //! `019-props-device.png`, `019-projectinfo.png`, `019-projectsettings.png`, `019-revisions.png`,
 //! `019-rev-open.png`.
 
-use crate::project_panel::{Deltas, active, build, click, doc, fixture_p, head, ok, take, trial};
+use crate::project_panel::{Deltas, active, build, click, doc, fixture_p, head, new_app, ok, take};
 
 use ecad_app::project_panel::{self, Action};
 use ecad_app::{App, sheets_ui};
@@ -59,7 +59,7 @@ fn show_properties(h: &mut Harness<'static, App>) {
 #[test]
 fn sheets_folders_properties_and_revisions_by_the_ui() {
     let deltas: Deltas = Default::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     let (supply, field, spare) = fixture_p(&mut h);
     click(&mut h, "Page 1: Supply");
     h.state_mut().cad.run("zoom", serde_json::json!({"mode": "extents"})).unwrap();
@@ -277,7 +277,7 @@ fn the_demo_on_its_sheets() {
 /// redo), keeping what the user typed and has not sent.
 #[test]
 fn the_revisions_dialog_follows_undo_and_redo() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     let _ = fixture_p(&mut h);
     crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
@@ -300,7 +300,7 @@ fn the_revisions_dialog_follows_undo_and_redo() {
 /// tall window shows). Since brief 042 they are Settings ▸ Project's tabs: their OK row stays put.
 #[test]
 fn the_project_popouts_keep_their_size() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     let tall = 2000.0;
     h.set_size(egui::vec2(1920.0, tall));
     h.run_steps(3);

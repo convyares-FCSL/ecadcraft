@@ -1283,7 +1283,7 @@ fn run_undoissue(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Va
     })
 }
 
-/// Today's date `YYYY-MM-DD` (UTC; the trial fills the local date in the dialog), or `None`
+/// Today's date `YYYY-MM-DD` (UTC; the desktop app fills the local date in the dialog), or `None`
 /// where there is no clock.
 pub fn today() -> Option<String> {
     revisions::date_of_ms(crate::project::now_ms()?)

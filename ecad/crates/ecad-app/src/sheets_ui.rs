@@ -3,7 +3,7 @@
 //! a plain undo across an issued revision stops at, and the section drawn through CADCraft's
 //! `owner_properties` seam.
 //!
-//! Everything here only shows copies and returns what the user asked for; the trial runs it
+//! Everything here only shows copies and returns what the user asked for; the app runs it
 //! through the commands' JSON forms (`projectprops`, `revision`, `issuerevision`, `openrevision`,
 //! `undoissue`, `setprop`, `pageprops`), so each write is one transaction and one `u`.
 //!
@@ -932,8 +932,8 @@ pub fn issue_undo(ctx: &egui::Context, question: &str) -> Option<bool> {
     shown.footer.or(shown.closed.then_some(false))
 }
 
-/// What the Properties section shares between the trial and the seam closure: the copy it draws,
-/// and what the user asked for, taken by the trial after CADCraft's frame.
+/// What the Properties section shares between the app and the seam closure: the copy it draws,
+/// and what the user asked for, taken by the app after CADCraft's frame.
 #[derive(Debug, Default)]
 pub struct PropsShared {
     pub view: PropsView,

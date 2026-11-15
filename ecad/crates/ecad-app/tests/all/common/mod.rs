@@ -2,7 +2,7 @@
 //! temporary folder, and a pointer click.
 //!
 //! [`harness`] takes [`Opts`]; the defaults are the window most tests used (1920×1200, CADCraft's
-//! developer chrome on, a fresh trial with the hover delay off). Tests that need a different shape
+//! developer chrome on, a fresh app with the hover delay off). Tests that need a different shape
 //! say so in the options instead of copying the builder.
 
 #![allow(dead_code)]
@@ -16,9 +16,9 @@ use egui_kittest::Harness;
 
 use crate::mouse_tester::{Collect, Deltas};
 
-/// Where a harness's trial keeps remembered cable views.
+/// Where a harness's app keeps remembered cable views.
 pub(crate) enum Views {
-    /// Leave the trial's own setting (the tests isolate it from the developer's folder anyway).
+    /// Leave the app's own setting (the tests isolate it from the developer's folder anyway).
     Untouched,
     /// Remember nothing.
     Nothing,
@@ -32,13 +32,13 @@ pub(crate) struct Opts {
     chrome: bool,
     views: Views,
     deltas: Option<Deltas>,
-    trial: Option<App>,
+    app: Option<App>,
     panels: bool,
 }
 
 impl Opts {
     pub(crate) fn new() -> Self {
-        Opts { size: egui::vec2(1920.0, 1200.0), chrome: true, views: Views::Untouched, deltas: None, trial: None, panels: false }
+        Opts { size: egui::vec2(1920.0, 1200.0), chrome: true, views: Views::Untouched, deltas: None, app: None, panels: false }
     }
 
     pub(crate) fn size(mut self, w: f32, h: f32) -> Self {
@@ -69,9 +69,9 @@ impl Opts {
         self
     }
 
-    /// Use this trial instead of a fresh one.
-    pub(crate) fn trial(mut self, t: App) -> Self {
-        self.trial = Some(t);
+    /// Use this app instead of a fresh one.
+    pub(crate) fn app(mut self, t: App) -> Self {
+        self.app = Some(t);
         self
     }
 
@@ -82,11 +82,11 @@ impl Opts {
     }
 }
 
-/// A kittest harness around a trial, run for five frames.
+/// A kittest harness around an app, run for five frames.
 pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
-    let mut t = match opts.trial {
+    let mut t = match opts.app {
         Some(t) => t,
         None => {
             let mut t = App::new(None).unwrap();

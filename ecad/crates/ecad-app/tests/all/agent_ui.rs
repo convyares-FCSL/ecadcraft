@@ -1,4 +1,4 @@
-//! Brief 035 headless in the trial (design 035 §12, trial UI tests): the Agent access row in the
+//! Brief 035 headless in the app (design 035 §12, app UI tests): the Agent access row in the
 //! Developer section, the settings file, the banner's controls (Pause, Resume, Disconnect,
 //! Dismiss) and Undo session with and without the person's steps on top, by element name.
 
@@ -14,15 +14,15 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::bridge_contracts::{H, conductors, live_trial, person_wire, server, wire};
+use crate::bridge_contracts::{H, conductors, live_app, person_wire, server, wire};
 
 fn dir(what: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("ecad-035-{what}-{}", ecad_cadcraft::session_seed()))
 }
 
-/// A trial with its own settings folder, Settings ▸ Agent access open (brief 042 moved the row
+/// An app with its own settings folder, Settings ▸ Agent access open (brief 042 moved the row
 /// there from the Developer section).
-fn trial_with(settings: &std::path::Path) -> H {
+fn app_with(settings: &std::path::Path) -> H {
     ecad_cadcraft::install();
     let mut t = App::new(None).unwrap();
     t.agent.use_settings(Settings::at(settings));
@@ -41,7 +41,7 @@ fn trial_with(settings: &std::path::Path) -> H {
 #[test]
 fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
     let d = dir("row");
-    let mut h = trial_with(&d);
+    let mut h = app_with(&d);
     assert!(h.query_by_label(developer::AGENT_MODE).is_some());
     assert!(h.query_by_label(developer::AGENT_PORT).is_some());
     assert_eq!(h.state().agent.status_text(), "Off");
@@ -72,7 +72,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
 #[test]
 fn control_flag_shows_this_run_only_and_locks_the_mode() {
     let d = dir("flag");
-    let mut h = trial_with(&d);
+    let mut h = app_with(&d);
     let port = super::bridge_contracts::free_port();
     h.state_mut().agent.control_flag(port);
     h.run_steps(3);
@@ -88,7 +88,7 @@ fn a_port_in_use_says_so_and_an_unreadable_file_reads_as_off() {
     let d = dir("busy");
     std::fs::create_dir_all(&d).unwrap();
     std::fs::write(d.join(agent_access::FILE_NAME), "{ not json").unwrap();
-    let mut h = trial_with(&d);
+    let mut h = app_with(&d);
     assert_eq!(h.state().agent.pref.mode, Mode::Off);
     assert!(h.state().cad.session.log.iter().any(|l| l == agent_access::UNREADABLE), "said once in the history");
     let taken = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
@@ -103,7 +103,7 @@ fn a_port_in_use_says_so_and_an_unreadable_file_reads_as_off() {
 
 #[test]
 fn pause_refuses_agent_writes_until_resumed_and_disconnect_ends_the_session() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "wire", wire(0.0));
     assert!(h.query_by_label(b::ELEMENT).is_some(), "the banner is drawn");
@@ -129,7 +129,7 @@ fn pause_refuses_agent_writes_until_resumed_and_disconnect_ends_the_session() {
 
 #[test]
 fn undo_session_takes_back_the_agents_steps_as_the_persons_undos() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     let base = conductors(&mut h);
     a.exec(&mut h, "wire", wire(0.0));
@@ -147,7 +147,7 @@ fn undo_session_takes_back_the_agents_steps_as_the_persons_undos() {
 
 #[test]
 fn undo_session_asks_first_when_the_persons_steps_are_on_top() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     let base = conductors(&mut h);
     a.exec(&mut h, "wire", wire(0.0));

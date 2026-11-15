@@ -3,7 +3,7 @@
 //! radial wheel (1.14). Behaviour is today's; these check the layout the boards ask for, and write
 //! the screenshots for the side-by-side with the boards.
 
-use crate::project_panel::{doc, rev3_trial as trial};
+use crate::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::shell::state::RightTab;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, vec2};
@@ -35,8 +35,8 @@ fn window(deltas: Option<crate::mouse_tester::Deltas>) -> H {
         });
     };
     let mut h = match deltas {
-        Some(d) => b.renderer(crate::mouse_tester::Collect(d)).build_ui_state(app, trial()),
-        None => b.build_ui_state(app, trial()),
+        Some(d) => b.renderer(crate::mouse_tester::Collect(d)).build_ui_state(app, new_app()),
+        None => b.build_ui_state(app, new_app()),
     };
     h.run_steps(5);
     h

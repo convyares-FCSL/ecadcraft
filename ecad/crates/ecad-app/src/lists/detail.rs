@@ -622,7 +622,7 @@ fn draw_section(ui: &mut egui::Ui, sec: &Section, writable: bool) -> Vec<Out> {
     out
 }
 
-/// What the panel asks the trial for.
+/// What the panel asks the app for.
 #[derive(Debug, Clone, PartialEq)]
 enum Out {
     Go(Go),

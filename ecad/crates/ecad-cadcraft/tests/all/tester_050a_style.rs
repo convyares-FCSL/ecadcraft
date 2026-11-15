@@ -1156,7 +1156,7 @@ fn map_users_counts_explicit_and_implicit() {
 }
 
 /// §10: a `SetStyle` on `tag` marks the pages using it stale and redraws only the shown page; a
-/// commit touching no style changes no page drawing. (The table counters are in the trial's lane
+/// commit touching no style changes no page drawing. (The table counters are in the desktop app's lane
 /// test; here the page drawings are compared.)
 #[test]
 fn map_a_style_change_reaches_the_pages_that_use_it() {

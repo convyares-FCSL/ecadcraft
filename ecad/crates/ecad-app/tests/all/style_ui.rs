@@ -1,4 +1,4 @@
-//! Brief 050a in the trial, headless (egui_kittest; design 050 §7, §9): the standard header makes
+//! Brief 050a in the app, headless (egui_kittest; design 050 §7, §9): the standard header makes
 //! a standard after saying nothing is written until Enter; the catalogue strip shows the text,
 //! location and frame tables; a style's detail says the consequence first and applies a field in
 //! one transaction, patching one row (no rebuild); the inspector's Style row lists the text styles
@@ -133,7 +133,7 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
 /// with a style's detail, a 24 V wire's Category row in the inspector, and one page printed mono
 /// and in colour (PDF, beside the PNGs).
 #[test]
-#[ignore = "slow: a 1920×1080 trial and two prints; run by name for the screenshots"]
+#[ignore = "slow: a 1920×1080 app and two prints; run by name for the screenshots"]
 fn look_check_screenshots() {
     use std::sync::Arc;
     let deltas: crate::mouse_tester::Deltas = Arc::default();

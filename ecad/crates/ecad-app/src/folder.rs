@@ -20,10 +20,10 @@ macro_rules! default_folder {
     };
 }
 
-/// What the trial is, in full (the Project panel's experiment line shows [`NOTE`](crate::NOTE) with this as
+/// What the app is, in full (the Project panel's experiment line shows [`NOTE`](crate::NOTE) with this as
 /// its hover text; the top banner that showed it was removed, owner 2026-11-08).
 pub const BANNER: &str = concat!(
-    "ECAD TRIAL (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
+    "ECAD DESKTOP (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
     crate::default_folder!(),
     "); other locations are unverified."
 );

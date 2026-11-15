@@ -12,7 +12,7 @@ use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, rev3_trial};
+use crate::project_panel::{doc, rev3_app};
 
 type H = Harness<'static, App>;
 
@@ -31,7 +31,7 @@ fn window(deltas: Option<crate::mouse_tester::Deltas>) -> H {
                 t.ui(ui);
             });
         },
-        rev3_trial(),
+        rev3_app(),
     );
     h.run_steps(5);
     h

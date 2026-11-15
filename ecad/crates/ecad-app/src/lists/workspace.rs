@@ -454,7 +454,7 @@ impl App {
         }
     }
 
-    /// Brief 051: what Project ▸ PLC asks the trial for (design 051 §3.4, §3.5).
+    /// Brief 051: what Project ▸ PLC asks the app for (design 051 §3.4, §3.5).
     pub fn plc_action(&mut self, a: super::ListAction) {
         use super::ListAction;
         match a {

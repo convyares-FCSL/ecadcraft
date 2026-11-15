@@ -1,4 +1,4 @@
-//! The trial harness without a window: Save, Save As and Open through the trial's own file
+//! The app harness without a window: Save, Save As and Open through the app's own file
 //! dialog, the Save/Discard/Cancel close dialog (one page, two pages, quitting), read-only
 //! projects, snapshot export, and frames laid out headless. What these tests cannot show is how it
 //! looks and feels on a display.
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use ecad_app::{Answer, App, DialogKind, SNAPSHOT_NOTE};
 use serde_json::{Value, json};
 
-fn trial(snapshots: Option<PathBuf>) -> App {
+fn new_app(snapshots: Option<PathBuf>) -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     App::new(snapshots).unwrap()
@@ -19,7 +19,7 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let p = std::env::temp_dir().join(format!("ecad-trial-{name}-{}", ecad_store::disk::unique()));
+        let p = std::env::temp_dir().join(format!("ecad-app-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
@@ -68,7 +68,7 @@ fn save_via_dialog(t: &mut App, path: &str) {
 
 #[test]
 fn starts_with_one_new_project_and_nothing_to_lose() {
-    let mut t = trial(None);
+    let mut t = new_app(None);
     assert_eq!(t.cad.session.docs.len(), 1);
     assert!(t.project_open());
     assert!(t.cad.session.log.iter().any(|l| l.contains("PROJECT panel on the left lists the pages")));
@@ -86,7 +86,7 @@ fn starts_with_one_new_project_and_nothing_to_lose() {
 #[test]
 fn save_asks_for_a_file_name_once_then_saves_to_it() {
     let d = TempDir::new("save");
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     // The dialog suggests the default folder.
     let _ = t.cad.run("qsave", Value::Null);
@@ -126,7 +126,7 @@ fn save_as_over_an_existing_file_asks_once_more() {
     let d = TempDir::new("replace");
     let other = d.path("other.ecad");
     std::fs::write(&other, b"someone else's file\n").unwrap();
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.request_save_as();
     t.set_dialog_path(&other);
@@ -142,7 +142,7 @@ fn save_as_over_an_existing_file_asks_once_more() {
 #[test]
 fn a_failed_save_keeps_the_dialog_open_with_the_reason() {
     let d = TempDir::new("missing");
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.request_save_as();
     t.set_dialog_path(&d.missing_folder("p.ecad"));
@@ -160,10 +160,10 @@ fn a_failed_save_keeps_the_dialog_open_with_the_reason() {
 #[test]
 fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     let d = TempDir::new("close");
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.close_project();
-    assert!(t.pending_close().is_some(), "the trial asks");
+    assert!(t.pending_close().is_some(), "the app asks");
     assert!(t.cad.close_prompt().is_none(), "CADCraft's own prompt is not shown");
     t.answer(Answer::Cancel);
     assert!(t.project_open() && t.cad.session.doc_unsaved(0), "cancel keeps the project and its edit");
@@ -194,7 +194,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
 
 #[test]
 fn cancelling_the_save_as_of_a_close_keeps_the_project_open() {
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.close_project();
     t.answer(Answer::Save);
@@ -207,7 +207,7 @@ fn cancelling_the_save_as_of_a_close_keeps_the_project_open() {
 /// project and its unsaved edits stay); a click shows a page again; closing the project asks.
 #[test]
 fn the_page_tab_closes_quietly_and_closing_the_project_asks() {
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.cad.run("newpage", json!({"title": "2"})).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1, "one page window");
@@ -238,7 +238,7 @@ fn the_page_tab_closes_quietly_and_closing_the_project_asks() {
 #[test]
 fn quitting_with_unsaved_changes_asks_then_saves_or_discards() {
     let d = TempDir::new("quit");
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     assert!(t.request_quit(), "the window close is held");
     t.after_logic();
@@ -252,7 +252,7 @@ fn quitting_with_unsaved_changes_asks_then_saves_or_discards() {
     t.confirm_dialog();
     assert!(t.cad.quit_requested, "saved, then the app quits");
     assert!(std::path::Path::new(&d.path("quit.ecad")).exists());
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     assert!(t.request_quit());
     t.after_logic();
@@ -264,7 +264,7 @@ fn quitting_with_unsaved_changes_asks_then_saves_or_discards() {
 fn open_reopens_a_saved_project_with_its_history() {
     let d = TempDir::new("open");
     let path = d.path("p.ecad");
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.cad.run("newpage", json!({"title": "2"})).unwrap();
     save_via_dialog(&mut t, &path);
@@ -304,7 +304,7 @@ fn open_reopens_a_saved_project_with_its_history() {
 fn a_second_window_on_the_same_file_is_read_only() {
     let d = TempDir::new("second");
     let path = d.path("shared.ecad");
-    let mut first = trial(None);
+    let mut first = new_app(None);
     edit(&mut first);
     save_via_dialog(&mut first, &path);
     ecad_cadcraft::views::isolate_for_tests();
@@ -332,7 +332,7 @@ fn a_second_window_on_the_same_file_is_read_only() {
 fn snapshots_are_exported_as_diagnostics_only() {
     let dir = TempDir::new("snapshots");
     let snaps = dir.0.join("snaps");
-    let mut t = trial(Some(snaps.clone()));
+    let mut t = new_app(Some(snaps.clone()));
     edit(&mut t);
     let p = t.export_snapshot("manual").unwrap();
     let snap: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
@@ -345,9 +345,9 @@ fn snapshots_are_exported_as_diagnostics_only() {
     let files: Vec<_> = std::fs::read_dir(&snaps).unwrap().filter_map(Result::ok).map(|e| e.file_name()).collect();
     assert_eq!(files.len(), 2, "{files:?}");
     assert!(files.iter().any(|f| f.to_string_lossy().ends_with("-discarded.json")));
-    assert!(files.iter().all(|f| f.to_string_lossy().starts_with("ecad-trial-")));
+    assert!(files.iter().all(|f| f.to_string_lossy().starts_with("ecad-desktop-")));
     // Without a folder, export is refused rather than written somewhere unexpected.
-    let mut plain = trial(None);
+    let mut plain = new_app(None);
     assert!(plain.export_snapshot("manual").is_err());
 }
 
@@ -355,7 +355,7 @@ fn snapshots_are_exported_as_diagnostics_only() {
 fn frames_lay_out_headless_with_every_dialog() {
     let d = TempDir::new("frames");
     let ctx = eframe::egui::Context::default();
-    let mut t = trial(Some(d.0.join("snaps")));
+    let mut t = new_app(Some(d.0.join("snaps")));
     one_frame(&mut t, &ctx);
     edit(&mut t);
     let _ = t.cad.run("qsave", Value::Null);
@@ -384,10 +384,10 @@ fn frames_lay_out_headless_with_every_dialog() {
 /// (window selection, dragging) are replaced by their JSON forms; how they look on screen is not
 /// checked. Keep in step with `ecad/docs/quick-start.md`.
 #[test]
-fn the_quick_start_trial_runs_headless() {
+fn the_quick_start_runs_headless() {
     use cadcraft_engine::doc::EntityKind;
     let home = TempDir::new("quickstart-home");
-    let mut t = trial(None);
+    let mut t = new_app(None);
     t.home = Some(home.0.clone());
     let p = t.project().unwrap().clone();
     let ok = |t: &mut App, line: &str| {
@@ -511,7 +511,7 @@ fn the_quick_start_trial_runs_headless() {
 /// and an empty line is an Enter while one runs.
 #[test]
 fn the_command_field_keeps_trailing_enters() {
-    let mut t = trial(None);
+    let mut t = new_app(None);
     assert!(t.submit_command("line 0,0 10,0 ").is_none());
     assert!(t.cad.session.running.is_none(), "the trailing space ended LINE");
     assert!(t.submit_command("line 0,5 10,5").is_none());
@@ -536,7 +536,7 @@ fn the_file_dialog_takes_typed_text_and_enter() {
     use eframe::egui::{Event, Key, Modifiers};
     let d = TempDir::new("keys");
     let ctx = eframe::egui::Context::default();
-    let mut t = trial(None);
+    let mut t = new_app(None);
     edit(&mut t);
     t.request_save_as();
     frame_with(&mut t, &ctx, vec![]);

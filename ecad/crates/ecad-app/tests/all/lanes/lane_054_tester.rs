@@ -1,4 +1,4 @@
-//! Tester 054 in the trial, headless (egui_kittest) at 1920 × 1080: design 054 §4.1, §4.3, §4.4,
+//! Tester 054 in the app, headless (egui_kittest) at 1920 × 1080: design 054 §4.1, §4.3, §4.4,
 //! §5 and §12.1 AC13 and AC14. The + Page picker from the page well on page 101 highlights
 //! Schematic and adds 102 right after it; Esc writes nothing; Panel layout is disabled with its
 //! tooltip; Settings ▸ Pages and sheets writes one `setstyle` per control, and read-only disables
@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, head, trial};
+use crate::project_panel::{doc, head, new_app};
 
 type H = Harness<'static, App>;
 
@@ -22,7 +22,7 @@ fn shell() -> H {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h

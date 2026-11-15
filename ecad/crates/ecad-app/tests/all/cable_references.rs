@@ -11,7 +11,7 @@ use ecad_app::tools;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-fn trial() -> App {
+fn new_app() -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
@@ -20,7 +20,7 @@ fn trial() -> App {
 }
 
 fn harness(t: App) -> Harness<'static, App> {
-    common::harness(Opts::new().trial(t))
+    common::harness(Opts::new().app(t))
 }
 
 fn doc(t: &mut App) -> ecad_model::Document {
@@ -56,7 +56,7 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1);
     assert!(tab.groups.iter().all(|g| g.name != "Pages"), "the Project panel has the page actions");
 
-    let mut h = harness(trial());
+    let mut h = harness(new_app());
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let firsts = [
@@ -80,7 +80,7 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
 
 #[test]
 fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
-    let mut h = harness(trial());
+    let mut h = harness(new_app());
     h.run_steps(3);
     let before = head(h.state_mut());
     // The row's right-click (brief 041: its wheel): Rename asks the new title in a name box,
@@ -120,7 +120,7 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
 /// The quick start's click-only path (design 010 §12): reference, continue on a new page, go back.
 #[test]
 fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
-    let mut h = harness(trial());
+    let mut h = harness(new_app());
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let t = h.state_mut();
@@ -205,7 +205,7 @@ fn drawn_ref_texts(t: &mut App) -> (Option<ecad_model::PageId>, Vec<String>) {
 /// the document says.
 #[test]
 fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
-    let mut h = harness(trial());
+    let mut h = harness(new_app());
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let t = h.state_mut();

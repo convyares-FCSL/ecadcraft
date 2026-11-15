@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::project_panel::{active, click, doc, head, ok, trial};
+use crate::project_panel::{active, click, doc, head, new_app, ok};
 use ecad_app::shell::state::{Companion, LeftTab, PageView, ShellState, Views, Workspace};
 use ecad_app::shell::{layout, layout::Slots, tool_strip, top_bar};
 use ecad_app::{App, developer, project_panel, tools};
@@ -52,7 +52,7 @@ fn the_shell_state_round_trips_and_a_corrupt_value_starts_with_defaults() {
         assert!(line.is_some_and(|l| l.contains("starting with the default")), "{bad}");
     }
     // The line reaches the command history once.
-    let mut t = trial();
+    let mut t = new_app();
     t.shell.load(Some("{oops"), None);
     let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).build_ui_state(
         |ui, t: &mut App| {
@@ -90,7 +90,7 @@ fn shell_harness() -> Harness<'static, App> {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h
@@ -332,7 +332,7 @@ fn screenshots_of_the_four_workspaces() {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(3);
     h.state_mut().close_project();

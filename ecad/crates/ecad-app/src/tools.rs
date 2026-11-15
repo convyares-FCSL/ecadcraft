@@ -13,9 +13,9 @@
 //!   note on what to fill in, and run nothing. IDs and handles are filled in from the current
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
 //!   still holding a template's placeholder is refused instead of run.
-//! - **App** buttons act in the trial itself: Preview Reference (brief 016) and the **ECAD Dev**
+//! - **App** buttons act in the app itself: Preview Reference (brief 016) and the **ECAD Dev**
 //!   tab's developer tools (now the Project panel's Developer section: the command field, the debugger and snapshots), which
-//!   replaced the trial's top banner (owner, 2026-11-08).
+//!   replaced the app's top banner (owner, 2026-11-08).
 //!
 //! The command window stays because CADCraft's own command line takes a space as Enter: it can
 //! run `name {json}` only when the line has no space at all, so JSON with spaces or a title such
@@ -47,7 +47,7 @@ pub enum Kind {
     Run(&'static str),
     /// Open the ECAD command field with a template.
     Template,
-    /// Handled by the trial itself (no command).
+    /// Handled by the app itself (no command).
     App,
     /// Open or close the symbol search window (brief 018, [`crate::search`]).
     Search,

@@ -1,4 +1,4 @@
-//! Brief 026 headless in the trial (design 026 §14 check K): on the demo project, the Renumber
+//! Brief 026 headless in the app (design 026 §14 check K): on the demo project, the Renumber
 //! dialog by element name (preview, Apply, one step), the Devices tab's clash buttons (Swap first),
 //! Project settings' provisional tags, the Checks rows, the Issue Revision prompt with Finalise
 //! numbering now, and the merge dialog's Make them one device. Screenshots `026-renumber.png`,

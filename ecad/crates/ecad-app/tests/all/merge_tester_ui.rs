@@ -1,4 +1,4 @@
-//! Tester UI checks for brief 020b in the trial, following quick start §5J steps 9–13 by clicks:
+//! Tester UI checks for brief 020b in the app, following quick start §5J steps 9–13 by clicks:
 //! the branch bar's Merge into main… and Update from main… are visible and work (Cancel writes
 //! nothing), Keep main for all, a Now row's right-click menu, F2 renames, the graph reads the next
 //! 200 rows at the end of the list, and a version's details name the devices it added.

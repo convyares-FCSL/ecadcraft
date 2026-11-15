@@ -1,4 +1,4 @@
-//! Brief 055 (design 055 §12.1 H, I) in the trial, headless (egui_kittest): Library ▸ Title
+//! Brief 055 (design 055 §12.1 H, I) in the app, headless (egui_kittest): Library ▸ Title
 //! blocks lists the built-in read only; a frame made from it opens in the editor; a palette row
 //! dropped on the block is selected on whole millimetres with Value, Look and Box on the right;
 //! Sample off; Save is one transaction after the consequence line; Discard asks only when the

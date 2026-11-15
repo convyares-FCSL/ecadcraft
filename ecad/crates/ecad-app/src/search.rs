@@ -3,7 +3,7 @@
 //! Symbol with it (a symbol) or adds a symbol to it (a device).
 //!
 //! CADCraft's Tool Sets panel hosts buttons only, so the field lives in a small window of the
-//! trial's own, opened from the ECAD tab's Components group (**Find Symbol**); no CADCraft change.
+//! app's own, opened from the ECAD tab's Components group (**Find Symbol**); no CADCraft change.
 //! The same search is typed at the `place` prompt.
 //!
 //! It only reads the project, under the handle's short lock, and only when the query or the

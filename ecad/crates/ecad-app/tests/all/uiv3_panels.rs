@@ -4,7 +4,7 @@
 //! sections, the page well's hover preview, and the screenshots for the side-by-side.
 
 use crate::common::{self, Opts};
-use crate::project_panel::{doc, rev3_trial as trial};
+use crate::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::shell::state::{LeftTab, ShellState};
 use ecad_app::shell::{layout, left, tool_strip};
@@ -41,7 +41,7 @@ fn a_pinned_panel_docks_and_an_unpinned_one_floats_over_the_drawing() {
 }
 
 fn harness() -> Harness<'static, App> {
-    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).app(new_app()))
 }
 
 fn press(h: &mut Harness<'static, App>, at: egui::Pos2) {
@@ -273,7 +273,7 @@ fn screenshots_of_boards_1_02_to_1_08() {
                 t.ui(ui);
             });
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(6);
     h.state_mut().close_project();

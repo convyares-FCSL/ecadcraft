@@ -49,7 +49,7 @@ pub const HISTORY_TAB: &str = "History";
 /// Width of one lane of the graph.
 pub const LANE_W: f32 = 12.0;
 
-/// What the History tab asks the trial to do.
+/// What the History tab asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Do {
     /// Run this command with these parameters; a refusal is shown in the tab.

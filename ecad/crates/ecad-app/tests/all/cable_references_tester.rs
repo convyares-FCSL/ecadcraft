@@ -1,5 +1,5 @@
 //! Independent tester's UI checks for brief 010 (cable references across pages), written from the
-//! brief and design 010 only, driving the trial headless (egui_kittest, elements by label, real
+//! brief and design 010 only, driving the app headless (egui_kittest, elements by label, real
 //! pointer events on the canvas) in a 1280×800 window.
 //!
 //! - Design §11 fixture R built with the buttons **Cable Reference** and **Continue Cable** and

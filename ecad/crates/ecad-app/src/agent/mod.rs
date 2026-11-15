@@ -1,11 +1,11 @@
-//! Live agent access to the trial (brief 035, design §3–§8): an agent drives the running ECAD
+//! Live agent access to the app (brief 035, design §3–§8): an agent drives the running ECAD
 //! window over a loopback port while the person watches.
 //!
 //! - **Preference** ([`ecad_cadcraft::agent_access`]): Off (default), Read only, Read and change,
 //!   and a port; `--control PORT` turns it on (Read and change) for one run. When off, nothing
 //!   listens.
 //! - **Transport**: upstream CADCraft's own control server, included unchanged by path (bounded,
-//!   token-checked, loopback only). Its requests never reach `CadApp` directly: the trial's drain
+//!   token-checked, loopback only). Its requests never reach `CadApp` directly: the app's drain
 //!   answers ECAD's methods (`ecad.hello`, `ecad.execute`, `ecad.tool`, `ecad.bye`), forwards a
 //!   short allowlist of reads to `CadApp`'s own channel, and refuses everything else unrun.
 //! - **The gate** ([`ecad_cadcraft::agent::gate`]): the same policy, caps and roll-back as headless, run on the
@@ -55,7 +55,7 @@ pub const SESSION_IDLE: Duration = Duration::from_secs(600);
 pub const MAX_SESSIONS: usize = 64;
 /// How long the banner shows a write after it was accepted.
 pub const WRITE_FLASH: Duration = Duration::from_secs(1);
-/// Requests waiting in the trial at once (the listener's own queue holds 64 more).
+/// Requests waiting in the app at once (the listener's own queue holds 64 more).
 pub const MAX_WAITING: usize = 256;
 /// Longest agent name accepted, in bytes, before it is cleaned (larger is refused).
 const MAX_NAME_BYTES: usize = 1024;
@@ -101,7 +101,7 @@ pub struct BridgeSession {
     pub since: Instant,
 }
 
-/// A request waiting in the trial: not begun yet, so the client's own wait still applies.
+/// A request waiting in the app: not begun yet, so the client's own wait still applies.
 struct Waiting {
     req: ControlRequest,
     /// When it arrived, on [`Agent::clock`].
@@ -171,7 +171,7 @@ pub enum Listen {
     InUse(u16),
 }
 
-/// The trial's agent access state.
+/// The app's agent access state.
 pub struct Agent {
     /// The preference in effect (the file's, or `--control`'s for this run).
     pub pref: Preference,
@@ -179,7 +179,7 @@ pub struct Agent {
     pub this_run: bool,
     settings: Settings,
     rx: Option<Receiver<ControlRequest>>,
-    /// The port the listener was started on (it keeps it until the trial exits).
+    /// The port the listener was started on (it keeps it until the app exits).
     listen_port: Option<u16>,
     bind_failed: bool,
     /// Into `CadApp`'s own control channel (the allowlisted reads only).
@@ -335,7 +335,7 @@ impl Agent {
     }
 
     /// Start the listener the first time access is on (upstream's server has no stop: it keeps
-    /// its socket until the trial exits, answering nothing while access is off).
+    /// its socket until the app exits, answering nothing while access is off).
     fn ensure_listener(&mut self, ctx: &egui::Context) {
         if self.rx.is_some() || !self.on() {
             return;
@@ -345,7 +345,7 @@ impl Agent {
         self.listen_port = Some(port);
     }
 
-    /// Revoke the token file (the trial is exiting).
+    /// Revoke the token file (the app is exiting).
     pub fn shut_down(&mut self) {
         if let (Some(port), false) = (self.listen_port, self.bind_failed) {
             cadcraft_mcp::control_token::revoke(port);
@@ -713,7 +713,7 @@ impl App {
         None
     }
 
-    /// The title of a trial dialog that is open, if any.
+    /// The title of an app dialog that is open, if any.
     fn open_dialog_title(&self) -> Option<&'static str> {
         if let Some(d) = &self.dialog {
             return Some(match d.kind {

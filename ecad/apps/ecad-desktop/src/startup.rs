@@ -1,4 +1,4 @@
-//! Start-up timing for the trial (brief 015), switched on by `ECAD_STARTUP_TIMING=1`.
+//! Start-up timing for the app (brief 015), switched on by `ECAD_STARTUP_TIMING=1`.
 //!
 //! Marks the steps from process start to the first presented frame, prints each on stderr and
 //! writes them all to a small JSON file. With the switch off nothing is created, printed or written.
@@ -15,7 +15,7 @@
 //! device, font atlas and canvas pipelines each fall inside one step here); splitting those would
 //! need upstream changes.
 //!
-//! Nothing here may stop the trial: stderr writes ignore errors (a closed pipe), and a JSON file
+//! Nothing here may stop the app: stderr writes ignore errors (a closed pipe), and a JSON file
 //! that cannot be written is reported, never fatal.
 
 use std::io::Write;
@@ -33,7 +33,7 @@ pub fn enabled(value: Option<&str>) -> bool {
     Switch::parse(ENV, value).or(false)
 }
 
-/// A start-up step, in the order the trial reaches them.
+/// A start-up step, in the order the app reaches them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     /// `main` entered (before it: the OS loader, DLLs, the virus scanner).
@@ -46,7 +46,7 @@ pub enum Step {
     /// the wgpu instance, adapter, device and surface, and egui's context. Not egui's fonts: egui
     /// builds its font atlas during the first frame (step 7).
     Creator,
-    /// CADCraft's app and shell built (`CadApp::new` and the trial around it).
+    /// CADCraft's app and shell built (`CadApp::new` and the app around it).
     Shell,
     /// ECAD's project opened or created.
     Project,
@@ -339,7 +339,7 @@ impl ecad_app::StartMarks for StartupTiming {
     }
 }
 
-/// One line on stderr, ignoring errors: a closed pipe must never stop the trial.
+/// One line on stderr, ignoring errors: a closed pipe must never stop the app.
 fn say(line: &str) {
     let _ = writeln!(std::io::stderr().lock(), "{line}");
 }

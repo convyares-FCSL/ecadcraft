@@ -513,7 +513,7 @@ impl MemoryStore {
 }
 
 /// What Save and Save As report when the project has no persistence.
-pub const SAVE_UNAVAILABLE: &str = "Saving is not available in the ECAD trial: project persistence is not implemented. \
+pub const SAVE_UNAVAILABLE: &str = "Saving is not available in the ECAD desktop app: project persistence is not implemented. \
 Nothing was written and the project is still unsaved. Closing it discards the design.";
 
 /// A copy of the project's meaning taken when objects were put on the clipboard.
@@ -575,7 +575,7 @@ pub struct Project {
     /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
     pub author: Author,
     /// Closing the page window leaves the project open with no active page (design 016 §4.1)
-    /// instead of closing the project. Off by default (tests, MCP); the trial turns it on and off
+    /// instead of closing the project. Off by default (tests, MCP); the desktop app turns it on and off
     /// again while it closes the project or quits, so unsaved work is always asked about.
     pub keep_open: bool,
     /// The page shown in the page window, if any.
@@ -614,13 +614,13 @@ pub struct Project {
     /// The report models (brief 024, [`crate::outputs`]): built on first show (Reports, a BOM
     /// page, Checks) and then kept from each change's ops; `None` until then.
     pub outputs: Option<crate::outputs::Outputs>,
-    /// `reports` asked for the Reports window (the trial opens it and clears this).
+    /// `reports` asked for the Reports window (the desktop app opens it and clears this).
     pub open_reports: bool,
-    /// Brief 035: `agentaccess` asked for this agent access preference (the trial applies it and
+    /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
     /// clears this).
     #[cfg(not(target_arch = "wasm32"))]
     pub agent_access_request: Option<crate::agent_access::Preference>,
-    /// Brief 035: the trial's agent access state as `agentaccess` reports it (set by the trial).
+    /// Brief 035: the desktop app's agent access state as `agentaccess` reports it (set by the desktop app).
     #[cfg(not(target_arch = "wasm32"))]
     pub agent_access_status: Option<crate::agent_access::Status>,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
@@ -648,15 +648,15 @@ pub struct Project {
     /// agent's call through MCP); `None` for no cap. Commands that write files check it before
     /// they write (brief 027's release), so nothing reaches the disk that the cap would take back.
     pub tx_budget: Option<usize>,
-    /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the trial's
+    /// Plain `u` across an issued revision stops and asks (owner answer Q7): set by the desktop app's
     /// confirmation, used by the next undo only.
     pub confirm_issue_undo: bool,
-    /// The question an undo across an issue is waiting on, for the trial's popup.
+    /// The question an undo across an issue is waiting on, for the desktop app's popup.
     pub issue_undo_question: Option<String>,
     /// Plain `u` across a merge stops and asks (design 020 §4.3): set by `undomerge`, used by
     /// the next undo only.
     pub confirm_merge_undo: bool,
-    /// The question an undo across a merge is waiting on, for the trial's popup.
+    /// The question an undo across a merge is waiting on, for the desktop app's popup.
     pub merge_undo_question: Option<String>,
     /// The merge last prepared (its states and scope), kept while nothing it read changes
     /// (brief 020b).
@@ -2853,7 +2853,7 @@ impl DocumentOwner for Project {
 
     fn close_needs_prompt(&self, _uid: u64) -> bool {
         // Closing the page window closes the project (experiment choice, proposal §18.4), which
-        // prompts when unsaved; with `keep_open` (the trial, design 016 §4.1) it only hides the
+        // prompts when unsaved; with `keep_open` (the desktop app, design 016 §4.1) it only hides the
         // page and the project stays open, so nothing is lost and nothing is asked.
         self.unsaved() && self.open_pages() <= 1 && !self.keep_open
     }

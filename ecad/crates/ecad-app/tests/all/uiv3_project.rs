@@ -14,7 +14,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
 use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, ok, rev3_trial as trial};
+use crate::project_panel::{doc, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -29,7 +29,7 @@ fn harness(deltas: Deltas) -> H {
                 t.ui(ui);
             });
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h

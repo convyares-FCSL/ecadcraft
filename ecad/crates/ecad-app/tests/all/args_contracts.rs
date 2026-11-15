@@ -1,4 +1,4 @@
-//! Contracts for `ecad-trial`'s command line (brief 003): arguments arrive as `OsString`
+//! Contracts for `ecad-desktop`'s command line (brief 003): arguments arrive as `OsString`
 //! (`std::env::args_os`), so a name that is not valid Unicode is a usage error, never a panic.
 
 use std::ffi::OsString;

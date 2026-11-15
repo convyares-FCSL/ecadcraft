@@ -148,7 +148,7 @@ pub struct Counters {
     pub dots: u64,
 }
 
-/// The shell's state in the trial.
+/// The shell's state in the app.
 pub struct Shell {
     pub state: ShellState,
     pub views: Views,
@@ -205,7 +205,7 @@ impl std::fmt::Debug for Shell {
 }
 
 impl Shell {
-    /// A shell with the default state. (The right panel reads the trial's `props` copy itself, UI
+    /// A shell with the default state. (The right panel reads the app's `props` copy itself, UI
     /// rev 3; the argument is kept for its callers.)
     pub fn new(_props: crate::sheets_ui::Shared) -> Self {
         Shell {

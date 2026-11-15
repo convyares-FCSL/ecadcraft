@@ -1,10 +1,10 @@
 # ECAD quick start: run and try the current app
 
-This is the **one maintained guide** for building, running and manually testing the ECAD trial
+This is the **one maintained guide** for building, running and manually testing the ECAD desktop app
 app. Other READMEs link here instead of repeating it. It is updated in the same pull request as
 any change that affects these instructions (see `ecad/CLAUDE.md`).
 
-> **What you are running.** `ecad-desktop` (formerly `ecad-trial`) is an experiment, not an ECAD application. It is
+> **What you are running.** `ecad-desktop` is an experiment, not an ECAD application. It is
 > CADCraft's drawing window with the ECAD commands and one ECAD project open at a time. Projects
 > are saved as `.ecad` files (persistence stage 2a). The **PROJECT** panel on the far left lists
 > the project's pages, shows one of them at a time and holds New, Open, Save, Save As and Close
@@ -27,7 +27,7 @@ at the next tidy-up (`ecad/CLAUDE.md`, "Branches and testing"), so it can lag be
 UI rev 3 redrew the frame, panels, inspector, tools and canvas that UI rev 2 introduced: where the
 two disagree on what you see, the UI rev 3 files describe the app as it is.
 
-**Foundations: the trial, files, agents and speed**
+**Foundations: the app, files, agents and speed**
 
 - [003: windows trial and docs](quick-start/003-windows-trial-and-docs.md)
 - [008: usability mouse tools](quick-start/008-usability-mouse-tools.md)
@@ -221,9 +221,9 @@ Recorded as you reported them:
 
 ## 1W. First-time setup (native Windows)
 
-The same trial runs natively on Windows 11 (no WSL), which is supported alongside Linux. Use
+The same app runs natively on Windows 11 (no WSL), which is supported alongside Linux. Use
 **PowerShell**. Saving on Windows differs from Linux in a few ways listed in section 9; keep
-projects in a local NTFS folder such as `C:\dev\ecad-projects` (the trial's default), not in
+projects in a local NTFS folder such as `C:\dev\ecad-projects` (the app's default), not in
 OneDrive or the OneDrive-redirected Documents folder (unverified).
 
 1. Install Git for Windows, the Visual Studio Build Tools with the "Desktop development with C++"
@@ -260,7 +260,7 @@ OneDrive or the OneDrive-redirected Documents folder (unverified).
    cargo run --release -p ecad-desktop
    ```
 
-   A release build opens only the trial's window, with no console window beside it, and shows no
+   A release build opens only the app's window, with no console window beside it, and shows no
    console output, also when run from PowerShell or through `cargo run`. For `--help` and usage
    errors use a debug build (`cargo run -p ecad-desktop -- --help`), or redirect the output
    (`... > out.txt`).
@@ -306,7 +306,7 @@ cd ~/ecadcraft/ecad
 export CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_INCREMENTAL=0
 cargo run --release -p ecad-desktop                                    # a new project
 cargo run --release -p ecad-desktop -- ~/ecad-projects/demo.ecad       # open a saved project
-cargo run --release -p ecad-desktop -- --snapshots ~/ecad-trial-snapshots   # allow diagnostic snapshots
+cargo run --release -p ecad-desktop -- --snapshots ~/ecad-snapshots   # allow diagnostic snapshots
 ```
 
 On native Windows (PowerShell):
@@ -316,7 +316,7 @@ cd C:\dev\ecadcraft\ecad
 $env:CARGO_PROFILE_RELEASE_DEBUG = "0"; $env:CARGO_INCREMENTAL = "0"
 cargo run --release -p ecad-desktop                                           # a new project
 cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\demo.ecad         # open a saved project
-cargo run --release -p ecad-desktop -- --snapshots C:\dev\ecad-trial-snapshots   # allow diagnostic snapshots
+cargo run --release -p ecad-desktop -- --snapshots C:\dev\ecad-snapshots   # allow diagnostic snapshots
 ```
 
 `--snapshots <folder>` and a project file can be given together.
@@ -434,7 +434,7 @@ Typing instead of clicking still works, in the ECAD command field:
 `convertcomponent` (with the lines selected), `addterminal {"handle":"<handle of the right-hand
 edge>","at":[40,10]}`, `place {"at":[100,0],"rotation":90}`,
 `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`. The headless test
-`the_quick_start_trial_runs_headless` follows that typed version.
+`the_quick_start_runs_headless` follows that typed version.
 
 ## 5A. Make a cable (by clicking)
 
@@ -538,8 +538,8 @@ Continue with the cable of sections 5A and 5B, shown traditional (switch it back
 3. **Fan view.** Click **Cable View** and the slash. Expected: the label box shows `C1` and
    `3/C #10`; each tail starts with its core label next to the spine, then its wire number
    further out, one text height apart; the trunk and spines are thick and the bends and tails
-   thin (the trial turns **Show/Hide Lineweight** on when it opens or creates a project, unless
-   you switched it yourself since the trial started).
+   thin (the app turns **Show/Hide Lineweight** on when it opens or creates a project, unless
+   you switched it yourself since the app started).
    **Slide the join.** The trunk joins the middle of each spine. Click **Cable Join** (Wiring
    group), click the fan near its left end, then click higher or lower: the trunk now joins that
    end there (kept on the spine, between the outermost wires), and the change count goes up by
@@ -949,7 +949,7 @@ shown when its parent is archived too shows main, saying so.
 On the demo project (`cargo xtask demo`, then open it, section 7). Design 024. The demo's project
 location is `+CP1`, page 3 (**Field**) is `+FIELD`, the motor terminals `-X02` sit in location box
 `+JB1`, cable `-W01` is a `4G1.5`, and the book ends with a generated **Revision list** and **BOM
-by location**. The trial has no file dialogs: where a file is asked for, type its path.
+by location**. The app has no file dialogs: where a file is asked for, type its path.
 
 1. **Where things are.** Show page 2 and click `-K01`'s coil. Expected: **Properties**
    (`ECAD · DEVICE -K01`) shows **Location** faint, `+CP1 (project)`. Type `+CP2`, Enter: it shows
@@ -1228,7 +1228,7 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 ## 7. Save, close and reopen
 
 1. **Save.** Press Ctrl+S, or click **Save** in the PROJECT panel. A new project asks for a file name
-   in the trial's own dialog: type `~/ecad-projects/demo` (on native Windows
+   in the app's own dialog: type `~/ecad-projects/demo` (on native Windows
    `C:\dev\ecad-projects\demo`) and press Enter. `.ecad` is added.
    Expected:
    - the PROJECT panel's status line shows `file /home/<you>/ecad-projects/demo.ecad, no unsaved
@@ -1337,7 +1337,7 @@ that file is not a version 1 project.
 
 `ecad-mcp` (brief 011) lets an AI agent such as Claude Code read and change an ECAD project
 through the Model Context Protocol. It runs **headless**: no window; the agent works on the
-project file in a process of its own. To watch an agent work in the running trial, see section
+project file in a process of its own. To watch an agent work in the running app, see section
 7D in [`quick-start/035-mcp-bridge.md`](quick-start/035-mcp-bridge.md).
 
 Every step below uses the **same project file**: `C:\dev\ecad-projects\agent.ecad` on native
@@ -1352,8 +1352,8 @@ Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your sys
    The program is `target/release/ecad-mcp` (`target\release\ecad-mcp.exe` on Windows), or under
    `$CARGO_TARGET_DIR` if you set it.
 2. **Create the project file.** The folder must exist: `ecad-mcp` does not create folders (the
-   trial's Save As creates the default folder the first time; otherwise make it yourself). The
-   file must not exist yet, and the trial must not have it open (a project open elsewhere opens
+   app's Save As creates the default folder the first time; otherwise make it yourself). The
+   file must not exist yet, and the app must not have it open (a project open elsewhere opens
    read-only, and the agent can then only read it). `--create` makes the file and saves it; the
    server then waits for an agent on its input, so stop it with Ctrl+C. Native Windows:
 
@@ -1392,7 +1392,7 @@ Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your sys
    Expected: the agent calls `execute` with `wire`, `cableslash` and `cableview`, and `save`;
    `ecad_history` lists one transaction per wire and one for the cable, each by
    `agent <its name>` (Claude Code gives its own name), and nothing for the view switch.
-5. **Look at it in the trial.** Stop the agent's session (or quit Claude Code) so the file is
+5. **Look at it in the app.** Stop the agent's session (or quit Claude Code) so the file is
    released, then open the same file. Native Windows:
 
    ```powershell
@@ -1408,9 +1408,9 @@ Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your sys
    Expected: the wires and the slash on page 1; the debugger (section 8) shows each transaction
    with `agent <name>` as its author, and `u` undoes the cable in one step. The cable opens **as a
    fan**: the view is not in the file (section 5B), but `ecad-mcp` remembers views in your own
-   settings folder, the one the trial reads (`cable-views.json`). To keep the agent's views apart
+   settings folder, the one the app reads (`cable-views.json`). To keep the agent's views apart
    from yours, start the server with `ECAD_SETTINGS_DIR` set to another folder (section 9); the
-   cable then opens traditional in your trial.
+   cable then opens traditional in your app.
 
 What the agent can and cannot do:
 
@@ -1434,7 +1434,7 @@ What the agent can and cannot do:
 - `ecad-mcp --help` lists the options; `--agent <name>` records another author name. The author
   name is taken from the first `initialize` only.
 - Quitting the server cleanly (the client closes it) releases the writer lock; the
-  `agent.ecad.lock` file stays beside the project, empty, as the trial leaves it.
+  `agent.ecad.lock` file stays beside the project, empty, as the app leaves it.
 
 ## 8. Diagnostics and the debugger
 
@@ -1574,7 +1574,7 @@ writes.
 - **Viewing them.** Open `ecad/dev/ecad-inspector/page/index.html` in a browser (on native
   Windows, double-click `C:\dev\ecadcraft\ecad\dev\ecad-inspector\page\index.html`, or type
   that path in the address bar; it was `ecad/tools/inspector/index.html`) and load the files from the folder given to `--snapshots`, for example
-  `C:\dev\ecad-trial-snapshots`; under WSL, from `\\wsl$\<distro>\home\<you>\<folder>`. It shows
+  `C:\dev\ecad-snapshots`; under WSL, from `\\wsl$\<distro>\home\<you>\<folder>`. It shows
   whether each transaction was saved, and where.
 
 ### Measuring load time (brief 012)
@@ -1681,13 +1681,13 @@ draw wire), against 0.25 / 0.27 / 0.21 and 1.49 / 1.68 / 1.03 before the merge (
 7.61 / 7.57 / 7.20 and 7.43 / 7.26 / 7.19 at `c5dfb21`.
 
 The other columns were not changed by brief 014. Not yet tried by you: open the medium project
-(`--keep`) in the trial and say whether moving a component feels instant.
+(`--keep`) in the app and say whether moving a component feels instant.
 
 The table is printed and also written as JSON to
 `ecad/target/bench/load-<date>-<time>-<commit>.json` (UTC; an existing file is never
 overwritten), with the machine, OS, commit and build. `--compare` reads the earlier file before
 the run starts and prints the change per row after it. `--keep <folder>` keeps the projects so
-you can open them in the trial (**Open project…**); it refuses to replace a project that is open
+you can open them in the app (**Open project…**); it refuses to replace a project that is open
 in another session. Results depend on the machine and what else it is doing; compare runs from
 the same machine. There are no pass or fail limits yet, and peak memory is not measured. The
 generated cable references (each page's first cable continued on the next page) are recorded as
@@ -1695,7 +1695,7 @@ brief 010 records them; on a revision without brief 010 they open as ordinary po
 
 ### Measuring start-up (brief 015)
 
-To see where the time goes between launching the trial and its first frame, set
+To see where the time goes between launching the app and its first frame, set
 `ECAD_STARTUP_TIMING=1` before starting it. Each step is printed on stderr as it is reached, then
 one line with the GPU adapter eframe picked and the total, and the same marks are written to a new
 file `ecad-startup-<time>.json` (the time is `main`'s, in milliseconds since 1970; `-1`, `-2`, ...
@@ -1737,7 +1737,7 @@ start and, in brackets, the step: the time since the previous mark. The steps ad
 mark 1 includes the loader; the kernel gives the creation time in clock ticks, so mark 1 there is
 accurate to about ±10 to 20 ms. On Windows they count from mark 1, `main`: the creation time would
 need `GetProcessTimes`, which needs `unsafe` (forbidden in this workspace) or a new dependency.
-To measure the time before `main` on Windows, while the trial is still open run, in PowerShell:
+To measure the time before `main` on Windows, while the app is still open run, in PowerShell:
 
 ```powershell
 ([DateTimeOffset](Get-Process ecad-desktop).StartTime).ToUnixTimeMilliseconds()
@@ -1767,10 +1767,10 @@ Your table of three clean runs goes here once you have run it.
 ## 9. Current limitations
 
 - **Live agent access (brief 035):** one agent changes the project at a time (others read); the
-  port is loopback only (`127.0.0.1`); `--launch` opens the trial on Windows and on Linux with a
+  port is loopback only (`127.0.0.1`); `--launch` opens the app on Windows and on Linux with a
   display (WSL needs WSLg), not on macOS; the banner is a plain line in the Developer section until the UI shell.
 - **Outputs (brief 024):** one built-in table layout for generated pages (44 rows per A3 sheet);
-  custom sheets print fitted on the smallest ISO A paper; no XLSX. The trial has no file dialogs, so
+  custom sheets print fitted on the smallest ISO A paper; no XLSX. The app has no file dialogs, so
   Print Book's file and the CSV path are typed. The Devices tab does not show the location prefix
   yet. **Make location box** is the `S` option of Location Box (no right-click entry yet).
 - **Multi-level terminals (brief 036):** no graphical strip pages yet (1.8) and no terminal
@@ -1798,7 +1798,7 @@ Your table of three clean runs goes here once you have run it.
   New Page ▸ **Terminal plan** shows every strip (one strip: `newpage` with `strip`).
 
 - **Release (brief 027).** No transmittal, zip or upload, and one folder layout. The folder is a typed path (no folder
-  dialog in the trial). The PDF is written in one go: Esc does not stop a release while it writes.
+  dialog in the app). The PDF is written in one go: Esc does not stop a release while it writes.
   The History tab has no Release button yet (Revisions and the PROJECT panel have). Provisional
   tags (brief 026) are released as they are until 026's Finalise is wired in.
 - **Cross-references (brief 025).** No PLC card symbol yet (a card with channels is a later step);
@@ -1836,7 +1836,7 @@ Your table of three clean runs goes here once you have run it.
   or cut a little early. The revision view is read-only and shows pages one at a time in the
   preview. Folders are remembered as folded for the session only.
 
-- It is an experiment. No native file dialogs (the trial has its own path dialog) and no ECAD
+- It is an experiment. No native file dialogs (the app has its own path dialog) and no ECAD
   menu (CADCraft shows no top-level menu supplied by an embedder; use the ECAD tab or type the
   command name). The ECAD tab's buttons are text, not icons.
 - **The click-based tools** (brief 008):
@@ -1874,7 +1874,7 @@ Your table of three clean runs goes here once you have run it.
     `tagsettings {"padding":3,"prefixes":{"coil":"KA"}}` in the ECAD command field (`null` for a
     symbol goes back to the built-in prefix; `tagsettings {}` lists them). There is no dialog for
     them yet. A project that changes them is refused by older builds.
-  - Find Symbol is a small window of the trial's own (Tool Sets holds buttons only); typing at the
+  - Find Symbol is a small window of the app's own (Tool Sets holds buttons only); typing at the
     `place` prompt finds the same symbols.
   - Copying a device's symbol makes a new device with the next tag and every connection point of the
     original.
@@ -1909,8 +1909,8 @@ Your table of three clean runs goes here once you have run it.
     no format change); a join is always kept on the spine between the outermost wires, also when
     wires move later. Sizes are fixed drawing units for now (text 2.5, tails 20, bends 2.5),
     so the labels are small when zoomed out. The trunk's corners are sharp. Thick and thin
-    show only with **Show/Hide Lineweight** on, which the trial turns on when it opens or creates
-    a project unless you switched it yourself since the trial started;
+    show only with **Show/Hide Lineweight** on, which the app turns on when it opens or creates
+    a project unless you switched it yourself since the app started;
     plots and DXF exports carry the weights either way. A cable with one wire is not offered a fan
     view; a fan-view cable with only one of its wires on a page is drawn traditional there.
 - **Core labels and reference ends** (brief 009, overseer decisions of 2026-11-07, to be confirmed
@@ -1978,7 +1978,7 @@ Your table of three clean runs goes here once you have run it.
 - **Windows release builds** open no console window and show no console output, however they
   are started; `--help`, `--version` and usage errors print only when the output is redirected to
   a file or pipe. Use a debug build (`cargo run -p ecad-desktop -- --help`) to see them.
-- Only the trial's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
+- Only the app's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
   in the ECAD command field saves only into a folder that already exists.
 - The `.ecad` format is version 1, a development format. Files from a later format version are
   refused rather than converted, and nothing rewrites older files yet.
@@ -1996,14 +1996,14 @@ Your table of three clean runs goes here once you have run it.
   the page you are on; for a wire, a device or anything else ECAD records, and after UNDO, REDO or
   a page switch, it is refused with a message: use UNDO. `-ARRAY` copies devices and wires as COPY
   does. MINSERT of a symbol is refused.
-- **Window size and position (brief 023):** the trial's window opens centred the first time; after
+- **Window size and position (brief 023):** the app's window opens centred the first time; after
   that it reopens at the size and position (and maximized state) it had when you closed it, as
-  CADCraft's own app does. The state is kept by eframe in its `app.ron` under the id `ecad-trial`
-  (on Windows `%APPDATA%\ecad-trial\data\app.ron`); delete that file to start centred again.
-- **Update checks.** CADCraft 0.15.1 brings an update checker (`craft-update`). The trial never
+  CADCraft's own app does. The state is kept by eframe in its `app.ron` under the id `ecad-desktop`
+  (on Windows `%APPDATA%\ecad-desktop\data\app.ron`); delete that file to start centred again.
+- **Update checks.** CADCraft 0.15.1 brings an update checker (`craft-update`). The app never
   checks at start. CADCraft's **Help > Check for Updates…** item is still in the menu: choosing
   it asks GitHub (`api.github.com`) for CADCraft's releases and may offer a newer CADCraft
-  release. It cannot install anything into the trial (a build run from Cargo's `target` folder is
+  release. It cannot install anything into the app (a build run from Cargo's `target` folder is
   never updated in place); ignore that item.
 - **The debugger** only reads. It shows the active page's selection (at most 500 objects); long
   lists are paged 100 at a time; record bytes are shown up to 16 KiB (longer records are still

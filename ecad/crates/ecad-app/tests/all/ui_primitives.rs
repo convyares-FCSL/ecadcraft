@@ -1,4 +1,4 @@
-//! Brief 037: the trial draws its interface text in ECAD's fonts (IBM Plex Sans; Barlow Semi
+//! Brief 037: the app draws its interface text in ECAD's fonts (IBM Plex Sans; Barlow Semi
 //! Condensed registered for the sheet) over CADCraft's font set, with ECAD's style; and the hidden
 //! `ui.primitives` page in the Developer section shows every primitive. A screenshot of it is
 //! written to `$ECAD_TESTER_SHOTS` when that names a folder and a wgpu adapter exists (for the
@@ -13,7 +13,7 @@ use egui_kittest::kittest::Queryable;
 use crate::mouse_tester::{Collect, Deltas, harness_with, shot};
 
 #[test]
-fn the_trial_uses_ecad_fonts_and_shows_the_primitives_page() {
+fn the_app_uses_ecad_fonts_and_shows_the_primitives_page() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
     h.run_steps(3);
@@ -52,7 +52,7 @@ fn the_trial_uses_ecad_fonts_and_shows_the_primitives_page() {
     assert!(h.query_all_by_label("Primary normal").next().is_none());
 }
 
-/// The showcase alone, at a size where every state is visible, with the trial's fonts (ECAD's
+/// The showcase alone, at a size where every state is visible, with the app's fonts (ECAD's
 /// over CADCraft's set for English) and style: the owner's screenshot beside the spec's Tokens
 /// board. Written only when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists.
 #[test]

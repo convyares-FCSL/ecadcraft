@@ -4,7 +4,7 @@
 //! screenshots for the side-by-side with the boards (written only when `ECAD_TESTER_SHOTS` names a
 //! folder and a wgpu adapter exists).
 
-use crate::project_panel::{doc, rev3_trial as trial};
+use crate::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::shell::right;
 use ecad_app::shell::state::RightTab;
@@ -38,7 +38,7 @@ fn harness(deltas: Option<crate::mouse_tester::Deltas>) -> (H, std::path::PathBu
                 t.ui(ui);
             });
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(4);
     h.state_mut().close_project();

@@ -114,7 +114,7 @@ const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", 
 const LAYER_EXCEPTIONS: &[(&str, &str, &str)] = &[];
 
 /// Product crates whose `dev` feature may be on by default (owner, 2026-11-12, design 029 Q1: the
-/// trial app's debugger, while the trial is the only app; ecad-app since the split, step 9).
+/// desktop app app's debugger, while the desktop app is the only app; ecad-app since the split, step 9).
 const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 
 /// Features whose code lives only in a crate's `dev` module (design 029 §12.2, owner Q3).
@@ -1279,7 +1279,7 @@ mod tests {
     }
 
     /// Design 029 §12.3 rule 1 (and 4): a product crate may depend on a `dev/` crate only
-    /// optionally, through its own `dev` feature, never on by default (except the trial, Q1); a
+    /// optionally, through its own `dev` feature, never on by default (except the desktop app, Q1); a
     /// crate is under `dev/` exactly when its class is Dev.
     #[test]
     fn product_crates_reach_developer_tools_only_through_their_dev_feature() {
@@ -1317,7 +1317,7 @@ mod tests {
             (
                 pkg("ecad-app", "crates\\ecad-app", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
                 0,
-                "the trial's dev on by default (Q1)",
+                "the desktop app's dev on by default (Q1)",
             ),
             (pkg("ecad-inspector", "crates\\ecad-inspector", serde_json::json!([]), serde_json::json!({})), 1, "a Dev crate outside dev/"),
             (pkg("ecad-file", "dev\\ecad-file", serde_json::json!([]), serde_json::json!({})), 1, "a product crate inside dev/"),

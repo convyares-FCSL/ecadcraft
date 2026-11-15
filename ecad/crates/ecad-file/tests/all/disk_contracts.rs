@@ -334,10 +334,10 @@ fn a_lock_left_by_a_crash_is_reclaimed_and_reported() {
     let mut ledger = fixture().ledger;
     drop(create(&p, &mut ledger, StepFaults::default()).unwrap());
     // What a session that crashed leaves: a record in a lock file nobody holds.
-    std::fs::write(ecad_store::disk::lock_path(&p), "ecad trial; process 4242; since 1").unwrap();
+    std::fs::write(ecad_store::disk::lock_path(&p), "ecad desktop; process 4242; since 1").unwrap();
     let o = DiskProject::open(&p, SEED, WRITER).unwrap();
     assert!(o.project.read_only().is_none(), "no lockout");
-    assert_eq!(o.reclaimed_lock.as_deref(), Some("ecad trial; process 4242; since 1"));
+    assert_eq!(o.reclaimed_lock.as_deref(), Some("ecad desktop; process 4242; since 1"));
 }
 
 #[test]

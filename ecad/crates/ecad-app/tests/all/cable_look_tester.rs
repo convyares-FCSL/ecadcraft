@@ -1,11 +1,11 @@
 //! Independent tester's UI checks for brief 009 (cable look and cores), written from the brief,
 //! design 009 and the overseer's decision that reference ends use brief 010's model (a cable
 //! representation with role `reference` holding one Point item, built directly here), driving the
-//! trial headless (egui_kittest, elements by label) in a 1280×800 window.
+//! app headless (egui_kittest, elements by label) in a 1280×800 window.
 //!
 //! - Design §3 / check A: **Core Label** (`ecad.cablecore`) clicked by its label, a wire clicked
 //!   on the canvas, a label typed: the prompt, the echo, one transaction.
-//! - Check P / design §9: lineweights are shown when the trial opens a project.
+//! - Check P / design §9: lineweights are shown when the app opens a project.
 //! - Reference screenshots (design §10), written to `$ECAD_TESTER_SHOTS` when set and a wgpu
 //!   adapter exists, with pixel checks on the rendered frames: `009-traditional-cores.png`,
 //!   `009-fan.png`, `009-fan-one-sided.png`, `009-fan-small-zoom.png`, `009-core-prompt.png`.
@@ -292,9 +292,9 @@ fn magenta_run(img: &egui::ColorImage, x: f32, y0: f32, y1: f32) -> usize {
         .count()
 }
 
-/// Check P / design §9: a project opened in the trial shows lineweights.
+/// Check P / design §9: a project opened in the app shows lineweights.
 #[test]
-fn lineweights_are_shown_when_the_trial_opens_a_project() {
+fn lineweights_are_shown_when_the_app_opens_a_project() {
     let settings = Tmp::new("lw");
     let h = harness(&settings, None);
     assert!(h.state().cad.session.settings.lwdisplay, "LWDISPLAY on after opening a project");
@@ -493,7 +493,7 @@ fn moved_join_reference_screenshot() {
     assert!(magenta_near(&img, screen(&h, 95.0, 0.0), 1), "right join at the bottom");
 }
 
-/// Round 2 (review nit): the trial turns lineweights on at the first project it opens, but a user
+/// Round 2 (review nit): the app turns lineweights on at the first project it opens, but a user
 /// who turned them off with Show/Hide Lineweight keeps that choice when the next project opens.
 #[test]
 fn lineweight_display_keeps_the_users_choice_across_projects() {

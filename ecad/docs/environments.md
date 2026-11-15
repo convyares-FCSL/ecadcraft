@@ -68,7 +68,7 @@ Do not assume:
 | `git` and network access to github.com and crates.io | `craft-ui` is a git dependency on `storytold/craft-libs` | first build only |
 | About 6-8 GB free disk | build output | build with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`; with debug info a full build passed 25 GB; `cargo xtask clean-builds` frees old build folders |
 | 8 GB RAM or more | linking the engine and UI | 4 cores take about 10 minutes for the full CADCraft test suite |
-| Optional: `rustup target add wasm32-unknown-unknown` | `cargo xtask wasm` gates | |
+| Optional: `rustup target add wasm32-unknown-unknown` | CADCraft's own wasm build | ECAD is desktop-only and has no wasm check |
 
 Share one target directory between the two workspaces to save disk and time:
 `export CARGO_TARGET_DIR="$PWD/target"` from the repository root.
@@ -91,7 +91,7 @@ Share one target directory between the two workspaces to save disk and time:
    `explorer.exe "$(wslpath -w ecad/dev/ecad-inspector/page)"` opens the folder. Load the files from
    `target/ecad-snapshots` (reachable from Windows as `\\wsl$\<distro>\…`) with **Open
    snapshots…**. No server is needed.
-5. GUI: the **ECAD trial harness**. Follow [`quick-start.md`](quick-start.md) for the build,
+5. GUI: the **ECAD desktop program** (`ecad-desktop`). Follow [`quick-start.md`](quick-start.md) for the build,
    the run command and the manual trial. Keep `.ecad` project files in the Linux home folder
    (for example `~/ecad-projects`): that is the supported, tested location. File locking and
    durability on Windows drives under `/mnt` are unverified. Upstream CADCraft's own desktop app

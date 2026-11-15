@@ -3,7 +3,7 @@
 //! ([`show_line`]).
 //!
 //! # Semantics
-//! - [`AgentBanner`] is the one value the trial keeps up to date ([`crate::App::agent_banner`]);
+//! - [`AgentBanner`] is the one value the app keeps up to date ([`crate::App::agent_banner`]);
 //!   the shell places it in its 32 px banner slot (spec §2) and styles it ([`show`]), keeping these
 //!   fields, the controls ([`BannerAction`], through [`crate::App::agent_action`]) and the
 //!   element names ([`ELEMENT`] and the `agent.banner.*` names).

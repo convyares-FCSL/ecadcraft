@@ -1,4 +1,4 @@
-//! The debugger panel in the trial, without a window: closed by default, opened from the banner,
+//! The debugger panel in the app, without a window: closed by default, opened from the banner,
 //! rebuilt only when something changes, never waiting for a busy project, and following the
 //! quick-start guide's worked example (place, wire, save, move, undo, save).
 
@@ -15,7 +15,7 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let p = std::env::temp_dir().join(format!("ecad-trial-dbg-{name}-{}", ecad_store::disk::unique()));
+        let p = std::env::temp_dir().join(format!("ecad-app-dbg-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
@@ -30,7 +30,7 @@ impl Drop for TempDir {
     }
 }
 
-fn trial() -> App {
+fn new_app() -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
@@ -76,7 +76,7 @@ fn select_ecad(t: &mut App, pick: impl Fn(&ecad_model::Document) -> Vec<ecad_mod
 
 #[test]
 fn the_debugger_is_closed_until_opened_and_rebuilds_only_on_change() {
-    let mut t = trial();
+    let mut t = new_app();
     let ctx = eframe::egui::Context::default();
     frame(&mut t, &ctx);
     assert!(!t.debugger.open, "never shown by default");
@@ -100,7 +100,7 @@ fn the_debugger_is_closed_until_opened_and_rebuilds_only_on_change() {
 
 #[test]
 fn a_busy_project_keeps_the_previous_snapshot_marked_stale() {
-    let mut t = trial();
+    let mut t = new_app();
     t.toggle_debugger();
     let seq = t.debugger.snapshot().unwrap().head;
     let p = t.project().unwrap().clone();
@@ -120,7 +120,7 @@ fn a_busy_project_keeps_the_previous_snapshot_marked_stale() {
 #[test]
 fn the_quick_start_debugger_example_runs_headless() {
     let d = TempDir::new("example");
-    let mut t = trial();
+    let mut t = new_app();
     let ctx = eframe::egui::Context::default();
     t.toggle_debugger();
     let snap = t.debugger.snapshot().unwrap();
@@ -251,7 +251,7 @@ is not counted as a change until the project has a file."
 #[test]
 fn the_storage_and_branches_views_show_the_version_2_file() {
     let d = TempDir::new("storage");
-    let mut t = trial();
+    let mut t = new_app();
     ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
     t.toggle_debugger();
     let ctx = eframe::egui::Context::default();

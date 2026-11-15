@@ -1,4 +1,4 @@
-//! The trial's main window: size, placement, and remembering them between sessions (brief 023,
+//! The app's main window: size, placement, and remembering them between sessions (brief 023,
 //! as CADCraft 0.17.0's desktop app does, #2595 and #1129).
 //!
 //! eframe saves the window's size, position and maximized state in its storage file (`app.ron`,
@@ -13,8 +13,8 @@
 
 use eframe::egui;
 
-/// The id eframe stores the trial's window state under (its own, apart from CADCraft's).
-pub const APP_ID: &str = "ecad-trial";
+/// The id eframe stores the app's window state under (its own, apart from CADCraft's).
+pub const APP_ID: &str = "ecad-desktop";
 
 /// The key eframe saves the main window state under in its storage.
 pub const WINDOW_KEY: &str = "window";

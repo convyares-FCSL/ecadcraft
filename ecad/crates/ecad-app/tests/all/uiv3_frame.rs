@@ -4,7 +4,7 @@
 //! fitted with a 24 px margin, and the screenshots for the side-by-side with the board.
 
 use crate::common::{self, Opts};
-use crate::project_panel::{doc, rev3_trial as trial};
+use crate::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::actions::ToolGroup;
 use ecad_app::shell::state::{LeftTab, RightTab, ShellState, Workspace};
@@ -87,7 +87,7 @@ fn the_strip_is_in_the_specs_order_with_five_keys() {
 }
 
 fn harness() -> Harness<'static, App> {
-    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).app(new_app()))
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn screenshots_of_board_1_01() {
                 t.ui(ui);
             });
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(6);
     let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-1.01-start.png"));

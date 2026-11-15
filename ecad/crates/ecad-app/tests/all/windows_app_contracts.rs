@@ -1,4 +1,4 @@
-//! Tester's outside-in contracts for brief 003 (the trial on native Windows): edge cases of typed
+//! Tester's outside-in contracts for brief 003 (the app on native Windows): edge cases of typed
 //! paths, the home folder, the project's own file in another spelling, folders that must not be
 //! made, and hostile input. Written from the brief, not from the implementation.
 
@@ -26,7 +26,7 @@ impl Drop for TempDir {
     }
 }
 
-fn trial(home: Option<&Path>, snapshots: Option<PathBuf>) -> App {
+fn new_app(home: Option<&Path>, snapshots: Option<PathBuf>) -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(snapshots).unwrap();
@@ -121,7 +121,7 @@ fn child_saves_odd_paths() {
         return;
     }
     for typed in ["\0", "~/\0x", ":", "~~", "C:", "C:drive-relative", r"\\", ".", r"..\up"] {
-        let mut t = trial(None, None);
+        let mut t = new_app(None, None);
         let e = save_as(&mut t, typed);
         let path = t.status().and_then(|s| s.file.path);
         println!("ROW<{typed:?}|{e:?}|{path:?}>");
@@ -138,7 +138,7 @@ fn odd_paths_through_the_dialog_save_where_the_banner_says() {
     std::fs::create_dir_all(cwd.0.join("inner")).unwrap();
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "windows_trial_contracts::child_saves_odd_paths", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "windows_app_contracts::child_saves_odd_paths", "--ignored", "--nocapture", "--test-threads=1"])
         .current_dir(cwd.0.join("inner"))
         .output()
         .unwrap();
@@ -158,7 +158,7 @@ fn mixed_separators_under_the_home_folder() {
     let home = TempDir::new("mixed");
     std::fs::create_dir_all(home.0.join("sub")).unwrap();
     for typed in [r"~/sub\a", r"~\sub/b", r"~\\sub\\c"] {
-        let mut t = trial(Some(&home.0), None);
+        let mut t = new_app(Some(&home.0), None);
         assert_eq!(save_as(&mut t, typed), None, "{typed}");
         let path = t.status().unwrap().file.path.unwrap();
         assert!(Path::new(&path).is_file(), "{typed} -> {path}");
@@ -173,7 +173,7 @@ fn mixed_separators_under_the_home_folder() {
 #[test]
 fn a_missing_folder_is_not_created() {
     let d = TempDir::new("missing");
-    let mut t = trial(None, None);
+    let mut t = new_app(None, None);
     let typed = d.0.join("nowhere").join("demo").display().to_string();
     let e = save_as(&mut t, &typed).unwrap_or_default();
     assert!(!e.is_empty(), "the dialog reports the failure");
@@ -187,7 +187,7 @@ fn a_missing_folder_is_not_created() {
 #[test]
 fn a_case_variant_opens_the_same_project_on_windows() {
     let d = TempDir::new("case-open");
-    let mut t = trial(None, None);
+    let mut t = new_app(None, None);
     let own = d.0.join("Plan.ecad").display().to_string();
     assert_eq!(save_as(&mut t, &own), None);
     t.close_project();
@@ -211,7 +211,7 @@ fn a_case_variant_opens_the_same_project_on_windows() {
 #[test]
 fn a_second_opener_through_another_spelling_is_read_only() {
     let d = TempDir::new("case-lock");
-    let mut first = trial(None, None);
+    let mut first = new_app(None, None);
     let own = d.0.join("Shared.ecad").display().to_string();
     assert_eq!(save_as(&mut first, &own), None);
     let other = d.0.join("sHARED.ecad").display().to_string().replace('\\', "/");
@@ -237,7 +237,7 @@ fn child_reports_home() {
 
 fn child_home(env: &[(&str, Option<&str>)]) -> String {
     let mut c = std::process::Command::new(std::env::current_exe().unwrap());
-    c.args(["--exact", "windows_trial_contracts::child_reports_home", "--ignored", "--nocapture", "--test-threads=1"]);
+    c.args(["--exact", "windows_app_contracts::child_reports_home", "--ignored", "--nocapture", "--test-threads=1"]);
     c.env("ECAD_TEST_CHILD", "1");
     for (k, v) in env {
         match v {
@@ -276,19 +276,19 @@ fn child_exports_a_snapshot_to_tilde() {
     if std::env::var_os("ECAD_TEST_CHILD").is_none() {
         return;
     }
-    let mut t = trial(None, Some(PathBuf::from("~/snaps")));
+    let mut t = new_app(None, Some(PathBuf::from("~/snaps")));
     let r = t.export_snapshot("t003");
     println!("EXPORT<{r:?}>");
 }
 
-/// `--snapshots ~/snaps` typed in PowerShell or cmd arrives with the `~` unexpanded: the trial must
+/// `--snapshots ~/snaps` typed in PowerShell or cmd arrives with the `~` unexpanded: the app must
 /// never make a folder literally named `~` (brief 003, part A item 1).
 #[test]
 fn snapshots_with_a_tilde_never_make_a_tilde_folder() {
     let cwd = TempDir::new("snap-cwd");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "windows_trial_contracts::child_exports_a_snapshot_to_tilde", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "windows_app_contracts::child_exports_a_snapshot_to_tilde", "--ignored", "--nocapture", "--test-threads=1"])
         .current_dir(&cwd.0)
         .output()
         .unwrap();
@@ -352,7 +352,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
         println!("UNC share not reachable ({}); skipped", unc.display());
         return;
     }
-    let mut t = trial(None, None);
+    let mut t = new_app(None, None);
     let typed = unc.join("over unc").display().to_string();
     let saved_as = format!("{typed}.ecad");
     let model = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
@@ -400,7 +400,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
 #[test]
 fn dot_and_drive_relative_names_are_refused_in_the_dialog() {
     let d = TempDir::new("f3-refused");
-    let mut t = trial(Some(&d.0), None);
+    let mut t = new_app(Some(&d.0), None);
     let rows = [
         (".", "not ."),
         ("..", "not .."),
@@ -433,7 +433,7 @@ fn the_extension_is_added_once_and_quotes_are_stripped() {
         (format!("{base}{s}.hidden", s = std::path::MAIN_SEPARATOR), ".hidden.ecad"),
     ];
     for (typed, file) in rows {
-        let mut t = trial(None, None);
+        let mut t = new_app(None, None);
         assert_eq!(save_as(&mut t, &typed), None, "{typed}");
         let want = d.0.join(file);
         let got = t.status().unwrap().file.path.unwrap();
@@ -462,7 +462,7 @@ fn mismatched_quotes_never_panic() {
     ];
     for typed in &rows {
         let _ = normalize_with(typed, None);
-        let mut t = trial(None, None);
+        let mut t = new_app(None, None);
         let _ = save_as(&mut t, typed);
         if let Some(p) = t.status().unwrap().file.path {
             assert!(Path::new(&p).is_file(), "{typed} -> {p} (banner names a missing file)");
@@ -508,7 +508,7 @@ fn snapshots_argument_with_a_tilde_goes_to_the_home_folder() {
         let Ok(ecad_desktop::Invocation::Run { snapshots, .. }) = parse_args(vec![OsString::from("--snapshots"), OsString::from(typed)]) else {
             panic!("{typed}")
         };
-        let mut t = trial(Some(&home.0), snapshots);
+        let mut t = new_app(Some(&home.0), snapshots);
         let written = t.export_snapshot("r2").unwrap();
         assert!(written.starts_with(&home.0), "{typed} -> {}", written.display());
         assert!(written.is_file());
@@ -551,7 +551,7 @@ fn the_banner_shows_the_expanded_path_with_one_separator() {
     std::fs::create_dir_all(home.0.join("ecad-projects")).unwrap();
     let foreign = if cfg!(windows) { '/' } else { '\\' };
     for (typed, file) in [("~/ecad-projects/demo", "demo.ecad"), (r"~\ecad-projects\demo2", "demo2.ecad")] {
-        let mut t = trial(Some(&home.0), None);
+        let mut t = new_app(Some(&home.0), None);
         assert_eq!(save_as(&mut t, typed), None, "{typed}");
         let want = home.0.join("ecad-projects").join(file).display().to_string();
         let s = t.status().unwrap();

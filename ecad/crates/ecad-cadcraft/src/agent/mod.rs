@@ -1,6 +1,6 @@
 //! The agent gate (brief 011, brief 035; design 065 §3, cut 12): what an agent may run, the
 //! per-call caps, the agent's author name, the ECAD read tools and the agent access preference.
-//! The headless server (`ecad-mcp`) and the ECAD window's live bridge (the trial) both use it, on
+//! The headless server (`ecad-mcp`) and the ECAD window's live bridge (the desktop app) both use it, on
 //! whatever session and project they pass, so the same project state gives the same reply.
 //!
 //! - [`policy`]: which commands run with writes off or on, and the refusals.

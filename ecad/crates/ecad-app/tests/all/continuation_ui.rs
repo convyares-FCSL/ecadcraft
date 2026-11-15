@@ -1,4 +1,4 @@
-//! Brief 049 in the trial (review of #85, 3): continuation arrows on a page as drawn. Screenshots of
+//! Brief 049 in the app (review of #85, 3): continuation arrows on a page as drawn. Screenshots of
 //! an arrow's other-end text, a caption run under its bracket, and the run split in two are written
 //! when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are for review, never
 //! committed.
@@ -11,7 +11,7 @@ use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, shots, trial};
+use crate::project_panel::{doc, new_app, shots};
 
 type H = Harness<'static, App>;
 
@@ -38,7 +38,7 @@ fn page_of(v: &Value) -> PageId {
 }
 
 #[test]
-#[ignore = "slow: a 1920×1080 trial with three pages, about 4 s; run by name for the screenshots"]
+#[ignore = "slow: a 1920×1080 app with three pages, about 4 s; run by name for the screenshots"]
 fn continuation_arrows_draw_their_other_ends_and_captions() {
     let deltas: crate::mouse_tester::Deltas = Arc::default();
     let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
@@ -46,7 +46,7 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(3);
     let first = doc(&mut h).page_order[0];

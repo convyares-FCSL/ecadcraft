@@ -12,7 +12,7 @@
 //!   ([`Project::agent_access_request`]); the window applies it and reports
 //!   ([`Project::agent_access_status`]). Agents never run it (`ecad-mcp`'s policy refuses it).
 //!
-//! Excluded: the listener, the gate and the banner (the trial), and anything stored in a project.
+//! Excluded: the listener, the gate and the banner (the desktop app), and anything stored in a project.
 
 use std::io::Read;
 use std::path::PathBuf;

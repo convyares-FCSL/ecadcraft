@@ -56,7 +56,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "closepoint",
     // Brief 024: the reports and the printed book read the project and record nothing (a `path`
     // is refused in every mode, as for `plot` and `export`: `printbook` then returns the PDF as
-    // base64 data); `reports` only asks the trial to open its window.
+    // base64 data); `reports` only asks the desktop app to open its window.
     "bom",
     "wirelist",
     "cablelist",

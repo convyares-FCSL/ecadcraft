@@ -12,7 +12,7 @@
 //!   `not-run` / `may-have-run` states. Its wording is turned into ECAD's
 //!   ([`reword`]).
 //!
-//! Excluded: the window's side (the trial's `agent` module), and launching (see
+//! Excluded: the window's side (the desktop app's `agent` module), and launching (see
 //! [`crate::launch`]).
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -22,7 +22,7 @@ use std::time::Duration;
 use cadcraft_mcp::{Backend, Remote};
 use serde_json::{Value, json};
 
-/// The port the trial listens on by default (design 035 §17, 1).
+/// The port the desktop app listens on by default (design 035 §17, 1).
 pub const DEFAULT_PORT: u16 = ecad_cadcraft::agent::access::DEFAULT_PORT;
 /// How long the probe waits for the window to accept.
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
@@ -114,7 +114,7 @@ pub fn new_session_id() -> String {
 /// One server's connection to the window.
 pub struct Link {
     pub port: u16,
-    /// Open the trial when nothing answers (`--launch`).
+    /// Open the desktop app when nothing answers (`--launch`).
     pub launch: bool,
     pub mode: Mode,
     /// The session id sent with every `ecad.*` request.

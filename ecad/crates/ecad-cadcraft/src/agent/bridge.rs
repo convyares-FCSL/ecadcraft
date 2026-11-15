@@ -1,7 +1,7 @@
 //! The words both ends of the live bridge share (brief 035, design §4.3): the client in
 //! `ecad-mcp` and the ECAD window that answers it.
 //!
-//! Excluded: the transport (the client's `Link` in `ecad-mcp`, the window's listener in the trial).
+//! Excluded: the transport (the client's `Link` in `ecad-mcp`, the window's listener in the desktop app).
 
 /// The upstream control methods the window answers over the bridge besides `ecad.*` (design
 /// 035 §4.3); everything else is refused there without running.

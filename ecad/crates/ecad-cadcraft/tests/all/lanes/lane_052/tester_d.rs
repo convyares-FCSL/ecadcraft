@@ -138,7 +138,7 @@ fn every_conflict_answer_is_one_step_and_undoes_exactly() {
 }
 
 /// §10.21, §5.8: "Choose lets it take =F1 and keep its location": a device with both aspects in
-/// conflict can move one aspect's row and keep the other. The trial's per-row Move says
+/// conflict can move one aspect's row and keep the other. The desktop app's per-row Move says
 /// "Set -K01's function to =F1" but sends only `components`.
 #[test]
 fn a_per_row_move_moves_only_that_aspect() {

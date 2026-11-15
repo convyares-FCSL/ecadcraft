@@ -1,6 +1,6 @@
 //! Settings ▸ Project info (UI rev 3, board 5.01) and Settings ▸ Pages and sheets: the Project
 //! info and Project settings popouts (design 019 §7.1, split by the owner; brief 042), laid out as
-//! rev 3's cards. Their copy is the trial's `project_props`, filled from `projectprops {}` when the
+//! rev 3's cards. Their copy is the app's `project_props`, filled from `projectprops {}` when the
 //! section is shown; Save (OK) writes the changed fields as before (one transaction per line) and
 //! closes Settings, Cancel writes nothing.
 //!

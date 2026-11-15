@@ -49,7 +49,7 @@ pub enum Tab {
     Plc,
 }
 
-/// What a list view asks the trial for.
+/// What a list view asks the app for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ListAction {
     /// A Project panel action (go to a check or symbol, a fix, a device property).

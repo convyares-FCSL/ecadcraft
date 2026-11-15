@@ -273,7 +273,7 @@ pub fn main_with(args: &[String]) -> Result<(), String> {
     std::fs::write(&out, text).map_err(|e| format!("{}: {e}", out.display()))?;
     println!("Results written to {}", out.display());
     if let Some(k) = &o.keep {
-        println!("Projects kept in {} (open them in the trial with Open project…).", k.display());
+        println!("Projects kept in {} (open them in the desktop app with Open project…).", k.display());
     }
     if let Some(earlier) = &earlier {
         println!("{}", report::compare(&rows, earlier)?);

@@ -39,7 +39,7 @@ pub const AGENT_THIS_RUN: &str = "Set by --control for this run.";
 /// The primitives showcase's button (brief 037), named as its page.
 pub const PRIMITIVES: &str = ecad_ui::showcase::PAGE;
 
-/// What the section asks the trial for.
+/// What the section asks the app for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     /// Run this line through the command path.
@@ -60,7 +60,7 @@ pub enum Action {
     Banner(crate::agent::BannerAction),
 }
 
-/// The Agent access row's state, borrowed from the trial.
+/// The Agent access row's state, borrowed from the app.
 pub struct AgentRow<'a> {
     pub mode: Mode,
     pub port: &'a mut String,
@@ -88,7 +88,7 @@ pub enum Body {
     Primitives,
 }
 
-/// The section's state (the command field's text lives in the trial, as the template buttons
+/// The section's state (the command field's text lives in the app, as the template buttons
 /// fill it).
 #[derive(Debug, Default)]
 pub struct Developer {
@@ -102,7 +102,7 @@ pub struct Developer {
     pub showcase: ecad_ui::showcase::Showcase,
 }
 
-/// Everything the section draws, borrowed from the trial.
+/// Everything the section draws, borrowed from the app.
 pub struct Parts<'a> {
     pub dev: &'a mut Developer,
     pub command: &'a mut String,

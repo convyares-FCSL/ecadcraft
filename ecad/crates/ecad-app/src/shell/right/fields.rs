@@ -1,7 +1,7 @@
 //! A property row of the Properties copy ([`crate::sheets_ui::PropsShared`]) drawn the rev 3 way:
 //! the grey label, then an input box when it is set here (a value read from elsewhere shows as
 //! its grey placeholder, with where it comes from at the right), or grey text when it cannot be
-//! set. Edits go to the copy's `edits`, run by the trial after the frame, exactly as before.
+//! set. Edits go to the copy's `edits`, run by the app after the frame, exactly as before.
 
 use ecad_cadcraft::props::{Row, Target};
 use ecad_ui::tokens::ui_type;

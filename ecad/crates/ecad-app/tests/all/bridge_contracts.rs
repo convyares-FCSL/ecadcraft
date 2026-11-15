@@ -1,8 +1,8 @@
-//! Brief 035 (design 035 §12): MCP contract tests over the live bridge. Each test builds a trial
+//! Brief 035 (design 035 §12): MCP contract tests over the live bridge. Each test builds an app
 //! headless (egui_kittest) with agent access on at a free port, runs an `ecad-mcp --connect`
-//! server on a second thread, and pumps the trial's frames until each reply arrives (10 s guard).
+//! server on a second thread, and pumps the app's frames until each reply arrives (10 s guard).
 //!
-//! They live in the trial's test executable (not `ecad-mcp`'s) because they need a `App`;
+//! They live in the app's test executable (not `ecad-mcp`'s) because they need a `App`;
 //! `ecad-mcp` stays below the UI layer.
 
 use std::io::{BufRead, BufReader, Write};
@@ -25,8 +25,8 @@ pub(crate) fn free_port() -> u16 {
     TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
 }
 
-/// A trial with agent access on (Read and change) at a free port, its listener started.
-pub(crate) fn live_trial() -> (H, u16) {
+/// An app with agent access on (Read and change) at a free port, its listener started.
+pub(crate) fn live_app() -> (H, u16) {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
@@ -84,7 +84,7 @@ pub(crate) fn server(port: u16, write: bool, name: &str) -> Server {
 }
 
 impl Server {
-    /// Send `msg` and pump the trial's frames until the reply comes.
+    /// Send `msg` and pump the app's frames until the reply comes.
     pub(crate) fn send(&mut self, h: &mut H, msg: Value) -> Value {
         self.tx.send(msg).unwrap();
         let start = Instant::now();
@@ -175,7 +175,7 @@ fn agent(name: &str) -> Author {
 
 #[test]
 fn agent_wires_are_the_agents_and_a_persons_edit_between_them_is_the_persons() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     let before = log_len(&mut h);
     let r = a.exec(&mut h, "wire", wire(0.0));
@@ -197,7 +197,7 @@ fn agent_wires_are_the_agents_and_a_persons_edit_between_them_is_the_persons() {
 
 #[test]
 fn refusals_read_the_same_over_the_bridge_as_headless() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     let mut local = EcadMcp::in_memory("same", 1, Options { write: true, agent: Some("tester".into()) }).unwrap();
     let headless = |s: &mut EcadMcp, cmd: &str, params: Value| -> String {
@@ -221,7 +221,7 @@ fn refusals_read_the_same_over_the_bridge_as_headless() {
 
 #[test]
 fn the_person_is_the_author_after_a_refused_a_failing_and_a_panicking_agent_call() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "wire", wire(0.0));
     // Refused by policy.
@@ -249,7 +249,7 @@ fn the_person_is_the_author_after_a_refused_a_failing_and_a_panicking_agent_call
 
 #[test]
 fn a_batch_of_two_executes_on_one_line_records_at_most_one() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "ecadinspect", json!({}));
     let before = conductors(&mut h);
@@ -267,7 +267,7 @@ fn a_batch_of_two_executes_on_one_line_records_at_most_one() {
 
 #[test]
 fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     h.state_mut().agent.pref.mode = ecad_cadcraft::agent_access::Mode::Read;
     let mut a = server(port, true, "tester");
     let before = log_len(&mut h);
@@ -288,7 +288,7 @@ fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
 
 #[test]
 fn a_write_waits_while_the_person_is_in_the_middle_of_wire_then_is_refused_unrun() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "ecadinspect", json!({}));
     h.state_mut().cad.session.cmdline("wire").unwrap();
@@ -310,7 +310,7 @@ fn a_write_waits_while_the_person_is_in_the_middle_of_wire_then_is_refused_unrun
 
 // ---------- 7: raw methods ----------
 
-/// Send raw JSON lines with (or without) the token on one connection while the trial runs.
+/// Send raw JSON lines with (or without) the token on one connection while the app runs.
 fn raw(h: &mut H, port: u16, lines: Vec<Value>) -> Vec<Value> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
@@ -343,7 +343,7 @@ fn raw(h: &mut H, port: u16, lines: Vec<Value>) -> Vec<Value> {
 
 #[test]
 fn raw_methods_are_refused_and_change_nothing_and_a_request_without_the_token_is_unauthorized() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let token = cadcraft_mcp::control_token::read(port).unwrap();
     let before = log_len(&mut h);
     let reqs: Vec<Value> = [
@@ -374,7 +374,7 @@ fn raw_methods_are_refused_and_change_nothing_and_a_request_without_the_token_is
 
 #[test]
 fn an_agent_undo_of_the_persons_step_is_refused_and_of_its_own_works() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "wire", wire(0.0));
     person_wire(&mut h, 5.0);
@@ -394,7 +394,7 @@ fn an_agent_undo_of_the_persons_step_is_refused_and_of_its_own_works() {
 
 #[test]
 fn a_second_writer_reads_until_the_first_says_bye() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "first");
     a.exec(&mut h, "wire", wire(0.0));
     let mut b = server(port, true, "second");
@@ -413,7 +413,7 @@ fn headless_until_a_window_answers_then_bridged_and_headless_sticks_after_a_chan
     let port = free_port();
     let mut a = server(port, true, "tester");
     let (tx, rx) = channel::<Value>();
-    // No window: headless (no trial frames needed).
+    // No window: headless (no app frames needed).
     let call = |s: &mut Server, msg: Value| -> Value {
         s.tx.send(msg).unwrap();
         s.rx.recv_timeout(Duration::from_secs(10)).unwrap()
@@ -482,7 +482,7 @@ fn with_no_preference_and_no_control_flag_nothing_listens() {
 
 #[test]
 fn the_banner_follows_hello_writes_refusals_and_bye() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "wire", wire(0.0));
     let b = h.state().agent_banner().unwrap().clone();
@@ -507,7 +507,7 @@ fn the_banner_follows_hello_writes_refusals_and_bye() {
 
 #[test]
 fn an_agent_author_found_between_frames_is_reset_and_access_stays_on() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "wire", wire(0.0));
     {
@@ -578,7 +578,7 @@ fn a_headless_read_leaves_the_file_for_the_window_and_the_bridged_write_is_recor
 
 #[test]
 fn an_agent_restore_over_the_persons_steps_is_refused_and_over_its_own_works() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     // Restore works on a saved project (branches live in its file).
     let dir = std::env::temp_dir().join(format!("ecad-035-restore-{}", ecad_cadcraft::session_seed()));
     std::fs::create_dir_all(&dir).unwrap();

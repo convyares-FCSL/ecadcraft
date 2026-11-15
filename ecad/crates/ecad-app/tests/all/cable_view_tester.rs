@@ -1,5 +1,5 @@
 //! Independent tester's UI checks for brief 005 (traditional / fan cable view), written from the
-//! brief, design 005 and the owner's answers only, driving the trial headless (egui_kittest,
+//! brief, design 005 and the owner's answers only, driving the app headless (egui_kittest,
 //! elements by label) in a 1280×800 window.
 //!
 //! - Design §3.1: the **Cable View** entry (`ecad.cableview`, Wiring, after Cable Slash).
@@ -7,7 +7,7 @@
 //!   fan painted, the banner's change count unchanged, `u` undoing the slash and not the switch;
 //!   reference screenshots `005-traditional.png` and `005-fan.png` written to `$ECAD_TESTER_SHOTS`
 //!   when set and a wgpu adapter exists, with pixel checks on the rendered frames.
-//! - AC2 through the trial's own open path (`App::with_file`, which reads `ECAD_SETTINGS_DIR`),
+//! - AC2 through the app's own open path (`App::with_file`, which reads `ECAD_SETTINGS_DIR`),
 //!   in a child process so the variable never leaks into another test and the owner's settings are
 //!   never read: each cable reopens in its view; a garbage settings file opens all traditional with
 //!   the one-line message.
@@ -28,7 +28,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 
 fn build(t: App, deltas: Option<Deltas>) -> Harness<'static, App> {
-    common::harness(Opts::new().trial(t).deltas(deltas))
+    common::harness(Opts::new().app(t).deltas(deltas))
 }
 
 /// A new-project harness whose views are remembered in `settings`.
@@ -365,15 +365,15 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     assert!(!magenta_near(&fan, crossing(0.0), 2), "no crossing dot in fan view");
 }
 
-/// AC2 through the trial's open path, in a child process (see the module docs).
+/// AC2 through the app's open path, in a child process (see the module docs).
 #[test]
-fn ac2_trial_reopens_each_cable_in_its_view() {
+fn ac2_app_reopens_each_cable_in_its_view() {
     let settings = Tmp::new("reopen-settings");
     let work = Tmp::new("reopen-work");
     let decoy = Tmp::new("reopen-decoy");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "cable_view_tester::child_trial_reopen", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "cable_view_tester::child_app_reopen", "--ignored", "--nocapture", "--test-threads=1"])
         .env("ECAD_SETTINGS_DIR", &settings.0)
         .env("APPDATA", &decoy.0)
         .env("HOME", &decoy.0)
@@ -387,14 +387,14 @@ fn ac2_trial_reopens_each_cable_in_its_view() {
 }
 
 #[test]
-#[ignore = "run by ac2_trial_reopens_each_cable_in_its_view in a child process"]
-fn child_trial_reopen() {
+#[ignore = "run by ac2_app_reopens_each_cable_in_its_view in a child process"]
+fn child_app_reopen() {
     // Only as a child of its test, which sets `ECAD_TEST_CHILD`; run directly, it does nothing.
     if std::env::var_os("ECAD_TEST_CHILD").is_none() {
         return;
     }
     let Some(work) = std::env::var_os("ECAD_TESTER_WORK").map(PathBuf::from) else {
-        panic!("run only as a child of ac2_trial_reopens_each_cable_in_its_view");
+        panic!("run only as a child of ac2_app_reopens_each_cable_in_its_view");
     };
     let settings = PathBuf::from(std::env::var_os("ECAD_SETTINGS_DIR").unwrap());
     ecad_cadcraft::install();
@@ -411,7 +411,7 @@ fn child_trial_reopen() {
     ] {
         ok(&mut h, line);
     }
-    let path = work.join("trial.ecad").display().to_string();
+    let path = work.join("app.ecad").display().to_string();
     h.state_mut().save_as(&path).unwrap();
     let vs = views_of(&mut h);
     let mut ids: Vec<String> = vs.as_object().unwrap().keys().cloned().collect();
@@ -422,7 +422,7 @@ fn child_trial_reopen() {
     let (fan_id, trad_id) = (ids[0].clone(), ids[1].clone());
     assert_eq!(h.state_mut().status().unwrap().unsaved, 0, "a switch is not an unsaved change");
     drop(h);
-    // Reopen through the trial (reads ECAD_SETTINGS_DIR).
+    // Reopen through the app (reads ECAD_SETTINGS_DIR).
     ecad_cadcraft::views::isolate_for_tests();
     let t = App::with_file(None, &path).unwrap();
     let mut h = build(t, None);

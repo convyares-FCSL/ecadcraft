@@ -27,9 +27,9 @@ fn opening_a_saved_project_marks_the_shell_then_the_project() {
         ecad_cadcraft::views::isolate_for_tests();
         let mut t = quiet();
         t.mark(Step::Main);
-        let trial = App::start(None, *project, timed.then_some(&mut t)).unwrap();
-        assert!(trial.project_open(), "{project:?}");
-        assert_eq!(trial.notice(), None, "{project:?} opened without a notice");
+        let app = App::start(None, *project, timed.then_some(&mut t)).unwrap();
+        assert!(app.project_open(), "{project:?}");
+        assert_eq!(app.notice(), None, "{project:?} opened without a notice");
         let steps: Vec<Step> = t.marks().iter().map(|m| m.step).collect();
         let want: &[Step] = if *timed { &[Step::Main, Step::Shell, Step::Project] } else { &[Step::Main] };
         assert_eq!(steps, want, "{project:?} timed {timed}");
@@ -38,7 +38,7 @@ fn opening_a_saved_project_marks_the_shell_then_the_project() {
             assert!(m.since_start_ms >= previous && m.step_ms >= 0.0, "{m:?}");
             previous = m.since_start_ms;
         }
-        drop(trial);
+        drop(app);
     }
     std::fs::remove_dir_all(&dir).ok();
 }

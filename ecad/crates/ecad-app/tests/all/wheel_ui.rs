@@ -1,4 +1,4 @@
-//! Brief 041 (U4b) in the trial at 1920 × 1080: the wheel on the page and on a page row, the
+//! Brief 041 (U4b) in the app at 1920 × 1080: the wheel on the page and on a page row, the
 //! intent line in place of the command line, every key the brief names, the tool groups and
 //! Ctrl+K over pages, tags, symbols and actions.
 
@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::project_panel::{doc, head, trial};
+use crate::project_panel::{doc, head, new_app};
 
 type H = Harness<'static, App>;
 
@@ -38,7 +38,7 @@ fn shell_with(deltas: Option<crate::mouse_tester::Deltas>) -> H {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h

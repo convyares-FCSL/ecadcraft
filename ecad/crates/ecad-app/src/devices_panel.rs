@@ -687,7 +687,7 @@ impl DevicesPanel {
         }
     }
 
-    /// The trial reports a refused property edit; a tag held by another device offers the merge.
+    /// The app reports a refused property edit; a tag held by another device offers the merge.
     pub fn refused(&mut self, c: ComponentId, key: &str, value: &str, message: String) {
         let offer = (key == "tag" && message.contains(" is used by ")).then(|| (c, value.to_string()));
         // Brief 026: the ways are read from the refusal before it is shortened.

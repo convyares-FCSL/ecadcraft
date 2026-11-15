@@ -3,7 +3,7 @@
 use egui_kittest::Harness;
 
 /// A harness drawing `app` each frame over `state`, with ECAD's fonts installed in the first
-/// frame (as the trial installs them on top of CADCraft's set) and ECAD's style applied.
+/// frame (as the desktop app installs them on top of CADCraft's set) and ECAD's style applied.
 pub fn harness<'a, S>(mut app: impl FnMut(&mut egui::Ui, &mut S) + 'a, state: S) -> Harness<'a, S> {
     let mut first = true;
     let mut h = Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(

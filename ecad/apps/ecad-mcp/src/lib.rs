@@ -2,7 +2,7 @@
 //!
 //! It composes CADCraft's MCP server (`cadcraft-mcp`) from ECAD's side, with no upstream change:
 //! one headless CADCraft session with the ECAD commands installed and one ECAD project open, as
-//! the trial does. On top of CADCraft's server it adds:
+//! the desktop app does. On top of CADCraft's server it adds:
 //!
 //! - **a write gate** ([`policy`]): read-only unless started with `--write`, and read-only
 //!   whatever the flag when the project opened read-only. Writes reach the project only through
@@ -408,7 +408,7 @@ impl EcadMcp {
         Self::build(None, Some(opener), Some(bridge::Link::new(port, launch)), opts)
     }
 
-    /// Open the project file at `path` (`~` and a missing `.ecad` are handled as in the trial).
+    /// Open the project file at `path` (`~` and a missing `.ecad` are handled as in the desktop app).
     /// Returns the server and what opening found, in words. A project another session is editing,
     /// or a damaged one, opens read-only: writes are then refused whatever `opts.write` says.
     ///

@@ -23,7 +23,7 @@ pub const CHANGES_SHOWN: usize = 20;
 /// The undo-merge question's window id.
 pub const UNDO_MERGE_ID: &str = "ecad.undomerge";
 
-/// What the dialog asks the trial to do.
+/// What the dialog asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
     /// Ask for the preview again with these parameters (choices changed).

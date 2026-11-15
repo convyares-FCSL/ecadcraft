@@ -1,4 +1,4 @@
-//! Brief 040 (U4a): the canvas in the trial. The paper sheet and CADCraft's view switches at
+//! Brief 040 (U4a): the canvas in the app. The paper sheet and CADCraft's view switches at
 //! 1920 × 1080, `ui.sheet` switching to the dark sheet and remembered, the painter reading the
 //! project only when its key moves, the related placements of a selected device, nothing painted
 //! while the page is hidden, and the first-open zoom.
@@ -13,10 +13,10 @@ use egui_kittest::Harness;
 use serde_json::{Value, json};
 
 use crate::common::{self, Opts};
-use crate::project_panel::{click, trial};
+use crate::project_panel::{click, new_app};
 
 fn harness() -> Harness<'static, App> {
-    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).app(new_app()))
 }
 
 fn exec(h: &mut Harness<'static, App>, cmd: &str, params: Value) -> Value {
@@ -178,7 +178,7 @@ fn screenshots_of_the_canvas() {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(3);
     h.state_mut().close_project();

@@ -1,4 +1,4 @@
-//! Brief 016 acceptance in the trial (design 016 §10, checks A–J), headless with egui_kittest in a
+//! Brief 016 acceptance in the app (design 016 §10, checks A–J), headless with egui_kittest in a
 //! 1280×800 window: the Project panel by its labels, the one page window, undo bringing its page
 //! to the front, the read-only preview, and the reference screenshots of design §10, written to
 //! `$ECAD_TESTER_SHOTS` when it is set and a wgpu adapter exists (`016-panel.png`,
@@ -158,14 +158,14 @@ pub(crate) fn build(t: App, deltas: Option<Deltas>) -> Harness<'static, App> {
     h
 }
 
-pub(crate) fn trial() -> App {
-    let mut t = rev3_trial();
+pub(crate) fn new_app() -> App {
+    let mut t = rev3_app();
     open_panels(&mut t);
     t
 }
 
-/// The trial as it starts (UI rev 3, board 1.01: both sides closed).
-pub(crate) fn rev3_trial() -> App {
+/// The app as it starts (UI rev 3, board 1.01: both sides closed).
+pub(crate) fn rev3_app() -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
@@ -307,7 +307,7 @@ pub(crate) fn take(h: &Harness<'static, App>, deltas: &Deltas, name: &str) -> Op
 #[test]
 fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     let deltas: Deltas = Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     let (supply, field, spare) = fixture_p(&mut h);
     h.run_steps(3);
 
@@ -520,7 +520,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
 #[test]
 fn preview_reference_shows_the_other_end_and_records_nothing() {
     let deltas: Deltas = Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     let (supply, field, spare) = fixture_p(&mut h);
     click(&mut h, "Page 1: Supply");
     // Select Supply's reference point, then Preview Reference (ECAD tab, Wiring).
@@ -627,7 +627,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
 #[test]
 fn five_hundred_pages_cost_only_the_visible_rows() {
     let deltas: Deltas = Arc::default();
-    let t = trial();
+    let t = new_app();
     let mut h = build(t, Some(deltas.clone()));
     {
         let t = h.state_mut();
@@ -699,7 +699,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     let dir = std::env::temp_dir().join(format!("ecad-016-ro-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("ro.ecad").display().to_string();
-    let mut first = trial();
+    let mut first = new_app();
     assert!(first.submit_command(r#"newpage {"title":"Field"}"#).is_none());
     first.save_as(&path).unwrap();
     ecad_cadcraft::views::isolate_for_tests();
@@ -771,7 +771,7 @@ pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::Com
 #[test]
 fn devices_tab_goes_to_a_symbol_and_filters() {
     let deltas: Deltas = Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     let (coil, page1, page2) = devices_fixture(&mut h);
     assert!(h.query_by_label("Device -K01: Contactor / relay coil").is_some(), "the device is listed");
     click(&mut h, "Device -K01: Contactor / relay coil");
@@ -825,7 +825,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
 /// a tag another device has is refused with the merge offer, which merges in one step.
 #[test]
 fn devices_tab_edits_a_property_in_one_transaction() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     let (coil, ..) = devices_fixture(&mut h);
     click(&mut h, "Device -K01: Contactor / relay coil");
     let before = head(&mut h);
@@ -874,7 +874,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
 /// is shown.
 #[test]
 fn devices_tab_refreshes_only_the_devices_a_change_touches() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     let (coil, page1, _page2) = devices_fixture(&mut h);
     ok(&mut h, r#"place {"symbol":"mcb1","at":[100,0]}"#);
     h.run_steps(2);
@@ -928,7 +928,7 @@ fn devices_tab_refreshes_only_the_devices_a_change_touches() {
 /// nothing.
 #[test]
 fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     let (coil, page1, _page2) = devices_fixture(&mut h);
     {
         let s = &mut h.state_mut().search;
@@ -966,7 +966,7 @@ fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
 #[test]
 fn the_developer_section_hosts_the_command_the_debugger_and_inspect() {
     let deltas: Deltas = Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     assert!(h.query_by_label("ECAD Dev").is_none(), "no ECAD Dev tab");
     assert!(h.query_by_label(ecad_app::developer::FIELD).is_none(), "folded by default");
     // Brief 038: the Developer section is the Text panel's Commands tab (Ctrl+/).

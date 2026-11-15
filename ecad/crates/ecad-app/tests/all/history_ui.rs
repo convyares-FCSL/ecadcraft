@@ -1,4 +1,4 @@
-//! Brief 020a headless in the trial (design 020 §13 checks A–D, L, M): the History tab on the
+//! Brief 020a headless in the app (design 020 §13 checks A–D, L, M): the History tab on the
 //! demo project, New version through its dialog, a row's details, Show and Back to current,
 //! Branch from here with the branch bar and the window title, Save and switch back, and Revisions
 //! off main. Screenshots (`020-*.png`) are written when `ECAD_TESTER_SHOTS` names a folder and a

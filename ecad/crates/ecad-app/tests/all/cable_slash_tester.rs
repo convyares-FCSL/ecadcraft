@@ -1,5 +1,5 @@
 //! Independent tester's UI checks for brief 004 (cable slash), written from the brief and design 004
-//! only, driving the trial headless (egui_kittest, elements by label) in a 1280×800 window.
+//! only, driving the app headless (egui_kittest, elements by label) in a 1280×800 window.
 //!
 //! - AC9 / design check A: the ECAD tab's **Cable Slash** entry (id `ecad.cableslash`, Wiring
 //!   group, between Disconnect and Add to Cable) starts the interactive form with an empty Command

@@ -3,7 +3,7 @@
 //! session and project the caller passes.
 //!
 //! Two hosts use it: the headless server (`ecad_mcp::EcadMcp`, one session of its own) and the
-//! trial's live bridge (the person's own session, one call between two frames). The same project
+//! desktop app's live bridge (the person's own session, one call between two frames). The same project
 //! state gives the same reply text in both.
 //!
 //! # Semantics
@@ -11,7 +11,7 @@
 //!   commands stay unknown) after [`crate::agent::policy::check`], with the project told how many
 //!   transactions the call may still record; a call that records more is taken back and refused.
 //! - [`Call::refusal`] replaces [`crate::agent::policy::WRITES_OFF`] when the host refuses writes for a
-//!   reason of its own (the trial's Read only, Pause, another writer).
+//!   reason of its own (the desktop app's Read only, Pause, another writer).
 //! - With [`Call::owned`] (the bridge), `u` and `redo` act only on the session's own steps, and
 //!   every transaction the call keeps is added to them.
 //! - [`as_agent`] records the agent as the author for one call and restores the person after it,
@@ -135,7 +135,7 @@ fn log_since(s: &mut Session, p: &ProjectHandle, from: &(String, usize)) -> Resu
     })
 }
 
-/// Make a page of the project the active document, as the trial does before saving.
+/// Make a page of the project the active document, as the desktop app does before saving.
 ///
 /// # Errors
 /// No ECAD page is open, or switching failed.
@@ -392,7 +392,7 @@ pub fn restore_user_retrying(s: &mut Session, p: &ProjectHandle) -> bool {
     false
 }
 
-/// Whether the project records the person as the author with no budget (the trial checks it at
+/// Whether the project records the person as the author with no budget (the desktop app checks it at
 /// the top of every frame). `None` when the project cannot be read just now.
 pub fn author_is_user(s: &mut Session, p: &ProjectHandle) -> Option<bool> {
     p.read(s, |p, _| p.author == Author::User && p.tx_budget.is_none()).ok()

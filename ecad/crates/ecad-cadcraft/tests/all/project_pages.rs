@@ -128,12 +128,12 @@ fn a_project_handle_only_works_with_its_own_session() {
 fn without_persistence_save_reports_unavailable_and_changes_nothing() {
     ecad_cadcraft::install();
     let mut s = cadcraft_engine::Session::empty();
-    let project = ecad_cadcraft::Project::create_with(&mut s, "Trial", 9, ecad_cadcraft::Persistence::Unavailable).unwrap();
+    let project = ecad_cadcraft::Project::create_with(&mut s, "Pages", 9, ecad_cadcraft::Persistence::Unavailable).unwrap();
     // A new, untouched project has nothing to lose.
     assert!(!s.doc_unsaved(0) && !s.close_needs_prompt(0));
     s.execute("wire", &json!({"points": [[0, 0], [30, 0]]})).unwrap();
     assert!(s.doc_unsaved(0) && s.close_needs_prompt(0), "an edit is unsaved design");
-    let dir = std::env::temp_dir().join(format!("ecad-trial-save-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ecad-pages-save-{}", std::process::id()));
     let target = dir.join("never.ecad");
     for (cmd, params) in [("qsave", Value::Null), ("saveas", json!({"path": target.to_string_lossy()}))] {
         let e = s.execute(cmd, &params).unwrap_err().to_string();

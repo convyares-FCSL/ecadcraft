@@ -173,7 +173,7 @@ fn scenario_s1_to_s16() {
     assert_eq!(h.doc().cables.len(), 1);
     assert_eq!(id::<ecad_model::CableId>(&cable, "cable"), *h.doc().cables.keys().next().unwrap(), "redo recreates the same cable ID");
 
-    // S12: close the page window showing page 2 (the trial's `keep_open`: no prompt, the project
+    // S12: close the page window showing page 2 (the desktop app's `keep_open`: no prompt, the project
     // stays open), then show it again.
     h.activate(p2);
     h.cfg(|p| p.keep_open = true);

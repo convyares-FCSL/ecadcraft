@@ -11,7 +11,7 @@
 //! - Everything painted here is overlay: egui shapes over the page, never entities, so none of it
 //!   can reach a plot (spec principle 1).
 //! - **Update map.** What is painted from the project is cached per (project serial, change
-//!   count, page, selection, sheet), the key the trial already keeps for the Properties section
+//!   count, page, selection, sheet), the key the app already keeps for the Properties section
 //!   (`App::props_seen`), and read again only when that key moves: a frame with the same key
 //!   reads nothing ([`State::reads`] counts the reads). The grid and the sheet surround are worked
 //!   out from the view each frame (no project read). The leader line repaints only while live.
@@ -84,7 +84,7 @@ impl Sheet {
 /// The readable zoom a page first opens at (spec §4 "Type", design §4): a tag is this tall, px.
 pub const TAG_PX: f64 = 13.0;
 
-/// What the painter keeps between frames (in egui's temporary data, so the trial's own state is
+/// What the painter keeps between frames (in egui's temporary data, so the app's own state is
 /// unchanged).
 #[derive(Debug, Default)]
 pub struct State {

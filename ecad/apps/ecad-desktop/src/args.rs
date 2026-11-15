@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// Command-line usage.
 pub const USAGE: &str = concat!(
     "usage: ecad-desktop [--snapshots <dir>] [--control <port>] [--cad-ui] [<project.ecad>]\n\n\
-ECAD desktop trial harness (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
+ECAD desktop program (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
 project. Save and Save As write .ecad project files; keep them in a local folder such as ",
     ecad_app::default_folder!(),
     ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
@@ -19,7 +19,7 @@ See ecad/docs/quick-start.md."
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invocation {
-    /// Start the trial: open `project` if given, allow snapshots into `snapshots` if given, and
+    /// Start the app: open `project` if given, allow snapshots into `snapshots` if given, and
     /// turn agent access on for this run on port `control` if given (brief 035).
     /// `cad_ui`: the shell's developer switch on from the start (`--cad-ui`, brief 038).
     Run { snapshots: Option<PathBuf>, project: Option<String>, control: Option<u16>, cad_ui: bool },

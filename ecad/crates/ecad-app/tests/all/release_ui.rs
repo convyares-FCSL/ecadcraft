@@ -1,4 +1,4 @@
-//! Brief 027 headless in the trial (design 027 §14 A, D, F): on the demo, the Release dialog lists
+//! Brief 027 headless in the app (design 027 §14 A, D, F): on the demo, the Release dialog lists
 //! the check by group, a row goes to its place with the dialog still open, Release writes the
 //! folder and closes, the Revisions window's Folder cell reads Open, and writing an issued
 //! revision again into its existing folder asks first (Keep both). Screenshots are written when

@@ -1,13 +1,13 @@
 //! The **Project** panel (brief 016, design 016 §2–§3, §7): the project's pages in page order on
 //! the far left, one click to make a page the active page, and the page actions (new, rename,
-//! reorder, preview) through the existing page commands. Since the trial's top banner was removed
+//! reorder, preview) through the existing page commands. Since the app's top banner was removed
 //! (owner, 2026-11-08) its header also holds the project's status, file actions and the
 //! experiment note.
 //!
 //! The panel only reads: it keeps a copy of the rows ([`ecad_cadcraft::PageRow`]) and rebuilds it
 //! when the project's change count moves (one integer compared per frame; a rebuild reads
 //! `page_order` and page titles only). The list is virtualised, so a frame draws only the visible
-//! rows whatever the page count. Everything it does is returned as [`Action`]s for the trial to
+//! rows whatever the page count. Everything it does is returned as [`Action`]s for the app to
 //! run through the command path.
 //!
 //! Excluded: deleting pages (no command exists), lists of cables, components or references.
@@ -113,7 +113,7 @@ pub enum Action {
     Move(PageId, usize),
     /// Open (or close, when it is shown) the preview of this page.
     Preview(PageId),
-    /// Header file actions, moved from the trial's banner.
+    /// Header file actions, moved from the app's banner.
     NewProject,
     OpenProject,
     Save,
@@ -304,7 +304,7 @@ struct Drag {
     onto: Option<FolderId>,
 }
 
-/// What the header shows about the project, read by the trial each frame.
+/// What the header shows about the project, read by the app each frame.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Header {
     /// `None`: no project is open.
@@ -1342,7 +1342,7 @@ impl ProjectPanel {
             if esc || same {
                 self.rename = None;
             } else {
-                // The trial runs `renamepage`; a refusal reopens the field with the message.
+                // The app runs `renamepage`; a refusal reopens the field with the message.
                 out.push(Action::Rename(page, text));
             }
         }

@@ -33,9 +33,8 @@ Rules:
   tests of the crates you touched since your last push; the fast tests of their dependents run in
   CI on the pull request into `dev`).
   **Before every push:** `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-  (plus `cargo xtask patches` when files outside `ecad/` changed; `cargo xtask wasm`, warnings as
-  errors like CI, when the change could affect wasm). Never `--include-ignored` and never the whole
-  workspace: the slow set and the full suite run only at the dev→main QA gate, or when the owner
+  (plus `cargo xtask patches` when files outside `ecad/` changed). Never `--include-ignored` and
+  never the whole workspace: the slow set and the full suite run only at the dev→main QA gate, or when the owner
   calls for them. A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
   New tests go in the crate's `tests/all/lanes/lane_<NNN>.rs` (see "Test layout" and "Per-lane
   files" in `ecad/CLAUDE.md`).

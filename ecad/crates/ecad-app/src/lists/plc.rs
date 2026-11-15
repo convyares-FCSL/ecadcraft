@@ -1132,7 +1132,7 @@ impl IoView {
     }
 
     /// Act on what [`IoView::show`] asked that the view itself answers (tile, chip, scope, reveal,
-    /// Compare, the path row); the rest goes back to the trial.
+    /// Compare, the path row); the rest goes back to the app.
     pub fn handle(&mut self, a: ListAction) -> Option<ListAction> {
         match a {
             ListAction::Tile(i) => {

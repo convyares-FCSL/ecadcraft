@@ -1,4 +1,4 @@
-//! The trial's modal questions: the close question, the file dialog, the issue question, Renumber,
+//! The app's modal questions: the close question, the file dialog, the issue question, Renumber,
 //! merge, and the symbol search window.
 
 use crate::file_ops::in_default_folder;
@@ -201,7 +201,7 @@ impl App {
         if let Some(h) = &self.held {
             self.close_dialog(ctx, h.title.clone(), h.changes);
         } else if let Some((source, output)) = self.convert_offer.clone() {
-            let shown = Dialog::new(egui::Id::unique("ecad_trial_convert"), "Convert this project?", "ecad.convert").medium().show(
+            let shown = Dialog::new(egui::Id::unique("ecad_app_convert"), "Convert this project?", "ecad.convert").medium().show(
                 ctx,
                 |ui| {
                     prim::body(ui, &format!("{source} is a version 1 project file. This version saves projects in version 2."), false);
@@ -237,7 +237,7 @@ impl App {
         } else if self.name_box.is_some() {
             self.name_box_dialog(ctx);
         } else if let Some(msg) = self.notice.clone() {
-            let shown = Dialog::new(egui::Id::unique("ecad_trial_notice"), "ECAD trial", "ecad.notice").small().show(
+            let shown = Dialog::new(egui::Id::unique("ecad_app_notice"), "ECAD desktop", "ecad.notice").small().show(
                 ctx,
                 |ui| prim::body(ui, &msg, false),
                 |ui| action(ui, "OK", Kind::Primary, "OK", None).clicked(),
@@ -255,7 +255,7 @@ impl App {
         let _ = title;
         let heading = format!("Save changes to project \"{name}\"?");
         let snapshots = self.snapshots.is_some();
-        let shown = Dialog::new(egui::Id::unique("ecad_trial_close"), &heading, "ecad.close").small().show(
+        let shown = Dialog::new(egui::Id::unique("ecad_app_close"), &heading, "ecad.close").small().show(
             ctx,
             |ui| {
                 prim::body(ui, &format!("Closing the project. It has {changes} unsaved change{}.", if changes == 1 { "" } else { "s" }), false);
@@ -302,7 +302,7 @@ impl App {
              locations are unverified.",
             in_default_folder("demo.ecad")
         );
-        let shown = Dialog::new(egui::Id::unique("ecad_trial_file"), heading, "ecad.file").medium().show(
+        let shown = Dialog::new(egui::Id::unique("ecad_app_file"), heading, "ecad.file").medium().show(
             ctx,
             |ui| {
                 prim::body(ui, &hint, true);

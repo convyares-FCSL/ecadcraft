@@ -1,4 +1,4 @@
-//! Brief 024 headless in the trial (design 024 §13): the demo's locations in Properties, its
+//! Brief 024 headless in the app (design 024 §13): the demo's locations in Properties, its
 //! location box and the prefix, the Checks fix, the Reports window with Export, generated pages
 //! and Print Book. Screenshots are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu
 //! adapter exists (with the printed demo, `024-demo.pdf`); they are for the owner's approval, never

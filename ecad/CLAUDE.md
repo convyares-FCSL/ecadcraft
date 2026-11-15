@@ -20,7 +20,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   results, limitations or the revision and environment it records. Keep automated checks,
   agent-observed runs and steps the owner has personally tried clearly apart, and never record a
   step as owner-tried unless the owner reported it. Other READMEs link to it rather than repeat
-  it. The headless tests `the_quick_start_trial_runs_headless` and
+  it. The headless tests `the_quick_start_runs_headless` and
   `the_quick_start_debugger_example_runs_headless` follow its steps.
 - The debugger is read-only: it reaches a project only through `ProjectHandle` reads under
   `try_lock`, copies what it shows and releases the lock before drawing, and runs replay, projection

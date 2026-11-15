@@ -56,7 +56,7 @@ Not yet: symbol libraries (`.ecadlib`), component cross-references, the project 
 ```
 
 - **Engine:** a Rust fork of [CADCraft](https://github.com/storytold/cadcraft) for geometry, snapping, commands and rendering.
-- **Planned layout (below).** The crates built so far are `ecad-model` (the model and its operations), `ecad-store` and `ecad-file` (the project file), `ecad-cadcraft` (the bridge to the engine), `ecad-inspect`, `ecad-bench`, and the apps `ecad-trial` and `ecad-mcp`; see [`ecad/`](ecad/).
+- **Planned layout (below).** The crates built so far are `ecad-model` (the model and its operations), `ecad-store` and `ecad-file` (the project file), `ecad-cadcraft` (the bridge to the engine), `ecad-inspect`, `ecad-bench`, and the apps `ecad-desktop` (with its library `ecad-app`) and `ecad-mcp`; see [`ecad/`](ecad/).
 - **`ecad-ledger`:** the project file format: an append-only log of user operations (`AddWire`, `SetTag`, `SlashCable`, `PromotePart`, …), with checkpoints, named versions and compaction.
 - **`ecad-topology`:** builds the connectivity graph from geometry and pins, with strict junction rules (crossing lines never connect; T-junctions need a dot).
 - **`ecad-infer`:** tag identity, cables, off-page matching, orphan and open-end detection.
@@ -107,9 +107,9 @@ Both views come from the same data, so switching is instant and nothing is redra
 
 The full concept spec lives in [`docs/concept-spec.md`](docs/concept-spec.md). Design decisions are logged one per line in [`docs/decisions.md`](docs/decisions.md).
 
-## Try the ECAD trial
+## Try ECAD
 
-The current ECAD work runs in a desktop trial app (an experiment): CADCraft's window with the ECAD commands, one project, and `.ecad` project files. **How to build, run and try it, and what has been tried so far:** [`ecad/docs/quick-start.md`](ecad/docs/quick-start.md), the single maintained guide.
+The current ECAD work runs in the desktop program `ecad-desktop` (an experiment): CADCraft's window with the ECAD commands, one project, and `.ecad` project files. **How to build, run and try it, and what has been tried so far:** [`ecad/docs/quick-start.md`](ecad/docs/quick-start.md), the single maintained guide.
 
 ## Building
 

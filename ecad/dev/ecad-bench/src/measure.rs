@@ -9,7 +9,7 @@
 //! - **xref** (cable references) times brief 010's `ecad_model::derive::cable_references` on the
 //!   document the open runs replayed to, as **derive** times the nets; see [`cable_references_ms`].
 //! - **draw edit** (brief 014) runs on another copy, opened once (not timed) in a headless
-//!   CADCraft session with page 1 open, as the trial opens it. Each run makes one edit the way a
+//!   CADCraft session with page 1 open, as the desktop app opens it. Each run makes one edit the way a
 //!   person makes it, through the engine: **move** moves a component that has wires attached
 //!   (MOVE on its symbol; the commit goes through the translation and the movement policy, and
 //!   the page is projected again), alternately down and back up; **move with wires** moves the
@@ -1019,7 +1019,7 @@ pub fn remove(path: &Path) {
 }
 
 /// Make `path` free for a new generated project: refuse when another session holds its writer
-/// lock (a project open in the trial), otherwise remove any earlier file there.
+/// lock (a project open in the desktop app), otherwise remove any earlier file there.
 ///
 /// # Errors
 /// Another session holds the lock, or the lock cannot be checked.

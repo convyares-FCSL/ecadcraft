@@ -9,7 +9,7 @@
 //! - **unread_builds**: frames worked out after `projectprops {props}` on a key no field reads
 //!   (target: 0).
 //!
-//! The editor's frame (< 4 ms with 300 items) is drawn by the trial and is not measured here.
+//! The editor's frame (< 4 ms with 300 items) is drawn by the desktop app and is not measured here.
 
 use std::path::Path;
 use std::time::Instant;

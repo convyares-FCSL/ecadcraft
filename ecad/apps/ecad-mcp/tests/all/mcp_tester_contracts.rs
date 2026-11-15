@@ -470,7 +470,7 @@ fn saving_in_a_folder_with_spaces_and_reopening_without_ecad_mcp_shows_the_agent
         let r = c.call("save", json!({}));
         assert_ne!(r["isError"], json!(true), "{r}");
     }
-    // Reopened by the trial's own code (no MCP involved), read-only.
+    // Reopened by the desktop app's own code (no MCP involved), read-only.
     ecad_cadcraft::install();
     let mut s = Session::empty();
     let (p, _) = ProjectHandle::open_file(&mut s, &path, 1).unwrap();

@@ -1,4 +1,4 @@
-//! Brief 056 in the trial (design 056 §13.1 A–I, L, M; board 2.03; the owner's change of
+//! Brief 056 in the app (design 056 §13.1 A–I, L, M; board 2.03; the owner's change of
 //! 2026-11-14): Project ▸ PLC as the signal list: the rack heading, the tiles' kind words, the card
 //! header, the signal columns with free channels folded, Import an I/O list, Export tags, the card
 //! editor in the right panel, and the footer's overview page. Screenshots `056-*.png` when
@@ -16,7 +16,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, head, ok, take, trial};
+use crate::project_panel::{doc, head, new_app, ok, take};
 
 type H = Harness<'static, App>;
 
@@ -28,7 +28,7 @@ fn harness(deltas: Deltas) -> H {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h

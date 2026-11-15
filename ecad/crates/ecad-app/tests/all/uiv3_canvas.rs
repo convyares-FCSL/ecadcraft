@@ -11,10 +11,10 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use crate::common::{self, Opts};
-use crate::project_panel::trial;
+use crate::project_panel::new_app;
 
 fn harness() -> Harness<'static, App> {
-    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).app(new_app()))
 }
 
 fn background(h: &Harness<'static, App>) -> Option<eframe::egui::Color32> {
@@ -120,7 +120,7 @@ fn screenshots_of_boards_1_15_to_1_18() {
                 t.ui(ui);
             });
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(6);
     h.state_mut().close_project();

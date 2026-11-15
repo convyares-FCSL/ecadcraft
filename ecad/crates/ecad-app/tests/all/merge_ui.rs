@@ -1,4 +1,4 @@
-//! Brief 020b headless in the trial (design 020 §13 checks E, F): on the demo project, a branch
+//! Brief 020b headless in the app (design 020 §13 checks E, F): on the demo project, a branch
 //! changes a device's description and main changes it too; the branch bar's Merge into main…
 //! opens the merge dialog with the conflict (Merge disabled until it is chosen), Keep branch
 //! then Merge records one merge step on main, the graph shows the join, and a plain undo asks

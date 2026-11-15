@@ -1,4 +1,4 @@
-//! Brief 018 headless in the trial (design 018 §12 check J and the reference screenshots): the
+//! Brief 018 headless in the app (design 018 §12 check J and the reference screenshots): the
 //! Components group's new buttons, the Find Symbol window, Place Symbol from a search row, the
 //! device lens, and a duplicate refusal at the command line. Screenshots are written when
 //! `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are for the owner's

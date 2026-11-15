@@ -1,4 +1,4 @@
-//! What the trial runs: command lines, Tool Sets buttons, the Project panel's, history's and
+//! What the app runs: command lines, Tool Sets buttons, the Project panel's, history's and
 //! debugger's actions, branch and merge questions, Renumber, and going to places in the drawing.
 
 use crate::*;
@@ -96,12 +96,12 @@ impl App {
                 self.developer.open = true;
                 Ok(())
             }
-            tools::Kind::App => self.trial_tool(id),
+            tools::Kind::App => self.app_tool(id),
         }
     }
 
-    /// The tools the trial handles itself: Preview Reference and the ECAD Dev tab.
-    fn trial_tool(&mut self, id: &str) -> Result<(), String> {
+    /// The tools the app handles itself: Preview Reference and the ECAD Dev tab.
+    fn app_tool(&mut self, id: &str) -> Result<(), String> {
         match id {
             // Brief 026: the Renumber dialog (Renumber Wires opens it with Wires chosen).
             "ecad.renumber" => {
@@ -290,7 +290,7 @@ impl App {
             developer::Action::Banner(a) => self.agent_action(a),
             developer::Action::Inspect => self.inspect_project(),
             developer::Action::Snapshot => {
-                let _ = self.trial_tool("ecad.dev.snapshot");
+                let _ = self.app_tool("ecad.dev.snapshot");
             }
             developer::Action::Debugger(a) => {
                 let close = a == debugger::Action::Close;

@@ -1,4 +1,4 @@
-//! Brief 039 (U3) in the trial: the Checks, Devices and Terminals column sets on the one table
+//! Brief 039 (U3) in the app: the Checks, Devices and Terminals column sets on the one table
 //! (acceptance criteria 3, 4 and 5).
 
 use ecad_app::lists::{devices, terminals};
@@ -8,7 +8,7 @@ use eframe::egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::project_panel::{Deltas, active, build, click, devices_fixture, doc, head, key, ok, take, trial};
+use crate::project_panel::{Deltas, active, build, click, devices_fixture, doc, head, key, new_app, ok, take};
 
 type H = Harness<'static, App>;
 
@@ -32,7 +32,7 @@ fn edit(h: &mut H, label: &str, text: &str) {
 #[test]
 fn devices_table_follows_the_page_and_edits_a_tag_in_one_transaction() {
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     let (coil, page1, _page2) = devices_fixture(&mut h);
     let d = &h.state().panel.devices;
     let listed: Vec<_> = d.list.entries.iter().map(|e| e.id).collect();
@@ -86,7 +86,7 @@ fn devices_table_follows_the_page_and_edits_a_tag_in_one_transaction() {
 /// (not only the first), and none of its symbols on other pages. Nothing is recorded.
 #[test]
 fn a_device_row_selects_all_its_symbols_on_the_page() {
-    let mut h = build(trial(), None);
+    let mut h = build(new_app(), None);
     let (coil, page1, _page2) = devices_fixture(&mut h);
     // A second symbol of the coil's device on page 1 (the fixture's contact is on page 2).
     let t = h.state_mut();
@@ -121,7 +121,7 @@ fn a_device_row_selects_all_its_symbols_on_the_page() {
 #[test]
 fn devices_table_shows_a_refusal_under_the_cell() {
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     let (coil, ..) = devices_fixture(&mut h);
     ok(&mut h, r#"place {"symbol":"mcb1","at":[100,0]}"#);
     click(&mut h, "Device -K01: Contactor / relay coil");
@@ -141,7 +141,7 @@ fn devices_table_shows_a_refusal_under_the_cell() {
 #[test]
 fn checks_table_shows_the_checks_rows() {
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     devices_fixture(&mut h);
     ok(&mut h, r#"wire {"points":[[0,60],[40,60]]}"#);
     click(&mut h, ecad_app::checks_panel::CHECKS_TAB);
@@ -168,7 +168,7 @@ fn checks_table_shows_the_checks_rows() {
 #[test]
 fn terminals_table_edits_a_label_in_one_transaction() {
     let deltas: Deltas = std::sync::Arc::default();
-    let mut h = build(trial(), Some(deltas.clone()));
+    let mut h = build(new_app(), Some(deltas.clone()));
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,220]}"#);
     ok(&mut h, r#"place {"symbol":"coil","at":[150,220]}"#);

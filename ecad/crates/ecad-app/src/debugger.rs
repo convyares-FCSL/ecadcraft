@@ -92,7 +92,7 @@ pub enum CheckKind {
     Index,
 }
 
-/// What the panel asks the trial to do after drawing (things that need the project).
+/// What the panel asks the app to do after drawing (things that need the project).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Refresh,

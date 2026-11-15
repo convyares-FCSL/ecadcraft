@@ -1,4 +1,4 @@
-//! Brief 047 (design 047 §6) in the trial, headless (egui_kittest): Reports ▸ BOM's Columns menu
+//! Brief 047 (design 047 §6) in the app, headless (egui_kittest): Reports ▸ BOM's Columns menu
 //! writes the article column and the nested layout as project defaults; + Item runs `bomitem`'s
 //! prompts on the command line and its row reads metres; an item row has no page and its menu
 //! deletes it; the inspector lists a device's part set read only. Screenshots are written when

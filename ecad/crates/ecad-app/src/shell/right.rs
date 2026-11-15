@@ -105,7 +105,7 @@ impl App {
     }
 }
 
-/// What a tab body draws from (split borrows of the trial).
+/// What a tab body draws from (split borrows of the app).
 pub struct Cx<'a> {
     pub sh: &'a mut crate::sheets_ui::PropsShared,
     pub insp: &'a mut Inspector,
@@ -553,7 +553,7 @@ fn json_id(c: ecad_model::ComponentId) -> String {
     c.hex()
 }
 
-/// What the inspector asks the trial for.
+/// What the inspector asks the app for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum InspectorAction {
     /// Open Settings ▸ Standards at this key.

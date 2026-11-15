@@ -3,7 +3,7 @@
 //! The developer debugger follows one trail: **selected drawing objects → ECAD IDs → model objects
 //! → the transactions that touched them, with before/after values → where each transaction's
 //! record sits in the saved file, and its bytes.** This module supplies the data; the panel that
-//! shows it is in the trial app.
+//! shows it is in the desktop app app.
 //!
 //! # Semantics
 //! - **Coherent and short.** [`ProjectHandle::debug_snapshot`] copies what the panel shows out of

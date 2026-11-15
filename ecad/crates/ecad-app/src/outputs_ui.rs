@@ -67,7 +67,7 @@ const TABS: [Tab; 4] = [Tab::Bom, Tab::Wires, Tab::Cables, Tab::Terminals];
 /// Row height (design 024 §6.2).
 const ROW: f32 = 20.0;
 
-/// What the window asks the trial for.
+/// What the window asks the app for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
     /// Go to a row (index into the shown rows).

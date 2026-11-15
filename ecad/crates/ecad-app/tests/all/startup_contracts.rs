@@ -1,4 +1,4 @@
-//! Contracts for the trial's start-up timing (brief 015): the switch, the marks that need no
+//! Contracts for the app's start-up timing (brief 015): the switch, the marks that need no
 //! window (1 to 3, 5a and 5b), their sums, the JSON file and the process-age parsing.
 
 use std::time::{Duration, Instant, SystemTime};
@@ -87,8 +87,8 @@ fn headless_marks_are_monotonic_and_add_up() {
         ecad_cadcraft::install();
         t.mark(Step::Install);
         t.mark(Step::RunNative);
-        let trial = App::start(None, project, Some(&mut t));
-        assert!(trial.is_ok(), "{project:?}: {:?}", trial.err());
+        let app = App::start(None, project, Some(&mut t));
+        assert!(app.is_ok(), "{project:?}: {:?}", app.err());
         let steps: Vec<Step> = t.marks().iter().map(|m| m.step).collect();
         assert_eq!(steps, [Step::Main, Step::Install, Step::RunNative, Step::Shell, Step::Project], "{project:?}");
         let first = t.marks().first().map_or(-1.0, |m| m.since_start_ms);
@@ -205,7 +205,7 @@ fn the_json_file_says_when_it_cannot_be_written() {
 #[test]
 fn the_process_age_is_read_from_proc_or_refused() {
     // A stat line whose command name holds spaces and parentheses; start time 1000 ticks.
-    let stat = "4242 (ecad (trial) x) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 9 0 1000 1 2 3";
+    let stat = "4242 (ecad (desktop) x) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 9 0 1000 1 2 3";
     // (stat, uptime, ticks per second, expected age in ms)
     let rows: &[(&str, &str, u64, Option<u64>)] = &[
         (stat, "12.50 99.0\n", 100, Some(2500)),

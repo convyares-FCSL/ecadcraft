@@ -1,11 +1,11 @@
 //! Tester 035: the live MCP bridge, from outside (brief 035 AC 1–11, 13; design 035 §3–§8, §11,
-//! §12 checks 1–11 and the trial UI checks). Written from the brief and the design only, before
+//! §12 checks 1–11 and the app UI checks). Written from the brief and the design only, before
 //! the implementation.
 //!
 //! Harness (design §12): a headless `App` (egui_kittest) with agent access turned on at a free
 //! port through the `agentaccess` command, as the ECAD Dev row does; an `ecad-mcp` server in
 //! `--connect` mode on its own thread, served over a pipe exactly as over stdio (closing the pipe
-//! is stdin closing); the test thread pumps the trial's frames until each reply arrives (10 s
+//! is stdin closing); the test thread pumps the app's frames until each reply arrives (10 s
 //! guard, longer only for the 5 s hold). Raw control lines go over a real socket with the token
 //! read from upstream's token file.
 //!
@@ -48,8 +48,8 @@ fn settings_dir(what: &str) -> PathBuf {
     std::env::temp_dir().join(format!("ecad-t035-{what}-{}", ecad_cadcraft::session_seed()))
 }
 
-/// A trial whose agent access reads and writes `dir`.
-fn trial_in(dir: &std::path::Path) -> H {
+/// An app whose agent access reads and writes `dir`.
+fn app_in(dir: &std::path::Path) -> H {
     let mut h = harness_with(None);
     h.state_mut().agent.use_settings(Settings::at(dir));
     h.run_steps(2);
@@ -81,8 +81,8 @@ fn access_file(dir: &std::path::Path) -> PathBuf {
     ecad_cadcraft::agent_access::file(&Settings::at(dir)).unwrap()
 }
 
-/// A trial with agent access set to `mode` at a fresh port. Dropping it turns access Off, removes
-/// the settings folder and closes the trial (token revoked).
+/// An app with agent access set to `mode` at a fresh port. Dropping it turns access Off, removes
+/// the settings folder and closes the app (token revoked).
 struct Live {
     h: H,
     port: u16,
@@ -95,21 +95,21 @@ impl Live {
     fn new(mode: &str) -> Self {
         let port = free_port();
         let dir = settings_dir(mode);
-        let mut h = trial_in(&dir);
+        let mut h = app_in(&dir);
         let r = agentaccess(&mut h, json!({"mode": mode, "port": port}));
         assert_eq!(r["mode"], json!(mode), "{r}");
         assert_eq!(r["port"], json!(port), "{r}");
         if mode != "off" {
             assert_eq!(r["listening"], json!(true), "{r}");
-            assert!(listening(port), "{mode}: the trial listens on {port}");
+            assert!(listening(port), "{mode}: the app listens on {port}");
         }
         Live { h, port, dir, hard_close: false }
     }
 
-    /// A trial on `port` turned on to Read and change, as the person does.
+    /// An app on `port` turned on to Read and change, as the person does.
     fn at(port: u16) -> Self {
         let dir = settings_dir("at");
-        let mut h = trial_in(&dir);
+        let mut h = app_in(&dir);
         let r = agentaccess(&mut h, json!({"mode": "write", "port": port}));
         assert_eq!(r["listening"], json!(true), "{r}");
         Live { h, port, dir, hard_close: false }
@@ -137,7 +137,7 @@ impl Live {
         p.read(&mut t.cad.session, |p, _| (p.author.clone(), p.tx_budget)).unwrap()
     }
 
-    /// A person's edit, through the trial's command path (the ECAD command field's path).
+    /// A person's edit, through the app's command path (the ECAD command field's path).
     fn person_wire(&mut self, y: f64) -> Transaction {
         let n = self.log().len();
         let e = self.h.state_mut().submit_command(&format!("wire {}", json!({"points": [[0.0, y], [60.0, y]]})));
@@ -270,7 +270,7 @@ impl Agent {
         self.to.as_ref().unwrap().send(b).unwrap();
     }
 
-    /// Wait for the next reply, pumping the trial's frames meanwhile.
+    /// Wait for the next reply, pumping the app's frames meanwhile.
     fn wait(&mut self, mut live: Option<&mut Live>, guard: Duration) -> Value {
         let t0 = Instant::now();
         loop {
@@ -421,11 +421,11 @@ fn ac1_with_no_preference_nothing_listens() {
     let dir = settings_dir("ac1");
     let default_before = listening(ecad_cadcraft::agent_access::DEFAULT_PORT);
     let port = free_port();
-    let mut h = trial_in(&dir);
+    let mut h = app_in(&dir);
     h.run_steps(10);
     assert!(!listening(port), "a free port stays closed");
     if default_before {
-        eprintln!("47823 was already in use before the trial started (another ECAD?); only the free port is checked");
+        eprintln!("47823 was already in use before the app started (another ECAD?); only the free port is checked");
     } else {
         assert!(!listening(47823), "the default port is not opened without the preference");
     }
@@ -436,7 +436,7 @@ fn ac1_with_no_preference_nothing_listens() {
 fn ac1_access_is_off_by_default_and_the_reply_says_so() {
     lock();
     let dir = settings_dir("ac1b");
-    let mut h = trial_in(&dir);
+    let mut h = app_in(&dir);
     let r = agentaccess(&mut h, json!({}));
     assert_eq!(r["mode"], json!("off"), "{r}");
     assert_eq!(r["port"], json!(47823), "{r}");
@@ -494,7 +494,7 @@ fn ac2_three_wires_by_the_agent_appear_with_the_banner() {
         last_seq = t.seq;
     }
     assert_eq!(live.log().len(), start + 3);
-    assert_eq!(live.conductors(), wires_before + 3, "the wires are on the trial's project");
+    assert_eq!(live.conductors(), wires_before + 3, "the wires are on the app's project");
     // The banner (§7.1, §7.2).
     let b = banner(&live.h).expect("a banner while an agent is connected");
     assert_eq!(b.agent, AGENT);
@@ -1330,7 +1330,7 @@ fn the_preference_is_written_once_and_read_back() {
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(access_file(&live.dir)).unwrap()).unwrap();
     assert_eq!(saved, json!({"format": "ecad-agent-access/1", "mode": "read", "port": port}));
     // A second window reads it (its listener finds the port taken: the first window has it).
-    let mut h2 = trial_in(&live.dir);
+    let mut h2 = app_in(&live.dir);
     let r = agentaccess(&mut h2, json!({}));
     assert_eq!(r["mode"], json!("read"), "{r}");
     assert_eq!(r["port"], json!(port), "{r}");
@@ -1355,7 +1355,7 @@ fn an_unreadable_preference_reads_as_off_with_one_line() {
         let dir = settings_dir(&format!("bad{i}"));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(access_file(&dir), bytes).unwrap();
-        let mut h = trial_in(&dir);
+        let mut h = app_in(&dir);
         h.run_steps(5);
         let r = agentaccess(&mut h, json!({}));
         assert_eq!(r["mode"], json!("off"), "case {i}: {r}");
@@ -1372,7 +1372,7 @@ fn an_unreadable_preference_reads_as_off_with_one_line() {
 fn the_ecad_dev_row_shows_mode_port_and_status() {
     use ecad_app::developer;
     let dir = settings_dir("row");
-    let mut h = trial_in(&dir);
+    let mut h = app_in(&dir);
     // Brief 042: the row is in Settings ▸ Agent access.
     h.state_mut().open_settings(ecad_app::settings::Section::AgentAccess);
     h.run_steps(3);
@@ -1395,7 +1395,7 @@ fn the_ecad_dev_row_shows_mode_port_and_status() {
     let held = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let busy = held.local_addr().unwrap().port();
     let dir2 = settings_dir("row2");
-    let mut h2 = trial_in(&dir2);
+    let mut h2 = app_in(&dir2);
     agentaccess(&mut h2, json!({"mode": "write", "port": busy}));
     h2.run_steps(5);
     assert_eq!(h2.state().agent.status_text(), format!("● Port {busy} is in use by another program; agent access is off in this window"));

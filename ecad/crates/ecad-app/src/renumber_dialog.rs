@@ -53,7 +53,7 @@ pub enum Which {
     Provisional,
 }
 
-/// What the dialog asks the trial to do.
+/// What the dialog asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
     /// Ask for the preview with these parameters (`renumber` or `finalise` with `preview`).

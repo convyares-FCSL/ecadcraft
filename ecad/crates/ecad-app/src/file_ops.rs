@@ -1,4 +1,4 @@
-//! The trial's project files: new, open, save, save as, the file dialog's state, conversion of old
+//! The app's project files: new, open, save, save as, the file dialog's state, conversion of old
 //! files, snapshots, and closing (the held close, quitting).
 
 use crate::*;
@@ -61,7 +61,7 @@ impl App {
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
         // Thick and thin cable lines only show with lineweights on (design 009 §9), unless the
-        // user has chosen Show/Hide Lineweight since the trial started (brief 009 review).
+        // user has chosen Show/Hide Lineweight since the app started (brief 009 review).
         let shown = &mut self.cad.session.settings.lwdisplay;
         if self.lwdisplay_set.is_none_or(|set| *shown == set) {
             *shown = true;
@@ -144,7 +144,7 @@ impl App {
     /// not be opened.
     pub fn accept_conversion(&mut self) -> Result<String, String> {
         let (source, output) = self.convert_offer.take().ok_or("no conversion is offered")?;
-        // The blank project the trial started with (a file was given at startup) closes first;
+        // The blank project the app started with (a file was given at startup) closes first;
         // one with unsaved work asks, and then the offer stays.
         if self.project_open() {
             self.close_project();
@@ -350,7 +350,7 @@ impl App {
         let head = snap.get("seq").and_then(serde_json::Value::as_u64).unwrap_or(0);
         self.snapshot_count += 1;
         let stamp = ecad_stamp();
-        let path = dir.join(format!("ecad-trial-{stamp}-{:02}-seq{head:03}-{why}.json", self.snapshot_count));
+        let path = dir.join(format!("ecad-desktop-{stamp}-{:02}-seq{head:03}-{why}.json", self.snapshot_count));
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let bytes = serde_json::to_vec_pretty(&snap).map_err(|e| e.to_string())?;
         std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;

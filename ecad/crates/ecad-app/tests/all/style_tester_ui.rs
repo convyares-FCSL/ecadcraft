@@ -1,4 +1,4 @@
-//! Tester 050 in the trial, headless (egui_kittest): design 050 §12 check 9 and brief 050b AC 6,
+//! Tester 050 in the app, headless (egui_kittest): design 050 §12 check 9 and brief 050b AC 6,
 //! the update map's counters (042's `rebuilds` / `patches`): a `style` change patches the
 //! Standards tables and rebuilds none; a commit that touches no style or registry key leaves them
 //! alone; the catalogue strip names each catalogue (§9). Written from the briefs and design before

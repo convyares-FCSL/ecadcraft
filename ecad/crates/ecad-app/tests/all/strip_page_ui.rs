@@ -1,4 +1,4 @@
-//! Brief 046 in the trial (design 046 §8.1, §11): Pages ▸ New page ▸ **Terminal strips** makes a
+//! Brief 046 in the app (design 046 §8.1, §11): Pages ▸ New page ▸ **Terminal strips** makes a
 //! graphic `terminals` page and opens it. Screenshots of fixture G's strip page (paper and dark)
 //! and of a long strip's second sheet are written when `ECAD_TESTER_SHOTS` names a folder and a
 //! wgpu adapter exists; they are for the owner's approval, never committed.
@@ -11,7 +11,7 @@ use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, shots, trial};
+use crate::project_panel::{doc, new_app, shots};
 
 type H = Harness<'static, App>;
 
@@ -89,7 +89,7 @@ fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(3);
     let x1 = fixture_g(&mut h);

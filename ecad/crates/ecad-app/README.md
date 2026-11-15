@@ -4,7 +4,7 @@
 > That guide is the single maintained set of instructions. It also records which revision was
 > tried, and how: automated checks, an agent's virtual-display run, or by the owner.
 
-`ecad-app` (formerly the library of `ecad-trial`) is CADCraft's own window with the ECAD commands
+`ecad-app` is CADCraft's own window with the ECAD commands
 installed and one ECAD project open at a time. The program that runs it is `ecad-desktop`
 (`apps/ecad-desktop`: command line, window size and place, start-up timing). It is an experiment for manual trials, not an ECAD application.
 
@@ -13,7 +13,7 @@ installed and one ECAD project open at a time. The program that runs it is `ecad
   Open, Save and Save As.
 - Project files (`.ecad`, persistence stage 2a):
   - Save writes to the project's file. Save As, and the first Save, asks for a file name in a
-    small dialog of its own, because the trial has no native file dialogs.
+    small dialog of its own, because the app has no native file dialogs.
   - A project that another session is editing, or one found damaged, opens read-only and can
     be saved as another file.
 - A Save/Discard/Cancel question when a project with unsaved changes is closed. It replaces
@@ -38,6 +38,6 @@ installed and one ECAD project open at a time. The program that runs it is `ecad
 **Usage:** `ecad-desktop [--snapshots <folder>] [<project.ecad>]` (`cargo run --release -p ecad-desktop`).
 
 The code is in `src/lib.rs`, `src/debugger.rs` and `src/tools.rs`. The headless tests include the
-quick-start guide's steps (`tests/trial.rs`, `the_quick_start_trial_runs_headless`, and
-`tests/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); keep them in step.
-`tests/tools.rs` covers the ECAD Tool Sets tab.
+quick-start guide's steps (`tests/all/app.rs`, `the_quick_start_runs_headless`, and
+`tests/all/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); keep them in step.
+`tests/all/tools.rs` covers the ECAD Tool Sets tab.

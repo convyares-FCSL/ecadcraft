@@ -13,7 +13,7 @@
 //!   (they were in a top banner until owner, 2026-11-08);
 //! - a read-only **preview** of another page ([`preview`], brief 016), floating over the drawing;
 //! - **project files** (`.ecad`, persistence stage 2a): Save writes to the project's file, Save As
-//!   (and the first Save) asks for a file name in a small dialog of its own (the trial has no
+//!   (and the first Save) asks for a file name in a small dialog of its own (the app has no
 //!   native file dialogs), Open opens a project file; a project another session is editing, or a
 //!   damaged one, opens read-only and can be saved as another file;
 //! - one page window: closing its tab leaves the project open with no page shown (a click in the
@@ -110,10 +110,10 @@ pub trait StartMarks {
 }
 
 /// Window title.
-pub const TITLE: &str = "ECAD trial (experiment)";
+pub const TITLE: &str = "ECAD desktop (experiment)";
 
 /// The experiment line at the top of the Project panel (one small line; [`BANNER`] on hover).
-pub const NOTE: &str = "ECAD trial (experiment): keep .ecad files in a local folder.";
+pub const NOTE: &str = "ECAD desktop (experiment): keep .ecad files in a local folder.";
 /// Said wherever snapshots are mentioned.
 pub const SNAPSHOT_NOTE: &str =
     "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
@@ -131,7 +131,7 @@ pub fn status_line(s: &Status) -> String {
 
 /// Lines echoed at the command line when a project is created.
 const INTRO: &[&str] = &[
-    "ECAD trial (experiment): the PROJECT panel on the left lists the pages (click one to show it) and has \
+    "ECAD desktop (experiment): the PROJECT panel on the left lists the pages (click one to show it) and has \
 New, Open, Save and Save As.",
     "ECAD tools are in Tool Sets > ECAD: Convert to Component, Add Connection Point, Place Symbol, Wire, Connect and \
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
@@ -185,7 +185,7 @@ pub enum DialogKind {
     SaveAs,
 }
 
-/// The trial's own file dialog: a path field.
+/// The app's own file dialog: a path field.
 struct FileDialog {
     kind: DialogKind,
     path: String,
@@ -293,7 +293,7 @@ pub struct App {
     branch_rev: u64,
     /// The window title last sent.
     title_sent: String,
-    /// The `keep_open` the trial last gave the project: on, except while a close or quit asks.
+    /// The `keep_open` the app last gave the project: on, except while a close or quit asks.
     keep_open: Option<bool>,
     /// The page name box (New Page and Rename Page), when open.
     pub name_box: Option<NameBox>,
@@ -309,7 +309,7 @@ pub struct App {
     pub hover_delay: f64,
     /// The home folder that `~` in typed paths stands for ([`ecad_cadcraft::home`] by default).
     pub home: Option<PathBuf>,
-    /// The lineweight display the trial last set when it opened a project; `None` before the
+    /// The lineweight display the app last set when it opened a project; `None` before the
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
@@ -374,8 +374,8 @@ pub const HOVER_ID: &str = "ecad.hover";
 /// Default [`App::hover_delay`].
 pub const HOVER_DELAY: f64 = 0.5;
 
-/// The trial has no native file dialogs. When CADCraft asks for a file name to save a drawing,
-/// the request is passed on (`requested` is set) and the trial opens its own path dialog for the
+/// The app has no native file dialogs. When CADCraft asks for a file name to save a drawing,
+/// the request is passed on (`requested` is set) and the app opens its own path dialog for the
 /// ECAD project; CADCraft itself gets no path, so it writes nothing. Exports get no path and stop.
 pub fn services(requested: Arc<AtomicBool>) -> Services {
     Services {
@@ -441,7 +441,7 @@ impl App {
 
     fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
-        // Brief 035: CadApp's own control channel is fed only by the trial's agent drain, with
+        // Brief 035: CadApp's own control channel is fed only by the app's agent drain, with
         // the allowlisted reads; the port's requests never reach it directly.
         let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
@@ -552,7 +552,7 @@ impl App {
     }
 
     /// Per-frame work after CADCraft's own logic: hold a close of an edited ECAD project for the
-    /// trial's dialog, open the Save As dialog when CADCraft asked for a file name, and report
+    /// app's dialog, open the Save As dialog when CADCraft asked for a file name, and report
     /// saves.
     pub fn after_logic(&mut self) {
         // Only the page being shown is redrawn on a commit (owner, 2026-11-08): a page a commit
@@ -569,7 +569,7 @@ impl App {
                     self.request_save_as();
                 }
             } else {
-                self.cad.session.echo("Plain CADCraft drawings cannot be saved in the ECAD trial.");
+                self.cad.session.echo("Plain CADCraft drawings cannot be saved in the ECAD desktop app.");
             }
         }
         self.report_saves();

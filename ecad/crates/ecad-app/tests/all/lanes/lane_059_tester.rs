@@ -1,4 +1,4 @@
-//! Tester 059 full, in the trial (design 059 §5): Project ▸ Cables' + Cable, an edit from the
+//! Tester 059 full, in the app (design 059 §5): Project ▸ Cables' + Cable, an edit from the
 //! Details pane and Remove are each one transaction with an exact undo and redo; Remove of a drawn
 //! cable writes nothing and offers a Go to that shows its page; the slash picker lists New cable,
 //! then not-drawn cables, then drawn ones. Headless on the demo project.
@@ -15,7 +15,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, head, ok, rev3_trial as trial};
+use crate::project_panel::{doc, head, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -30,7 +30,7 @@ fn harness() -> H {
                 t.ui(ui);
             });
         },
-        trial(),
+        new_app(),
     );
     h.run_steps(5);
     h

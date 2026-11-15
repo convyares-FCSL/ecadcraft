@@ -141,7 +141,7 @@ impl Generated {
 }
 
 /// A two-terminal coil, 10 × 20, terminals A1 (top) and A2 (bottom): the same shape as the
-/// trial's built-in experiment definition.
+/// desktop app's built-in experiment definition.
 fn coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {

@@ -1,5 +1,5 @@
 //! The primitives showcase (brief 037 scope 7): one page drawing every primitive in every state,
-//! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The trial
+//! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The desktop app
 //! hosts it as a hidden developer page, `ui.primitives`.
 
 use ecad_tokens::{Icon, space, ui_type};

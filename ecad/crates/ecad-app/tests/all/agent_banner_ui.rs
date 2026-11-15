@@ -1,4 +1,4 @@
-//! Brief 043 (U4d) headless in the trial: the styled agent banner in the shell's slot (035's data
+//! Brief 043 (U4d) headless in the app: the styled agent banner in the shell's slot (035's data
 //! contract and element names kept), the agent pill, History's author chips and session groups
 //! with Undo session, and the agent's last write outlined on the page.
 
@@ -13,9 +13,9 @@ use ecad_app::shell::{Workspace, top_bar};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::bridge_contracts::{H, conductors, live_trial, person_wire, server, wire};
+use crate::bridge_contracts::{H, conductors, live_app, person_wire, server, wire};
 
-/// A trial with no bridge, 1920 × 1080, its banner set by hand.
+/// An app with no bridge, 1920 × 1080, its banner set by hand.
 fn plain() -> H {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
@@ -61,7 +61,7 @@ fn the_styled_banner_keeps_the_contract_through_every_state() {
     h.run_steps(2);
     assert_eq!(h.state().agent_banner().unwrap().shown_state(Instant::now()), BannerState::Writing);
     assert!(present(&h, b::LAST));
-    // Held: waits for the person (the trial clears a hold it does not have, so the strip is drawn
+    // Held: waits for the person (the app clears a hold it does not have, so the strip is drawn
     // on its own here).
     let mut held = banner.clone();
     held.held = Some("the designer is in the middle of WIRE".into());
@@ -93,7 +93,7 @@ fn the_styled_banner_keeps_the_contract_through_every_state() {
 /// banner, and Undo session takes back exactly the session's steps; Dismiss gives the 32 px back.
 #[test]
 fn the_banner_takes_its_slot_and_its_controls_work() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let before = main_height(&h);
     let base = conductors(&mut h);
     let mut a = server(port, true, "tester");
@@ -141,7 +141,7 @@ fn the_banner_takes_its_slot_and_its_controls_work() {
 /// is offered on the group only while the session is live.
 #[test]
 fn history_groups_an_agent_session_and_names_every_author() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     for i in 0..3 {
         person_wire(&mut h, 100.0 + f64::from(i) * 5.0);
     }
@@ -181,7 +181,7 @@ fn history_groups_an_agent_session_and_names_every_author() {
 /// is not an entity of the page, is gone over Lists; idle frames read nothing for it.
 #[test]
 fn the_last_write_is_outlined_on_the_page_and_costs_nothing_idle() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut a = server(port, true, "tester");
     a.exec(&mut h, "wire", wire(0.0));
     h.run_steps(3);
@@ -263,7 +263,7 @@ fn screenshots_of_the_banner_history_and_outline() {
 /// session is offered on the live one only.
 #[test]
 fn back_to_back_sessions_of_one_agent_are_two_groups() {
-    let (mut h, port) = live_trial();
+    let (mut h, port) = live_app();
     let mut first = server(port, true, "tester");
     first.exec(&mut h, "wire", wire(0.0));
     first.exec(&mut h, "wire", wire(5.0));

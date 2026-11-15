@@ -11,7 +11,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-fn trial() -> App {
+fn new_app() -> App {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
@@ -20,7 +20,7 @@ fn trial() -> App {
 }
 
 fn harness(t: App) -> Harness<'static, App> {
-    common::harness(Opts::new().trial(t))
+    common::harness(Opts::new().app(t))
 }
 
 fn doc(t: &mut App) -> ecad_model::Document {
@@ -89,7 +89,7 @@ fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
 
 #[test]
 fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
-    let mut t = trial();
+    let mut t = new_app();
     let lines = rectangle(&mut t);
     assert_eq!(lines.len(), 4);
     t.cad.session.set_selection(lines.clone());
@@ -115,7 +115,7 @@ fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
 
 #[test]
 fn convert_with_nothing_selected_asks_to_select_objects() {
-    let mut t = trial();
+    let mut t = new_app();
     let before = head(&mut t);
     t.tool("ecad.convertcomponent").unwrap();
     assert_eq!(t.cad.session.current_prompt().unwrap().display(), "Select objects to convert to a component:");
@@ -129,7 +129,7 @@ fn convert_with_nothing_selected_asks_to_select_objects() {
 /// left in the Command field and no template note, even when a template was waiting there.
 #[test]
 fn the_interactive_buttons_start_their_prompts() {
-    let mut h = harness(trial());
+    let mut h = harness(new_app());
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let firsts = [
@@ -162,7 +162,7 @@ fn the_interactive_buttons_start_their_prompts() {
 
 #[test]
 fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
-    let mut h = harness(trial());
+    let mut h = harness(new_app());
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let before = head(h.state_mut());
@@ -188,7 +188,7 @@ fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
 
 #[test]
 fn templates_take_ids_from_the_selection() {
-    let mut t = trial();
+    let mut t = new_app();
     assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
     let d = doc(&mut t);
     let (cid, _) = d.conductors.iter().next().unwrap();
@@ -211,10 +211,10 @@ fn templates_take_ids_from_the_selection() {
 
 #[test]
 fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
-    let dir = std::env::temp_dir().join(format!("ecad-trial-tools-{}", ecad_store::disk::unique()));
+    let dir = std::env::temp_dir().join(format!("ecad-app-tools-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("shared.ecad").display().to_string();
-    let mut first = trial();
+    let mut first = new_app();
     first.save_as(&path).unwrap();
     // A second window: the same file opens read-only.
     ecad_cadcraft::views::isolate_for_tests();
@@ -241,7 +241,7 @@ fn placeholders_are_found_and_ordinary_text_is_not() {
 
 #[test]
 fn a_run_button_leaves_a_waiting_template_and_its_check_alone() {
-    let mut t = trial();
+    let mut t = new_app();
     t.tool("ecad.setprop").unwrap();
     let template = t.command.clone();
     let before = head(&mut t);
@@ -255,7 +255,7 @@ fn a_run_button_leaves_a_waiting_template_and_its_check_alone() {
 
 #[test]
 fn a_command_waiting_at_a_prompt_is_cancelled_first() {
-    let mut t = trial();
+    let mut t = new_app();
     let lines = rectangle(&mut t);
     t.cad.session.set_selection(lines);
     // LINE waits for its first point; the button's line must not become that point.
@@ -279,7 +279,7 @@ fn a_command_waiting_at_a_prompt_is_cancelled_first() {
 
 #[test]
 fn a_huge_selection_is_followed_only_so_far() {
-    let mut t = trial();
+    let mut t = new_app();
     let handles: Vec<Handle> = (1..=(tools::MAX_PICKED as u64 + 50)).map(Handle).collect();
     t.cad.session.set_selection(handles);
     t.tool("ecad.setprop").unwrap();

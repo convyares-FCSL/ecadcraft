@@ -1,5 +1,5 @@
 //! Independent tester's UI checks for brief 008, written from the brief and design 008 only, driving
-//! the trial headless (egui_kittest, elements by name) in a 1280×800 window.
+//! the app headless (egui_kittest, elements by name) in a 1280×800 window.
 //!
 //! - AC3: the quick-start example built with connection points placed by **clicks** (Midpoint override
 //!   typed, as design §5 describes) gives the same structure as the same example built by JSON.
@@ -213,7 +213,7 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
     terms.sort();
     assert_eq!(terms, ["1", "2"], "default names 1 and 2");
     coil_and_wire_by_clicks(&mut h);
-    // The JSON version of the same example in a second trial.
+    // The JSON version of the same example in a second app.
     let mut j = harness();
     ok(&mut j, "line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
