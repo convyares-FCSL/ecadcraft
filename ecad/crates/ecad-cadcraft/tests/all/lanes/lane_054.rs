@@ -34,7 +34,7 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     let mut h = H::new(5401);
     let s = h.run("styles", json!({"catalogue": "page"})).unwrap();
     let ids: Vec<String> = s["styles"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect();
-    assert_eq!(ids, ["front", "schematic", "network", "singleline", "panel", "report"]);
+    assert_eq!(ids, ["front", "schematic", "network", "singleline", "panel", "report", "plain"]);
     let d = h.doc();
     let look = |w: &str| ptype::look_of(&d, &StyleRef::Builtin(w.into()));
     assert_eq!(look("front").holds, ptype::Holds::Front);
@@ -42,7 +42,7 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     assert_eq!(look("report").holds, ptype::Holds::Report);
     assert_eq!((look("schematic").sheet, look("schematic").frame.clone(), look("schematic").title_block), (None, None, None));
     let names: Vec<String> = ptype::ordered(&d).into_iter().map(|r| r.name).collect();
-    assert_eq!(names, ["Front sheet", "Schematic", "Network", "Single-line", "Panel layout", "Report"]);
+    assert_eq!(names, ["Cover sheet", "Schematic", "Network", "Single-line", "Panel layout", "Report", "Plain"]);
 }
 
 #[test]
@@ -98,9 +98,9 @@ fn newpage_type_after_inserts_after_the_page_with_the_next_number() {
 fn newpage_refuses_a_type_that_does_not_fit_the_kind() {
     let mut h = H::new(5404);
     let e = h.run("newpage", json!({"type": "front"})).unwrap_err();
-    assert!(e.contains("A Front sheet page is generated: give generated: \"cover\", \"revisions\" or \"contents\"."), "{e}");
+    assert!(e.contains("A Cover sheet page is generated: give generated: \"cover\", \"revisions\" or \"contents\"."), "{e}");
     let e = h.run("newpage", json!({"generated": "cover", "type": "report"})).unwrap_err();
-    assert!(e.contains("A cover page is a Front sheet page; choose a Front sheet type."), "{e}");
+    assert!(e.contains("A cover page is a Cover sheet page; choose a Cover sheet type."), "{e}");
     let e = h.run("newpage", json!({"type": "nothing"})).unwrap_err();
     assert!(e.contains("No page type is called"), "{e}");
     let e = h.run("newpage", json!({"type": "schematic", "after": "00000000000000000000000000000abc"})).unwrap_err();
@@ -108,7 +108,7 @@ fn newpage_refuses_a_type_that_does_not_fit_the_kind() {
     // setdefault at page level keeps a generated page in a type that holds its kind.
     let cover = page(&mut h, json!({"generated": "cover"}));
     let e = h.run("setdefault", json!({"key": "page.type", "level": "page", "page": cover.hex(), "value": "report"})).unwrap_err();
-    assert!(e.contains("choose a Front sheet type"), "{e}");
+    assert!(e.contains("choose a Cover sheet type"), "{e}");
     let first = h.first_page();
     h.run("setdefault", json!({"key": "page.type", "level": "page", "page": first.hex(), "value": "singleline"})).unwrap();
     assert_eq!(ty(&mut h, first), "singleline");
@@ -391,7 +391,12 @@ fn the_symbol_legend_shows_symbols_used_and_redraws_only_at_zero() {
 
 #[test]
 fn wire_colour_lines_merge_equal_categories() {
-    let l = ecad_cadcraft::front::WireLine { names: vec!["L1".into(), "L2".into(), "L3".into()], cross_section: "2.5".into(), colour: "BK".into() };
+    let l = ecad_cadcraft::front::WireLine {
+        names: vec!["L1".into(), "L2".into(), "L3".into()],
+        cross_section: "2.5".into(),
+        colour: "BK".into(),
+        label: None,
+    };
     assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
     assert_eq!(ecad_cadcraft::front::colour_words("GNYE"), "green / yellow");
     assert_eq!(ecad_cadcraft::front::colour_words("orange"), "orange");
@@ -444,4 +449,87 @@ fn wire_categories_in_use_cross_zero_only() {
     h.run("category", json!({"conductor": w2.hex(), "value": "dc24"})).unwrap();
     let ops = last(&mut h);
     assert!(!uses.update(&h.doc(), &ops), "a second 24 V DC wire changes nothing on the cover");
+}
+
+/// Fix round (owner): the built-in Plain type has Checks and references off. Its pages get no
+/// electrical Checks rows, no wire numbers and no cross-references; turning the switch on brings
+/// them back.
+#[test]
+fn a_plain_page_gets_no_checks_numbering_or_references() {
+    let mut h = H::new(5424);
+    let first = h.first_page();
+    // An open wire end gives a Checks row on a schematic page.
+    h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
+    let on_page = |h: &mut H, p: ecad_model::PageId| {
+        let d = h.doc();
+        ecad_cadcraft::checks::all(&d, 0.01).into_iter().filter(|c| c.page == Some(p)).count()
+    };
+    assert!(on_page(&mut h, first) > 0, "a schematic page is checked");
+    let numbered = |h: &mut H| h.doc().conductors.values().any(|c| c.properties.contains_key(ecad_model::connectivity::WIRE_NUMBER));
+    // A Plain page: drawn the same, checked and numbered not at all.
+    let plain = page(&mut h, json!({"type": "plain"}));
+    assert_eq!(ty(&mut h, plain), "plain");
+    let d = h.doc();
+    assert!(!ptype::look_of(&d, &StyleRef::Builtin("plain".into())).checks);
+    assert!(!ecad_model::sheet::page_checks(&d, plain));
+    let before_numbered = numbered(&mut h);
+    h.run("wire", json!({"points": [[0, 40], [60, 40]]})).unwrap();
+    assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
+    let d = h.doc();
+    let on_plain: Vec<_> =
+        d.conductors.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Conductor(**c)).all(|(_, r)| r.page == plain)).collect();
+    assert!(!on_plain.is_empty());
+    assert!(on_plain.iter().all(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::WIRE_NUMBER)), "no wire number on a Plain page");
+    let _ = before_numbered;
+    // A coil there is in no reference group: the device has no head.
+    h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
+    let d = h.doc();
+    let coil = d.components.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == plain));
+    if let Some(c) = coil {
+        assert!(ecad_cadcraft::xref::device(&d, c).head.is_none(), "no references from a Plain page");
+    }
+    // The switch on: checks come back, in one step.
+    let head = h.head();
+    h.run("setstyle", json!({"catalogue": "page", "id": "plain", "fields": {"checks": "on"}})).unwrap();
+    assert_eq!(h.head(), head + 1);
+    assert!(on_page(&mut h, plain) > 0, "checked again");
+    h.check();
+}
+
+/// Fix round (owner): the cover's table editor rows hide, reorder and relabel the generated
+/// legend, as one bounded project property; a stale key is dropped.
+#[test]
+fn cover_rows_hide_reorder_and_relabel_the_generated_legend() {
+    let mut h = H::new(5425);
+    let first = h.first_page();
+    let cover = page(&mut h, json!({"generated": "cover"}));
+    h.activate(first);
+    h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
+    h.run("place", json!({"symbol": "lamp", "at": [150, 100]})).unwrap();
+    let d = h.doc();
+    let rows = ecad_cadcraft::front::legend_rows(&d);
+    assert_eq!(rows.len(), 2);
+    let (a, b) = (rows[0].1.clone(), rows[1].1.clone());
+    // b first and relabelled, a hidden, plus a key no longer generated.
+    let text = format!("{}\t1\tMy lamp\n{}\t0\t\nffff\t1\tgone", b.key, a.key);
+    let head = h.head();
+    h.run("projectprops", json!({"props": {"cover.symbol_legend": text}})).unwrap();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    let d = h.doc();
+    let shown: Vec<String> = ecad_cadcraft::front::legend_rows(&d).into_iter().filter(|(_, r)| r.shown).map(|(_, r)| r.label).collect();
+    assert_eq!(shown, ["My lamp"]);
+    let texts: Vec<String> = ecad_cadcraft::generated::parts_of(&d, cover, None)
+        .into_iter()
+        .filter_map(|p| match p.kind {
+            cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+            _ => None,
+        })
+        .collect();
+    assert!(texts.contains(&"My lamp".to_string()) && !texts.contains(&a.label), "{texts:?}");
+    // Bounded: 65 rows or a 65-character label is refused.
+    let many: Vec<String> = (0..65).map(|i| format!("k{i}\t1\t")).collect();
+    assert!(h.run("projectprops", json!({"props": {"cover.symbol_legend": many.join("\n")}})).is_err());
+    assert!(h.run("projectprops", json!({"props": {"cover.wire_colours": format!("bk/2.5\t1\t{}", "x".repeat(65))}})).is_err());
+    h.run("u", Value::Null).unwrap();
+    assert!(!h.doc().properties.contains_key("cover.symbol_legend"), "one u");
 }

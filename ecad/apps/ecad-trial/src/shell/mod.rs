@@ -42,6 +42,7 @@ pub mod placing;
 pub mod right;
 pub mod state;
 pub mod status_bar;
+pub mod table_editor;
 pub mod text_panel;
 pub mod toggles;
 pub mod tool_strip;

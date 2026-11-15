@@ -130,9 +130,9 @@ fn ac1_the_page_catalogue_lists_six_built_ins_with_their_fields() {
     let mut h = H::new(0x54_0101);
     let rows = styles(&mut h, "page");
     let ids: Vec<String> = rows.iter().map(|r| s(&r["id"])).collect();
-    assert_eq!(ids.len(), 6, "{ids:?}");
+    assert_eq!(ids.len(), 7, "{ids:?}: the six of board 5.02 and Plain (owner, fix round)");
     for (id, name, holds, zones) in [
-        ("front", "Front sheet", "front", "off"),
+        ("front", "Cover sheet", "front", "off"),
         ("schematic", "Schematic", "none", "on"),
         ("network", "Network", "none", "on"),
         ("singleline", "Single-line", "none", "on"),
@@ -445,16 +445,16 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
     let n = number(&mut h, revs);
     assert!(n == "2" || n == "3", "the next free after the cover: {n}");
     let m = refused(&mut h, "newpage", json!({"type": "front"}));
-    assert!(m.contains("A Front sheet page is generated: give generated: \"cover\", \"revisions\" or \"contents\"."), "{m}");
+    assert!(m.contains("A Cover sheet page is generated: give generated: \"cover\", \"revisions\" or \"contents\"."), "{m}");
     let m = refused(&mut h, "newpage", json!({"generated": "cover", "type": "report"}));
-    assert!(m.contains("A cover page is a Front sheet page; choose a Front sheet type."), "{m}");
+    assert!(m.contains("A cover page is a Cover sheet page; choose a Cover sheet type."), "{m}");
     let m = refused(&mut h, "newpage", json!({"generated": "bom-location", "type": "front"}));
     assert!(!m.is_empty());
     // `generated` with no `type`: rule 2's type, and no page.type stored.
     let c = new_page(&mut h, json!({"generated": "contents", "after": revs.hex()}));
     assert_eq!(type_of(&mut h, c), "front");
     assert!(!h.doc().pages[&c].properties.contains_key("page.type"));
-    // An own type copied from Front sheet may hold a cover (§2.3).
+    // An own type copied from Cover sheet may hold a cover (§2.3).
     let own = s(&h.run("setstyle", json!({"catalogue": "page", "new": true, "name": "Cover A4", "copy_of": "front"})).unwrap()["id"]);
     new_page(&mut h, json!({"type": own, "generated": "cover", "after": sch.hex()}));
 }
@@ -471,7 +471,7 @@ fn ac4_setdefault_page_type_is_page_level_only() {
     refused(&mut h, "setdefault", json!({"key": "page.type", "level": "standard", "value": "network"}));
     let cover = new_page(&mut h, json!({"generated": "cover"}));
     let m = refused(&mut h, "setdefault", json!({"key": "page.type", "level": "page", "page": cover.hex(), "value": "schematic"}));
-    assert!(m.contains("Front sheet"), "{m}");
+    assert!(m.contains("Cover sheet"), "{m}");
     undo(&mut h);
     undo(&mut h);
     assert_eq!(type_of(&mut h, p[1]), "schematic", "undo");

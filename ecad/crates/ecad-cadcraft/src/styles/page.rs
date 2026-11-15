@@ -2,7 +2,7 @@
 //!
 //! A page type says what a page is: Front sheet, Schematic, Network, Single-line, Panel layout,
 //! Report, or a project's own. It brings the page's sheet, frame style, title block and zones, and
-//! says which generated kinds its pages may be (the hidden field `holds`: Front sheet holds the
+//! says which generated kinds its pages may be (the hidden field `holds`: Cover sheet holds the
 //! cover, revision history and contents, Report the report kinds; an own type holds what the type
 //! it was copied from holds). A type never decides where a page goes or how it is numbered (owner,
 //! Q1 and Q13), and it has no position (owner, fix round: "if I don't know what it does, a user
@@ -63,17 +63,21 @@ static FIELDS: &[Field] = &[
         over: None,
     },
     Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
+    // Design 054 §3.4: off, the type's pages get no electrical checks, cross-references or
+    // numbering.
+    Field { key: "checks", label: "Checks and references", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
     // Not shown: copied with the type, so an own type holds what its source holds.
     Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), builtin: Value::Choice("none"), over: None },
 ];
 
 static BUILTINS: &[Builtin] = &[
-    Builtin { id: "front", name: "Front sheet", values: &[("holds", Value::Choice("front")), ("zones", Value::Choice("off"))] },
+    Builtin { id: "front", name: "Cover sheet", values: &[("holds", Value::Choice("front")), ("zones", Value::Choice("off"))] },
     Builtin { id: "schematic", name: "Schematic", values: &[] },
     Builtin { id: "network", name: "Network", values: &[] },
     Builtin { id: "singleline", name: "Single-line", values: &[] },
     Builtin { id: "panel", name: "Panel layout", values: &[("zones", Value::Choice("off"))] },
     Builtin { id: "report", name: "Report", values: &[("holds", Value::Choice("report")), ("zones", Value::Choice("off"))] },
+    Builtin { id: "plain", name: "Plain", values: &[("zones", Value::Choice("off")), ("checks", Value::Choice("off"))] },
 ];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
@@ -84,7 +88,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 pub static CATALOGUE: Catalogue =
     Catalogue { word: WORD, plural: "Page types", one: "Page type", fields: FIELDS, builtins: BUILTINS, choices, project_field: None };
 
-/// The built-in Front sheet type.
+/// The built-in Cover sheet type (ID `front`, kept: old files store it).
 pub const FRONT: &str = "front";
 /// The built-in Schematic type, a page's type when nothing else says.
 pub const SCHEMATIC: &str = "schematic";
@@ -135,6 +139,8 @@ pub struct TypeLook {
     pub title_block: Option<StyleRef>,
     pub zones: bool,
     pub holds: Holds,
+    /// Checks and references (design 054 §3.4).
+    pub checks: bool,
 }
 
 fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defaults::Resolved<'a>> {
@@ -156,7 +162,8 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
         .filter(|f| super::exists(doc, "frame", f));
     let zones = field(doc, id, "zones").is_none_or(|r| r.word() != "off");
     let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
-    TypeLook { sheet, frame, title_block, zones, holds }
+    let checks = msheet::type_checks(doc, id);
+    TypeLook { sheet, frame, title_block, zones, holds, checks }
 }
 
 /// The type of `page` (design 054 §2.3).
@@ -187,6 +194,7 @@ pub fn subtitle(id: &StyleRef) -> &'static str {
             "singleline" => "From the load tree",
             "panel" => "Scale 1:4",
             "report" => "Parts, cables, terminals, PLC",
+            "plain" => "Imported drawings and notes",
             _ => "",
         },
         StyleRef::Own(_) => "",
@@ -258,7 +266,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
 /// The refusal for a generated `kind` given a type of the wrong position (design 054 §2.3).
 pub fn kind_refusal(kind: GenKind) -> String {
     let (one, ty) = match Holds::of_kind(kind) {
-        Holds::Front => ("Front sheet", "Front sheet"),
+        Holds::Front => ("Cover sheet", "Cover sheet"),
         _ => ("Report", "Report"),
     };
     format!("A {} page is a {one} page; choose a {ty} type.", kind.title().to_lowercase())

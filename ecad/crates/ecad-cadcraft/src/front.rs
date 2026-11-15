@@ -86,6 +86,122 @@ pub fn check_notes(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The project properties holding the person's rows of the wire-colour legend and the symbol
+/// legend (design 054 §8.1a): one row per line, `<key>\t<shown 1|0>\t<label>`.
+pub const WIRE_ROWS_KEY: &str = "cover.wire_colours";
+pub const LEGEND_ROWS_KEY: &str = "cover.symbol_legend";
+/// Most rows, and most characters of a label.
+pub const MAX_ROWS: usize = 64;
+pub const MAX_LABEL_CHARS: usize = 64;
+/// The refusal for rows past the bounds.
+pub const ROWS_TOO_LONG: &str = "A cover table takes up to 64 rows with labels of 64 characters.";
+/// Most characters of a row key (a definition ID, a mark word, a colour and cross-section).
+const MAX_KEY_CHARS: usize = 64;
+
+/// One row the person set: its key, whether it is shown, and its label (empty: the generated).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RowOverride {
+    pub key: String,
+    pub shown: bool,
+    pub label: String,
+}
+
+/// A generated row as the editor shows it: its key, its generated words, the label drawn, and
+/// whether it is shown.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EditedRow {
+    pub key: String,
+    pub generated: String,
+    pub label: String,
+    pub shown: bool,
+}
+
+/// Read stored rows, within the bounds: malformed lines and the excess are left out.
+pub fn parse_overrides(text: &str) -> Vec<RowOverride> {
+    text.lines()
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, '\t');
+            let key = parts.next()?.trim();
+            let shown = parts.next().map(str::trim) != Some("0");
+            let label: String = parts.next().unwrap_or_default().trim().chars().take(MAX_LABEL_CHARS).filter(|c| !c.is_control()).collect();
+            (!key.is_empty() && key.chars().count() <= MAX_KEY_CHARS).then(|| RowOverride { key: key.to_string(), shown, label })
+        })
+        .take(MAX_ROWS)
+        .collect()
+}
+
+/// Whether `text` may be written as a block's rows.
+///
+/// # Errors
+/// [`ROWS_TOO_LONG`] past the bounds or for a malformed row.
+pub fn check_overrides(text: &str) -> Result<(), String> {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() > MAX_ROWS {
+        return Err(ROWS_TOO_LONG.into());
+    }
+    for l in lines {
+        let parts: Vec<&str> = l.splitn(3, '\t').collect();
+        let ok = match parts.as_slice() {
+            [k, s, label] => {
+                !k.trim().is_empty()
+                    && k.chars().count() <= MAX_KEY_CHARS
+                    && matches!(s.trim(), "0" | "1")
+                    && label.chars().count() <= MAX_LABEL_CHARS
+                    && !label.chars().any(char::is_control)
+            }
+            _ => false,
+        };
+        if !ok {
+            return Err(ROWS_TOO_LONG.into());
+        }
+    }
+    Ok(())
+}
+
+/// The rows the project stores under `key`.
+pub fn overrides(doc: &Document, key: &str) -> Vec<RowOverride> {
+    doc.properties.get(key).map(|t| parse_overrides(t)).unwrap_or_default()
+}
+
+/// The text a block's rows are stored as: every row, its label only when the person changed it.
+pub fn overrides_text(rows: &[EditedRow]) -> String {
+    rows.iter()
+        .take(MAX_ROWS)
+        .map(|r| {
+            let label =
+                if r.label == r.generated { String::new() } else { r.label.chars().take(MAX_LABEL_CHARS).filter(|c| !c.is_control()).collect() };
+            format!("{}\t{}\t{label}", r.key, if r.shown { 1 } else { 0 })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The generated rows `(key, words)` in the order the overrides give (the rows they name first,
+/// then the rest in generated order), each with its index in `generated`. A key no longer
+/// generated is dropped.
+fn arrange(generated: Vec<(String, String)>, ov: &[RowOverride]) -> Vec<(usize, EditedRow)> {
+    let mut out = Vec::new();
+    let mut used = vec![false; generated.len()];
+    for o in ov {
+        if let Some(i) = generated.iter().position(|(k, _)| *k == o.key)
+            && !used.get(i).copied().unwrap_or(true)
+            && let Some((k, g)) = generated.get(i)
+        {
+            if let Some(u) = used.get_mut(i) {
+                *u = true;
+            }
+            let label = if o.label.is_empty() { g.clone() } else { o.label.clone() };
+            out.push((i, EditedRow { key: k.clone(), generated: g.clone(), label, shown: o.shown }));
+        }
+    }
+    for (i, (k, g)) in generated.iter().enumerate() {
+        if !used.get(i).copied().unwrap_or(true) {
+            out.push((i, EditedRow { key: k.clone(), generated: g.clone(), label: g.clone(), shown: true }));
+        }
+    }
+    out
+}
+
 /// The cover's blocks that can be turned off, in the Page tab's order (design 054 §6.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
@@ -143,11 +259,26 @@ pub struct WireLine {
     pub names: Vec<String>,
     pub cross_section: String,
     pub colour: String,
+    /// The person's own words for the line (the table editor), shown instead of the generated.
+    pub label: Option<String>,
 }
 
 impl WireLine {
-    /// `L1, L2, L3 · 2.5 mm² · black`.
+    /// Its key for the overrides: the colour and cross-section it merges on (`bk/2.5`).
+    pub fn key(&self) -> String {
+        format!("{}/{}", self.colour.to_ascii_lowercase(), self.cross_section)
+    }
+
+    /// `L1, L2, L3 · 2.5 mm² · black`, or the person's label.
     pub fn text(&self) -> String {
+        if let Some(l) = &self.label {
+            return l.clone();
+        }
+        self.generated()
+    }
+
+    /// The generated words, whatever the label.
+    pub fn generated(&self) -> String {
         let mut parts = vec![self.names.join(", ")];
         if !self.cross_section.is_empty() {
             parts.push(format!("{} mm²", self.cross_section));
@@ -162,9 +293,28 @@ impl WireLine {
 /// Most wire-colour lines drawn (a hostile project's excess is left out).
 const MAX_WIRE_LINES: usize = 24;
 
-/// The wire-colour legend (design 054 §6.2): one line per wire category in use, in category
-/// table order, categories with equal colour and cross-section sharing a line.
+/// The wire-colour legend as drawn: [`wire_rows`] shown, in their order, with their labels.
 pub fn wire_lines(doc: &Document) -> Vec<WireLine> {
+    wire_rows(doc).into_iter().filter(|(_, r)| r.shown).map(|(l, _)| l).collect()
+}
+
+/// Every generated wire-colour line with the person's overrides (design 054 §8.1a): their
+/// order, whether each is shown, its label.
+pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
+    let lines = generated_wire_lines(doc);
+    let rows = arrange(lines.iter().map(|l| (l.key(), l.generated())).collect(), &overrides(doc, WIRE_ROWS_KEY));
+    rows.into_iter()
+        .filter_map(|(i, r)| {
+            let mut l = lines.get(i)?.clone();
+            l.label = (r.label != r.generated).then(|| r.label.clone());
+            Some((l, r))
+        })
+        .collect()
+}
+
+/// The wire-colour legend as generated (design 054 §6.2): one line per wire category in use, in
+/// category table order, categories with equal colour and cross-section sharing a line.
+fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
     let looks = crate::styles::wire::WireLooks::new(doc);
     let mut used: BTreeSet<StyleRef> = BTreeSet::new();
     for c in doc.conductors.keys() {
@@ -181,7 +331,7 @@ pub fn wire_lines(doc: &Document) -> Vec<WireLine> {
         let (colour, cross_section) = (f("colour"), f("cross_section"));
         match out.iter_mut().find(|l| l.colour.eq_ignore_ascii_case(&colour) && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
-            None => out.push(WireLine { names: vec![row.name], cross_section, colour }),
+            None => out.push(WireLine { names: vec![row.name], cross_section, colour, label: None }),
         }
         if out.len() >= MAX_WIRE_LINES {
             break;
@@ -208,9 +358,32 @@ impl Cell {
     }
 }
 
-/// The symbol legend's cells (design 054 §6.3): each definition with a placed copy (through the
-/// definition index), in definition order, then the marks in use.
+impl Cell {
+    /// Its key for the overrides: the definition's ID, or the mark's word.
+    pub fn key(&self) -> String {
+        match self {
+            Cell::Symbol(id, _) => format!("{:032x}", id.0),
+            Cell::Cable => "cable".into(),
+            Cell::Continuation => "continuation".into(),
+        }
+    }
+}
+
+/// The symbol legend's cells as drawn: [`legend_rows`] shown, in their order.
 pub fn legend_cells(doc: &Document) -> Vec<Cell> {
+    legend_rows(doc).into_iter().filter(|(_, r)| r.shown).map(|(c, _)| c).collect()
+}
+
+/// Every generated legend cell with the person's overrides (design 054 §8.1a).
+pub fn legend_rows(doc: &Document) -> Vec<(Cell, EditedRow)> {
+    let cells = generated_cells(doc);
+    let rows = arrange(cells.iter().map(|c| (c.key(), c.name().to_string())).collect(), &overrides(doc, LEGEND_ROWS_KEY));
+    rows.into_iter().filter_map(|(i, r)| Some((cells.get(i)?.clone(), r))).collect()
+}
+
+/// The symbol legend's cells as generated (design 054 §6.3): each definition with a placed copy
+/// (through the definition index), in definition order, then the marks in use.
+fn generated_cells(doc: &Document) -> Vec<Cell> {
     let mut out: Vec<Cell> = doc
         .definitions
         .iter()
@@ -295,7 +468,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
     let codes_on = Block::StructureCodes.on(doc);
     ops.iter().any(|op| match op {
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-            matches!(key.as_str(), crate::frame::TITLE | crate::frame::CUSTOMER | "site" | NOTES_KEY)
+            matches!(key.as_str(), crate::frame::TITLE | crate::frame::CUSTOMER | "site" | NOTES_KEY | WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
                 || key.starts_with("front.cover.")
                 || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
@@ -657,7 +830,9 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let rev_h = if on(Block::Revisions) { head_h + 6.0 * s + line_h * revs.len().max(1) as f64 + pad } else { 0.0 };
     let codes_h = if on(Block::StructureCodes) { head_h + line_h * codes.0.len().max(codes.1.len()).clamp(2, 8) as f64 + pad } else { 0.0 };
     let row3 = rev_h.max(codes_h);
-    let cells = if on(Block::SymbolLegend) { legend_cells(doc) } else { Vec::new() };
+    let legend: Vec<(Cell, EditedRow)> =
+        if on(Block::SymbolLegend) { legend_rows(doc).into_iter().filter(|(_, r)| r.shown).collect() } else { Vec::new() };
+    let cells: Vec<Cell> = legend.iter().map(|(c, _)| c.clone()).collect();
     let (big, small_cell) = ((CELL_W_MM * s, CELL_H_MM * s, CELL_ROW_MM * s), (10.0 * s, 7.0 * s, 10.0 * s));
     let legend_room = (y - b) - row1 - row3 - gap * [row1, row3].iter().filter(|h| **h > 0.0).count() as f64;
     let rows_needed = cells.len().div_ceil(LEGEND_COLUMNS).max(1);
@@ -726,7 +901,8 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
                 Cell::Symbol(id, _) => symbol(&mut d, doc, *id, cell),
                 m => mark(&mut d, m, cell),
             }
-            d.text((cx + cw + 4.0 * s, cy), small, c.name(), HAlign::Left, None, Some(col_w - cw - 6.0 * s));
+            let name = legend.get(i).map_or_else(|| c.name().to_string(), |(_, r)| r.label.clone());
+            d.text((cx + cw + 4.0 * s, cy), small, &name, HAlign::Left, None, Some(col_w - cw - 6.0 * s));
         }
         if take < cells.len() {
             let i = take;

@@ -77,7 +77,7 @@ fn ac14_the_picker_adds_102_right_after_101() {
     let (mut h, p101) = on_page_101();
     click(&mut h, ecad_trial::shell::status_bar::ADD_PAGE);
     assert!(has(&h, "ecad.newpage.picker"), "the picker opens");
-    for t in ["front", "schematic", "network", "singleline", "panel", "report"] {
+    for t in ["front", "schematic", "network", "singleline", "panel", "report", "plain"] {
         assert!(has(&h, &format!("ecad.newpage.type.{t}")), "row {t}");
     }
     let row = h.get_by_label("ecad.newpage.type.schematic");
@@ -102,7 +102,7 @@ fn ac14_the_picker_adds_102_right_after_101() {
 }
 
 /// AC14, §4.1: Esc closes the picker and writes nothing; Panel layout is disabled with its tooltip;
-/// Front sheet opens its kinds.
+/// Cover sheet opens its kinds.
 #[test]
 fn ac14_esc_writes_nothing_and_panel_layout_is_disabled() {
     let (mut h, _) = on_page_101();
@@ -132,7 +132,7 @@ fn ac13_each_settings_control_writes_one_setstyle() {
     assert!(has(&h, "ecad.settings.pages.table"));
     // Every name of §5.2's table; the missing ones are reported together at the end.
     let mut missing = Vec::new();
-    for t in ["front", "schematic", "network", "singleline", "panel", "report"] {
+    for t in ["front", "schematic", "network", "singleline", "panel", "report", "plain"] {
         for col in ["row", "sheet", "frame", "titleblock", "zones", "count"] {
             let n = format!("ecad.settings.pages.{col}.{t}");
             if !has(&h, &n) {

@@ -439,6 +439,10 @@ pub fn device(doc: &Document, c: ComponentId) -> Device {
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Component(c)) {
+        // Brief 054 (design 054 §3.4): a symbol on a Plain page has no references.
+        if !ecad_model::sheet::page_checks(doc, r.page) {
+            continue;
+        }
         match raw_class(doc, r) {
             Class::Head if head.is_none() => head = Some(rid),
             Class::Child => {
@@ -470,6 +474,10 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
         && crate::connectors::is_connector(doc, c)
     {
         return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
+    }
+    // Brief 054 (design 054 §3.4): a symbol on a Plain page is in no device's group.
+    if matches!(r.subject, Subject::Component(_)) && !ecad_model::sheet::page_checks(doc, r.page) {
+        return None;
     }
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
@@ -1356,6 +1364,8 @@ impl RefIndex {
             Group::Device(c) => {
                 let mut head_seen = false;
                 doc.representations_of(Subject::Component(c))
+                    // Brief 054 (design 054 §3.4): no references to or from a Plain page.
+                    .filter(|(_, r)| ecad_model::sheet::page_checks(doc, r.page))
                     .filter_map(|(id, r)| match raw_class(doc, r) {
                         Class::Head if !head_seen => {
                             head_seen = true;
@@ -1824,6 +1834,12 @@ impl Watch {
     pub fn finish(mut self, doc: &Document, idx: &mut RefIndex, ops: &[Op]) -> Outcome {
         self.groups.extend(RefIndex::groups_named(doc, ops));
         idx.refresh(doc, &self.groups);
+        // Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
+        // groups of every device on it: the index is made again and every device page redrawn.
+        if crate::page_types::checks_changed(doc, ops) {
+            *idx = RefIndex::build(doc);
+            self.scope.wide = true;
+        }
         if ecad_model::ledger::verify_mode()
             && let Err(e) = idx.verify(doc)
         {

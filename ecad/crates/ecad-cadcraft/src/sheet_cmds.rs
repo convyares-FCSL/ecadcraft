@@ -693,8 +693,8 @@ fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     if key.starts_with("terminal.") && crate::defaults::find(key).is_some() {
         return Ok(());
     }
-    // Brief 054 (FP4): the cover's notes.
-    if key == COVER_NOTES {
+    // Brief 054 (FP4, design 054 §8.1a): the cover's notes and its table editor rows.
+    if key == COVER_NOTES || key == crate::front::WIRE_ROWS_KEY || key == crate::front::LEGEND_ROWS_KEY {
         return Ok(());
     }
     let n = key.chars().count();
@@ -889,6 +889,11 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
 ",
                             )
                         })
+                    }
+                    // Brief 054 (design 054 §8.1a): the cover's table editor rows.
+                    Value::String(t) if k == crate::front::WIRE_ROWS_KEY || k == crate::front::LEGEND_ROWS_KEY => {
+                        crate::front::check_overrides(t)?;
+                        (!t.trim().is_empty()).then(|| t.trim_end().to_string())
                     }
                     // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
                     Value::String(t) => match crate::accessories::project_rule(doc, k, Some(t)) {

@@ -1287,12 +1287,14 @@ pub struct Checks {
     /// Bumped only when some row actually changed (an update that re-checked subjects and found
     /// the same rows leaves it), for views that show the rows themselves (the Release dialog).
     pub changed: u64,
+    /// Brief 054: the pages whose type has checks and references off.
+    off: BTreeSet<PageId>,
 }
 
 impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
     pub fn build(doc: &Document, tol: f64) -> Self {
-        let mut ch = Checks::default();
+        let mut ch = Checks { off: ecad_model::sheet::checks_off_pages(doc), ..Checks::default() };
         for c in doc.conductors.keys() {
             ch.grid.insert(doc, *c);
         }
@@ -1334,7 +1336,11 @@ impl Checks {
         self.revision += 1;
     }
 
-    fn set(&mut self, key: Key, v: Vec<Check>) {
+    fn set(&mut self, key: Key, mut v: Vec<Check>) {
+        // Brief 054 (design 054 §3.4): no electrical row on a page with checks and references off.
+        if !self.off.is_empty() && !matches!(key, Key::Styles | Key::Cover | Key::TitleBlocks) {
+            v.retain(|c| c.page.is_none_or(|p| !self.off.contains(&p)));
+        }
         let same = match self.by_key.get(&key) {
             Some(old) => *old == v,
             None => v.is_empty(),
@@ -1411,6 +1417,7 @@ impl Checks {
     pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
         let mut s = Scope::default();
         s.collect(before, ops, &self.grid);
+        s.checks_pages(before, ops);
         s
     }
 
@@ -1418,6 +1425,7 @@ impl Checks {
     /// adding what the ops themselves name in this state.
     pub fn update(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, tol: f64) {
         scope.collect(doc, ops, &self.grid);
+        scope.checks_pages(doc, ops);
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build(doc, tol) };
             return;
@@ -1528,6 +1536,16 @@ pub struct Scope {
     styles: bool,
     /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
     title_blocks: bool,
+}
+
+impl Scope {
+    /// Brief 054: whether the set of pages with checks off may change (then everything is checked
+    /// again).
+    fn checks_pages(&mut self, doc: &Document, ops: &[Op]) {
+        if crate::page_types::checks_changed(doc, ops) {
+            self.all = true;
+        }
+    }
 }
 
 impl Scope {

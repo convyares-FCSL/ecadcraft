@@ -29,6 +29,9 @@ pub const ABOUT: &str = "Each page type brings its own sheet. + Page asks which 
 pub const LIBRARY_NOTE: &str = "Frames and title blocks are made in Library ▸ Title blocks.";
 /// Under Position in the right panel (design 054 §5.3).
 pub const NUMBERS_NOTE: &str = "Pages are numbered by folder: set a folder's start number in the Book.";
+/// The right panel's Checks and references switch (design 054 §3.4), and what it means.
+pub const CHECKS: &str = "ecad.settings.pages.checks";
+pub const CHECKS_NOTE: &str = "Off: pages of this type get no electrical checks, no cross-references and no device or wire numbering. Plain uses it for imported drawings and notes.";
 /// Row height and thumbnail size (design 054 §5.2).
 pub const ROW_H: f32 = 58.0;
 pub const THUMB: egui::Vec2 = vec2(52.0, 36.0);
@@ -51,6 +54,8 @@ pub struct TypeRow {
     pub title_block: Option<StyleRef>,
     pub frame: Option<StyleRef>,
     pub zones: bool,
+    /// Checks and references (design 054 §3.4).
+    pub checks: bool,
     /// Which generated kinds it holds (hidden; picks an own type's thumbnail).
     pub holds: Holds,
     pub pages: usize,
@@ -127,6 +132,7 @@ pub fn read(t: &mut Trial) -> Option<Snapshot> {
                     title_block: look.title_block.clone(),
                     frame: look.frame,
                     zones: look.zones,
+                    checks: look.checks,
                     holds: look.holds,
                     pages: counts.get(&r.id).copied().unwrap_or(0),
                     first: None,
@@ -197,6 +203,12 @@ pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
             }
             p.rect_stroke(Rect::from_min_max(pos2(lx(0.55), ly(0.0)), pos2(lx(1.0), ly(1.0))), 0.0, st, egui::StrokeKind::Middle);
             p.rect_stroke(Rect::from_center_size(pos2(lx(0.72), ly(0.25)), vec2(4.0, 3.0)), 0.0, st, egui::StrokeKind::Middle);
+        }
+        // Plain (design 054 §3.4): a sheet with a frame and nothing else.
+        "plain" => {
+            p.rect_stroke(i, 0.0, st, egui::StrokeKind::Middle);
+            p.hline(lx(0.55)..=lx(1.0), ly(0.8), st);
+            p.vline(lx(0.55), ly(0.8)..=ly(1.0), st);
         }
         "report" => {
             p.rect_stroke(i, 0.0, st, egui::StrokeKind::Middle);
@@ -662,6 +674,17 @@ fn panel(t: &mut Trial, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writa
         });
     });
     ui.label(egui::RichText::new(NUMBERS_NOTE).small().color(ecad_ui::color(s.text_3)));
+    ui.add_space(space::S);
+    // Design 054 §3.4: Checks and references.
+    let summary = if row.checks { "on" } else { "off" };
+    section(ui, "checks", "Checks and references", summary, |ui| {
+        prow(ui, "Checks and references", |ui| {
+            if switch(ui, row.checks, writable, CHECKS).clicked() {
+                todo.push(Do::Set(row.id.clone(), vec![("checks", Some(if row.checks { "off" } else { "on" }.into()))]));
+            }
+        });
+        ui.label(egui::RichText::new(CHECKS_NOTE).small().color(ecad_ui::color(s.text_3)));
+    });
     if row.own || row.overridden {
         section(ui, "name", "Name", &row.name, |ui| {
             if row.own {

@@ -307,7 +307,42 @@ pub fn page_type_title_block(doc: &Document, page: PageId) -> Option<StyleRef> {
 }
 
 /// The built-in page types that draw no zones (design 054 §2.2).
-const ZONELESS_TYPES: [&str; 3] = ["front", "panel", "report"];
+const ZONELESS_TYPES: [&str; 4] = ["front", "panel", "report", "plain"];
+/// The built-in page type with checks and references off (design 054 §3.4).
+pub const PLAIN_TYPE: &str = "plain";
+
+/// Whether page type `id` has **Checks and references** on (design 054 §3.4): its record's
+/// `checks` field, else the built-in's (Plain off, the others on).
+pub fn type_checks(doc: &Document, id: &StyleRef) -> bool {
+    match type_field(doc, id, "checks").map(str::trim) {
+        Some(v) if v.eq_ignore_ascii_case("off") => false,
+        Some(v) if v.eq_ignore_ascii_case("on") => true,
+        _ => !matches!(id, StyleRef::Builtin(w) if w == PLAIN_TYPE),
+    }
+}
+
+/// Whether `page` takes part in checks, cross-references and numbering (its page type's
+/// [`type_checks`]). A page that does not exist does.
+pub fn page_checks(doc: &Document, page: PageId) -> bool {
+    type_of_page(doc, page).is_none_or(|id| type_checks(doc, &id))
+}
+
+/// The pages whose type has checks and references off: one pass over the pages.
+pub fn checks_off_pages(doc: &Document) -> std::collections::BTreeSet<PageId> {
+    doc.pages.iter().filter(|(_, p)| !type_checks(doc, &page_type_of(doc, &p.properties))).map(|(id, _)| *id).collect()
+}
+
+/// Whether `ops` can change which pages have checks and references off: a page's type or kind, a
+/// page added, a page type record.
+pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
+    use crate::op::{ObjectRef, Op};
+    ops.iter().any(|op| match op {
+        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == PAGE_TYPE_KEY,
+        Op::AddPage { page, .. } => page.properties.contains_key(PAGE_TYPE_KEY),
+        Op::SetStyle { catalogue, .. } => catalogue == PAGE_CATALOGUE,
+        _ => false,
+    })
+}
 
 /// Whether `page`'s page type shows zones (054's `zones`, FP6): its record's `on`/`off`, else the
 /// built-in's (Front sheet, Panel layout and Report off; the others on). `None` only for a page
@@ -432,7 +467,7 @@ pub const PAGE_CATALOGUE: &str = "page";
 /// The page property holding a generated page's kind (brief 024, FP1).
 pub const GENERATED_KEY: &str = "generated";
 /// The six built-in page types (design 054 §2.2), in table order.
-pub const BUILTIN_PAGE_TYPES: [&str; 6] = ["front", "schematic", "network", "singleline", "panel", "report"];
+pub const BUILTIN_PAGE_TYPES: [&str; 7] = ["front", "schematic", "network", "singleline", "panel", "report", "plain"];
 /// The generated kinds of the Front sheet type; every other known kind is a Report's.
 const FRONT_KINDS: [&str; 3] = ["cover", "revisions", "contents"];
 const REPORT_KINDS: [&str; 5] = ["bom-location", "terminals", "cables", "plcrack", "iolist"];

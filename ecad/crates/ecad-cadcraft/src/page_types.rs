@@ -462,6 +462,25 @@ impl PageFix {
     }
 }
 
+/// Whether `ops` change which pages have checks and references off (design 054 §3.4): a page's
+/// type moved to or from such a type, such a page added or removed, a type record whose `checks`
+/// changed. Looked up in `doc` (call it on the state before and after).
+pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
+    let off = |props: &ecad_model::Properties| !ecad_model::sheet::type_checks(doc, &ecad_model::sheet::page_type_of(doc, props));
+    let named_off = |v: &Option<String>| v.as_deref().and_then(StyleRef::parse).is_some_and(|id| !ecad_model::sheet::type_checks(doc, &id));
+    ops.iter().any(|op| match op {
+        Op::SetProperty { object: ObjectRef::Page(_), key, before, after } if key == ecad_model::sheet::PAGE_TYPE_KEY => {
+            named_off(before) || named_off(after)
+        }
+        Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(&page.properties),
+        Op::SetStyle { catalogue, before, after, .. } if catalogue == ptype::WORD => {
+            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("checks").cloned());
+            c(before) != c(after)
+        }
+        _ => false,
+    })
+}
+
 /// Whether `op` can change [`check_rows`].
 pub fn touches_checks(op: &Op) -> bool {
     match op {

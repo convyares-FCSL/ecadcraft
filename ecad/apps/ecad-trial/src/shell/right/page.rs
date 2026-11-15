@@ -1,11 +1,12 @@
 //! The Page tab on a generated page (brief 054b, design 054 §8; board 1.16's right panel): on the
-//! cover, the block toggles and the notes; on any front page, the front pages with their toggles;
-//! on any generated page, the sheet read from its page type.
+//! cover, a row per block with its summary, **Edit…** (the shared table editor,
+//! [`crate::shell::table_editor`]) and its toggle; on a cover, revision history or contents page,
+//! the generated pages with their toggles; on any generated page, the sheet read from its type.
 //!
-//! Each toggle is one `setdefault {key, level: "project", value}`; the notes write on blur or
-//! Ctrl Enter (`projectprops {props: {"cover.notes": …}}`), Esc reverts; a front page's toggle adds
-//! it (`newpage {type: "front", generated, after}`) or removes every page of that kind
-//! (`deletepage {pages}`), one transaction each.
+//! Each toggle is one `setdefault {key, level: "project", value}`; the editor's Save is one
+//! `projectprops {props: {…}}` (the notes, or the wire colours' or legend's rows); a generated
+//! page's toggle adds it (`newpage {type: "front", generated, after}`) or removes every page of
+//! that kind (`deletepage {pages}`), one transaction each.
 //!
 //! # Update map (design 054 §10.2)
 //! The tab's copy ([`PageView`]) is read again only when the project's change count moves or
@@ -23,6 +24,10 @@ use crate::Trial;
 
 /// Accessible names (design 054 §8).
 pub const NOTES: &str = "ecad.page.notes";
+/// A block's Edit… button: `ecad.page.edit.<block>`.
+pub fn edit_name(b: Block) -> String {
+    format!("ecad.page.edit.{}", b.entry().key.trim_start_matches("front.cover."))
+}
 pub const GOTO_TYPE: &str = "ecad.page.sheet.goto";
 
 /// One front kind's row.
@@ -45,6 +50,11 @@ pub struct PageView {
     pub title_block: String,
     pub blocks: Vec<(Block, bool)>,
     pub notes: String,
+    /// The wire colours' and the legend's rows with the person's overrides (design 054 §8.1a).
+    pub wire_rows: Vec<ecad_cadcraft::front::EditedRow>,
+    pub legend_rows: Vec<ecad_cadcraft::front::EditedRow>,
+    /// The issued revisions, oldest first: `A · First issue · CvA · 2026-11-14`.
+    pub revisions: Vec<String>,
     pub front: Vec<FrontRow>,
     /// The last front page in book order (a front page turned on goes after it).
     pub last_front: Option<PageId>,
@@ -57,6 +67,8 @@ pub struct PageTab {
     /// The notes being typed (`None`: showing the stored ones).
     pub notes_edit: Option<String>,
     pub error: Option<String>,
+    /// The table editor while it is open (design 054 §8.1a).
+    pub editor: Option<crate::shell::table_editor::TableEditor>,
     /// The sections folded.
     pub folded: std::collections::BTreeSet<String>,
 }
@@ -102,6 +114,23 @@ fn read(t: &mut Trial, page: PageId) -> Option<PageView> {
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),
             notes: doc.properties.get(ecad_cadcraft::front::NOTES_KEY).cloned().unwrap_or_default(),
+            wire_rows: if kind == GenKind::Cover { ecad_cadcraft::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
+            legend_rows: if kind == GenKind::Cover {
+                ecad_cadcraft::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect()
+            } else {
+                Vec::new()
+            },
+            revisions: ecad_cadcraft::revisions::issued(doc)
+                .iter()
+                .rev()
+                .map(|r| {
+                    [r.rev(), r.get("description"), r.get("drawn"), r.get("date")]
+                        .into_iter()
+                        .filter(|x| !x.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                })
+                .collect(),
             front,
             last_front,
         })
@@ -126,7 +155,7 @@ pub fn current(t: &mut Trial) -> Option<PageView> {
     t.settings.page_tab.view.clone()
 }
 
-/// The header's words: `Front sheet · generated · page 01`.
+/// The header's words: `Cover sheet · generated · page 01`.
 pub fn head_words(v: &PageView) -> (String, String) {
     (v.title.clone(), format!("{} · generated · page {}", v.type_name, v.number))
 }
@@ -134,7 +163,10 @@ pub fn head_words(v: &PageView) -> (String, String) {
 /// What the tab asked for.
 enum Do {
     Block(Block, bool),
+    Edit(Block),
     Notes(String),
+    Rows(&'static str, String),
+    Revisions,
     Front(GenKind, bool),
     Settings(String),
 }
@@ -153,54 +185,29 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, v: &PageView, writable: bool, full
                 ui.horizontal(|ui| {
                     ui.set_min_height(32.0);
                     ui.label(widgets::rich(ui, label, ui_type::BODY, widgets::text()));
+                    let summary = summary_of(v, *b);
+                    if !summary.is_empty() {
+                        ui.label(widgets::rich(ui, &summary, ui_type::SMALL, widgets::text_3()));
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let name = format!("ecad.page.block.{}", b.entry().key.trim_start_matches("front.cover."));
                         if crate::settings::pages::switch(ui, *on, writable, &name).clicked() {
                             todo.push(Do::Block(*b, !*on));
                         }
+                        if editable(*b) {
+                            let e = ui.add(ecad_ui::prim::Button::new("Edit\u{2026}").small());
+                            e.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, edit_name(*b)));
+                            if e.clicked() {
+                                todo.push(Do::Edit(*b));
+                            }
+                        }
                     });
                 });
-                if *b == Block::Notes && *on {
-                    let pt = &mut t.settings.page_tab;
-                    let mut text = pt.notes_edit.clone().unwrap_or_else(|| v.notes.clone());
-                    let invalid = ecad_cadcraft::front::check_notes(&text).is_err();
-                    let stroke =
-                        if invalid { egui::Stroke::new(1.0, ecad_ui::color(s.error)) } else { egui::Stroke::new(1.0, ecad_ui::color(s.line)) };
-                    let r = egui::Frame::new()
-                        .stroke(stroke)
-                        .corner_radius(4.0)
-                        .inner_margin(4)
-                        .show(ui, |ui| {
-                            ui.add_enabled(
-                                writable,
-                                egui::TextEdit::multiline(&mut text)
-                                    .desired_rows(4)
-                                    .desired_width(ui.available_width())
-                                    .hint_text("One note per line"),
-                            )
-                        })
-                        .inner;
-                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, writable, NOTES));
-                    let esc = r.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape));
-                    let ctrl_enter = r.has_focus() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter));
-                    if esc {
-                        pt.notes_edit = None;
-                        r.surrender_focus();
-                    } else if r.changed() || pt.notes_edit.is_some() {
-                        pt.notes_edit = Some(text.clone());
-                    }
-                    if invalid {
-                        ui.label(egui::RichText::new(ecad_cadcraft::front::NOTES_TOO_LONG).small().color(ecad_ui::color(s.error)));
-                    }
-                    if (r.lost_focus() || ctrl_enter) && !esc && !invalid && pt.notes_edit.as_ref().is_some_and(|n| *n != v.notes) {
-                        todo.push(Do::Notes(text));
-                    }
-                }
             }
         });
     }
     if ecad_cadcraft::styles::page::Holds::of_kind(v.kind) == ecad_cadcraft::styles::page::Holds::Front {
-        widgets::section(ui, &mut folded, full, "page.front", "Front pages", "in the Book", false, |ui| {
+        widgets::section(ui, &mut folded, full, "page.front", "Generated pages", "in the Book", false, |ui| {
             for row in &v.front {
                 ui.horizontal(|ui| {
                     ui.set_min_height(32.0);
@@ -232,6 +239,25 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, v: &PageView, writable: bool, full
         }
     });
     t.settings.page_tab.folded = folded;
+    // The shared table editor (design 054 §8.1a).
+    if let Some(mut ed) = t.settings.page_tab.editor.take() {
+        let what = ed.what;
+        let out = ed.show(ui.ctx(), |rows| check_rows(what, rows));
+        match out {
+            crate::shell::table_editor::Outcome::None => t.settings.page_tab.editor = Some(ed),
+            crate::shell::table_editor::Outcome::Cancel => {}
+            crate::shell::table_editor::Outcome::Link => todo.push(Do::Revisions),
+            crate::shell::table_editor::Outcome::Save => {
+                match what {
+                    "notes" => todo.push(Do::Notes(notes_text(&ed.rows))),
+                    "wire_colours" => todo.push(Do::Rows(ecad_cadcraft::front::WIRE_ROWS_KEY, rows_text(&ed.rows))),
+                    _ => todo.push(Do::Rows(ecad_cadcraft::front::LEGEND_ROWS_KEY, rows_text(&ed.rows))),
+                }
+                // Kept open until the write is accepted (a refusal shows in it).
+                t.settings.page_tab.editor = Some(ed);
+            }
+        }
+    }
     if let Some(e) = &t.settings.page_tab.error {
         ui.label(egui::RichText::new(e).small().color(ecad_ui::color(s.error)));
     }
@@ -240,15 +266,108 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, v: &PageView, writable: bool, full
     }
 }
 
+/// A block's grey summary on its row: `4 lines`, `6 rows`, `3 issued`.
+fn summary_of(v: &PageView, b: Block) -> String {
+    let n = |k: usize, one: &str, many: &str| format!("{k} {}", if k == 1 { one } else { many });
+    match b {
+        Block::Notes => n(v.notes.lines().filter(|l| !l.trim().is_empty()).count(), "line", "lines"),
+        Block::WireColours => n(v.wire_rows.iter().filter(|r| r.shown).count(), "row", "rows"),
+        Block::SymbolLegend => n(v.legend_rows.iter().filter(|r| r.shown).count(), "row", "rows"),
+        Block::Revisions => n(v.revisions.len(), "issued", "issued"),
+        Block::StructureCodes | Block::CustomerSite => String::new(),
+    }
+}
+
+/// Whether a block has a table to edit.
+fn editable(b: Block) -> bool {
+    matches!(b, Block::Notes | Block::WireColours | Block::SymbolLegend | Block::Revisions)
+}
+
+/// The editor of block `b`, filled from the page's copy.
+fn editor_of(v: &PageView, b: Block, writable: bool) -> Option<crate::shell::table_editor::TableEditor> {
+    use crate::shell::table_editor::{Caps, Row, TableEditor};
+    let generated = |rows: &[ecad_cadcraft::front::EditedRow]| -> Vec<Row> {
+        rows.iter().map(|r| Row { key: r.key.clone(), text: r.label.clone(), generated: r.generated.clone(), shown: r.shown }).collect()
+    };
+    Some(match b {
+        Block::Notes => {
+            let rows = v
+                .notes
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(|l| Row { text: l.to_string(), shown: true, ..Row::default() })
+                .collect();
+            let mut e = TableEditor::new("notes", "Notes", rows, Caps::TYPED, writable);
+            e.max_rows = ecad_cadcraft::front::MAX_NOTES;
+            e
+        }
+        Block::WireColours => TableEditor::new("wire_colours", "Wire colours", generated(&v.wire_rows), Caps::GENERATED, writable),
+        Block::SymbolLegend => TableEditor::new("symbol_legend", "Symbol legend", generated(&v.legend_rows), Caps::GENERATED, writable),
+        Block::Revisions => {
+            let rows = v.revisions.iter().map(|t| Row { text: t.clone(), shown: true, ..Row::default() }).collect();
+            let mut e = TableEditor::new("revisions", "Revisions", rows, Caps::READ, writable);
+            e.link = Some("Edit in Revisions\u{2026}");
+            e
+        }
+        Block::StructureCodes | Block::CustomerSite => return None,
+    })
+}
+
+/// Whether the editor's rows may be saved.
+fn check_rows(what: &str, rows: &[crate::shell::table_editor::Row]) -> Result<(), String> {
+    match what {
+        "notes" => ecad_cadcraft::front::check_notes(&notes_text(rows)),
+        "revisions" => Ok(()),
+        _ => ecad_cadcraft::front::check_overrides(&rows_text(rows)),
+    }
+}
+
+/// The notes as stored: one line per row, empty rows left out.
+fn notes_text(rows: &[crate::shell::table_editor::Row]) -> String {
+    rows.iter().map(|r| r.text.trim()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join("\n")
+}
+
+/// A generated block's rows as stored (design 054 §8.1a): an empty label is the generated one.
+fn rows_text(rows: &[crate::shell::table_editor::Row]) -> String {
+    let edited: Vec<ecad_cadcraft::front::EditedRow> = rows
+        .iter()
+        .map(|r| {
+            let label = if r.text.trim().is_empty() { r.generated.clone() } else { r.text.trim().to_string() };
+            ecad_cadcraft::front::EditedRow { key: r.key.clone(), generated: r.generated.clone(), label, shown: r.shown }
+        })
+        .collect();
+    ecad_cadcraft::front::overrides_text(&edited)
+}
+
 fn act(t: &mut Trial, v: &PageView, d: Do) {
+    let writable = t.writable();
     let r = match d {
+        Do::Edit(b) => {
+            t.settings.page_tab.editor = editor_of(v, b, writable);
+            Ok(())
+        }
+        Do::Revisions => {
+            t.settings.page_tab.editor = None;
+            t.open_revisions();
+            Ok(())
+        }
+        Do::Rows(key, text) => {
+            let value = if text.trim().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text) };
+            let r = t.run_value("projectprops", json!({"props": {key: value}})).map(|_| ());
+            if r.is_ok() {
+                t.settings.page_tab.editor = None;
+            }
+            r
+        }
         Do::Block(b, on) => {
             t.run_value("setdefault", json!({"key": b.entry().key, "level": "project", "value": if on { "on" } else { "off" }})).map(|_| ())
         }
         Do::Notes(text) => {
-            let r = t.run_value("projectprops", json!({"props": {ecad_cadcraft::front::NOTES_KEY: text}})).map(|_| ());
+            let value = if text.trim().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text) };
+            let r = t.run_value("projectprops", json!({"props": {ecad_cadcraft::front::NOTES_KEY: value}})).map(|_| ());
             if r.is_ok() {
-                t.settings.page_tab.notes_edit = None;
+                t.settings.page_tab.editor = None;
             }
             r
         }
@@ -277,6 +396,9 @@ fn act(t: &mut Trial, v: &PageView, d: Do) {
         Ok(()) => t.settings.page_tab.error = None,
         Err(e) => {
             t.cad.session.echo(e.clone());
+            if let Some(ed) = &mut t.settings.page_tab.editor {
+                ed.error = Some(e.clone());
+            }
             t.settings.page_tab.error = Some(e);
         }
     }

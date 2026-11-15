@@ -33,7 +33,7 @@ fn a_page_takes_its_types_sheet_between_its_own_and_the_projects() {
     let a2 = SheetSpec::preset("A2").unwrap();
     assert_eq!(sheet_of(doc, pages[0]), a2, "a schematic page takes its type's sheet");
     assert_eq!(sheet_of(doc, pages[1]).text(), "A1", "its own sheet wins");
-    assert_eq!(sheet_of(doc, pages[2]), a3, "a cover is a Front sheet page");
+    assert_eq!(sheet_of(doc, pages[2]), a3, "a cover is a Cover sheet page");
     assert_eq!(sheet_of(doc, pages[3]), a3, "a network page is not a schematic one");
     // `project` and anything unreadable fall through.
     for v in ["project", "A0 999x999", "x"] {

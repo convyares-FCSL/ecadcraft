@@ -17,7 +17,7 @@ fn pages_and_sheets_lists_the_types_and_each_control_writes_one_setstyle() {
     h.set_size(eframe::egui::vec2(1920.0, 1080.0));
     h.state_mut().open_settings(Section::Pages);
     h.run_steps(4);
-    for id in ["front", "schematic", "network", "singleline", "panel", "report"] {
+    for id in ["front", "schematic", "network", "singleline", "panel", "report", "plain"] {
         assert!(h.query_by_label(&format!("ecad.settings.pages.row.{id}")).is_some(), "{id}");
     }
     assert!(h.query_by_label(pages::TABLE).is_some());
@@ -70,7 +70,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     assert_eq!(book.order, vec![p1, new, p2], "after the open page");
     assert_eq!(ptype::type_of(&d, new).text(), "network");
     assert_eq!(active(&mut h), Some(new), "the new page is shown");
-    // Front sheet opens its kinds; Cover adds a generated cover.
+    // Cover sheet opens its kinds; Cover adds a generated cover.
     click(&mut h, ecad_trial::shell::status_bar::ADD_PAGE);
     click(&mut h, "ecad.newpage.type.front");
     click(&mut h, "ecad.newpage.kind.cover");
@@ -117,11 +117,60 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, cover.hex()));
     ok(&mut h, "zoom e");
     h.run_steps(6);
-    // The Page tab: the block toggles, the front pages and the sheet from the type.
+    // The Page tab: the block rows with Edit…, the generated pages and the sheet from the type.
     assert!(h.query_by_label("ecad.page.block.notes").is_some(), "the Page tab on the cover");
     assert!(h.query_by_label("ecad.page.front.contents").is_some());
-    assert!(h.query_by_label(ecad_trial::shell::right::page::NOTES).is_some());
+    assert!(h.query_by_label(ecad_trial::shell::right::page::NOTES).is_none(), "no inline notes box (owner, fix round)");
     take(&h, &deltas, "054-cover.png");
+    // The font check at 100 % (96 px to 25.4 mm): the notes and the wire colours, top left.
+    ok(&mut h, "zoom c 160,215 230");
+    h.run_steps(4);
+    take(&h, &deltas, "054-cover-100.png");
+    ok(&mut h, "zoom e");
+    h.run_steps(2);
+    // The notes in the shared table editor: a row added, Save is one transaction; Cancel nothing.
+    let before = head(&mut h);
+    click(&mut h, "ecad.page.edit.notes");
+    assert!(h.query_by_label(ecad_trial::shell::table_editor::EDITOR).is_some(), "the editor opens");
+    // A new window lays itself out over its first frames.
+    h.run_steps(4);
+    click(&mut h, ecad_trial::shell::table_editor::CANCEL);
+    h.run_steps(2);
+    assert!(h.state().settings.page_tab.editor.is_none());
+    assert_eq!(head(&mut h), before, "Cancel writes nothing");
+    click(&mut h, "ecad.page.edit.notes");
+    if let Some(ed) = h.state_mut().settings.page_tab.editor.as_mut() {
+        assert_eq!(ed.rows.len(), 4, "the four notes, one per row");
+        ed.rows.swap(0, 1);
+        ed.rows.push(ecad_trial::shell::table_editor::Row { text: "Fifth note".into(), shown: true, ..Default::default() });
+    }
+    h.run_steps(2);
+    click(&mut h, ecad_trial::shell::table_editor::SAVE);
+    assert_eq!(head(&mut h), before + 1, "Save is one transaction");
+    let notes = doc(&mut h).properties.get("cover.notes").cloned().unwrap_or_default();
+    assert!(notes.starts_with("Line colours") && notes.ends_with("Fifth note"), "{notes}");
+    ok(&mut h, "u");
+    // The symbol legend's editor: generated rows, hide and relabel.
+    click(&mut h, "ecad.page.edit.symbol_legend");
+    if let Some(ed) = h.state_mut().settings.page_tab.editor.as_mut() {
+        assert!(ed.rows.len() >= 5, "{}", ed.rows.len());
+        if let Some(r) = ed.rows.first_mut() {
+            r.text = "Our coil".into();
+        }
+        if let Some(r) = ed.rows.get_mut(1) {
+            r.shown = false;
+        }
+    }
+    h.run_steps(2);
+    let before = head(&mut h);
+    click(&mut h, ecad_trial::shell::table_editor::SAVE);
+    assert_eq!(head(&mut h), before + 1);
+    ok(&mut h, "u");
+    // Revisions: read only, with its link.
+    click(&mut h, "ecad.page.edit.revisions");
+    assert!(h.query_by_label(ecad_trial::shell::table_editor::LINK).is_some());
+    assert!(h.query_by_label(ecad_trial::shell::table_editor::SAVE).is_none(), "read only");
+    click(&mut h, ecad_trial::shell::table_editor::CANCEL);
     // Contents on: one transaction, after the last front page; off again: one.
     let before = head(&mut h);
     click(&mut h, "ecad.page.front.contents");

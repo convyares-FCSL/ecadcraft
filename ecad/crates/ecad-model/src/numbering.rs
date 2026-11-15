@@ -445,6 +445,26 @@ pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, Str
     if req.kinds.contains(&Kind::Terminals) {
         plan_terminals(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
+    // Brief 054 (design 054 §3.4): what is anchored on a page with checks and references off is
+    // not numbered.
+    let off = crate::sheet::checks_off_pages(doc);
+    if !off.is_empty() {
+        let conn = doc.connectivity();
+        let mut dropped: BTreeSet<ObjectRef> = BTreeSet::new();
+        rows.retain(|r| {
+            let keep = r.page.is_none_or(|p| !off.contains(&p));
+            if !keep {
+                dropped.insert(r.object);
+                if let ObjectRef::Conductor(c) = r.object
+                    && let Some(net) = conn.net_of_conductor(c).and_then(|n| conn.net(n))
+                {
+                    dropped.extend(net.conductors.iter().map(|x| ObjectRef::Conductor(*x)));
+                }
+            }
+            keep
+        });
+        ops.retain(|op| !matches!(op, Op::SetProperty { object, .. } if dropped.contains(object)));
+    }
     rows.sort_by(|a, b| a.mark.group().cmp(&b.mark.group()).then(a.kind.cmp(&b.kind)).then(a.order.cmp(&b.order)));
     Ok(Plan { rows, ops })
 }
