@@ -26,6 +26,10 @@ pub struct Showcase {
     /// The gallery's selector and segmented choice.
     pub category: usize,
     pub basis: usize,
+    /// Round 2's checkbox, radio choice and folding section (brief 063).
+    pub checked: bool,
+    pub radio: usize,
+    pub open: bool,
 }
 
 impl Default for Showcase {
@@ -40,6 +44,9 @@ impl Default for Showcase {
             chip: true,
             category: 0,
             basis: 0,
+            checked: true,
+            radio: 0,
+            open: true,
         }
     }
 }
@@ -418,4 +425,80 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
     let _ = crate::panel::section_header(ui, open, "Section header", "18.8 A \u{2265} 4 A");
     open = !open;
     let _ = crate::panel::section_header(ui, open, "Folded section", "2/D1");
+    round_two(ui, state);
+}
+
+/// Round 2's pieces (brief 063): section header, property grid, list rows, text styles,
+/// checkbox, radio, search field and a dialog's footer, each in its states.
+fn round_two(ui: &mut Ui, state: &mut Showcase) {
+    use crate::prim::{Checkbox, ListRow, PropertyGrid, Radio, SearchField, SectionHeader};
+    heading(ui, "Shared pieces (round 2)");
+    let mut folded = false;
+    SectionHeader::new(&mut state.open, "Folding section").summary("3 rows").show(ui);
+    SectionHeader::new(&mut folded, "Folding section, folded").summary("2/D1").show(ui);
+    ui.add_space(space::S);
+    let mut name = "Spare cores".to_string();
+    PropertyGrid::new().show(ui, |g| {
+        g.row("Property row", |ui| crate::control::TextEntry::new(&mut name, "Property row").width(COLUMN).show(ui));
+        g.row("Read row", |ui| crate::control::read_text(ui, "-W12 \u{b7} 2/C1", crate::control::Decor::default(), "Read row"));
+    });
+    ui.add_space(space::S);
+    ui.allocate_ui(vec2(COLUMN * 2.0, 0.0), |ui| {
+        ListRow::new("List row, plain").show(ui);
+        ListRow::new("List row, hovered").look(Look::Hover).show(ui);
+        ListRow::new("List row, selected").selected(true).show_with(ui, |ui| {
+            crate::prim::caption(ui, "page 4");
+        });
+        ListRow::new("List row, dim (archived)").dim(true).show(ui);
+    });
+    ui.add_space(space::S);
+    let line = |ui: &mut Ui, name: &str, add: &mut dyn FnMut(&mut Ui)| {
+        ui.horizontal(|ui| {
+            crate::panel::label(ui, name);
+            add(ui);
+        });
+    };
+    line(ui, "Text", &mut |ui| {
+        crate::prim::heading(ui, "Heading");
+        crate::prim::body(ui, "Body", false);
+        crate::prim::body(ui, "Secondary", true);
+        crate::prim::caption(ui, "CAPTION");
+    });
+    line(ui, "Notes", &mut |ui| {
+        crate::prim::note(ui, "A note", Tone::Neutral);
+        crate::prim::note(ui, "A warning", Tone::Warning);
+        crate::prim::note(ui, "An error", Tone::Error);
+    });
+    line(ui, "Checkbox", &mut |ui| {
+        Checkbox::new(&mut state.checked, "Live").show(ui);
+        let (mut on, mut off) = (true, false);
+        Checkbox::new(&mut off, "Hover").look(Look::Hover).show(ui);
+        Checkbox::new(&mut on, "Focus").look(Look::Focus).show(ui);
+        ui.add_enabled_ui(false, |ui| Checkbox::new(&mut on, "Disabled").show(ui));
+    });
+    line(ui, "Radio", &mut |ui| {
+        for (i, label) in ["Keep main", "Keep branch"].into_iter().enumerate() {
+            if Radio::new(state.radio == i, label).show(ui).clicked() {
+                state.radio = i;
+            }
+        }
+        Radio::new(false, "Hover").look(Look::Hover).show(ui);
+        ui.add_enabled_ui(false, |ui| Radio::new(true, "Disabled").show(ui));
+    });
+    line(ui, "Search field", &mut |ui| {
+        SearchField::new(&mut state.search, "Search field").placeholder("Search pages").width(COLUMN).show(ui);
+        let mut t = "K01".to_string();
+        SearchField::new(&mut t, "Search field, focused").width(COLUMN).look(Look::Focus).show(ui);
+    });
+    line(ui, "Dialog footer", &mut |ui| {
+        let size = vec2(COLUMN, crate::tokens::size::CONTROL);
+        ui.allocate_ui_with_layout(size, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            crate::dialog::action(ui, "Merge", Kind::Primary, "Dialog primary", None);
+            crate::dialog::action(ui, "Cancel", Kind::Secondary, "Dialog secondary", None);
+        });
+        ui.allocate_ui_with_layout(size, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            crate::dialog::action(ui, "Delete", Kind::Danger, "Dialog danger", None);
+            crate::dialog::action(ui, "Cancel", Kind::Secondary, "Dialog cancel", None);
+        });
+    });
 }

@@ -62,6 +62,22 @@ out one row; `panel::value_row` does it for a value with its kind.
 A colour shown as a panel value uses `Decor::swatch`; one in a table uses `Cell::Colour`. Both show
 a bar before the code. All four are in the gallery (`showcase::components`).
 
+### Round 2 (063)
+
+| Component | For | API |
+| --- | --- | --- |
+| Folding section | A section header that keeps its fold state, with a summary or a quiet action at the right (`New branch`) | `prim::SectionHeader` |
+| Property rows | A label in the label column and its value; a grid of them with no gap | `prim::property_row`, `prim::PropertyGrid` |
+| List row | A selectable row of a list: text, a trailing count or page, dim when archived | `prim::ListRow` |
+| Text styles | A dialog's heading, body text, a section's caption, a short note in a status tone (an error under a field) | `prim::heading`, `prim::body`, `prim::caption`, `prim::note` |
+| Checkbox | A yes/no confirmed with the dialog's button (an applied-at-once setting is a Toggle) | `prim::Checkbox` |
+| Radio | One of a few choices that each need words (for short choices, Segmented) | `prim::Radio` |
+| Search field | The search box with its lens | `prim::SearchField` |
+| Dialog footer | A dialog's buttons: one primary (or danger when it deletes), Cancel secondary | `dialog::action`; widths `Dialog::small` / `medium` (`size.dialog_s`, `size.dialog_m`) |
+
+Ink on the accent is `shell.on_accent`; the `AI` chip's letters are `shell.ai_ink`. There is one
+error red (`shell.error`) and one warning colour (`shell.warning`).
+
 ### Details that make a value read right
 
 - **Key identity value** (a wire's number, a device's tag, a cable's tag): bold, `Decor::bold`.

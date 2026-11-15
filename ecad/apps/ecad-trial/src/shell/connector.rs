@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use cadcraft_engine::Input;
 use ecad_ui::prim;
-use ecad_ui::tokens::{Icon, space, ui_type};
+use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, vec2};
 
 use crate::Trial;
@@ -269,17 +269,9 @@ fn words(k: &str) -> String {
 
 /// A section's header: a fold mark, its title and its summary at the right.
 fn header(ui: &mut egui::Ui, title: &str, summary: &str, open: bool) {
-    let s = ecad_ui::SHELL;
     ui.add_space(space::XS);
-    ui.horizontal(|ui| {
-        let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), egui::Sense::hover());
-        ecad_ui::icons::paint(ui.painter(), r, if open { Icon::ChevronDown } else { Icon::ChevronRight }, ecad_ui::color(s.text_3));
-        let h = ui.label(egui::RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_ui::color(s.text)));
-        h.widget_info(|| egui::WidgetInfo::selected(egui::Role::Heading, true, open, title));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            prim::read_value(ui, summary);
-        });
-    });
+    let h = ecad_ui::panel::section_header(ui, open, title, summary);
+    h.widget_info(|| egui::WidgetInfo::selected(egui::Role::Heading, true, open, title));
     ui.add_space(space::XS);
 }
 

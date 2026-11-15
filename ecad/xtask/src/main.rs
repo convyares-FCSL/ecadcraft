@@ -113,19 +113,12 @@ const LOCAL_STYLE: &[&str] = &[
 /// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
 /// that styles locally is a violation.
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/debugger.rs", 1, "developer tool: restyled when U2 moves the Developer section"),
-    ("apps/ecad-trial/src/history_panel.rs", 3, "038 (U2) moves it; restyled by U4d"),
     ("apps/ecad-trial/src/library/builder.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
     ("apps/ecad-trial/src/library/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
     ("apps/ecad-trial/src/library/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/merge_dialog.rs", 3, "restyled with History (U4d)"),
-    ("apps/ecad-trial/src/outputs_ui.rs", 5, "restyled with Publish (after U2)"),
     ("apps/ecad-trial/src/preview.rs", 6, "restyled with the page view (U4a)"),
     ("apps/ecad-trial/src/project_panel.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
     ("apps/ecad-trial/src/publish.rs", 5, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/release_ui.rs", 4, "restyled with Publish (after U2)"),
-    ("apps/ecad-trial/src/renumber_dialog.rs", 2, "restyled with Lists (after U3)"),
-    ("apps/ecad-trial/src/sheets_ui.rs", 5, "restyled with Publish (after U2)"),
     ("apps/ecad-trial/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
     ("apps/ecad-trial/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
     ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
@@ -140,22 +133,15 @@ const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 /// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
 /// uses one is a violation.
 const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/debugger.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/developer.rs", 5, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/lib.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/lists/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/merge_dialog.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/outputs_ui.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/publish.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/release_ui.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/renumber_dialog.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/sheets_ui.rs", 21, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
@@ -175,8 +161,7 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("apps/ecad-trial/src/canvas/leader.rs", 1),
     ("apps/ecad-trial/src/canvas/markers.rs", 5),
     ("apps/ecad-trial/src/devices_panel.rs", 9),
-    ("apps/ecad-trial/src/history_panel.rs", 24),
-    ("apps/ecad-trial/src/lib.rs", 11),
+    ("apps/ecad-trial/src/history_panel.rs", 23),
     ("apps/ecad-trial/src/library/browser.rs", 7),
     ("apps/ecad-trial/src/library/builder.rs", 18),
     ("apps/ecad-trial/src/library/details.rs", 6),
@@ -186,19 +171,15 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("apps/ecad-trial/src/library/title_blocks/list.rs", 7),
     ("apps/ecad-trial/src/lists/cable_view.rs", 7),
     ("apps/ecad-trial/src/lists/workspace.rs", 1),
-    ("apps/ecad-trial/src/merge_dialog.rs", 1),
-    ("apps/ecad-trial/src/outputs_ui.rs", 1),
     ("apps/ecad-trial/src/preview.rs", 5),
     ("apps/ecad-trial/src/project_panel.rs", 20),
     ("apps/ecad-trial/src/publish.rs", 11),
-    ("apps/ecad-trial/src/renumber_dialog.rs", 3),
     ("apps/ecad-trial/src/settings/mod.rs", 7),
-    ("apps/ecad-trial/src/settings/pages.rs", 18),
+    ("apps/ecad-trial/src/settings/pages.rs", 16),
     ("apps/ecad-trial/src/settings/project.rs", 1),
     ("apps/ecad-trial/src/settings/standards.rs", 3),
-    ("apps/ecad-trial/src/sheets_ui.rs", 3),
     ("apps/ecad-trial/src/shell/conflicts.rs", 1),
-    ("apps/ecad-trial/src/shell/connector.rs", 3),
+    ("apps/ecad-trial/src/shell/connector.rs", 2),
     ("apps/ecad-trial/src/shell/glyphs.rs", 11),
     ("apps/ecad-trial/src/shell/intent.rs", 1),
     ("apps/ecad-trial/src/shell/left.rs", 1),
@@ -1544,7 +1525,7 @@ let c = ecad_ui::color(SHELL.text);",
         )
         .unwrap();
         std::fs::write(
-            src.join("history_panel.rs"),
+            src.join("preview.rs"),
             "fn f() -> egui::Color32 { egui::Color32::from_gray(7) }
 ",
         )
@@ -1556,7 +1537,7 @@ let c = ecad_ui::color(SHELL.text);",
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
-        assert!(!v.iter().any(|m| m.contains("history_panel.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
+        assert!(!v.iter().any(|m| m.contains("preview.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
     }
 
     /// A UI file not in the raw-control allowlist that uses `egui::TextEdit` or a `ComboBox` fails

@@ -1,6 +1,6 @@
 //! Button and icon button.
 
-use ecad_tokens::{Icon, WHITE, line, radius, size, space, ui_type};
+use ecad_tokens::{Icon, line, radius, size, space, ui_type};
 use egui::{Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, vec2};
 
 use super::{Look, accessible, galley};
@@ -72,7 +72,7 @@ impl Widget for Button<'_> {
             s.text_3
         } else {
             match self.kind {
-                Kind::Primary => WHITE,
+                Kind::Primary => s.on_accent,
                 Kind::Secondary => s.text,
                 Kind::Danger => s.error,
                 Kind::Quiet => s.text_2,
@@ -171,7 +171,7 @@ impl Widget for IconButton<'_> {
             let (fill, ink) = if !enabled {
                 (None, s.text_3)
             } else if self.selected {
-                (Some(s.accent), WHITE)
+                (Some(s.accent), s.on_accent)
             } else if pressed {
                 (Some(s.active), s.text)
             } else if hovered {

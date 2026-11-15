@@ -462,7 +462,7 @@ impl HistoryPanel {
         let shown = egui::Frame::NONE.fill(lime.gamma_multiply(0.08)).inner_margin(egui::Margin::symmetric(6, 8)).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
             ui.horizontal(|ui| {
-                chip(ui, "AI", lime, Color32::from_rgb(20, 24, 10));
+                chip(ui, "AI", lime, c(s.ai_ink));
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
                     let state = if a.paused { "is paused" } else { "is writing" };
@@ -496,35 +496,21 @@ impl HistoryPanel {
     /// A folding section's header: chevron, title, and an action at the right (`None`: none).
     /// Returns (open, action clicked).
     fn section(&mut self, ui: &mut egui::Ui, key: &'static str, title: &str, action: Option<(&str, bool)>) -> (bool, bool) {
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
-        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
-        let open = !self.folded.contains(key);
-        let p = ui.painter_at(rect);
-        let y = rect.center().y;
-        let chev = egui::Rect::from_center_size(pos2(rect.left() + 8.0, y), vec2(10.0, 10.0));
-        ecad_ui::icons::paint(&p, chev, if open { ecad_ui::tokens::Icon::ChevronDown } else { ecad_ui::tokens::Icon::ChevronRight }, c(s.text_3));
-        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY_EMPHASIS);
-        p.text(pos2(rect.left() + 20.0, y), egui::Align2::LEFT_CENTER, title, font, c(s.text));
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Section {title}")));
-        let mut acted = false;
+        let mut open = !self.folded.contains(key);
+        let name = format!("Section {title}");
+        let mut header = ecad_ui::prim::SectionHeader::new(&mut open, title).name(&name);
         if let Some((label, enabled)) = action {
-            let w = crate::shell::bar::text_width(ui, label, ecad_ui::tokens::ui_type::BODY) + 12.0;
-            let r = egui::Rect::from_min_max(pos2(rect.right() - w, rect.top() + 4.0), pos2(rect.right(), rect.bottom() - 4.0));
-            let b = crate::shell::bar::hit(ui, r, label, false, false, enabled);
-            ui.painter().text(
-                r.center(),
-                egui::Align2::CENTER_CENTER,
-                label,
-                crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY),
-                crate::shell::bar::ink(false, false, enabled),
-            );
-            acted = b.clicked();
+            header = header.action(label, enabled);
         }
-        if resp.clicked() && !acted && !self.folded.remove(key) {
-            self.folded.insert(key);
+        let r = header.show_with_action(ui);
+        if r.header.clicked() && !r.action {
+            if open {
+                self.folded.remove(key);
+            } else {
+                self.folded.insert(key);
+            }
         }
-        (open, acted)
+        (!self.folded.contains(key), r.action)
     }
 
     /// Branches: the branch shown first ("you are here"), the other open branches with how far
@@ -780,7 +766,7 @@ impl HistoryPanel {
             Some(_) => {
                 p.rect_filled(chip_r, 5.0, c(s.agent));
                 let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
-                p.text(chip_r.center(), egui::Align2::CENTER_CENTER, "AI", font, Color32::from_rgb(20, 24, 10));
+                p.text(chip_r.center(), egui::Align2::CENTER_CENTER, "AI", font, c(s.ai_ink));
             }
             None => {
                 p.rect_filled(chip_r, 5.0, c(s.active));
@@ -1026,156 +1012,126 @@ impl HistoryPanel {
     }
 
     fn dialogs(&mut self, ui: &mut egui::Ui, unsaved: u64, cur_name: &str, out: &mut Vec<Action>) {
+        use ecad_ui::control::TextEntry;
+        use ecad_ui::prim::{self, Kind, Tone};
         let Some(d) = self.dialog.clone() else { return };
         let ctx = ui.ctx().clone();
-        let mut close = false;
         let mut next = d.clone();
-        let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        let (title, id) = match &d {
-            Dialog::NewVersion { .. } => ("NEW VERSION", "ecad.newversion"),
-            Dialog::NewBranch { .. } => ("NEW BRANCH", "ecad.newbranch"),
-            Dialog::Rename { .. } => ("RENAME BRANCH", "ecad.renamebranch"),
-            Dialog::Archive { .. } => ("ARCHIVE BRANCH", "ecad.archivebranch"),
-            Dialog::Reopen { .. } => ("REOPEN BRANCH", "ecad.reopenbranch"),
-            Dialog::Restore { .. } => ("RESTORE", "ecad.restore"),
-            Dialog::Switch { .. } | Dialog::SwitchReadOnly => ("SWITCH BRANCH", "ecad.switchbranch"),
+        let (title, id, ok_label) = match &d {
+            Dialog::NewVersion { .. } => ("New version", "ecad.newversion", "Create"),
+            Dialog::NewBranch { .. } => ("New branch", "ecad.newbranch", "Create"),
+            Dialog::Rename { .. } => ("Rename branch", "ecad.renamebranch", "Rename"),
+            Dialog::Archive { .. } => ("Archive branch", "ecad.archivebranch", "Archive"),
+            Dialog::Reopen { .. } => ("Reopen branch", "ecad.reopenbranch", "Reopen"),
+            Dialog::Restore { .. } => ("Restore", "ecad.restore", "Restore"),
+            Dialog::Switch { .. } => ("Switch branch", "ecad.switchbranch", "Save and switch"),
+            Dialog::SwitchReadOnly => ("Switch branch", "ecad.switchbranch", "Save As\u{2026}"),
         };
-        egui::Window::new(title).id(egui::Id::unique(id)).collapsible(false).resizable(false).default_width(380.0).show(&ctx, |ui| {
-            let red = Color32::from_rgb(0xe0, 0x60, 0x60);
-            let ok_cancel = |ui: &mut egui::Ui, ok: &str| -> (bool, bool) {
-                let mut r = (false, false);
-                ui.horizontal(|ui| {
-                    r.0 = ui.button(ok).accessible_name(format!("{id}.ok")).clicked();
-                    r.1 = ui.button("Cancel").accessible_name(format!("{id}.cancel")).clicked();
-                });
-                r
-            };
-            match &mut next {
-                Dialog::NewVersion { name, description, error } => {
-                    egui::Grid::new("ecad.newversion.grid").num_columns(2).show(ui, |ui| {
-                        ui.label("Name");
-                        ui.text_edit_singleline(name).accessible_name("ecad.newversion.name");
-                        ui.end_row();
-                        ui.label("Description");
-                        ui.text_edit_singleline(description).accessible_name("ecad.newversion.description");
-                        ui.end_row();
-                    });
-                    ui.label(RichText::new(format!("Kept on {cur_name} as the project is now.")).small());
-                    if let Some(e) = error {
-                        ui.label(RichText::new(e.as_str()).small().color(red));
+        let changes = |n: u64| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" });
+        let archive_shown = match &d {
+            Dialog::Archive { branch, .. } => self.graph.branches.iter().any(|b| b.current && b.id.hex() == *branch),
+            _ => false,
+        };
+        let shown = ecad_ui::dialog::Dialog::new(egui::Id::unique(id), title, id).small().show(
+            &ctx,
+            |ui| {
+                let error = |ui: &mut egui::Ui, e: &Option<String>| {
+                    if let Some(e) = e {
+                        prim::note(ui, e, Tone::Error);
                     }
-                    let (ok, cancel) = ok_cancel(ui, "Create");
-                    if ok {
-                        let mut v = json!({"name": name.trim()});
-                        if !description.trim().is_empty() {
-                            v["description"] = json!(description.trim());
+                };
+                match &mut next {
+                    Dialog::NewVersion { name, description, error: e } => {
+                        prim::PropertyGrid::new().show(ui, |g| {
+                            g.row("Name", |ui| TextEntry::new(name, "ecad.newversion.name").show(ui));
+                            g.row("Description", |ui| TextEntry::new(description, "ecad.newversion.description").show(ui));
+                        });
+                        prim::note(ui, &format!("Kept on {cur_name} as the project is now."), Tone::Neutral);
+                        error(ui, e);
+                    }
+                    Dialog::NewBranch { name, from_text, switch, error: e, .. } => {
+                        prim::PropertyGrid::new().show(ui, |g| {
+                            g.row("Name", |ui| TextEntry::new(name, "ecad.newbranch.name").show(ui));
+                            g.row("From", |ui| ecad_ui::control::read_text(ui, from_text, Default::default(), "ecad.newbranch.from"));
+                        });
+                        prim::Checkbox::new(switch, "Switch to the new branch").show(ui).accessible_name("ecad.newbranch.switch");
+                        if unsaved > 0 {
+                            prim::note(ui, &format!("{cur_name} has {}; they are saved first.", changes(unsaved)), Tone::Neutral);
                         }
-                        out.push(Action::History(Do::Run("version", v)));
+                        error(ui, e);
                     }
-                    close = cancel;
-                }
-                Dialog::NewBranch { name, from, from_text, switch, error } => {
-                    egui::Grid::new("ecad.newbranch.grid").num_columns(2).show(ui, |ui| {
-                        ui.label("Name");
-                        ui.text_edit_singleline(name).accessible_name("ecad.newbranch.name");
-                        ui.end_row();
-                        ui.label("From");
-                        ui.label(from_text.as_str());
-                        ui.end_row();
-                    });
-                    ui.checkbox(switch, "Switch to the new branch").accessible_name("ecad.newbranch.switch");
-                    if unsaved > 0 {
-                        ui.label(
-                            RichText::new(format!(
-                                "{cur_name} has {unsaved} unsaved change{}; they are saved first.",
-                                if unsaved == 1 { "" } else { "s" }
-                            ))
-                            .small(),
+                    Dialog::Reopen { old, name, error: e, .. } => {
+                        prim::body(ui, &format!("Another open branch is called \"{old}\". Reopen this one as:"), false);
+                        TextEntry::new(name, "ecad.reopenbranch.name").show(ui);
+                        error(ui, e);
+                    }
+                    Dialog::Rename { name, error: e, .. } => {
+                        prim::property_row(ui, "Name", |ui| TextEntry::new(name, "ecad.renamebranch.name").show(ui));
+                        error(ui, e);
+                    }
+                    Dialog::Archive { name, .. } => {
+                        let mut q = format!(
+                            "Archive \"{name}\"? It is hidden from the list; nothing is deleted, and you can reopen it from \"Show merged and archived\"."
                         );
-                    }
-                    if let Some(e) = error {
-                        ui.label(RichText::new(e.as_str()).small().color(red));
-                    }
-                    let (ok, cancel) = ok_cancel(ui, "Create");
-                    if ok {
-                        let mut v = json!({"name": name.trim(), "switch": *switch});
-                        if !from.is_null() {
-                            v["from"] = from.clone();
+                        if archive_shown {
+                            q.push_str(" The project first shows its parent branch (saving first).");
                         }
-                        out.push(Action::History(Do::Run("branch", v)));
+                        prim::body(ui, &q, false);
                     }
-                    close = cancel;
+                    Dialog::Restore { question, .. } => {
+                        prim::body(ui, question, false);
+                    }
+                    Dialog::SwitchReadOnly => {
+                        prim::body(ui, &format!("{cur_name} has {} and the file is read-only.", changes(unsaved)), false);
+                    }
+                    Dialog::Switch { name, .. } => {
+                        prim::body(ui, &format!("{cur_name} has {}. They are saved, then the project shows \"{name}\".", changes(unsaved)), false);
+                    }
                 }
-                Dialog::Reopen { branch, old, name, error } => {
-                    ui.label(format!("Another open branch is called \"{old}\". Reopen this one as:"));
-                    ui.text_edit_singleline(name).accessible_name("ecad.reopenbranch.name");
-                    if let Some(e) = error {
-                        ui.label(RichText::new(e.as_str()).small().color(red));
+            },
+            |ui| {
+                // Laid right to left: the primary first.
+                let ok = ecad_ui::dialog::action(ui, ok_label, Kind::Primary, &format!("{id}.ok"), None).clicked();
+                let cancel = ecad_ui::dialog::action(ui, "Cancel", Kind::Secondary, &format!("{id}.cancel"), None).clicked();
+                (ok, cancel)
+            },
+        );
+        let (ok, cancel) = shown.footer;
+        let mut close = cancel || shown.closed;
+        if ok {
+            match &next {
+                Dialog::NewVersion { name, description, .. } => {
+                    let mut v = json!({"name": name.trim()});
+                    if !description.trim().is_empty() {
+                        v["description"] = json!(description.trim());
                     }
-                    let (ok, cancel) = ok_cancel(ui, "Reopen");
-                    if ok {
-                        out.push(Action::History(Do::Run("reopenbranch", json!({"branch": branch, "name": name.trim()}))));
-                    }
-                    close = cancel;
+                    out.push(Action::History(Do::Run("version", v)));
                 }
-                Dialog::Rename { branch, name, error } => {
-                    ui.horizontal(|ui| {
-                        ui.label("Name");
-                        ui.text_edit_singleline(name).accessible_name("ecad.renamebranch.name");
-                    });
-                    if let Some(e) = error {
-                        ui.label(RichText::new(e.as_str()).small().color(red));
+                Dialog::NewBranch { name, from, switch, .. } => {
+                    let mut v = json!({"name": name.trim(), "switch": *switch});
+                    if !from.is_null() {
+                        v["from"] = from.clone();
                     }
-                    let (ok, cancel) = ok_cancel(ui, "Rename");
-                    if ok {
-                        out.push(Action::History(Do::Run("renamebranch", json!({"branch": branch, "name": name.trim()}))));
-                    }
-                    close = cancel;
+                    out.push(Action::History(Do::Run("branch", v)));
                 }
-                Dialog::Archive { branch, name } => {
-                    let mut q = format!(
-                        "Archive \"{name}\"? It is hidden from the list; nothing is deleted, and you can reopen it from \"Show merged and archived\"."
-                    );
-                    if self.graph.branches.iter().any(|b| b.current && b.id.hex() == *branch) {
-                        q.push_str(" The project first shows its parent branch (saving first).");
-                    }
-                    ui.label(q);
-                    let (ok, cancel) = ok_cancel(ui, "Archive");
-                    if ok {
-                        out.push(Action::History(Do::Run("archivebranch", json!({"branch": branch}))));
-                    }
-                    close = cancel;
+                Dialog::Reopen { branch, name, .. } => {
+                    out.push(Action::History(Do::Run("reopenbranch", json!({"branch": branch, "name": name.trim()}))));
                 }
-                Dialog::Restore { params, question } => {
-                    ui.label(question.as_str());
-                    let (ok, cancel) = ok_cancel(ui, "Restore");
-                    if ok {
-                        out.push(Action::History(Do::Run("restore", params.clone())));
-                    }
-                    close = cancel;
+                Dialog::Rename { branch, name, .. } => {
+                    out.push(Action::History(Do::Run("renamebranch", json!({"branch": branch, "name": name.trim()}))));
                 }
+                Dialog::Archive { branch, .. } => out.push(Action::History(Do::Run("archivebranch", json!({"branch": branch})))),
+                Dialog::Restore { params, .. } => out.push(Action::History(Do::Run("restore", params.clone()))),
                 Dialog::SwitchReadOnly => {
-                    ui.label(format!("{cur_name} has {unsaved} unsaved change{} and the file is read-only.", if unsaved == 1 { "" } else { "s" }));
-                    let (ok, cancel) = ok_cancel(ui, "Save As…");
-                    if ok {
-                        out.push(Action::History(Do::SaveAs));
-                    }
-                    close = ok || cancel;
+                    out.push(Action::History(Do::SaveAs));
+                    close = true;
                 }
-                Dialog::Switch { branch, name } => {
-                    ui.label(format!(
-                        "{cur_name} has {unsaved} unsaved change{}. They are saved, then the project shows \"{name}\".",
-                        if unsaved == 1 { "" } else { "s" }
-                    ));
-                    let (ok, cancel) = ok_cancel(ui, "Save and switch");
-                    if ok {
-                        out.push(Action::History(Do::Run("switchbranch", json!({"branch": branch, "save": true}))));
-                    }
-                    close = cancel;
+                Dialog::Switch { branch, .. } => {
+                    out.push(Action::History(Do::Run("switchbranch", json!({"branch": branch, "save": true}))));
                 }
             }
-        });
-        if close || esc {
+        }
+        if close {
             self.dialog = None;
         } else if self.dialog.is_some() {
             self.dialog = Some(next);

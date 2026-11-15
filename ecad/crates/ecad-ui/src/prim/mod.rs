@@ -6,17 +6,25 @@
 //! label, so tests and the control channel find it by label. Sizes, radii, colours and fonts come
 //! from `ecad-tokens` only.
 //!
+//! Round 2 (brief 063, [`kit`]): [`SectionHeader`], [`property_row`] and [`PropertyGrid`],
+//! [`ListRow`], [`caption`], [`heading`], [`body`] and [`note`], [`Checkbox`], [`Radio`] and
+//! [`SearchField`].
+//!
 //! A primitive's [`Look`] can be forced (hover, pressed, focus) so the showcase and screenshots
 //! show every state without a pointer; ordinary code leaves it at [`Look::Auto`].
 
 mod button;
 mod field;
+pub mod kit;
 mod label;
 mod row;
 mod segmented;
 
 pub use button::{Button, IconButton, Kind, button, icon_button};
 pub use field::{Field, FieldKind, field};
+pub use kit::{
+    Checkbox, GridRows, ListRow, PropertyGrid, Radio, SearchField, SectionHeader, SectionResponse, body, caption, heading, note, property_row,
+};
 pub use label::{Chip, ChipResponse, badge, chip, keycap, pill};
 pub use row::{RowKind, RowSpec, provisional, read_value, row};
 pub use segmented::{Segmented, SegmentedResponse, segmented};

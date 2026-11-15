@@ -86,7 +86,7 @@ fn the_component_gallery_shows_every_component_in_both_themes() {
     for (theme, name) in [(ecad_ui::Theme::Dark, "components-dark.png"), (ecad_ui::Theme::Light, "components-light.png")] {
         let deltas: Deltas = Arc::default();
         let mut first = true;
-        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1460.0, 640.0)).renderer(Collect(deltas.clone())).build_ui_state(
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1460.0, 1200.0)).renderer(Collect(deltas.clone())).build_ui_state(
             move |ui, s: &mut ecad_ui::showcase::Showcase| {
                 if std::mem::take(&mut first) {
                     ecad_ui::fonts::install(ui.ctx(), cadcraft_ui_egui::theme::font_definitions("en"));

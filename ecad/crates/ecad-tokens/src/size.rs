@@ -39,9 +39,15 @@ pub const ICON: f32 = 16.0;
 /// The label column of a panel's value rows (inspector and Project panel, UI rev 4 boards 2.03,
 /// 2.05, 2.06).
 pub const LABEL_COLUMN: f32 = 96.0;
+/// A section header's fold chevron (brief 063).
+pub const CHEVRON: f32 = 16.0;
+/// A small dialog's content width: a question, a name to type (brief 063).
+pub const DIALOG_S: f32 = 400.0;
+/// A dialog's usual content width: a short form, a list to choose from (brief 063).
+pub const DIALOG_M: f32 = 560.0;
 
 /// Every token as `(name, px)`, names as in `tokens.md`.
-pub const ALL: [(&str, f32); 19] = [
+pub const ALL: [(&str, f32); 22] = [
     ("size.control_small", CONTROL_SMALL),
     ("size.control", CONTROL),
     ("size.search_field", SEARCH_FIELD),
@@ -61,4 +67,7 @@ pub const ALL: [(&str, f32); 19] = [
     ("size.icon_button", ICON_BUTTON),
     ("size.icon", ICON),
     ("size.label_column", LABEL_COLUMN),
+    ("size.chevron", CHEVRON),
+    ("size.dialog_s", DIALOG_S),
+    ("size.dialog_m", DIALOG_M),
 ];

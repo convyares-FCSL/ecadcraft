@@ -9,9 +9,11 @@
 //! Live while open: no refresh button. Rows are virtualised.
 
 use crate::shell::Hosted;
-use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::outputs::{BomView, Group, Table};
-use eframe::egui::{self, Color32, RichText, Sense, pos2, vec2};
+use ecad_ui::control::{Select, TextEntry, Toggle};
+use ecad_ui::prim::{self, Button, Checkbox, Kind, Radio, SearchField, Tone};
+use ecad_ui::tokens::{size, space};
+use eframe::egui::{self, Sense, pos2, vec2};
 
 /// The tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -62,8 +64,6 @@ impl Tab {
 /// The tabs in order.
 const TABS: [Tab; 4] = [Tab::Bom, Tab::Wires, Tab::Cables, Tab::Terminals];
 
-/// `ecad.check-warning`.
-const WARNING: Color32 = Color32::from_rgb(0xFF, 0xFF, 0x00);
 /// Row height (design 024 §6.2).
 const ROW: f32 = 20.0;
 
@@ -312,16 +312,16 @@ impl Reports {
     fn bom_tools(&mut self, ui: &mut egui::Ui, out: &mut Option<Out>) {
         let writable = self.writable;
         let r = ui.add_enabled_ui(writable, |ui| {
-            ui.menu_button(RichText::new("Columns v").small(), |ui| {
+            ui.menu_button("Columns \u{25be}", |ui| {
                 let mut article = self.view.article;
-                if ui.checkbox(&mut article, "Article number").accessible_name(COLUMN_ARTICLE).changed() {
+                if Checkbox::new(&mut article, "Article number").show(ui).accessible_name(COLUMN_ARTICLE).changed() {
                     let v = if article { "on" } else { "off" };
                     *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.column.article", "level": "project", "value": v}))));
                     ui.close();
                 }
                 if self.group == Group::Location {
                     let mut nested = self.view.nested;
-                    if ui.checkbox(&mut nested, "Lines under devices").accessible_name(COLUMN_NESTED).changed() {
+                    if Checkbox::new(&mut nested, "Lines under devices").show(ui).accessible_name(COLUMN_NESTED).changed() {
                         let v = if nested { "nested" } else { "flat" };
                         *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.lines", "level": "project", "value": v}))));
                         ui.close();
@@ -330,7 +330,7 @@ impl Reports {
             })
             .response
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, COLUMNS));
-            let add = ui.button("+ Item").accessible_name(ADD_ITEM);
+            let add = ui.add(Button::new("+ Item").small()).accessible_name(ADD_ITEM);
             if add.clicked() {
                 *out = Some(Out::Run("bomitem".into()));
             }
@@ -344,10 +344,10 @@ impl Reports {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let mut out = None;
         let mut open = true;
-        let t = Tokens::get();
+        let s = ecad_ui::SHELL;
         egui::Window::new("REPORTS")
             .id(egui::Id::unique("ecad.reports"))
-            .default_size(vec2(900.0, 480.0))
+            .default_size(vec2(size::DIALOG_M * 1.6, size::DIALOG_M * 0.85))
             .resizable(true)
             .collapsible(false)
             .open(&mut open)
@@ -357,9 +357,8 @@ impl Reports {
                     // UI rev 3: as Project ▸ Reports' preview the list above picks the tab.
                     for (i, tab) in TABS.into_iter().enumerate().filter(|_| !self.preview) {
                         let n = self.counts.get(i).copied().unwrap_or(0);
-                        let b = ui
-                            .selectable_label(self.tab == tab, format!("{} ({n})", tab.label()))
-                            .on_hover_text(format!("ecad.reports.{}", tab.name()));
+                        let text = format!("{} ({n})", tab.label());
+                        let b = prim::Chip::new(&text).selected(self.tab == tab).show(ui).response;
                         let b = b.accessible_name(format!("ecad.reports.{}", tab.name()));
                         if b.clicked() && (self.tab != tab || self.cores_of.is_some()) {
                             self.tab = tab;
@@ -372,21 +371,12 @@ impl Reports {
                 ui.horizontal(|ui| {
                     // Brief 028: which strip, or all.
                     if self.tab == Tab::Terminals {
-                        let shown = self.strip.and_then(|c| self.strips.iter().find(|(x, _)| *x == c)).map_or("All", |(_, t)| t.as_str()).to_string();
-                        ui.menu_button(RichText::new(format!("{shown} v")).small(), |ui| {
-                            if ui.button("All").clicked() {
-                                self.strip = None;
-                                ui.close();
-                            }
-                            for (c, tag) in self.strips.clone() {
-                                if ui.button(tag).clicked() {
-                                    self.strip = Some(c);
-                                    ui.close();
-                                }
-                            }
-                        })
-                        .response
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.strip"));
+                        let strips = self.strips.clone();
+                        let names: Vec<&str> = std::iter::once("All").chain(strips.iter().map(|(_, t)| t.as_str())).collect();
+                        let mut k = self.strip.and_then(|c| strips.iter().position(|(x, _)| *x == c)).map_or(0, |i| i + 1);
+                        if Select::new(&mut k, &names, "ecad.reports.strip").width(size::LABEL_COLUMN * 1.5).show(ui).changed() {
+                            self.strip = k.checked_sub(1).and_then(|i| strips.get(i)).map(|(c, _)| *c);
+                        }
                         // Brief 030 (design 030 §2.4): accessories at the strip's ends and markers,
                         // for the strip picked (or the only one).
                         let only = match self.strips.as_slice() {
@@ -395,11 +385,11 @@ impl Reports {
                         };
                         let one = self.strip.or(only);
                         let mut acc = !self.hide_accessories;
-                        if ui.checkbox(&mut acc, "Accessories").accessible_name("ecad.reports.terminals.acc").changed() {
+                        if Checkbox::new(&mut acc, "Accessories").show(ui).accessible_name("ecad.reports.terminals.acc").changed() {
                             self.hide_accessories = !acc;
                         }
                         ui.add_enabled_ui(one.is_some(), |ui| {
-                            ui.menu_button(RichText::new("Accessory v").small(), |ui| {
+                            ui.menu_button("Accessory \u{25be}", |ui| {
                                 let Some(c) = one else { return };
                                 for (label, params) in accessory_menu(c) {
                                     if ui.button(label).clicked() {
@@ -416,47 +406,38 @@ impl Reports {
                     // Brief 059 (Q3): Include not-drawn cables, for this run.
                     if self.tab == Tab::Cables && self.cores_of.is_none() {
                         let mut on = !self.hide_not_drawn;
-                        ui.label(RichText::new("Include not-drawn cables").small());
-                        if ecad_ui::control::Toggle::new(&mut on, "ecad.reports.cables.include_not_drawn").show(ui).changed() {
+                        prim::body(ui, "Include not-drawn cables", true);
+                        if Toggle::new(&mut on, "ecad.reports.cables.include_not_drawn").show(ui).changed() {
                             self.hide_not_drawn = !on;
                         }
                     }
                     if self.tab == Tab::Cables
                         && self.cores_of.is_some()
-                        && ui.button("\u{2190} All cables").accessible_name("ecad.reports.cables.back").clicked()
+                        && ui.add(Button::new("\u{2190} All cables").small()).accessible_name("ecad.reports.cables.back").clicked()
                     {
                         self.cores_of = None;
                     }
                     if self.tab == Tab::Bom {
-                        ui.label(RichText::new("Group").small());
-                        let words = if self.group == Group::Location { "By location" } else { "By part" };
-                        ui.menu_button(RichText::new(format!("{words} v")).small(), |ui| {
-                            if ui.button("By location").clicked() {
-                                self.group = Group::Location;
-                                ui.close();
-                            }
-                            if ui.button("By part").clicked() {
-                                self.group = Group::Part;
-                                ui.close();
-                            }
-                        })
-                        .response
-                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.group"));
+                        prim::body(ui, "Group", true);
+                        let mut k = usize::from(self.group != Group::Location);
+                        if Select::new(&mut k, &["By location", "By part"], "ecad.reports.group").width(size::LABEL_COLUMN * 1.25).show(ui).changed()
+                        {
+                            self.group = if k == 0 { Group::Location } else { Group::Part };
+                        }
                         self.bom_tools(ui, &mut out);
                     }
-                    ui.label(RichText::new("Find").small());
-                    let find = ui.add(egui::TextEdit::singleline(&mut self.find).desired_width(120.0)).accessible_name("ecad.reports.find");
+                    let find = SearchField::new(&mut self.find, "ecad.reports.find").placeholder("Find").width(size::LABEL_COLUMN * 1.5).show(ui);
                     if find.changed() {
                         self.filter();
                     }
-                    if ui.checkbox(&mut self.only_flagged, "Only ?").accessible_name("ecad.reports.flagged").changed() {
+                    if Checkbox::new(&mut self.only_flagged, "Only ?").show(ui).accessible_name("ecad.reports.flagged").changed() {
                         self.filter();
                     }
                     let flagged = self.table.flagged();
                     if flagged > 0 {
-                        ui.label(RichText::new(format!("{flagged} ?")).small().color(WARNING));
+                        prim::note(ui, &format!("{flagged} ?"), Tone::Warning);
                     }
-                    if ui.button("Export CSV\u{2026}").accessible_name("ecad.reports.export").clicked() {
+                    if ui.add(Button::new("Export CSV\u{2026}").small()).accessible_name("ecad.reports.export").clicked() {
                         self.export = Some(format!("{}-{}.csv", self.stem, self.tab.file()));
                     }
                 });
@@ -464,10 +445,11 @@ impl Reports {
                     let mut go = false;
                     let mut cancel = false;
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Save as").small());
-                        let r = ui.add(egui::TextEdit::singleline(path).desired_width(420.0)).accessible_name("ecad.reports.export.path");
-                        go = ui.button("Save").clicked() || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                        cancel = ui.button("Cancel").clicked();
+                        prim::body(ui, "Save as", true);
+                        let r = TextEntry::new(path, "ecad.reports.export.path").width(size::DIALOG_M * 0.75).show(ui);
+                        go = ui.add(Button::new("Save").kind(Kind::Primary).small()).clicked()
+                            || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+                        cancel = ui.add(Button::new("Cancel").small()).clicked();
                     });
                     if go {
                         out = Some(Out::Export(path.clone()));
@@ -477,7 +459,7 @@ impl Reports {
                     }
                 }
                 if let Some(n) = &self.note {
-                    ui.label(RichText::new(n).small().color(t.text_dim));
+                    prim::note(ui, n, Tone::Neutral);
                 }
                 ui.separator();
                 // Brief 039: the terminal manager is the one table, mirrored (design 036 §9).
@@ -493,12 +475,12 @@ impl Reports {
                     return;
                 }
                 if self.table.rows.is_empty() {
-                    ui.label(RichText::new(self.tab.empty()).color(t.text_dim));
+                    prim::body(ui, self.tab.empty(), true);
                     self.rows_drawn = 0;
                     return;
                 }
                 let widths = self.widths(ui);
-                let font = egui::FontId::monospace(12.0);
+                let font = egui::TextStyle::Monospace.resolve(ui.style());
                 // Header: click sorts, again reverses.
                 let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::hover());
                 let mut x = hr.left();
@@ -511,7 +493,13 @@ impl Reports {
                         Some((c, true)) if c == col => " v",
                         _ => "",
                     };
-                    ui.painter().text(pos2(x + 2.0, hr.center().y), egui::Align2::LEFT_CENTER, format!("{h}{arrow}"), font.clone(), t.text_dim);
+                    ui.painter().text(
+                        pos2(x + 2.0, hr.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{h}{arrow}"),
+                        font.clone(),
+                        ecad_ui::color(s.text_2),
+                    );
                     if resp.clicked() {
                         self.sort = match self.sort {
                             Some((c, d)) if c == col => Some((col, !d)),
@@ -537,13 +525,13 @@ impl Reports {
                             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
                             let p = ui.painter_at(rect);
                             if resp.hovered() {
-                                p.rect_filled(rect, 0.0, t.chrome);
+                                p.rect_filled(rect, 0.0, ecad_ui::color(s.hover));
                             }
                             let mut x = rect.left();
                             let mut tip: Vec<String> = Vec::new();
                             for (col, c) in row.iter().enumerate() {
                                 let w = widths.get(col).copied().unwrap_or(80.0);
-                                let colour = if c.flag.is_some() { WARNING } else { t.text };
+                                let colour = ecad_ui::color(if c.flag.is_some() { s.warning } else { s.text });
                                 let text = cut(&c.text, w);
                                 p.text(pos2(x + 2.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font.clone(), colour);
                                 if let Some(f) = &c.flag {
@@ -562,7 +550,7 @@ impl Reports {
                                     note = Some(ITEM_NO_PAGE.to_string());
                                 }
                                 resp.context_menu(|ui| {
-                                    let d = ui.add_enabled(writable, egui::Button::new("Delete item"));
+                                    let d = ui.add_enabled_ui(writable, |ui| ui.add(Button::new("Delete item").kind(Kind::Danger).small())).inner;
                                     let d = d.accessible_name(format!("ecad.reports.bom.row.{i}.delete"));
                                     if d.clicked() {
                                         out = Some(Out::Run(format!("bomitem {}", serde_json::json!({"item": c.hex(), "delete": true}))));
@@ -673,86 +661,86 @@ impl PrintBook {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<bool> {
         let mut out = None;
         let mut open = true;
-        let t = Tokens::get();
         egui::Window::new("PRINT BOOK")
             .id(egui::Id::unique("ecad.printbook"))
             .collapsible(false)
             .resizable(false)
-            .default_width(420.0)
+            .default_width(size::DIALOG_S)
             .open(&mut open)
             .hosted(self.host)
             .show(ctx, |ui| {
-                egui::Grid::new("ecad.printbook.grid").num_columns(2).show(ui, |ui| {
-                    ui.label("Pages");
-                    ui.vertical(|ui| {
-                        let all = if self.scope == ScopeKind::All { format!("All pages ({} sheets)", self.sheets) } else { "All pages".into() };
-                        ui.radio_value(&mut self.scope, ScopeKind::All, all)
-                            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioButton, true, "ecad.printbook.scope.all"));
-                        ui.horizontal(|ui| {
-                            ui.add_enabled_ui(!self.folders.is_empty(), |ui| {
-                                ui.radio_value(&mut self.scope, ScopeKind::Folder, "Folder")
-                                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioButton, true, "ecad.printbook.scope.folder"));
-                                let name = self.folders.get(self.folder).map(|f| f.1.clone()).unwrap_or_default();
-                                egui::ComboBox::from_id_salt("ecad.printbook.folder").selected_text(name).show_ui(ui, |ui| {
-                                    for (i, (_, path)) in self.folders.iter().enumerate() {
-                                        ui.selectable_value(&mut self.folder, i, path);
-                                    }
-                                });
-                            });
-                        });
-                        ui.horizontal(|ui| {
-                            ui.radio_value(&mut self.scope, ScopeKind::Pages, "Pages")
-                                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioButton, true, "ecad.printbook.scope.pages"));
-                            let r = ui.add(egui::TextEdit::singleline(&mut self.pages).desired_width(200.0)).accessible_name("ecad.printbook.pages");
-                            if r.changed() {
-                                self.scope = ScopeKind::Pages;
-                            }
-                        });
-                        if self.scope == ScopeKind::Pages && !self.unknown.is_empty() {
-                            for n in &self.unknown {
-                                ui.label(RichText::new(format!("No page {n}; it is left out.")).small().underline().color(WARNING));
-                            }
+                prim::PropertyGrid::new().show(ui, |g| {
+                    let all = if self.scope == ScopeKind::All { format!("All pages ({} sheets)", self.sheets) } else { "All pages".into() };
+                    g.row("Pages", |ui| {
+                        if Radio::new(self.scope == ScopeKind::All, &all).show(ui).accessible_name("ecad.printbook.scope.all").clicked() {
+                            self.scope = ScopeKind::All;
                         }
                     });
-                    ui.end_row();
-                    ui.label("File");
-                    ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(300.0)).accessible_name("ecad.printbook.path");
-                    ui.end_row();
-                    ui.label("Colour");
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("ecad.printbook.colour")
-                            .selected_text(if self.mono { "Black on white" } else { "As on screen" })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.mono, true, "Black on white");
-                                ui.selectable_value(&mut self.mono, false, "As on screen");
-                            });
-                        ui.checkbox(&mut self.lineweights, "Line weights");
+                    g.row("", |ui| {
+                        ui.add_enabled_ui(!self.folders.is_empty(), |ui| {
+                            if Radio::new(self.scope == ScopeKind::Folder, "Folder").show(ui).accessible_name("ecad.printbook.scope.folder").clicked()
+                            {
+                                self.scope = ScopeKind::Folder;
+                            }
+                            let paths: Vec<&str> = self.folders.iter().map(|f| f.1.as_str()).collect();
+                            let mut k = self.folder;
+                            if Select::new(&mut k, &paths, "ecad.printbook.folder").show(ui).changed() && k < self.folders.len() {
+                                self.folder = k;
+                                self.scope = ScopeKind::Folder;
+                            }
+                        });
                     });
-                    ui.end_row();
+                    g.row("", |ui| {
+                        if Radio::new(self.scope == ScopeKind::Pages, "Pages").show(ui).accessible_name("ecad.printbook.scope.pages").clicked() {
+                            self.scope = ScopeKind::Pages;
+                        }
+                        if TextEntry::new(&mut self.pages, "ecad.printbook.pages").placeholder("1-4, 7").show(ui).changed() {
+                            self.scope = ScopeKind::Pages;
+                        }
+                    });
+                    if self.scope == ScopeKind::Pages && !self.unknown.is_empty() {
+                        for n in &self.unknown {
+                            g.row("", |ui| prim::note(ui, &format!("No page {n}; it is left out."), Tone::Warning));
+                        }
+                    }
+                    g.row("File", |ui| TextEntry::new(&mut self.path, "ecad.printbook.path").show(ui));
+                    g.row("Colour", |ui| {
+                        let mut k = usize::from(!self.mono);
+                        if prim::Segmented::new(&mut k, &["Black on white", "As on screen"]).name("ecad.printbook.colour").show(ui).clicked.is_some()
+                        {
+                            self.mono = k == 0;
+                        }
+                    });
+                    g.row("", |ui| Checkbox::new(&mut self.lineweights, "Line weights").show(ui));
                 });
+                ui.add_space(space::XS);
                 for n in &self.notes {
-                    ui.label(RichText::new(n).small().color(WARNING)).accessible_name("ecad.printbook.note");
+                    prim::note(ui, n, Tone::Warning).accessible_name("ecad.printbook.note");
                 }
                 if self.flagged > 0 {
                     let n = if self.flagged == 1 { "1 value".to_string() } else { format!("{} values", self.flagged) };
-                    ui.label(RichText::new(format!("{n} marked ? on generated pages.")).small().color(t.text_dim));
+                    prim::note(ui, &format!("{n} marked ? on generated pages."), Tone::Neutral);
                 }
                 if let Some(e) = &self.error {
-                    ui.label(RichText::new(e).small().color(Color32::from_rgb(0xFF, 0x40, 0x40)));
+                    prim::note(ui, e, Tone::Error);
                 }
                 let none = self.sheets == 0;
                 if none {
-                    ui.label(RichText::new("No page matches.").small().color(WARNING));
+                    prim::note(ui, "No page matches.", Tone::Warning);
                 }
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(!none && !self.path.trim().is_empty(), egui::Button::new("Print"))
-                        .accessible_name("ecad.printbook.print")
-                        .clicked()
-                    {
+                let blocked = if none {
+                    Some("No page matches.")
+                } else if self.path.trim().is_empty() {
+                    Some("Choose a file first.")
+                } else {
+                    None
+                };
+                ui.add_space(space::S);
+                ui.allocate_ui_with_layout(vec2(ui.available_width(), size::CONTROL), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ecad_ui::dialog::action(ui, "Print", Kind::Primary, "ecad.printbook.print", blocked).clicked() {
                         out = Some(true);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ecad_ui::dialog::action(ui, "Cancel", Kind::Secondary, "ecad.printbook.cancel", None).clicked() {
                         out = Some(false);
                     }
                 });
