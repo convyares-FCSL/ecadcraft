@@ -79,8 +79,9 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
 }
 
 /// Brief 054b: the board 1.16 project (a pump station's cover) and the screenshots of design 054
-/// §12.2 when `$ECAD_TESTER_SHOTS` is set: `054-cover.png` beside board 1.16 and
-/// `054-pages-and-sheets.png` (Panel layout selected) beside board 5.02.
+/// §12.2 when `$ECAD_TESTER_SHOTS` is set: `054-cover.png` beside board 1.16 (and
+/// `054-cover-editor.png` with the notes in the table editor),
+/// and `054-pages-and-sheets.png` (Panel layout selected) beside board 5.02.
 #[test]
 fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     use crate::project_panel::{Deltas, take};
@@ -134,6 +135,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     assert!(h.query_by_label(ecad_trial::shell::table_editor::EDITOR).is_some(), "the editor opens");
     // A new window lays itself out over its first frames.
     h.run_steps(4);
+    take(&h, &deltas, "054-cover-editor.png");
     click(&mut h, ecad_trial::shell::table_editor::CANCEL);
     h.run_steps(2);
     assert!(h.state().settings.page_tab.editor.is_none());

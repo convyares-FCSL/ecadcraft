@@ -100,7 +100,7 @@ impl TableEditor {
             .id(egui::Id::unique(EDITOR))
             .collapsible(false)
             .resizable(true)
-            .default_width(460.0)
+            .default_width(560.0)
             .open(&mut open)
             .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, 0.0))
             .order(egui::Order::Foreground)
@@ -123,29 +123,31 @@ impl TableEditor {
                                 ecad_ui::color(s.text_3),
                             );
                             if self.caps.hide {
-                                let c = ui.add_enabled(self.writable, egui::Checkbox::without_text(&mut r.shown));
-                                c.widget_info(|| {
-                                    egui::WidgetInfo::selected(egui::Role::CheckBox, self.writable, r.shown, format!("ecad.table.shown.{i}"))
-                                });
+                                let name = format!("ecad.table.shown.{i}");
+                                ecad_ui::control::Toggle::new(&mut r.shown, &name).read_only(!self.writable).show(ui);
                             }
-                            let w = (ui.available_width() - 90.0).max(80.0);
-                            if edit {
-                                let e = ui.add(egui::TextEdit::singleline(&mut r.text).desired_width(w));
-                                e.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, format!("ecad.table.row.{i}")));
-                            } else {
-                                ui.add_sized(vec2(w, 22.0), egui::Label::new(egui::RichText::new(&r.text).color(ecad_ui::color(s.text))).truncate());
-                            }
-                            if self.caps.reorder && self.writable {
-                                if ui.add_enabled(i > 0, egui::Button::new("\u{2191}").small()).on_hover_text("Up").clicked() {
-                                    swap = Some((i, i - 1));
+                            // Right to left: the buttons at the end, then the entry takes the rest,
+                            // so the rows never widen the window.
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let quiet = |t| ecad_ui::prim::Button::new(t).kind(ecad_ui::prim::Kind::Quiet).small();
+                                if self.caps.add_remove && self.writable && ui.add(quiet("\u{d7}")).on_hover_text("Remove").clicked() {
+                                    remove = Some(i);
                                 }
-                                if ui.add_enabled(i + 1 < n, egui::Button::new("\u{2193}").small()).on_hover_text("Down").clicked() {
-                                    swap = Some((i, i + 1));
+                                if self.caps.reorder && self.writable {
+                                    if ui.add_enabled(i + 1 < n, quiet("\u{2193}")).on_hover_text("Down").clicked() {
+                                        swap = Some((i, i + 1));
+                                    }
+                                    if ui.add_enabled(i > 0, quiet("\u{2191}")).on_hover_text("Up").clicked() {
+                                        swap = Some((i, i - 1));
+                                    }
                                 }
-                            }
-                            if self.caps.add_remove && self.writable && ui.small_button("\u{d7}").on_hover_text("Remove").clicked() {
-                                remove = Some(i);
-                            }
+                                let name = format!("ecad.table.row.{i}");
+                                if edit {
+                                    ecad_ui::control::TextEntry::new(&mut r.text, &name).show(ui);
+                                } else {
+                                    ecad_ui::control::read_text(ui, &r.text, ecad_ui::control::Decor::default(), &name);
+                                }
+                            });
                         });
                         if !r.generated.is_empty() && r.text != r.generated {
                             ui.label(egui::RichText::new(format!("generated: {}", r.generated)).small().color(ecad_ui::color(s.text_3)));
@@ -166,14 +168,14 @@ impl TableEditor {
                 ui.add_space(space::S);
                 ui.horizontal(|ui| {
                     if self.caps.add_remove && self.writable {
-                        let b = ui.add_enabled(self.rows.len() < self.max_rows, egui::Button::new("+ Row"));
+                        let b = ui.add_enabled(self.rows.len() < self.max_rows, ecad_ui::prim::Button::new("+ Row").small());
                         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, ADD));
                         if b.clicked() {
                             self.rows.push(Row { shown: true, ..Row::default() });
                         }
                     }
                     if let Some(words) = self.link {
-                        let b = ui.link(words);
+                        let b = ecad_ui::control::link(ui, words);
                         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, LINK));
                         if b.clicked() {
                             out = Outcome::Link;
