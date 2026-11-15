@@ -400,6 +400,62 @@ ecad-file 10. The split lane brings both to **0** (step 1c). When it creates eca
 At the end of the lane (step 10) the ratchet becomes the §4 rule: zero for every Core crate except
 ecad-store, with no allowlist beyond named redb exceptions, if any.
 
+### 3.2 v1 removal (step 12, owner 2026-11-15)
+
+Pre-v1 there is no old-format compatibility: the redb container (`ecad-file/src/v2/`) is the only
+`.ecad` format kept. Survey at `df5c1e72`, before anything is deleted. **Status: stopped at the
+survey**, because removing v1 reaches past the agreed knock-ons (marked **beyond** below).
+
+**Goes (ecad-file):** `codec` (JSON Lines framing), `read` (`open_project`, `OpenReport`,
+`Outcome`, `Check`, `RecordSpan`…), `write` (`ProjectFile`, `SaveOutcome`, `AttemptSummary`…), the
+v1 `disk` (`DiskProject`), `record::Header` and the v1 container constants (`CODEC "jsonl/1"`,
+`CONTAINER_VERSION 1`, `MAX_LINE`, `MAX_RECORDS`), `v2/convert.rs` (`convert_file`, `sniff`,
+`Major`), `binding`'s `needs_conversion` / `convert`, the golden file
+`tests/golden/project-v1.ecad`, and the v1-only tests (`disk_contracts`, `disk_edge_contracts`,
+`incremental_acceptance`, `recovery_contracts`, `save_contracts`, the v1 parts of
+`records_contracts`, `canonical_contracts`, `symbol_definition_contracts`, and the conversion tests
+in `container_v2` and `container_recovery`). **ecad-cli:** `ecad upgrade` and its test.
+
+**Stays, renamed neutrally:** `v1.rs` (the record types `Op`, `Primitive`, `Definition`, `TxKind`…:
+the redb format stores every transaction as these records) → `records`; `record.rs`'s
+`tx_value`, `decode_tx`, `check_limits`, `seq_and_prev`, `SCHEMA_VERSION`, `definition_hash`
+(pinned by a known-hash test); `canonical`, `chain`, `crc`. From the v1 `disk`, `ReadOnly`,
+`JUST_ENDED`, `holder_record` (used by `v2/disk.rs`) and `utc` (used by ecad-app's debugger and
+ecad-bench's report) move to a neutral module. `v2::schema::LinkV1` stays: it is part of the
+version 2 format (a converted file's link), read and verified, just never written again.
+
+**Agreed knock-ons:** ecad-bench `generate.rs` writes v1 (to the redb format); its
+`generator_contracts`, `tester_contracts` and `lane_benchv2` read v1 or convert; its open, edit and
+save timings are measured on the v1 file. ecad-cadcraft `debug.rs`'s saved-record view
+(`read_record`, line ~864). The app's conversion offer (`binding::needs_conversion` / `convert`).
+
+**Beyond the knock-ons (why step 12 stopped):**
+1. **ecad-cadcraft runtime: `Persistence::TestStore`.** `Project::create` defaults to it;
+   `MemoryStore` saves through v1's `ProjectFile` over a `MemoryMedium`, `Project::open_from` /
+   `ProjectHandle::open_from` reopen v1 bytes, `Project::open_report` keeps v1's `OpenReport`.
+   Used by ecad-cadcraft tests (`experiment`, `refusals` (a CRC-damaged v1 file opens read-only),
+   `cable_reference_contracts`, `cable_slash_acceptance_contracts`, `sheets_contracts`,
+   `tester_033_print`) and by every test that saves a project made with `Project::create`.
+   Needs a decision: an in-memory or temporary redb store in its place, or no test store.
+2. **ecad-cadcraft `debug.rs` beyond the saved-record view:** the file snapshot carries v1's
+   `Header`, `AttemptSummary` / `AttemptStage` and `RecordSpan`s and a v1 `open_report`, shown by
+   ecad-app's debugger (Header and "Opening found" rows) and serialised as JSON.
+3. **dev/ecad-inspector:** `export-jsonl` (CLI, the `export_jsonl` protocol call and the HTML
+   page's Export JSONL button) writes a v1 file with `codec` and `Header`; `cli.rs` and
+   `source.rs` detect a v1 file with `convert::sniff` and offer `ecad upgrade`; its tests build
+   v1 files and convert them as fixtures (`common.rs`), and read the export back with
+   `open_project` (`cli_contracts`).
+4. **A v1 fixture used by redb tests:** ecad-cadcraft's `tester_024_probe`
+   (`the_golden_v1_project_opens_and_reports_build`) and `lanes/lane_057_tester` convert
+   `ecad-file/tests/golden/project-v1.ecad` and test the redb project made from it.
+5. **Docs:** `docs/quick-start.md` §7B (open a version 1 project, `ecad upgrade`), the
+   `export-jsonl` and inspector drop steps, the bench's "version 1" timings and the limitation
+   "the `.ecad` format is version 1"; `docs/spec/eep-0002.md` (the v1 spec, marked current) and
+   `eep-0003.md` §11 and §16 (v2 hashes defined over v1 canonical JSON; migration from v1).
+
+Not affected: ecad-mcp (its tools and tests use `Persistence::File` and `v2` only), ecad-model,
+ecad-store, ecad-electrical (only `definition_hash`).
+
 ---
 
 ## 4. Guard rules for `cargo xtask layers`
