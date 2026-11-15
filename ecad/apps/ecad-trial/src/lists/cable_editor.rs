@@ -220,7 +220,7 @@ fn plan(ui: &mut egui::Ui, ed: &Editor, field: CableField, label: &str, name: &s
     opts.extend(list.iter().map(String::as_str));
     let mut at = ed.copy.plans.get(&field).copied().unwrap_or(0);
     let before = at;
-    control::row(ui, label, |ui| Select::new(&mut at, &opts, name).hint("planned").read_only(!writable).show(ui));
+    control::row(ui, label, |ui| Select::new(&mut at, &opts, name).read_only(!writable).show(ui));
     if at != before {
         let code = if at == 0 { String::new() } else { opts.get(at).map(|s| (*s).to_string()).unwrap_or_default() };
         out.push(Ask::Edit(field, set_of(field, &code)));
