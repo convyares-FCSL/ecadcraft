@@ -687,10 +687,9 @@ pub const MAX_STEP: u32 = 1000;
 /// Whether `key` is a free property (not one of [`PROJECT_KEYS`], a revision or a folder key).
 /// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
 /// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters (design 054 §6.4).
-pub const COVER_NOTES: &str = "cover.notes";
-pub const MAX_COVER_NOTES: usize = 40;
-pub const MAX_COVER_NOTE_CHARS: usize = 400;
-pub const COVER_NOTES_TOO_LONG: &str = "The cover takes up to 40 notes of 400 characters.";
+pub use crate::front::{
+    MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, MAX_NOTES as MAX_COVER_NOTES, NOTES_KEY as COVER_NOTES, NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
+};
 
 fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     // Brief 052: the project's list of functions and locations changes through its commands.

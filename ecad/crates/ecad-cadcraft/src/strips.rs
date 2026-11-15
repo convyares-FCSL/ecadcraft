@@ -40,6 +40,8 @@
 //!
 //! A full build happens only with the report models: open, reload, first show.
 
+pub mod pages;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::derive::Place;

@@ -108,8 +108,7 @@ impl TextLook {
     /// `kind`'s look in a project of length unit `unit`, from its resolved `look`.
     pub fn of(look: &Look, kind: TextKind, unit: LengthUnit) -> TextLook {
         let s = look.style(kind);
-        let k = unit_scale(unit);
-        let mm = if k.is_finite() && k > 0.0 { s.height / k } else { s.height };
+        let mm = height_mm(s.height, unit);
         // Lane T's per-kind fonts decide whether bold is drawn as a heavier stroke (design 031
         // §2.2), as the engine's `LookApply::apply` does.
         let weight = match s.weight {
@@ -118,6 +117,12 @@ impl TextLook {
         };
         TextLook { mm, style: s.style_name, weight }
     }
+}
+
+/// A text height `height` in drawing units of a project of length unit `unit`, in paper millimetres.
+pub fn height_mm(height: f64, unit: LengthUnit) -> f64 {
+    let k = unit_scale(unit);
+    if k.is_finite() && k > 0.0 { height / k } else { height }
 }
 
 impl FrameText {

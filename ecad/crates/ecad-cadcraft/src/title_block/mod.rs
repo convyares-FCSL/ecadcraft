@@ -5,9 +5,9 @@
 //! - A page's frame is its resolved `print.frame.style` (`ecad_model::sheet::frame_style`). An own
 //!   frame draws the block its record holds (FP1); the built-in `sheet` draws [`house::house`],
 //!   computed for the page's frame width, so it fits any sheet.
-//! - Fields show values read when the frame's input is worked out ([`crate::frame::FrameInput`]):
+//! - Fields show values read when the frame's input is worked out ([`crate::frames::FrameInput`]):
 //!   project properties and the newest issued revision's fields only for the keys the block
-//!   reads, so the frame's update map ([`crate::frame::touches`]) redraws it only when one of them
+//!   reads, so the frame's update map ([`crate::frames::touches`]) redraws it only when one of them
 //!   changes ([`bind`]).
 //! - Drawing never fails: items breaking a bound are skipped and counted ([`layout`]).
 //!
@@ -15,9 +15,9 @@
 
 pub mod bind;
 pub mod checks;
-pub mod dxf;
 pub mod house;
-pub mod layout;
+
+pub use crate::draw::title_block::{dxf, layout};
 
 use std::sync::Arc;
 
@@ -26,6 +26,9 @@ use ecad_model::title_block::TitleBlockLayout;
 use ecad_model::{Document, PageId, StyleRef};
 
 use crate::frames::FrameText;
+
+/// Inset of a caption and of a value from its box's edge, mm.
+pub const INSET_MM: f64 = 1.0;
 
 /// A page's block as drawn: the layout, whether it is the built-in's, and the frame style.
 #[derive(Debug, Clone, PartialEq)]

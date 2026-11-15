@@ -726,7 +726,7 @@ pub struct Outputs {
     /// Brief 045: the PLC racks and cards (design 045 §11.1).
     pub plc: crate::plc::Plc,
     /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
-    pub strip_pages: crate::strip_page::StripPages,
+    pub strip_pages: crate::strips::pages::StripPages,
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
@@ -803,7 +803,7 @@ impl Outputs {
         }
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
         o.plc = crate::plc::Plc::build(doc);
-        o.strip_pages = crate::strip_page::StripPages::build(doc, &o.strips);
+        o.strip_pages = crate::strips::pages::StripPages::build(doc, &o.strips);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1091,7 +1091,7 @@ impl Outputs {
         });
         let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
         // Brief 046: the graphic pages' kept data against a rebuild from the kept strips.
-        let pages = crate::strip_page::StripPages::build(doc, &self.strips);
+        let pages = crate::strips::pages::StripPages::build(doc, &self.strips);
         let pages_ok = self.strip_pages.same_as(&pages);
         if !pages_ok {
             self.strip_pages.adopt(pages);
@@ -1107,7 +1107,7 @@ impl Outputs {
         self.strips = built;
         self.strips.last_work = work;
         // The page layout follows the rebuilt strips (review of 046, finding 2).
-        self.strip_pages.adopt(crate::strip_page::StripPages::build(doc, &self.strips));
+        self.strip_pages.adopt(crate::strips::pages::StripPages::build(doc, &self.strips));
         let line = "the terminal strip model was out of step; rebuilt".to_string();
         Some(plc_line.map_or_else(|| line.clone(), |l| format!("{line}; {l}")))
     }

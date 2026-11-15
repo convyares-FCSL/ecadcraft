@@ -20,8 +20,7 @@ use crate::frames::FrameInput;
 pub const RED_ACI: u8 = 1;
 /// How far a zone tick reaches into the margin, mm.
 pub const TICK_MM: f64 = 3.0;
-/// Inset of a caption and of a value from its box's edge, mm.
-pub const INSET_MM: f64 = 1.0;
+pub use crate::title_block::INSET_MM;
 /// Gap under a caption before the value area, mm.
 pub const CAPTION_GAP_MM: f64 = 1.5;
 
@@ -59,7 +58,7 @@ impl Pen {
         if value.is_empty() || !(look.mm.is_finite() && look.mm > 0.0) {
             return false;
         }
-        let (shown, wf) = crate::frame::fit(value, look.mm, room);
+        let (shown, wf) = crate::frames::fit(value, look.mm, room);
         let cut = shown.ends_with('…') && !value.ends_with('…');
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -200,7 +199,7 @@ pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origi
                     pen.text(at(r.x + INSET_MM, r.top() - INSET_MM), input.text.caption, l, tl, Some(LABEL_ACI), Some(r.w - 2.0 * INSET_MM));
                     top_gap = input.text.caption.mm + CAPTION_GAP_MM;
                 }
-                let v = super::bind::shown(super::bind::value(input, bind), if_empty);
+                let v = crate::title_block::bind::shown(crate::title_block::bind::value(input, bind), if_empty);
                 if value_text(pen, input, *r, origin, &v, look, top_gap) {
                     drawn.cut.push(i);
                 }

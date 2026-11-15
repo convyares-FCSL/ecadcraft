@@ -175,7 +175,7 @@ pub fn cut_fields(inp: &FrameInput) -> Vec<usize> {
         .filter(|i| match l.items.get(*i) {
             Some(BlockItem::Field { at, bind, look, if_empty, .. }) => {
                 let v = super::bind::shown(super::bind::value(inp, bind), if_empty);
-                let (shown, _) = crate::frame::fit(&v, look.size, Some(at.w - 2.0 * super::layout::INSET_MM));
+                let (shown, _) = crate::frames::fit(&v, look.size, Some(at.w - 2.0 * super::INSET_MM));
                 !v.is_empty() && shown.ends_with('…') && !v.ends_with('…')
             }
             _ => false,
