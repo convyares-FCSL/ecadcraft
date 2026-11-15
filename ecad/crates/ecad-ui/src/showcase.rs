@@ -434,8 +434,8 @@ fn round_two(ui: &mut Ui, state: &mut Showcase) {
     use crate::prim::{Checkbox, ListRow, PropertyGrid, Radio, SearchField, SectionHeader};
     heading(ui, "Shared pieces (round 2)");
     let mut folded = false;
-    SectionHeader::new(&mut state.open, "Section header").summary("3 rows").show(ui);
-    SectionHeader::new(&mut folded, "Section header, folded").summary("2/D1").show(ui);
+    SectionHeader::new(&mut state.open, "Folding section").summary("3 rows").show(ui);
+    SectionHeader::new(&mut folded, "Folding section, folded").summary("2/D1").show(ui);
     ui.add_space(space::S);
     let mut name = "Spare cores".to_string();
     PropertyGrid::new().show(ui, |g| {
@@ -444,7 +444,7 @@ fn round_two(ui: &mut Ui, state: &mut Showcase) {
     });
     ui.add_space(space::S);
     ui.allocate_ui(vec2(COLUMN * 2.0, 0.0), |ui| {
-        ListRow::new("List row").show(ui);
+        ListRow::new("List row, plain").show(ui);
         ListRow::new("List row, hovered").look(Look::Hover).show(ui);
         ListRow::new("List row, selected").selected(true).show_with(ui, |ui| {
             crate::prim::caption(ui, "page 4");
@@ -466,7 +466,7 @@ fn round_two(ui: &mut Ui, state: &mut Showcase) {
     });
     line(ui, "Notes", &mut |ui| {
         crate::prim::note(ui, "A note", Tone::Neutral);
-        crate::prim::note(ui, "\u{25b2} A warning", Tone::Warning);
+        crate::prim::note(ui, "A warning", Tone::Warning);
         crate::prim::note(ui, "An error", Tone::Error);
     });
     line(ui, "Checkbox", &mut |ui| {

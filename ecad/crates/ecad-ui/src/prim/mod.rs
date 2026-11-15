@@ -22,7 +22,9 @@ mod segmented;
 
 pub use button::{Button, IconButton, Kind, button, icon_button};
 pub use field::{Field, FieldKind, field};
-pub use kit::{Checkbox, GridRows, ListRow, PropertyGrid, Radio, SearchField, SectionHeader, body, caption, heading, note, property_row};
+pub use kit::{
+    Checkbox, GridRows, ListRow, PropertyGrid, Radio, SearchField, SectionHeader, SectionResponse, body, caption, heading, note, property_row,
+};
 pub use label::{Chip, ChipResponse, badge, chip, keycap, pill};
 pub use row::{RowKind, RowSpec, provisional, read_value, row};
 pub use segmented::{Segmented, SegmentedResponse, segmented};

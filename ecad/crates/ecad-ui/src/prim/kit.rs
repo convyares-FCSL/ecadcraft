@@ -32,11 +32,27 @@ pub struct SectionHeader<'a> {
     title: &'a str,
     summary: &'a str,
     name: Option<&'a str>,
+    action: Option<(&'a str, bool)>,
+}
+
+/// What [`SectionHeader::show_with_action`] returns.
+#[derive(Debug)]
+pub struct SectionResponse {
+    /// The header's own response (clicked: folded or unfolded).
+    pub header: Response,
+    /// The action at its right was clicked.
+    pub action: bool,
 }
 
 impl<'a> SectionHeader<'a> {
     pub fn new(open: &'a mut bool, title: &'a str) -> Self {
-        Self { open, title, summary: "", name: None }
+        Self { open, title, summary: "", name: None, action: None }
+    }
+    /// A small quiet button at the right (`New branch`), in place of the summary; `enabled`
+    /// false greys it. Read its click from [`Self::show_with_action`].
+    pub fn action(mut self, label: &'a str, enabled: bool) -> Self {
+        self.action = Some((label, enabled));
+        self
     }
     /// The right-aligned summary (`18.8 A ≥ 4 A`, a count).
     pub fn summary(mut self, summary: &'a str) -> Self {
@@ -50,13 +66,30 @@ impl<'a> SectionHeader<'a> {
     }
     /// Draw it; the response is clicked when it was folded or unfolded.
     pub fn show(self, ui: &mut Ui) -> Response {
-        let r = crate::panel::section_header(ui, *self.open, self.title, self.summary);
-        if r.clicked() {
+        self.show_with_action(ui).header
+    }
+
+    /// Draw it with its action, if it has one.
+    pub fn show_with_action(self, ui: &mut Ui) -> SectionResponse {
+        let summary = if self.action.is_some() { "" } else { self.summary };
+        let r = crate::panel::section_header(ui, *self.open, self.title, summary);
+        let mut action = false;
+        if let Some((label, enabled)) = self.action {
+            // Over the header's right end, registered after it so it takes its own clicks.
+            let mut b = super::Button::new(label).kind(super::Kind::Quiet).small();
+            if !enabled {
+                b = b.disabled("Not available here");
+            }
+            let w = galley(ui, label, ui_type::BODY_EMPHASIS).size().x + 2.0 * space::L;
+            let at = Rect::from_min_max(pos2(r.rect.right() - w, r.rect.top()), r.rect.max);
+            action = ui.put(at, b).clicked();
+        }
+        if r.clicked() && !action {
             *self.open = !*self.open;
         }
         let (name, open) = (self.name.unwrap_or(self.title), *self.open);
         accessible(&r, || WidgetInfo::selected(Role::Button, true, open, name), None);
-        r
+        SectionResponse { header: r, action }
     }
 }
 
