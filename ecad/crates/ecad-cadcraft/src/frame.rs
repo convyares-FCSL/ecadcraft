@@ -266,7 +266,8 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         // Brief 050a: the frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
-        Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text",
+        // Brief 054: a page type's sheet, frame, title block or zones.
+        Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text" || catalogue == crate::styles::page::WORD,
         // Review of #110, 2: switching one standard for another may change its frame records and
         // its `print.frame.style`.
         Op::SetStandard { before, after } => before != after,

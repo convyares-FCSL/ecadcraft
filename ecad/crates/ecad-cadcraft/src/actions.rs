@@ -978,6 +978,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("deletestyle", "Settings ▸ Standards: a style's Delete…"),
     ("promote", "Settings ▸ Standards: Promote to standard"),
     ("styles", "a read; Settings ▸ Standards shows the catalogues"),
+    // Brief 054: the Book's folder row and header menu, and the Page tab's front pages.
+    ("folderprops", "the Book: a folder row's Start number…"),
+    ("renumberpages", "the Book: Renumber pages"),
+    ("deletepage", "the Page tab's front page toggles, and the Book's Delete on generated pages"),
     // Brief 055: Library ▸ Title blocks reads and writes them (the list, the editor's Save, Import DXF).
     ("titleblocks", "a read; Library ▸ Title blocks lists them"),
     ("titleblock", "Library ▸ Title blocks: + Title block and the editor's Save"),

@@ -1424,7 +1424,8 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
         for f in ["label", "group", "brief", "kind", "builtin", "levels", "value", "from"] {
             assert!(r.get(f).is_some(), "{key} has {f}: {r}");
         }
-        assert!(r["levels"].to_string().to_lowercase().contains("project"), "every entry allows Project: {r}");
+        // Brief 054 (design 054 §2.3): `page.type` is page level only.
+        assert!(key == "page.type" || r["levels"].to_string().to_lowercase().contains("project"), "every entry allows Project: {r}");
         assert_eq!(r["value"], r["builtin"], "a new project resolves to the built-in: {r}");
         // The wire label height's project level is the wiring settings, which a new project has.
         if key.starts_with("text.") {

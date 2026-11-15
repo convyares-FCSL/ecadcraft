@@ -6,6 +6,8 @@
 //! conflicting; `cargo fmt` puts them back in order. At the phase-end tidy-up the lanes' modules
 //! move into `main.rs`'s list and this file holds only this comment again.
 mod lane_052;
+mod lane_054;
+mod lane_054_tester;
 mod lane_055;
 mod lane_057;
 mod lane_057_tester;

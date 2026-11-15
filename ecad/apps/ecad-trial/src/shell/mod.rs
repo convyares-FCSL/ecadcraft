@@ -38,10 +38,12 @@ pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
+pub mod new_page;
 pub mod placing;
 pub mod right;
 pub mod state;
 pub mod status_bar;
+pub mod table_editor;
 pub mod text_panel;
 pub mod toggles;
 pub mod tool_strip;
@@ -190,6 +192,8 @@ pub struct Shell {
     /// last frame.
     pub saved_at: Option<String>,
     pub saved_was: Option<String>,
+    /// Brief 054: the + Page picker while it is open.
+    pub new_page: Option<new_page::Picker>,
 }
 
 impl std::fmt::Debug for Shell {
@@ -226,6 +230,7 @@ impl Shell {
             well: status_bar::Well::default(),
             saved_at: None,
             saved_was: None,
+            new_page: None,
         }
     }
 
@@ -336,6 +341,8 @@ impl Trial {
         self.shell.slots = Some(slots);
         // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
         crate::settings::show(self, ui);
+        // Brief 054: the + Page picker takes its keys before the shell's.
+        self.new_page_frame(ui.ctx());
         keys::handle(self, ui.ctx(), &slots);
         self.refresh_panel();
         self.sync_props();

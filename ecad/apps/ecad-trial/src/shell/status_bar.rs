@@ -394,7 +394,7 @@ fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
     // (group, next)
     let mut step: Option<(bool, bool)> = None;
     let mut open_group = None;
-    let mut add = false;
+    let mut add: Option<Rect> = None;
 
     // The centre: « ‹ [page shown] › », the page text centred on the well.
     let text = Rect::from_center_size(well.center(), vec2(CENTRE_TEXT.min(well.width() / 3.0), BTN));
@@ -475,7 +475,8 @@ fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
         x += item_w(i);
     }
     if plus && bar::icon_button(ui, btn(x + space::XS), Icon::Plus, ADD_PAGE, 12.0, true).clicked() {
-        add = true;
+        // Brief 054 (design 054 §4.1): the + Page picker, above the +, adding after the open page.
+        add = Some(btn(x + space::XS));
     }
 
     if let Some(p) = go {
@@ -496,8 +497,11 @@ fn page_well(t: &mut Trial, ui: &mut egui::Ui, well: Rect) {
         let folder = g.folder;
         t.shell.well.opened.insert(folder);
     }
-    if add {
-        t.panel_action(crate::project_panel::Action::New);
+    if let Some(r) = add {
+        let (at, above) = crate::shell::new_page::anchor_of(ui.ctx(), r);
+        let at = Some(at);
+        let after = t.panel.active;
+        t.open_new_page_picker(at, above, after, None);
     }
 }
 

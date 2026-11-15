@@ -97,7 +97,10 @@ fn registry_keys_unique_builtins_valid_and_project_level_allowed() {
     for e in defaults::all() {
         assert!(seen.insert(e.key), "duplicate {}", e.key);
         assert!(e.key.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')), "{}", e.key);
-        assert!(e.levels.iter().any(|l| matches!(l, defaults::Level::Project)), "{} allows Project", e.key);
+        // Brief 054 (design 054 §2.3): a page's type is a property of the page, never a project
+        // default.
+        let page_only = e.key == defaults::pages::PAGE_TYPE.key;
+        assert!(page_only || e.levels.iter().any(|l| matches!(l, defaults::Level::Project)), "{} allows Project", e.key);
         let r = defaults::resolve(&d, e, Scope::project());
         let _ = r;
     }

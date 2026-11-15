@@ -80,6 +80,8 @@ impl Trial {
 pub const CLOSE: &str = "Close the panel";
 /// Accessible label of the header's pin (UI rev 3: pinned docks, unpinned floats).
 pub const PIN: &str = "Pin the panel";
+/// Brief 054: the Book header's Renumber pages (design 054 §4.4).
+pub const RENUMBER: &str = "ecad.book.renumber";
 /// Book's view switch (board 1.02).
 pub const BOOK_LIST: &str = "Show the pages as a list";
 pub const BOOK_THUMBS: &str = "Show the pages with thumbnails";
@@ -166,6 +168,12 @@ fn panel(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
         t.toggle_pin();
     }
     if tab == LeftTab::Pages {
+        // Brief 054 (design 054 §4.4): Renumber pages, each folder from its start number.
+        x -= HEAD_BTN + space::XS;
+        let can = t.project_open() && !t.header().read_only;
+        if super::bar::icon_button(ui, at(x), Icon::Number, RENUMBER, 14.0, can).on_hover_text(crate::project_panel::RENUMBER_PAGES).clicked() {
+            t.panel_action(crate::project_panel::Action::RenumberPages(None));
+        }
         let view = t.shell.state.left.book_view;
         x -= HEAD_BTN + space::XS;
         if glyph_button(ui, at(x), BOOK_THUMBS, view == BookView::Thumbnails, false, super::glyphs::thumbs).clicked() {

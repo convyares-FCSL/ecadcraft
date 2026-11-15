@@ -100,7 +100,9 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
             .unwrap()
         })
         .unwrap();
-    assert!(texts.iter().any(|t| t.starts_with("Revision A") && t.ends_with("(changed since)")), "{texts:?}");
+    // Brief 054b (design 054 §6.5): the cover's revisions block lists issued rows; the pending
+    // marker is the title block's Rev box.
+    assert!(texts.iter().any(|t| t == "A*"), "{texts:?}");
     // Issuing ends it.
     c.exec("revision", json!({"drawn": "CVA"}));
     c.exec("issuerevision", json!({}));

@@ -48,6 +48,7 @@ out one row; `panel::value_row` does it for a value with its kind.
 | Status pill | One line of status: `✓ No checks on L2-03`, `1 warning` | The status of the object shown, in its tone | `panel::status_pill` |
 | Section header | A folding section: chevron, title, right-aligned summary (`18.8 A ≥ 4 A`) | A group of rows in a panel | `panel::section_header` |
 | Buttons | Primary (one per view), secondary, quiet, danger; small in panels | An action, not a value | `prim::Button` |
+| Dialog | A popup that asks for something: a table to edit, a choice to confirm. Opaque `panel` box with the shadow over the dimmed page; title and close cross; the footer's buttons right-aligned, tight to the bottom edge. Esc and the cross close it; a click on the page does not | Something must be answered before going on | `dialog::Dialog` |
 
 ### Shared table and layout pieces (057)
 

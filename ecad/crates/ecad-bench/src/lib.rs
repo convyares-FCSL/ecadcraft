@@ -21,6 +21,7 @@ pub mod generate;
 pub mod history;
 pub mod measure;
 pub mod outputs;
+pub mod pages;
 pub mod plc;
 pub mod ratings;
 pub mod release;

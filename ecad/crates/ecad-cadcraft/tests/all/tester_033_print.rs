@@ -457,7 +457,9 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     let cover: PageId = id(&h.run("newpage", json!({"generated": "cover"})).unwrap(), "page");
     // The cover as drawn (the project's pending flag; `generated::parts_of` alone has none).
     let shown = page_texts(&mut h, cover);
-    assert!(shown.iter().any(|t| t == "Revision A, 2026-11-10 (changed since)"), "{shown:?}");
+    // Brief 054b (design 054 §6): the cover draws blocks; its revisions are the issued rows, and it
+    // no longer counts sheets.
+    assert!(shown.iter().any(|t| t == "2026-11-10"), "the issued row, no pending row: {shown:?}");
     assert!(shown.iter().any(|t| t == "A*"), "the cover page's Rev box: {shown:?}");
     let v = h.run("printbook", json!({})).unwrap();
     assert!(v["notes"].to_string().contains("The drawing has changed since Rev A; the title block shows A*."), "{v}");

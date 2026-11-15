@@ -97,6 +97,8 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
     ("standard", &[]),
     // Brief 055: `titleblock {id, sheet?}` reads one frame and its block.
     ("titleblock", &["id", "sheet"]),
+    // Brief 054: `folderprops {folder}` reads a folder's start number.
+    ("folderprops", &["folder"]),
     // Brief 052d: `conflicts {}` lists the waiting conflicts.
     ("conflicts", &[]),
 ];
@@ -204,6 +206,9 @@ const PATH_IS_NOT_A_FILE: &[&str] = &[
     "renamefolder",
     "movefolder",
     "deletefolder",
+    // Brief 054: a folder's start number, and Renumber pages in one folder.
+    "folderprops",
+    "renumberpages",
 ];
 
 /// Said when one call asks for several undo or redo steps.
