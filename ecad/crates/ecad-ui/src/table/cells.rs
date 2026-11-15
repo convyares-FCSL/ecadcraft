@@ -134,6 +134,13 @@ pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -
             let r = Rect::from_min_max(pos2(bar.right(), rect.top()), rect.max);
             text(ui, r, code, color(s.text), Align::Left);
         }
+        Cell::Toggle(on) => {
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::M, 0.0))).layout(layout(align)));
+            let mut v = *on;
+            if crate::control::Toggle::new(&mut v, "Toggle").show(&mut child).changed() {
+                return Some(Hit::Button(0));
+            }
+        }
         Cell::Lanes(l) => lanes(ui, rect, l),
         Cell::Buttons(names) => {
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::XS, 0.0))).layout(layout(align)));

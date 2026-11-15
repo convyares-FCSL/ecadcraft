@@ -149,9 +149,9 @@ pub const STATUS: ColumnId = ColumnId(5);
 pub const SIZE: ColumnId = ColumnId(6);
 pub const FIELD_WIRE: ColumnId = ColumnId(7);
 pub const UNUSED: ColumnId = ColumnId(8);
-/// The Not used tick: a plain toggle in the core table (the column's header names it).
-pub const NOT_USED_OFF: &str = "\u{2610}";
-pub const NOT_USED_ON: &str = "\u{2611}";
+/// The Not used tick: a plain toggle in the core table (the column's header names it), the
+/// shared `Cell::Toggle`; its accessible name.
+pub const NOT_USED_TOGGLE: &str = "Toggle";
 
 /// One cable's cores (`Outputs::core_table`).
 #[derive(Debug)]
@@ -238,7 +238,7 @@ impl ReportColumns for CoresSource {
             (STATUS, _) if self.is_open(k) => Cell::Badge("open end".into(), Tone::Error),
             (STATUS, "used") => Cell::Badge("connected".into(), Tone::Ok),
             (STATUS, other) => Cell::Badge(other.to_string(), Tone::Warning),
-            (UNUSED, _) => Cell::Buttons(vec![if self.is_unused(k) { NOT_USED_ON } else { NOT_USED_OFF }.to_string()]),
+            (UNUSED, _) => Cell::Toggle(self.is_unused(k)),
             _ => Cell::Empty,
         }
     }

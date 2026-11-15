@@ -207,10 +207,11 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         label_w(ui, "Basis", BASIS_LABEL_W);
-        let resp = ui.add_enabled_ui(p.writable, |ui| prim::segmented(ui, &mut basis, &BASIS_WORDS)).response;
-        if !p.writable {
-            resp.on_disabled_hover_text("This project is read-only here.");
-        }
+        prim::Segmented::new(&mut basis, &BASIS_WORDS)
+            .read_only(!p.writable)
+            .name("ecad.project.detail.rating.basis")
+            .hover_text(if p.writable { "" } else { "This project is read-only here." })
+            .show(ui);
     });
     if basis != was {
         let word = [Basis::Datasheet, Basis::Table, Basis::Manual].get(basis).map_or("datasheet", |b| b.word());
@@ -219,21 +220,15 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     // Method (cables).
     if cable && r.basis == Basis::Table {
         let current = r.table_value.map(|t| t.2).unwrap_or("E");
-        ui.horizontal(|ui| {
-            label(ui, "Method");
-            let text = format!("{current} \u{b7} {}", dataset::method_words(current));
-            ui.add_enabled_ui(p.writable, |ui| {
-                egui::ComboBox::from_id_salt(("ecad.project.detail.rating.method", id.as_str()))
-                    .selected_text(text)
-                    .width((ui.available_width() - space::S).max(80.0))
-                    .show_ui(ui, |ui| {
-                        for m in &p.methods {
-                            if ui.selectable_label(*m == current, format!("{m} \u{b7} {}", dataset::method_words(m))).clicked() && *m != current {
-                                out.push(("rating", json!({what: id, "method": m})));
-                            }
-                        }
-                    });
-            });
+        let words: Vec<String> = p.methods.iter().map(|m| format!("{m} \u{b7} {}", dataset::method_words(m))).collect();
+        let options: Vec<&str> = words.iter().map(String::as_str).collect();
+        let mut chosen = p.methods.iter().position(|m| *m == current).unwrap_or(usize::MAX);
+        ecad_ui::control::row(ui, "Method", |ui| {
+            if ecad_ui::control::Select::new(&mut chosen, &options, "ecad.project.detail.rating.method").read_only(!p.writable).show(ui).changed()
+                && let Some(m) = p.methods.get(chosen).filter(|m| **m != current)
+            {
+                out.push(("rating", json!({what: id, "method": m})));
+            }
         });
     }
     let body = rows(r);
@@ -347,8 +342,14 @@ pub(crate) fn catalogue_ui(t: &mut crate::Trial, ui: &mut egui::Ui, writable: bo
         let one = if word == ratingtable::WORD { "rating table" } else { "cable type" };
         ui.label(egui::RichText::new(format!("Choose a {one}, or make one.")).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
         ui.horizontal(|ui| {
-            ui.add_enabled(writable, egui::TextEdit::singleline(&mut name).hint_text("Name").desired_width(180.0));
-            if ui.add_enabled(writable && !name.trim().is_empty(), egui::Button::new(format!("New {one}")).small()).clicked() {
+            ecad_ui::control::TextEntry::new(&mut name, "Name").placeholder("Name").read_only(!writable).width(180.0).show(ui);
+            let new = format!("New {one}");
+            let button = if writable && !name.trim().is_empty() {
+                prim::Button::new(&new).small()
+            } else {
+                prim::Button::new(&new).small().disabled("Give it a name.")
+            };
+            if ui.add(button).clicked() {
                 let r = if word == ratingtable::WORD {
                     t.run_value("ratingtable", json!({"name": name.trim(), "csv": "# rows: kind,method/insulation,…\n"}))
                 } else {
@@ -407,26 +408,37 @@ pub(crate) fn catalogue_ui(t: &mut crate::Trial, ui: &mut egui::Ui, writable: bo
         }
     };
     if let Ok(mut g) = buf.lock() {
-        egui::ScrollArea::vertical().id_salt(rows_id).max_height(260.0).show(ui, |ui| {
-            ui.add_enabled(writable, egui::TextEdit::multiline(&mut *g).code_editor().desired_rows(10).desired_width(f32::INFINITY));
-        });
+        ui.add_enabled_ui(writable, |ui| ecad_ui::control::TextArea::new(&mut g, "ecad.standards.ratingtable.rows").rows(12).show(ui));
     }
     let path_id = egui::Id::unique(("ecad.standards.ratingtable.path", id.text()));
     let mut path: String = ui.data(|d| d.get_temp(path_id)).unwrap_or_default();
     ui.horizontal(|ui| {
-        if ui.add_enabled(writable, egui::Button::new("Apply rows").small()).clicked() {
+        let apply = if writable {
+            prim::Button::new("Apply rows").small()
+        } else {
+            prim::Button::new("Apply rows").small().disabled("This project is read-only here.")
+        };
+        if ui.add(apply).clicked() {
             let text = buf.lock().map(|g| g.clone()).unwrap_or_default();
             msg = t.run_value("ratingtable", json!({"name": table.name, "csv": text})).err();
             ui.data_mut(|d| d.remove::<Buf>(rows_id));
         }
     });
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut path).hint_text("CSV file path").desired_width(200.0));
-        if ui.add_enabled(writable && !path.trim().is_empty(), egui::Button::new("Import CSV\u{2026}").small()).clicked() {
+        ecad_ui::control::TextEntry::new(&mut path, "CSV file path").placeholder("CSV file path").width(200.0).show(ui);
+        let has = !path.trim().is_empty();
+        let import = if writable && has {
+            prim::Button::new("Import CSV\u{2026}").small()
+        } else {
+            prim::Button::new("Import CSV\u{2026}").small().disabled("Give a CSV file path.")
+        };
+        if ui.add(import).clicked() {
             msg = t.run_value("ratingtable", json!({"import": path.trim(), "name": table.name})).err();
             ui.data_mut(|d| d.remove::<Buf>(rows_id));
         }
-        if ui.add_enabled(!path.trim().is_empty(), egui::Button::new("Export CSV").small()).clicked() {
+        let export =
+            if has { prim::Button::new("Export CSV").small() } else { prim::Button::new("Export CSV").small().disabled("Give a CSV file path.") };
+        if ui.add(export).clicked() {
             msg = t.run_value("ratingtable", json!({"export": path.trim(), "name": table.name})).err();
         }
     });
@@ -450,10 +462,6 @@ const VALUE_W: f32 = 84.0;
 
 /// The Basis row's label is narrower, so the three-word segment fits the panel.
 const BASIS_LABEL_W: f32 = 64.0;
-
-fn label(ui: &mut egui::Ui, text: &str) {
-    label_w(ui, text, LABEL_W - ui.spacing().item_spacing.x);
-}
 
 fn label_w(ui: &mut egui::Ui, text: &str, w: f32) {
     let s = ecad_ui::SHELL;
@@ -502,16 +510,16 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
     let mut call = None;
     match x.edit.filter(|_| writable) {
         Some(key) => {
-            let note_rect = egui::Rect::from_min_max(pos2(note_x, rect.top() + 2.0), pos2(rect.right(), rect.bottom() - 2.0));
+            // An editable value: the shared entry box (docs/design/components.md).
+            let note_rect = egui::Rect::from_min_max(pos2(note_x, rect.top()), rect.max);
             let buf_id = egui::Id::unique(("ecad.rating.edit", id, key));
             let mut text = ui.data(|d| d.get_temp::<String>(buf_id)).unwrap_or_else(|| x.note.clone());
-            let edit = ui.put(
-                note_rect,
-                egui::TextEdit::singleline(&mut text)
-                    .font(egui::FontSelection::FontId(small))
-                    .text_color(ecad_ui::color(x.tone.map_or(s.text_3, tone_colour)))
-                    .frame(egui::Frame::NONE),
-            );
+            let edit_name = format!("{SECTION}.{key}");
+            let edit = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(note_rect), |ui| {
+                    ecad_ui::control::TextEntry::new(&mut text, &edit_name).id(buf_id.with("entry")).width(note_rect.width()).show(ui)
+                })
+                .inner;
             if edit.changed() {
                 ui.data_mut(|d| d.insert_temp(buf_id, text.clone()));
             }

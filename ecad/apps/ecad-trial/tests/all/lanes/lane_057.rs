@@ -163,7 +163,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
         let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-open.png"));
     }
     // The GNYE row is the last of the four.
-    h.get_all_by_label(ecad_trial::lists::cables::NOT_USED_OFF).last().unwrap().click();
+    h.get_all_by_label(ecad_trial::lists::cables::NOT_USED_TOGGLE).last().unwrap().click();
     h.run_steps(6);
     assert!(h.state().reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
     assert_eq!(open_rows(&mut h), 0, "a ticked core is no error");
