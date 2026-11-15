@@ -226,7 +226,8 @@ impl ReportColumns for CoresSource {
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         let dash = || Cell::read(super::report::DASH);
         match (col, self.rows.text(k, "State").as_str()) {
-            (COLOUR, _) => self.colour(k).map_or_else(dash, Cell::Text),
+            // Board 2.06: the colour's bar, then its code.
+            (COLOUR, _) => self.colour(k).map_or_else(dash, |c| Cell::Colour(super::cable_view::bars(&c), c)),
             (SIZE, _) if self.size.is_empty() => dash(),
             (SIZE, _) => Cell::Text(format!("{} mm\u{b2}", self.size)),
             // An unwired offered core has no cabinet end (owner rule: it is open, not "spare").
@@ -499,15 +500,8 @@ pub fn show_tab(t: &mut crate::Trial, ui: &mut eframe::egui::Ui) -> Option<(ecad
             v.show_cables(ui)
         })
         .inner;
-    // The split handle: drag to resize the list against the details.
-    let (handle, resp) = ui.allocate_exact_size(vec2(full.width(), space::M), egui::Sense::drag());
-    let resp = resp.on_hover_cursor(egui::CursorIcon::ResizeVertical);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, SPLIT));
-    ui.painter().hline(
-        handle.x_range(),
-        handle.center().y,
-        egui::Stroke::new(if resp.hovered() || resp.dragged() { 2.0 } else { 1.0 }, ecad_ui::color(s.line_strong)),
-    );
+    // The split handle (the shared splitter): drag to resize the list against the details.
+    let resp = ecad_ui::splitter::horizontal(ui, SPLIT);
     if resp.dragged() {
         let f = ((table_h + resp.drag_delta().y) / full.height().max(1.0)).clamp(0.15, 0.8);
         ui.data_mut(|d| d.insert_persisted(split_id, f));

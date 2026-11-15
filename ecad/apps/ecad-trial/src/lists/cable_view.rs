@@ -10,6 +10,7 @@
 
 use ecad_ui::tokens::{line, radius, space, ui_type};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
+use serde_json::json;
 
 /// One core as drawn.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -71,6 +72,48 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
     match code.and_then(|c| ecad_cadcraft::look::wire_colours(c, &ecad_ui::tokens::sheet::PAPER)) {
         Some(w) => (ecad_ui::color(w.solid), w.dashes.map(ecad_ui::color)),
         None => (ecad_ui::color(ecad_ui::SHELL.text_2), None),
+    }
+}
+
+/// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
+pub fn bars(code: &str) -> Vec<ecad_ui::tokens::Color> {
+    match ecad_cadcraft::look::wire_colours(code, &ecad_ui::tokens::sheet::PAPER) {
+        Some(w) => std::iter::once(w.solid).chain(w.dashes).collect(),
+        None => Vec::new(),
+    }
+}
+
+impl crate::Trial {
+    /// An open core's fix (brief 057, owner): `0` ticks it Not used (one `setprop`); `1` goes to
+    /// its open end (its page, the end selected), or to the cable when the core has no wire.
+    pub(crate) fn core_fix(&mut self, f: ecad_cadcraft::checks::Fix, k: usize) {
+        use ecad_cadcraft::checks::{Check, Fix, Kind, Object};
+        let Fix::CoreOpen(cable, i) = f else { return };
+        let Some(p) = self.project.clone() else { return };
+        let read = p.read(&mut self.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let open = ecad_cadcraft::styles::cable::open_cores(doc, cable).into_iter().nth(usize::from(i))?;
+            let place = match open.end {
+                Some((c, end)) => {
+                    let (page, at) = ecad_cadcraft::checks::conductor_place(doc, c, Some(end));
+                    (page, at, Object::Conductor(c))
+                }
+                None => {
+                    let (page, at) =
+                        ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Cable(cable)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+                    (page, at, Object::Cable(cable))
+                }
+            };
+            Some((open.label, place))
+        });
+        let Ok(Some((label, (page, at, object)))) = read else { return };
+        if k == 0 {
+            let key = ecad_cadcraft::styles::cable::unused_key(&label);
+            let _ = self.run_value("setprop", json!({"cable": cable.hex(), "key": key, "value": "yes"}));
+            return;
+        }
+        let check = Check { kind: Kind::CoreOpen, page, at, object, which: label, fix: None };
+        self.panel_action(crate::project_panel::Action::GotoCheck(Box::new(check)));
     }
 }
 

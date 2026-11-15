@@ -207,6 +207,8 @@ pub enum Action {
     /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
     RatingFix(ecad_cadcraft::checks::Fix),
+    /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
+    CoreFix(ecad_cadcraft::checks::Fix, usize),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),

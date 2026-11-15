@@ -1909,6 +1909,7 @@ impl Trial {
             }
             A::OpenStandards(word) => self.open_standards_at(word),
             A::RatingFix(f) => self.rating_fix(f),
+            A::CoreFix(f, k) => self.core_fix(f, k),
             A::ShowCables => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {

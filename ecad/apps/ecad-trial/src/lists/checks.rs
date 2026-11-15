@@ -94,6 +94,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::ClearProtectedBy(_) => "Clear Protected by",
         Fix::ChooseRatingTable => "Go to Rating defaults",
         Fix::ShowRatedWires => cp::SHOW,
+        // Two buttons, named by `cp::pair`.
+        Fix::CoreOpen(..) => cp::TICK_NOT_USED,
     }]
 }
 

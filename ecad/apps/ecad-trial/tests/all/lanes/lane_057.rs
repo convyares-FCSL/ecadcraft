@@ -151,6 +151,14 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let open_rows = |h: &mut H| doc_checks(h).into_iter().filter(|c| c.kind == ecad_cadcraft::checks::Kind::CoreOpen).count();
     assert_eq!(open_rows(&mut h), 1);
     assert!(h.query_by_label_contains("Field end").is_some(), "the board's columns");
+    // v3: the row's fixes and the panel's buttons, the shared splitter.
+    let fix = doc_checks(&mut h).into_iter().find(|c| c.kind == ecad_cadcraft::checks::Kind::CoreOpen).and_then(|c| c.fix);
+    assert_eq!(fix, Some(ecad_cadcraft::checks::Fix::CoreOpen(w01, 0)));
+    assert!(h.query_by_label(ecad_trial::checks_panel::GO_TO_OPEN_END).is_some(), "the panel's Go to the open end");
+    assert!(h.query_by_label(ecad_trial::lists::cables::SPLIT).is_some(), "the splitter");
+    if let Some(out) = crate::project_panel::shots() {
+        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v3.png"));
+    }
     if let Some(out) = crate::project_panel::shots() {
         let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-open.png"));
     }

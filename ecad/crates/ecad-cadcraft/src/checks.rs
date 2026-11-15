@@ -692,6 +692,9 @@ pub enum Fix {
     ChooseRatingTable,
     /// Brief 057: **Show** the rated wires (Project ▸ Wires).
     ShowRatedWires,
+    /// Brief 057 (owner): an open core, by its place in [`crate::styles::cable::open_cores`]:
+    /// **Tick Not used** (one `setprop`) or **Go to the open end**.
+    CoreOpen(CableId, u16),
 }
 
 /// One row of the Checks list.
@@ -974,7 +977,7 @@ fn net_words(doc: &Document, net: &NetData) -> String {
 
 /// Where a conductor is: its first page in book order and the midpoint of its longest segment
 /// there, or a given end.
-pub(crate) fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
+pub fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
     let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let routes = routes_of(doc, c);
     let Some((page, v)) = routes.iter().min_by_key(|(p, _)| order.get(p).copied().unwrap_or(usize::MAX)) else {
@@ -1301,7 +1304,7 @@ pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
     if !open.is_empty() {
         let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         let name = crate::views::cable_title(doc, k);
-        for o in open {
+        for (i, o) in open.into_iter().enumerate() {
             let how = if o.unwired { "has no wire" } else { "is open at an end" };
             out.push(Check {
                 kind: Kind::CoreOpen,
@@ -1309,7 +1312,7 @@ pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
                 at,
                 object: Object::Cable(k),
                 which: format!("{name} core {} {how}; connect it, or tick Not used", o.label),
-                fix: Some(Fix::ShowCables),
+                fix: Some(Fix::CoreOpen(k, u16::try_from(i).unwrap_or(u16::MAX))),
             });
         }
     }

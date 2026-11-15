@@ -22,6 +22,7 @@ pub mod fonts;
 pub mod icons;
 pub mod prim;
 pub mod showcase;
+pub mod splitter;
 pub mod style;
 pub mod table;
 pub mod wheel;

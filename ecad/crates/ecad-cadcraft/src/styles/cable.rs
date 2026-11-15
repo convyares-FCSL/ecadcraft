@@ -100,6 +100,8 @@ pub struct OpenCore {
     pub label: String,
     /// No wire at all (an offered core nobody uses).
     pub unwired: bool,
+    /// The open end: the conductor and which of its ends is attached to nothing.
+    pub end: Option<(ecad_model::ConductorId, ecad_model::End)>,
 }
 
 /// The open cores of cable `k` (owner rule): offered cores no member uses, and core chains with an
@@ -119,18 +121,25 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
     let mut out = Vec::new();
     for label in &count.spare {
         if !is_unused(doc, k, label) {
-            out.push(OpenCore { label: label.clone(), unwired: true });
+            out.push(OpenCore { label: label.clone(), unwired: true, end: None });
         }
     }
     for (i, ch) in chains.iter().enumerate() {
-        let open = ch.iter().any(|w| doc.conductors.get(w).is_none_or(|c| c.ends.iter().any(Option::is_none)));
-        if !open {
-            continue;
-        }
+        let end = ch.iter().find_map(|w| {
+            let [a, b] = doc.conductors.get(w)?.ends;
+            if a.is_none() {
+                Some((*w, ecad_model::End::A))
+            } else if b.is_none() {
+                Some((*w, ecad_model::End::B))
+            } else {
+                None
+            }
+        });
+        let Some(end) = end else { continue };
         let label =
             count.matched.get(i).cloned().flatten().or_else(|| heads.get(i).and_then(|h| h.core.clone())).unwrap_or_else(|| (i + 1).to_string());
         if !is_unused(doc, k, &label) {
-            out.push(OpenCore { label, unwired: false });
+            out.push(OpenCore { label, unwired: false, end: Some(end) });
         }
     }
     out

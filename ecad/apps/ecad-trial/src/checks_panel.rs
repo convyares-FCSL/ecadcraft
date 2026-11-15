@@ -44,6 +44,9 @@ pub const IGNORE: &str = "Ignore";
 pub const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
 pub const MOVE_TO_END: &str = "Move to end";
+/// Brief 057 (owner): an open core's two fixes.
+pub const TICK_NOT_USED: &str = "Tick Not used";
+pub const GO_TO_OPEN_END: &str = "Go to the open end";
 pub const REMOVE: &str = "Remove";
 /// Brief 033: start Move Mirror Table for a table over the title block.
 pub const MOVE_TABLE: &str = "Move table…";
@@ -73,6 +76,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::LinkAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
         Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
+        Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
@@ -214,6 +218,10 @@ impl ChecksPanel {
 
     /// Button `k` of row `r`'s fix `f`, as an action.
     pub(crate) fn fix(r: &Row, f: Fix, k: usize) -> Option<Action> {
+        // Brief 057: an open core's Tick Not used / Go to the open end.
+        if let Fix::CoreOpen(..) = f {
+            return Some(Action::CoreFix(f, k));
+        }
         if pair(f).is_some() {
             return Some(Action::AccessoryFix(f, k));
         }
@@ -238,7 +246,8 @@ impl ChecksPanel {
                 | Fix::SetBasis(..)
                 | Fix::ClearProtectedBy(_)
                 | Fix::ChooseRatingTable
-                | Fix::ShowRatedWires,
+                | Fix::ShowRatedWires
+                | Fix::CoreOpen(..),
                 _,
             ) => Action::RatingFix(f),
             (

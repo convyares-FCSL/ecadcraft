@@ -108,6 +108,8 @@ struct Detail {
     go: Option<(String, Go)>,
     /// Its checks (an empty list: "No checks on …").
     checks: Vec<(String, Tone)>,
+    /// Brief 057 (owner): the open cores' fixes, as buttons under the checks.
+    core_fixes: Vec<ecad_cadcraft::checks::Fix>,
     /// The Devices row's property editor goes after the head.
     editor: bool,
     sections: Vec<Section>,
@@ -162,6 +164,7 @@ fn device(t: &Trial, c: ComponentId) -> Option<Detail> {
         go,
         checks,
         editor: true,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Symbol",
@@ -220,6 +223,7 @@ fn terminal(t: &Trial, k: super::terminals::TermKey) -> Option<Detail> {
         go: row.go.map(|(pg, at)| (place.clone(), Go::Place(pg, at))),
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Identity",
@@ -266,6 +270,7 @@ fn card(t: &Trial, i: usize) -> Option<Detail> {
         go,
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section { title: "Identity", props: vec![read("Card", tile.what.clone()), read("Slot", tile.head.clone())], ..Section::default() },
             Section {
@@ -298,6 +303,7 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
         go: v.gos.get(k).copied().flatten().map(|(pg, at)| (page.clone(), Go::Place(pg, at))),
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Identity",
@@ -352,9 +358,13 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
     let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
     let mut checks: Vec<(String, Tone)> =
         rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default();
-    // Brief 057 (owner rule): each open core, as an error.
-    for label in v.source.open.get(k).into_iter().flatten() {
+    // Brief 057 (owner rule): each open core, as an error, with its two fixes.
+    let mut core_fixes = Vec::new();
+    for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
         checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
+        if let Some(cable) = v.ids.get(k) {
+            core_fixes.push(ecad_cadcraft::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
+        }
     }
     let spare = rows.text(k, "Spare");
     if spare.parse::<u32>().is_ok_and(|n| n > 0) {
@@ -368,6 +378,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
         go: v.gos.get(k).copied().flatten().map(|(pg, at)| ("Page".to_string(), Go::Place(pg, at))),
         checks,
         editor: false,
+        core_fixes,
         sections: vec![
             Section {
                 title: "Identity",
@@ -419,6 +430,7 @@ fn report(t: &Trial, k: usize) -> Option<Detail> {
         go: None,
         checks,
         editor: false,
+        core_fixes: Vec::new(),
         sections: vec![
             Section {
                 title: "Contents",
@@ -570,6 +582,16 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                 for (c, tone) in &d.checks {
                     prim::pill(ui, c, *tone);
                 }
+            }
+            // Brief 057 (owner): Tick Not used and Go to the open end, for each open core.
+            for f in &d.core_fixes {
+                ui.horizontal(|ui| {
+                    for (k, words) in [crate::checks_panel::TICK_NOT_USED, crate::checks_panel::GO_TO_OPEN_END].into_iter().enumerate() {
+                        if ui.add_enabled(writable || k == 1, prim::Button::new(words).small()).clicked() {
+                            out.push(Out::Panel(crate::project_panel::Action::CoreFix(*f, k)));
+                        }
+                    }
+                });
             }
             ui.add_space(space::S);
             rule(ui);
