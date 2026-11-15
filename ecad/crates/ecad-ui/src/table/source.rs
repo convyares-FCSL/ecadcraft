@@ -130,6 +130,12 @@ pub enum Cell {
     Provisional(String),
     /// Colour swatches (a wire's colours).
     Swatch(Vec<Color>),
+    /// On or off, drawn as [`crate::control::Toggle`]: a click reports
+    /// [`super::TableEvent::Button`] with index 0 (brief 057: a core's Not used).
+    Toggle(bool),
+    /// A colour code with its bar (board 2.06's core colours: a short bar, then `BN`); a
+    /// two-colour code has two bars.
+    Colour(Vec<Color>, String),
     /// A small label in a tone.
     Badge(String, Tone),
     /// Link lanes.
@@ -157,6 +163,8 @@ impl Cell {
             Cell::Read { text, .. } => Cow::Borrowed(text),
             Cell::Number(v, unit) => Cow::Owned(number_text(*v, unit)),
             Cell::Lanes(l) => Cow::Borrowed(&l.text),
+            Cell::Colour(_, t) => Cow::Borrowed(t),
+            Cell::Toggle(on) => Cow::Borrowed(if *on { "yes" } else { "no" }),
             Cell::Swatch(_) | Cell::Buttons(_) | Cell::Empty => Cow::Borrowed(""),
         }
     }
@@ -179,6 +187,12 @@ impl Cell {
                 for c in c {
                     (c.r, c.g, c.b, c.a).hash(&mut h);
                 }
+            }
+            Cell::Colour(c, t) => {
+                for c in c {
+                    (c.r, c.g, c.b, c.a).hash(&mut h);
+                }
+                t.hash(&mut h);
             }
             Cell::Badge(t, tone) => {
                 t.hash(&mut h);

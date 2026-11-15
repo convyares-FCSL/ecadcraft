@@ -140,6 +140,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "makesymbol",
     // Brief 049.
     "contcaption",
+    // Brief 057.
+    "rating",
+    "ratingtable",
+    "ratings",
     // Brief 052.
     "setlocation",
     "setfunction",

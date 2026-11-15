@@ -118,6 +118,29 @@ pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -
                 x += side + space::XXS;
             }
         }
+        Cell::Colour(colours, code) => {
+            // A short bar per colour (stacked halves for two), then the code.
+            let (w, h) = (space::XL, space::XS + 1.0);
+            let x = rect.left() + space::M;
+            let bar = Rect::from_min_size(pos2(x, rect.center().y - h / 2.0), vec2(w, h));
+            let n = colours.len().max(1) as f32;
+            for (i, c) in colours.iter().enumerate() {
+                let part = Rect::from_min_size(pos2(bar.left() + bar.width() * i as f32 / n, bar.top()), vec2(bar.width() / n, h));
+                ui.painter().rect_filled(part, corner(1.0), color(*c));
+            }
+            if !colours.is_empty() {
+                ui.painter().rect_stroke(bar, corner(1.0), Stroke::new(line::HAIRLINE_PX, color(s.line_strong)), StrokeKind::Inside);
+            }
+            let r = Rect::from_min_max(pos2(bar.right(), rect.top()), rect.max);
+            text(ui, r, code, color(s.text), Align::Left);
+        }
+        Cell::Toggle(on) => {
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::M, 0.0))).layout(layout(align)));
+            let mut v = *on;
+            if crate::control::Toggle::new(&mut v, "Toggle").show(&mut child).changed() {
+                return Some(Hit::Button(0));
+            }
+        }
         Cell::Lanes(l) => lanes(ui, rect, l),
         Cell::Buttons(names) => {
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(space::XS, 0.0))).layout(layout(align)));

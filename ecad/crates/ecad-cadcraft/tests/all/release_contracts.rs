@@ -39,6 +39,9 @@ fn fixture(name: &str) -> F {
         let _: ConductorId = id(&h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap(), "conductor");
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 18], "tag": "C1"})).unwrap(), "cable");
+    // Brief 057 (owner rule): the fixture's cores run over loose wires on purpose; ticked Not
+    // used, they are no open-core errors, and the release gate reads only this fixture's own.
+    not_used(&mut h, c1, &["1", "2", "3"]);
     h.run("cableref", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
     h.run("projectprops", json!({"title": "Pump panel", "drawing_number": "D-1001"})).unwrap();
     h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();
@@ -48,6 +51,13 @@ fn fixture(name: &str) -> F {
     let path = dir.join("demo.ecad").to_string_lossy().into_owned();
     h.cfg(|p| p.path = Some(path));
     F { h, supply, c1, dir }
+}
+
+/// Tick cores `labels` of cable `k` Not used (brief 057).
+fn not_used(h: &mut H, k: CableId, labels: &[&str]) {
+    for l in labels {
+        h.run("setprop", json!({"cable": k.hex(), "key": format!("unused.{l}"), "value": "yes"})).unwrap();
+    }
 }
 
 fn folder(f: &F, rev: &str) -> PathBuf {
@@ -510,6 +520,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
         f.h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap();
     }
     let c2: CableId = id(&f.h.run("cableslash", json!({"from": [88, 27], "to": [92, 38]})).unwrap(), "cable");
+    not_used(&mut f.h, c2, &["1", "2"]);
     let c1 = f.c1;
     // Both hold `-W?1`, as a hostile or older file could.
     f.h.cfg(|p| {
@@ -596,6 +607,8 @@ fn a_release_writes_the_terminal_plan_and_cable_schedule() {
     let mut f = fixture("strips");
     f.h.run("terminals", json!({"from": [70, -2], "to": [70, 12]})).unwrap();
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "cores", "value": "4G"})).unwrap();
+    // Brief 057: the spare core is a spare by tick (owner rule).
+    not_used(&mut f.h, f.c1, &["GNYE"]);
     let pre = f.h.run("prerelease", json!({})).unwrap();
     // Only the PLC lists are left out (no PLC cards): 045's I/O list and 051's PLC racks.
     assert!(

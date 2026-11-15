@@ -390,6 +390,29 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
         };
         ui.add(Button::new(label).kind(kind).small());
     });
+    // Brief 057's shared pieces: several lines of text, a table's colour and toggle cells, and the
+    // splitter between two stacked regions.
+    ui.horizontal(|ui| {
+        crate::panel::label(ui, "Text area");
+        let mut rows = "Several lines\ntyped here".to_string();
+        ui.allocate_ui(vec2(space::XXL * 12.0, 0.0), |ui| crate::control::TextArea::new(&mut rows, "Text area").rows(3).show(ui));
+    });
+    ui.horizontal(|ui| {
+        crate::panel::label(ui, "Table cells");
+        for cell in [
+            crate::table::Cell::Colour(vec![crate::tokens::sheet::PAPER.ink], "BK".into()),
+            crate::table::Cell::Colour(vec![crate::tokens::Color::hex(0x2e7d32), crate::tokens::Color::hex(0xf9d825)], "GNYE".into()),
+            crate::table::Cell::Toggle(false),
+            crate::table::Cell::Toggle(true),
+        ] {
+            let (r, _) = ui.allocate_exact_size(vec2(space::XXL * 3.0, crate::tokens::size::CONTROL), Sense::hover());
+            let _ = crate::table::cells::draw(ui, r, &cell, crate::table::Align::Left, false);
+        }
+    });
+    ui.horizontal(|ui| {
+        crate::panel::label(ui, "Splitter");
+        ui.allocate_ui(vec2(space::XXL * 12.0, crate::tokens::size::CONTROL), |ui| crate::splitter::horizontal(ui, "Splitter"));
+    });
     ui.add_space(space::M);
     let mut open = true;
     let _ = crate::panel::section_header(ui, open, "Section header", "18.8 A \u{2265} 4 A");
