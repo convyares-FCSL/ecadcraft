@@ -97,10 +97,11 @@ fn is_shield(s: &str) -> bool {
     SHIELDS.iter().any(|w| w.eq_ignore_ascii_case(s.trim()))
 }
 
-/// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, no control characters.
+/// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
+/// zero-width) characters ([`crate::cable_cmds::is_hidden`], tester 059 f4).
 pub fn is_gland(s: &str) -> bool {
     let t = s.trim();
-    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(char::is_control)
+    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(crate::cable_cmds::is_hidden)
 }
 
 /// An outer diameter: a number of millimetres from 1 to 200.
