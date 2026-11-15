@@ -190,7 +190,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage)
             .params(
-                "{title, number?, folder?: id, generated?: kind, strip?: id, style?: \"table\"|\"graphic\"} (number: default the next after the page before it; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip; style: the terminal plan's style) or \"cables\")",
+                "{title?, number?, folder?: id, after?: page id, type?: page type, generated?: kind, strip?: id, style?: \"table\"|\"graphic\"} (after: right after that page, in its folder; type: \"schematic\", \"network\", \"front\"… (front and report need generated); number: default the next after the page before it, or a folder's start number for its first page; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip; style: the terminal plan's style) or \"cables\")",
             )
             .noundo(),
         CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
@@ -1294,21 +1294,44 @@ fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         Some(_) => return Err(err("`number` must be a string such as \"105\", or null for the next number")),
     };
     let folder: Option<ecad_model::FolderId> = opt_id(params, "folder").map_err(err)?;
+    // Brief 054 (design 054 §4.2): the page type, and the page to add after (the page well's +).
+    let after: Option<PageId> = opt_id(params, "after").map_err(err)?;
+    let ty = match params.get("type") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(_) => return Err(err("`type` must be a page type's ID or name, such as \"schematic\"")),
+    };
     // Brief 028 (FP3): a terminal plan page may show one strip.
     let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
     if strip.is_some() && generated != Some(crate::generated::GenKind::Terminals) {
         return Err(err("`strip` is for a terminal plan page (`generated: \"terminals\"`)"));
     }
+    let has_title = params.get("title").and_then(Value::as_str).is_some();
     let (page, number) = with_project(s, |p, pg, _| {
         if let Some(c) = strip
             && !crate::strips::is_strip(p.ledger.document(), c)
         {
             return Err("That device is not a terminal strip; leave `strip` out to show every strip.".into());
         }
-        let (id, number, mut ops) = crate::sheet_cmds::new_page_ops(p, title, number, folder)?;
-        if let Some(g) = generated {
-            for op in &mut ops {
-                if let Op::AddPage { page, .. } = op {
+        let doc = p.ledger.document();
+        if after.is_some_and(|a| !doc.pages.contains_key(&a)) {
+            return Err("No such page to add after.".into());
+        }
+        let page_type = crate::page_types::newpage_type(doc, ty.as_deref(), generated)?;
+        // A page with no kind is titled after its type (design 054 §4.2).
+        let title = match (&page_type, generated, has_title) {
+            (Some(t), None, false) => crate::styles::name(doc, crate::styles::page::WORD, t),
+            _ => title,
+        };
+        let derived = crate::styles::page::derived(generated);
+        let (id, number, mut ops) = crate::sheet_cmds::new_page_ops_at(p, title, number, folder, after)?;
+        for op in &mut ops {
+            if let Op::AddPage { page, .. } = op {
+                // Written only when it differs from what the kind gives (FP2).
+                if let Some(t) = page_type.as_ref().filter(|t| **t != derived) {
+                    page.properties.insert(ecad_model::sheet::PAGE_TYPE_KEY.into(), t.text());
+                }
+                if let Some(g) = generated {
                     page.properties.insert(crate::generated::KEY.into(), g.value().into());
                     if let Some(c) = strip {
                         page.properties.insert(crate::generated::STRIP_KEY.into(), c.hex());

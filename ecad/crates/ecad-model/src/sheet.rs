@@ -263,29 +263,97 @@ pub fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
         || crate::style::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
 }
 
-// --- Page-type steps (brief 054, overseer ruling 2026-11-14). Each returns `None` until 054's
-// page types land; the merge fills them in, and every resolver below already asks them.
+// --- Page-type steps (brief 054, overseer ruling 2026-11-14): the page type's sheet, frame,
+// title block and zones, read from stored records only ([`page_type_of`]); every resolver below
+// asks them.
 
-/// The sheet `page`'s page type sets (054). `None` until page types land.
-pub fn page_type_sheet(_doc: &Document, _page: PageId) -> Option<SheetSpec> {
-    None
+/// `page`'s page type (design 054 §2.3), when the page exists.
+fn type_of_page(doc: &Document, page: PageId) -> Option<StyleRef> {
+    doc.pages.get(&page).map(|p| page_type_of(doc, &p.properties))
 }
 
-/// The frame style `page`'s page type names (054's `frame`). `None` until page types land.
-pub fn page_type_frame(_doc: &Document, _page: PageId) -> Option<StyleRef> {
-    None
+/// Page type `id`'s stored value of `key`: the project's record, else the standard's (within the
+/// bounds; a value past [`crate::style::MAX_FIELD_CHARS`] reads as absent).
+fn type_field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<&'a str> {
+    [StyleLayer::Project, StyleLayer::Standard].into_iter().find_map(|l| {
+        type_record(doc, l, id).and_then(|r| r.fields.get(key)).map(String::as_str).filter(|v| v.chars().count() <= crate::style::MAX_FIELD_CHARS)
+    })
 }
 
-/// The frame style whose title block `page`'s page type borrows (054's `title_block`). `None`
-/// until page types land.
-pub fn page_type_title_block(_doc: &Document, _page: PageId) -> Option<StyleRef> {
-    None
+/// A page type field naming a frame style: an existing one, never `project` (the frame's own).
+fn type_frame_field(doc: &Document, page: PageId, key: &str) -> Option<StyleRef> {
+    let id = type_of_page(doc, page)?;
+    let v = type_field(doc, &id, key)?.trim();
+    if v.eq_ignore_ascii_case(PROJECT_SHEET) || v.eq_ignore_ascii_case("frame") {
+        return None;
+    }
+    StyleRef::parse(v).filter(|f| frame_exists(doc, f))
 }
 
-/// Whether `page`'s page type shows zones (054's `zones`). `None` (the frame decides) until page
-/// types land.
-pub fn page_type_zones(_doc: &Document, _page: PageId) -> Option<bool> {
-    None
+/// The sheet `page`'s page type sets (054, FP3): [`type_sheet`].
+pub fn page_type_sheet(doc: &Document, page: PageId) -> Option<SheetSpec> {
+    type_sheet(doc, &type_of_page(doc, page)?)
+}
+
+/// The frame style `page`'s page type names (054's `frame`), when it names an existing one.
+pub fn page_type_frame(doc: &Document, page: PageId) -> Option<StyleRef> {
+    type_frame_field(doc, page, "frame")
+}
+
+/// The frame style whose title block `page`'s page type borrows (054's `title_block`, a frame
+/// style ID), when it names an existing one.
+pub fn page_type_title_block(doc: &Document, page: PageId) -> Option<StyleRef> {
+    type_frame_field(doc, page, "title_block")
+}
+
+/// The built-in page types that draw no zones (design 054 §2.2).
+const ZONELESS_TYPES: [&str; 4] = ["front", "panel", "report", "plain"];
+/// The built-in page type with checks and references off (design 054 §3.4).
+pub const PLAIN_TYPE: &str = "plain";
+
+/// Whether page type `id` has **Checks and references** on (design 054 §3.4): its record's
+/// `checks` field, else the built-in's (Plain off, the others on).
+pub fn type_checks(doc: &Document, id: &StyleRef) -> bool {
+    match type_field(doc, id, "checks").map(str::trim) {
+        Some(v) if v.eq_ignore_ascii_case("off") => false,
+        Some(v) if v.eq_ignore_ascii_case("on") => true,
+        _ => !matches!(id, StyleRef::Builtin(w) if w == PLAIN_TYPE),
+    }
+}
+
+/// Whether `page` takes part in checks, cross-references and numbering (its page type's
+/// [`type_checks`]). A page that does not exist does.
+pub fn page_checks(doc: &Document, page: PageId) -> bool {
+    type_of_page(doc, page).is_none_or(|id| type_checks(doc, &id))
+}
+
+/// The pages whose type has checks and references off: one pass over the pages.
+pub fn checks_off_pages(doc: &Document) -> std::collections::BTreeSet<PageId> {
+    doc.pages.iter().filter(|(_, p)| !type_checks(doc, &page_type_of(doc, &p.properties))).map(|(id, _)| *id).collect()
+}
+
+/// Whether `ops` can change which pages have checks and references off: a page's type or kind, a
+/// page added, a page type record.
+pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
+    use crate::op::{ObjectRef, Op};
+    ops.iter().any(|op| match op {
+        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == PAGE_TYPE_KEY,
+        Op::AddPage { page, .. } => page.properties.contains_key(PAGE_TYPE_KEY),
+        Op::SetStyle { catalogue, .. } => catalogue == PAGE_CATALOGUE,
+        _ => false,
+    })
+}
+
+/// Whether `page`'s page type shows zones (054's `zones`, FP6): its record's `on`/`off`, else the
+/// built-in's (Front sheet, Panel layout and Report off; the others on). `None` only for a page
+/// that does not exist.
+pub fn page_type_zones(doc: &Document, page: PageId) -> Option<bool> {
+    let id = type_of_page(doc, page)?;
+    match type_field(doc, &id, "zones").map(str::trim) {
+        Some(v) if v.eq_ignore_ascii_case("off") => Some(false),
+        Some(v) if v.eq_ignore_ascii_case("on") => Some(true),
+        _ => Some(!matches!(&id, StyleRef::Builtin(w) if ZONELESS_TYPES.contains(&w.as_str()))),
+    }
 }
 
 /// Brief 055 (overseer ruling 2026-11-14): the page property naming a frame style whose title
@@ -387,6 +455,82 @@ pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
         .or_else(|| page_type_sheet(doc, page).filter(|s| s.check().is_ok()))
         .or_else(|| doc.settings.sheet.check().ok().map(|()| doc.settings.sheet))
         .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------- page types (brief 054, FP3)
+
+/// The page property naming a page's type (brief 054, FP2): a style ID of catalogue
+/// [`PAGE_CATALOGUE`].
+pub const PAGE_TYPE_KEY: &str = "page.type";
+/// The style catalogue of page types (brief 054, FP1).
+pub const PAGE_CATALOGUE: &str = "page";
+/// The page property holding a generated page's kind (brief 024, FP1).
+pub const GENERATED_KEY: &str = "generated";
+/// The six built-in page types (design 054 §2.2), in table order.
+pub const BUILTIN_PAGE_TYPES: [&str; 7] = ["front", "schematic", "network", "singleline", "panel", "report", "plain"];
+/// The generated kinds of the Front sheet type; every other known kind is a Report's.
+const FRONT_KINDS: [&str; 3] = ["cover", "revisions", "contents"];
+const REPORT_KINDS: [&str; 5] = ["bom-location", "terminals", "cables", "plcrack", "iolist"];
+/// The value a type's `sheet` field holds to take the project's sheet.
+pub const PROJECT_SHEET: &str = "project";
+
+/// The type a page with no (usable) `page.type` has (design 054 §2.3, rules 2 and 3): a front
+/// kind is `front`, any other known generated kind `report`, anything else `schematic`.
+pub fn derived_page_type(generated: Option<&str>) -> &'static str {
+    match generated.map(str::trim) {
+        Some(g) if FRONT_KINDS.contains(&g) => "front",
+        Some(g) if REPORT_KINDS.contains(&g) => "report",
+        _ => "schematic",
+    }
+}
+
+/// The page type of a page with these properties (design 054 §2.3): its own `page.type` when that
+/// names a type that exists (a built-in one, or a record in the project or the standard), else
+/// [`derived_page_type`]. Reads stored records only.
+pub fn page_type_of(doc: &Document, props: &crate::Properties) -> crate::StyleRef {
+    let own = props.get(PAGE_TYPE_KEY).and_then(|t| crate::StyleRef::parse(t)).filter(|id| page_type_exists(doc, id));
+    own.unwrap_or_else(|| crate::StyleRef::Builtin(derived_page_type(props.get(GENERATED_KEY).map(String::as_str)).to_string()))
+}
+
+/// Whether `id` names a page type: a built-in one, or a record (within the bound) in the project
+/// or the standard.
+pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
+    use crate::style::StyleLayer;
+    matches!(id, crate::StyleRef::Builtin(w) if BUILTIN_PAGE_TYPES.contains(&w.as_str()))
+        || type_record(doc, StyleLayer::Project, id).is_some()
+        || type_record(doc, StyleLayer::Standard, id).is_some()
+}
+
+/// The record `layer` holds for page type `id`, within the style bound
+/// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-cadcraft` reads them).
+fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::style::StyleRecord> {
+    use crate::style::MAX_STYLES_PER_CATALOGUE;
+    let map = crate::style::layer_of(doc, layer)?.get(PAGE_CATALOGUE)?;
+    let r = map.get(id)?;
+    if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
+        return None;
+    }
+    Some(r)
+}
+
+/// The sheet page type `id` stores (design 054 §3.1): the project record's `sheet` field, then
+/// the standard record's, when it reads as a sheet within the limits. `None` when neither does or
+/// the type takes the project's sheet (`project`, every built-in's value).
+pub fn type_sheet(doc: &Document, id: &crate::StyleRef) -> Option<SheetSpec> {
+    use crate::style::{MAX_FIELD_CHARS, StyleLayer};
+    for layer in [StyleLayer::Project, StyleLayer::Standard] {
+        let Some(v) = type_record(doc, layer, id).and_then(|r| r.fields.get("sheet")) else { continue };
+        if v.chars().count() > MAX_FIELD_CHARS {
+            continue;
+        }
+        if v.trim().eq_ignore_ascii_case(PROJECT_SHEET) {
+            return None;
+        }
+        if let Ok(s) = SheetSpec::parse(v) {
+            return Some(s);
+        }
+    }
+    None
 }
 
 /// The frame's distance from the paper edge on each side, in millimetres.

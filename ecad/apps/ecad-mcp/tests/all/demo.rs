@@ -12,7 +12,8 @@ fn the_demo_command_list_builds_the_control_panel() {
     let (doc, log) = mcp.with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.full_log().unwrap())).unwrap()).unwrap();
     // Three drawn pages, as named, then the generated revision list and BOM (brief 024).
     let titles: Vec<&str> = doc.page_order.iter().map(|p| doc.pages[p].title.as_str()).collect();
-    assert_eq!(titles, ["Supply", "Motor control", "Field", "Revision list", "BOM by location"]);
+    // Brief 054 (design 054 §7): a new revisions page is titled Revision history.
+    assert_eq!(titles, ["Supply", "Motor control", "Field", "Revision history", "BOM by location"]);
     // Every transaction after the project's creation is the demo's, as an agent.
     assert!(log.iter().skip(1).all(|t| t.author == Author::Agent(demo::AUTHOR.into())));
     // The devices, by tag.

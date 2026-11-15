@@ -117,7 +117,8 @@ impl GenKind {
         match self {
             GenKind::Cover => "Cover",
             GenKind::Contents => "Contents",
-            GenKind::Revisions => "Revision list",
+            // Brief 054 (design 054 §7): a new revisions page is the Revision history.
+            GenKind::Revisions => "Revision history",
             GenKind::BomLocation => "BOM by location",
             GenKind::Terminals => "Terminal plan",
             GenKind::Cables => "Cable schedule",
@@ -358,9 +359,9 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
             Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. },
         ) => true,
         (GenKind::Contents, Op::SetProperty { object: ObjectRef::Page(_), key, .. }) => key == book::NUMBER_KEY || key == book::FOLDER_KEY,
-        (GenKind::Cover | GenKind::Revisions, Op::SetProperty { object: ObjectRef::Project, .. }) => true,
-        (GenKind::Cover | GenKind::Revisions, Op::NameVersion { .. } | Op::UnnameVersion { .. }) => true,
-        (GenKind::Cover, Op::AddPage { .. } | Op::RemovePage { .. }) => true,
+        // Brief 054b: the cover's own map is `crate::front::touches`, which needs the document.
+        (GenKind::Revisions, Op::SetProperty { object: ObjectRef::Project, .. }) => true,
+        (GenKind::Revisions, Op::NameVersion { .. } | Op::UnnameVersion { .. }) => true,
         _ => false,
     })
 }
@@ -808,34 +809,6 @@ fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
     rows
 }
 
-/// The cover's lines: (text, height as a share of the Cover kind's height: 10, 7, 5, 5, 5, 3.5
-/// of 10, design 033 §1.2).
-fn cover_lines(doc: &Document, total: usize, pending: bool) -> Vec<(String, f64)> {
-    let prop = |k: &str| doc.properties.get(k).cloned().filter(|v| !v.trim().is_empty());
-    let mut out = Vec::new();
-    for (k, h) in [(crate::frame::TITLE, 1.0), (crate::frame::DRAWING_NUMBER, 0.7), (crate::frame::CUSTOMER, 0.5), (crate::frame::STATUS, 0.5)] {
-        if let Some(v) = prop(k) {
-            out.push((v, h));
-        }
-    }
-    let style = crate::revisions::PendingStyle::of(doc);
-    let rev = match crate::revisions::issued(doc).first() {
-        // Design 033 §6.2: the cover says when the drawing changed since the newest issue.
-        Some(_) if pending && style == crate::revisions::PendingStyle::Draft => {
-            format!("Revision {} (draft)", crate::revisions::pending_rev(doc))
-        }
-        Some(r) => {
-            let date = r.get("date");
-            let shown = if date.is_empty() { format!("Revision {}", r.rev()) } else { format!("Revision {}, {date}", r.rev()) };
-            if pending && style == crate::revisions::PendingStyle::Star { format!("{shown} (changed since)") } else { shown }
-        }
-        None => "Not issued".into(),
-    };
-    out.push((rev, 0.5));
-    out.push((if total == 1 { "1 sheet".into() } else { format!("{total} sheets") }, 0.35));
-    out
-}
-
 /// A table page laid out: its columns (A3 widths), rows, and sheets as [`paginate_with`] makes
 /// them.
 struct Laid {
@@ -862,7 +835,7 @@ impl Laid {
 /// millimetres, sheet origin at x = `x0`).
 #[allow(clippy::too_many_arguments)]
 fn content(
-    doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&Outputs>, total: usize,
+    doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&Outputs>, _total: usize,
     laid: &mut Option<Laid>,
 ) -> Vec<Part> {
     let (l, b, r, t) = area(input);
@@ -870,18 +843,9 @@ fn content(
     let looks = Look::new(doc);
     let look = |kind| TextLook::of(&looks, kind, input.unit);
     let (header, cell_look, heading) = (look(TextKind::TableHeader), look(TextKind::Table), look(TextKind::TableHeading));
+    // Brief 054b (design 054 §6): the cover's blocks.
     if kind == GenKind::Cover {
-        let cover = look(TextKind::Cover);
-        let lines: Vec<(String, f64)> = cover_lines(doc, total, input.pending).into_iter().map(|(t, share)| (t, share * cover.mm)).collect();
-        let gap = 6.0;
-        let height: f64 = lines.iter().map(|(_, h)| h + gap).sum();
-        let mut y = (b + t) / 2.0 + height / 2.0;
-        for (text, h) in lines {
-            y -= h / 2.0 + gap / 2.0;
-            d.text(((l + r) / 2.0, y), TextLook { mm: h, ..cover }, &text, HAlign::Center, None, Some(r - l));
-            y -= h / 2.0 + gap / 2.0;
-        }
-        return d.out;
+        return crate::front::cover(doc, input, x0).0;
     }
     // Brief 046: a graphic terminal plan draws its strip sheet.
     if kind == GenKind::Terminals && crate::strip_page::style_of(doc, page) == crate::strip_page::Style::Graphic {

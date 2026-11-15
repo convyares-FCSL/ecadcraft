@@ -1695,6 +1695,13 @@ impl Trial {
             // Update map: the tree is re-read only when its version moved (pages added, removed,
             // renamed or moved, page properties, folder ops, a page becoming (un)available).
             panel.sync(serial, p.page_list_version(), || Some(p.tree_rows()));
+            // Brief 054: folder start numbers and the generated pages, when anything changed.
+            if panel.starts_at != Some(p.change_count()) {
+                let doc = p.ledger.document();
+                panel.starts = ecad_cadcraft::page_types::starts(doc);
+                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_cadcraft::generated::kind_of(doc, *pg).is_some()).collect();
+                panel.starts_at = Some(p.change_count());
+            }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
             if devices_shown {
@@ -2008,9 +2015,46 @@ impl Trial {
             A::DeleteFolder(folder) => {
                 let _ = self.run_line(&format!("deletefolder {}", json!({"folder": folder.hex()})));
             }
-            A::NewPageIn(folder) => {
+            // Brief 054 (design 054 §4.1): a group row's + opens the + Page picker, adding last in
+            // that group.
+            A::NewPageIn(Some(f)) => {
+                let (at, above) = self.picker_anchor();
+                self.open_new_page_picker(at, above, None, Some(f));
+            }
+            A::NewPageIn(None) => {
                 self.open_new_page_box();
-                self.new_page_folder = folder;
+                self.new_page_folder = None;
+            }
+            A::SetFolderStart(folder, start) => {
+                let line = format!("folderprops {}", json!({"folder": folder.hex(), "start": start}));
+                match self.run_line(&line) {
+                    None => self.panel.start_edit = None,
+                    Some(e) => {
+                        if let Some(r) = &mut self.panel.start_edit {
+                            r.error = Some(e);
+                        }
+                    }
+                }
+            }
+            A::RenumberPages(folder) => {
+                let v = match folder {
+                    Some(f) => json!({"folder": f.hex()}),
+                    None => json!({}),
+                };
+                if let Some(e) = self.run_line(&format!("renumberpages {v}")) {
+                    self.panel.note = Some(e);
+                }
+            }
+            A::RunLine(line) => {
+                if let Some(e) = self.run_line(&line) {
+                    self.panel.note = Some(e);
+                }
+            }
+            A::DeletePages(pages) => {
+                let v = json!({"pages": pages.iter().map(|p| p.hex()).collect::<Vec<_>>()});
+                if let Some(e) = self.run_line(&format!("deletepage {v}")) {
+                    self.panel.note = Some(e);
+                }
             }
             A::SetNumber(page, number) => {
                 let line = format!("pageprops {}", json!({"page": page.hex(), "number": number}));
@@ -2491,6 +2535,12 @@ impl Trial {
 
     /// Open the page name box for a new page, prefilled with its number (the panel's **+** and
     /// Tool Sets' New Page).
+    /// Where the + Page picker opens when a panel + asked for it: at the pointer, worked out when
+    /// it is first drawn.
+    fn picker_anchor(&self) -> (Option<egui::Pos2>, bool) {
+        (None, false)
+    }
+
     pub fn open_new_page_box(&mut self) {
         self.new_page_folder = None;
         let n = self.project_page_count() + 1;
@@ -2578,6 +2628,10 @@ impl Trial {
                 sheets_ui::Popout::Info => settings::Section::Project,
                 sheets_ui::Popout::Settings => settings::Section::Pages,
             };
+            // Brief 054: Project settings opens Pages and sheets at the project's own rows.
+            if popout == sheets_ui::Popout::Settings {
+                self.settings.pages.project_open = true;
+            }
             self.open_settings(section);
         }
     }

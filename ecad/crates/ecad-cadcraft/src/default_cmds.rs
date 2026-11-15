@@ -234,6 +234,10 @@ fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     };
     let value = match (params.get("value"), reset) {
         (Some(_), false) if style_name.is_some() => None,
+        // Brief 054 (design 054 §6.1): an empty cover heading is allowed, stored as `none`.
+        (Some(Value::String(v)), false) if entry.key == defaults::pages::HEADING.key && v.trim().is_empty() => {
+            Some(defaults::pages::NO_HEADING.to_string())
+        }
         (Some(v), false) if !v.is_null() => Some(stored_text(entry, v).map_err(err)?),
         (None | Some(Value::Null), true) => None,
         (Some(_), true) => return Err(err("Give either `value` or `reset: true`, not both.")),
@@ -259,6 +263,12 @@ fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 _ => return Err(NEEDS_OBJECT.into()),
             },
         };
+        // Brief 054 (design 054 §2.3): a generated page's type keeps its kind's position.
+        if let (Target::Page(pg), Some(v)) = (target, value.as_deref())
+            && entry.key == crate::defaults::pages::PAGE_TYPE.key
+        {
+            crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg))?;
+        }
         let ops = ops(doc, entry, level, target, value)?;
         let changed = !ops.is_empty();
         if changed {

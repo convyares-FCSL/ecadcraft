@@ -50,6 +50,8 @@ pub fn touches(op: &Op) -> bool {
         Op::DeleteComponent { component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
         Op::DeleteConductor { conductor, .. } => conductor.properties.keys().any(|k| is_choice_key(k)),
         Op::RemovePage { page, .. } => page.properties.keys().any(|k| is_choice_key(k)),
+        // Brief 054: the page type and folder rows.
+        op if crate::page_types::touches_checks(op) => true,
         _ => false,
     }
 }
@@ -151,6 +153,10 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             }
             continue;
         }
+        // Brief 054: a page's own type has its own row (`crate::page_types::check_rows`).
+        if key == ecad_model::sheet::PAGE_TYPE_KEY {
+            continue;
+        }
         let Some(cat) = catalogue_of(key) else { continue };
         if !dangling(doc, cat, value) {
             continue;
@@ -210,6 +216,8 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             }
         }
     }
+    // Brief 054 (design 054 §9): page types and folder start numbers.
+    out.extend(crate::page_types::check_rows(doc));
     if past > 0 {
         let first = cats.first().and_then(|c| crate::styles::catalogue(c)).map_or("text", |c| c.word);
         out.push(Check {

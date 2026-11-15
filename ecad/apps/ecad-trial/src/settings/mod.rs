@@ -16,6 +16,7 @@ pub mod designations;
 pub mod developer;
 pub mod display;
 pub mod later;
+pub mod pages;
 pub mod project;
 pub mod standards;
 pub mod text;
@@ -105,7 +106,8 @@ impl Section {
             Section::Project => {
                 "What the project is and who it is for. These values fill every title block, report header and PDF property, so you set them once here."
             }
-            Section::Pages | Section::TextStyles => "The sheet and its grid, references, tags, revisions, numbering, wires and text.",
+            Section::Pages => pages::ABOUT,
+            Section::TextStyles => "The sheet and its grid, references, tags, revisions, numbering, wires and text.",
             Section::Libraries => "Where this project's symbols come from.",
             Section::AgentAccess => "Whether an agent may read this project, or read and change it.",
             Section::Versions => "Revisions, named versions and backups of this project.",
@@ -137,6 +139,10 @@ impl Section {
 pub struct Settings {
     pub section: Section,
     pub standards: standards::StandardsView,
+    /// Brief 054: Pages and sheets' page type table.
+    pub pages: pages::PagesView,
+    /// Brief 054b: the right panel's Page tab on a generated page.
+    pub page_tab: crate::shell::right::page::PageTab,
     pub inspector: crate::shell::right::Inspector,
     /// The workspace Settings was opened over: choosing another in the top bar closes it.
     pub over: Option<Workspace>,
@@ -332,8 +338,13 @@ fn list_ui(t: &Trial, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sect
             ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.hover));
         }
         bar::text_at(ui, list.left() + space::L, r.center().y, sec.label(), ui_type::BODY, ecad_ui::color(if on { s.text } else { s.text_2 }));
-        if *sec == Section::Standards {
-            let n = ecad_cadcraft::defaults::all().count();
+        // Brief 054: Pages and sheets counts its page types.
+        let count = match *sec {
+            Section::Standards => Some(ecad_cadcraft::defaults::all().count()),
+            Section::Pages => t.settings.pages.snapshot.as_ref().map(|s| s.rows.len()),
+            _ => None,
+        };
+        if let Some(n) = count {
             ui.painter().text(
                 pos2(r.right() - space::L, r.center().y),
                 egui::Align2::RIGHT_CENTER,

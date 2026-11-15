@@ -34,6 +34,8 @@ mod details;
 mod device;
 mod fields;
 mod layout_tab;
+/// Brief 054b: the Page tab on a generated page.
+pub mod page;
 mod placing_view;
 pub mod slash_picker;
 mod widgets;
@@ -205,6 +207,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         }
         None => String::new(),
     };
+    // Brief 054b (design 054 §8): on a generated page with nothing selected, the Page tab.
+    let generated = if placing.is_none() && t.shell.state.right_tab != RightTab::Checks && t.settings.inspector.device.is_none() {
+        page::current(t)
+    } else {
+        None
+    };
     let props = t.props.clone();
     let Ok(mut sh) = props.lock() else { return };
     sh.frames += 1;
@@ -215,7 +223,13 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
             let (title, sub) = p.head();
             (title, sub, None)
         }
-        None => head_words(&t.settings.inspector, &sh),
+        None => match &generated {
+            Some(v) => {
+                let (a, b) = page::head_words(v);
+                (a, b, None)
+            }
+            None => head_words(&t.settings.inspector, &sh),
+        },
     };
     let accent = placing.is_some();
     let (collapse, row) =
@@ -226,6 +240,16 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     let mut acts = Vec::new();
     let mut panel_acts = Vec::new();
     match t.shell.state.right_tab {
+        _ if generated.is_some() => {
+            if let Some(v) = &generated {
+                super::in_rect(ui, body, "ecad.shell.right.page", |ui| {
+                    egui::ScrollArea::vertical().id_salt("ecad.shell.right.page.scroll").auto_shrink([false, false]).show(ui, |ui| {
+                        page::show(t, ui, v, writable, full);
+                        ui.add_space(space::XL);
+                    });
+                });
+            }
+        }
         RightTab::Checks => {
             if t.project_open() && t.lists_shows_checks() {
                 // Project ▸ Check list shows the same rows: one place at a time.
@@ -306,6 +330,28 @@ fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) ->
     out
 }
 
+/// The word on the rail's first button: what the properties panel shows (owner, review of 054):
+/// `Page` for a page or a generated page, `Device` for a device, `Wire`, `Cable` and so on for
+/// the other selections. The button's accessible name stays [`rail_label`].
+pub fn shows_word(t: &mut Trial) -> &'static str {
+    if t.settings.inspector.device.is_some() {
+        return "Device";
+    }
+    if t.settings.inspector.page_words.is_some() || page::current(t).is_some() {
+        return "Page";
+    }
+    let kind = t.props.lock().ok().and_then(|sh| sh.view.sections.first().map(|s| s.kind));
+    match kind {
+        None | Some("page") => "Page",
+        Some("wire") => "Wire",
+        Some("cable" | "reference") => "Cable",
+        Some("box") => "Box",
+        Some("link") => "Link",
+        Some("objects") => "Objects",
+        Some(_) => RightTab::Device.label(),
+    }
+}
+
 /// The collapsed rail: one labelled button per tab, each with a ‹ mark; Checks carries a dot
 /// when there are problems. A press expands the panel on that tab.
 fn rail(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, open: bool) {
@@ -329,7 +375,8 @@ fn rail(t: &mut Trial, ui: &mut egui::Ui, rect: Rect, open: bool) {
         };
         let icon_rect = Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON));
         ecad_ui::icons::paint(ui.painter(), icon_rect, icon, if on { ecad_ui::color(s.accent_text) } else { ink });
-        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, tab.label(), super::bar::font(ui, label_style), ink);
+        let word = if tab == RightTab::Device { shows_word(t) } else { tab.label() };
+        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, word, super::bar::font(ui, label_style), ink);
         let mark = Rect::from_center_size(pos2(r.left() + 4.0, icon_rect.center().y), vec2(8.0, 8.0));
         // ‹ opens towards the canvas; › while open (the strip's marks, mirrored).
         let chevron = if on { Icon::ChevronRight } else { Icon::ChevronLeft };
