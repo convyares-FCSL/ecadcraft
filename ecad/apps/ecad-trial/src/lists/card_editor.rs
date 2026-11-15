@@ -1,6 +1,6 @@
 //! Project ▸ PLC ▸ a card selected: the right panel is the card's editor (brief 056, owner's
 //! change of 2026-11-14; board 2.03's right panel). Identity (type, ID, description, rack and
-//! slot, function and location), Addresses (start, rule), Detailed page, and Parts with its
+//! slot, function and location as 052 codes), Addresses (start, rule), Detailed page, and Parts with its
 //! accessories.
 //!
 //! Built only from the `ecad_ui` components (`docs/design/components.md`): Type is a
@@ -106,21 +106,17 @@ pub fn info(t: &mut Trial, i: usize) -> Option<Info> {
         let comp = doc.components.get(&c)?;
         let own = |k: &str| comp.properties.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let page = overview::pages_of(doc, c).first().copied();
-        // Function: the device's own, else its page's, else the project's.
-        let function = match (own("function"), page.and_then(|pg| doc.pages.get(&pg)).and_then(|x| x.properties.get(ecad_model::book::FUNCTION_KEY)))
-        {
-            (Some(v), _) => (v, "set here"),
-            (None, Some(v)) => (v.clone(), "from page"),
-            (None, None) => (doc.properties.get(ecad_model::book::FUNCTION_KEY).cloned().unwrap_or_default(), "from project"),
+        // Brief 052 (design 052 §9.1): function and location are entry keys stored on the device,
+        // shown as their codes; nothing is inherited. Unset shows `?`, as the inspector does.
+        let aspect = |l: ecad_cadcraft::locations::Located| -> (String, &'static str) {
+            match l.value {
+                Some(code) => (code, ""),
+                None if l.missing() => ("?".to_string(), "not in the list"),
+                None => (String::new(), "?"),
+            }
         };
-        let loc = ecad_cadcraft::locations::resolve(doc, c);
-        let loc_hint = match loc.source {
-            ecad_cadcraft::locations::Source::Device => "set here",
-            ecad_cadcraft::locations::Source::Box { .. } => "from box",
-            ecad_cadcraft::locations::Source::Page(_) => "from page",
-            ecad_cadcraft::locations::Source::Project => "from project",
-            ecad_cadcraft::locations::Source::None => "",
-        };
+        let function = aspect(ecad_cadcraft::locations::resolve_function(doc, c));
+        let location = aspect(ecad_cadcraft::locations::resolve(doc, c));
         let (rack, rule) = match card.rack {
             RackRef::Rack(r) => (
                 plc.racks.get(&r).map(|x| x.tag.clone()),
@@ -160,7 +156,7 @@ pub fn info(t: &mut Trial, i: usize) -> Option<Info> {
             subtitle: format!("{ty_name}, {kind} \u{b7} {rack_title}{slot_words}"),
             description: overview::description(doc, card).unwrap_or_default(),
             function,
-            location: (loc.value.unwrap_or_default(), loc_hint),
+            location,
             rack,
             racks: plc.racks_by_tag().iter().map(|r| r.tag.clone()).take(64).collect(),
             slot: card.slot.map(|s| s.to_string()).unwrap_or_default(),
