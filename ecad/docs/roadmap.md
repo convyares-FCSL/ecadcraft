@@ -51,10 +51,31 @@ arrives in 0.4.0.
 - **Generated front pages:** a cover with notes, wire-colour and symbol legends, revision
   history and contents, all kept up to date.
 - **Title block editor** (Library ▸ Title blocks), and a built-in house-style border.
-- **PLC signal list** with sync to the PLC project by CSV: compare, export and import tags.
+- **PLC signal list:** a card editor, and one-way import and export of tags by CSV (no live sync).
 - **Wire and cable rating checks**, and volt drop. Rating tables are supplied by the user.
+- **Shared UI components** (`ecad_ui`), a style guide and a guard against hand-rolled controls.
+- **Cable manager:** build cables in Project ▸ Cables, then assign them in the drawing.
 
-### 0.2.3: layout, power, tests, network
+### 0.2.3: tidy-up and improvements
+
+Ahead of schedule, so the codebase gets a proper tidy-up before the next features (the November
+code review):
+
+- **Error handling:** typed error enums per library crate (`thiserror`), `anyhow` with context at
+  the app, CLI and MCP edges; no more `Result<_, String>`.
+- **Types instead of strings:** property keys, catalogue words, roles, check kinds and units
+  (mm, A, V, °C) as enums and newtypes; typed command parameters.
+- **One update pipeline:** a single classifier of what each edit touches, and one trait for every
+  derived view, replacing the hand-written per-view matches.
+- **UI components, round 2:** section headers, property rows, dialogs and list rows in
+  `ecad_ui`; the remaining hand-rolled panels converted.
+- **Crates:** the electrical domain split from the engine adapter, developer tools moved under
+  `dev/`, a README for every crate, and a review of standard crates worth adopting
+  (`rayon` for parallel checks and reports, `petgraph`, `rstar`, `miette`, `insta`).
+- Every change adds a guard (a ratchet, an exhaustive match, a contract test) so it cannot
+  regress.
+
+### 0.2.4: layout, power, tests, network, paged reports
 
 - **Panel layout page:** plate and door, rails, trunking with fill %, cut-outs, dimensions, and
   devices placed from the schematic at real size. No routing, no 3D.
@@ -63,6 +84,9 @@ arrives in 0.4.0.
 - **Tests and FAT:** tests generated from the PLC list, retest when something changes after a
   pass, and a printable FAT sheet.
 - **Network:** ports, cables, VLANs and zones, with a generated topology drawing.
+- **Paged reports:** every report is a run of real pages, each updated on its own.
+- **Title blocks built from elements:** frames and title blocks as two libraries; blocks made
+  from revision, field, notice and logo elements.
 
 Network and Tests may move to 0.3.1 if the week runs short.
 
