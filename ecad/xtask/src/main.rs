@@ -8,7 +8,7 @@
 //!   class UiKit) uses egui and `ecad-tokens` only, and ECAD UI sources do not style locally
 //!   (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI sources and direct
 //!   `cadcraft-engine` use by the apps are ratcheted: their allowlisted counts only fall; `anyhow`
-//!   is for apps only, `tokio` for none, `rayon` only off wasm (brief 060).
+//!   is for apps only, `tokio` for none (brief 060).
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`, warnings as errors (as CI).
@@ -230,10 +230,6 @@ const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-bench", 32), ("ecad-mcp", 5)
 /// finding 3); `anyhow` erases it, which only a program's `main` may do.
 const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-cli", "ecad-mcp", "ecad-trial", "ecad-xtask"];
 
-/// The only target `rayon` may be a dependency for (owner, 2026-11-15, brief 060): threads do not
-/// exist on wasm, so a crate that builds for the browser must keep a single-threaded path.
-const RAYON_TARGET: &str = "cfg(not(target_arch = \"wasm32\"))";
-
 /// UI toolkits and ECAD's own UI kit: Core and Adapter crates may depend on none of them (the
 /// kit too, so the document and adapter crates never draw; design `ui-architecture.md` §2).
 const UI_CRATES: &[&str] =
@@ -337,25 +333,20 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
 /// The dependency rules on ECAD's own manifests in `meta` (owner, 2026-11-15, brief 060; CADCraft's
 /// and transitive dependencies are not checked): `anyhow` only in [`ANYHOW_OK`] (dev-dependencies
 /// aside), `tokio` nowhere (ECAD runs no async runtime: commands are synchronous on the project's
-/// lock, and a second runtime beside CADCraft's event loop would split where work happens), and
-/// `rayon` only for [`RAYON_TARGET`].
+/// lock, and a second runtime beside CADCraft's event loop would split where work happens).
+/// `rayon` needs no rule: ECAD is desktop-only (owner, 2026-11-15).
 fn dependency_rule_violations(meta: &Value) -> Result<Vec<String>, String> {
-    let compact = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
     let mut out = Vec::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         for d in p["dependencies"].as_array().into_iter().flatten() {
             let dep = d["name"].as_str().unwrap_or_default();
             let dev = d["kind"].as_str() == Some("dev");
-            let target = d["target"].as_str().map(compact);
             match dep {
                 "anyhow" if !dev && !ANYHOW_OK.contains(&name) => out.push(format!(
                     "{name} must not depend on anyhow: a library returns its own error type so callers can tell failures apart (only {ANYHOW_OK:?} may)"
                 )),
                 "tokio" => out.push(format!("{name} must not depend on tokio: ECAD runs no async runtime beside CADCraft's event loop")),
-                "rayon" if target.as_deref() != Some(compact(RAYON_TARGET).as_str()) => out.push(format!(
-                    "{name}: rayon only under [target.'{RAYON_TARGET}'.dependencies], so the crate still builds and runs single-threaded on wasm"
-                )),
                 _ => {}
             }
         }
@@ -1397,9 +1388,9 @@ let c = ecad_ui::color(SHELL.text);",
         assert!(ratchet_problem("a.rs", 0, 3, "things", "fix").is_some_and(|m| m.contains("remove")));
     }
 
-    /// Brief 060: `anyhow` only in apps and xtask, `tokio` nowhere, `rayon` only off wasm.
+    /// Brief 060: `anyhow` only in apps and xtask, `tokio` nowhere; `rayon` is allowed anywhere.
     #[test]
-    fn the_dependency_rules_refuse_anyhow_tokio_and_rayon_on_wasm() {
+    fn the_dependency_rules_refuse_anyhow_in_libraries_and_tokio() {
         let dep = |name: &str, kind: Value, target: Value| serde_json::json!({"name": name, "kind": kind, "target": target});
         let rows: &[(&str, Value, usize)] = &[
             ("ecad-model", dep("anyhow", Value::Null, Value::Null), 1),
@@ -1408,9 +1399,7 @@ let c = ecad_ui::color(SHELL.text);",
             ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), 0),
             ("ecad-trial", dep("tokio", Value::Null, Value::Null), 1),
             ("ecad-store", dep("tokio", "dev".into(), Value::Null), 1),
-            ("ecad-model", dep("rayon", Value::Null, Value::Null), 1),
-            ("ecad-model", dep("rayon", Value::Null, "cfg(unix)".into()), 1),
-            ("ecad-model", dep("rayon", Value::Null, "cfg(not(target_arch=\"wasm32\"))".into()), 0),
+            ("ecad-model", dep("rayon", Value::Null, Value::Null), 0),
             ("ecad-model", dep("serde", Value::Null, Value::Null), 0),
         ];
         for (pkg, d, n) in rows {

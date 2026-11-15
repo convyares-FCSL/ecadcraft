@@ -38,8 +38,9 @@ report if one looks necessary. Persisted words (check kinds' words, property key
 6. Remove the duplicated `strippage.` doc line in `defaults/mod.rs`.
 7. **Dependency rules in `xtask layers`** (owner, 2026-11-15), on ECAD's own manifests only:
    `anyhow` only in the apps (`ecad-cli`, `ecad-mcp`, `ecad-trial`, `ecad-bench`) and xtask;
-   `tokio` in no ECAD crate; `rayon` only under `cfg(not(target_arch = "wasm32"))`. Each rule says
-   what it prevents.
+   `tokio` in no ECAD crate. Each rule says what it prevents. (A rule keeping `rayon` off wasm was
+   dropped the same day: ECAD is desktop-only, owner ruling; `xtask wasm` stays until the split
+   lane removes it.)
 
 ## Part 2: R7, check kinds as one table (after Part 1 is pushed)
 
