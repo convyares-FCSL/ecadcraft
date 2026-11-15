@@ -12,3 +12,4 @@ mod lane_055;
 mod lane_057;
 mod lane_057_tester;
 mod lane_059;
+mod lane_059_tester;
