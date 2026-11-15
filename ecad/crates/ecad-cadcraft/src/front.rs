@@ -399,39 +399,35 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
     out
 }
 
-/// The `=` functions and `+` locations in use, naturally sorted (design 054 §6.6).
+/// The `=` functions and `+` locations in use, as the project's list shows them (design 054
+/// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
+/// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
-    let mut f: BTreeSet<String> = BTreeSet::new();
-    let mut l: BTreeSet<String> = BTreeSet::new();
-    let mut add = |p: &ecad_model::Properties| {
-        if let Some(v) = p.get(ecad_model::book::FUNCTION_KEY).filter(|v| !v.trim().is_empty()) {
-            f.insert(v.trim().to_string());
-        }
-        if let Some(v) = p.get(ecad_model::book::LOCATION_KEY).filter(|v| !v.trim().is_empty()) {
-            l.insert(v.trim().to_string());
-        }
-    };
-    add(&doc.properties);
-    for p in doc.pages.values() {
-        add(&p.properties);
-    }
-    for c in doc.components.values() {
-        add(&c.properties);
-    }
-    let sort = |s: BTreeSet<String>| {
-        let mut v: Vec<String> = s.into_iter().take(200).collect();
+    use crate::designations::{Aspect, Uses, code_of, description_property};
+    let uses = Uses::of(doc);
+    let list = |a: Aspect| {
+        let shown: BTreeSet<String> = uses
+            .keys(a)
+            .take(200)
+            .map(|k| match (code_of(doc, a, k), doc.properties.get(&description_property(a, k)).filter(|d| !d.trim().is_empty())) {
+                (Some(code), Some(d)) => format!("{code} {d}"),
+                (Some(code), None) => code,
+                (None, _) => "?".to_string(),
+            })
+            .collect();
+        let mut v: Vec<String> = shown.into_iter().collect();
         v.sort_by(|a, b| crate::locations::natural_cmp(a, b));
         v
     };
-    (sort(f), sort(l))
+    (list(Aspect::Function), list(Aspect::Location))
 }
 
 /// Whether committed `ops` (now in `doc`) change the cover through anything but the wire
 /// categories in use ([`Uses`] keeps those): the heading, customer, site and notes, the revisions,
 /// a block toggle; a definition's first copy placed or last removed (counting the copies the
 /// transaction adds, so several new copies at once are seen), a definition in use redrawn or
-/// renamed; the first cable or the last; a continuation; a function or location code while the
-/// structure codes block is on (design 054 §10.2).
+/// renamed; the first cable or the last; a continuation; a stored function or location, or an
+/// entry of the project's list (052), while the structure codes block is on (design 054 §10.2).
 pub fn touches(doc: &Document, ops: &[Op]) -> bool {
     use std::collections::BTreeMap;
     // Copies of each definition the transaction adds and removes.
@@ -473,7 +469,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
                 || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (codes_on && (key == ecad_model::book::FUNCTION_KEY || key == ecad_model::book::LOCATION_KEY))
+                || (codes_on && (crate::designations::Aspect::of_property(key).is_some() || crate::designations::is_list_property(key)))
         }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
         // A text style's size changes the cover's texts; a wire category's name, colour or
@@ -485,7 +481,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::CreateCable { .. } => doc.cables.len() == 1,
         Op::DeleteCable { .. } => doc.cables.is_empty(),
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Component(_), key, .. } => {
-            codes_on && (key == ecad_model::book::FUNCTION_KEY || key == ecad_model::book::LOCATION_KEY)
+            codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
         Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()

@@ -533,3 +533,26 @@ fn cover_rows_hide_reorder_and_relabel_the_generated_legend() {
     h.run("u", Value::Null).unwrap();
     assert!(!h.doc().properties.contains_key("cover.symbol_legend"), "one u");
 }
+
+/// Design 054 §6.6 under 052 (FP8): the cover's structure codes show each stored entry key as its
+/// code, never the key, and follow a rename of the entry.
+#[test]
+fn structure_codes_show_the_052_codes_and_follow_a_rename() {
+    let mut h = H::new(5466);
+    let cover = page(&mut h, json!({"generated": "cover"}));
+    let first = h.first_page();
+    h.activate(first);
+    h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
+    let c = h.doc().components.keys().copied().next().unwrap();
+    h.run("setlocation", json!({"component": c.hex(), "value": "+CP1"})).unwrap();
+    h.run("setdefault", json!({"key": "front.cover.structure_codes", "level": "project", "value": "on"})).unwrap();
+    let key = h.doc().components.get(&c).and_then(|x| x.properties.get("location").cloned()).unwrap();
+    assert_ne!(key, "+CP1", "052 stores the entry key");
+    let t = cover_texts(&mut h, cover);
+    assert!(t.iter().any(|x| x == "+CP1"), "{t:?}");
+    assert!(!t.iter().any(|x| x.contains(&key)), "never the key: {t:?}");
+    // A rename is one SetProperty on the list; the cover follows.
+    h.run("designationedit", json!({"aspect": "location", "code": "+CP1", "to": "+CP2", "description": "Control panel"})).unwrap();
+    let t = cover_texts(&mut h, cover);
+    assert!(t.iter().any(|x| x == "+CP2 Control panel") && !t.iter().any(|x| x == "+CP1"), "{t:?}");
+}
