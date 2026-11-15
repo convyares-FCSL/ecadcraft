@@ -21,6 +21,7 @@
 
 pub mod cable_view;
 pub mod cables;
+pub mod card_editor;
 pub mod checks;
 pub mod detail;
 pub mod devices;
@@ -68,6 +69,13 @@ pub enum ListAction {
     ChecksOf(ecad_model::ComponentId),
     /// Brief 051: Place Symbol for a card body, for this free slot.
     PlaceCard(u32),
+    /// Brief 056 (design 056 §3.1, §4.1, §6 as the owner changed it): Add a rack, Import an I/O
+    /// list, Export tags, the path row's OK, and unfold the free channels.
+    AddRack,
+    ImportTags,
+    ExportTags,
+    PathOk,
+    Unfold,
 }
 
 /// The views' state, for the shell's slots.

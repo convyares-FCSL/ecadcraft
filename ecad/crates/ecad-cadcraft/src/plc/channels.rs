@@ -814,7 +814,7 @@ pub fn ch_key(i: u32, what: &str) -> String {
     format!("{CH_PREFIX}{i}.{what}")
 }
 
-/// The index and field of a channel key `plc.ch.<i>.text` or `plc.ch.<i>.address`.
+/// The index and field of a channel key `plc.ch.<i>.text`, `.address`, `.tag` or `.safe`.
 pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix(CH_PREFIX)?;
     let (i, what) = rest.split_once('.')?;
@@ -822,7 +822,8 @@ pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
-    let what = ["text", "address"].into_iter().find(|w| *w == what)?;
+    // Brief 056 (FP1): a channel's PLC tag and safe state.
+    let what = ["text", "address", super::signals::TAG, super::signals::SAFE].into_iter().find(|w| *w == what)?;
     Some((i, what))
 }
 
@@ -831,6 +832,11 @@ pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
 /// # Errors
 /// Too long, or a control character.
 pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, String> {
+    match what {
+        super::signals::TAG => return super::signals::tag_value(value),
+        super::signals::SAFE => return super::signals::safe_value(None, value),
+        _ => {}
+    }
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let max = if what == "address" { MAX_ADDRESS } else { MAX_TEXT };
     if v.chars().count() > max || v.chars().any(char::is_control) {
@@ -865,13 +871,22 @@ pub(crate) fn run_plcchannel(s: &mut Session, params: &Value) -> cadcraft_engine
         let props = doc.components.get(&c).map(|x| &x.properties);
         let mut ops = Vec::new();
         let mut said = Vec::new();
-        for what in ["text", "address"] {
+        for what in ["text", "address", super::signals::TAG, super::signals::SAFE] {
             let Some(v) = params.get(what) else { continue };
             let value = match v {
                 Value::Null => None,
+                // Brief 056 (design 056 §4.4): the safe state by the card's type.
+                Value::String(x) if what == super::signals::SAFE => super::signals::safe_value(Some(t), Some(x))?,
                 Value::String(x) => ch_value(what, Some(x))?,
                 _ => return Err(format!("`{what}` must be a string, or null to clear it")),
             };
+            // Brief 056 (design 056 §4.3): a tag is unique in its PLC, compared without case.
+            if what == super::signals::TAG
+                && let Some(tag) = &value
+                && let Some(holder) = super::signals::tag_holder(doc, c, i, tag)
+            {
+                return Err(super::signals::duplicate_words(doc, tag, holder));
+            }
             let k = ch_key(i, what);
             let before = props.and_then(|p| p.get(&k)).cloned();
             if before != value {

@@ -212,3 +212,44 @@ pub(crate) fn run_plcpage(s: &mut Session, params: &Value) -> cadcraft_engine::R
     })?;
     Ok(page)
 }
+
+/// Brief 056 (design 056 §8, tester 056 F1): the ops that put the generated `plcrack` page ("PLC
+/// racks") in the book, when `ops` place the project's first rack body and the book has no such
+/// page; empty otherwise. They join the same transaction, so undoing the placement removes the
+/// page too.
+///
+/// # Errors
+/// The new page's own refusals (none expected: its number is the next one).
+pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::Op]) -> Result<(Option<PageId>, Vec<ecad_model::Op>), String> {
+    use ecad_model::{ItemKind, Op};
+    let doc = p.ledger.document();
+    let is_rack_def = |d: ecad_model::DefinitionId| {
+        let def = doc.definitions.get(&d).or_else(|| {
+            ops.iter().find_map(|op| match op {
+                Op::EmbedDefinition { id, definition } if *id == d => Some(definition),
+                _ => None,
+            })
+        });
+        def.and_then(crate::symbols::of_definition).and_then(|s| super::rack::CardType::of_body(s.key)).is_some_and(super::rack::CardType::is_rack)
+    };
+    let places_rack = ops.iter().any(|op| match op {
+        Op::AddItem { item, .. } => matches!(&item.kind, ItemKind::Symbol(s) if is_rack_def(s.definition)),
+        _ => false,
+    });
+    if !places_rack {
+        return Ok((None, Vec::new()));
+    }
+    let has_page = doc.page_order.iter().any(|pg| crate::generated::kind_of(doc, *pg) == Some(crate::generated::GenKind::PlcRack));
+    let other_rack = doc.components.keys().any(|c| super::rack::is_rack(doc, *c));
+    if has_page || other_rack {
+        return Ok((None, Vec::new()));
+    }
+    let kind = crate::generated::GenKind::PlcRack;
+    let (id, _, mut more) = crate::sheet_cmds::new_page_ops_at(p, kind.title().to_string(), None, None, None)?;
+    for op in &mut more {
+        if let Op::AddPage { page, .. } = op {
+            page.properties.insert(crate::generated::KEY.into(), kind.value().into());
+        }
+    }
+    Ok((Some(id), more))
+}

@@ -274,10 +274,14 @@ pub enum Kind {
     TitleBindingUnknown,
     /// Brief 055: a page's own sheet differs from its frame's; the frame wins.
     FrameSheetDiffers,
+    /// Brief 056 (design 056 §9): two channels of one PLC share a tag (without case).
+    PlcTagTwice,
+    /// A tag an export leaves out (a control character, too long).
+    PlcTagChars,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 104] = [
+    pub const ALL: [Kind; 106] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -382,6 +386,8 @@ impl Kind {
         Kind::TitleValueCut,
         Kind::TitleBindingUnknown,
         Kind::FrameSheetDiffers,
+        Kind::PlcTagTwice,
+        Kind::PlcTagChars,
     ];
 
     /// The JSON name.
@@ -491,6 +497,8 @@ impl Kind {
             Kind::TitleValueCut => "title-value-cut",
             Kind::TitleBindingUnknown => "title-binding-unknown",
             Kind::FrameSheetDiffers => "frame-sheet-differs",
+            Kind::PlcTagTwice => "plc-tag-twice",
+            Kind::PlcTagChars => "plc-tag-chars",
         }
     }
 
@@ -606,6 +614,8 @@ impl Kind {
             Kind::TitleValueCut => "A value is cut in the title block",
             Kind::TitleBindingUnknown => "Title block fields this build cannot fill",
             Kind::FrameSheetDiffers => "Page sheet differs from its frame's; the frame wins",
+            Kind::PlcTagTwice => "PLC tag given twice in one PLC",
+            Kind::PlcTagChars => "PLC tag an export leaves out",
         }
     }
 
@@ -622,7 +632,8 @@ impl Kind {
             | Kind::ConnectorPinTwice
             | Kind::CoreOpen
             | Kind::RatingUnder
-            | Kind::RatingTooHot => Severity::Error,
+            | Kind::RatingTooHot
+            | Kind::PlcTagTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -672,7 +683,8 @@ impl Kind {
             | Kind::VoltdropOver
             | Kind::RatingBundlingUnset
             | Kind::RatingDeviceMissing
-            | Kind::FrameSheetDiffers => Severity::Warning,
+            | Kind::FrameSheetDiffers
+            | Kind::PlcTagChars => Severity::Warning,
             _ => Severity::Info,
         }
     }

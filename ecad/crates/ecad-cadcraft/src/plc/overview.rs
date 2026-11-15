@@ -83,6 +83,21 @@ pub struct Tile {
     pub place: Option<String>,
     /// Drawn: a card with channels has a channel cell on a page; any other tile has a drawing.
     pub drawn: bool,
+    /// Brief 056 (design 056 §3.2, §3.3): the kind words at line 1's right (`16 outputs, relay`),
+    /// and line 3: the card's description, else its type name (`Output card`).
+    pub kind_words: String,
+    pub title: String,
+}
+
+impl Tile {
+    /// `9 of 16 in use` (design 056 §3.2 line 6); empty for a tile with no channels.
+    pub fn in_use_words(&self) -> String {
+        if self.squares.is_empty() {
+            return String::new();
+        }
+        let used = self.squares.iter().filter(|s| **s != Square::Spare).count();
+        format!("{used} of {} in use", self.squares.len())
+    }
 }
 
 impl Tile {
@@ -162,7 +177,7 @@ pub fn squares_of(card: &CardData, checked: &[u32]) -> Vec<Square> {
             }
             match card.chans.get(&i) {
                 Some(ch) if ch.used => Square::Used,
-                Some(ch) if ch.text.as_deref().is_some_and(|t| !t.is_empty()) => Square::Reserved,
+                Some(ch) if ch.mark().is_some_and(|t| !t.is_empty()) => Square::Reserved,
                 _ => Square::Spare,
             }
         })
@@ -196,6 +211,67 @@ pub fn range_words(doc: &Document, plc: &Plc, card: &CardData) -> String {
         (None, None) => "\u{2014}".into(),
     }
 }
+/// The card property naming a card's voltage or contact words (`24 V`, `relay`; design 056 §3.3).
+pub const KIND_KEY: &str = "plc.kind";
+/// Longest kind words read from [`KIND_KEY`].
+pub const MAX_KIND: usize = 32;
+
+/// A card's kind words (design 056 §3.3): `16 inputs, 24 V`, `16 outputs, relay`, `4 analogue in`,
+/// `CPU`, `power`, `comms`. The words after the comma come from the card's `plc.kind`.
+pub fn kind_words(doc: &Document, card: &CardData) -> String {
+    let n = card.channels;
+    let plural = |one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+    let base = match card.ty {
+        CardType::Cpu => "CPU".to_string(),
+        CardType::Im => "head module".to_string(),
+        CardType::Di => plural("input", "inputs"),
+        CardType::Dq => plural("output", "outputs"),
+        CardType::Ai => format!("{n} analogue in"),
+        CardType::Ao => format!("{n} analogue out"),
+        CardType::Rtd => format!("{n} RTD"),
+        CardType::Iol => format!("{n} IO-Link"),
+        CardType::Ps | CardType::Pm => "power".to_string(),
+        CardType::Cm => "comms".to_string(),
+    };
+    let extra = doc
+        .components
+        .get(&card.id)
+        .and_then(|x| x.properties.get(KIND_KEY))
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty() && v.chars().count() <= MAX_KIND && !v.chars().any(char::is_control));
+    match extra {
+        Some(e) if card.ty.has_channels() => format!("{base}, {e}"),
+        _ => base,
+    }
+}
+
+/// The card's type name (design 056 §3.2 line 3, when it has no description): `Output card`.
+pub fn type_name(t: CardType) -> &'static str {
+    match t {
+        CardType::Cpu => "CPU",
+        CardType::Im => "Head module",
+        CardType::Di => "Input card",
+        CardType::Dq => "Output card",
+        CardType::Ai => "Analogue input card",
+        CardType::Ao => "Analogue output card",
+        CardType::Rtd => "RTD card",
+        CardType::Iol => "IO-Link master",
+        CardType::Ps | CardType::Pm => "Power module",
+        CardType::Cm => "Comms module",
+    }
+}
+
+/// The card's own description (not the body's name a placement writes), if any.
+pub fn description(doc: &Document, card: &CardData) -> Option<String> {
+    let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
+    doc.components
+        .get(&card.id)
+        .and_then(|x| x.properties.get("description"))
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty() && Some(*v) != builtin)
+        .map(str::to_string)
+}
+
 /// `DQ 16`, or the card's description when it has one.
 pub fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
@@ -224,6 +300,8 @@ pub fn card_tile(doc: &Document, plc: &Plc, card: &CardData, head: String) -> Ti
         checks,
         place: first_place(doc, card.id),
         drawn: if card.ty.has_channels() { card.chans.values().any(|c| !c.cells.is_empty()) } else { !pages_of(doc, card.id).is_empty() },
+        kind_words: kind_words(doc, card),
+        title: description(doc, card).unwrap_or_else(|| type_name(card.ty).to_string()),
     }
 }
 
@@ -241,6 +319,8 @@ fn free_tile(slot: u32) -> Tile {
         checks: 0,
         place: None,
         drawn: false,
+        kind_words: String::new(),
+        title: String::new(),
     }
 }
 
@@ -315,6 +395,14 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
         checks: plc.checks_naming(rack.id).count(),
         place: first_place(doc, rack.id),
         drawn: true,
+        kind_words: if rack.ty == CardType::Cpu { "CPU".into() } else { "head module".into() },
+        title: doc
+            .components
+            .get(&rack.id)
+            .and_then(|x| x.properties.get("description"))
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty() && crate::symbols::by_key(rack.ty.body()).is_none_or(|s| s.name != v))
+            .unwrap_or_else(|| type_name(rack.ty).to_string()),
     }];
     for (head, slot, card) in layout(plc, rack) {
         match card.and_then(|c| plc.cards.get(&c)) {

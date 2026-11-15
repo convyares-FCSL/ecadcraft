@@ -44,6 +44,10 @@ pub const REGENERATE: &str = "Regenerate all";
 pub const NEW_REPORT: &str = "+ New report";
 /// Why Import is greyed (no importer is built yet).
 pub const IMPORT_COMES: &str = "Importing a list comes later.";
+/// The footer's sentence (design 056 §8).
+pub fn overview_words(page: &str) -> String {
+    format!("This overview is also page {page} of the book: generated, always current, each card a link to its page.")
+}
 /// Why the report generator's buttons are greyed (brief 2.9 is not built yet).
 pub const REPORTS_COME: &str = "The report generator comes later.";
 
@@ -319,7 +323,13 @@ impl Trial {
         match tab {
             ListsView::Wires => placeholder(ui, RENUMBER, "Renumbering wires comes later; renumber on the page."),
             ListsView::Devices => placeholder(ui, IMPORT_LIST, IMPORT_COMES),
-            ListsView::Plc => placeholder(ui, IMPORT_IO, IMPORT_COMES),
+            ListsView::Plc => {
+                let writable = self.project_writable();
+                let b = ui.add_enabled_ui(writable, |ui| ecad_ui::prim::button(ui, IMPORT_IO, ecad_ui::prim::Kind::Secondary)).inner;
+                if b.on_disabled_hover_text(super::plc::WRITES_OFF).clicked() {
+                    out.push(HeadAction::ImportTags);
+                }
+            }
             _ => placeholder(ui, IMPORT, IMPORT_COMES),
         }
         ui.add_space(space::S);
@@ -386,6 +396,11 @@ impl Trial {
                     Some(_) => None,
                     None => Some(crate::shell::state::Companion::default()),
                 };
+            }
+            HeadAction::ImportTags => {
+                if let Some(r) = self.reports.as_mut() {
+                    let _ = r.io.handle(super::ListAction::ImportTags);
+                }
             }
             HeadAction::Export => {
                 if let Some((csv, n)) = self.project_csv() {
@@ -465,6 +480,17 @@ impl Trial {
                 }
                 self.open_inspector(crate::shell::RightTab::Checks);
             }
+            ListAction::AddRack => {
+                if self.cad.session.running.is_some() {
+                    self.cad.session.cancel();
+                }
+                match self.cad.session.start("place") {
+                    Ok(()) => self.cad.session.echo("Search \"rack\" and pick a CPU or a head module body.".to_string()),
+                    Err(e) => self.cad.session.echo(e.to_string()),
+                }
+                self.focus_drawing = true;
+                self.after_logic();
+            }
             ListAction::PlaceCard(slot) => {
                 if self.cad.session.running.is_some() {
                     self.cad.session.cancel();
@@ -501,7 +527,9 @@ impl Trial {
                 (true, LEGEND_READ, vec![(format!("{} on {}", plural(n, "terminal", "terminals"), plural(strips, "strip", "strips")), Tone::Neutral)])
             }
             ListsView::Plc => {
-                let words = r.map(|r| r.io.totals.clone()).unwrap_or_default();
+                // Brief 056 (design 056 §8): the overview page's sentence, when the book has it.
+                let words = r.and_then(|r| r.io.book_page.as_ref()).map(|(_, n)| overview_words(n));
+                let words = words.unwrap_or_else(|| r.map(|r| r.io.totals.clone()).unwrap_or_default());
                 (true, "read from the drawing", vec![(words, Tone::Neutral)])
             }
             ListsView::Wires => {
@@ -536,6 +564,7 @@ impl Trial {
 enum HeadAction {
     Beside,
     Export,
+    ImportTags,
     /// Brief 057: open or close the selected cable's details.
     Details,
 }

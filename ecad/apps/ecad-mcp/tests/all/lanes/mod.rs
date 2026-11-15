@@ -9,5 +9,6 @@ mod lane_052;
 mod lane_054;
 mod lane_054_tester;
 mod lane_055;
+mod lane_056;
 mod lane_057;
 mod lane_057_tester;

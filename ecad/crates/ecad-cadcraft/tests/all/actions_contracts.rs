@@ -158,6 +158,11 @@ const ECAD_COMMANDS: &[&str] = &[
     "designationremove",
     "conflicts",
     "functionbox",
+    // Brief 056.
+    "plcmaketags",
+    "plcexport",
+    "plcimport",
+    "plccardtype",
     // Brief 055.
     "titleblocks",
     "titleblock",
