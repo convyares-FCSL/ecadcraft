@@ -23,6 +23,8 @@ pub enum Selected {
     Device(ComponentId),
     Terminal(super::terminals::TermKey),
     Card(usize),
+    /// Brief 056 (design 056 §5): a channel row of Project ▸ PLC.
+    Channel(super::plc::IoKey),
     Wire(usize),
     Cable(usize),
     Report(usize),
@@ -50,7 +52,11 @@ pub fn selected_key(t: &Trial) -> Option<Selected> {
     match t.shell.lists {
         ListsView::Devices => t.panel.devices.selected.map(Selected::Device),
         ListsView::Terminals => r.and_then(|r| first(&r.terminals.table)).map(Selected::Terminal),
-        ListsView::Plc => r.and_then(|r| r.io.selected).map(Selected::Card),
+        ListsView::Plc => r.and_then(|r| {
+            // A channel row selected shows the channel; else the selected tile's card.
+            let row = first(&r.io.table).filter(|k| r.io.source.row(*k).is_some());
+            row.map(Selected::Channel).or_else(|| r.io.selected.map(Selected::Card))
+        }),
         ListsView::Wires => r.and_then(|r| r.wires.selected()).map(Selected::Wire),
         ListsView::Cables => r.and_then(|r| r.cables.selected()).map(Selected::Cable),
         ListsView::Reports => r.and_then(|r| first(&r.list.table)).map(Selected::Report),
@@ -63,7 +69,6 @@ pub fn selected_key(t: &Trial) -> Option<Selected> {
 enum Go {
     Symbols(Vec<RepresentationId>),
     Place(PageId, Pt),
-    Page(PageId, Option<ComponentId>),
 }
 
 /// One labelled value.
@@ -304,41 +309,62 @@ fn terminal(t: &Trial, k: super::terminals::TermKey) -> Option<Detail> {
     })
 }
 
-fn card(t: &Trial, i: usize) -> Option<Detail> {
+/// Brief 056 (design 056 §5): a channel row: its signal, where it is drawn and its test.
+fn channel(t: &Trial, k: super::plc::IoKey) -> Option<Detail> {
+    use ecad_cadcraft::plc::signals;
     let r = t.reports.as_ref()?;
-    let tile = r.io.tiles.get(i)?;
-    let mut checks = Vec::new();
-    if tile.checks > 0 {
-        checks.push((format!("{} check{} on its channels.", tile.checks, if tile.checks == 1 { "" } else { "s" }), Tone::Error));
+    let row = r.io.source.row(k)?;
+    let addr = row.address.clone().unwrap_or_default();
+    let mut subtitle = vec![addr.clone(), row.ty.to_string()];
+    if let Some(tag) = &row.tag {
+        subtitle.push(tag.clone());
     }
-    if !tile.drawn {
-        checks.push(("Not drawn yet.".to_string(), Tone::Warning));
+    let go = row.page.zip(row.at).map(|(pg, at)| (row.place.clone().unwrap_or_else(|| "Page".into()), Go::Place(pg, at)));
+    let checks = Vec::new();
+    let safe = match row.safe_shown() {
+        Some((s, true)) => set("Safe", signals::safe_words(s), "default"),
+        Some((s, false)) => set("Safe", signals::safe_words(s), "set here"),
+        None => read("Safe", super::report::DASH),
+    };
+    let (drives, through) = signals::drives(&row.targets);
+    let mut drawn: Vec<(String, String)> =
+        drives.iter().map(|d| (format!("{}:{}{}", d.device, d.point, if through { " (passes through)" } else { "" }), d.place.clone())).collect();
+    if drawn.is_empty() {
+        drawn.push(("Drives".into(), super::report::DASH.into()));
     }
-    let used = tile.squares.iter().filter(|s| **s != ecad_cadcraft::plc::overview::Square::Spare).count();
-    let go = tile.pages.first().map(|p| ("Page".to_string(), Go::Page(*p, tile.card())));
     Some(Detail {
-        title: tile.tag.clone(),
+        title: format!("{} channel {}", row.card_tag, row.channel),
         provisional: false,
-        subtitle: format!("{} \u{b7} {}", tile.what, tile.head),
+        subtitle: subtitle.join(" \u{b7} "),
         go,
         checks,
         editor: false,
         cable_editor: None,
         core_fixes: Vec::new(),
         sections: vec![
-            Section { title: "Identity", props: vec![read("Card", tile.what.clone()), read("Slot", tile.head.clone())], ..Section::default() },
             Section {
-                title: "Addresses",
-                props: vec![read("Range", tile.range.clone()), read("In use", format!("{used} of {}", tile.squares.len()))],
+                title: "Signal",
+                hint: "set in the table".into(),
+                props: vec![
+                    set("PLC tag", nonempty(row.tag.as_deref().unwrap_or_default()), ""),
+                    set("Description", nonempty(row.text.as_deref().unwrap_or_default()), ""),
+                    safe,
+                    set("Address", nonempty(&ecad_cadcraft::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
+                    set("Pins", nonempty(&ecad_cadcraft::plc::iolist::pins_words(&row.pins)), ""),
+                ],
                 ..Section::default()
             },
             Section {
-                title: "Detailed page",
-                lines: tile.place.iter().map(|p| ("First drawn at".to_string(), p.clone())).collect(),
-                hint: format!("{} page{}", tile.pages.len(), if tile.pages.len() == 1 { "" } else { "s" }),
-                note: Some("A card can be drawn across several pages. Each channel remembers which."),
+                title: "Drawn",
+                hint: "read from the drawing".into(),
+                props: vec![
+                    read("Place", nonempty(row.place.as_deref().unwrap_or_default())),
+                    read("Wire", nonempty(row.wire.as_deref().unwrap_or_default())),
+                ],
+                lines: drawn,
                 ..Section::default()
             },
+            Section { title: "Test", lines: vec![("No tests yet.".into(), String::new())], ..Section::default() },
         ],
     })
 }
@@ -522,7 +548,9 @@ fn detail(t: &Trial) -> Option<Detail> {
     match selected_key(t)? {
         Selected::Device(c) => device(t, c),
         Selected::Terminal(k) => terminal(t, k),
-        Selected::Card(i) => card(t, i),
+        // A card is edited by `card_editor` (see `show`).
+        Selected::Card(_) => None,
+        Selected::Channel(k) => channel(t, k),
         Selected::Wire(k) => wire(t, k),
         Selected::Cable(k) => cable(t, k),
         Selected::Report(k) => report(t, k),
@@ -607,6 +635,11 @@ enum Out {
 
 /// Draw the right panel for the Project workspace in `rect`.
 pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
+    // Brief 056 (owner, 2026-11-14): a card selected in Project ▸ PLC is edited, as board 2.03.
+    if let Some(Selected::Card(i)) = selected_key(t) {
+        super::card_editor::show(t, ui, rect, i);
+        return;
+    }
     let s = ecad_ui::SHELL;
     let Some(d) = detail(t) else {
         crate::shell::in_rect(ui, rect.shrink(space::L), "ecad.project.detail.none", |ui| {
@@ -728,7 +761,6 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                 let _ = t.goto_symbols(&reps);
             }
             Out::Go(Go::Place(pg, at)) => t.goto_place(pg, at),
-            Out::Go(Go::Page(pg, card)) => t.plc_action(super::ListAction::GoToCard(pg, card)),
             Out::Panel(a) => t.panel_action(a),
             Out::Run(cmd, params) => {
                 let _ = t.run_value(cmd, params);

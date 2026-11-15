@@ -12,12 +12,15 @@
 
 pub mod address;
 pub mod channels;
+pub mod exchange;
 pub mod iolist;
 pub mod look;
 pub mod overview;
 pub mod page;
 pub mod rack;
 pub mod sheets;
+pub mod signals;
+pub mod tagtable;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -62,7 +65,7 @@ pins?: {role: pin}, move_to?: channel number (with terminal?: id; a drawn copy t
             .noundo(),
         CommandSpec::new("plcaddress", "PLC Addresses", address::run_plcaddress)
             .params(
-                "{rack: id or tag, style?: byte.bit|iec|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its \
+                "{rack: id or tag, style?: byte.bit|iec|percent|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its \
 current start), clear?: bool (unpin every card)} or {card: id or tag, start?: byte (null unpins), size?: bytes (null: by type)}",
             )
             .noundo(),
@@ -92,6 +95,9 @@ pub enum PlcFix {
     ClearTyped(u32),
     /// `no-address`: **Show** the racks with style `none`.
     NoAddress,
+    /// Brief 056 (design 056 §9): `plc-tag-twice`, `plc-tag-chars`: **Rename** (the channel's
+    /// index; the UI focuses its Tag cell).
+    Rename(u32),
 }
 
 /// The type of device `c` as a PLC card or rack: its card body's, else (a card drawn only by
@@ -168,6 +174,17 @@ pub struct ChannelData {
     pub used: bool,
     pub text: Option<String>,
     pub typed: Option<String>,
+    /// Brief 056 (FP1): its PLC tag and its own safe state.
+    pub tag: Option<String>,
+    pub safe: Option<String>,
+}
+
+impl ChannelData {
+    /// The text that makes a free channel reserved: its description, else its tag (design 056
+    /// §4.2: typing either reserves it).
+    pub fn mark(&self) -> Option<&str> {
+        self.text.as_deref().or(self.tag.as_deref())
+    }
 }
 
 /// A channel's state (design 045 §6).
@@ -799,6 +816,7 @@ impl Plc {
                 fix: Some(Fix::Plc(ComponentId(0), PlcFix::Unracked)),
             });
         }
+        out.extend(self.signal_checks());
         let n: usize = self.no_address.values().sum();
         if n > 0 {
             let which = if n == 1 { "1 used channel has no address".to_string() } else { format!("{n} used channels have no address") };
@@ -810,6 +828,53 @@ impl Plc {
                 which,
                 fix: Some(Fix::Plc(ComponentId(0), PlcFix::NoAddress)),
             });
+        }
+        out
+    }
+
+    /// Brief 056's rows (design 056 §9, after the owner's change of 2026-11-14): a tag two channels
+    /// of one PLC share (possible after a merge or a raw `setprop`), and a tag an export leaves
+    /// out. Worked out from the kept model when asked; bounded by its channels.
+    fn signal_checks(&self) -> Vec<Check> {
+        let mut out = Vec::new();
+        let format: &dyn tagtable::TagFormat = &tagtable::GenericCsv;
+        let mut by_plc: BTreeMap<Option<ComponentId>, BTreeMap<String, Vec<(&CardData, u32)>>> = BTreeMap::new();
+        for card in self.cards.values().filter(|c| c.ty.has_channels()) {
+            let plc = match card.rack {
+                RackRef::Rack(r) => Some(r),
+                _ => None,
+            };
+            for (i, ch) in &card.chans {
+                let Some(t) = &ch.tag else { continue };
+                by_plc.entry(plc).or_default().entry(signals::name_key(t)).or_default().push((card, *i));
+                if !format.name_ok(t) {
+                    out.push(Check {
+                        kind: Kind::PlcTagChars,
+                        page: card.page,
+                        at: None,
+                        object: Object::Component(card.id),
+                        which: format!("{} channel {}", card.tag, i + card.first),
+                        fix: Some(Fix::Plc(card.id, PlcFix::Rename(*i))),
+                    });
+                }
+            }
+        }
+        for tags in by_plc.values() {
+            for holders in tags.values().filter(|h| h.len() > 1) {
+                let words = |(c, i): &(&CardData, u32)| format!("{} channel {}", c.tag, i + c.first);
+                for (k, h) in holders.iter().enumerate() {
+                    let others: Vec<String> = holders.iter().enumerate().filter(|(j, _)| *j != k).take(3).map(|(_, o)| words(o)).collect();
+                    let tag = h.0.chans.get(&h.1).and_then(|x| x.tag.clone()).unwrap_or_default();
+                    out.push(Check {
+                        kind: Kind::PlcTagTwice,
+                        page: h.0.page,
+                        at: None,
+                        object: Object::Component(h.0.id),
+                        which: format!("{}: \"{tag}\" is also the tag of {}", words(h), others.join(" and ")),
+                        fix: Some(Fix::Plc(h.0.id, PlcFix::Rename(h.1))),
+                    });
+                }
+            }
         }
         out
     }
@@ -883,6 +948,7 @@ impl Plc {
                 .filter(|r| self.no_address.contains_key(&r.id))
                 .map(|r| (format!("Set {}'s address style", r.tag), "plcaddress", json!({"rack": r.id.hex(), "style": "byte.bit"})))
                 .collect(),
+            PlcFix::Rename(_) => Vec::new(),
             PlcFix::Unracked => self
                 .unracked_by_tag()
                 .into_iter()
@@ -956,8 +1022,11 @@ impl Plc {
             "slot": card.slot,
             "channels": card.channels,
             "used": card.chans.values().filter(|x| x.used).count(),
-            "reserved": card.chans.values().filter(|x| !x.used && x.text.is_some()).count(),
-            "spare": card.channels.saturating_sub(u32::try_from(card.chans.values().filter(|x| x.used || x.text.is_some()).count()).unwrap_or(0)),
+            "reserved": card.chans.values().filter(|x| !x.used && x.mark().is_some()).count(),
+            "spare": card.channels.saturating_sub(u32::try_from(card.chans.values().filter(|x| x.used || x.mark().is_some()).count()).unwrap_or(0)),
+            // Brief 056 (design 056 §10): the tile's kind words and channels in use.
+            "kind_words": overview::kind_words(doc, card),
+            "in_use": card.chans.iter().filter(|(i, x)| **i < card.channels && (x.used || x.mark().is_some())).count(),
             "inputs": self.blocks.get(&c).and_then(|b| b.input).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),
             "outputs": self.blocks.get(&c).and_then(|b| b.output).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),
             "pinned": self.blocks.get(&c).is_some_and(|b| b.pinned),
@@ -1189,10 +1258,11 @@ pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData
                 continue;
             }
             let ch = out.entry(i).or_default();
-            if what == "text" {
-                ch.text = Some(v.to_string());
-            } else {
-                ch.typed = Some(v.to_string());
+            match what {
+                "text" => ch.text = Some(v.to_string()),
+                signals::TAG => ch.tag = Some(v.to_string()),
+                signals::SAFE => ch.safe = Some(v.to_string()),
+                _ => ch.typed = Some(v.to_string()),
             }
         }
     }

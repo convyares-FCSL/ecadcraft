@@ -283,10 +283,14 @@ pub enum Kind {
     NoGland,
     /// Brief 059: a cable value ECAD does not read (out of bounds); it is ignored.
     CableBadValue,
+    /// Brief 056 (design 056 §9): two channels of one PLC share a tag (without case).
+    PlcTagTwice,
+    /// A tag an export leaves out (a control character, too long).
+    PlcTagChars,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 108] = [
+    pub const ALL: [Kind; 110] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -395,6 +399,8 @@ impl Kind {
         Kind::CableEndOffPlan,
         Kind::NoGland,
         Kind::CableBadValue,
+        Kind::PlcTagTwice,
+        Kind::PlcTagChars,
     ];
 
     /// The JSON name.
@@ -508,6 +514,8 @@ impl Kind {
             Kind::CableEndOffPlan => "cable-end-off-plan",
             Kind::NoGland => "no-gland",
             Kind::CableBadValue => "cable-bad-value",
+            Kind::PlcTagTwice => "plc-tag-twice",
+            Kind::PlcTagChars => "plc-tag-chars",
         }
     }
 
@@ -627,6 +635,8 @@ impl Kind {
             Kind::CableEndOffPlan => "Cable end drawn away from its plan",
             Kind::NoGland => "Cable end with no gland size",
             Kind::CableBadValue => "Cable value ECAD does not read",
+            Kind::PlcTagTwice => "PLC tag given twice in one PLC",
+            Kind::PlcTagChars => "PLC tag an export leaves out",
         }
     }
 
@@ -643,7 +653,8 @@ impl Kind {
             | Kind::ConnectorPinTwice
             | Kind::CoreOpen
             | Kind::RatingUnder
-            | Kind::RatingTooHot => Severity::Error,
+            | Kind::RatingTooHot
+            | Kind::PlcTagTwice => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -695,7 +706,8 @@ impl Kind {
             | Kind::RatingDeviceMissing
             | Kind::FrameSheetDiffers
             | Kind::CableEndOffPlan
-            | Kind::CableBadValue => Severity::Warning,
+            | Kind::CableBadValue
+            | Kind::PlcTagChars => Severity::Warning,
             _ => Severity::Info,
         }
     }

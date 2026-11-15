@@ -64,7 +64,8 @@ fn n_one_row_per_channel_of_every_card_with_states_targets_and_wires() {
     assert_eq!(all[9]["text"], "Spare sensor");
     assert_eq!(all[10]["state"], "spare");
     assert_eq!(all[10]["drawn"], false);
-    assert!(r0["editable"].as_array().is_some_and(|e| e.len() == 3));
+    // Brief 056: tag and safe are edited too.
+    assert!(r0["editable"].as_array().is_some_and(|e| e.len() == 5));
     // Filters.
     assert_eq!(rows(&mut h, json!({"state": "spare", "limit": 2000})).len(), 7 + 4 + 16);
     assert_eq!(rows(&mut h, json!({"card": "-A02", "limit": 2000})).len(), 16);
@@ -91,7 +92,8 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
     assert!(heads[0].contains("8 used, 0 reserved, 8 spare"), "{heads:?}");
     let rows: Vec<&Vec<String>> = lines.iter().filter(|(h, _)| !*h).map(|(_, c)| c).collect();
     assert_eq!(rows[3][3], "I9.9*", "typed address marked");
-    assert_eq!(rows[10][4], "Spare");
+    // Brief 056 (Q9): Tag comes before Description.
+    assert_eq!(rows[10][5], "Spare");
 }
 
 #[test]

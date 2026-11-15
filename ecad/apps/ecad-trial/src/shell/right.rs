@@ -31,14 +31,14 @@
 
 mod checks_tab;
 mod details;
-mod device;
+pub(crate) mod device;
 mod fields;
 mod layout_tab;
 /// Brief 054b: the Page tab on a generated page.
 pub mod page;
 mod placing_view;
 pub mod slash_picker;
-mod widgets;
+pub(crate) mod widgets;
 
 pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
 pub use details::{ConnRow, DeviceDetails, DrawnRow};

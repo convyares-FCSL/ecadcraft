@@ -11,12 +11,19 @@
 //! words of the tiles whose pages moved (their numbers are compared per tile, no rows made). A
 //! commit that touches no PLC data patches nothing. Full rebuild only on first show, a reload of
 //! the models (`build_id`), or another rack chip.
+//!
+//! Brief 056 (design 056 §3, §4, board 2.03): the rack heading line, the tiles' kind words, the
+//! card header with the PLC chip, **Compare**, **Export tags** and **→ Page**, the signal columns
+//! `Ch, Address, Tag, Description, Type, Safe, Drives, Page, PLC, Test`, free channels folded
+//! after the first of a run, and Import tags with its preview ([`super::plc_compare`]). Each row
+//! carries its sync state from the kept index (`Plc::sync`); the same update map patches it.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::plc::iolist::{self, Row};
 use ecad_cadcraft::plc::overview::{self, Chip, Square, Tile, TileKind};
+use ecad_cadcraft::plc::signals;
 use ecad_model::{ComponentId, Document, PageId};
 use ecad_ui::table::strip::{self, Link, Mark, StripEvent, Tone};
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -39,6 +46,27 @@ pub const STATE: ColumnId = ColumnId(8);
 pub const TARGETS: ColumnId = ColumnId(9);
 pub const WIRE: ColumnId = ColumnId(10);
 pub const PLACE: ColumnId = ColumnId(11);
+/// Brief 056 (design 056 §4.2).
+pub const TAG: ColumnId = ColumnId(12);
+pub const SAFE: ColumnId = ColumnId(13);
+pub const DRIVES: ColumnId = ColumnId(14);
+pub const PAGE: ColumnId = ColumnId(15);
+pub const TEST: ColumnId = ColumnId(17);
+
+/// Element names (design 056 §3.1, §4.1).
+pub const CARD_HEAD: &str = "ecad.plc.cardhead";
+pub const EXPORT_TAGS: &str = "ecad.plc.exporttags";
+pub const GO_PAGE: &str = "ecad.plc.gopage";
+pub const MORE_FREE: &str = "ecad.plc.morefree";
+pub const ADD_RACK: &str = "ecad.plc.addrack";
+pub const MAKE_TAGS: &str = "ecad.plc.maketags";
+/// A table row's height, px (039's table: a 30 px row; the header is one row too).
+const TABLE_ROW_PX: f32 = 30.0;
+/// The free channel's Tag placeholder.
+pub const FREE: &str = "free";
+/// The Drives header's words for inputs (design 056 §4.5) and the Test column's (§4.6).
+pub const DRIVES_TIP: &str = "For outputs, what the channel switches. For inputs, what feeds it.";
+pub const TESTS_COME: &str = "Tests come with the Tests tab.";
 
 /// Element names (design 051 §3.8).
 pub const STRIP: &str = "ecad.plc.strip";
@@ -51,27 +79,40 @@ pub const WRITES_OFF: &str = "Writes are off.";
 pub const THIS_CARD: &str = "This card";
 pub const ALL_CARDS: &str = "All cards";
 
-/// The columns: every card (`all`), or one card (Slot, Rack, Card and Type hidden: the tile says
-/// them). Description, Address and Pins are set here.
+/// The columns (design 056 §4.2, without the PLC column since the owner's change of 2026-11-14):
+/// one card's signal columns `Ch, Address, Tag, Description, Type, Safe, Drives, Page, Test`;
+/// every card (`all`) keeps 051's columns plus Tag and Safe. Address, Tag, Description, Safe and
+/// Pins are set here.
 pub fn columns(all: bool) -> Vec<Column> {
-    let mut v = Vec::new();
     if all {
-        v.push(Column::read(CARD.0, "Card", Width::Initial(56.0)).groupable());
-        v.push(Column::read(RACK.0, "Rack", Width::Initial(56.0)).groupable());
-        v.push(Column::read(SLOT.0, "Slot", Width::Initial(40.0)));
-        v.push(Column::read(TYPE.0, "Type", Width::Initial(40.0)).groupable());
+        return vec![
+            Column::read(CARD.0, "Card", Width::Initial(56.0)).groupable(),
+            Column::read(RACK.0, "Rack", Width::Initial(56.0)).groupable(),
+            Column::read(SLOT.0, "Slot", Width::Initial(40.0)),
+            Column::read(TYPE.0, "Type", Width::Initial(44.0)).groupable(),
+            Column::read(CHANNEL.0, "Ch", Width::Initial(32.0)),
+            Column::set(ADDRESS.0, "Address", Width::Initial(80.0)),
+            Column::set(TAG.0, "Tag", Width::Initial(140.0)),
+            Column::set(TEXT.0, "Description", Width::Initial(180.0)),
+            Column::set(PINS.0, "Pins", Width::Initial(64.0)),
+            Column::read(STATE.0, "State", Width::Initial(80.0)).groupable(),
+            Column::set(SAFE.0, "Safe", Width::Initial(60.0)),
+            Column::read(TARGETS.0, "Wired to", Width::Initial(120.0)),
+            Column::read(WIRE.0, "Wire", Width::Initial(64.0)),
+            Column::read(PLACE.0, "Place", Width::Remainder),
+        ];
     }
-    v.extend([
+    vec![
         Column::read(CHANNEL.0, "Ch", Width::Initial(32.0)),
-        Column::set(ADDRESS.0, "Address", Width::Initial(72.0)),
-        Column::set(PINS.0, "Pins", Width::Initial(64.0)),
-        Column::set(TEXT.0, "Description", Width::Initial(180.0)),
-        Column::read(STATE.0, "State", Width::Initial(96.0)).groupable(),
-        Column::read(TARGETS.0, "Wired to", Width::Initial(120.0)),
-        Column::read(WIRE.0, "Wire", Width::Initial(64.0)),
-        Column::read(PLACE.0, "Place", Width::Remainder),
-    ]);
-    v
+        Column::set(ADDRESS.0, "Address", Width::Initial(80.0)),
+        Column::set(TAG.0, "Tag", Width::Initial(140.0)),
+        Column::set(TEXT.0, "Description", Width::Initial(200.0)),
+        Column::read(TYPE.0, "Type", Width::Initial(44.0)),
+        Column::set(SAFE.0, "Safe", Width::Initial(60.0)),
+        Column::read(DRIVES.0, "Drives", Width::Initial(120.0)),
+        Column::read(PAGE.0, "Page", Width::Initial(56.0)),
+        Column::read(TEST.0, "Test", Width::Remainder),
+    ]
 }
 
 /// The I/O rows as a table source.
@@ -85,11 +126,26 @@ pub struct IoSource {
     only: Option<ComponentId>,
     /// Inputs are offered (the project can be written).
     pub writable: bool,
+    /// Free channels folded away after the first of a run (`This card` only), and whether the
+    /// user unfolded them.
+    pub folded: usize,
+    pub unfold: bool,
+    shown: std::collections::HashSet<IoKey>,
 }
 
 impl Default for IoSource {
     fn default() -> Self {
-        Self { cols: columns(true), keys: Vec::new(), rows: HashMap::new(), by_card: BTreeMap::new(), only: None, writable: false }
+        Self {
+            cols: columns(true),
+            keys: Vec::new(),
+            rows: HashMap::new(),
+            by_card: BTreeMap::new(),
+            only: None,
+            writable: false,
+            folded: 0,
+            unfold: false,
+            shown: std::collections::HashSet::new(),
+        }
     }
 }
 
@@ -111,13 +167,37 @@ impl IoSource {
         touched
     }
 
-    /// Lay the keys out in card order (only the shown card's in `This card`).
+    /// Lay the keys out in card order (only the shown card's in `This card`, its free channels
+    /// folded after the first of each run unless unfolded; design 056 §4.2).
     fn order(&mut self, cards: &[ComponentId]) {
         let shown: Vec<ComponentId> = match self.only {
             Some(c) => vec![c],
             None => cards.to_vec(),
         };
-        self.keys = shown.iter().flat_map(|c| self.by_card.get(c).cloned().unwrap_or_default()).collect();
+        let all: Vec<IoKey> = shown.iter().flat_map(|c| self.by_card.get(c).cloned().unwrap_or_default()).collect();
+        self.folded = 0;
+        if self.only.is_some() && !self.unfold {
+            let mut keys = Vec::with_capacity(all.len());
+            let mut run = false;
+            for k in all {
+                let free = self.is_free(k);
+                if free && run {
+                    self.folded += 1;
+                    continue;
+                }
+                run = free;
+                keys.push(k);
+            }
+            self.keys = keys;
+        } else {
+            self.keys = all;
+        }
+        self.shown = self.keys.iter().copied().collect();
+    }
+
+    /// A free channel (design 056 §4.2): no tag, no description, not wired.
+    pub fn is_free(&self, k: IoKey) -> bool {
+        self.rows.get(&k).is_some_and(Row::is_free)
     }
 
     /// Show one card's rows (`Some`) or every card's.
@@ -149,13 +229,32 @@ impl TableSource for IoSource {
     }
 
     fn contains(&self, key: IoKey) -> bool {
-        self.only.is_none_or(|c| c == key.0) && self.rows.contains_key(&key)
+        self.only.is_none_or(|c| c == key.0) && self.rows.contains_key(&key) && self.shown.contains(&key)
     }
 
     fn cell(&self, key: IoKey, col: ColumnId) -> Cell {
         let Some(r) = self.rows.get(&key) else { return Cell::Empty };
         let input = |t: String| if self.writable { Cell::Input(t) } else { Cell::read(t) };
+        // Brief 056 (design 056 §4.2): a free channel shows Ch, Address, `free` in Tag, and an
+        // empty Description (typing either reserves it).
+        if self.only.is_some() && self.is_free(key) && !matches!(col, CHANNEL | ADDRESS | TAG | TEXT) {
+            return Cell::Empty;
+        }
         match col {
+            TAG if r.tag.is_none() && self.is_free(key) => input(FREE.into()),
+            TAG => input(r.tag.clone().unwrap_or_default()),
+            SAFE => match r.safe_shown() {
+                Some((s, _)) => input(signals::safe_words(s)),
+                None => Cell::read("\u{2014}"),
+            },
+            TYPE if self.only.is_some() => Cell::read(r.ty),
+            DRIVES => {
+                let (d, _) = signals::drives(&r.targets);
+                let go = d.first().is_some_and(|t| t.page.is_some() && t.at.is_some());
+                Cell::Read { text: signals::drives_words(&r.targets), go }
+            }
+            PAGE => Cell::Read { text: r.place.clone().unwrap_or_else(|| "none".into()), go: r.page.is_some() },
+            TEST => Cell::read(r.test.words()),
             CARD => Cell::read(r.card_tag.clone()),
             RACK => Cell::read(r.rack.clone().unwrap_or_default()),
             SLOT => Cell::read(r.slot.map(|s| s.to_string()).unwrap_or_default()),
@@ -184,6 +283,18 @@ pub fn edit_line(r: &Row, col: ColumnId, value: &str) -> Option<String> {
     let mut p = json!({"card": r.card.hex(), "channel": r.channel});
     match col {
         TEXT => p["text"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) },
+        // Brief 056: the placeholder of a free channel is not a tag.
+        TAG if r.tag.is_none() && (v == FREE || v.is_empty()) => return None,
+        TAG => p["tag"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) },
+        SAFE => {
+            // Inputs have no safe state.
+            r.safe_default.as_ref()?;
+            // The own value typed again changes nothing; the default's value typed sets it here.
+            if r.safe.as_deref().is_some_and(|s| signals::safe_words(s) == v) {
+                return None;
+            }
+            p["safe"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
+        }
         ADDRESS => {
             // The `*` that marks a typed address is not part of it.
             let v = v.strip_suffix('*').unwrap_or(v).trim();
@@ -270,7 +381,11 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     let mut lines = Vec::new();
     let mut acts = Vec::new();
     let page_links = |out: &mut Vec<Link>, acts: &mut Vec<TileLink>| {
-        let words = pages_words(numbers);
+        // Brief 056 (board 2.03): `page 5 →`.
+        let mut words = pages_words(numbers);
+        if let Some(last) = words.last_mut() {
+            last.push_str(" \u{2192}");
+        }
         let many = numbers.len() > 3;
         for (k, w) in words.into_iter().enumerate() {
             let p = if many { t.pages.first() } else { t.pages.get(k) };
@@ -287,7 +402,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     match t.kind {
         TileKind::Free => {
             lines.push(vec![Link {
-                text: "Place a card\u{2026}".into(),
+                text: "Add a card from the catalogue".into(),
                 tone: Tone::Accent,
                 enabled: writable,
                 tip: (!writable).then(|| WRITES_OFF.into()),
@@ -314,8 +429,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
             let mut a = Vec::new();
             // UI rev 3 (board 2.03): how many channels are in use, then the page link.
             if !t.squares.is_empty() {
-                let used = t.squares.iter().filter(|s| **s != Square::Spare).count();
-                parts.push(Link { text: format!("{used} of {} in use", t.squares.len()), tone: Tone::Plain, ..Link::default() });
+                parts.push(Link { text: t.in_use_words(), tone: Tone::Plain, ..Link::default() });
                 a.push(TileLink::None);
             }
             page_links(&mut parts, &mut a);
@@ -331,11 +445,12 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
             acts.push(a);
         }
     }
-    // UI rev 3 (board 2.03): what the card is at the head's right, its addresses under the squares.
+    // Brief 056 (design 056 §3.2): the kind words at the head's right, the description (else the
+    // type name) under the tag, the addresses under the squares; a free slot says so.
     let (kind, info, under) = match t.kind {
-        TileKind::Free => (String::new(), vec![t.what.clone()], String::new()),
-        _ if t.squares.is_empty() => (String::new(), vec![t.what.clone(), t.range.clone()], String::new()),
-        _ => (t.what.clone(), Vec::new(), t.range.clone()),
+        TileKind::Free => (String::new(), vec![format!("{} is free", t.head)], String::new()),
+        _ if t.squares.is_empty() => (t.kind_words.clone(), vec![t.title.clone(), t.range.clone()], String::new()),
+        _ => (t.kind_words.clone(), vec![t.title.clone()], t.range.clone()),
     };
     let tips = match t.card() {
         Some(c) => (0..t.squares.len()).map(|i| tip_words(doc, c, t, i)).collect(),
@@ -343,10 +458,10 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     };
     let tile = strip::Tile {
         name: name.clone(),
-        head: t.head.clone(),
+        head: if t.kind == TileKind::Free { String::new() } else { t.head.clone() },
         kind,
         under,
-        title: t.tag.clone(),
+        title: if t.kind == TileKind::Free { "+".into() } else { t.tag.clone() },
         faint_title: t.kind == TileKind::Free,
         lines: info,
         marks: t.squares.iter().map(|s| mark_of(*s)).collect(),
@@ -403,6 +518,58 @@ pub struct IoView {
     pending: Option<(IoKey, ColumnId)>,
     /// A row to select once the table shows its card.
     pending_reveal: Option<IoKey>,
+    /// Brief 056: the rack heading (design 056 §3.1): `Rack 1` and its line.
+    pub rack_title: String,
+    pub rack_line: String,
+    /// The selected card's header (design 056 §4.1).
+    pub head: Option<CardHead>,
+    /// The path row of Import an I/O list or Export tags.
+    pub path_row: Option<PathRow>,
+    /// An import is running: its refusal shows in the path row; done, the row closes.
+    importing: bool,
+    /// The folder last used, while the app runs.
+    pub folder: String,
+    /// The project's name, for the file name offered.
+    project_name: String,
+    /// The `plcrack` page and its number (the footer's sentence, design 056 §8).
+    pub book_page: Option<(PageId, String)>,
+    /// Lay the rows out again (free channels unfolded).
+    reorder: bool,
+    /// Brief 056: the card editor's fields, and its folded sections (the right panel).
+    pub card_editor: super::card_editor::State,
+    pub card_folded: BTreeSet<String>,
+}
+
+/// The card header's words and targets (design 056 §4.1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardHead {
+    pub card: Option<ComponentId>,
+    pub rack: Option<ComponentId>,
+    /// `-A03 · output card · slot 2`.
+    pub title: String,
+    /// `16 channels, 9 in use, drawn in detail on page 5`.
+    pub words: String,
+    /// `→ Page 5`.
+    pub page: Option<(PageId, String)>,
+}
+
+/// What the path row does (design 056 §6.6, §6.7).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathKind {
+    Import,
+    /// Export the rack of the selected card, or every rack.
+    Export {
+        rack: Option<ComponentId>,
+        all: bool,
+    },
+}
+
+/// The app's path row: the file and its refusal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathRow {
+    pub kind: PathKind,
+    pub path: String,
+    pub error: Option<String>,
 }
 
 impl Default for IoView {
@@ -430,6 +597,17 @@ impl Default for IoView {
             tiles_patched: 0,
             pending: None,
             pending_reveal: None,
+            rack_title: String::new(),
+            rack_line: String::new(),
+            head: None,
+            path_row: None,
+            importing: false,
+            folder: String::new(),
+            project_name: String::new(),
+            book_page: None,
+            reorder: false,
+            card_editor: Default::default(),
+            card_folded: BTreeSet::new(),
         }
     }
 }
@@ -496,7 +674,7 @@ impl IoView {
     /// The table's scope from the selection: the selected card, or every card.
     fn apply_scope(&mut self, cards: &[ComponentId]) {
         let only = if self.all_cards { None } else { self.selected_card() };
-        if only != self.source.only() || self.source.columns().len() != columns(only.is_none()).len() {
+        if only != self.source.only() || self.source.columns().len() != columns(only.is_none()).len() || std::mem::take(&mut self.reorder) {
             self.source.set_scope(only);
             self.source.order(cards);
             self.table.reset();
@@ -533,11 +711,13 @@ impl IoView {
             self.table.reset();
             self.table.update(&self.source, Changed::All);
             self.apply_scope(&cards);
+            self.after_sync(doc, o);
             return;
         }
         if o.plc.updates == self.revision {
             self.renumbered(doc);
             self.apply_scope(&cards);
+            self.after_sync(doc, o);
             return;
         }
         // An update missed (the view was not shown): read everything again.
@@ -590,6 +770,92 @@ impl IoView {
             self.table.update(&self.source, Changed::Keys(touched));
         }
         self.apply_scope(&cards);
+        self.after_sync(doc, o);
+    }
+
+    /// Brief 056: the rack heading, the card header and the book's overview page, from the kept
+    /// model (words only; no rows made).
+    fn after_sync(&mut self, doc: &Document, o: &Outputs) {
+        let plc = &o.plc;
+        self.project_name = doc
+            .properties
+            .get(ecad_cadcraft::frame::TITLE)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "Project".into());
+        // Rack heading (design 056 §3.1).
+        let chip = self.chips.get(self.chip).cloned();
+        (self.rack_title, self.rack_line) = match &chip {
+            Some(Chip::Rack(r, _)) => {
+                let n = plc.racks_by_tag().iter().position(|x| x.id == *r).map_or(1, |k| k + 1);
+                let tags: Vec<&str> = self.tiles.iter().filter(|t| t.kind != TileKind::Free).map(|t| t.tag.as_str()).collect();
+                let span = match (tags.first(), tags.last()) {
+                    (Some(a), Some(b)) if a != b => format!("{a} to {b}"),
+                    (Some(a), _) => (*a).to_string(),
+                    _ => String::new(),
+                };
+                let used = tags.len();
+                let shown = self.tiles.len();
+                (format!("Rack {n}"), format!("{span} \u{b7} {used} of {shown} slots used \u{b7} {}", self.totals))
+            }
+            Some(Chip::NoRack(k)) => ("No rack".into(), format!("{k} {} \u{b7} {}", if *k == 1 { "card" } else { "cards" }, self.totals)),
+            None => (String::new(), String::new()),
+        };
+        // The card header (design 056 §4.1).
+        self.head = if self.all_cards {
+            let cards = iolist::cards_in_order(plc);
+            let (n, used) = overview::totals(&cards);
+            Some(CardHead {
+                card: None,
+                rack: None,
+                title: "All cards".into(),
+                words: format!("{} {}, {}", cards.len(), if cards.len() == 1 { "card" } else { "cards" }, overview::totals_words((n, used))),
+                page: None,
+            })
+        } else {
+            self.selected_card().and_then(|c| plc.cards.get(&c)).map(|card| {
+                let t = self.selected.and_then(|i| self.tiles.get(i));
+                let slot = card.slot.map(|s| format!(" \u{b7} slot {s}")).unwrap_or_default();
+                let used = t.map_or(0, |t| t.squares.iter().filter(|s| **s != Square::Spare).count());
+                let numbers: Vec<String> = t.map(|t| Self::numbers_of(doc, t)).unwrap_or_default();
+                let drawn = match numbers.as_slice() {
+                    [] => "not drawn yet".to_string(),
+                    [one] => format!("drawn in detail on page {one}"),
+                    many => format!("drawn in detail on pages {}", many.join(", ")),
+                };
+                let rack = match card.rack {
+                    ecad_cadcraft::plc::rack::RackRef::Rack(r) => Some(r),
+                    _ => None,
+                };
+                CardHead {
+                    card: Some(card.id),
+                    rack,
+                    title: format!("{} \u{b7} {}{slot}", card.tag, overview::type_name(card.ty).to_lowercase()),
+                    words: format!("{} channels, {used} in use, {drawn}", card.channels),
+                    page: t.and_then(|t| t.pages.first().copied()).zip(numbers.first().cloned()),
+                }
+            })
+        };
+        // The book's overview page (design 056 §8).
+        self.book_page = doc
+            .page_order
+            .iter()
+            .find(|p| ecad_cadcraft::generated::kind_of(doc, **p) == Some(ecad_cadcraft::generated::GenKind::PlcRack))
+            .map(|p| (*p, ecad_cadcraft::references::page_number(doc, *p)));
+    }
+
+    /// The file name offered for a tag table (design 056 §6.6): `<project> PLC tags.csv` in the
+    /// folder last used.
+    fn offered_path(&self) -> String {
+        let name = format!("{} PLC tags.csv", self.project_name);
+        if self.folder.is_empty() { name } else { std::path::Path::new(&self.folder).join(name).to_string_lossy().into_owned() }
+    }
+
+    /// Remember the folder of `path`.
+    fn remember(&mut self, path: &str) {
+        if let Some(d) = std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
+            self.folder = d.to_string_lossy().into_owned();
+        }
     }
 
     /// A page renumbered: the link words of the tiles whose numbers moved.
@@ -627,18 +893,33 @@ impl IoView {
 
     /// The result of the last edit's command: a refusal shows under its cell.
     pub fn ran(&mut self, refusal: Option<String>) {
+        // Brief 056: an import's refusal stays in its path row; done, the row closes.
+        if std::mem::take(&mut self.importing) {
+            match refusal {
+                Some(m) => {
+                    if let Some(r) = self.path_row.as_mut() {
+                        r.error = Some(m);
+                    }
+                }
+                None => self.path_row = None,
+            }
+            return;
+        }
         if let (Some((k, col)), Some(msg)) = (self.pending.take(), refusal) {
             self.table.refuse(k, col, msg);
         }
     }
 
-    /// Draw the chips, the strip, the legend and the table. Returns what it asks for.
+    /// Draw the rack heading, the strip, the card header and the table (or Compare). Returns what
+    /// it asks for.
     pub fn show(&mut self, ui: &mut eframe::egui::Ui) -> Vec<ListAction> {
         use eframe::egui;
         let mut out = Vec::new();
         let s = ecad_ui::SHELL;
         let ty = ecad_ui::tokens::ui_type::BODY;
-        // UI rev 3 (board 2.03): the rack's line (its chips, its totals) and the legend.
+        let small = ecad_ui::tokens::ui_type::SMALL;
+        // Brief 056 (design 056 §3.1): `Rack 1  -A01 to -A06 · 6 of 7 slots used · …`, the legend
+        // and Add a rack at the right; the chips when there is more than one rack.
         ui.add_space(ecad_ui::tokens::space::M);
         ui.horizontal(|ui| {
             ui.add_space(ecad_ui::tokens::space::M);
@@ -650,15 +931,28 @@ impl IoView {
                 if i != self.chip {
                     out.push(ListAction::Chip(i));
                 }
-            } else if let Some(c) = self.chips.first() {
-                let title = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE);
-                ui.label(egui::RichText::new(c.words()).font(title).color(ecad_ui::color(s.text)));
+                ui.add_space(ecad_ui::tokens::space::M);
             }
-            ui.label(egui::RichText::new(&self.totals).size(ty.size).color(ecad_ui::color(s.text_2)));
-            if !self.tiles.is_empty() {
-                ui.add_space(ecad_ui::tokens::space::XXL);
-                strip::legend(ui, &LEGEND);
-            }
+            let title = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE);
+            ui.label(egui::RichText::new(&self.rack_title).font(title).color(ecad_ui::color(s.text)));
+            ui.label(egui::RichText::new(&self.rack_line).size(ty.size).color(ecad_ui::color(s.text_2)));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(ecad_ui::tokens::space::M);
+                let add = ui.push_id(ADD_RACK, |ui| {
+                    ui.add_enabled_ui(self.source.writable, |ui| ecad_ui::prim::button(ui, "Add a rack", ecad_ui::prim::Kind::Secondary)).inner
+                });
+                if add.inner.on_disabled_hover_text(WRITES_OFF).clicked() {
+                    out.push(ListAction::AddRack);
+                }
+                if !self.tiles.is_empty() {
+                    ui.add_space(ecad_ui::tokens::space::M);
+                    // The legend's own width, laid left to right at the right edge.
+                    let w = 300.0_f32.min(ui.available_width());
+                    ui.allocate_ui_with_layout(egui::vec2(w, ui.available_height()), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        strip::legend(ui, &LEGEND)
+                    });
+                }
+            });
         });
         ui.add_space(ecad_ui::tokens::space::S);
         if self.tiles.is_empty() {
@@ -694,32 +988,115 @@ impl IoView {
                 }
             }
         }
-        ui.add_space(ecad_ui::tokens::space::L);
-        // The selected card's line (board 2.03), then the scope switch over the table.
-        ui.horizontal(|ui| {
-            ui.add_space(ecad_ui::tokens::space::M);
-            if let Some(t) = self.selected.and_then(|i| self.tiles.get(i)) {
-                let words = format!("{} \u{b7} {} \u{b7} {}", t.tag, t.what, t.head);
-                let strong = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY_EMPHASIS);
-                ui.label(egui::RichText::new(words).font(strong).color(ecad_ui::color(s.text)));
-                let used = t.squares.iter().filter(|q| **q != Square::Spare).count();
-                let n = t.squares.len();
-                let place = t.place.as_deref().map_or_else(|| "on no page".to_string(), |p| format!("card at {p}"));
-                ui.label(egui::RichText::new(format!("{n} channels, {used} in use, {place}")).size(ty.size).color(ecad_ui::color(s.text_2)));
-                ui.add_space(ecad_ui::tokens::space::L);
-            }
-            let mut i = usize::from(self.all_cards);
-            ui.push_id(SCOPE, |ui| ecad_ui::prim::segmented(ui, &mut i, &[THIS_CARD, ALL_CARDS]));
-            if (i == 1) != self.all_cards {
-                out.push(ListAction::Scope(i == 1));
-            }
+        ui.add_space(ecad_ui::tokens::space::M);
+        let r = ui.available_rect_before_wrap();
+        ui.painter().hline(r.x_range(), r.top(), eframe::egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        ui.add_space(ecad_ui::tokens::space::S);
+        // The card header (design 056 §4.1).
+        ui.push_id(CARD_HEAD, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(ecad_ui::tokens::space::M);
+                if let Some(h) = &self.head {
+                    let strong = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY_EMPHASIS);
+                    ui.label(egui::RichText::new(&h.title).font(strong).color(ecad_ui::color(s.text)));
+                    ui.label(egui::RichText::new(&h.words).size(ty.size).color(ecad_ui::color(s.text_2)));
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(ecad_ui::tokens::space::M);
+                    let Some(h) = self.head.clone() else { return };
+                    if let Some((pg, n)) = &h.page {
+                        let go =
+                            ui.push_id(GO_PAGE, |ui| ecad_ui::prim::button(ui, &format!("\u{2192} Page {n}"), ecad_ui::prim::Kind::Secondary)).inner;
+                        if go.clicked() {
+                            out.push(ListAction::GoToCard(*pg, h.card));
+                        }
+                    }
+                    let ex = ui.push_id(EXPORT_TAGS, |ui| ecad_ui::prim::button(ui, "Export tags", ecad_ui::prim::Kind::Secondary)).inner;
+                    if ex.clicked() {
+                        out.push(ListAction::ExportTags);
+                    }
+                    ui.add_space(ecad_ui::tokens::space::S);
+                    if let Some(c) = h.card {
+                        ui.push_id(MAKE_TAGS, |ui| {
+                            ui.menu_button("\u{2026}", |ui| {
+                                let b = ui.add_enabled(self.source.writable, egui::Button::new("Make tags"));
+                                if b.on_disabled_hover_text(WRITES_OFF).clicked() {
+                                    out.push(ListAction::Run(format!("plcmaketags {}", json!({"card": c.hex()}))));
+                                    ui.close();
+                                }
+                            });
+                        });
+                    }
+                    let mut i = usize::from(self.all_cards);
+                    ui.push_id(SCOPE, |ui| ecad_ui::prim::segmented(ui, &mut i, &[THIS_CARD, ALL_CARDS]));
+                    if (i == 1) != self.all_cards {
+                        out.push(ListAction::Scope(i == 1));
+                    }
+                });
+            });
         });
-        for e in self.table.show(ui, &self.source) {
+        // The path row of Import tags or Export tags (design 056 §6.6, §6.7).
+        if let Some(row) = self.path_row.as_mut() {
+            let mut close = false;
+            ui.horizontal(|ui| {
+                ui.add_space(ecad_ui::tokens::space::M);
+                let label = match row.kind {
+                    PathKind::Import => "Fill tags and descriptions from",
+                    PathKind::Export { .. } => "Save the tag table as",
+                };
+                ui.label(egui::RichText::new(label).size(ty.size).color(ecad_ui::color(s.text_2)));
+                // Three label columns wide: room for a path, in the components' sizes.
+                ecad_ui::control::TextEntry::new(&mut row.path, "Tag table file")
+                    .placeholder("Tag table file")
+                    .width(3.0 * ecad_ui::tokens::size::LABEL_COLUMN)
+                    .show(ui);
+                let ok = match &mut row.kind {
+                    PathKind::Import => ecad_ui::prim::button(ui, "Import", ecad_ui::prim::Kind::Primary).clicked(),
+                    PathKind::Export { all, .. } => {
+                        ecad_ui::control::Toggle::new(all, "All racks").show(ui);
+                        ui.label(egui::RichText::new("All racks").size(ty.size).color(ecad_ui::color(s.text_2)));
+                        ecad_ui::prim::button(ui, "Export", ecad_ui::prim::Kind::Primary).clicked()
+                    }
+                };
+                if ecad_ui::prim::button(ui, "Cancel", ecad_ui::prim::Kind::Quiet).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+                if ok && !row.path.trim().is_empty() {
+                    out.push(ListAction::PathOk);
+                }
+                if let Some(e) = &row.error {
+                    ui.label(egui::RichText::new(e).size(small.size).color(ecad_ui::color(s.error)));
+                }
+            });
+            if close {
+                self.path_row = None;
+            }
+        }
+        let folded = self.source.folded;
+        // With channels folded, the table is as tall as its rows, so `6 more free channels.`
+        // sits under the last one (board 2.03); else it takes the room left.
+        let events = if folded > 0 {
+            let rows = self.source.keys().len() as f32 + 1.0;
+            let h = (rows * TABLE_ROW_PX + ecad_ui::tokens::space::M).min((ui.available_height() - 2.0 * TABLE_ROW_PX).max(TABLE_ROW_PX));
+            ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
+                ui.set_max_height(h);
+                self.table.show(ui, &self.source)
+            })
+            .inner
+        } else {
+            self.table.show(ui, &self.source)
+        };
+        for e in events {
             match e {
                 TableEvent::Commit { key, col, value } if self.source.writable => {
                     if let Some(line) = self.source.row(key).and_then(|r| edit_line(r, col, &value)) {
                         self.pending = Some((key, col));
                         out.push(ListAction::Run(line));
+                    }
+                }
+                TableEvent::GoTo { key, col } if col == DRIVES => {
+                    if let Some((pg, at)) = self.source.row(key).and_then(|r| signals::drives(&r.targets).0.first().and_then(|t| t.page.zip(t.at))) {
+                        out.push(ListAction::GoTo(pg, at));
                     }
                 }
                 TableEvent::GoTo { key, .. } | TableEvent::Open(key) => {
@@ -738,16 +1115,32 @@ impl IoView {
                 TableEvent::Commit { .. } | TableEvent::Selected(_) | TableEvent::Button { .. } => {}
             }
         }
+        // `6 more free channels.` (design 056 §4.2): a click unfolds them.
+        if folded > 0 {
+            ui.horizontal(|ui| {
+                ui.add_space(ecad_ui::tokens::space::M);
+                let words = if folded == 1 { "1 more free channel.".to_string() } else { format!("{folded} more free channels.") };
+                let r = ui.push_id(MORE_FREE, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(words).size(ty.size).color(ecad_ui::color(s.text_3))).sense(egui::Sense::click()))
+                });
+                if r.inner.clicked() {
+                    out.push(ListAction::Unfold);
+                }
+            });
+        }
         out
     }
 
-    /// Act on what [`IoView::show`] asked that the view itself answers (tile, chip, scope, reveal);
-    /// the rest goes back to the trial.
+    /// Act on what [`IoView::show`] asked that the view itself answers (tile, chip, scope, reveal,
+    /// Compare, the path row); the rest goes back to the trial.
     pub fn handle(&mut self, a: ListAction) -> Option<ListAction> {
         match a {
             ListAction::Tile(i) => {
                 let changed = self.selected != Some(i);
                 self.select(i);
+                if changed {
+                    self.source.unfold = false;
+                }
                 // The card's symbols selected on its first page: the inspector shows the card.
                 let reps = self.symbols.get(i).cloned().unwrap_or_default();
                 (changed && !reps.is_empty()).then_some(ListAction::Panel(crate::project_panel::Action::GotoSymbols(reps)))
@@ -763,6 +1156,44 @@ impl IoView {
             ListAction::Reveal(key) => {
                 self.pending_reveal = Some(key);
                 None
+            }
+            ListAction::Unfold => {
+                self.source.unfold = true;
+                self.reorder = true;
+                None
+            }
+            ListAction::ImportTags => {
+                let path = if self.folder.is_empty() { String::new() } else { format!("{}{}", self.folder, std::path::MAIN_SEPARATOR) };
+                self.path_row = Some(PathRow { kind: PathKind::Import, path, error: None });
+                None
+            }
+            ListAction::ExportTags => {
+                let rack = self.head.as_ref().and_then(|h| h.rack);
+                self.path_row = Some(PathRow { kind: PathKind::Export { rack, all: rack.is_none() }, path: self.offered_path(), error: None });
+                None
+            }
+            ListAction::PathOk => {
+                let row = self.path_row.clone()?;
+                let path = row.path.trim().to_string();
+                self.remember(&path);
+                match row.kind {
+                    // Brief 056 (owner, 2026-11-14): one way, one transaction; `u` undoes it.
+                    PathKind::Import => {
+                        self.importing = true;
+                        if let Some(r) = self.path_row.as_mut() {
+                            r.error = None;
+                        }
+                        Some(ListAction::Run(format!("plcimport {}", json!({"path": path}))))
+                    }
+                    PathKind::Export { rack, all } => {
+                        self.path_row = None;
+                        let mut p = json!({"path": path});
+                        if let (Some(r), false) = (rack, all) {
+                            p["rack"] = json!(r.hex());
+                        }
+                        Some(ListAction::Run(format!("plcexport {p}")))
+                    }
+                }
             }
             other => Some(other),
         }

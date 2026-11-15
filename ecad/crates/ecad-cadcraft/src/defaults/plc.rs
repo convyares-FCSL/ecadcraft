@@ -203,7 +203,7 @@ pub static ADDRESS_STYLE: Entry = Entry {
     label: "Address style",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(&["byte.bit", "iec", "slot", "none"]),
+    kind: Kind::Choice(&["byte.bit", "iec", "percent", "slot", "none"]),
     builtin: Value::Choice("byte.bit"),
     levels: SPO,
     project: ProjectSource::Property,
@@ -351,6 +351,30 @@ pub static PAGE_TITLE: Entry = Entry {
     project: ProjectSource::Property,
 };
 
+/// Brief 056 (design 056 §4.4, §11): what a digital output does when the PLC stops.
+pub static SAFE_DQ: Entry = Entry {
+    key: "plc.safe.dq",
+    label: "Safe state of a digital output",
+    group: GROUP,
+    brief: "056",
+    kind: Kind::Choice(&["off", "on", "hold"]),
+    builtin: Value::Choice("off"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
+/// Brief 056: what an analogue output does when the PLC stops: `hold`, `min`, `max` or a value.
+pub static SAFE_AO: Entry = Entry {
+    key: "plc.safe.ao",
+    label: "Safe state of an analogue output",
+    group: GROUP,
+    brief: "056",
+    kind: Kind::Text { max_chars: 16 },
+    builtin: Value::Text("hold"),
+    levels: SPO,
+    project: ProjectSource::Property,
+};
+
 /// Every entry of this file, in the order `defaults` lists them.
 pub static ENTRIES: &[&Entry] = &[
     &SLOTS,
@@ -388,6 +412,9 @@ pub static ENTRIES: &[&Entry] = &[
     // Brief 051.
     &FRAME_SHOW,
     &PAGE_TITLE,
+    // Brief 056.
+    &SAFE_DQ,
+    &SAFE_AO,
 ];
 
 #[cfg(test)]
