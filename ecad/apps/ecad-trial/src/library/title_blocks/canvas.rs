@@ -7,7 +7,7 @@ use ecad_cadcraft::title_block::bind;
 use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextLook, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
 use ecad_ui::tokens::{space, ui_type};
-use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
+use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
 
 use super::draft::{self, Draft};
 use super::list::{Drops, PALETTE};
@@ -239,8 +239,14 @@ fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, 
         Align::Centre => (r.x + r.w / 2.0, Align2::CENTER_CENTER),
         Align::Right => (r.right() - 1.0, Align2::RIGHT_CENTER),
     };
-    let font = if look.bold { FontId::new(px * wf as f32, egui::FontFamily::Name("bold".into())) } else { FontId::proportional(px * wf as f32) };
-    let font = if p.ctx().fonts(|f| f.families().contains(&font.family)) { font } else { FontId::proportional(px * wf as f32) };
+    // Bold in the UI's emphasis face, at the drawing's size (fonts come through ecad-ui).
+    let font = if look.bold {
+        let mut f = ecad_ui::fonts::font(p.ctx(), ui_type::BODY_EMPHASIS);
+        f.size = px * wf as f32;
+        f
+    } else {
+        ecad_ui::style::ui_font(px * wf as f32)
+    };
     p.text(v.at(x, y), align, shown, font, ink);
     cut
 }
@@ -278,7 +284,7 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
                 let mut gap = 0.0;
                 if let Some(l) = label.as_deref().filter(|l| !l.is_empty()) {
                     let px = (1.8 * v.k / 0.72).max(4.0);
-                    p.text(v.at(at.x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, l, FontId::proportional(px), ink2);
+                    p.text(v.at(at.x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, l, ecad_ui::style::ui_font(px), ink2);
                     gap = 1.8 + 1.5;
                 }
                 let (value, name) = field_text(sample, sample_on, b, if_empty);
@@ -298,7 +304,7 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
                 if prims.is_empty() {
                     if marks {
                         dashed_rect(p, r.shrink(1.0), Stroke::new(1.0, accent));
-                        p.text(r.center(), Align2::CENTER_CENTER, "Logo", FontId::proportional(13.0), accent);
+                        p.text(r.center(), Align2::CENTER_CENTER, "Logo", ecad_ui::style::ui_font(13.0), accent);
                     }
                 } else {
                     paint_logo(p, v, at, prims, ink);
@@ -344,7 +350,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
             p.line_segment([v.at(x, at.y), v.at(x, at.top())], thin);
         }
         if header {
-            p.text(v.at(x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, &c.header, FontId::proportional(px), ink2);
+            p.text(v.at(x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, &c.header, ecad_ui::style::ui_font(px), ink2);
         }
         if let Some(s) = sample {
             for (k, rev) in s.input.revisions.iter().take(usize::from(rows)).enumerate() {
@@ -355,7 +361,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
                 let y = at.top() - rh * (row + usize::from(header)) as f64 - rh / 2.0;
                 if let Some(val) = rev.get(i) {
                     let (shown, _) = ecad_cadcraft::frame::fit(val, 2.5, Some(w - 2.0));
-                    p.text(v.at(x + 1.0, y), Align2::LEFT_CENTER, shown, FontId::proportional(vpx), ink);
+                    p.text(v.at(x + 1.0, y), Align2::LEFT_CENTER, shown, ecad_ui::style::ui_font(vpx), ink);
                 }
             }
         }
@@ -403,7 +409,7 @@ fn paint_logo(p: &egui::Painter, v: View, at: &BRect, prims: &[Primitive], ink: 
                 p.add(Shape::line(pts, st));
             }
             Primitive::Text { at: t, height, value, .. } => {
-                p.text(q(t), Align2::LEFT_BOTTOM, value, FontId::proportional(((height * s) as f32 * v.k / 0.72).max(3.0)), ink);
+                p.text(q(t), Align2::LEFT_BOTTOM, value, ecad_ui::style::ui_font(((height * s) as f32 * v.k / 0.72).max(3.0)), ink);
             }
             Primitive::Point { .. } => {}
         }
@@ -540,8 +546,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_ui::tok
         ui.painter().rect(pop, 6.0, c32(s.raised), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
         ui.scope_builder(egui::UiBuilder::new().max_rect(pop.shrink(space::S)), |ui| {
             ui.label(egui::RichText::new("A DXF drawing for the logo").small().color(c32(s.text_2)));
-            let f = ui.add(egui::TextEdit::singleline(&mut ask.path).hint_text("C:\\logos\\company.dxf").desired_width(f32::INFINITY));
-            f.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, LOGO_PATH));
+            ecad_ui::control::TextEntry::new(&mut ask.path, LOGO_PATH).placeholder("C:\\logos\\company.dxf").show(ui);
             if let Some(e) = &ask.error {
                 ui.label(egui::RichText::new(e).small().color(c32(s.error)));
             }
@@ -621,7 +626,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_ui::tok
             let ghost = Rect::from_min_size(pt, vec2(sw as f32 * k, sh as f32 * k));
             let p = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("tb.ghost")));
             dashed_rect(&p, ghost, Stroke::new(1.5, accent));
-            p.text(ghost.left_top() + vec2(4.0, 4.0), Align2::LEFT_TOP, row.label, FontId::proportional(12.0), accent);
+            p.text(ghost.left_top() + vec2(4.0, 4.0), Align2::LEFT_TOP, row.label, ecad_ui::style::ui_font(12.0), accent);
         }
         if ui.input(|i| i.pointer.any_released()) {
             ed.canvas.palette = None;

@@ -22,6 +22,8 @@ pub const BOLD: &str = "library.tb.inspector.look.bold";
 pub const ALIGN: &str = "library.tb.inspector.look.align";
 pub const COLOUR: &str = "library.tb.inspector.look.colour";
 pub const TEXT: &str = "library.tb.inspector.look.text";
+/// The "If empty" text (Text…).
+pub const IFEMPTY_TEXT: &str = "library.tb.inspector.value.ifempty_text";
 pub const BOX: [&str; 4] = ["library.tb.inspector.box.x", "library.tb.inspector.box.y", "library.tb.inspector.box.w", "library.tb.inspector.box.h"];
 pub const ROWS: &str = "library.tb.inspector.box.rows";
 pub const HEADER: &str = "library.tb.inspector.box.header";
@@ -136,24 +138,27 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Filled from").small().color(c32(s.text_2)));
                     let mut pick = None;
-                    let cb = egui::ComboBox::from_id_salt(SOURCE).selected_text(format!("{} ▸ {}", capital(bind::chip(b)), bind::name(b))).show_ui(
-                        ui,
-                        |ui| {
-                            for (group, items) in sources() {
-                                ui.label(RichText::new(group).small().color(c32(s.text_3)));
-                                for (bt, name) in items {
-                                    if ui.selectable_label(b.text() == bt, name).clicked() {
-                                        pick = Some(Binding::parse(bt));
-                                    }
-                                }
-                            }
-                            ui.separator();
-                            if ui.button("Project field…").clicked() {
-                                pick = Some(Binding::new(ecad_model::title_block::Source::Project, ""));
-                            }
-                        },
-                    );
-                    cb.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, SOURCE));
+                    // The bindings, grouped by their source, then Project field… (a free key).
+                    let mut binds: Vec<&'static str> = Vec::new();
+                    let mut labels: Vec<String> = Vec::new();
+                    for (group, items) in sources() {
+                        for (bt, name) in items {
+                            binds.push(bt);
+                            labels.push(format!("{group} ▸ {name}"));
+                        }
+                    }
+                    labels.push("Project field…".to_string());
+                    let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+                    let current = format!("{} ▸ {}", capital(bind::chip(b)), bind::name(b));
+                    let mut i = binds.iter().position(|x| *x == b.text()).unwrap_or(usize::MAX);
+                    let r = ecad_ui::control::Select::new(&mut i, &options, SOURCE).placeholder(&current).show(ui);
+                    if r.changed() {
+                        pick = match binds.get(i) {
+                            Some(bt) => Some(Binding::parse(bt)),
+                            None if i == binds.len() => Some(Binding::new(ecad_model::title_block::Source::Project, "")),
+                            None => None,
+                        };
+                    }
                     if let Some(nb) = pick {
                         if nb.key.is_empty() {
                             ed.project_key = Some(String::new());
@@ -207,7 +212,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 });
                 if let IfEmpty::Text(t) = if_empty {
                     let mut text = t.clone();
-                    let r = ui.add(egui::TextEdit::singleline(&mut text).char_limit(ecad_model::title_block::MAX_IF_EMPTY_TEXT).hint_text("n/a"));
+                    let r = ecad_ui::control::TextEntry::new(&mut text, IFEMPTY_TEXT).placeholder("n/a").show(ui);
+                    limit(&mut text, ecad_model::title_block::MAX_IF_EMPTY_TEXT);
                     if r.changed() {
                         set_fields(d, &sel, |it| {
                             if let BlockItem::Field { if_empty: x, .. } = it {
@@ -228,9 +234,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 if let BlockItem::Text { text, .. } = &item {
                     ui.label(RichText::new("Text").small().color(c32(s.text_2)));
                     let mut t = text.clone();
-                    let r =
-                        ui.add(egui::TextEdit::singleline(&mut t).char_limit(ecad_model::title_block::MAX_BODY_TEXT).desired_width(f32::INFINITY));
-                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, TEXT));
+                    let r = ecad_ui::control::TextEntry::new(&mut t, TEXT).show(ui);
+                    limit(&mut t, ecad_model::title_block::MAX_BODY_TEXT);
                     if edit_text == Some(first) {
                         r.request_focus();
                     }
@@ -252,8 +257,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                         let r = ui.checkbox(&mut on, "Label");
                         r.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, on, LABEL));
                         let mut text = label.clone().unwrap_or_default();
-                        let t = ui.add_enabled(on, egui::TextEdit::singleline(&mut text).char_limit(ecad_model::title_block::MAX_BODY_TEXT));
-                        t.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, on, LABEL_TEXT));
+                        let t = ui.add_enabled_ui(on, |ui| ecad_ui::control::TextEntry::new(&mut text, LABEL_TEXT).show(ui)).inner;
+                        limit(&mut text, ecad_model::title_block::MAX_BODY_TEXT);
                         if r.changed() || t.changed() {
                             let new = on.then(|| text.clone());
                             set_fields(d, &sel, |it| {
@@ -411,6 +416,13 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
     acts
 }
 
+/// Keep `text` to at most `max` characters (the bounds the entries kept before #113's components).
+fn limit(text: &mut String, max: usize) {
+    if text.chars().count() > max {
+        *text = text.chars().take(max).collect();
+    }
+}
+
 fn capital(w: &str) -> String {
     let mut c = w.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
@@ -553,8 +565,8 @@ fn block_panel(
     ui.add_space(space::M);
     ui.label(RichText::new("Name").small().color(c32(s.text_2)));
     let mut name = d.now.name.clone();
-    let r = ui.add(egui::TextEdit::singleline(&mut name).char_limit(ecad_model::style::MAX_NAME_CHARS).desired_width(f32::INFINITY));
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, NAME));
+    let r = ecad_ui::control::TextEntry::new(&mut name, NAME).show(ui);
+    limit(&mut name, ecad_model::style::MAX_NAME_CHARS);
     if r.changed() && ecad_model::style::is_name(&name) {
         d.now.name = name;
     }

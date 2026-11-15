@@ -173,8 +173,7 @@ pub fn show(ctx: &egui::Context, ed: &mut Editor) {
                 });
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Colour").small().color(c32(s.text_2)));
-                    let c = ui.add(egui::TextEdit::singleline(&mut edit.colour).desired_width(90.0).hint_text("none, RD, #333333"));
-                    c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, COLOUR));
+                    ecad_ui::control::TextEntry::new(&mut edit.colour, COLOUR).placeholder("none, RD, #333333").width(90.0).show(ui);
                 });
             });
             // The preview: the whole sheet with the block in place.
@@ -216,8 +215,9 @@ fn preview(ui: &egui::Ui, r: Rect, e: &FrameEdit, block: Option<(f64, f64)>) {
     let k = (f64::from(r.width()) / w).min(f64::from(r.height()) / h) as f32;
     let paper = Rect::from_center_size(r.center(), vec2(w as f32 * k, h as f32 * k));
     let p = ui.painter();
-    let ink = Color32::from_rgb(0x30, 0x30, 0x30);
-    p.rect_filled(paper, 0.0, Color32::from_rgb(0xf6, 0xf4, 0xee));
+    // The thumbnail is drawn on paper, in ink (the sheet tokens).
+    let ink = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.ink);
+    p.rect_filled(paper, 0.0, ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet));
     let m = e.margins;
     let frame = Rect::from_min_max(paper.min + vec2(m.left as f32 * k, m.top as f32 * k), paper.max - vec2(m.right as f32 * k, m.bottom as f32 * k));
     p.rect_stroke(frame, 0.0, Stroke::new(1.0, ink), egui::StrokeKind::Middle);
