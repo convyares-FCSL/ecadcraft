@@ -552,13 +552,16 @@ impl ProjectProps {
                     control::read_text(ui, &format!("k5 is written {example}"), Decor::default(), "ecad.project.props.tag_example")
                 });
             });
-            ui.horizontal_wrapped(|ui| {
-                ui.add_space(size::LABEL_COLUMN);
-                for (k, v) in self.prefixes.iter_mut() {
-                    prim::caption(ui, k.as_str());
-                    TextEntry::new(v, &format!("ecad.projectsettings.prefix.{k}")).width(SHORT_W).show(ui);
-                    ui.add_space(space::S);
-                }
+            prim::property_row(ui, "Prefixes", |ui| {
+                egui::Grid::new("ecad.projectsettings.prefixes").num_columns(4).spacing([space::S, 0.0]).show(ui, |ui| {
+                    for (i, (k, v)) in self.prefixes.iter_mut().enumerate() {
+                        prim::body(ui, k.as_str(), true);
+                        TextEntry::new(v, &format!("ecad.projectsettings.prefix.{k}")).width(SHORT_W).show(ui);
+                        if i % 2 == 1 {
+                            ui.end_row();
+                        }
+                    }
+                });
             });
         });
         // Brief 033 (design 033 §6.2, §7.1): the pending marker and the revision columns.
@@ -1013,7 +1016,7 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
         let id = ui.make_persistent_id(&name);
         let shown = if row.varies || row.inherited { String::new() } else { row.value.clone() };
         let mut buf = ui.data_mut(|d| d.get_temp::<String>(id)).unwrap_or_else(|| shown.clone());
-        let width = ui.available_width() - if row.choices.is_empty() { 0.0 } else { size::CONTROL };
+        let width = ui.available_width() - space::M - if row.choices.is_empty() { 0.0 } else { size::CONTROL };
         let placeholder = if row.varies || row.inherited { row.value.as_str() } else { "" };
         let resp = TextEntry::new(&mut buf, &name).placeholder(placeholder).invalid(error.as_ref().map(|_| "")).width(width).show(ui);
         let mut commit: Option<String> = None;

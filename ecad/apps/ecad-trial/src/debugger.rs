@@ -424,7 +424,7 @@ impl Debugger {
     pub fn show(&mut self, ui: &mut egui::Ui) -> Option<Action> {
         let mut action = None;
         ui.horizontal(|ui| {
-            prim::heading(ui, "ECAD debugger (read-only)");
+            prim::body(ui, "ECAD debugger (read-only)", false);
             if ui.add(Button::new("Refresh").small()).on_hover_text("Take a new snapshot now").clicked() {
                 action = Some(Action::Refresh);
             }
