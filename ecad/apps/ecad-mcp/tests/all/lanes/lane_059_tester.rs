@@ -143,3 +143,46 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     assert_eq!(doc.cables[&ka].members.len(), 3);
     assert!(doc.cables[&ka].properties.contains_key("end.from.location"));
 }
+
+/// 059 full over MCP: + Cable, edits (glands from the type, overridden per end) and Remove are each
+/// one agent transaction, undone and redone exactly; a drawn cable's Remove writes nothing.
+#[test]
+fn t4_cable_manager_actions_are_one_transaction_each_with_exact_undo_and_redo() {
+    let dir = TempDir::new("tester059d");
+    let (mut c, _) = writer(&dir, "Actions 059.ecad");
+    for x in [0, 10] {
+        c.exec("wire", json!({"points": [[x, 0], [x, 50]]}));
+    }
+    let ty = c.exec("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth MCP", "fields": {"cores": "3G", "gland": "M20"}}));
+    let exact = |c: &mut Client, cmd: &str, params: Value, label: &str| -> Value {
+        let before = c.doc();
+        let n = c.log().len();
+        let v = c.exec(cmd, params.clone());
+        let log = c.log();
+        assert_eq!(log.len(), n + 1, "{cmd}: one transaction");
+        assert_eq!(log.last().unwrap().label, label);
+        assert_eq!(log.last().unwrap().author, ecad_model::Author::Agent(crate::mcp_contracts::AGENT.into()));
+        let after = c.doc();
+        c.exec("u", json!({}));
+        assert!(c.doc() == before, "{cmd}: undo exact");
+        c.exec("redo", json!({}));
+        assert!(c.doc() == after, "{cmd}: redo exact");
+        v
+    };
+    let k = exact(&mut c, "cablenew", json!({"cable_type": ty["id"]}), "Create cable")["cable"].as_str().unwrap().to_string();
+    exact(&mut c, "cableedit", json!({"cable": k, "set": {"to": {"gland": "M25"}, "length": 4}}), "Edit cable");
+    let doc = c.doc();
+    let kid = ecad_model::CableId::parse(&k).unwrap();
+    assert_eq!(ecad_cadcraft::cable_cmds::gland(&doc, kid, ecad_cadcraft::cable_cmds::Side::From).map(|g| g.0).as_deref(), Some("M20"));
+    assert_eq!(ecad_cadcraft::cable_cmds::gland(&doc, kid, ecad_cadcraft::cable_cmds::Side::To).map(|g| g.0).as_deref(), Some("M25"));
+    let spare = exact(&mut c, "cablenew", json!({}), "Create cable")["cable"].as_str().unwrap().to_string();
+    exact(&mut c, "cableremove", json!({"cable": spare}), "Remove cable");
+    exact(&mut c, "cableslash", json!({"from": [-5, 25], "to": [15, 25], "cable": k}), "Cable slash");
+    let n = c.log().len();
+    let m = c.refused("execute", json!({"command": "cableremove", "params": {"cable": k}}));
+    assert!(m.contains("is drawn on"), "{m}");
+    assert_eq!(c.log().len(), n, "nothing recorded");
+    let m = c.refused("execute", json!({"command": "cableedit", "params": {"cable": k, "set": {"from": {"gland": "M\u{202e}20"}}}}));
+    assert!(unbounded(&m, "gland").is_none(), "{m}");
+    assert_eq!(c.log().len(), n);
+}

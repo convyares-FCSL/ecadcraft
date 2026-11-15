@@ -822,3 +822,249 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
     assert!(kept == built, "kept checks equal a rebuild");
     assert!(rows == fresh, "kept cable rows equal a rebuild");
 }
+
+// ================================================================ 059 full (059b, 059c, 059d)
+
+/// A cable slashed on page 1 with a reference there, continued on page 2 (032): drawn on two
+/// pages. Returns (cable, page 1, page 2).
+fn on_two_pages(h: &mut H) -> (CableId, ecad_model::PageId, ecad_model::PageId) {
+    let p1 = h.first_page();
+    for y in [0.0, 5.0, 10.0] {
+        h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
+    }
+    let w: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18]})).unwrap(), "cable");
+    h.run("cableref", json!({"cable": w.hex(), "at": [65, 5]})).unwrap();
+    let p2: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.activate(p2);
+    h.run("cablecontinue", json!({"cable": w.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap_or_else(|e| panic!("cablecontinue: {e}"));
+    (w, p1, p2)
+}
+
+#[test]
+fn f1_removing_a_cable_drawn_on_two_pages_names_both_with_a_go_to_each() {
+    let mut h = H::new(59_901);
+    let (w, p1, p2) = on_two_pages(&mut h);
+    let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
+    assert!(e.contains("is drawn on") && e.contains(" and ") && e.contains("Delete it on its page."), "{e}");
+    bounded(&e, "Drawn, two pages");
+    match cable_cmds::check_remove(&h.doc(), w) {
+        Err(CableError::Drawn { pages, .. }) => {
+            let ids: Vec<ecad_model::PageId> = pages.iter().map(|p| p.0).collect();
+            assert_eq!(ids, vec![p1, p2], "one Go to per page, in book order: {pages:?}");
+            assert!(pages.iter().all(|p| !p.1.is_empty()));
+            assert!(e.contains(&pages[0].1) && e.contains(&pages[1].1), "the words name both places: {e} / {pages:?}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Page `page`'s location set to `code`.
+fn page_at(h: &mut H, page: ecad_model::PageId, code: &str) {
+    h.run("pageprops", json!({"page": page.hex(), "location": code})).unwrap_or_else(|e| panic!("pageprops: {e}"));
+}
+
+#[test]
+fn f2_the_picker_lists_not_drawn_first_matches_marked_then_drawn_not_slashed_here() {
+    let mut h = H::new(59_902);
+    let p1 = h.first_page();
+    // A drawn cable slashed on page 1 (absent from page 1's picker), and one on page 2.
+    wires(&mut h, 2);
+    let here: CableId = id(&slash_across(&mut h, (-5.0, 25.0), (15.0, 25.0), None).unwrap(), "cable");
+    let p2: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page");
+    h.activate(p2);
+    wires(&mut h, 1);
+    let elsewhere: CableId = id(&slash_across(&mut h, (-5.0, 25.0), (5.0, 25.0), None).unwrap(), "cable");
+    h.activate(p1);
+    // Not drawn: -W10 plans nothing, -W11 plans its field end at +CAB1, -W12 its cabinet end.
+    let a = new_cable(&mut h, json!({"tag": "-W10"}));
+    let b = new_cable(&mut h, json!({"tag": "-W11", "to": {"location": "+CAB1"}}));
+    let c = new_cable(&mut h, json!({"tag": "-W12", "from": {"location": "+CAB1"}, "type": "Synth 4G1"}));
+    page_at(&mut h, p1, "+CAB1");
+    let items = cable_cmds::picker(&h.doc(), p1);
+    let order: Vec<CableId> = items.iter().map(|i| i.cable).collect();
+    assert!(!order.contains(&here), "a cable slashed on this page is absent: {items:?}");
+    assert_eq!(order, vec![b, c, a, elsewhere], "matches, then other not drawn, then drawn: {items:?}");
+    assert!(items[0].matches && items[1].matches && !items[2].matches && !items[3].matches, "{items:?}");
+    assert!(!items[0].drawn && !items[2].drawn && items[3].drawn);
+    assert!(items[1].line.contains("Synth 4G1") && items[1].line.contains("+CAB1"), "{:?}", items[1].line);
+    // A cable once assigned here leaves the picker of this page.
+    for x in [200.0, 210.0] {
+        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 50.0)])})).unwrap();
+    }
+    slash_across(&mut h, (195.0, 25.0), (215.0, 25.0), Some(a)).unwrap();
+    let items = cable_cmds::picker(&h.doc(), p1);
+    assert!(!items.iter().any(|i| i.cable == a), "slashed here now: absent");
+}
+
+fn typed(h: &mut H, tokens: &[&str]) {
+    for t in tokens {
+        h.cmdline(t);
+    }
+}
+
+#[test]
+fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
+    let mut h = H::new(59_903);
+    let ws = wires(&mut h, 3);
+    let k = new_cable(&mut h, json!({"tag": "-W05", "cores": "BN,BK,GY,GNYE"}));
+    let head = h.head();
+    typed(&mut h, &["cableslash", "Cable", "-W05", "25,25", "-5,25"]);
+    assert!(h.s.running.is_none(), "the slash finished");
+    assert_eq!(h.head(), head + 1, "one transaction");
+    let (label, ops) = last_tx(&mut h);
+    assert_eq!(label, "Cable slash");
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    let doc = h.doc();
+    let members: Vec<(ConductorId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
+    h.run("u", json!({})).unwrap();
+    assert!(!cable_cmds::is_drawn(&h.doc(), k), "one undo: not drawn again");
+}
+
+#[test]
+fn f3_the_slash_tool_makes_a_new_cable_with_the_next_free_w_by_default_and_by_new() {
+    let mut h = H::new(59_904);
+    wires(&mut h, 4);
+    new_cable(&mut h, json!({"tag": "-W01"}));
+    new_cable(&mut h, json!({"tag": "-W02"}));
+    let before: Vec<CableId> = h.doc().cables.keys().copied().collect();
+    typed(&mut h, &["cableslash", "-5,25", "5,25"]);
+    let doc = h.doc();
+    let made: Vec<CableId> = doc.cables.keys().filter(|k| !before.contains(k)).copied().collect();
+    assert_eq!(made.len(), 1);
+    assert_eq!(tag_of(&doc, made[0]).as_deref(), Some("-W03"), "default: New cable, next free -W");
+    let before: Vec<CableId> = doc.cables.keys().copied().collect();
+    typed(&mut h, &["cableslash", "Cable", "New", "15,25", "35,25"]);
+    let doc = h.doc();
+    let made: Vec<CableId> = doc.cables.keys().filter(|k| !before.contains(k)).copied().collect();
+    assert_eq!(made.len(), 1);
+    assert_eq!(tag_of(&doc, made[0]).as_deref(), Some("-W04"));
+    // The not-drawn -W01 and -W02 stay not drawn.
+    assert_eq!(cable_cmds::not_drawn(&doc).len(), 2);
+}
+
+#[test]
+fn f3_esc_after_picking_writes_nothing_and_a_cable_slashed_here_is_refused_at_the_pick() {
+    let mut h = H::new(59_905);
+    wires(&mut h, 2);
+    new_cable(&mut h, json!({"tag": "-W05", "cores": "3G"}));
+    let head = h.head();
+    let before = h.doc();
+    typed(&mut h, &["cableslash", "Cable", "-W05", "-5,25"]);
+    h.s.input(cadcraft_engine::Input::Cancel).unwrap();
+    assert!(h.s.running.is_none());
+    assert_eq!(h.head(), head, "Esc writes nothing");
+    assert!(h.doc() == before);
+    // Slashed here: the pick is refused (032: one slash per page), nothing written.
+    typed(&mut h, &["cableslash", "Cable", "-W05", "-5,25", "15,25"]);
+    let head = h.head();
+    h.cmdline("cableslash");
+    h.cmdline("Cable");
+    let r = h.s.cmdline("-W05");
+    let _ = h.s.input(cadcraft_engine::Input::Cancel);
+    assert_eq!(h.head(), head, "nothing written: {r:?}");
+}
+
+#[test]
+fn f3_more_wires_than_free_cores_at_the_tool_is_refused_and_writes_nothing() {
+    let mut h = H::new(59_906);
+    wires(&mut h, 4);
+    new_cable(&mut h, json!({"tag": "-W05", "cores": "2X"}));
+    let head = h.head();
+    h.cmdline("cableslash");
+    h.cmdline("Cable");
+    h.cmdline("-W05");
+    h.cmdline("-5,25");
+    let _ = h.s.cmdline("35,25");
+    let _ = h.s.input(cadcraft_engine::Input::Cancel);
+    assert_eq!(h.head(), head, "refused: nothing written");
+}
+
+// ---------------------------------------------------------------- 059d glands
+
+#[test]
+fn f4_glands_default_from_the_cable_type_and_are_overridden_per_end() {
+    let mut h = H::new(59_907);
+    let ty = synth_type(&mut h, "Synth Gland", json!({"cores": "3G", "cross_section": "1.5", "gland": "M20"}));
+    let k = new_cable(&mut h, json!({"cable_type": ty}));
+    let doc = h.doc();
+    for s in Side::BOTH {
+        assert_eq!(cable_cmds::gland(&doc, k, s), Some(("M20".into(), Source::Type)), "{s:?}");
+    }
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": "M25"}}})).unwrap();
+    let (label, ops) = last_tx(&mut h);
+    assert_eq!(label, "Edit cable");
+    assert_eq!(ops.len(), 1, "one SetProperty: {ops:?}");
+    let doc = h.doc();
+    assert_eq!(cable_cmds::gland(&doc, k, Side::From), Some(("M20".into(), Source::Type)));
+    assert_eq!(cable_cmds::gland(&doc, k, Side::To), Some(("M25".into(), Source::Here)));
+    let row = h.cfg(|p| p.outputs().cable_row(k).map(|r| r.glands.clone()));
+    assert_eq!(row, Some([Some("M20".to_string()), Some("M25".to_string())]));
+    // The type's gland changes: the from end follows, the overridden end does not.
+    h.run("setstyle", json!({"catalogue": "cable", "id": ty, "fields": {"gland": "M16"}})).unwrap();
+    let doc = h.doc();
+    assert_eq!(cable_cmds::gland(&doc, k, Side::From).map(|g| g.0).as_deref(), Some("M16"));
+    assert_eq!(cable_cmds::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M25"));
+    let row = h.cfg(|p| p.outputs().cable_row(k).map(|r| r.glands.clone()));
+    assert_eq!(row, Some([Some("M16".to_string()), Some("M25".to_string())]), "the list row follows the type");
+    // null clears the override: back to the type's.
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": null}}})).unwrap();
+    assert_eq!(cable_cmds::gland(&h.doc(), k, Side::To), Some(("M16".into(), Source::Type)));
+}
+
+#[test]
+fn f4_gland_input_is_bounded_on_the_cable_and_on_the_cable_type() {
+    let mut h = H::new(59_908);
+    let k = new_cable(&mut h, json!({}));
+    let big = "x".repeat(100_000);
+    for g in [
+        json!("M20 and seventeen"),
+        json!(big.clone()),
+        json!("M\u{202e}20"),
+        json!("M\u{200b}20"),
+        json!("M\u{0007}20"),
+        json!([20]),
+        json!({"m": 20}),
+    ] {
+        let e = refused(&mut h, "cableedit", json!({"cable": k.hex(), "set": {"from": {"gland": g.clone()}}}));
+        bounded(&e, &format!("gland {:.40}", g.to_string()));
+    }
+    // Exactly 16 characters is a gland.
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"from": {"gland": "M20x1.5 nickel A"}}})).unwrap();
+    // The cable type's gland field: the same bounds.
+    let ty = synth_type(&mut h, "Synth Bound", json!({"cores": "3G"}));
+    let mut problems = Vec::new();
+    for g in ["M20 and seventeen".to_string(), big.clone(), "M\u{202e}20".to_string(), "M\u{200b}20".to_string()] {
+        let head = h.head();
+        match h.run("setstyle", json!({"catalogue": "cable", "id": ty, "fields": {"gland": g.clone()}})) {
+            Ok(_) => {
+                let k2 = new_cable(&mut h, json!({"cable_type": ty}));
+                let shown = cable_cmds::gland(&h.doc(), k2, Side::From);
+                if shown.is_some() {
+                    problems.push(format!("type gland {:?} accepted and shown: {shown:?}", g.chars().take(30).collect::<String>()));
+                }
+                h.run("u", json!({})).unwrap();
+                h.run("u", json!({})).unwrap();
+            }
+            Err(e) => {
+                assert_eq!(h.head(), head);
+                problems.extend(unbounded(&e, "type gland"));
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{problems:#?}");
+}
+
+#[test]
+fn f4_no_gland_is_info_for_a_drawn_cable_only() {
+    let mut h = H::new(59_909);
+    let k = new_cable(&mut h, json!({"cores": "3G"}));
+    assert!(checks_of(&mut h, "no-gland").is_empty(), "not drawn: no gland row");
+    wires(&mut h, 2);
+    slash_across(&mut h, (-5.0, 25.0), (15.0, 25.0), Some(k)).unwrap();
+    let rows = checks_of(&mut h, "no-gland");
+    assert_eq!(rows.len(), 2, "one per end: {rows:?}");
+    assert!(rows.iter().all(|r| r["severity"] == json!("info")), "{rows:?}");
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"from": {"gland": "M20"}, "to": {"gland": "M20"}}})).unwrap();
+    assert!(checks_of(&mut h, "no-gland").is_empty());
+}
