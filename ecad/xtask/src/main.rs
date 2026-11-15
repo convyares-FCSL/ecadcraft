@@ -8,7 +8,8 @@
 //!   class UiKit) uses egui and `ecad-tokens` only, and ECAD UI sources do not style locally
 //!   (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI sources and direct
 //!   `cadcraft-engine` use by the apps are ratcheted: their allowlisted counts only fall; `anyhow`
-//!   is for apps only, `tokio` for none (brief 060).
+//!   is for apps only, `tokio` for none; Core crates' direct OS access (file system, environment,
+//!   processes, network, clock) is ratcheted to fall to none (brief 060).
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`, warnings as errors (as CI).
@@ -225,6 +226,27 @@ const ENGINE_FREE: &[&str] = &["ecad-bench", "ecad-cli", "ecad-mcp", "ecad-trial
 /// only fall; at none, the entry and the dependency in the app's `Cargo.toml` go.
 const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-bench", 32), ("ecad-mcp", 5), ("ecad-trial", 54)];
 
+/// Core crates that must not reach the file system, the environment, processes, the network or
+/// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is
+/// testable and portable; disk access belongs to `ecad-store`, and the time is passed in.
+const CORE_PURE: &[&str] = &["ecad-model", "ecad-file"];
+
+/// Direct OS access in Core code ([`CORE_PURE`]), each matched where it starts a name.
+const CORE_OS: &[&str] =
+    &["std::fs", "fs::", "std::env", "env::var", "std::process", "std::net", "SystemTime::now", "Instant::now", "Utc::now", "Local::now"];
+
+/// Core files that still reach the OS directly ([`CORE_OS`]): the number of lines that do (test
+/// modules aside), seeded on 2026-11-15 (brief 060). The counts only fall; the split lane takes
+/// them to none, and a file not listed that reaches the OS is a violation.
+const CORE_OS_ALLOWLIST: &[(&str, usize)] = &[
+    ("crates/ecad-file/src/disk.rs", 3),
+    ("crates/ecad-file/src/v2/convert.rs", 3),
+    ("crates/ecad-file/src/v2/disk.rs", 1),
+    ("crates/ecad-file/src/v2/schema.rs", 1),
+    ("crates/ecad-file/src/v2/store.rs", 2),
+    ("crates/ecad-model/src/dev.rs", 1),
+];
+
 /// Crates that may use `anyhow` (owner, 2026-11-15, brief 060): the apps and xtask. A library
 /// returns its own error type, so a caller can react to the kind of failure (review 2026-11,
 /// finding 3); `anyhow` erases it, which only a program's `main` may do.
@@ -325,6 +347,70 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             {
                 out.push(why);
             }
+        }
+    }
+    Ok(out)
+}
+
+/// The places in one Core source file (`rel`, `/` separated) that reach the OS directly
+/// ([`CORE_OS`]), as `rel:line: text`. `//` comments are skipped, and so is everything from a
+/// `#[cfg(test)]` line followed by a `mod` line (the file's test module) on.
+fn core_os_places(rel: &str, text: &str) -> Vec<String> {
+    let code = strip_line_comments(text);
+    let lines: Vec<&str> = code.lines().collect();
+    let end = (0..lines.len())
+        .find(|&i| {
+            lines[i].trim() == "#[cfg(test)]"
+                && lines.get(i + 1).is_some_and(|n| n.trim_start().starts_with("mod ") || n.trim_start().starts_with("pub mod "))
+        })
+        .unwrap_or(lines.len());
+    let starts_name = |l: &str, i: usize| l[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+    lines[..end]
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| CORE_OS.iter().any(|p| l.match_indices(p).any(|(i, _)| starts_name(l, i))))
+        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
+        .collect()
+}
+
+/// The Core crates' ([`CORE_PURE`]) direct OS access beyond [`CORE_OS_ALLOWLIST`], and the entries
+/// that must come down (brief 060).
+fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut out = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
+        let name = p["name"].as_str().unwrap_or_default();
+        if !CORE_PURE.contains(&name) {
+            continue;
+        }
+        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            let places = core_os_places(&rel, &text);
+            match CORE_OS_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
+                Some((path, allowed)) => {
+                    seen.insert(path);
+                    out.extend(ratchet_problem(
+                        path,
+                        places.len(),
+                        *allowed,
+                        "lines reaching the OS",
+                        "Core stays pure data and rules (testable, portable): disk access belongs to ecad-store, and the time is passed in",
+                    ));
+                }
+                None => out.extend(places.into_iter().map(|p| {
+                    format!("{p} (Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in)")
+                })),
+            }
+        }
+    }
+    for (path, _) in CORE_OS_ALLOWLIST {
+        if !seen.contains(path) {
+            out.push(format!("{path}: in the Core OS-access allowlist but not found; remove the entry"));
         }
     }
     Ok(out)
@@ -722,6 +808,7 @@ fn layers() -> Result<(), String> {
     v.extend(source_violations(&meta)?);
     v.extend(engine_violations(&meta)?);
     v.extend(dependency_rule_violations(&meta)?);
+    v.extend(core_os_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -1386,6 +1473,28 @@ let c = ecad_ui::color(SHELL.text);",
         assert!(ratchet_problem("a.rs", 4, 3, "things", "fix").is_some_and(|m| m.contains("allows 3")));
         assert!(ratchet_problem("a.rs", 2, 3, "things", "fix").is_some_and(|m| m.contains("lower the count")));
         assert!(ratchet_problem("a.rs", 0, 3, "things", "fix").is_some_and(|m| m.contains("remove")));
+    }
+
+    /// Brief 060: direct OS access in Core is found where a name starts, outside comments and the
+    /// test module.
+    #[test]
+    fn core_os_access_is_found_outside_comments_and_tests() {
+        let rows: &[(&str, usize)] = &[
+            ("let b = std::fs::read(p)?;", 1),
+            ("use std::fs;\nlet b = fs::read(p)?;", 2),
+            ("let v = std::env::var(\"X\");", 1),
+            ("let v = env::var(\"X\");", 1),
+            ("let id = std::process::id();", 1),
+            ("let t = std::time::SystemTime::now();", 1),
+            ("let t = Instant::now();", 1),
+            ("let t = chrono::Utc::now();", 1),
+            ("let r = prefs::get();", 0),
+            ("// std::fs::read in a comment", 0),
+            ("let a = 1;\n#[cfg(test)]\nmod tests {\n    fn t() { std::fs::read(\"x\"); }\n}", 0),
+        ];
+        for (text, n) in rows {
+            assert_eq!(core_os_places("crates/ecad-model/src/x.rs", text).len(), *n, "{text}");
+        }
     }
 
     /// Brief 060: `anyhow` only in apps and xtask, `tokio` nowhere; `rayon` is allowed anywhere.

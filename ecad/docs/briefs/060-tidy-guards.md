@@ -41,6 +41,12 @@ report if one looks necessary. Persisted words (check kinds' words, property key
    `tokio` in no ECAD crate. Each rule says what it prevents. (A rule keeping `rayon` off wasm was
    dropped the same day: ECAD is desktop-only, owner ruling; `xtask wasm` stays until the split
    lane removes it.)
+8. **Core OS-access ratchet in `xtask layers`** (owner, 2026-11-15): per-file counts of direct
+   file system, environment, process, network and clock access (`std::fs`/`fs::`,
+   `std::env`/`env::var`, `std::process`, `std::net`, `SystemTime::now`, `Instant::now`,
+   `Utc::now`/`Local::now`) in `ecad-model` and `ecad-file`, test modules aside, seeded today
+   (1 and 10 lines); counts only fall. Core stays pure data and rules; disk access belongs to
+   `ecad-store`, and the time is passed in. The split lane takes it to zero.
 
 ## Part 2: R7, check kinds as one table (after Part 1 is pushed)
 

@@ -21,7 +21,9 @@ reached through the `setprop` command (an agent through ecad-mcp, or a typed com
   - literal sizes (`Stroke::new(1.0`, `add_space(4.0)`, `vec2(12.0`) in UI files are counted, and
     the counts can only fall;
   - the apps' direct use of `cadcraft-engine` is counted, and the count can only fall;
-  - `anyhow` is allowed only in the apps and xtask, and `tokio` in no ECAD crate.
+  - `anyhow` is allowed only in the apps and xtask, and `tokio` in no ECAD crate;
+  - direct file system, environment, process, network and clock access in `ecad-model` and
+    `ecad-file` is counted per file, and the counts can only fall.
 
 ## Try it
 
