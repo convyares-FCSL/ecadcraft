@@ -96,7 +96,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         c.exec("wire", json!({"points": [[250, 0], [250, -20]], "join": false}));
         let n = c.log().len();
         let j = c.exec("joinwires", json!({"at": [250, 0]}));
-        let Transaction { label, ops: _, .. } = assert_one_by_agent(&mut c, n, "joinwires");
+        let Transaction { label, .. } = assert_one_by_agent(&mut c, n, "joinwires");
         assert_eq!(label, "Join wires");
         assert_eq!(j["how"], "merged", "{j}");
         let survivor = hex(&j, "conductor");
