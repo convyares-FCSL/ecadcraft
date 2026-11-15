@@ -1,6 +1,7 @@
 # Design 065: the crate map
 
-Status: Draft (design only; no code moves in this lane).
+Status: Approved (owner, 2026-11-15). Design only; no code moves in this lane. The owner's
+answers to the five calls are in §7; §1.1 (drawing style and UI tokens) follows from call 1.
 Branch: `docs/crates`, from `origin/dev` at `445787b8`.
 Runs: the split lane comes after lanes 060–063 merge and before the R9 views worker starts.
 
@@ -29,8 +30,8 @@ Five facts change the proposed map. Each one is a decision in §7.
 3. **The engine draws with ecad-tokens.** `look`, `text_style`, `wires`, `continuations`, `styles`
    and `defaults::text` read canvas colours, dash lengths and the embedded sheet font from
    `ecad-tokens`. If ecad-tokens sits in the UI kit layer, below the engine, the engine cannot use
-   it. ecad-tokens is plain `const` data with no dependencies, and xtask already classes it as
-   Core.
+   it. Owner, 2026-11-15: split it. The drawing style goes in Core and the screen tokens stay with
+   the UI kit (§1.1).
 4. **ecad-inspect is part of the product.** `Project` keeps an `ecad_inspect::EventLog` (runtime
    diagnostics), and `ecad-mcp`'s `ecad_inspect` tool returns `ecad_inspect::snapshot`. A product
    crate may not depend on a crate under `dev/`. So ecad-inspect cannot move to `dev/`, and it
@@ -55,14 +56,19 @@ layer where §4 says so). Engine and UI kit are **siblings**: neither uses the o
 
 | Layer | One-line meaning (fixed vocabulary) | Crates |
 |---|---|---|
-| **Core** | What an ECAD project *is* and what it *means*, without a screen or a drawing engine. Builds for wasm. | `ecad-model`, `ecad-store`, `ecad-file`, `ecad-electrical` (new), `ecad-inspect`, `ecad-tokens` |
+| **Core** | What an ECAD project *is* and what it *means*, including how its drawing is defined, without a screen or a drawing engine. | `ecad-model`, `ecad-store`, `ecad-file`, `ecad-electrical` (new), `ecad-inspect`, `ecad-drawing-style` (new, from ecad-tokens) |
 | **Engine** | The link to CADCraft: draws pages from the model, turns edits into transactions, runs commands. | `ecad-cadcraft` |
-| **UI kit** | ECAD's widgets: how a value, button, table or panel looks. Knows nothing about projects. | `ecad-ui` |
+| **UI kit** | ECAD's widgets and screen look: how a value, button, table or panel looks. Knows nothing about projects. | `ecad-ui`, `ecad-tokens` (screen tokens only) |
 | **App** | The ECAD application: shell, workspaces, panels, dialogs, lists, tabs, on a CADCraft window. | `ecad-app` (new, from ecad-trial) |
 | **Programs** | Things a person or agent starts: one `main` each, thin. | `ecad-desktop` (ecad-trial's binary), `ecad-cli`, `ecad-mcp` |
 | **Dev** | Developer and test tools under `ecad/dev/`. Never shipped. | `ecad-bench`, `ecad-inspector`, `xtask` |
 
-Inside Core, the order is: `ecad-tokens` and `ecad-model` at the top, then `ecad-store`,
+**ECAD is desktop-only (owner ruling, 2026-11-15).** There is no web or browser product, so no
+layer has to build for wasm. The `cargo xtask wasm` check of the ECAD crates existed only because
+of CADCraft's "never break wasm" rule. It goes in the split lane (§5, step 10). CADCraft's own
+wasm build, and any `ECAD-SEAM` in CADCraft files, are not affected.
+
+Inside Core, the order is: `ecad-drawing-style` and `ecad-model` at the top, then `ecad-store`,
 `ecad-electrical`, `ecad-inspect`, then `ecad-file`.
 
 - `ecad-model`: the document, ops, ledger, merge, numbering, derived nets and references.
@@ -71,9 +77,62 @@ Inside Core, the order is: `ecad-tokens` and `ecad-model` at the top, then `ecad
 - `ecad-electrical`: the electrical rules: devices, wires, cables, strips, checks, ratings,
   reports, cross-references, styles and defaults. It reads a `Document` and returns data or ops.
 - `ecad-inspect`: read-only snapshots and the runtime event log.
-- `ecad-tokens`: every colour, size and font as data.
+- `ecad-drawing-style`: how a page is drawn and printed: sheet colours, line weights, dashes,
+  sheet text sizes, the sheet font, canvas markers.
+- `ecad-tokens` (UI kit): how the screen looks: shell colours, spacing, radii, shadows, icons,
+  UI type sizes.
 
-`ecad-electrical` depends on `ecad-model` and `ecad-tokens` only, not on the store or the file.
+`ecad-electrical` depends on `ecad-model` and `ecad-drawing-style` only, not on the store or the
+file.
+
+### 1.1 Drawing style and UI tokens (owner call 1)
+
+Today `ecad-tokens` holds both kinds of token: the screen's look and the drawing's look. The owner
+split them on 2026-11-15: the drawing style is part of the drawing definition, and the screen
+tokens belong with the UI kit.
+
+| Module today | Goes to | What it holds |
+|---|---|---|
+| `sheet` (`Sheet`, `Meaning`, `PAPER`, `DARK`, `Color`) | drawing style | Print and canvas colours, including the selection and agent-write marks. |
+| `sheet_font` | drawing style | The embedded sheet font (family and bytes). |
+| `sheet_type` | drawing style | Sheet text cap heights and weights (mm). |
+| `wire` | drawing style | Wire category colours, the two-colour dash. |
+| `marker` | drawing style | Canvas marker shapes and screen sizes. |
+| `line`, `MM` half (`SYMBOL_MM`, `CONTROL_WIRE_MM`, `POWER_WIRE_MM`, `FRAME_MM`, `RULE_MM`, link, slash, selection and agent-write weights and dashes) | drawing style | Line weights on the page. |
+| `line`, `PX` half (`HAIRLINE_PX`, `ICON_STROKE_PX`, `FOCUS_RING_PX`, `SCREEN_FLOOR_PX`) | `ecad-tokens` | Screen strokes. |
+| `shell`, `space`, `size`, `radius`, `shadow`, `icon`, `ui_type`, `wheel` | `ecad-tokens` | The screen's look. |
+
+**Core, not Engine.** The drawing style is not used by the drawing engine alone:
+- ecad-electrical names the sheet font (`defaults::text::SHEET_FONT`) and measures text widths
+  for its rules (cut 4).
+- ecad-ui embeds the sheet font and shows sheet colours in its gallery (`fonts.rs`,
+  `showcase.rs`).
+- ecad-app paints the canvas and the agent-write marks with `sheet::PAPER` and `sheet::DARK`
+  (`canvas/mod.rs`, `agent/last_write.rs`).
+
+The UI kit is a sibling of the Engine and may not use it. Only a Core crate can be reached from
+all four.
+
+**A new crate, not a module.** `ecad-drawing-style` is plain `const` data plus the font bytes,
+with no dependencies. A module in `ecad-model` would put the font bytes into every crate that
+links the model (`ecad-cli`, `ecad-file`'s tools). The shared `Color` type moves with it, and
+`ecad-tokens` uses it from there.
+
+**Cost: small and mechanical, one step of the split lane (§5, step 1b).**
+- ecad-cadcraft has 13 files naming `ecad_tokens`, about 21 drawing-token paths in 8 files. Its
+  one UI token, `Icon` in `actions`, goes to ecad-app with that module.
+- ecad-ui uses the drawing tokens in 2 files, and ecad-app in a few (through `ecad_ui::tokens::sheet`).
+- The doc-sync test (`ecad-tokens/tests/all/doc_sync.rs`) reads `docs/design/tokens.md`. Its
+  sheet, sheet text and line-weight tables move to a test in the new crate, and `tokens.md`
+  keeps one file with the two sections apart.
+
+**Overlap with lane 066 (defaults as data, `docs/design/066-defaults-data.md` on
+`docs/defaults-data`).** Some of these constants are user-facing drawing defaults: line weights,
+wire colours and sheet text heights. They may become TOML data in 066's defaults sets, not
+tokens. 066 already defers line weights to plot styles (§2.3 there). When a value moves to data,
+it leaves `ecad-drawing-style` for the defaults set in ecad-electrical. The crate then keeps only
+what no user sets: the font bytes, canvas marker sizes and the selection and agent-write colours.
+The split lane moves the constants as they are; whichever lane lands second rebases its paths.
 
 ---
 
@@ -105,7 +164,7 @@ crate edges already point at other modules going to E.
 | `convert` | 263 | 7 | C | ECAD items ↔ CADCraft entities. | — |
 | `debug` | 1,384 | 1 | C (`dev`) | Debugger copies under one lock. Belongs in the crate's `dev` module (design 029). | — |
 | `default_cmds` | 290 | 2 | C | Command `setdefault`. | — |
-| `defaults/` (14 files) | 2,837 | 0 | E | The defaults registry. | Clean, once ecad-tokens is Core (decision 1). `default_cmds` and `text_style` helpers move first (cut 4). |
+| `defaults/` (14 files) | 2,837 | 0 | E | The defaults registry. | Clean, once the drawing style is in Core (§1.1). `default_cmds` and `text_style` helpers move first (cut 4). |
 | `designation_cmds` | 308 | 6 | C | Commands. | — |
 | `designations` | 477 | 0 | E | The project's functions and locations list. | Helper functions now in `designation_cmds` and `location_cmds` move to E (cut 2). |
 | `device_cmds` | 368 | 8 | C | Commands. | — |
@@ -218,7 +277,7 @@ module and no `cadcraft_*` import. That is the condition for moving it.
    drawing stays in C.
 4. **`text_style` is half rules, half CADCraft text.** This is the largest cut. The E side is
    `TextKind`, `Look` without colour, `OwnStyle`, `RunRule`, `text_box`, `width_in` (via the
-   token font metrics), `parse_at`, `candidates`, `symbol_text_keys`, `rename_symbol_key` and the
+   sheet font metrics in `ecad-drawing-style`), `parse_at`, `candidates`, `symbol_text_keys`, `rename_symbol_key` and the
    style resolution. The C side is building `doc::TextStyle` and text entities, `Fonts`, and
    `register_sheet_font`. `devices`, `locations`, `wires`, `xref` and `continuations` depend on
    this cut. Do it first, in two commits: move the types, then move the functions.
@@ -233,8 +292,9 @@ module and no `cadcraft_*` import. That is the condition for moving it.
    them to handles.
 7. **`references`.** Derivation goes to E. `markers_on_page` and the flag drawing go to
    `draw/references.rs`.
-8. **Clock.** `project::now_ms` (chrono, `clock` off wasm) is called by `revisions` and `views`.
-   E takes a time argument instead. Only C and the App read the clock.
+8. **Clock.** `project::now_ms` (chrono) is called by `revisions` and `views`. E takes a time
+   argument instead, so its rules stay deterministic and testable. Only C and the App read the
+   clock.
 9. **`front`.** `check_rows` and the legend contents go to E. Drawing the cover stays in C.
 10. **`title_block` and `frame`.** `bind`, `checks`, `house`, `frame::fit` and `frame::touches`
     go to E. `layout` and `dxf` stay in C.
@@ -245,8 +305,11 @@ module and no `cadcraft_*` import. That is the condition for moving it.
     is added to `cad` on purpose, in review.
 12. **The agent gate.** `ecad-mcp`'s `gate`, `policy` and `tools`, the shared limits and words
     in its `lib.rs`, `bridge::ALLOWED_METHODS`, and ecad-cadcraft's `agent_access` move together
-    into `ecad_cadcraft::agent`. `ecad-mcp` keeps the server, the bridge client and launching.
-    ecad-app stops depending on ecad-mcp.
+    into `ecad_cadcraft::agent`, beside the commands (owner, 2026-11-15). `ecad-mcp` stays its own
+    program and keeps the server, the bridge client and launching. ecad-app stops depending on
+    ecad-mcp. The permission check belongs with the commands it guards, so when the command rules
+    move down to ecad-electrical (with R6), it moves with them. Only the `Session` glue stays in
+    C.
 13. **`actions`.** `ObjectKind` goes to E (`interact::kind` uses it). The action table goes to
     ecad-app.
 
@@ -257,14 +320,16 @@ module and no `cadcraft_*` import. That is the condition for moving it.
 Today's `Class` enum (Core, Adapter, Ui, UiKit, Dev, Exempt) becomes the layer names. The table
 in `xtask/src/main.rs` changes as follows:
 
-| Layer | Crates | May depend on (normal deps) | Must not | Builds for wasm |
-|---|---|---|---|---|
-| Core | model, store, file, electrical, inspect, tokens | Core crates above it in the §1 order; crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, Engine, App, Programs, Dev | **yes**, all six |
-| Engine | ecad-cadcraft | Core; `cadcraft-engine`, `cadcraft-io` | UI crates, `ecad-ui`, `cadcraft-ui-egui`, App, Programs, Dev | yes |
-| UI kit | ecad-ui | `egui`, `epaint`, `egui_extras`, `ecad-tokens` (unchanged `UIKIT_ALLOWED`) | everything else | yes |
-| App | ecad-app | Core, Engine, UI kit; `cadcraft-ui-egui`, `eframe`, `egui` | `cadcraft-engine` directly, Programs, Dev (except through its `dev` feature) | no |
-| Programs | desktop, cli, mcp | Core, Engine, App, other Programs (owner ruling); `cadcraft-ui-egui` (desktop), `cadcraft-mcp` (mcp) | `cadcraft-engine` directly, Dev (except through `dev`) | no |
-| Dev | under `dev/`: bench, inspector; `xtask` (Exempt) | anything | — | no |
+| Layer | Crates | May depend on (normal deps) | Must not |
+|---|---|---|---|
+| Core | model, store, file, electrical, inspect, drawing-style | Core crates above it in the §1 order; crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, `ecad-tokens`, Engine, App, Programs, Dev |
+| Engine | ecad-cadcraft | Core; `cadcraft-engine`, `cadcraft-io` | UI crates, `ecad-ui`, `ecad-tokens`, `cadcraft-ui-egui`, App, Programs, Dev |
+| UI kit | ecad-ui, ecad-tokens | `ecad-tokens`: `ecad-drawing-style` only. `ecad-ui`: `egui`, `epaint`, `egui_extras`, `ecad-tokens`, `ecad-drawing-style` (`UIKIT_ALLOWED` gains `ecad-drawing-style`) | everything else |
+| App | ecad-app | Core, Engine, UI kit; `cadcraft-ui-egui`, `eframe`, `egui` | `cadcraft-engine` directly, Programs, Dev (except through its `dev` feature) |
+| Programs | desktop, cli, mcp | Core, Engine, App, other Programs (owner ruling); `cadcraft-ui-egui` (desktop), `cadcraft-mcp` (mcp) | `cadcraft-engine` directly, Dev (except through `dev`) |
+| Dev | under `dev/`: bench, inspector; `xtask` (Exempt) | anything | — |
+
+No layer has to build for wasm: ECAD is desktop-only (owner ruling, 2026-11-15).
 
 Source checks, in addition to `Cargo.toml` (`layers` already scans sources for dev features and
 raw egui):
@@ -275,16 +340,17 @@ raw egui):
   a clear message.
 - **A crate is under `dev/` exactly when it is Dev.** This rule exists already; ecad-bench's move
   makes it hold.
-- **wasm.** `WASM_CRATES` becomes "every Core crate, Engine and UI kit". Add `ecad-electrical`.
-  `cargo xtask wasm` already builds the list with `-D warnings`.
+- **No wasm check.** `WASM_CRATES` and `cargo xtask wasm` are removed for the ECAD crates (§5,
+  step 10). CADCraft's own wasm build is not affected.
 
 Dependency rules from lane 061 (§6 there), one check each:
 
 - **No `anyhow` in a library.** `anyhow` may appear only in Programs, `xtask` and `ecad-bench`'s
   binary. Libraries return their own `thiserror` enum.
 - **No `tokio` anywhere** in an ECAD `Cargo.toml`.
-- **`rayon` only off wasm.** It may appear only under `[target.'cfg(not(target_arch =
-  "wasm32"))'.dependencies]`, and only in model, file, electrical or cadcraft.
+- **`rayon` only where the work is.** It may appear only in model, file, electrical or cadcraft,
+  as a plain dependency. It needs no wasm `cfg`, because there is no wasm build (061's
+  "native only" rule and its sequential twin fall away).
 - **`schemars` only in Engine,** plus `ecad-model`'s optional `schema` feature.
 
 Lane 060 (R0 guards) owns the ratchets in `layers`. The split lane adds its rules after 060 has
@@ -303,20 +369,21 @@ tests E through C.
 | Step | What | Green because |
 |---|---|---|
 | 1 | **Folder moves.** `crates/ecad-bench` → `dev/ecad-bench` (class Dev). xtask table, CI and docs paths. | No code change. |
+| 1b | **Token split (§1.1).** New `crates/ecad-drawing-style` (Core) takes `sheet`, `sheet_font`, `sheet_type`, `wire`, `marker`, the mm half of `line`, and `Color`. `ecad-tokens` keeps the screen tokens and is reclassed UI kit. Paths change in ecad-cadcraft (8 files), ecad-ui (2), ecad-trial (a few). The doc-sync test splits with the tables. | Path changes only. Both doc-sync tests pass. |
 | 2 | **Cuts 1, 2, 3, 8, 13** in ecad-cadcraft: helpers out of `interact`, `commands`, `*_cmds` and `look` into the modules that will go to E, with re-exports. | Pure moves inside one crate. |
 | 3 | **Cut 4** (`text_style`), two commits. | Same. |
 | 4 | **Cuts 5, 6, 7, 9, 10**: `draw/` modules in C. Domain functions take `&Document`. | Same. Engine imports leave the E modules. |
 | 5 | **Closure check.** A temporary xtask check, or a script in the brief, lists the E set and fails on any `crate::<C module>` or `cadcraft_` in it. It must pass before step 6. | Read-only check. |
-| 6 | **Create `ecad-electrical`** (Core, wasm) and `git mv` the E set in one commit. Fix `crate::` paths. ecad-cadcraft re-exports each moved module under its old name (`pub use ecad_electrical::strips;`), so apps and tests do not change. `file` moves to `ecad_file::binding` the same way. | The re-exports keep every path working. Run `cargo xtask wasm`. |
+| 6 | **Create `ecad-electrical`** (Core) and `git mv` the E set in one commit. Fix `crate::` paths. ecad-cadcraft re-exports each moved module under its old name (`pub use ecad_electrical::strips;`), so apps and tests do not change. `file` moves to `ecad_file::binding` the same way. | The re-exports keep every path working. |
 | 7 | **Cut 11**: `ecad_cadcraft::cad`. Apps and ecad-mcp switch paths and drop `cadcraft-engine`. | Path changes only. |
 | 8 | **Cut 12**: `ecad_cadcraft::agent`. ecad-trial drops `ecad-mcp`. | MCP contract tests and the bridge tests unchanged. |
 | 9 | **App split.** ecad-trial's library becomes `crates/ecad-app` (`Trial` → `App`), and `apps/ecad-desktop` keeps `main`, `window`, `startup` and `args`. Cut 13's action table moves in. Update `docs/quick-start.md` (`cargo run -p ecad-desktop`), the CI, `xtask demo`, `ecad-mcp`'s `--launch` binary name, `DEV_BY_DEFAULT` and the raw-egui allowlist paths. | The trial tests move with the library. |
-| 10 | **Guards.** The §4 table, source checks and 061 rules in `layers`; the README check (§6) and the READMEs. `ecad/CLAUDE.md` gets the §1 vocabulary. | The new rules pass on the result of steps 1–9. |
+| 10 | **Guards and wasm.** The §4 table, source checks and 061 rules in `layers`; the README check (§6) and the READMEs. **Remove the ECAD wasm check:** `WASM_CRATES`, `cargo xtask wasm` and its step in `cargo xtask ci`, and the ECAD wasm job in CI. `ecad/CLAUDE.md`: add the §1 vocabulary and the desktop-only ruling. Remove its wasm lines: the "Run wasm locally (`cargo xtask wasm` …) only when a change could affect it …" sentence, and "with the slow set and wasm" in the CI paragraph. 061's design and lane rules lose "rayon native only". Existing `cfg(target_arch = "wasm32")` branches (`ruzstd` decoding in `ecad-file`, `chrono` clock, `agent_access`, `same-file`) stay working. Removing them is a later clean-up, listed in `docs/deferred-work.md`, not part of this lane. | The new rules pass on the result of steps 1–9. |
 | 11 | **Drop the re-exports** from step 6 that only tests and apps use. Callers say `ecad_electrical::…`. This step is optional, and can be left for the phase-end tidy-up. | Path changes only. |
 
 Tester: yes. Steps 4 and 6 touch the projection and `translate.rs` neighbours. The tester runs
-ecad-cadcraft's and ecad-trial's fast tests, `cargo xtask wasm` and the medium bench (open and
-first page), and compares the result with `dev`.
+ecad-cadcraft's and ecad-trial's fast tests and the medium bench (open and first page), and
+compares the result with `dev`.
 
 **Where R9 lands** (design 064 on `feature/views`, §2). 064 was written assuming the split comes
 after R9 and calls the domain crate `ecad-domain`. With the split first:
@@ -364,8 +431,8 @@ What `cargo xtask layers` forbids for this layer, plus anything this crate keeps
 The few types a caller starts from, with a link to their docs.
 
 ## How to test
-`cargo test -p <crate>`; where its tests live (`tests/all/…`); slow tests; whether it is in
-`cargo xtask wasm`. For Programs: link to `docs/quick-start.md` instead of repeating it.
+`cargo test -p <crate>`; where its tests live (`tests/all/…`); slow tests. For Programs: link
+to `docs/quick-start.md` instead of repeating it.
 ```
 
 The crate's `//!` doc stays the detailed reference. The README is the short card, and keeps the
@@ -373,20 +440,21 @@ The crate's `//!` doc stays the detailed reference. The README is the short card
 
 ---
 
-## 7. Owner decisions
+## 7. Owner decisions (approved 2026-11-15)
+
+All decisions below are approved. The owner answered the five calls on 2026-11-15.
 
 ### Going ahead (follows the map as given)
 
-1. **Core** = model, store, file, the new **ecad-electrical**, plus inspect and tokens (see calls
-   2 and 1). Every Core crate builds for wasm.
+1. **Core** = model, store, file, the new **ecad-electrical**, ecad-inspect and the new
+   **ecad-drawing-style**.
 2. **ecad-electrical** gets the electrical rules from ecad-cadcraft (§2.1, "E"). 064's
    `ecad-domain` is renamed `ecad-electrical`.
 3. **Engine** = ecad-cadcraft, keeping the CADCraft link, the projection, the commands and the
    interaction forms.
-4. **UI kit** = ecad-ui. It stays a sibling of Engine; neither uses the other. This is today's
-   rule.
-5. **Programs** = ecad-desktop (ecad-trial's binary), ecad-cli, ecad-mcp; Program→Program
-   dependencies are allowed.
+4. **UI kit** = ecad-ui and ecad-tokens (screen tokens). It is a sibling of Engine; neither uses
+   the other. This is today's rule.
+5. **Programs** = ecad-desktop, ecad-cli, ecad-mcp; Program→Program dependencies are allowed.
 6. **Dev** = ecad-bench (moved from `crates/` to `dev/`), ecad-inspector and xtask.
 7. **The apps stop using `cadcraft-engine` directly**, through `ecad_cadcraft::cad` (code review
    finding 9). App may use `cadcraft-ui-egui`, and ecad-mcp may use `cadcraft-mcp`.
@@ -395,22 +463,21 @@ The crate's `//!` doc stays the detailed reference. The README is the short card
 9. **Order:** after 060–063 merge, before the R9 worker. R9's `derived/` goes straight into
    ecad-electrical.
 
-### Needs your call
+### The owner's answers to the calls
 
-1. **ecad-tokens goes in Core, not the UI kit.** The engine draws canvas colours, dashes and the
-   sheet font from it, so the engine needs it, and tokens is plain data with no dependencies.
-   *Recommend: Core.*
-2. **ecad-inspect stays in the product (Core), not `dev/`, and does not merge with
-   ecad-inspector.** `Project` keeps its event log, and the MCP `ecad_inspect` tool returns its
-   snapshot. A merge would pull a WebSocket server into the product. *Recommend: keep the two
-   apart; inspect in Core.*
-3. **ecad-app comes out of ecad-trial, not ecad-cadcraft.** ecad-cadcraft has no UI. The split
-   is ecad-trial's library → `crates/ecad-app`, and a thin `apps/ecad-desktop` binary. *Recommend:
-   do it, in step 9 of the split.*
-4. **Keep the name `ecad-cadcraft`; don't rename it `ecad-engine`.** Next to `cadcraft-engine`,
-   `ecad-engine` reads as ECAD's own engine. `ecad-cadcraft` says exactly what it is: the link to
-   CADCraft. The layer is still called Engine. *Recommend: keep the name.*
-5. **The agent write gate moves from ecad-mcp into `ecad_cadcraft::agent`, and the `*_cmds`
-   command modules stay in Engine for now.** The window and headless MCP share the gate. If it
-   stays in ecad-mcp, the App library depends on a Program. Command rules move down to
-   ecad-electrical later, with R6's typed parameters. *Recommend: both.*
+1. **Tokens: split.** The drawing style (sheet and canvas colours, sheet font, sheet text sizes,
+   wire colours and dashes, markers, mm line weights) goes to a new Core crate,
+   **`ecad-drawing-style`**. It goes in Core rather than Engine because ecad-electrical, ecad-ui
+   and ecad-app use it too. The screen tokens stay in `ecad-tokens`, in the UI kit. Core is the
+   data structure, not look-and-feel. The cost is one mechanical step (§1.1, §5 step 1b).
+   User-facing drawing defaults may later become TOML data through lane 066.
+2. **ecad-inspect stays in Core.** The dev inspector, with its web server, stays in `dev/` and
+   never ships; the two do not merge. **ECAD is desktop-only:** no web or browser product. The
+   ECAD wasm requirement is dropped from the map, the guard rules and `ecad/CLAUDE.md` (§5 step
+   10). Rayon needs no wasm `cfg`. CADCraft's own wasm build is not affected.
+3. **Yes:** ecad-trial's library becomes `crates/ecad-app`, with a thin `apps/ecad-desktop` on
+   top (§5 step 9).
+4. **Yes:** keep the name `ecad-cadcraft`. The layer is still called Engine.
+5. **Yes:** MCP stays its own program. The agent permission check moves out of ecad-mcp and sits
+   beside the commands, in `ecad_cadcraft::agent` (cut 12). It moves to ecad-electrical with the
+   command rules later. The `*_cmds` modules stay in Engine for this split.
