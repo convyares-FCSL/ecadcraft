@@ -36,20 +36,10 @@ pub fn columns() -> Vec<Column> {
     ]
 }
 
-/// Whether a check's row shows a count rather than a place (`12 wires`).
+/// Whether a check's row shows a count rather than a place (`12 wires`): the kind's `count` flag in
+/// `checks::check_kinds!` (brief 060).
 pub fn count_row(k: Kind) -> bool {
-    matches!(
-        k,
-        Kind::Unnumbered
-            | Kind::ProvisionalWires
-            | Kind::NoPartNumber
-            | Kind::NoLocation
-            | Kind::NoCoreCount
-            | Kind::NoAccessoryPart
-            | Kind::Unracked
-            | Kind::ItemNoPartNumber
-            | Kind::FuseNoInsert
-    )
+    k.is_count()
 }
 
 /// The button labels of a fix.

@@ -200,3 +200,10 @@ fn every_check_kind_is_in_the_table_once_and_keeps_its_words() {
     }
     assert_eq!(KINDS_AT_060.len(), 110);
 }
+
+/// Brief 060 (R7): each whole-project check source keeps its rows under a key of its own.
+#[test]
+fn every_project_check_source_has_a_key_of_its_own() {
+    let keys: std::collections::BTreeSet<_> = ecad_cadcraft::checks::PROJECT_SOURCES.iter().map(|s| s.key()).collect();
+    assert_eq!(keys.len(), ecad_cadcraft::checks::PROJECT_SOURCES.len());
+}
