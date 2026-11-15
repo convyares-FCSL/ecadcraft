@@ -3,7 +3,8 @@
 Status: Approved (owner, 2026-11-15: all ten decisions in §14 as recommended). Amended the same
 day for the approved crate map (`docs/design/crates.md`, lane 065): `Views` and `derived/` live in
 the new Core crate **ecad-electrical** from the start. ECAD is desktop-only (owner ruling: no
-web build), so nothing here depends on wasm. Brief: `docs/briefs/064-views.md`.
+web build), so nothing here depends on wasm. Amended again the same day: every derived view has
+one way in (§5.2, decision 11). Brief: `docs/briefs/064-views.md`.
 Source: finding 1 and row R9 of the 2026-11 code review (not committed). This is an internal design
 with no new controls. Its user-facing promise: nothing a person sees changes, except that views
 can no longer go stale after an edit that a hand-written list forgot.
@@ -459,6 +460,67 @@ updates **possible without making them necessary**:
 - Checks' and reports' **internal** parallelism (per net, per strip) is a later lane's work
   inside one view's `update`. It doesn't depend on this pipeline.
 
+### 5.2 One way in
+
+*Approved amendment (owner, 2026-11-15, answering "should this be architected out?": yes, in R9).*
+
+Today a derived view can be reached in three ways. Each one has to be threaded separately when
+an engine-supplied input such as lane 067's `TextMetrics` is added:
+
+1. **The kept view**, through the project: `Project::outputs()` and `checks()`, and the `xref`,
+   `connectors` and `cover_uses` fields. That is about 127 call sites for outputs (the overseer's
+   count). Mine: 45 `.outputs()`, 11 `.checks()`, and about 118 direct field reads of
+   `.outputs` / `.checks` outside tests.
+2. **A full rebuild from a document** (`X::build(doc)`), outside the kept view.
+3. **Associated or free helpers** that work out part of a view on their own.
+
+**Rule.** Every derived view has one way in: `Views`. The project owns one `Views`. It is built
+once, with the engine's inputs, on open, reload and branch switch (or on first show for a `Lazy`
+view), and after that it is updated only by the pipeline (§5). Callers read views through the
+project (`project.views().outputs()`, …).
+
+- **Engine inputs.** `Views::new(inputs: EngineInputs)`. `EngineInputs` is defined in
+  ecad-electrical and carries `Arc<dyn TextMetrics>` (the trait as lane 067 defines it) and any
+  later engine-supplied input. ecad-cadcraft fills it in. A view that needs metrics reads them
+  from `Inputs` in `update`, never from a global and never from a parameter threaded through
+  callers.
+- **Another document state.** Releases and re-releases need the reports and checks of an *issued*
+  or *finalised* state, not the current one. Today `release.rs` builds those with
+  `Outputs::build(&then)` (`:1027`, `:1255`, `:1416`). They get one entry point,
+  `Views::detached(&self, doc) -> Detached`. It builds only the views the caller asks for
+  (outputs, checks) for that document, with the **same** `EngineInputs`. The result is not kept
+  and not updated, and is dropped after use. The debugger's on-request checks (`verify.rs:163`)
+  use it too.
+- **The test oracle.** `same_as_built`: a full rebuild compared with the kept view. It exists
+  only behind the `test-support` feature (lane 062) and in verify mode (`Views::verify`, §5). It
+  is not public API for apps or the bench. **The bench measures the pipeline**: the edit rows of
+  §10, and open / first show through `Views::rebuild`, which is the one legitimate whole build.
+- **Helpers.** Table and CSV helpers are pure functions over a view's rows, needing no metrics,
+  or methods on the view. `outputs::csv(&Table, bool)` and `rows_json(&Table, …)` already have
+  that shape and stay. `Outputs::{bom_table, wire_table, cable_table}` (`outputs.rs:2380-2511`)
+  are already methods on the view and stay. Free functions that take a `&Document` and work out
+  rows on their own become methods on the view or `pub(crate)` rule functions under it.
+- **Guard.** An `xtask layers` ratchet counts direct `::build(` calls on a view type (the list
+  below) outside `tests/`, `Views` itself and the `test-support` oracle. The count is checked in,
+  can only fall, and reaches **0** by the end of this lane (step 10, test C13).
+
+**Inventory** (on `dev` at `445787b8`, outside `tests/`):
+
+| View | (1) kept | (2) direct full builds outside the kept view | (3) side helpers | After 064 |
+|---|---|---|---|---|
+| `Outputs` (report models) | `Project.outputs` / `outputs()` | `generated.rs:1047` (`parts_of_pending` builds one whenever the caller passes `None` and a BOM page exists: every projection of such a page while Reports was never shown); `checks.rs:2291` (`checks::all`); `release.rs:1027, 1255, 1416` (issued and finalised states); bench `bom.rs:99` | `csv`, `rows_json` (pure, keep); `end_points`, `gap_pe`, `accessory_checks`, `accessory_fix_commands` (free fns over parts of the view) | `views.outputs()`. Projection gets the kept view through `Inputs`, and the `None` fallback goes. Release uses `detached`. Bench via the pipeline. Free fns become methods or `pub(crate)`. |
+| `Checks` (+ `rating::Kept` inside) | `Project.checks` / `checks()` | `checks.rs:2296` (`all_with` **rebuilds Checks** every call, so the `checks` command (`wire_cmds.rs:679`) builds the whole list per request even though the project keeps one); bench `measure.rs:355, 398`, `ratings.rs:66` | `sort` (pure, keep); `all` / `all_with`; per-subject rule fns (`net_checks`, `conductor_checks`, …, `pub`) | `checks` command reads `views.checks()` plus outputs' rows. `all*` go, and `detached` covers release. Rule fns become `pub(crate)` (R7's `CheckSource` owns them). |
+| `RefIndex` (references) | `Project.xref` | `project.rs:1176, 1273, 1411` (open ×3), `:1546` (branch switch); `xref.rs:1566, 1840, 1848` (verify and the wide case, internal); bench `measure.rs:737` | `references(doc, idx, …)`, `goto_target(doc, idx, …)` take the index (fine as methods) | Open and switch through `Views::rebuild`. Internal rebuilds become `ViewScope::is_all` / `verify`. Index-taking fns become methods. |
+| `connectors::Index` | `Project.connectors` | `project.rs:1177, 1274, 1412, 1548` (open ×3, switch); `:2417-2418` (verify) | – | As `RefIndex`. |
+| `Plc`, `Strips`, `StripPages` (sub-models of `Outputs`) | inside `Outputs` | `outputs.rs:804-806`, `:1084-1110` (inside the view: fine); bench `plc.rs:162`, `strips.rs:291, 294` | – | Reached only through `views.outputs().plc` / `.strips`. Bench via the pipeline. |
+| `front::Uses` (cover) | `Project.cover_uses` | `project.rs:2273`, `front.rs:555` (inside the update) | – | Inside `GeneratedView`. |
+| Device list, props, tree feeds | no kept model (change log) | – | – | Already one way in. |
+
+So beyond outputs, **Checks** (the `checks` command's per-request rebuild), **RefIndex** and the
+**connector index** (three open paths each, rebuilt by hand), and the **generated-page projection**
+(`parts_of_pending`'s hidden rebuild) have more than one way in. The PLC and strip models are
+reached around `Outputs` only by the bench.
+
 ---
 
 ## 6. Trial consumers
@@ -582,6 +644,7 @@ the trial's lane module for §6.
 | C9 | `checks_panel_patches` | Ordinary edits: `ChecksPanel::sorts` doesn't move, and rows are added or removed by delta. A page renumber sorts once. |
 | C10 | `cables_tab_reads_one_cable` | With the Cables tab shown, an edit to cable A reads no other cable's open cores (counter). |
 | C11 | `parallel_equals_serial` | Only with `--features parallel`: C5's corpus gives identical `Changes` and kept views. |
+| C13 | `no_direct_builds` | The `xtask layers` ratchet (§5.2) counts direct `::build(` calls on view types outside tests, `Views` and the oracle: 0 at the end of the lane. A release of an issued revision gives the same report rows through `Views::detached` as before. |
 | C12 | existing suites | ecad-model, ecad-electrical, ecad-cadcraft, ecad-mcp and ecad-app (ecad-trial) fast tests unchanged. The 059 and 058-adjacent update-map tests (`lists::*` counters) unchanged. |
 
 No command is added or changed, so the MCP contract-test rule (brief 011) adds no new test. The
@@ -674,3 +737,7 @@ lane, T1 and T2 fixed in step 11, and the bench targets in decision 10.
    as stage-1 views for uniformity.
 10. **Bench targets** as in §10: no worse than `dev` +10% on the edit rows, and pipeline
     overhead under 0.2 ms on medium.
+11. **One way in** (§5.2), *approved amendment, owner, 2026-11-15*. Views are reached only
+    through `Views`, which is built with `EngineInputs`. `Views::detached` covers other document
+    states. A full rebuild exists only as the test oracle, and a ratchet takes direct builds to
+    0.

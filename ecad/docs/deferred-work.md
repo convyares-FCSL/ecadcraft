@@ -41,6 +41,30 @@ started.
   then.
 - **Status:** deferred by the lane 067 brief (2026-11-15); nothing else depends on it.
 
+## Versioned built-in defaults: at the v1 format freeze (brief 066, owner 2026-11-15)
+
+- **What:** while ECAD is pre-alpha there is one built-in defaults set, edited freely, and every
+  project reads the current built-ins (a changed built-in moves every project that did not choose
+  its own value). At the v1 format freeze that must stop. The design is kept in
+  [`design/066-defaults-data.md`](design/066-defaults-data.md) §10:
+  - numbered built-in sets that never change once released; a project names its set in
+    `ProjectSettings.defaults` (format change F1), recorded in the "New project" transaction;
+  - `sets.lock` and its test, which fails when a released value changes;
+  - a `usedefaults` command and a Standards line "Built-in defaults: set *n* (newest: *m*)", to move
+    a project to newer built-ins, with a **Keep how it looks** option;
+  - a build that does not know a project's set refuses to open it.
+- **Open calls then:** does a set freeze when it reaches `dev` or at a release (design 066 call 13)?
+  Is **Keep how it looks** on by default (call 15)?
+
+## Company standard file and later defaults-to-data moves (brief 066, owner 2026-11-15)
+
+- **Company standard file** (design 066 §4): loading a house standard from a TOML file into the
+  project's standard, as one undoable edit with the differences shown first. Waits for persistence
+  stage 3 (libraries), where a standard also comes from a `.ecadlib`; it reuses 066's loader.
+- **Later moves to data** (design 066 §2.3), each its own brief: house title block columns and
+  rows (`title_block/house.rs`), cover page sizes (`front.rs`), the terminal strip drawing look
+  (`strip_page.rs`), drawing line weights (`ecad-tokens/src/line.rs`, with plot styles).
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
