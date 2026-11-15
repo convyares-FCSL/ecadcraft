@@ -582,10 +582,7 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     // Pack re-run, bug 7: on a PLC card with channels, `channels` is its channel count
     // (`plc.channels`), as `terminals` is a strip's offer; on anything else it stays free text.
     let key = match object {
-        ObjectRef::Component(c) if key.trim() == "channels" => {
-            let card = with_any_page(s, |p, _| Ok(crate::plc::card_type_of(p.ledger.document(), c).is_some_and(|t| t.has_channels())))?;
-            if card { crate::plc::rack::CHANNELS_KEY.to_string() } else { key }
-        }
+        ObjectRef::Component(c) => with_any_page(s, |p, _| Ok(component_key(p.ledger.document(), c, &key)))?,
         _ => key,
     };
     // Brief 026: tags of devices and cables share one namespace and one set of rules.
@@ -598,10 +595,6 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             return crate::numbering_cmds::run_set_fixed(s, params, object);
         }
     }
-    // Brief 047 (design 047 §3): an item takes no tag and no part lines, and keeps its description.
-    if let ObjectRef::Component(c) = object {
-        with_any_page(s, |p, _| crate::bom::refuse_on_item(p.ledger.document(), c, &key, value.as_deref()))?;
-    }
     // Brief 018: device properties follow design 018 §6.1 (tags are identities).
     if let ObjectRef::Component(c) = object
         && crate::device_cmds::is_device_property(object, &key)
@@ -612,66 +605,9 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         // The value as typed (the rules below may store it canonically).
         let typed = value.clone();
         let doc = p.ledger.document();
-        // Brief 022: numbering keys go through their commands; label values are checked.
-        let value = match crate::wire_cmds::setprop_rule(doc, object, &key, value.as_deref())? {
-            Some(v) => v,
-            None => value,
-        };
-        // Brief 025 (FP1, FP2): a part's contacts and its table's placement are checked.
-        let value = match (object, key.as_str()) {
-            (ObjectRef::Component(_), crate::xref::CONTACTS_KEY) => crate::xref::offer_value(value.as_deref())?,
-            (ObjectRef::Component(_), crate::xref::MIRROR_KEY) => crate::xref::mirror_value(value.as_deref())?,
-            // Brief 028 (FP1, FP2, FP4): a strip's offer, a cable's cores, the PE row's part.
-            // A strip's offer; on another device `terminals` stays free text (review of PR #55, 5).
-            (ObjectRef::Component(c), crate::strips::OFFER_KEY) if crate::strips::is_strip(doc, c) => crate::strips::offer_value(value.as_deref())?,
-            (ObjectRef::Cable(_), crate::strips::CORES_KEY) => crate::strips::cores_value(value.as_deref())?,
-            // Brief 057 (tester re-check 2): a core's Not used tick, bounded.
-            (ObjectRef::Cable(k), key) if key.starts_with(crate::styles::cable::UNUSED_PREFIX) => {
-                crate::styles::cable::unused_value(doc, k, key, value.as_deref())?
-            }
-            (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
-                crate::devices::property_value(doc, &key, value.as_deref())?
-            }
-            // Brief 044 (FP4): a connector's `pins`, `half.<s|p>.<field>` and naming defaults.
-            (ObjectRef::Component(c), k) if crate::connectors::setprop_value(doc, c, k, None).is_some() => {
-                match crate::connectors::setprop_value(doc, c, k, value.as_deref()) {
-                    Some(r) => r?,
-                    None => value,
-                }
-            }
-            // Brief 036 (§12, FP4): the registry's terminal defaults on a strip, and a level's label.
-            (ObjectRef::Component(c), k) if k.starts_with("terminal.") && crate::strips::is_strip(doc, c) => {
-                match crate::defaults::terminals::setprop_value(k, value.as_deref()) {
-                    Some(r) => r?,
-                    None => value,
-                }
-            }
-            (ObjectRef::Component(c), k) if k.starts_with(crate::terminal_types::LABEL_PREFIX) && crate::strips::is_strip(doc, c) => {
-                match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
-                    None => None,
-                    Some(v) if v.chars().count() > crate::terminal_types::MAX_LABEL_CHARS || v.chars().any(char::is_control) => {
-                        return Err(format!(
-                            "A level's label is 1 to {} characters, with no control characters.",
-                            crate::terminal_types::MAX_LABEL_CHARS
-                        ));
-                    }
-                    Some(v) => Some(v.to_string()),
-                }
-            }
-            // Brief 045 (FP1, FP3): a card's rack, slot and channel count.
-            (ObjectRef::Component(c), k) if crate::plc::setprop_rule(doc, c, k, None).is_some() => {
-                crate::plc::setprop_rule(doc, c, k, value.as_deref()).unwrap_or(Ok(None))?
-            }
-            // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
-            (ObjectRef::Component(_), k) if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, object, &key, value.as_deref())?,
-            // Brief 047 (design 047 §2.4): article numbers, part lines and items' quantities.
-            (ObjectRef::Component(c), k) if crate::bom::is_bom_key(doc, c, k) => crate::bom::setprop_rule(doc, c, k, value.as_deref())?,
-            // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.
-            (ObjectRef::Component(c), _) => match crate::accessories::setprop_rule(doc, c, &key, value.as_deref())? {
-                Some(v) => v,
-                None => value,
-            },
-            _ => value,
+        let value = match object {
+            ObjectRef::Component(c) => component_value(doc, c, &key, value)?,
+            _ => other_value(doc, object, &key, value)?,
         };
         let props = match object {
             ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
@@ -711,57 +647,15 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
     }
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
-        let after = match key.as_str() {
-            crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
-            crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
-            // Brief 049: a caption, on continuation arrows only (each is checked).
-            crate::continuations::CAPTION_KEY => {
-                let mut out = None;
-                for c in &cs {
-                    out = crate::continuations::caption_value(doc, *c, value.as_deref())?;
-                }
-                out
-            }
-            crate::strips::OFFER_KEY if cs.iter().any(|c| crate::strips::is_strip(doc, *c)) => crate::strips::offer_value(value.as_deref())?,
-            // Brief 030: the same rule for every strip (a link's text depends on its strip).
-            k if k.starts_with(crate::accessories::ACC_PREFIX) || k.starts_with(ecad_model::links::PREFIX) || crate::accessories::is_part_key(k) => {
-                let mut out = None;
-                for c in &cs {
-                    if let Some(v) = crate::accessories::setprop_rule(doc, *c, k, value.as_deref())? {
-                        out = v;
-                    }
-                }
-                out
-            }
-            // Brief 034: `rating.<n>` only on fuse banks that have fuse `<n>`.
-            k if crate::symbols::is_rating_key(k) => {
-                let mut out = None;
-                for c in &cs {
-                    out = crate::symbols::setprop_rule(doc, ObjectRef::Component(*c), k, value.as_deref())?;
-                }
-                out
-            }
-            // Brief 047: part lines, article numbers and items' keys, checked on each component.
-            k if cs.iter().any(|c| crate::bom::is_bom_key(doc, *c, k) || crate::bom::is_item(doc, *c)) => {
-                let mut out = None;
-                for c in &cs {
-                    out = if crate::bom::is_bom_key(doc, *c, k) {
-                        crate::bom::setprop_rule(doc, *c, k, value.as_deref())?
-                    } else {
-                        crate::bom::refuse_on_item(doc, *c, k, value.as_deref())?;
-                        crate::devices::property_value(doc, k, value.as_deref())?
-                    };
-                }
-                out
-            }
-            _ => crate::devices::property_value(doc, &key, value.as_deref())?,
-        };
+        // Each device walks the single-object rules (brief 060): a refusal on any refuses all.
         let mut ops = Vec::new();
         for c in &cs {
             let comp = doc.components.get(c).ok_or("no such object")?;
+            let key = component_key(doc, *c, &key);
+            let after = component_value(doc, *c, &key, value.clone())?;
             let before = comp.properties.get(&key).cloned();
             if before != after {
-                ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: key.clone(), before, after: after.clone() });
+                ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key, before, after });
             }
         }
         if ops.is_empty() {
@@ -770,6 +664,98 @@ fn run_setprop_many(s: &mut Session, cs: Vec<ComponentId>, key: String, value: O
         let n = ops.len();
         p.apply_edit(pg, "setprop", "Set property", ops)?;
         Ok(json!({"changed": true, "devices": n}))
+    })
+}
+
+/// The key `setprop` writes on component `c` for a typed `key`: on a PLC card with channels,
+/// `channels` is its channel count (`plc.channels`, pack re-run bug 7), as `terminals` is a strip's
+/// offer; on anything else the key as typed.
+fn component_key(doc: &ecad_model::Document, c: ComponentId, key: &str) -> String {
+    if key.trim() == "channels" && crate::plc::card_type_of(doc, c).is_some_and(|t| t.has_channels()) {
+        crate::plc::rack::CHANNELS_KEY.to_string()
+    } else {
+        key.to_string()
+    }
+}
+
+/// The value `setprop` stores for `key` on component `c`: the one rule list that `setprop` on one
+/// component, on several (`components`) and a device property (design 018 §6.1) all walk
+/// (brief 060; review 2026-11, defect 1). A key no rule claims stays free text, as typed.
+///
+/// # Errors
+/// The first rule that refuses the value, in words.
+pub(crate) fn component_value(doc: &ecad_model::Document, c: ComponentId, key: &str, value: Option<String>) -> Result<Option<String>, String> {
+    // Brief 047 (design 047 §3): an item takes no tag and no part lines, and keeps its description.
+    crate::bom::refuse_on_item(doc, c, key, value.as_deref())?;
+    // Brief 018 (design 018 §6.1): the device properties.
+    if crate::device_cmds::is_device_property(ObjectRef::Component(c), key) {
+        return crate::devices::property_value(doc, key, value.as_deref());
+    }
+    // Brief 022 and 049: a junction's or continuation's name and kind, a continuation's caption.
+    if let Some(v) = crate::wire_cmds::setprop_rule(doc, ObjectRef::Component(c), key, value.as_deref())? {
+        return Ok(v);
+    }
+    Ok(match key {
+        // Brief 025 (FP1, FP2): a part's contacts and its table's placement are checked.
+        crate::xref::CONTACTS_KEY => crate::xref::offer_value(value.as_deref())?,
+        crate::xref::MIRROR_KEY => crate::xref::mirror_value(value.as_deref())?,
+        // Brief 028 (FP1): a strip's offer; on another device `terminals` stays free text
+        // (review of PR #55, 5).
+        crate::strips::OFFER_KEY if crate::strips::is_strip(doc, c) => crate::strips::offer_value(value.as_deref())?,
+        // Brief 028 (FP4): the PE row's part.
+        crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY => crate::devices::property_value(doc, key, value.as_deref())?,
+        // Brief 044 (FP4): a connector's `pins`, `half.<s|p>.<field>` and naming defaults.
+        k if crate::connectors::setprop_value(doc, c, k, None).is_some() => match crate::connectors::setprop_value(doc, c, k, value.as_deref()) {
+            Some(r) => r?,
+            None => value,
+        },
+        // Brief 036 (§12, FP4): the registry's terminal defaults on a strip, and a level's label.
+        k if k.starts_with("terminal.") && crate::strips::is_strip(doc, c) => match crate::defaults::terminals::setprop_value(k, value.as_deref()) {
+            Some(r) => r?,
+            None => value,
+        },
+        k if k.starts_with(crate::terminal_types::LABEL_PREFIX) && crate::strips::is_strip(doc, c) => {
+            match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+                None => None,
+                Some(v) if v.chars().count() > crate::terminal_types::MAX_LABEL_CHARS || v.chars().any(char::is_control) => {
+                    return Err(format!(
+                        "A level's label is 1 to {} characters, with no control characters.",
+                        crate::terminal_types::MAX_LABEL_CHARS
+                    ));
+                }
+                Some(v) => Some(v.to_string()),
+            }
+        }
+        // Brief 045 (FP1, FP3): a card's rack, slot and channel count.
+        k if crate::plc::setprop_rule(doc, c, k, None).is_some() => crate::plc::setprop_rule(doc, c, k, value.as_deref()).unwrap_or(Ok(None))?,
+        // Brief 034 (design 034 §7.3): `rating` and a fuse bank's `rating.<n>`.
+        k if crate::symbols::is_rating_key(k) => crate::symbols::setprop_rule(doc, ObjectRef::Component(c), k, value.as_deref())?,
+        // Brief 047 (design 047 §2.4): article numbers, part lines and items' quantities.
+        k if crate::bom::is_bom_key(doc, c, k) => crate::bom::setprop_rule(doc, c, k, value.as_deref())?,
+        // Brief 030 (FP1, FP2, FP5, FP6): placements, links and accessory parts of a strip.
+        _ => match crate::accessories::setprop_rule(doc, c, key, value.as_deref())? {
+            Some(v) => v,
+            None => value,
+        },
+    })
+}
+
+/// The value `setprop` stores for `key` on a conductor or a cable (brief 022; brief 028 FP2;
+/// brief 057): a key no rule claims stays free text, as typed.
+///
+/// # Errors
+/// The first rule that refuses the value, in words.
+fn other_value(doc: &ecad_model::Document, object: ObjectRef, key: &str, value: Option<String>) -> Result<Option<String>, String> {
+    if let Some(v) = crate::wire_cmds::setprop_rule(doc, object, key, value.as_deref())? {
+        return Ok(v);
+    }
+    Ok(match (object, key) {
+        (ObjectRef::Cable(_), crate::strips::CORES_KEY) => crate::strips::cores_value(value.as_deref())?,
+        // Brief 057 (tester re-check 2): a core's Not used tick, bounded.
+        (ObjectRef::Cable(k), key) if key.starts_with(crate::styles::cable::UNUSED_PREFIX) => {
+            crate::styles::cable::unused_value(doc, k, key, value.as_deref())?
+        }
+        _ => value,
     })
 }
 

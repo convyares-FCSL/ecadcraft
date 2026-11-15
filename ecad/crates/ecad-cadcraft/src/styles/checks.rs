@@ -85,6 +85,24 @@ fn words(doc: &Document, key: &str, value: &str, whose: &str) -> String {
     }
 }
 
+/// The style rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with checks off.
+pub struct StyleRows;
+
+impl crate::checks::CheckSource for StyleRows {
+    fn key(&self) -> crate::checks::Key {
+        crate::checks::Key::Styles
+    }
+    fn touched(&self, scope: &crate::checks::Scope) -> bool {
+        scope.styles
+    }
+    fn kept_on_pages_off(&self) -> bool {
+        true
+    }
+    fn checks(&self, doc: &Document) -> Vec<Check> {
+        rows(doc)
+    }
+}
+
 /// Every style row of `doc`.
 pub fn rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();

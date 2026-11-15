@@ -4,40 +4,55 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Author, Cable, CableMember, Color, Component, Conductor, Definition, Document, End, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
-    LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, Style, Subject, SymbolInstance,
-    Terminal, TerminalDef, Touched,
+    Author, Cable, CableMember, Color, Component, Conductor, Definition, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId,
+    Ledger, LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
+    StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched,
 };
 
-const ALL_OPS: [&str; 27] = [
-    "AddPage",
-    "RemovePage",
-    "AddLayer",
-    "RemoveLayer",
-    "AddItem",
-    "ModifyItem",
-    "RemoveItem",
-    "CreateComponent",
-    "DeleteComponent",
-    "AddTerminal",
-    "RemoveTerminal",
-    "LinkRepresentation",
-    "ModifyRepresentation",
-    "UnlinkRepresentation",
-    "CreateConductor",
-    "DeleteConductor",
-    "AttachEnd",
-    "CreateCable",
-    "DeleteCable",
-    "AddCableMember",
-    "RemoveCableMember",
-    "SetProperty",
-    "EmbedDefinition",
-    "RemoveDefinition",
-    "SetProjectSettings",
-    "NameVersion",
-    "UnnameVersion",
-];
+/// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
+/// names every variant to the deserializer, so a new op is in this list without anyone adding it,
+/// and the tables below must cover it. `Op::name` (an exhaustive `match`) gives the same words.
+fn all_ops() -> BTreeSet<&'static str> {
+    use serde::de::{self, Deserialize, Visitor};
+
+    /// A deserializer that only records the variant names it is handed.
+    struct Names(Option<&'static [&'static str]>);
+
+    #[derive(Debug)]
+    struct Stop;
+    impl std::fmt::Display for Stop {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("variant names recorded")
+        }
+    }
+    impl std::error::Error for Stop {}
+    impl de::Error for Stop {
+        fn custom<T: std::fmt::Display>(_: T) -> Self {
+            Stop
+        }
+    }
+
+    impl<'de> de::Deserializer<'de> for &mut Names {
+        type Error = Stop;
+        fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, Stop> {
+            Err(Stop)
+        }
+        fn deserialize_enum<V: Visitor<'de>>(self, _: &'static str, variants: &'static [&'static str], _: V) -> Result<V::Value, Stop> {
+            self.0 = Some(variants);
+            Err(Stop)
+        }
+        serde::forward_to_deserialize_any! {
+            bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf option unit unit_struct
+            newtype_struct seq tuple tuple_struct map struct identifier ignored_any
+        }
+    }
+
+    let mut names = Names(None);
+    assert!(Op::deserialize(&mut names).is_err());
+    let all: BTreeSet<&'static str> = names.0.unwrap_or_default().iter().copied().collect();
+    assert!(all.len() >= 33, "Op's variants: {all:?}");
+    all
+}
 
 fn style(layer: LayerId) -> Style {
     Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
@@ -73,6 +88,8 @@ struct Base {
     wire2: ecad_model::ConductorId,
     cable: ecad_model::CableId,
     cable_v: Cable,
+    folder: ecad_model::FolderId,
+    folder_v: Folder,
 }
 
 fn base() -> Base {
@@ -123,6 +140,8 @@ fn base() -> Base {
     };
     let cable = ids.fresh();
     let cable_v = Cable { members: vec![CableMember { conductor: wire, core: None }], ..Cable::default() };
+    let folder = ids.fresh();
+    let folder_v = Folder { name: "F".into(), parent: None };
     ledger
         .commit(
             Author::User,
@@ -140,6 +159,7 @@ fn base() -> Base {
                 Op::CreateConductor { id: wire2, conductor: Conductor::default() },
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
+                Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
             ],
         )
         .unwrap();
@@ -169,7 +189,17 @@ fn base() -> Base {
         wire2,
         cable,
         cable_v,
+        folder,
+        folder_v,
     }
+}
+
+fn header(b: &mut Base) -> StandardHeader {
+    StandardHeader { id: b.ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None }
+}
+
+fn record() -> StyleRecord {
+    StyleRecord { name: "Thin".into(), ..StyleRecord::default() }
 }
 
 fn bytes(doc: &Document) -> Vec<u8> {
@@ -212,6 +242,18 @@ fn applicable(b: &mut Base) -> Vec<Op> {
         },
         Op::NameVersion { name: "w".into(), at: 2, description: None },
         Op::UnnameVersion { name: "v".into(), at: 1, description: None },
+        Op::SetComponentDefinition { id: b.comp, before: Some(b.def), after: None },
+        Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder) }, index: 1 },
+        Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
+        Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
+        Op::SetStyle {
+            layer: StyleLayer::Project,
+            catalogue: "line".into(),
+            id: StyleRef::Builtin("thin".into()),
+            before: None,
+            after: Some(record()),
+        },
+        Op::SetStandard { before: None, after: Some(header(b)) },
     ]
 }
 
@@ -257,6 +299,29 @@ fn failing(b: &mut Base) -> Vec<Op> {
         },
         Op::NameVersion { name: "v".into(), at: 1, description: None },
         Op::UnnameVersion { name: "v".into(), at: 2, description: None },
+        Op::SetComponentDefinition { id: b.comp, before: None, after: Some(b.def) },
+        Op::SetComponentDefinition { id: missing_comp, before: None, after: None },
+        Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
+        Op::AddFolder { id: b.ids.fresh(), folder: b.folder_v.clone(), index: 5 },
+        Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 1 },
+        Op::RemoveFolder { id: b.folder, folder: Folder { name: "other".into(), parent: None }, index: 0 },
+        Op::ModifyFolder { id: b.folder, before: Folder { name: "other".into(), parent: None }, after: b.folder_v.clone() },
+        // The project has no standard, so a Standard-layer style and a header change both fail.
+        Op::SetStyle {
+            layer: StyleLayer::Standard,
+            catalogue: "line".into(),
+            id: StyleRef::Builtin("thin".into()),
+            before: None,
+            after: Some(record()),
+        },
+        Op::SetStyle {
+            layer: StyleLayer::Project,
+            catalogue: "line".into(),
+            id: StyleRef::Builtin("thin".into()),
+            before: Some(record()),
+            after: None,
+        },
+        Op::SetStandard { before: Some(header(b)), after: None },
     ]
 }
 
@@ -267,7 +332,7 @@ fn names(ops: &[Op]) -> BTreeSet<&'static str> {
 #[test]
 fn the_tables_cover_every_op_type() {
     let mut b = base();
-    let all: BTreeSet<_> = ALL_OPS.into_iter().collect();
+    let all = all_ops();
     assert_eq!(names(&applicable(&mut b)), all);
     assert_eq!(names(&failing(&mut b)), all);
 }

@@ -6,7 +6,10 @@
 //!   on one except through its own `dev` feature, dev features are read only in a crate's `dev`
 //!   module, and no product source reads a file under `dev/`. ECAD's interface kit (`ecad-ui`,
 //!   class UiKit) uses egui and `ecad-tokens` only, and ECAD UI sources do not style locally
-//!   (design `ui-architecture.md` §2–§3.2, brief 037).
+//!   (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI sources and direct
+//!   `cadcraft-engine` use by the apps are ratcheted: their allowlisted counts only fall; `anyhow`
+//!   is for apps only, `tokio` for none; Core crates' direct OS access (file system, environment,
+//!   processes, network, clock) is ratcheted to fall to none (brief 060).
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
 //! - `wasm`: the ECAD library crates build for `wasm32-unknown-unknown`, warnings as errors (as CI).
@@ -19,6 +22,8 @@
 //!   check runs it with `--base origin/dev --with-dependents` on pull requests into dev.
 //! - `clean-builds`: delete the build folders of every checkout under a folder, skipping those in
 //!   use, and remove worktrees whose branch is merged into `origin/dev` (see [`clean`]).
+
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -96,6 +101,11 @@ const LOCAL_STYLE: &[&str] = &[
     "CornerRadius",
     "Rounding::",
     "Tokens::get",
+    // Brief 060 (review 2026-11, finding 8): egui's named colours are local styling too.
+    "Color32::WHITE",
+    "Color32::GRAY",
+    "Color32::RED",
+    "Color32::YELLOW",
 ];
 
 /// ECAD UI files that still style locally: the number of lines that do, and the brief that
@@ -105,12 +115,20 @@ const LOCAL_STYLE: &[&str] = &[
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
     ("apps/ecad-trial/src/debugger.rs", 1, "developer tool: restyled when U2 moves the Developer section"),
     ("apps/ecad-trial/src/history_panel.rs", 3, "038 (U2) moves it; restyled by U4d"),
-    ("apps/ecad-trial/src/merge_dialog.rs", 2, "restyled with History (U4d)"),
+    ("apps/ecad-trial/src/library/builder.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("apps/ecad-trial/src/library/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("apps/ecad-trial/src/library/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("apps/ecad-trial/src/merge_dialog.rs", 3, "restyled with History (U4d)"),
     ("apps/ecad-trial/src/outputs_ui.rs", 5, "restyled with Publish (after U2)"),
-    ("apps/ecad-trial/src/preview.rs", 5, "restyled with the page view (U4a)"),
+    ("apps/ecad-trial/src/preview.rs", 6, "restyled with the page view (U4a)"),
+    ("apps/ecad-trial/src/project_panel.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("apps/ecad-trial/src/publish.rs", 5, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
     ("apps/ecad-trial/src/release_ui.rs", 4, "restyled with Publish (after U2)"),
     ("apps/ecad-trial/src/renumber_dialog.rs", 2, "restyled with Lists (after U3)"),
     ("apps/ecad-trial/src/sheets_ui.rs", 5, "restyled with Publish (after U2)"),
+    ("apps/ecad-trial/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("apps/ecad-trial/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
 ];
 
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
@@ -143,6 +161,96 @@ const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
     ("apps/ecad-trial/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/text_ui.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
 ];
+
+/// Sizes written as literals in ECAD UI code (brief 060; review 2026-11, finding 8): a stroke width,
+/// a space or a size that starts with a digit, where `ecad-tokens` has (or will have) a token
+/// (`line::HAIRLINE_PX`, `space::XS`, …). Matched as the call followed directly by a digit.
+const LITERAL_SIZE: &[&str] = &["Stroke::new(", "add_space(", "vec2("];
+
+/// ECAD UI files with literal sizes ([`LITERAL_SIZE`]): the number of lines that have one, seeded
+/// on 2026-11-15 (brief 060). Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not
+/// listed that has one is a violation.
+const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
+    ("apps/ecad-trial/src/agent/last_write.rs", 1),
+    ("apps/ecad-trial/src/canvas/leader.rs", 1),
+    ("apps/ecad-trial/src/canvas/markers.rs", 5),
+    ("apps/ecad-trial/src/devices_panel.rs", 9),
+    ("apps/ecad-trial/src/history_panel.rs", 24),
+    ("apps/ecad-trial/src/lib.rs", 11),
+    ("apps/ecad-trial/src/library/browser.rs", 7),
+    ("apps/ecad-trial/src/library/builder.rs", 18),
+    ("apps/ecad-trial/src/library/details.rs", 6),
+    ("apps/ecad-trial/src/library/review.rs", 1),
+    ("apps/ecad-trial/src/library/title_blocks/canvas.rs", 25),
+    ("apps/ecad-trial/src/library/title_blocks/frame_popover.rs", 3),
+    ("apps/ecad-trial/src/library/title_blocks/list.rs", 7),
+    ("apps/ecad-trial/src/lists/cable_view.rs", 7),
+    ("apps/ecad-trial/src/lists/workspace.rs", 1),
+    ("apps/ecad-trial/src/merge_dialog.rs", 1),
+    ("apps/ecad-trial/src/outputs_ui.rs", 1),
+    ("apps/ecad-trial/src/preview.rs", 5),
+    ("apps/ecad-trial/src/project_panel.rs", 20),
+    ("apps/ecad-trial/src/publish.rs", 11),
+    ("apps/ecad-trial/src/renumber_dialog.rs", 3),
+    ("apps/ecad-trial/src/settings/mod.rs", 7),
+    ("apps/ecad-trial/src/settings/pages.rs", 18),
+    ("apps/ecad-trial/src/settings/project.rs", 1),
+    ("apps/ecad-trial/src/settings/standards.rs", 3),
+    ("apps/ecad-trial/src/sheets_ui.rs", 3),
+    ("apps/ecad-trial/src/shell/conflicts.rs", 1),
+    ("apps/ecad-trial/src/shell/connector.rs", 3),
+    ("apps/ecad-trial/src/shell/glyphs.rs", 11),
+    ("apps/ecad-trial/src/shell/intent.rs", 1),
+    ("apps/ecad-trial/src/shell/left.rs", 1),
+    ("apps/ecad-trial/src/shell/new_page.rs", 3),
+    ("apps/ecad-trial/src/shell/placing.rs", 2),
+    ("apps/ecad-trial/src/shell/right.rs", 1),
+    ("apps/ecad-trial/src/shell/right/checks_tab.rs", 5),
+    ("apps/ecad-trial/src/shell/right/device.rs", 1),
+    ("apps/ecad-trial/src/shell/right/layout_tab.rs", 8),
+    ("apps/ecad-trial/src/shell/right/placing_view.rs", 4),
+    ("apps/ecad-trial/src/shell/right/widgets.rs", 10),
+    ("apps/ecad-trial/src/shell/status_bar.rs", 14),
+    ("apps/ecad-trial/src/shell/table_editor.rs", 1),
+    ("apps/ecad-trial/src/shell/tool_strip.rs", 2),
+    ("apps/ecad-trial/src/shell/top_bar.rs", 11),
+    ("apps/ecad-trial/src/window.rs", 9),
+];
+
+/// Apps that must reach the engine only through `ecad-cadcraft` (owner ruling, 2026-11-15; an
+/// app may depend on another app).
+const ENGINE_FREE: &[&str] = &["ecad-bench", "ecad-cli", "ecad-mcp", "ecad-trial"];
+
+/// Apps of [`ENGINE_FREE`] that still use `cadcraft-engine` directly: the number of source lines
+/// (outside comments) that name `cadcraft_engine`, seeded on 2026-11-15 (brief 060). The counts
+/// only fall; at none, the entry and the dependency in the app's `Cargo.toml` go.
+const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-bench", 32), ("ecad-mcp", 5), ("ecad-trial", 54)];
+
+/// Core crates that must not reach the file system, the environment, processes, the network or
+/// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is
+/// testable and portable; disk access belongs to `ecad-store`, and the time is passed in.
+const CORE_PURE: &[&str] = &["ecad-model", "ecad-file"];
+
+/// Direct OS access in Core code ([`CORE_PURE`]), each matched where it starts a name.
+const CORE_OS: &[&str] =
+    &["std::fs", "fs::", "std::env", "env::var", "std::process", "std::net", "SystemTime::now", "Instant::now", "Utc::now", "Local::now"];
+
+/// Core files that still reach the OS directly ([`CORE_OS`]): the number of lines that do (test
+/// modules aside), seeded on 2026-11-15 (brief 060). The counts only fall; the split lane takes
+/// them to none, and a file not listed that reaches the OS is a violation.
+const CORE_OS_ALLOWLIST: &[(&str, usize)] = &[
+    ("crates/ecad-file/src/disk.rs", 3),
+    ("crates/ecad-file/src/v2/convert.rs", 3),
+    ("crates/ecad-file/src/v2/disk.rs", 1),
+    ("crates/ecad-file/src/v2/schema.rs", 1),
+    ("crates/ecad-file/src/v2/store.rs", 2),
+    ("crates/ecad-model/src/dev.rs", 1),
+];
+
+/// Crates that may use `anyhow` (owner, 2026-11-15, brief 060): the apps and xtask. A library
+/// returns its own error type, so a caller can react to the kind of failure (review 2026-11,
+/// finding 3); `anyhow` erases it, which only a program's `main` may do.
+const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-cli", "ecad-mcp", "ecad-trial", "ecad-xtask"];
 
 /// UI toolkits and ECAD's own UI kit: Core and Adapter crates may depend on none of them (the
 /// kit too, so the document and adapter crates never draw; design `ui-architecture.md` §2).
@@ -244,6 +352,94 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// The places in one Core source file (`rel`, `/` separated) that reach the OS directly
+/// ([`CORE_OS`]), as `rel:line: text`. `//` comments are skipped, and so is everything from a
+/// `#[cfg(test)]` line followed by a `mod` line (the file's test module) on.
+fn core_os_places(rel: &str, text: &str) -> Vec<String> {
+    let code = strip_line_comments(text);
+    let lines: Vec<&str> = code.lines().collect();
+    let end = (0..lines.len())
+        .find(|&i| {
+            lines[i].trim() == "#[cfg(test)]"
+                && lines.get(i + 1).is_some_and(|n| n.trim_start().starts_with("mod ") || n.trim_start().starts_with("pub mod "))
+        })
+        .unwrap_or(lines.len());
+    let starts_name = |l: &str, i: usize| l[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+    lines[..end]
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| CORE_OS.iter().any(|p| l.match_indices(p).any(|(i, _)| starts_name(l, i))))
+        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
+        .collect()
+}
+
+/// The Core crates' ([`CORE_PURE`]) direct OS access beyond [`CORE_OS_ALLOWLIST`], and the entries
+/// that must come down (brief 060).
+fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut out = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
+        let name = p["name"].as_str().unwrap_or_default();
+        if !CORE_PURE.contains(&name) {
+            continue;
+        }
+        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            let places = core_os_places(&rel, &text);
+            match CORE_OS_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
+                Some((path, allowed)) => {
+                    seen.insert(path);
+                    out.extend(ratchet_problem(
+                        path,
+                        places.len(),
+                        *allowed,
+                        "lines reaching the OS",
+                        "Core stays pure data and rules (testable, portable): disk access belongs to ecad-store, and the time is passed in",
+                    ));
+                }
+                None => out.extend(places.into_iter().map(|p| {
+                    format!("{p} (Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in)")
+                })),
+            }
+        }
+    }
+    for (path, _) in CORE_OS_ALLOWLIST {
+        if !seen.contains(path) {
+            out.push(format!("{path}: in the Core OS-access allowlist but not found; remove the entry"));
+        }
+    }
+    Ok(out)
+}
+
+/// The dependency rules on ECAD's own manifests in `meta` (owner, 2026-11-15, brief 060; CADCraft's
+/// and transitive dependencies are not checked): `anyhow` only in [`ANYHOW_OK`] (dev-dependencies
+/// aside), `tokio` nowhere (ECAD runs no async runtime: commands are synchronous on the project's
+/// lock, and a second runtime beside CADCraft's event loop would split where work happens).
+/// `rayon` needs no rule: ECAD is desktop-only (owner, 2026-11-15).
+fn dependency_rule_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
+        let name = p["name"].as_str().unwrap_or_default();
+        for d in p["dependencies"].as_array().into_iter().flatten() {
+            let dep = d["name"].as_str().unwrap_or_default();
+            let dev = d["kind"].as_str() == Some("dev");
+            match dep {
+                "anyhow" if !dev && !ANYHOW_OK.contains(&name) => out.push(format!(
+                    "{name} must not depend on anyhow: a library returns its own error type so callers can tell failures apart (only {ANYHOW_OK:?} may)"
+                )),
+                "tokio" => out.push(format!("{name} must not depend on tokio: ECAD runs no async runtime beside CADCraft's event loop")),
+                _ => {}
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The places in one product source file (`rel`: its path from the workspace folder, `/`
 /// separated) that read a dev feature outside the crate's `dev` module (design 029 §12.3 rule 2),
 /// as `rel:line: text`.
@@ -294,6 +490,77 @@ fn local_style_places(rel: &str, text: &str) -> Vec<String> {
 /// as `rel:line: text`; comment lines and `//` comments are skipped.
 fn raw_control_places(rel: &str, text: &str) -> Vec<String> {
     places_matching(rel, text, RAW_CONTROL)
+}
+
+/// The places in one ECAD UI source file with a literal size ([`LITERAL_SIZE`] followed directly
+/// by a digit), as `rel:line: text`; comment lines and `//` comments are skipped.
+fn literal_size_places(rel: &str, text: &str) -> Vec<String> {
+    let code = strip_line_comments(text);
+    let literal =
+        |l: &str| LITERAL_SIZE.iter().any(|p| l.match_indices(p).any(|(i, _)| l[i + p.len()..].chars().next().is_some_and(|c| c.is_ascii_digit())));
+    code.lines()
+        .enumerate()
+        .filter(|(_, l)| literal(l))
+        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
+        .collect()
+}
+
+/// What is wrong with an entry of a ratchet allowlist that has `found` places against its
+/// `allowed` count, if anything: more is a violation (`fix` says what to do instead); fewer means
+/// lower the count, and none means remove the entry. `what` names the places, plural.
+fn ratchet_problem(path: &str, found: usize, allowed: usize, what: &str, fix: &str) -> Option<String> {
+    match found.cmp(&allowed) {
+        std::cmp::Ordering::Greater => Some(format!("{path}: {found} {what}, the allowlist allows {allowed}; {fix}")),
+        std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no {what} left; remove its allowlist entry")),
+        std::cmp::Ordering::Less => Some(format!("{path}: {found} {what}, fewer than the allowlist's {allowed}; lower the count")),
+        std::cmp::Ordering::Equal => None,
+    }
+}
+
+/// The apps of [`ENGINE_FREE`] in `meta` that use `cadcraft-engine` directly beyond
+/// [`ENGINE_ALLOWLIST`], and the entries that must come down (brief 060).
+fn engine_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
+        let name = p["name"].as_str().unwrap_or_default();
+        if !ENGINE_FREE.contains(&name) {
+            continue;
+        }
+        let depends = p["dependencies"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|d| d["name"].as_str() == Some("cadcraft-engine") && d["kind"].as_str() != Some("dev"));
+        let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        let mut found = 0;
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            found += places_matching(name, &text, &["cadcraft_engine"]).len();
+        }
+        match ENGINE_ALLOWLIST.iter().find(|(n, _)| *n == name) {
+            Some((n, allowed)) => {
+                seen.insert(n);
+                if found == 0 && depends && *allowed > 0 {
+                    out.push(format!("{n}: no longer names cadcraft_engine; remove the dependency from its Cargo.toml and its allowlist entry"));
+                } else {
+                    out.extend(ratchet_problem(n, found, *allowed, "source lines naming cadcraft_engine", "reach the engine through ecad-cadcraft"));
+                }
+            }
+            None if depends || found > 0 => {
+                out.push(format!("{name}: an app must not depend on cadcraft-engine directly ({found} source lines); go through ecad-cadcraft"))
+            }
+            None => {}
+        }
+    }
+    for (n, _) in ENGINE_ALLOWLIST {
+        if !seen.contains(n) {
+            out.push(format!("{n}: in the engine allowlist but not found; remove the entry"));
+        }
+    }
+    Ok(out)
 }
 
 /// The lines of `text` (outside `//` comments) that contain one of `patterns`, as `rel:line: text`.
@@ -458,6 +725,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
     let mut style_seen: BTreeSet<&str> = BTreeSet::new();
     let mut raw_seen: BTreeSet<&str> = BTreeSet::new();
+    let mut size_seen: BTreeSet<&str> = BTreeSet::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         let class = class_of(name);
@@ -495,6 +763,14 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                     }
                     None => out.extend(places.into_iter().map(|p| format!("{p} (no raw egui value controls: use ecad_ui::control)"))),
                 }
+                let places = literal_size_places(&rel, &text);
+                match LITERAL_SIZE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
+                    Some((path, allowed)) => {
+                        size_seen.insert(path);
+                        out.extend(ratchet_problem(path, places.len(), *allowed, "lines with literal sizes", "take the size from ecad-tokens"));
+                    }
+                    None => out.extend(places.into_iter().map(|p| format!("{p} (no literal sizes: take them from ecad-tokens)"))),
+                }
             }
         }
     }
@@ -506,6 +782,11 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     for (path, _, why) in RAW_CONTROL_ALLOWLIST {
         if !raw_seen.contains(path) {
             out.push(format!("{path}: in the raw-control allowlist ({why}) but not found; remove the entry"));
+        }
+    }
+    for (path, _) in LITERAL_SIZE_ALLOWLIST {
+        if !size_seen.contains(path) {
+            out.push(format!("{path}: in the literal-size allowlist but not found; remove the entry"));
         }
     }
     for (path, brief) in DEV_FEATURE_ALLOWLIST {
@@ -525,6 +806,9 @@ fn layers() -> Result<(), String> {
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let mut v = layer_violations(&meta)?;
     v.extend(source_violations(&meta)?);
+    v.extend(engine_violations(&meta)?);
+    v.extend(dependency_rule_violations(&meta)?);
+    v.extend(core_os_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -1161,6 +1445,90 @@ let c = ecad_ui::color(SHELL.text);",
         for (text, n) in rows {
             assert_eq!(local_style_places("apps/ecad-trial/src/x.rs", text).len(), *n, "{text}");
         }
+    }
+
+    /// Brief 060: a literal size is the call followed directly by a digit; a token, a variable or
+    /// a comment is not.
+    #[test]
+    fn literal_sizes_are_found_and_tokens_are_not() {
+        let rows: &[(&str, usize)] = &[
+            ("ui.add_space(4.0);", 1),
+            ("let s = egui::Stroke::new(1.0, c);", 1),
+            ("let v = egui::vec2(12.0, 0.0);", 1),
+            ("ui.add_space(space::XS);", 0),
+            ("let s = egui::Stroke::new(line::HAIRLINE_PX, c);", 0),
+            ("let v = egui::vec2(w, 0.0);", 0),
+            ("// ui.add_space(4.0);", 0),
+            ("let v = egui::vec2(w, 0.0); ui.add_space(8.0); // vec2(3", 1),
+        ];
+        for (text, n) in rows {
+            assert_eq!(literal_size_places("apps/ecad-trial/src/x.rs", text).len(), *n, "{text}");
+        }
+    }
+
+    /// Brief 060: the ratchet message for each case.
+    #[test]
+    fn a_ratchet_count_only_falls() {
+        assert!(ratchet_problem("a.rs", 3, 3, "things", "fix").is_none());
+        assert!(ratchet_problem("a.rs", 4, 3, "things", "fix").is_some_and(|m| m.contains("allows 3")));
+        assert!(ratchet_problem("a.rs", 2, 3, "things", "fix").is_some_and(|m| m.contains("lower the count")));
+        assert!(ratchet_problem("a.rs", 0, 3, "things", "fix").is_some_and(|m| m.contains("remove")));
+    }
+
+    /// Brief 060: direct OS access in Core is found where a name starts, outside comments and the
+    /// test module.
+    #[test]
+    fn core_os_access_is_found_outside_comments_and_tests() {
+        let rows: &[(&str, usize)] = &[
+            ("let b = std::fs::read(p)?;", 1),
+            ("use std::fs;\nlet b = fs::read(p)?;", 2),
+            ("let v = std::env::var(\"X\");", 1),
+            ("let v = env::var(\"X\");", 1),
+            ("let id = std::process::id();", 1),
+            ("let t = std::time::SystemTime::now();", 1),
+            ("let t = Instant::now();", 1),
+            ("let t = chrono::Utc::now();", 1),
+            ("let r = prefs::get();", 0),
+            ("// std::fs::read in a comment", 0),
+            ("let a = 1;\n#[cfg(test)]\nmod tests {\n    fn t() { std::fs::read(\"x\"); }\n}", 0),
+        ];
+        for (text, n) in rows {
+            assert_eq!(core_os_places("crates/ecad-model/src/x.rs", text).len(), *n, "{text}");
+        }
+    }
+
+    /// Brief 060: `anyhow` only in apps and xtask, `tokio` nowhere; `rayon` is allowed anywhere.
+    #[test]
+    fn the_dependency_rules_refuse_anyhow_in_libraries_and_tokio() {
+        let dep = |name: &str, kind: Value, target: Value| serde_json::json!({"name": name, "kind": kind, "target": target});
+        let rows: &[(&str, Value, usize)] = &[
+            ("ecad-model", dep("anyhow", Value::Null, Value::Null), 1),
+            ("ecad-model", dep("anyhow", "dev".into(), Value::Null), 0),
+            ("ecad-trial", dep("anyhow", Value::Null, Value::Null), 0),
+            ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), 0),
+            ("ecad-trial", dep("tokio", Value::Null, Value::Null), 1),
+            ("ecad-store", dep("tokio", "dev".into(), Value::Null), 1),
+            ("ecad-model", dep("rayon", Value::Null, Value::Null), 0),
+            ("ecad-model", dep("serde", Value::Null, Value::Null), 0),
+        ];
+        for (pkg, d, n) in rows {
+            let meta = serde_json::json!({"packages": [{"name": pkg, "dependencies": [d]}]});
+            assert_eq!(dependency_rule_violations(&meta).unwrap().len(), *n, "{pkg}: {d}");
+        }
+    }
+
+    /// Brief 060: an app that depends on the engine and is not in the allowlist fails `layers`.
+    #[test]
+    fn an_app_that_depends_on_the_engine_is_a_violation() {
+        let meta = serde_json::json!({"packages": [
+            {"name": "ecad-cli", "manifest_path": "/nowhere/ecad-cli/Cargo.toml",
+             "dependencies": [{"name": "cadcraft-engine", "kind": null}]},
+            {"name": "ecad-store", "manifest_path": "/nowhere/ecad-store/Cargo.toml",
+             "dependencies": [{"name": "cadcraft-engine", "kind": "dev"}]},
+        ]});
+        let v = engine_violations(&meta).unwrap();
+        assert!(v.iter().any(|m| m.starts_with("ecad-cli: an app must not depend on cadcraft-engine")), "{v:?}");
+        assert!(!v.iter().any(|m| m.starts_with("ecad-store")), "{v:?}");
     }
 
     /// A UI file not in the allowlist that styles locally fails `layers`; one in it does not.

@@ -71,645 +71,280 @@ impl Severity {
     }
 }
 
-/// What a check found (design 022 §8's table, in its order).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Kind {
-    JoinsPotentials,
-    SharedNumber,
-    TwoFixed,
-    OpenEnd,
-    LooseWire,
-    LooksConnected,
-    DrawnAway,
-    SinglePoint,
-    ThinJunction,
-    Unconnected,
-    LonelyContinuation,
-    MixedPotentials,
-    Unnumbered,
-    UnknownName,
+/// One row per check kind (brief 060, R7; review 2026-11, finding 5): its variant, its JSON name
+/// (persisted: never renamed), its severity, the words of the Show list and, after them, `count`
+/// for a row that shows a count rather than a place (`12 wires`). Generates [`Kind`],
+/// [`Kind::ALL`] (in table order), [`Kind::name`], [`Kind::severity`], [`Kind::words`] and
+/// [`Kind::is_count`]; a new check is one row here plus its source module.
+macro_rules! check_kinds {
+    ($($(#[$doc:meta])* $kind:ident = $name:literal, $severity:ident, $words:expr $(, $count:ident)?;)*) => {
+        /// What a check found (design 022 §8's table, in its order).
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum Kind {
+            $($(#[$doc])* $kind,)*
+        }
+
+        impl Kind {
+            /// Every kind, in table order (the Show list's order).
+            pub const ALL: [Kind; [$(stringify!($kind)),*].len()] = [$(Kind::$kind),*];
+
+            /// The JSON name.
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(Kind::$kind => $name,)*
+                }
+            }
+
+            /// The words of the Show list.
+            pub fn words(self) -> &'static str {
+                match self {
+                    $(Kind::$kind => $words,)*
+                }
+            }
+
+            pub fn severity(self) -> Severity {
+                match self {
+                    $(Kind::$kind => Severity::$severity,)*
+                }
+            }
+
+            /// Whether the kind's row shows a count rather than a place (`12 wires`).
+            pub fn is_count(self) -> bool {
+                match self {
+                    $(Kind::$kind => check_kinds!(@count $($count)?),)*
+                }
+            }
+        }
+    };
+    (@count count) => {
+        true
+    };
+    (@count) => {
+        false
+    };
+}
+
+#[rustfmt::skip]
+check_kinds! {
+    JoinsPotentials = "joins-potentials", Error, "Net joins two potentials";
+    SharedNumber = "shared-number", Error, "Two nets share a number";
+    TwoFixed = "two-fixed", Error, "One net, two fixed numbers";
+    OpenEnd = "open-end", Warning, "Open end";
+    LooseWire = "loose-wire", Warning, "Loose wire";
+    LooksConnected = "looks-connected", Warning, looks_connected_words();
+    DrawnAway = "drawn-away", Warning, "End drawn away from its connection point";
+    SinglePoint = "single-point", Warning, "Net with a single connection point";
+    ThinJunction = "thin-junction", Info, "Junction with fewer than three wires";
+    Unconnected = "unconnected", Info, "Connection point not connected";
+    LonelyContinuation = "lonely-continuation", Info, "Continuation without partner";
+    MixedPotentials = "mixed-potentials", Info, "Mixed potentials in one net";
+    Unnumbered = "unnumbered", Info, "Unnumbered nets", count;
+    UnknownName = "unknown-name", Warning, "Continuation name not a potential";
     /// Two cables, or a cable and a device, share a tag (brief 026: one namespace).
-    DuplicateTag,
+    DuplicateTag = "duplicate-tag", Error, "Two cables share a tag";
     /// A provisional tag (brief 026, design §5.4).
-    ProvisionalTag,
+    ProvisionalTag = "provisional-tag", Warning, "Provisional tag";
     /// Nets without a number while provisional tags are on: one summary row (Q6).
-    ProvisionalWires,
+    ProvisionalWires = "provisional-wires", Warning, "Wire numbers provisional", count;
     /// Brief 052 (design 052 §6): a device's stored location is the context of none of its
     /// symbols.
-    LocationUnused,
+    LocationUnused = "location-unused", Warning, "Location used by none of its symbols";
     /// The same for its function.
-    FunctionUnused,
+    FunctionUnused = "function-unused", Warning, "Function used by none of its symbols";
     /// Devices without a function (one count row, when some function is set).
-    NoFunction,
+    NoFunction = "function-none", Info, "Devices without a function";
     /// A stored function or location names no entry of the project's list.
-    DesignationMissing,
+    DesignationMissing = "designation-missing", Warning, "Function or location no longer in the list";
     /// Two entries of one aspect share a code (only a branch merge makes them).
-    DesignationDuplicate,
+    DesignationDuplicate = "designation-duplicate", Warning, "Two entries share a code";
     /// A device with two heads (only a merge makes them).
-    TwoHeads,
+    TwoHeads = "two-heads", Warning, "A device with two heads";
     /// A location box outline crosses itself.
-    BoxCrosses,
+    BoxCrosses = "box-crosses", Warning, "Location box outline crosses itself";
     /// Two location boxes overlap without nesting.
-    BoxesOverlap,
+    BoxesOverlap = "boxes-overlap", Info, "Location boxes overlap without nesting";
     /// Devices without a part number (one count row).
-    NoPartNumber,
+    NoPartNumber = "no-part-number", Info, "Devices without a part number", count;
     /// Devices without a location (one count row).
-    NoLocation,
+    NoLocation = "no-location", Info, "Devices without a location", count;
     /// A device with more contacts of a kind drawn than its part offers (brief 025).
-    TooManyContacts,
+    TooManyContacts = "too-many-contacts", Warning, "More contacts than the part offers";
     /// Brief 028 (design 028 §8): a strip with more terminals drawn than it offers.
-    TooManyTerminals,
+    TooManyTerminals = "too-many-terminals", Warning, "More terminals than the strip offers";
     /// Two terminals of one strip with one label.
-    TerminalTwice,
+    TerminalTwice = "terminal-twice", Error, "Terminal drawn twice";
     /// A cable with more members than cores offered.
-    TooManyCores,
+    TooManyCores = "too-many-cores", Warning, "More cores used than the cable offers";
     /// Two members of one cable with one core label.
-    CoreTwice,
+    CoreTwice = "core-twice", Warning, "Core used by two wires";
     /// Cables with no core count (one count row).
-    NoCoreCount,
+    NoCoreCount = "no-core-count", Info, "Cables without a core count", count;
     /// A cable reference end with no other end (brief 027, design 027 §4.2).
-    OrphanReference,
+    OrphanReference = "orphan-reference", Warning, "Cable reference with no other end";
     /// Brief 030 (design 030 §8): an accessory placed after or on a position the strip lacks.
-    AccessoryOrphan,
+    AccessoryOrphan = "accessory-orphan", Warning, "Accessory at a position the strip lacks";
     /// Placed strip accessories without a part number (one count row).
-    NoAccessoryPart,
+    NoAccessoryPart = "no-accessory-part", Info, "Strip accessories without a part number", count;
     /// A link spanning a partition.
-    LinkAcrossPartition,
+    LinkAcrossPartition = "link-across-partition", Warning, "Link crosses a partition";
     /// A link naming positions the strip does not have.
-    LinkOrphan,
+    LinkOrphan = "link-orphan", Warning, "Link names positions the strip lacks";
     /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
-    LinkOnNonStrip,
+    LinkOnNonStrip = "link-on-non-strip", Warning, "Link on a device that is not a strip";
     /// Brief 033: a contact table the user placed overlaps the title block.
-    TableOverTitle,
+    TableOverTitle = "table-over-title", Warning, "Contact table over the title block";
     /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
-    ContinuationClash,
+    ContinuationClash = "continuation-clash", Warning, "Continuation sheet has another page's number";
     /// Brief 036 (design 036 §8): a level of a multi-level position drawn twice.
-    LevelTwice,
+    LevelTwice = "level-twice", Error, "Terminal level drawn twice";
     /// A position whose levels are drawn by symbols of two types.
-    PositionMixed,
+    PositionMixed = "position-mixed", Warning, "Position mixes terminal types";
     /// A link naming a level its position does not have.
-    LevelMissing,
+    LevelMissing = "level-missing", Warning, "Link names a level the position lacks";
     /// Fuse terminals that are devices of their own (one count row).
-    FuseDevice,
+    FuseDevice = "fuse-device", Info, "Fuse terminals that are devices of their own";
     /// Fuse positions with no rating (one count row).
-    NoFuseRating,
+    NoFuseRating = "no-fuse-rating", Info, "Fuse positions without a rating";
     /// Brief 040: a wire or core colour code the app does not know (drawn in ink).
-    UnknownColour,
+    UnknownColour = "unknown-colour", Info, "Colour code not defined (drawn in ink); define it in Standards";
     /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
-    DashesLeftOut,
+    DashesLeftOut = "dashes-left-out", Warning, "Two-colour wires drawn in one colour (too many dashes on the page)";
     /// Brief 045 (design 045 §9): two cards in one slot of a rack.
-    SlotTwice,
+    SlotTwice = "slot-twice", Error, "Two cards in one slot";
     /// A card naming a rack that is not in the project.
-    RackMissing,
+    RackMissing = "rack-missing", Warning, "Card names a rack that is not in the project";
     /// A card in a slot its rack does not have (or in a rack but no slot).
-    SlotRange,
+    SlotRange = "slot-range", Warning, "Card in a slot its rack does not have";
     /// PLC cards in no rack (one count row).
-    Unracked,
+    Unracked = "unracked", Info, "PLC cards in no rack", count;
     /// Brief 045b: one channel drawn twice.
-    ChannelTwice,
+    ChannelTwice = "channel-twice", Error, "Channel drawn twice";
     /// A channel drawn beyond its card's channel count.
-    ChannelOver,
+    ChannelOver = "channel-over", Warning, "Channel beyond the card's count";
     /// A channel drawn by a symbol of another card type.
-    ChannelType,
+    ChannelType = "channel-type", Warning, "Channel drawn as another card type";
     /// Two cards' address blocks overlap.
-    AddressOverlap,
+    AddressOverlap = "address-overlap", Warning, "Address blocks overlap";
     /// One address given to two channels (one typed).
-    AddressTwice,
+    AddressTwice = "address-twice", Warning, "Address given twice";
     /// A block past byte 65 535.
-    AddressOverflow,
+    AddressOverflow = "address-overflow", Warning, "Address block past byte 65535";
     /// Used channels with no address (one count row).
-    NoAddress,
+    NoAddress = "no-address", Info, "Used channels with no address";
     /// Brief 051 (design 051 §2.8): a wire that runs on through a PLC card to another point.
-    WireThroughCard,
+    WireThroughCard = "wire-through-card", Warning, "Wire runs through a PLC card";
     /// Brief 051 (design 051 §2.5): a run's texts are wider or deeper than its cells at the
     /// project's text styles (Info; nothing is shrunk).
-    PlcTextWide,
+    PlcTextWide = "plc-text-wide", Info, "PLC texts wider than their cells";
     /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
-    ConnectorPinTwice,
+    ConnectorPinTwice = "connector-pin-twice", Error, "Connector pin drawn twice on one half";
     /// A connector whose whole halves are of two families.
-    ConnectorFamily,
+    ConnectorFamily = "connector-family", Warning, "Connector halves of two families";
     /// A connector whose whole halves differ in size.
-    ConnectorSize,
+    ConnectorSize = "connector-size", Warning, "Connector halves of two sizes";
     /// A connector's pins with no mate (one count row per connector).
-    ConnectorLonePin,
+    ConnectorLonePin = "connector-lone-pin", Info, "Connector pins without a mate";
     /// A connector pin numbered beyond its `pins`.
-    ConnectorOver,
+    ConnectorOver = "connector-over", Info, "Connector pin beyond its pin count";
     /// Brief 047 (design 047 §9): items without a part number (one count row).
-    ItemNoPartNumber,
+    ItemNoPartNumber = "item-no-part-number", Info, "Items without a part number", count;
     /// Fuses (of banks, strips and fuse terminals) that no part line serves (one count row).
-    FuseNoInsert,
+    FuseNoInsert = "fuse-no-insert", Info, "Fuses without an insert", count;
     /// One part number with two article numbers.
-    ArticleConflict,
+    ArticleConflict = "article-conflict", Warning, "One part number, two article numbers";
     /// A part line's `for` names a fuse or position the device does not have.
-    PartForMissing,
+    PartForMissing = "part-for-missing", Warning, "Part line names a fuse or position the device lacks";
     /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
-    BadPartKey,
+    BadPartKey = "bad-part-key", Info, "Part line or item value ECAD does not read";
     /// Brief 050a: an object's style choice names no style (drawn with the next level's).
-    StyleUnknown,
+    StyleUnknown = "style-unknown", Info, "Style not found; drawn without it";
     /// Brief 050a (FP4 ruling): 031's text sizes, weights or fonts set as project properties in
     /// an older build, no longer read. One row per kind of key.
-    IgnoredOldSetting,
+    IgnoredOldSetting = "ignored-old-setting", Info, "Set in an older build, now ignored: set it in Standards";
     /// Brief 050a (design 050 §3.2): style records past the bounds, ignored.
-    StyleLimits,
+    StyleLimits = "style-limits", Info, "Style records past the limits are ignored";
     /// Brief 050b: a wire's own category names no category (drawn without one).
-    CategoryUnknown,
+    CategoryUnknown = "category-unknown", Info, "Wire category not found; drawn without one";
     /// Brief 050b: two categories name one potential (the first by ID is used).
-    CategoryPotentialTwice,
+    CategoryPotentialTwice = "category-potential-twice", Warning, "Two wire categories are the default for one potential";
     /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
     /// has no length.
-    WireAllowance,
+    WireAllowance = "wire-allowance", Info, "Wire length not set (set an allowance in Standards)";
     /// Brief 054 (design 054 §9): a page's `page.type` names no page type.
-    PageTypeUnknown,
+    PageTypeUnknown = "page-type-unknown", Warning, "Page type not found; drawn as its usual type";
     /// Brief 054: a page type record holds a value its field does not take.
-    PageTypeField,
+    PageTypeField = "page-type-field", Warning, "Page type value not read; its usual value is used";
     /// Brief 054: a `folder.<id>.start` names no folder or is not 1–6 digits.
-    FolderStartUnknown,
+    FolderStartUnknown = "folder-start-unknown", Info, "Folder start number not read";
     /// Brief 054 (design 054 §4.4): a folder's run of numbers reaches another run's.
-    FolderRunsOverlap,
+    FolderRunsOverlap = "folder-runs-overlap", Warning, "A folder's page numbers run into another folder's";
     /// Brief 054b (design 054 §6.3, Q6): the cover's symbol legend shows fewer symbols than are
     /// used.
-    CoverLegendCut,
+    CoverLegendCut = "cover-legend-cut", Info, "The cover's symbol legend does not show every symbol";
     /// Brief 054b (design 054 §6.4): stored cover notes past the bounds, read cut.
-    CoverNotesCut,
+    CoverNotesCut = "cover-notes-cut", Warning, "The cover's notes are past 40 notes of 400 characters; the rest are not shown";
     /// Brief 057 (design 057 §7).
-    RatingUnder,
+    RatingUnder = "rating-under", Error, "Wire or cable rated below its protective device";
     /// Brief 057 (design 057 §7).
-    RatingTooHot,
+    RatingTooHot = "rating-too-hot", Error, "Conductor at or above its maximum temperature";
     /// Brief 057 (design 057 §7).
-    RatingLoadOver,
+    RatingLoadOver = "rating-load-over", Warning, "Load above the protective device's rating";
     /// Brief 057 (design 057 §7).
-    VoltdropOver,
+    VoltdropOver = "voltdrop-over", Warning, "Cable volt drop over its limit";
     /// Brief 057 (design 057 §7).
-    RatingBundlingUnset,
+    RatingBundlingUnset = "rating-bundling-unset", Warning, "Panel wires with no bundling factor";
     /// Brief 057 (design 057 §7).
-    RatingDeviceMissing,
+    RatingDeviceMissing = "rating-device-missing", Warning, "Protected by names no device";
     /// Brief 057 (design 057 §7).
-    RatingNoDevice,
+    RatingNoDevice = "rating-no-device", Info, "Rated wires and cables with no protective device";
     /// Brief 057 (design 057 §7).
-    RatingTwoDevices,
+    RatingTwoDevices = "rating-two-devices", Info, "Fed by two protective devices";
     /// Brief 057 (design 057 §7).
-    RatingDeviceUnread,
+    RatingDeviceUnread = "rating-device-unread", Info, "Device rating has no readable current";
     /// Brief 057 (design 057 §7).
-    RatingNamedDevice,
+    RatingNamedDevice = "rating-named-device", Info, "Protected by a device that is not a protective kind";
     /// Brief 057 (design 057 §7).
-    RatingNoData,
+    RatingNoData = "rating-no-data", Info, "Protected wires with no rating data";
     /// Brief 057 (design 057 §7).
-    RatingNoTable,
+    RatingNoTable = "rating-no-table", Info, "No rating table value for this subject";
     /// Brief 057 (design 057 §7).
-    RatingTableBadRow,
+    RatingTableBadRow = "rating-table-bad-row", Info, "Rating table rows not read";
     /// Brief 057 (design 057 §7).
-    RatingTableOdd,
+    RatingTableOdd = "rating-table-odd", Info, "Rating table values out of order";
     /// Brief 057 (design 057 §7).
-    RatingAssumed,
+    RatingAssumed = "rating-assumed", Info, "Cables with no cable type (values assumed)";
     /// Brief 057 (design 057 §7).
-    RatingNoCurrent,
+    RatingNoCurrent = "rating-no-current", Info, "Cables with no load and no device (no volt drop)";
     /// Brief 057 (design 057 §7).
-    RatingBadValue,
+    RatingBadValue = "rating-bad-value", Info, "Rating value ECAD does not read";
     /// Brief 057 (owner rule, board 2.06): a cable core not connected at both ends, not ticked
     /// Not used.
-    CoreOpen,
+    CoreOpen = "core-open", Error, "Cable core open at an end (tick Not used for a spare)";
     /// Brief 055 (design 055 §8): a bound value is cut in the title block on at least one page.
-    TitleValueCut,
+    TitleValueCut = "title-value-cut", Info, "A value is cut in the title block";
     /// Brief 055: a frame has fields this build cannot fill, or items past the bounds.
-    TitleBindingUnknown,
+    TitleBindingUnknown = "title-binding-unknown", Info, "Title block fields this build cannot fill";
     /// Brief 055: a page's own sheet differs from its frame's; the frame wins.
-    FrameSheetDiffers,
+    FrameSheetDiffers = "frame-sheet-differs", Warning, "Page sheet differs from its frame's; the frame wins";
     /// Brief 059 (design 059 §6): a cable built in Project ▸ Cables that is not in the drawing yet
     /// (Info; Warning in the release check).
-    CableNotDrawn,
+    CableNotDrawn = "cable-not-drawn", Info, "Cable not in the drawing yet";
     /// Brief 059: a drawn cable end differs from that end's planned location.
-    CableEndOffPlan,
+    CableEndOffPlan = "cable-end-off-plan", Warning, "Cable end drawn away from its plan";
     /// Brief 059 (059d): a drawn cable end with no gland size.
-    NoGland,
+    NoGland = "no-gland", Info, "Cable end with no gland size";
     /// Brief 059: a cable value ECAD does not read (out of bounds); it is ignored.
-    CableBadValue,
+    CableBadValue = "cable-bad-value", Warning, "Cable value ECAD does not read";
     /// Brief 056 (design 056 §9): two channels of one PLC share a tag (without case).
-    PlcTagTwice,
+    PlcTagTwice = "plc-tag-twice", Error, "PLC tag given twice in one PLC";
     /// A tag an export leaves out (a control character, too long).
-    PlcTagChars,
+    PlcTagChars = "plc-tag-chars", Warning, "PLC tag an export leaves out";
 }
 
 impl Kind {
-    pub const ALL: [Kind; 110] = [
-        Kind::JoinsPotentials,
-        Kind::SharedNumber,
-        Kind::TwoFixed,
-        Kind::OpenEnd,
-        Kind::LooseWire,
-        Kind::LooksConnected,
-        Kind::DrawnAway,
-        Kind::SinglePoint,
-        Kind::ThinJunction,
-        Kind::Unconnected,
-        Kind::LonelyContinuation,
-        Kind::MixedPotentials,
-        Kind::Unnumbered,
-        Kind::UnknownName,
-        Kind::DuplicateTag,
-        Kind::ProvisionalTag,
-        Kind::ProvisionalWires,
-        Kind::LocationUnused,
-        Kind::FunctionUnused,
-        Kind::NoFunction,
-        Kind::DesignationMissing,
-        Kind::DesignationDuplicate,
-        Kind::TwoHeads,
-        Kind::BoxCrosses,
-        Kind::BoxesOverlap,
-        Kind::NoPartNumber,
-        Kind::NoLocation,
-        Kind::TooManyContacts,
-        Kind::TooManyTerminals,
-        Kind::TerminalTwice,
-        Kind::TooManyCores,
-        Kind::CoreTwice,
-        Kind::NoCoreCount,
-        Kind::OrphanReference,
-        Kind::AccessoryOrphan,
-        Kind::NoAccessoryPart,
-        Kind::LinkAcrossPartition,
-        Kind::LinkOrphan,
-        Kind::LinkOnNonStrip,
-        Kind::TableOverTitle,
-        Kind::ContinuationClash,
-        Kind::LevelTwice,
-        Kind::PositionMixed,
-        Kind::LevelMissing,
-        Kind::FuseDevice,
-        Kind::NoFuseRating,
-        Kind::UnknownColour,
-        Kind::DashesLeftOut,
-        Kind::SlotTwice,
-        Kind::RackMissing,
-        Kind::SlotRange,
-        Kind::Unracked,
-        Kind::ChannelTwice,
-        Kind::ChannelOver,
-        Kind::ChannelType,
-        Kind::AddressOverlap,
-        Kind::AddressTwice,
-        Kind::AddressOverflow,
-        Kind::NoAddress,
-        Kind::WireThroughCard,
-        Kind::PlcTextWide,
-        Kind::ConnectorPinTwice,
-        Kind::ConnectorFamily,
-        Kind::ConnectorSize,
-        Kind::ConnectorLonePin,
-        Kind::ConnectorOver,
-        Kind::ItemNoPartNumber,
-        Kind::FuseNoInsert,
-        Kind::ArticleConflict,
-        Kind::PartForMissing,
-        Kind::BadPartKey,
-        Kind::StyleUnknown,
-        Kind::IgnoredOldSetting,
-        Kind::StyleLimits,
-        Kind::CategoryUnknown,
-        Kind::CategoryPotentialTwice,
-        Kind::WireAllowance,
-        Kind::PageTypeUnknown,
-        Kind::PageTypeField,
-        Kind::FolderStartUnknown,
-        Kind::FolderRunsOverlap,
-        Kind::CoverLegendCut,
-        Kind::CoverNotesCut,
-        Kind::RatingUnder,
-        Kind::RatingTooHot,
-        Kind::RatingLoadOver,
-        Kind::VoltdropOver,
-        Kind::RatingBundlingUnset,
-        Kind::RatingDeviceMissing,
-        Kind::RatingNoDevice,
-        Kind::RatingTwoDevices,
-        Kind::RatingDeviceUnread,
-        Kind::RatingNamedDevice,
-        Kind::RatingNoData,
-        Kind::RatingNoTable,
-        Kind::RatingTableBadRow,
-        Kind::RatingTableOdd,
-        Kind::RatingAssumed,
-        Kind::RatingNoCurrent,
-        Kind::RatingBadValue,
-        Kind::CoreOpen,
-        Kind::TitleValueCut,
-        Kind::TitleBindingUnknown,
-        Kind::FrameSheetDiffers,
-        Kind::CableNotDrawn,
-        Kind::CableEndOffPlan,
-        Kind::NoGland,
-        Kind::CableBadValue,
-        Kind::PlcTagTwice,
-        Kind::PlcTagChars,
-    ];
-
-    /// The JSON name.
-    pub fn name(self) -> &'static str {
-        match self {
-            Kind::JoinsPotentials => "joins-potentials",
-            Kind::SharedNumber => "shared-number",
-            Kind::TwoFixed => "two-fixed",
-            Kind::OpenEnd => "open-end",
-            Kind::LooseWire => "loose-wire",
-            Kind::LooksConnected => "looks-connected",
-            Kind::DrawnAway => "drawn-away",
-            Kind::SinglePoint => "single-point",
-            Kind::ThinJunction => "thin-junction",
-            Kind::Unconnected => "unconnected",
-            Kind::LonelyContinuation => "lonely-continuation",
-            Kind::MixedPotentials => "mixed-potentials",
-            Kind::Unnumbered => "unnumbered",
-            Kind::UnknownName => "unknown-name",
-            Kind::DuplicateTag => "duplicate-tag",
-            Kind::ProvisionalTag => "provisional-tag",
-            Kind::ProvisionalWires => "provisional-wires",
-            Kind::LocationUnused => "location-unused",
-            Kind::FunctionUnused => "function-unused",
-            Kind::NoFunction => "function-none",
-            Kind::DesignationMissing => "designation-missing",
-            Kind::DesignationDuplicate => "designation-duplicate",
-            Kind::TwoHeads => "two-heads",
-            Kind::BoxCrosses => "box-crosses",
-            Kind::BoxesOverlap => "boxes-overlap",
-            Kind::NoPartNumber => "no-part-number",
-            Kind::NoLocation => "no-location",
-            Kind::TooManyContacts => "too-many-contacts",
-            Kind::TooManyTerminals => "too-many-terminals",
-            Kind::TerminalTwice => "terminal-twice",
-            Kind::TooManyCores => "too-many-cores",
-            Kind::CoreTwice => "core-twice",
-            Kind::NoCoreCount => "no-core-count",
-            Kind::OrphanReference => "orphan-reference",
-            Kind::AccessoryOrphan => "accessory-orphan",
-            Kind::NoAccessoryPart => "no-accessory-part",
-            Kind::LinkAcrossPartition => "link-across-partition",
-            Kind::LinkOrphan => "link-orphan",
-            Kind::LinkOnNonStrip => "link-on-non-strip",
-            Kind::TableOverTitle => "table-over-title",
-            Kind::ContinuationClash => "continuation-clash",
-            Kind::LevelTwice => "level-twice",
-            Kind::PositionMixed => "position-mixed",
-            Kind::LevelMissing => "level-missing",
-            Kind::FuseDevice => "fuse-device",
-            Kind::NoFuseRating => "no-fuse-rating",
-            Kind::UnknownColour => "unknown-colour",
-            Kind::DashesLeftOut => "dashes-left-out",
-            Kind::SlotTwice => "slot-twice",
-            Kind::RackMissing => "rack-missing",
-            Kind::SlotRange => "slot-range",
-            Kind::Unracked => "unracked",
-            Kind::ChannelTwice => "channel-twice",
-            Kind::ChannelOver => "channel-over",
-            Kind::ChannelType => "channel-type",
-            Kind::AddressOverlap => "address-overlap",
-            Kind::AddressTwice => "address-twice",
-            Kind::AddressOverflow => "address-overflow",
-            Kind::NoAddress => "no-address",
-            Kind::WireThroughCard => "wire-through-card",
-            Kind::PlcTextWide => "plc-text-wide",
-            Kind::ConnectorPinTwice => "connector-pin-twice",
-            Kind::ConnectorFamily => "connector-family",
-            Kind::ConnectorSize => "connector-size",
-            Kind::ConnectorLonePin => "connector-lone-pin",
-            Kind::ConnectorOver => "connector-over",
-            Kind::ItemNoPartNumber => "item-no-part-number",
-            Kind::FuseNoInsert => "fuse-no-insert",
-            Kind::ArticleConflict => "article-conflict",
-            Kind::PartForMissing => "part-for-missing",
-            Kind::BadPartKey => "bad-part-key",
-            Kind::StyleUnknown => "style-unknown",
-            Kind::IgnoredOldSetting => "ignored-old-setting",
-            Kind::StyleLimits => "style-limits",
-            Kind::CategoryUnknown => "category-unknown",
-            Kind::CategoryPotentialTwice => "category-potential-twice",
-            Kind::WireAllowance => "wire-allowance",
-            Kind::PageTypeUnknown => "page-type-unknown",
-            Kind::PageTypeField => "page-type-field",
-            Kind::FolderStartUnknown => "folder-start-unknown",
-            Kind::FolderRunsOverlap => "folder-runs-overlap",
-            Kind::CoverLegendCut => "cover-legend-cut",
-            Kind::CoverNotesCut => "cover-notes-cut",
-            Kind::RatingUnder => "rating-under",
-            Kind::RatingTooHot => "rating-too-hot",
-            Kind::RatingLoadOver => "rating-load-over",
-            Kind::VoltdropOver => "voltdrop-over",
-            Kind::RatingBundlingUnset => "rating-bundling-unset",
-            Kind::RatingDeviceMissing => "rating-device-missing",
-            Kind::RatingNoDevice => "rating-no-device",
-            Kind::RatingTwoDevices => "rating-two-devices",
-            Kind::RatingDeviceUnread => "rating-device-unread",
-            Kind::RatingNamedDevice => "rating-named-device",
-            Kind::RatingNoData => "rating-no-data",
-            Kind::RatingNoTable => "rating-no-table",
-            Kind::RatingTableBadRow => "rating-table-bad-row",
-            Kind::RatingTableOdd => "rating-table-odd",
-            Kind::RatingAssumed => "rating-assumed",
-            Kind::RatingNoCurrent => "rating-no-current",
-            Kind::RatingBadValue => "rating-bad-value",
-            Kind::CoreOpen => "core-open",
-            Kind::TitleValueCut => "title-value-cut",
-            Kind::TitleBindingUnknown => "title-binding-unknown",
-            Kind::FrameSheetDiffers => "frame-sheet-differs",
-            Kind::CableNotDrawn => "cable-not-drawn",
-            Kind::CableEndOffPlan => "cable-end-off-plan",
-            Kind::NoGland => "no-gland",
-            Kind::CableBadValue => "cable-bad-value",
-            Kind::PlcTagTwice => "plc-tag-twice",
-            Kind::PlcTagChars => "plc-tag-chars",
-        }
-    }
-
     /// The kind a JSON name gives.
     pub fn parse(text: &str) -> Option<Kind> {
         Kind::ALL.into_iter().find(|k| k.name() == text.trim())
-    }
-
-    /// The words of the Show list.
-    pub fn words(self) -> &'static str {
-        match self {
-            Kind::JoinsPotentials => "Net joins two potentials",
-            Kind::SharedNumber => "Two nets share a number",
-            Kind::TwoFixed => "One net, two fixed numbers",
-            Kind::OpenEnd => "Open end",
-            Kind::LooseWire => "Loose wire",
-            Kind::LooksConnected => looks_connected_words(),
-            Kind::DrawnAway => "End drawn away from its connection point",
-            Kind::SinglePoint => "Net with a single connection point",
-            Kind::ThinJunction => "Junction with fewer than three wires",
-            Kind::Unconnected => "Connection point not connected",
-            Kind::LonelyContinuation => "Continuation without partner",
-            Kind::MixedPotentials => "Mixed potentials in one net",
-            Kind::Unnumbered => "Unnumbered nets",
-            Kind::UnknownName => "Continuation name not a potential",
-            Kind::DuplicateTag => "Two cables share a tag",
-            Kind::ProvisionalTag => "Provisional tag",
-            Kind::ProvisionalWires => "Wire numbers provisional",
-            Kind::LocationUnused => "Location used by none of its symbols",
-            Kind::FunctionUnused => "Function used by none of its symbols",
-            Kind::NoFunction => "Devices without a function",
-            Kind::DesignationMissing => "Function or location no longer in the list",
-            Kind::DesignationDuplicate => "Two entries share a code",
-            Kind::TwoHeads => "A device with two heads",
-            Kind::BoxCrosses => "Location box outline crosses itself",
-            Kind::BoxesOverlap => "Location boxes overlap without nesting",
-            Kind::NoPartNumber => "Devices without a part number",
-            Kind::NoLocation => "Devices without a location",
-            Kind::TooManyContacts => "More contacts than the part offers",
-            Kind::TooManyTerminals => "More terminals than the strip offers",
-            Kind::TerminalTwice => "Terminal drawn twice",
-            Kind::TooManyCores => "More cores used than the cable offers",
-            Kind::CoreTwice => "Core used by two wires",
-            Kind::NoCoreCount => "Cables without a core count",
-            Kind::OrphanReference => "Cable reference with no other end",
-            Kind::AccessoryOrphan => "Accessory at a position the strip lacks",
-            Kind::NoAccessoryPart => "Strip accessories without a part number",
-            Kind::LinkAcrossPartition => "Link crosses a partition",
-            Kind::LinkOrphan => "Link names positions the strip lacks",
-            Kind::LinkOnNonStrip => "Link on a device that is not a strip",
-            Kind::TableOverTitle => "Contact table over the title block",
-            Kind::ContinuationClash => "Continuation sheet has another page's number",
-            Kind::LevelTwice => "Terminal level drawn twice",
-            Kind::PositionMixed => "Position mixes terminal types",
-            Kind::LevelMissing => "Link names a level the position lacks",
-            Kind::FuseDevice => "Fuse terminals that are devices of their own",
-            Kind::NoFuseRating => "Fuse positions without a rating",
-            Kind::UnknownColour => "Colour code not defined (drawn in ink); define it in Standards",
-            Kind::DashesLeftOut => "Two-colour wires drawn in one colour (too many dashes on the page)",
-            Kind::SlotTwice => "Two cards in one slot",
-            Kind::RackMissing => "Card names a rack that is not in the project",
-            Kind::SlotRange => "Card in a slot its rack does not have",
-            Kind::Unracked => "PLC cards in no rack",
-            Kind::ChannelTwice => "Channel drawn twice",
-            Kind::ChannelOver => "Channel beyond the card's count",
-            Kind::ChannelType => "Channel drawn as another card type",
-            Kind::AddressOverlap => "Address blocks overlap",
-            Kind::AddressTwice => "Address given twice",
-            Kind::AddressOverflow => "Address block past byte 65535",
-            Kind::NoAddress => "Used channels with no address",
-            Kind::WireThroughCard => "Wire runs through a PLC card",
-            Kind::PlcTextWide => "PLC texts wider than their cells",
-            Kind::ConnectorPinTwice => "Connector pin drawn twice on one half",
-            Kind::ConnectorFamily => "Connector halves of two families",
-            Kind::ConnectorSize => "Connector halves of two sizes",
-            Kind::ConnectorLonePin => "Connector pins without a mate",
-            Kind::ConnectorOver => "Connector pin beyond its pin count",
-            Kind::ItemNoPartNumber => "Items without a part number",
-            Kind::FuseNoInsert => "Fuses without an insert",
-            Kind::ArticleConflict => "One part number, two article numbers",
-            Kind::PartForMissing => "Part line names a fuse or position the device lacks",
-            Kind::BadPartKey => "Part line or item value ECAD does not read",
-            Kind::StyleUnknown => "Style not found; drawn without it",
-            Kind::IgnoredOldSetting => "Set in an older build, now ignored: set it in Standards",
-            Kind::StyleLimits => "Style records past the limits are ignored",
-            Kind::CategoryUnknown => "Wire category not found; drawn without one",
-            Kind::CategoryPotentialTwice => "Two wire categories are the default for one potential",
-            Kind::WireAllowance => "Wire length not set (set an allowance in Standards)",
-            Kind::PageTypeUnknown => "Page type not found; drawn as its usual type",
-            Kind::PageTypeField => "Page type value not read; its usual value is used",
-            Kind::FolderStartUnknown => "Folder start number not read",
-            Kind::FolderRunsOverlap => "A folder's page numbers run into another folder's",
-            Kind::CoverLegendCut => "The cover's symbol legend does not show every symbol",
-            Kind::CoverNotesCut => "The cover's notes are past 40 notes of 400 characters; the rest are not shown",
-            Kind::RatingUnder => "Wire or cable rated below its protective device",
-            Kind::RatingTooHot => "Conductor at or above its maximum temperature",
-            Kind::RatingLoadOver => "Load above the protective device's rating",
-            Kind::VoltdropOver => "Cable volt drop over its limit",
-            Kind::RatingBundlingUnset => "Panel wires with no bundling factor",
-            Kind::RatingDeviceMissing => "Protected by names no device",
-            Kind::RatingNoDevice => "Rated wires and cables with no protective device",
-            Kind::RatingTwoDevices => "Fed by two protective devices",
-            Kind::RatingDeviceUnread => "Device rating has no readable current",
-            Kind::RatingNamedDevice => "Protected by a device that is not a protective kind",
-            Kind::RatingNoData => "Protected wires with no rating data",
-            Kind::RatingNoTable => "No rating table value for this subject",
-            Kind::RatingTableBadRow => "Rating table rows not read",
-            Kind::RatingTableOdd => "Rating table values out of order",
-            Kind::RatingAssumed => "Cables with no cable type (values assumed)",
-            Kind::RatingNoCurrent => "Cables with no load and no device (no volt drop)",
-            Kind::RatingBadValue => "Rating value ECAD does not read",
-            Kind::CoreOpen => "Cable core open at an end (tick Not used for a spare)",
-            Kind::TitleValueCut => "A value is cut in the title block",
-            Kind::TitleBindingUnknown => "Title block fields this build cannot fill",
-            Kind::FrameSheetDiffers => "Page sheet differs from its frame's; the frame wins",
-            Kind::CableNotDrawn => "Cable not in the drawing yet",
-            Kind::CableEndOffPlan => "Cable end drawn away from its plan",
-            Kind::NoGland => "Cable end with no gland size",
-            Kind::CableBadValue => "Cable value ECAD does not read",
-            Kind::PlcTagTwice => "PLC tag given twice in one PLC",
-            Kind::PlcTagChars => "PLC tag an export leaves out",
-        }
-    }
-
-    pub fn severity(self) -> Severity {
-        match self {
-            Kind::JoinsPotentials
-            | Kind::SharedNumber
-            | Kind::TwoFixed
-            | Kind::DuplicateTag
-            | Kind::TerminalTwice
-            | Kind::LevelTwice
-            | Kind::SlotTwice
-            | Kind::ChannelTwice
-            | Kind::ConnectorPinTwice
-            | Kind::CoreOpen
-            | Kind::RatingUnder
-            | Kind::RatingTooHot
-            | Kind::PlcTagTwice => Severity::Error,
-            Kind::OpenEnd
-            | Kind::LooseWire
-            | Kind::LooksConnected
-            | Kind::DrawnAway
-            | Kind::SinglePoint
-            | Kind::UnknownName
-            | Kind::ProvisionalTag
-            | Kind::ProvisionalWires
-            | Kind::TooManyContacts
-            | Kind::TooManyTerminals
-            | Kind::TooManyCores
-            | Kind::CoreTwice
-            | Kind::LocationUnused
-            | Kind::FunctionUnused
-            | Kind::DesignationMissing
-            | Kind::DesignationDuplicate
-            | Kind::TwoHeads
-            | Kind::BoxCrosses
-            | Kind::OrphanReference
-            | Kind::AccessoryOrphan
-            | Kind::LinkAcrossPartition
-            | Kind::LinkOrphan
-            | Kind::LinkOnNonStrip
-            | Kind::TableOverTitle
-            | Kind::ContinuationClash
-            | Kind::PositionMixed
-            | Kind::LevelMissing
-            | Kind::DashesLeftOut
-            | Kind::RackMissing
-            | Kind::SlotRange
-            | Kind::ChannelOver
-            | Kind::ChannelType
-            | Kind::AddressOverlap
-            | Kind::AddressTwice
-            | Kind::AddressOverflow
-            | Kind::ConnectorFamily
-            | Kind::ConnectorSize
-            | Kind::ArticleConflict
-            | Kind::PartForMissing
-            | Kind::CategoryPotentialTwice
-            | Kind::PageTypeUnknown
-            | Kind::PageTypeField
-            | Kind::FolderRunsOverlap
-            | Kind::CoverNotesCut
-            | Kind::WireThroughCard
-            | Kind::RatingLoadOver
-            | Kind::VoltdropOver
-            | Kind::RatingBundlingUnset
-            | Kind::RatingDeviceMissing
-            | Kind::FrameSheetDiffers
-            | Kind::CableEndOffPlan
-            | Kind::CableBadValue
-            | Kind::PlcTagChars => Severity::Warning,
-            _ => Severity::Info,
-        }
     }
 }
 
@@ -971,6 +606,42 @@ pub enum Key {
     Designations,
     /// Brief 055: the title block rows (cut values, unknown fields, sheets that differ).
     TitleBlocks,
+}
+
+/// An area that keeps whole-project rows under one [`Key`] (brief 060, R7): it emits them from its
+/// own module, and [`Checks`] asks it on open and whenever a commit's [`Scope`] reaches it, so a new
+/// area of this kind is one implementation plus a line in [`PROJECT_SOURCES`].
+pub trait CheckSource: Sync {
+    /// The key its rows are kept under.
+    fn key(&self) -> Key;
+    /// Whether a commit with `scope` may change its rows (its update map).
+    fn touched(&self, scope: &Scope) -> bool;
+    /// Whether its rows stay on pages whose type has checks and references off (design 054
+    /// §3.4): rows about the project's own records rather than the drawing.
+    fn kept_on_pages_off(&self) -> bool {
+        false
+    }
+    /// Its rows, from scratch.
+    fn checks(&self, doc: &Document) -> Vec<Check>;
+}
+
+/// The whole-project sources, in the order [`Checks::build`] asks them.
+pub const PROJECT_SOURCES: [&dyn CheckSource; 4] =
+    [&crate::styles::checks::StyleRows, &crate::front::CoverRows, &DesignationRows, &crate::title_block::checks::TitleBlockRows];
+
+/// Brief 052: the project's list of functions and locations ([`designation_rows`]).
+pub struct DesignationRows;
+
+impl CheckSource for DesignationRows {
+    fn key(&self) -> Key {
+        Key::Designations
+    }
+    fn touched(&self, scope: &Scope) -> bool {
+        scope.designations
+    }
+    fn checks(&self, doc: &Document) -> Vec<Check> {
+        designation_rows(doc)
+    }
 }
 
 type Cell = (PageId, i64, i64);
@@ -1710,8 +1381,9 @@ impl Checks {
         for page in doc.pages.keys() {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
-        ch.set(Key::Styles, crate::styles::checks::rows(doc));
-        ch.set(Key::Cover, crate::front::check_rows(doc));
+        for s in PROJECT_SOURCES {
+            ch.set(s.key(), s.checks(doc));
+        }
         // Brief 057.
         ch.rating = crate::rating::Kept::build(doc);
         let rows: Vec<(crate::rating::RatedSubject, Vec<Check>)> =
@@ -1720,8 +1392,6 @@ impl Checks {
             ch.set(Key::Rating(s), v);
         }
         ch.set(Key::RatingSummary, crate::rating::summary_rows(doc, &ch.rating));
-        ch.set(Key::Designations, designation_rows(doc));
-        ch.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -1729,13 +1399,13 @@ impl Checks {
 
     /// Brief 054b: work out the cover's rows again (after a change the cover's map names).
     pub fn set_cover(&mut self, doc: &Document) {
-        self.set(Key::Cover, crate::front::check_rows(doc));
+        self.set(Key::Cover, crate::front::CoverRows.checks(doc));
         self.revision += 1;
     }
 
     fn set(&mut self, key: Key, mut v: Vec<Check>) {
         // Brief 054 (design 054 §3.4): no electrical row on a page with checks and references off.
-        if !self.off.is_empty() && !matches!(key, Key::Styles | Key::Cover | Key::TitleBlocks) {
+        if !self.off.is_empty() && !PROJECT_SOURCES.iter().any(|s| s.key() == key && s.kept_on_pages_off()) {
             v.retain(|c| c.page.is_none_or(|p| !self.off.contains(&p)));
         }
         let same = match self.by_key.get(&key) {
@@ -1900,9 +1570,6 @@ impl Checks {
             let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
             self.set(Key::Page(page), rows);
         }
-        if scope.styles {
-            self.set(Key::Styles, crate::styles::checks::rows(doc));
-        }
         // Brief 057 (design 057 §10): the subjects the ops reach, and the count rows.
         let touched = self.rating.update(doc, &scope.rating);
         if !touched.is_empty() || scope.rating.any() {
@@ -1912,11 +1579,10 @@ impl Checks {
             }
             self.set(Key::RatingSummary, crate::rating::summary_rows(doc, &self.rating));
         }
-        if scope.designations {
-            self.set(Key::Designations, designation_rows(doc));
-        }
-        if scope.title_blocks {
-            self.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
+        for s in PROJECT_SOURCES {
+            if s.touched(&scope) {
+                self.set(s.key(), s.checks(doc));
+            }
         }
         self.provisional = ecad_model::numbering::provisional_on(doc);
         self.set_unnumbered();
@@ -1943,13 +1609,13 @@ pub struct Scope {
     /// Cables to re-check (brief 026: provisional and shared tags).
     cables: BTreeSet<ecad_model::CableId>,
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
-    styles: bool,
+    pub(crate) styles: bool,
     /// Brief 057: what the ops reach of the rating results.
     rating: crate::rating::Touch,
     /// Brief 052: the list's rows (an entry's code changed, added or removed).
-    designations: bool,
+    pub(crate) designations: bool,
     /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
-    title_blocks: bool,
+    pub(crate) title_blocks: bool,
 }
 
 impl Scope {
