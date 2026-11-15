@@ -8,7 +8,7 @@
 //!   token-checked, loopback only). Its requests never reach `CadApp` directly: the trial's drain
 //!   answers ECAD's methods (`ecad.hello`, `ecad.execute`, `ecad.tool`, `ecad.bye`), forwards a
 //!   short allowlist of reads to `CadApp`'s own channel, and refuses everything else unrun.
-//! - **The gate** ([`ecad_mcp::gate`]): the same policy, caps and roll-back as headless, run on the
+//! - **The gate** ([`ecad_cadcraft::agent::gate`]): the same policy, caps and roll-back as headless, run on the
 //!   person's own session between two frames, with `Author::Agent(<name>)` set for that one call
 //!   and the person restored after it, also on refusal, error or panic, and checked again at the
 //!   top of every frame.
@@ -35,10 +35,10 @@ use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use cadcraft_ui_egui::{ControlRequest, PendingReply};
+use ecad_cadcraft::agent::gate::{self, Call, OwnedSteps};
+use ecad_cadcraft::agent::{agent_name, bridge, policy, tools};
 use ecad_cadcraft::agent_access::{self, Mode, Preference, Status};
 use ecad_cadcraft::views::Settings;
-use ecad_mcp::gate::{self, Call, OwnedSteps};
-use ecad_mcp::{agent_name, bridge, policy, tools};
 use eframe::egui;
 use serde_json::{Value, json};
 
@@ -952,7 +952,7 @@ impl Trial {
                         Err(m) => Ok(json!({"protocolError": m})),
                     }
                 }
-                Some(t) => Ok(json!({"protocolError": ecad_mcp::not_offered(t)})),
+                Some(t) => Ok(json!({"protocolError": ecad_cadcraft::agent::not_offered(t)})),
                 None => {
                     let mut call = call;
                     gate::execute(s, &p, &mut call, params)

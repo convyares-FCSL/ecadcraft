@@ -15,7 +15,7 @@
 //! (it would need a new op).
 
 use ecad_cadcraft::ProjectHandle;
-use ecad_mcp::gate::{self, OwnedSteps};
+use ecad_cadcraft::agent::gate::{self, OwnedSteps};
 use eframe::egui;
 use serde_json::json;
 

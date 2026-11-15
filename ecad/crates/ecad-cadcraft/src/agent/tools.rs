@@ -1,14 +1,14 @@
 //! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
 
-use ecad_cadcraft::debug::tx_kind;
+use crate::debug::tx_kind;
 use ecad_model::{Author, derive};
 use serde_json::{Map, Value, json};
 
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::cad::Session;
+use crate::ProjectHandle;
+use crate::cad::Session;
 
-use crate::gate::{self, Call, tx_summary};
-use crate::{MAX_TRANSACTIONS_PER_CALL, author_text};
+use crate::agent::gate::{self, Call, tx_summary};
+use crate::agent::{MAX_TRANSACTIONS_PER_CALL, author_text};
 
 /// Names of the tools this module answers.
 pub const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save", "ecad_connection", "screenshot"];
@@ -171,7 +171,7 @@ pub fn call(st: &mut Host<'_>, name: &str, args: &Value) -> Result<Value, String
                 Err(e) => err_text(&e),
             })
         }
-        other => Err(crate::not_offered(other)),
+        other => Err(crate::agent::not_offered(other)),
     }
 }
 

@@ -33,9 +33,8 @@
 mod access;
 pub mod accessory_cmds;
 pub mod actions;
-// Brief 035: a per-user settings file and a window's port; nothing of it on the web build.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod agent_access;
+// Design 065 §3, cut 12: the agent gate, shared by ecad-mcp and the window's live bridge.
+pub mod agent;
 pub mod bom_cmds;
 pub mod cable_cmds;
 pub mod cad;
@@ -185,7 +184,11 @@ pub mod xref {
     pub use ecad_electrical::xref::*;
 }
 
+// Brief 035: a per-user settings file and a window's port; nothing of it on the web build. Its
+// path before cut 12.
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
+#[cfg(not(target_arch = "wasm32"))]
+pub use agent::access as agent_access;
 pub use file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};
 pub use project::{
     Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_framed,

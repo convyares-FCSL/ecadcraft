@@ -134,7 +134,7 @@ pub fn reads_only(id: &str, params: &Value) -> bool {
 }
 
 /// How many transactions one call of `id` with `params` may record: one
-/// ([`crate::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}` and
+/// ([`crate::agent::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}` and
 /// `release {provisional: "finalise"}` of the pending revision (no `rev`), which record Finalise
 /// numbering and then the issue (brief 026, design §5.5; brief 027, design §4.4): two.
 pub fn transactions_allowed(id: &str, params: &Value) -> usize {
@@ -144,7 +144,7 @@ pub fn transactions_allowed(id: &str, params: &Value) -> usize {
             .get("provisional")
             .and_then(Value::as_str)
             .is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"));
-    if finalise { crate::MAX_TRANSACTIONS_PER_CALL + 1 } else { crate::MAX_TRANSACTIONS_PER_CALL }
+    if finalise { crate::agent::MAX_TRANSACTIONS_PER_CALL + 1 } else { crate::agent::MAX_TRANSACTIONS_PER_CALL }
 }
 
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
@@ -362,7 +362,7 @@ mod tests {
         assert!(check("release", &none, true, None).is_ok());
         assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
         // Tester 027, 2: release of the pending revision with Finalise may record two, and no more.
-        let one = crate::MAX_TRANSACTIONS_PER_CALL;
+        let one = crate::agent::MAX_TRANSACTIONS_PER_CALL;
         assert_eq!(transactions_allowed("release", &json!({"provisional": "finalise"})), one + 1);
         assert_eq!(transactions_allowed("release", &json!({"provisional": "issue"})), one);
         assert_eq!(transactions_allowed("release", &json!({})), one);

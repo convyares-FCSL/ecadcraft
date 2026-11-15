@@ -2,15 +2,15 @@
 //! transaction cap and its roll-back, the agent-undo rule and the agent's author, on whatever
 //! session and project the caller passes.
 //!
-//! Two hosts use it: the headless server ([`crate::EcadMcp`], one session of its own) and the
+//! Two hosts use it: the headless server (`ecad_mcp::EcadMcp`, one session of its own) and the
 //! trial's live bridge (the person's own session, one call between two frames). The same project
 //! state gives the same reply text in both.
 //!
 //! # Semantics
 //! - [`execute`] runs one command through `Session::execute` (never `CadApp::run`, so UI-only
-//!   commands stay unknown) after [`crate::policy::check`], with the project told how many
+//!   commands stay unknown) after [`crate::agent::policy::check`], with the project told how many
 //!   transactions the call may still record; a call that records more is taken back and refused.
-//! - [`Call::refusal`] replaces [`crate::policy::WRITES_OFF`] when the host refuses writes for a
+//! - [`Call::refusal`] replaces [`crate::agent::policy::WRITES_OFF`] when the host refuses writes for a
 //!   reason of its own (the trial's Read only, Pause, another writer).
 //! - With [`Call::owned`] (the bridge), `u` and `redo` act only on the session's own steps, and
 //!   every transaction the call keeps is added to them.
@@ -22,12 +22,12 @@
 use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::cad::Session;
+use crate::ProjectHandle;
+use crate::cad::Session;
 use ecad_model::{Author, Transaction, TxId, TxKind};
 use serde_json::{Value, json};
 
-use crate::{MAX_TRANSACTIONS_PER_CALL, UNREADABLE, policy};
+use crate::agent::{MAX_TRANSACTIONS_PER_CALL, UNREADABLE, policy};
 
 /// The transactions one bridge session recorded (its own steps, for the agent-undo rule and
 /// Undo session), oldest first.
@@ -119,7 +119,7 @@ pub fn may_write(s: &mut Session, p: &ProjectHandle, call: &Call<'_>) -> Result<
 
 /// The branch shown and the length of its log in memory: where a call's transactions start.
 fn log_len(s: &mut Session, p: &ProjectHandle) -> Result<(String, usize), String> {
-    p.read(s, |p, _| (ecad_cadcraft::history::current(p).hex(), p.ledger.log().len())).map_err(|_| UNREADABLE.to_string())
+    p.read(s, |p, _| (crate::history::current(p).hex(), p.ledger.log().len())).map_err(|_| UNREADABLE.to_string())
 }
 
 /// The transactions recorded since `from`. A call that switched branch (brief 020) saved the
@@ -127,7 +127,7 @@ fn log_len(s: &mut Session, p: &ProjectHandle) -> Result<(String, usize), String
 /// unsaved steps (a merge into the parent switches, then records one merge: brief 020b).
 fn log_since(s: &mut Session, p: &ProjectHandle, from: &(String, usize)) -> Result<Vec<Transaction>, String> {
     p.read(s, |p, _| {
-        if ecad_cadcraft::history::current(p).hex() != from.0 {
+        if crate::history::current(p).hex() != from.0 {
             let saved = p.ledger.persisted();
             return p.ledger.log().iter().filter(|t| t.seq > saved).cloned().collect();
         }
@@ -157,7 +157,7 @@ pub fn undo_step_for(t: &Transaction) -> &'static str {
         TxKind::Merge { .. } => "undomerge",
         TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
         // Undoing an issue asks first too; `undoissue` confirms it (tester 026, 1).
-        TxKind::Edit | TxKind::Redo { .. } if ecad_cadcraft::revisions::issue_in(&t.ops).is_some() => "undoissue",
+        TxKind::Edit | TxKind::Redo { .. } if crate::revisions::issue_in(&t.ops).is_some() => "undoissue",
         TxKind::Edit | TxKind::Redo { .. } => "u",
     }
 }
@@ -189,7 +189,7 @@ fn finalised_then_issued(txs: &[Transaction]) -> bool {
             matches!(f.kind, TxKind::Edit)
                 && f.label == "Finalise numbering"
                 && matches!(i.kind, TxKind::Edit)
-                && ecad_cadcraft::revisions::issue_in(&i.ops).is_some()
+                && crate::revisions::issue_in(&i.ops).is_some()
         }
         _ => false,
     }
@@ -212,8 +212,8 @@ fn check_restore(s: &mut Session, p: &ProjectHandle, params: &Value, owned: &Own
         return Ok(());
     }
     p.read(s, |p, _| {
-        let Ok(pt) = ecad_cadcraft::history::point(p, params) else { return Ok(()) };
-        if pt.branch != ecad_cadcraft::history::current(p) {
+        let Ok(pt) = crate::history::point(p, params) else { return Ok(()) };
+        if pt.branch != crate::history::current(p) {
             return Err(RESTORE_OTHER_BRANCH.to_string());
         }
         let log = p.ledger.log();
@@ -262,7 +262,7 @@ pub fn tx_summary(t: &Transaction) -> Value {
         "seq": t.seq,
         "id": t.id.hex(),
         "label": t.label,
-        "author": crate::author_text(&t.author),
+        "author": crate::agent::author_text(&t.author),
         "ops": t.ops.len(),
     })
 }
@@ -275,7 +275,7 @@ pub fn tx_summary(t: &Transaction) -> Value {
 pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Value) -> Result<Value, String> {
     let given = req.get("command").and_then(Value::as_str).ok_or("missing `command`")?.to_string();
     let params = req.get("params").cloned().filter(|v| !v.is_null()).unwrap_or_else(|| json!({}));
-    let id = ecad_cadcraft::cad::find_command(&given).map_or_else(|| given.to_ascii_lowercase(), |c| c.id.to_string());
+    let id = crate::cad::find_command(&given).map_or_else(|| given.to_ascii_lowercase(), |c| c.id.to_string());
     let ro = read_only(s, p)?;
     let writes_off = call.writes_off();
     policy::check(&id, &params, call.write, ro.as_deref()).map_err(|e| if e == policy::WRITES_OFF { writes_off } else { e })?;
