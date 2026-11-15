@@ -209,3 +209,103 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     }
     out
 }
+
+/// The height the cable look is laid out for (label spacing, box pitch and padding, and the width
+/// [`stroke_label_width`] measures). The texts themselves are drawn at the project's cable text and
+/// reference heights (brief 031, `text_style`), never larger than this by default, so they fit.
+pub const LABEL_HEIGHT: f64 = 2.5;
+
+/// `ecad.wire-weight`: bends, tails, label box frame, reference flag (wire section).
+pub const WIRE_WEIGHT: u16 = 25;
+
+/// The side of its reference point a reference end's flag sits on, pointing away from the cable's
+/// wires (design 009 §7.2, with design 010 §6.2's direction u: the opposite of the mean direction in
+/// which the member routes on the page run away from the point). The flat end faces the wires.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlagSide {
+    /// Wires come from the left: the flag reaches right of the point (fixture R's page 1).
+    Right,
+    /// Wires come from the right: the flag reaches left of the point (fixture R's page 2).
+    Left,
+    /// Wires come from below: the flag sits above the point, pointing up.
+    Up,
+    /// Wires come from above: the flag sits below the point, pointing down.
+    Down,
+}
+
+impl FlagSide {
+    /// The side for direction `u` (away from the wires), by its larger component; a tie, a zero or
+    /// a non-finite direction is horizontal, and `u.x = 0` horizontal is `Right` (design 010's
+    /// left-aligned text when `u.x ≥ 0`).
+    pub fn away(u: Pt) -> FlagSide {
+        if !u.is_finite() || u.x.abs() >= u.y.abs() {
+            if u.x < 0.0 { FlagSide::Left } else { FlagSide::Right }
+        } else if u.y > 0.0 {
+            FlagSide::Up
+        } else {
+            FlagSide::Down
+        }
+    }
+}
+
+/// A reference end's flag laid out at `at` around a text `w` wide, on `side`: the rectangle
+/// `(lo, hi)`, where the text starts (bottom left, height [`LABEL_HEIGHT`]), the closed outline
+/// (rectangle plus a point of depth h on `side`) and the attach point M (middle of the flat side).
+/// The reference point stays inside the rectangle, h/2 from the flat side.
+pub struct FlagShape {
+    pub lo: Pt,
+    pub hi: Pt,
+    pub text_at: Pt,
+    pub outline: Vec<Pt>,
+    pub attach: Pt,
+}
+
+/// Lay out a flag (see [`FlagShape`]). Midpoints are `lo + (hi - lo) / 2`, finite for any finite
+/// rectangle.
+pub fn flag_shape(at: Pt, w: f64, side: FlagSide) -> FlagShape {
+    let h = LABEL_HEIGHT;
+    let (lo, hi, text_at) = match side {
+        FlagSide::Right => (Pt::new(at.x - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + w + 0.5 * h, at.y + 1.5 * h), at),
+        FlagSide::Left => (Pt::new(at.x - w - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + 0.5 * h, at.y + 1.5 * h), Pt::new(at.x - w, at.y)),
+        FlagSide::Up => {
+            (Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 1.5 * h), Pt::new(at.x - 0.5 * w, at.y))
+        }
+        FlagSide::Down => {
+            (Pt::new(at.x - 0.5 * w - 0.5 * h, at.y - 1.5 * h), Pt::new(at.x + 0.5 * w + 0.5 * h, at.y + 0.5 * h), Pt::new(at.x - 0.5 * w, at.y - h))
+        }
+    };
+    let xm = lo.x + 0.5 * (hi.x - lo.x);
+    let ym = lo.y + 0.5 * (hi.y - lo.y);
+    let (outline, attach) = match side {
+        FlagSide::Right => (vec![lo, Pt::new(hi.x, lo.y), Pt::new(hi.x + h, ym), hi, Pt::new(lo.x, hi.y)], Pt::new(lo.x, ym)),
+        FlagSide::Left => (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y), Pt::new(lo.x - h, ym)], Pt::new(hi.x, ym)),
+        FlagSide::Up => (vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(xm, hi.y + h), Pt::new(lo.x, hi.y)], Pt::new(xm, lo.y)),
+        FlagSide::Down => (vec![lo, Pt::new(xm, lo.y - h), Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], Pt::new(xm, hi.y)),
+    };
+    FlagShape { lo, hi, text_at, outline, attach }
+}
+
+/// Typed coordinates beyond this (or not finite) are refused (design §9).
+pub const MAX_COORD: f64 = 1e12;
+
+/// Refusal of a point that is not finite or out of range.
+pub const OUT_OF_RANGE: &str = "Point out of range.";
+
+/// Most lines a hover description shows.
+pub const MAX_HOVER_LINES: usize = 12;
+
+/// The width of `text` in the stroke font at [`LABEL_HEIGHT`], as the cable look measures it
+/// (`look::font_width` with CADCraft's fonts); 0 when not finite.
+pub fn stroke_label_width(text: &str, m: &dyn crate::text_style::fonts::TextMetrics) -> f64 {
+    let w = m.width(m.stroke_font(), text, LABEL_HEIGHT);
+    if w.is_finite() && w >= 0.0 { w } else { 0.0 }
+}
+
+/// The box a reference end's flag `w` wide covers at `at` on `side`, its point included: what a
+/// pick of the marker hits (brief 010's pick-first rule; `look::marker_box`).
+pub fn flag_box(at: Pt, w: f64, side: FlagSide) -> (Pt, Pt) {
+    let f = flag_shape(at, w, side);
+    let lo = f.outline.iter().fold(f.lo, |a, p| Pt::new(a.x.min(p.x), a.y.min(p.y)));
+    let hi = f.outline.iter().fold(f.hi, |a, p| Pt::new(a.x.max(p.x), a.y.max(p.y)));
+    (lo, hi)
+}

@@ -26,6 +26,8 @@ use ecad_model::{CableId, ConductorId, Document, End, ItemId, LengthUnit, Op, Pa
 
 pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
 
+use crate::text_style::fonts::TextMetrics;
+
 /// `ecad.reference`: ACI 6, magenta (the colour of `ECAD-CABLES`, so a linked text is ByLayer).
 pub const REFERENCE_ACI: u8 = 6;
 /// `ecad.orphan`: ACI 1, red.
@@ -184,7 +186,9 @@ pub fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(S
 /// reference whose drawn text (its box, grown by `radius`) holds `p`. Used before the generic pick
 /// by Go to Reference and the hover (design 010 §4.5, §8), because a continued end's middle stub
 /// starts exactly on its reference point and would otherwise win the pick.
-pub fn reference_at(doc: &Document, page: PageId, p: Pt, radius: f64) -> Option<RepresentationId> {
+///
+/// `m` measures the flag's text (the C wrapper `reference_at` passes CADCraft's fonts).
+pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m: &dyn TextMetrics) -> Option<RepresentationId> {
     if !(p.is_finite() && radius.is_finite() && radius >= 0.0) {
         return None;
     }
@@ -194,14 +198,15 @@ pub fn reference_at(doc: &Document, page: PageId, p: Pt, radius: f64) -> Option<
     if let Some((_, r)) = near {
         return Some(r);
     }
-    markers.iter().find(|m| text_box_holds(m, p, radius)).map(|m| m.reference)
+    markers.iter().find(|x| text_box_holds(x, p, radius, m)).map(|x| x.reference)
 }
 
 /// Whether `p` lies in a marker's box (brief 009's flag) grown by `pad`.
-fn text_box_holds(m: &Marker, p: Pt, pad: f64) -> bool {
+fn text_box_holds(m: &Marker, p: Pt, pad: f64, metrics: &dyn TextMetrics) -> bool {
     // Brief 009 draws the marker: its flag around the text, at the reference point, on the side
     // away from the wires.
-    let (lo, hi) = crate::look::marker_box(m.at, &m.text, crate::look::FlagSide::away(m.text_dir));
+    let w = crate::words::stroke_label_width(&crate::words::shorten(&m.text, 64), metrics);
+    let (lo, hi) = crate::words::flag_box(m.at, w, crate::words::FlagSide::away(m.text_dir));
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 
@@ -334,7 +339,7 @@ pub struct Plan {
 }
 
 fn in_range(p: Pt) -> bool {
-    p.is_finite() && p.x.abs() <= crate::interact::MAX_COORD && p.y.abs() <= crate::interact::MAX_COORD
+    p.is_finite() && p.x.abs() <= crate::words::MAX_COORD && p.y.abs() <= crate::words::MAX_COORD
 }
 
 /// Plan the continuation of `cable` on `page` from `at` toward `toward` (design 010 §5): which
@@ -348,7 +353,7 @@ pub fn plan_continue(
 ) -> Result<Plan, String> {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     if !(in_range(at) && in_range(toward)) {
-        return Err(crate::interact::OUT_OF_RANGE.into());
+        return Err(crate::words::OUT_OF_RANGE.into());
     }
     if at.near(toward, tol) {
         return Err(TOWARD_EQUAL.into());
@@ -433,7 +438,7 @@ pub fn plan_continue(
         let s0 = Pt::new(at.x + n.x * off, at.y + n.y * off);
         let o = Pt::new(s0.x + d.x * l, s0.y + d.y * l);
         if !(in_range(s0) && in_range(o)) {
-            return Err(crate::interact::OUT_OF_RANGE.into());
+            return Err(crate::words::OUT_OF_RANGE.into());
         }
         let (a, b) = if *free == End::B { (s0, o) } else { (o, s0) };
         stubs.push(Stub { conductor: *w, a, b, free_end: *free });
@@ -443,7 +448,7 @@ pub fn plan_continue(
     let half = spacing / 2.0;
     let slash = (Pt::new(m.x - n.x * h - d.x * half, m.y - n.y * h - d.y * half), Pt::new(m.x + n.x * h + d.x * half, m.y + n.y * h + d.y * half));
     if !(in_range(slash.0) && in_range(slash.1)) {
-        return Err(crate::interact::OUT_OF_RANGE.into());
+        return Err(crate::words::OUT_OF_RANGE.into());
     }
     Ok(Plan { source, source_page: s.page, stubs, skipped, slash })
 }
@@ -766,7 +771,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
                 ecad_model::derive::terminal_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
             let members = doc.cables.get(&r.cable).map(|c| c.members.as_slice()).unwrap_or_default();
             for m in members.iter().filter(|m| routes.contains_key(&(m.conductor, o.page))) {
-                if lines.len() > crate::interact::MAX_HOVER_LINES {
+                if lines.len() > crate::words::MAX_HOVER_LINES {
                     break;
                 }
                 let terminal = doc.conductors.get(&m.conductor).and_then(|c| terminal_on(doc, &shown, c));
@@ -918,7 +923,7 @@ pub fn cable_tagged(doc: &Document, typed: &str) -> Option<CableId> {
 }
 
 /// `-W04` in messages: the cable's title.
-fn title(doc: &Document, cable: CableId) -> String {
+pub fn title(doc: &Document, cable: CableId) -> String {
     crate::cables::cable_title(doc, cable)
 }
 
@@ -1021,61 +1026,6 @@ pub fn cores_on_continuations(doc: &Document, cable: CableId) -> String {
     format!("{t}'s cores end on continuations. To show {t} where they continue, slash the wires there with tag {t}.")
 }
 
-/// `cableslash` in continue mode (design 032 §3.3): `cable` gains the crossed wires as members with
-/// their cores' labels, and a slash representation on this page. One transaction, `Cable slash`;
-/// no new cable, no new tag.
-///
-/// # Errors
-/// §3.3's refusals, a wire already in a cable, too many members; nothing is written then.
-pub(crate) fn run_slash_continue(
-    p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: PageId, cable: CableId, from: Pt, to: Pt,
-    found: &crate::slash::Crossings,
-) -> Result<serde_json::Value, String> {
-    let doc = p.ledger.document();
-    let crossed: Vec<ConductorId> = found.members.iter().map(|m| m.conductor).collect();
-    if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
-        return Err(format!("{} already has a slash on this page.", title(doc, cable)));
-    }
-    let blocked: Vec<(ConductorId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
-    if !blocked.is_empty() {
-        return Err(crate::slash::already_in_cable(doc, &blocked, "Nothing was created."));
-    }
-    let plan = plan_slash_continue(doc, page, cable, &crossed)?;
-    let start = doc.cables.get(&cable).map_or(0, |c| c.members.len());
-    let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-    let mut ops = Vec::new();
-    for (i, w) in plan.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable, index: start + i, member: ecad_model::CableMember { conductor: w.conductor, core: w.core.clone() } });
-    }
-    let style = crate::commands::plain_style(p);
-    ops.push(Op::AddItem {
-        id: item,
-        item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) },
-    });
-    ops.push(Op::LinkRepresentation {
-        id: rep,
-        rep: Representation {
-            subject: Subject::Cable(cable),
-            page,
-            form: ecad_model::Form::Drawn,
-            role: "slash".into(),
-            items: vec![item],
-            connection_points: BTreeMap::new(),
-        },
-    });
-    p.apply_edit(pg, "cableslash", "Cable slash", ops)?;
-    Ok(serde_json::json!({
-        "cable": cable.hex(),
-        "item": item.hex(),
-        "representation": rep.hex(),
-        "conductors": crossed.iter().map(|c| c.hex()).collect::<Vec<_>>(),
-        "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
-        "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
-        "continued": true,
-        "cores": plan.iter().map(|w| serde_json::json!({"conductor": w.conductor.hex(), "core": w.core, "continues": w.continues.hex()})).collect::<Vec<_>>(),
-    }))
-}
-
 /// 032 §3.5: what erasing cable slashes adds to a drawing edit. `erased` are the representations
 /// the edit unlinks, read on the document before it. Erasing one of a cable's several slashes
 /// removes the members routed only on that slash's page; erasing its last slash keeps the cable
@@ -1109,3 +1059,5 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
     }
     ops
 }
+
+pub use crate::draw::references::reference_at;

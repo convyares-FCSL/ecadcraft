@@ -4,8 +4,14 @@
 //! (`project`, `verify`, `translate`) and the commands call them.
 
 pub mod checks;
+pub mod continuations;
+pub mod devices;
 pub mod front;
 pub mod generated;
+pub mod locations;
 pub mod proposals;
+pub mod references;
 pub mod text_style;
 pub mod title_block;
+pub mod wires;
+pub mod xref;

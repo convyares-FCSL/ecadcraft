@@ -1120,7 +1120,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId) -> Vec<Check
     // Brief 044 (design 044 §6.3): a connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
-    if let Some((which, page, at)) = crate::xref::title_check(doc, c) {
+    if let Some((which, page, at)) = crate::xref::title_check(doc, c, &crate::draw::text_style::EngineMetrics) {
         out.push(Check {
             kind: Kind::TableOverTitle,
             page: Some(page),

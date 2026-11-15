@@ -172,7 +172,7 @@ pub fn verify_page_pending(
             continue;
         }
         let Some(route) = r.handle.and_then(|h| entities.get(&h)) else { continue };
-        for e in crate::wires::route_dashes(&r, &route.common) {
+        for e in crate::draw::wires::route_dashes(&r, &route.common) {
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }

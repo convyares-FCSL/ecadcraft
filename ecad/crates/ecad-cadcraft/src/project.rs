@@ -774,7 +774,15 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
 pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
     let mut e = match &part.shape {
         crate::xref::Shape::Text { at, value, height, halign, valign, rotation } => {
-            let mut e = crate::devices::text_entity_with(value, *at, *height, *halign, *valign, handle, crate::devices::TAG_LAYER);
+            let mut e = crate::devices::text_entity_with(
+                value,
+                *at,
+                *height,
+                crate::draw::xref::engine_halign(*halign),
+                crate::draw::xref::engine_valign(*valign),
+                handle,
+                crate::devices::TAG_LAYER,
+            );
             // Brief 049 (FP3): a continuation's reference reads along its wire; every other part
             // keeps 0, so its entity is unchanged.
             if let EntityKind::Text(t) = &mut e.kind {
@@ -1010,9 +1018,9 @@ pub fn project_page_kept(
         map.insert_item(id, h);
     }
     // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
-    crate::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    crate::draw::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
     // Brief 050b: wire routes in their category's line type and weight.
-    crate::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
+    crate::draw::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
     // Brief 050a: location box outlines in their location style.
     crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();
@@ -2364,7 +2372,7 @@ impl Project {
         // References are derived for the cables and devices the ops could touch only (briefs 014,
         // 025).
         let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
@@ -2409,7 +2417,7 @@ impl Project {
     fn finish_watch(&mut self, watch: crate::xref::Watch) -> crate::xref::Outcome {
         let ledger = &self.ledger;
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let mut out = watch.finish(ledger.document(), &mut self.xref, ops);
+        let mut out = watch.finish(ledger.document(), &mut self.xref, ops, &crate::draw::text_style::EngineMetrics);
         let head = ledger.head();
         // Brief 044 (design 044 §11.1): the connector index, from the ops; verify mode compares it
         // with a rebuild.
@@ -2743,7 +2751,7 @@ impl DocumentOwner for Project {
         // References are derived for the cables the ops could touch only, once before and once
         // after the commit (brief 014): a move of a component outside any cable derives none.
         let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse, &crate::draw::text_style::EngineMetrics);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
@@ -2957,7 +2965,7 @@ impl Project {
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse);
+        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);

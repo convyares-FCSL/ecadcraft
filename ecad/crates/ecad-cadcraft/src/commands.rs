@@ -1065,7 +1065,7 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             return crate::cable_cmds::run_slash_assign(p, pg, page, k, from, to, &found);
         }
         if let Some(k) = existing {
-            return crate::references::run_slash_continue(p, pg, page, k, from, to, &found);
+            return crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found);
         }
         let blocked: Vec<(ConductorId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
         if !blocked.is_empty() {

@@ -17,11 +17,8 @@
 //!
 //! This module builds ops and words; it commits nothing and holds no UI.
 
-use crate::draw::text_style::LookApply as _;
 use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle, Text, VAlign as EVAlign};
-use cadcraft_engine::geom::Vec3;
 use ecad_model::derive::terminal_positions;
 use ecad_model::tag::{self, TAG_KEY};
 use ecad_model::{
@@ -32,6 +29,7 @@ use ecad_model::{TextHAlign as HAlign, TextVAlign as VAlign};
 use serde_json::{Value, json};
 
 use crate::symbols::{self, Kind, STARTERS, Starter};
+use crate::text_style::fonts::TextMetrics;
 
 /// Reserved layer of tag texts and terminal labels (design 018 §2.4).
 pub const TAG_LAYER: &str = "ECAD-TAGS";
@@ -988,8 +986,10 @@ pub fn texts_for(
 
 /// Every derived text shown on `page` (what the page draws and prints): [`all_texts_on_page`]'s
 /// shown ones.
-pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
-    all_texts_on_page(doc, page).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
+///
+/// `m` measures the texts (the C wrapper `texts_on_page` passes CADCraft's fonts).
+pub fn texts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<DerivedText> {
+    all_texts_measured(doc, page, None, m).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
 }
 
 /// A derived text and whether it is shown (design 031 §5): hidden texts are still data, listed by
@@ -1034,16 +1034,13 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// and its terminals' labels; a continuation's name and other places. Visibility follows design
 /// 031 §5.2 (symbol, device, page, project, built-in) and a tag set to once per run is shown on
 /// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
-/// for that representation.
-pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
-    all_texts_on_page_with(doc, page, None)
-}
-
-/// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
-/// (brief 045, review of #84, 3).
-pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::plc::Plc>) -> Vec<PageText> {
+/// for that representation. PLC addresses are read from the kept model `plc` when there is one
+/// (brief 045, review of #84, 3), and `m` measures the texts (the C wrappers
+/// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
+pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::Plc>, m: &dyn TextMetrics) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
-    use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style, width_in};
+    use crate::text_style::fonts::width_in;
+    use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in terminal_positions(doc, page) {
         // Brief 044: a pin pair shows its pin name once, beside the socket point.
@@ -1065,7 +1062,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
-    let look = crate::text_style::Look::new(doc);
+    let look = crate::text_style::fonts::Look::with(doc, m);
     let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
     let firsts = crate::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
@@ -1130,7 +1127,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
                 (at, halign, valign, moved) = (p, h, v, true);
             }
             if labels_shown {
-                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::text_style::TextStyle { height, ..label_style }, &value);
+                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::text_style::TextStyle { height, ..label_style }, &value, m);
                 fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
@@ -1155,7 +1152,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         // Brief 048 (design 048 §2.3): a symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {
-            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &look, &mut fixed));
+            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &look, m, &mut fixed));
             continue;
         }
         // The tag block (design 031 §6.1): the tag, then the description and part number.
@@ -1194,7 +1191,7 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
         let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
         let w = sized
             .iter()
-            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
+            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m))
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
@@ -1244,10 +1241,11 @@ pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::
 #[allow(clippy::too_many_arguments)]
 fn slot_texts(
     doc: &Document, c: ComponentId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
-    shown: &dyn Fn(crate::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, look: &crate::text_style::Look,
-    fixed: &mut Vec<(Pt, Pt)>,
+    shown: &dyn Fn(crate::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, look: &crate::text_style::fonts::Look,
+    m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
 ) -> Vec<PageText> {
-    use crate::text_style::{TextKind, text_style, width_in};
+    use crate::text_style::fonts::width_in;
+    use crate::text_style::{TextKind, text_style};
     let props = doc.components.get(&c).map(|x| &x.properties);
     let prop = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
@@ -1279,7 +1277,7 @@ fn slot_texts(
         }
         let (ha, va) = (h(slot.h), v(slot.v));
         if on {
-            let w = width_in(look.fonts_for(kind), crate::text_style::TextStyle { height, ..style }, &value);
+            let w = width_in(look.fonts_for(kind), crate::text_style::TextStyle { height, ..style }, &value, m);
             fixed.push(crate::text_style::text_box(w, height, at, ha, va));
         }
         out.push(PageText {
@@ -1299,54 +1297,6 @@ pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> 
     let term = doc.terminals.get(&t);
     let key = term.and_then(|x| x.key.clone()).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
-}
-
-/// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
-pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
-    let mut e = text_entity_with(
-        &t.value,
-        t.at,
-        t.height,
-        crate::convert::engine_halign(t.halign),
-        crate::convert::engine_valign(t.valign),
-        handle,
-        TAG_LAYER,
-    );
-    match &t.own {
-        // Brief 050a: the device's own text style (its height is already the text's).
-        Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
-        None => look.apply(&mut e, kind_of(t.of)),
-    }
-    // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
-    if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
-        x.rotation = std::f64::consts::FRAC_PI_2;
-    }
-    if let Some(aci) = t.aci {
-        e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
-    }
-    e
-}
-
-/// A justified text entity.
-pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: EHAlign, valign: EVAlign, handle: Handle, layer: &str) -> Entity {
-    let p = Vec3::new(at.x, at.y, 0.0);
-    let justified = !(halign == EHAlign::Left && valign == EVAlign::Baseline);
-    Entity {
-        handle,
-        common: Common { layer: layer.into(), ..Common::default() },
-        kind: EntityKind::Text(Text {
-            insert: p,
-            align_pt: justified.then_some(p),
-            height,
-            value: value.to_string(),
-            rotation: 0.0,
-            width_factor: 1.0,
-            oblique: 0.0,
-            style: "Standard".into(),
-            halign,
-            valign,
-        }),
-    }
 }
 
 // ---------------------------------------------------------------- JSON (§8)
@@ -1538,7 +1488,9 @@ fn rep_words(doc: &Document, c: ComponentId, r: &Representation) -> String {
 pub const MAX_ALSO: usize = 4;
 
 /// The lens of device `c` hovered through its representation `here` (design 018 §6.4).
-pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Vec<String> {
+///
+/// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
+pub fn hover_lines_measured(doc: &Document, c: ComponentId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
     let props = doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
     let get = |k: &str| props.get(k).cloned().unwrap_or_else(|| "?".into());
     let head = match props.get(TAG_KEY) {
@@ -1584,7 +1536,7 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
         lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::page_words(doc, r.page)));
         // Brief 031 (design §5.4): a tag hidden here is still data; the lens names it. (Descriptions
         // and part numbers are hidden by default, so naming them would add a line to every lens.)
-        let hidden: Vec<String> = all_texts_on_page(doc, r.page)
+        let hidden: Vec<String> = all_texts_measured(doc, r.page, None, m)
             .into_iter()
             .filter(|t| t.text.rep == here && !t.shown && t.text.of == TextOf::Tag)
             .map(|t| format!("Tag {} (hidden here)", t.text.value))
@@ -1629,9 +1581,4 @@ pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Ve
     lines
 }
 
-/// The tag the next new device of symbol `s` would get in project `p`, without using it up (for
-/// prompts and pick lists).
-pub fn next_tag_preview(p: &crate::project::Project, s: &Starter) -> Option<String> {
-    let doc = p.ledger.document();
-    p.tag_high.peek_auto(doc, &prefix_for(doc, s)).ok()
-}
+pub use crate::draw::devices::*;

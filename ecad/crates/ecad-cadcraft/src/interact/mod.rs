@@ -52,6 +52,7 @@ use crate::terminal_types::short;
 pub use crate::terminal_types::{position_label, terminal_name};
 use crate::translate::terminal_at;
 use crate::views::{FanOnPage, View, fan_on_page};
+pub use crate::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
 
 pub(crate) use accessories::{accessory, jumper};
 pub(crate) use bom_item::bomitem;
@@ -67,10 +68,6 @@ pub(crate) use xrefs::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
-/// Typed coordinates beyond this (or not finite) are refused (design §9).
-pub const MAX_COORD: f64 = 1e12;
-/// Refusal of a point that is not finite or out of range.
-pub const OUT_OF_RANGE: &str = "Point out of range.";
 /// Refusal while a paper-space layout is shown: ECAD objects live in the page's model space.
 pub const PAPER_SPACE: &str = "Switch to the Model tab to draw ECAD objects.";
 
@@ -438,9 +435,6 @@ fn tag(props: &ecad_model::Properties) -> Option<&str> {
     props.get("tag").map(String::as_str)
 }
 
-/// Most lines a hover description shows.
-pub const MAX_HOVER_LINES: usize = 12;
-
 /// What hovering drawing object `h` on page drawing `uid` shows (design §4.3): its name or ID and
 /// its connections, or `None` for plain geometry and objects ECAD does not know. Read only.
 pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
@@ -476,7 +470,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 t.parts.get(usize::try_from(i).ok()?)?.row
             });
             match row {
-                Some(i) => crate::xref::row_lines(doc, c, i)?,
+                Some(i) => crate::xref::row_lines(doc, c, i, &crate::draw::text_style::EngineMetrics)?,
                 None if crate::xref::device(doc, c).head == Some(r) => crate::xref::head_lines(doc, c, r),
                 None => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             }

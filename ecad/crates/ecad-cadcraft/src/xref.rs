@@ -47,13 +47,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::doc::{HAlign, VAlign};
 use ecad_model::{
     CableId, ComponentId, ContactMirror, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
 };
 use serde_json::{Value, json};
 
 use crate::symbols::{Kind, Starter};
+use crate::text_style::fonts::TextMetrics;
 
 /// The component property that says what contacts the part offers (FP1): `3P+1NO+1NC`.
 pub const CONTACTS_KEY: &str = "contacts";
@@ -82,17 +82,6 @@ pub const SPARE_PLACE: &str = "—";
 pub const TEXT_DERIVED: &str = "The reference text is derived; move the coil or the contact instead.";
 /// Refusal of an edit of a contact table (design 025 §4.2).
 pub const TABLE_DERIVED: &str = "The contact table is derived; move it with Move Mirror Table, or set it in Properties.";
-
-/// The refusal of an edit of a drawn cross-reference: the contact text's or the table's.
-pub fn refusal(doc: &Document, mapped: Option<crate::project::Mapped>) -> &'static str {
-    match mapped {
-        // Brief 051 (review of #89, 2): a PLC card's frame.
-        Some(crate::project::Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => crate::plc::look::FRAME_DERIVED,
-        Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Head) => TABLE_DERIVED,
-        Some(crate::project::Mapped::Xref(r)) if class_in(doc, r).is_some_and(|(_, c)| c == Class::Arrow) => crate::continuations::TEXT_DERIVED,
-        _ => TEXT_DERIVED,
-    }
-}
 
 // ---------------------------------------------------------------- offer grammar (FP1)
 
@@ -719,6 +708,26 @@ pub fn over_line(doc: &Document, c: ComponentId, labels: &[String], make: bool) 
 
 // ---------------------------------------------------------------- drawing (design 025 §4)
 
+/// Where a reference text sits across its point (the drawing maps it to CADCraft's alignment,
+/// `draw::xref`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// Where a reference text sits up and down its point (as [`HAlign`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VAlign {
+    #[default]
+    Baseline,
+    Bottom,
+    Middle,
+    Top,
+}
+
 /// A drawn part of a reference: a line or a text, in drawing units.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
@@ -836,10 +845,10 @@ impl TableShown {
 
 /// The box of a table at `top` with `rows` (design 033 §4.1): from −10 mm to 12 mm plus the widest
 /// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
-pub fn table_box(doc: &Document, top: Pt, rows: &[Row]) -> (Pt, Pt) {
+pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> (Pt, Pt) {
     let k = unit(doc);
     // The widest place text in the font and size it is drawn with (drawing units).
-    let widest = rows.iter().map(|r| crate::text_style::text_width(doc, crate::text_style::TextKind::Table, &r.place)).fold(0.0, f64::max);
+    let widest = rows.iter().map(|r| crate::text_style::fonts::text_width(doc, crate::text_style::TextKind::Table, &r.place, m)).fold(0.0, f64::max);
     let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
     let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
     (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
@@ -874,22 +883,24 @@ pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
 /// when its box lies in the free area; else right of the head (`auto`, `below`) when that fits;
 /// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
 /// the free area starts at its top. A table the user placed (`at`) is never moved.
-pub fn settle(doc: &Document, c: ComponentId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row]) -> (Pt, TableShown) {
+pub fn settle(
+    doc: &Document, c: ComponentId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn TextMetrics,
+) -> (Pt, TableShown) {
     if matches!(placement, Placement::At(_) | Placement::Off) {
         return (top, TableShown::AsPlaced);
     }
     let Some(page) = doc.representations.get(&head).map(|r| r.page) else { return (top, TableShown::AsPlaced) };
     let free = free_area(doc, page);
-    if inside(table_box(doc, top, rows), free) {
+    if inside(table_box(doc, top, rows, m), free) {
         return (top, TableShown::AsPlaced);
     }
     if matches!(placement, Placement::Auto | Placement::Below)
         && let Some(right) = table_top(doc, c, head, Placement::Right)
-        && inside(table_box(doc, right, rows), free)
+        && inside(table_box(doc, right, rows, m), free)
     {
         return (right, TableShown::Right);
     }
-    let (lo, hi) = table_box(doc, top, rows);
+    let (lo, hi) = table_box(doc, top, rows, m);
     let mut at = top;
     if lo.y < free.0.y {
         at.y += free.0.y - lo.y;
@@ -972,7 +983,7 @@ pub fn table_top(doc: &Document, c: ComponentId, head: RepresentationId, placeme
 
 /// The table under device `dev`'s head (design 025 §4.2), or `None`: no head, `off`, or neither
 /// children nor an offer.
-pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
+pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
     let head = dev.head?;
     let offer = offer_of(doc, dev.component);
     if dev.children.is_empty() && offer.is_none() {
@@ -982,9 +993,9 @@ pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Ta
     let top = table_top(doc, dev.component, head, placement)?;
     let page = doc.representations.get(&head)?.page;
     let rows = rows(places, dev, offer.as_ref().map(|(_, o)| o.as_slice()));
-    let (top, shown) = settle(doc, dev.component, head, placement, top, &rows);
+    let (top, shown) = settle(doc, dev.component, head, placement, top, &rows, m);
     let parts = table_parts(doc, head, top, &rows);
-    let bottom = table_box(doc, top, &rows).0.y;
+    let bottom = table_box(doc, top, &rows, m).0.y;
     Some(Table { head, page, top, placement, rows, parts, shown, bottom })
 }
 
@@ -1090,7 +1101,7 @@ pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) 
 
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads. O(the page's component representations and their groups).
-pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
     let mut by_component: BTreeMap<ComponentId, Vec<RepresentationId>> = BTreeMap::new();
     for (rid, r) in doc.representations_on(page) {
         if let Subject::Component(c) = r.subject {
@@ -1116,7 +1127,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
             }
         }
         if dev.head.is_some_and(|h| here.contains(&h))
-            && let Some(t) = table(doc, &mut places, &dev)
+            && let Some(t) = table_measured(doc, &mut places, &dev, m)
         {
             tables.push(t);
         }
@@ -1124,10 +1135,10 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
     // Pack re-run, bug 4: tables of heads drawn close together clear each other. This depends
     // only on the page's tables as each device derives it, and a commit that changes one of them
     // redraws the page ([`Watch`]), so the update map is unchanged.
-    spread(doc, &mut tables);
+    spread(doc, &mut tables, m);
     out.extend(tables.into_iter().flat_map(|t| t.parts));
     // Brief 049 (design 049 §4): continuation arrows' other ends, brackets and captions.
-    out.extend(crate::continuations::parts_on_page(doc, &mut places, page));
+    out.extend(crate::continuations::parts_on_page_measured(doc, &mut places, page, m));
     out
 }
 
@@ -1146,12 +1157,12 @@ fn boxes_overlap(a: (Pt, Pt), b: (Pt, Pt)) -> bool {
 /// when it clears the tables before it, else moves right past them; when that leaves the free
 /// area, it goes under them instead, if that stays in the free area, else stays. Deterministic,
 /// and each table moves only for tables before it.
-pub fn spread(doc: &Document, tables: &mut [Table]) {
+pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextMetrics) {
     let Some(page) = tables.first().map(|t| t.page) else { return };
     let free = free_area(doc, page);
     let gap = SPREAD_GAP_MM * unit(doc);
     let fixed = |t: &Table| matches!(t.placement, Placement::At(_) | Placement::Off);
-    let mut taken: Vec<(Pt, Pt)> = tables.iter().filter(|t| fixed(t)).map(|t| table_box(doc, t.top, &t.rows)).collect();
+    let mut taken: Vec<(Pt, Pt)> = tables.iter().filter(|t| fixed(t)).map(|t| table_box(doc, t.top, &t.rows, m)).collect();
     let mut order: Vec<usize> = (0..tables.len()).filter(|i| tables.get(*i).is_some_and(|t| !fixed(t))).collect();
     order.sort_by(|a, b| match (tables.get(*a), tables.get(*b)) {
         (Some(x), Some(y)) => x.top.x.total_cmp(&y.top.x).then(y.top.y.total_cmp(&x.top.y)).then(x.head.cmp(&y.head)),
@@ -1159,42 +1170,42 @@ pub fn spread(doc: &Document, tables: &mut [Table]) {
     });
     for i in order {
         let Some(t) = tables.get_mut(i) else { continue };
-        let first = table_box(doc, t.top, &t.rows);
+        let first = table_box(doc, t.top, &t.rows, m);
         let left = t.top.x - first.0.x;
         let height = t.top.y - first.0.y;
         // Right past the tables it meets.
         let mut right = t.top;
         for _ in 0..MAX_SPREAD_STEPS {
-            let b = table_box(doc, right, &t.rows);
+            let b = table_box(doc, right, &t.rows, m);
             let Some(edge) = taken.iter().filter(|o| boxes_overlap(b, **o)).map(|o| o.1.x).reduce(f64::max) else { break };
             right.x = edge + gap + left;
         }
         let mut top = right;
-        if !inside(table_box(doc, right, &t.rows), free) && inside(first, free) {
+        if !inside(table_box(doc, right, &t.rows, m), free) && inside(first, free) {
             // Under the tables it meets, from its own place; else where it was (never off the
             // free area it started in).
             let mut down = t.top;
             for _ in 0..MAX_SPREAD_STEPS {
-                let b = table_box(doc, down, &t.rows);
+                let b = table_box(doc, down, &t.rows, m);
                 let Some(edge) = taken.iter().filter(|o| boxes_overlap(b, **o)).map(|o| o.0.y).reduce(f64::min) else { break };
                 down.y = edge - gap;
             }
-            top = if inside(table_box(doc, down, &t.rows), free) { down } else { t.top };
+            top = if inside(table_box(doc, down, &t.rows, m), free) { down } else { t.top };
         }
-        let b = table_box(doc, top, &t.rows);
+        let b = table_box(doc, top, &t.rows, m);
         if top != t.top && top.is_finite() && taken.iter().all(|o| !boxes_overlap(b, *o)) {
             t.top = top;
             t.parts = table_parts(doc, t.head, top, &t.rows);
             t.bottom = top.y - height;
         }
-        taken.push(table_box(doc, t.top, &t.rows));
+        taken.push(table_box(doc, t.top, &t.rows, m));
     }
 }
 
 /// Device `dev`'s table where its page draws it: [`table`], then moved by [`spread`] with the other
 /// tables on its page (review of #92, 2). O(devices on that page); for replies, not per commit.
-pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
-    let own = table(doc, places, dev)?;
+pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
+    let own = table_measured(doc, places, dev, m)?;
     let mut others: BTreeSet<ComponentId> = BTreeSet::new();
     for (_, r) in doc.representations_on(own.page) {
         if let Subject::Component(c) = r.subject
@@ -1208,17 +1219,17 @@ pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Opt
         .filter(|c| !crate::connectors::is_connector(doc, *c))
         .map(|c| device(doc, c))
         .filter(|d| d.head.is_some_and(|h| doc.representations.get(&h).is_some_and(|r| r.page == own.page)))
-        .filter_map(|d| table(doc, places, &d))
+        .filter_map(|d| table_measured(doc, places, &d, m))
         .collect();
     let head = own.head;
     tables.push(own);
-    spread(doc, &mut tables);
+    spread(doc, &mut tables, m);
     tables.into_iter().find(|t| t.head == head)
 }
 
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
-fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> BTreeMap<PageId, Vec<Part>> {
+fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     // Brief 044: a connector's references.
     if crate::connectors::is_connector(doc, c) {
@@ -1236,7 +1247,7 @@ fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> BTreeMap<Pa
             out.entry(r.page).or_default().push(p);
         }
     }
-    if let Some(t) = table(doc, places, &dev) {
+    if let Some(t) = table_measured(doc, places, &dev, m) {
         out.entry(t.page).or_default().extend(t.parts);
     }
     out
@@ -1791,7 +1802,7 @@ impl Watch {
     /// Before `ops` are committed on `doc`. `reuse` holds what the last commit derived, for
     /// the same `doc` (the caller checks the state is unchanged): a device found there is not
     /// derived again.
-    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op], mut reuse: Shown) -> Watch {
+    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op], mut reuse: Shown, m: &dyn TextMetrics) -> Watch {
         let cable_scope = crate::references::cables_touched(doc, ops);
         let cables = crate::references::Snapshot::take(doc, cable_scope.as_ref());
         let mut scope = Scope::default();
@@ -1809,14 +1820,14 @@ impl Watch {
                     // Verify mode checks a reuse against a fresh derivation; a stale one (a bug) is
                     // reported and the fresh one used.
                     Some(kept) if verify => {
-                        let fresh = shown(doc, &mut places, *c);
+                        let fresh = shown(doc, &mut places, *c, m);
                         if kept != fresh {
                             problems.push(format!("the texts kept for {} were stale; derived again", c.hex()));
                         }
                         (*c, fresh)
                     }
                     Some(kept) => (*c, kept),
-                    None => (*c, shown(doc, &mut places, *c)),
+                    None => (*c, shown(doc, &mut places, *c, m)),
                 })
                 .collect()
         };
@@ -1824,14 +1835,14 @@ impl Watch {
         let (before_names, arrow_pages) = if scope.arrows_wide {
             (BTreeMap::new(), idx.arrow_pages(doc))
         } else {
-            (crate::continuations::shown(doc, &mut places, &scope.names), BTreeSet::new())
+            (crate::continuations::shown_measured(doc, &mut places, &scope.names, m), BTreeSet::new())
         };
         Watch { cable_scope, cables, scope, before, wide_pages, before_names, arrow_pages, groups: RefIndex::groups_named(doc, ops), problems }
     }
 
     /// After the commit: `doc` is the state after it and `ops` its ops as recorded (with any pass
     /// that extended it). Brings `idx` up to date and says what changed.
-    pub fn finish(mut self, doc: &Document, idx: &mut RefIndex, ops: &[Op]) -> Outcome {
+    pub fn finish(mut self, doc: &Document, idx: &mut RefIndex, ops: &[Op], m: &dyn TextMetrics) -> Outcome {
         self.groups.extend(RefIndex::groups_named(doc, ops));
         idx.refresh(doc, &self.groups);
         // Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
@@ -1861,7 +1872,7 @@ impl Watch {
             let mut out = BTreeSet::new();
             for c in &self.scope.devices {
                 let old = self.before.remove(c).unwrap_or_default();
-                let new = shown(doc, &mut places, *c);
+                let new = shown(doc, &mut places, *c, m);
                 for page in old.keys().chain(new.keys()) {
                     if old.get(page) != new.get(page) {
                         out.insert(*page);
@@ -1880,7 +1891,7 @@ impl Watch {
                 p.extend(idx.arrow_pages(doc));
             } else if !self.scope.names.is_empty() {
                 let mut places = Places::new(doc);
-                let after = crate::continuations::shown(doc, &mut places, &self.scope.names);
+                let after = crate::continuations::shown_measured(doc, &mut places, &self.scope.names, m);
                 for page in self.before_names.keys().chain(after.keys()) {
                     if self.before_names.get(page) != after.get(page) {
                         p.insert(*page);
@@ -2067,7 +2078,7 @@ pub fn xrefs_json(
 ///
 /// # Errors
 /// Unknown component.
-pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
+pub fn contacts_json_measured(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Result<Value, String> {
     if !doc.components.contains_key(&c) {
         return Err("no such component".into());
     }
@@ -2091,13 +2102,13 @@ pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
             "representation": r.rep.map(|x| x.hex()), "place": (r.state != State::Spare).then(|| r.place.clone()),
         })).collect::<Vec<_>>(),
         "over": over,
-        "table": table_json(doc, &mut places, &dev),
+        "table": table_json(doc, &mut places, &dev, m),
     }))
 }
 
 /// The `contacts` reply's `table` (design 033 §4.2): `{top, bottom, placement, shown}`, or null.
-fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Value {
-    let Some(t) = drawn_table(doc, places, dev) else { return Value::Null };
+fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Value {
+    let Some(t) = drawn_table(doc, places, dev, m) else { return Value::Null };
     let k = unit(doc);
     json!({
         "top": [t.top.x / k, t.top.y / k],
@@ -2184,10 +2195,10 @@ pub fn head_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> Vec<
 }
 
 /// Hover lines for row `i` of head `head`'s table.
-pub fn row_lines(doc: &Document, c: ComponentId, i: usize) -> Option<Vec<String>> {
+pub fn row_lines(doc: &Document, c: ComponentId, i: usize, m: &dyn TextMetrics) -> Option<Vec<String>> {
     let dev = device(doc, c);
     let mut places = Places::new(doc);
-    let t = table(doc, &mut places, &dev)?;
+    let t = table_measured(doc, &mut places, &dev, m)?;
     let r = t.rows.get(i)?;
     let tag = crate::devices::tag_words(doc, c);
     let what = if r.power { "power" } else { "auxiliary" };
@@ -2246,15 +2257,15 @@ pub fn placed_tables(doc: &Document) -> Vec<ComponentId> {
 
 /// The Checks row of a table the user placed over the title block (design 033 §4.1): its words,
 /// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
-pub fn title_check(doc: &Document, c: ComponentId) -> Option<(String, PageId, Pt)> {
+pub fn title_check(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Option<(String, PageId, Pt)> {
     let (placement, _) = placement_of(doc, c);
     if !matches!(placement, Placement::At(_)) {
         return None;
     }
     let dev = device(doc, c);
     let mut places = Places::new(doc);
-    let t = table(doc, &mut places, &dev)?;
-    if !enters_title_block(doc, t.page, table_box(doc, t.top, &t.rows)) {
+    let t = table_measured(doc, &mut places, &dev, m)?;
+    if !enters_title_block(doc, t.page, table_box(doc, t.top, &t.rows, m)) {
         return None;
     }
     let which = format!(
@@ -2264,6 +2275,8 @@ pub fn title_check(doc: &Document, c: ComponentId) -> Option<(String, PageId, Pt
     );
     Some((which, t.page, t.top))
 }
+
+pub use crate::draw::xref::*;
 
 #[cfg(test)]
 mod tests {

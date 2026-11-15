@@ -18,13 +18,12 @@
 
 use std::collections::BTreeMap;
 
-use cadcraft_engine::doc::{HAlign, VAlign};
 use ecad_model::{ComponentId, Document, PageId, Pt, RepresentationId, Subject};
 
 use super::rack::{self, CardType};
 use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
 use crate::text_style::{TextKind, text_style, text_width};
-use crate::xref::{Part, Shape};
+use crate::xref::{HAlign, Part, Shape, VAlign};
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).

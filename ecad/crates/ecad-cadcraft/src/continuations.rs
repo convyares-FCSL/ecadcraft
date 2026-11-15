@@ -28,13 +28,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cadcraft_engine::doc::{HAlign, VAlign};
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME, continuation_key, name_key};
 use ecad_model::{ComponentId, Document, Form, ObjectRef, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
 use crate::defaults::{self, Scope};
+use crate::text_style::fonts::TextMetrics;
 use crate::text_style::{TextKind, TextTarget, text_shown, text_style};
-use crate::xref::{Group, Part, Places, RefIndex, Shape};
+use crate::xref::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
 
 /// The component property holding a continuation's caption (FP1).
 pub const CAPTION_KEY: &str = "caption";
@@ -56,7 +56,7 @@ pub const TEXT_DERIVED: &str = "The continuation reference is derived; move or r
 pub const CAPTION_RULE: &str = "A caption is 1 to 80 characters on one line.";
 
 /// The part index of an arrow's reference text; a run's bracket, ticks and caption lines follow.
-const REF_INDEX: u32 = 0;
+pub const REF_INDEX: u32 = 0;
 const BRACKET_INDEX: u32 = 1;
 const CAPTION_INDEX: u32 = 4;
 
@@ -276,22 +276,25 @@ pub fn other_ends(doc: &Document, rep: RepresentationId) -> Vec<End> {
 }
 
 /// The sorted ends of each name, worked out at most once per derivation.
-struct Cache {
+struct Cache<'m> {
     settings: Settings,
     ends: BTreeMap<String, Vec<End>>,
     /// The text styles and fonts, resolved on the first measurement (only caption runs measure).
-    look: Option<crate::text_style::Look>,
+    look: Option<crate::text_style::fonts::Look>,
+    /// What measures the texts.
+    m: &'m dyn TextMetrics,
 }
 
-impl Cache {
-    fn new(doc: &Document) -> Cache {
-        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), look: None }
+impl<'m> Cache<'m> {
+    fn new(doc: &Document, m: &'m dyn TextMetrics) -> Cache<'m> {
+        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), look: None, m }
     }
 
     /// The width of `value` in `kind`'s style, with the fonts resolved once per derivation.
     fn width(&mut self, doc: &Document, kind: TextKind, value: &str) -> f64 {
-        let look = self.look.get_or_insert_with(|| crate::text_style::Look::new(doc));
-        crate::text_style::width_in(look.fonts_for(kind), look.style(kind), value)
+        let m = self.m;
+        let look = self.look.get_or_insert_with(|| crate::text_style::fonts::Look::with(doc, m));
+        crate::text_style::fonts::width_in(look.fonts_for(kind), look.style(kind), value, m)
     }
 
     fn ends(&mut self, doc: &Document, places: &mut Places<'_>, key: &str) -> &[End] {
@@ -325,16 +328,6 @@ fn reference_part(a: &Arrow, value: String, s: &Settings) -> Part {
         aci: None,
         row: None,
         bar: false,
-    }
-}
-
-/// Colour a drawn continuation part (review of #85, 3; `ui-design-spec.md`, canvas colours): an
-/// arrow's other-end text in Ink 2 of the sheet the page is projected for, as zone labels, pin
-/// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
-pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
-    if part.index == REF_INDEX && arrow(doc, part.rep).is_some() {
-        let ink2 = crate::look::projection_sheet().color(ecad_drawing_style::Meaning::Ink2);
-        e.common.color = cadcraft_engine::doc::color::Color::True(crate::look::rgb(ink2));
     }
 }
 
@@ -372,7 +365,7 @@ fn runs<'a>(doc: &'a Document, arrows: &[Arrow], run_gap: f64) -> Vec<(&'a str, 
 
 /// A caption wrapped to `width` at word breaks, at most [`MAX_CAPTION_LINES`] lines, the last
 /// ending with `…` when the caption is longer.
-fn wrap(doc: &Document, cache: &mut Cache, caption: &str, width: f64) -> Vec<String> {
+fn wrap(doc: &Document, cache: &mut Cache<'_>, caption: &str, width: f64) -> Vec<String> {
     let mut fits = |t: &str| cache.width(doc, TextKind::ContinuationCaption, t) <= width;
     let mut lines: Vec<String> = Vec::new();
     for word in caption.split_whitespace() {
@@ -398,7 +391,7 @@ fn wrap(doc: &Document, cache: &mut Cache, caption: &str, width: f64) -> Vec<Str
 }
 
 /// One run's bracket, ticks and caption lines, as parts of its lowest-ID arrow (§3.2).
-fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache, caption: &str, run: &[Arrow], page: PageId) -> Vec<Part> {
+fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, caption: &str, run: &[Arrow], page: PageId) -> Vec<Part> {
     let Some(owner) = run.iter().map(|a| a.rep).min() else { return Vec::new() };
     let Some(first) = run.first() else { return Vec::new() };
     let dir = first.direction;
@@ -455,16 +448,16 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache, caption
 
 /// Every continuation part drawn on `page` (design 049 §4): each arrow's reference text, then
 /// each caption run's bracket and caption. O(the page's arrows and their names' arrows).
-pub fn parts_on_page(doc: &Document, places: &mut Places<'_>, page: PageId) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, places: &mut Places<'_>, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
     let arrows = arrows_on(doc, page);
     if arrows.is_empty() {
         return Vec::new();
     }
-    let mut cache = Cache::new(doc);
+    let mut cache = Cache::new(doc, m);
     page_parts(doc, places, &mut cache, page, &arrows)
 }
 
-fn page_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache, page: PageId, arrows: &[Arrow]) -> Vec<Part> {
+fn page_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, page: PageId, arrows: &[Arrow]) -> Vec<Part> {
     let mut out = Vec::new();
     for a in arrows {
         let value = cache.text(doc, places, a);
@@ -480,12 +473,12 @@ fn page_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache, page: 
 
 /// What the arrows of names `names` show, by page: their reference texts, and every caption run
 /// part on a page that holds one of them. For comparing before and after a commit.
-pub fn shown(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>) -> BTreeMap<PageId, Vec<Part>> {
+pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     if names.is_empty() {
         return out;
     }
-    let mut cache = Cache::new(doc);
+    let mut cache = Cache::new(doc, m);
     let mut pages: BTreeSet<PageId> = BTreeSet::new();
     for n in names {
         let Some((_, members)) = group_named(doc, n) else { continue };
@@ -667,6 +660,8 @@ pub fn arrows_among(doc: &Document, cs: &[ComponentId]) -> (Vec<ComponentId>, us
     (arrows, other)
 }
 
+pub use crate::draw::continuations::*;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,30 +685,6 @@ mod tests {
         assert_eq!(at(90.0, false), Some(Direction::Right));
         assert_eq!(at(270.0, false), Some(Direction::Left));
         assert_eq!(direction(&Placement { origin: Pt::new(0.0, 0.0), rotation: 0.0, mirror: false, scale: 0.0 }), None);
-    }
-
-    /// FP3 (overseer ruling, 2026-11-13): an unrotated reference part draws byte-identically to
-    /// the entity drawn before `rotation` existed.
-    #[test]
-    fn an_unrotated_part_draws_as_before() {
-        let part = Part {
-            rep: RepresentationId(7),
-            index: 0,
-            shape: Shape::Text {
-                at: Pt::new(1.0, 2.0),
-                value: "100-B-3".into(),
-                height: 2.5,
-                halign: HAlign::Left,
-                valign: VAlign::Top,
-                rotation: 0.0,
-            },
-            aci: None,
-            row: None,
-            bar: false,
-        };
-        let h = cadcraft_engine::doc::Handle(0x42);
-        let before = crate::devices::text_entity_with("100-B-3", Pt::new(1.0, 2.0), 2.5, HAlign::Left, VAlign::Top, h, crate::devices::TAG_LAYER);
-        assert_eq!(format!("{:?}", crate::project::xref_entity(&part, h)), format!("{before:?}"));
     }
 
     #[test]
