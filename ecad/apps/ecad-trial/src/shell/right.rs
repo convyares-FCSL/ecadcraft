@@ -334,6 +334,17 @@ fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) ->
 /// `Page` for a page or a generated page, `Device` for a device, `Wire`, `Cable` and so on for
 /// the other selections. The button's accessible name stays [`rail_label`].
 pub fn shows_word(t: &mut Trial) -> &'static str {
+    // Brief 059 (owner, review of the side-by-sides): in the Project workspace the panel shows the
+    // selected row of the tab shown: `Cable` on Cables, `Wire` on Wires, `Device` on Devices,
+    // else `Properties`.
+    if t.shell.state.workspace == crate::shell::Workspace::Lists {
+        return match t.shell.lists {
+            crate::shell::ListsView::Cables => "Cable",
+            crate::shell::ListsView::Wires => "Wire",
+            crate::shell::ListsView::Devices => "Device",
+            _ => "Properties",
+        };
+    }
     if t.settings.inspector.device.is_some() {
         return "Device";
     }

@@ -33,6 +33,10 @@ pub const NOTHING: &str = "Select a row to see it here.";
 /// The greyed parts buttons' reason.
 pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
 pub const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
+/// Brief 059 (owner): the Rating section of a cable with nothing to rate yet.
+pub const RATE_NOTE: &str = "Set a cable type to rate this cable.";
+/// Brief 059 (board 2.06): the Details pane's tabs and their accessible name.
+pub const CABLE_TABS: &str = "ecad.project.detail.cable.tabs";
 /// A cross-section's unit.
 const MM2: &str = "mm\u{b2}";
 
@@ -460,8 +464,12 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
         editor: false,
         cable_editor: v.ids.get(k).map(|c| (*c, [from, to])),
         core_fixes,
-        // Brief 059: Identity, Part and Ends are the cable editor's; the Rating section stays 057's.
-        sections: vec![rating_section(t, v.source.rating(k), &v.source.rating.methods)],
+        // Brief 059: Identity, Part and Ends are the cable editor's; the Rating section stays 057's,
+        // and shows a note when the cable has nothing to rate yet (owner, review of 059).
+        sections: vec![match v.source.rating(k) {
+            Some(r) => rating_section(t, Some(r), &v.source.rating.methods),
+            None => Section { title: "Rating", hint: "not rated".into(), note: Some(RATE_NOTE), ..Section::default() },
+        }],
     })
 }
 
@@ -551,6 +559,41 @@ fn section_head(ui: &mut egui::Ui, id: egui::Id, title: &str, hint: &str) -> boo
     open
 }
 
+/// One folding section (its head, then its rows); returns what it asked for.
+fn draw_section(ui: &mut egui::Ui, sec: &Section, writable: bool) -> Vec<Out> {
+    let s = ecad_ui::SHELL;
+    let mut out = Vec::new();
+    let id = egui::Id::unique(("ecad.project.detail", sec.title));
+    if section_head(ui, id, sec.title, &sec.hint) {
+        if let Some(rp) = &sec.rating {
+            let rp = super::rating::Panel { writable, ..rp.clone() };
+            out.extend(super::rating::show(ui, &rp).into_iter().map(|(c, v)| Out::Run(c, v)));
+        }
+        for p in &sec.props {
+            prop_row(ui, p);
+        }
+        for (a, b) in &sec.lines {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(a).size(ui_type::BODY.size).color(ecad_ui::color(s.text)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new(b).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
+                });
+            });
+        }
+        if !sec.later.is_empty() {
+            ui.horizontal(|ui| {
+                for (label, why) in &sec.later {
+                    ui.add(prim::Button::new(label).small().disabled(why));
+                }
+            });
+        }
+        if let Some(n) = sec.note {
+            ui.add(egui::Label::new(egui::RichText::new(n).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_3))).wrap());
+        }
+    }
+    out
+}
+
 /// What the panel asks the trial for.
 #[derive(Debug, Clone, PartialEq)]
 enum Out {
@@ -575,6 +618,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let writable = t.project_writable();
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
+    // Brief 059 (board 2.06): the cable's Cable / Checks tabs, and its Checks rows.
+    let (mut cable_tab, cable_checks) = t.reports.as_ref().map_or((0, Vec::new()), |r| (r.cables.detail_tab, r.cables.cable_checks.clone()));
+    let tab_before = cable_tab;
     let mut cable_edit = t.reports.as_mut().map(|r| &mut r.cables.edit);
     let full = rect.x_range();
     let rule = |ui: &mut egui::Ui| panel::rule(ui, full);
@@ -594,6 +640,34 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             });
             ui.label(egui::RichText::new(&d.subtitle).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
             ui.add_space(space::S);
+            // Brief 059 (board 2.06): Cable | Checks n.
+            if d.cable_editor.is_some() {
+                let checks_label = if cable_checks.is_empty() { "Checks".to_string() } else { format!("Checks \u{25cf} {}", cable_checks.len()) };
+                let labels = ["Cable", checks_label.as_str()];
+                prim::Segmented::new(&mut cable_tab, &labels).name(CABLE_TABS).show(ui);
+                ui.add_space(space::S);
+                if cable_tab == 1 {
+                    if cable_checks.is_empty() {
+                        let words = format!("No checks on {}", d.title);
+                        panel::status_pill(ui, Tone::Ok, &words, &format!("\u{2713} {words}"));
+                    }
+                    for (c, place) in &cable_checks {
+                        let tone = match c.severity() {
+                            ecad_cadcraft::checks::Severity::Error => Tone::Error,
+                            ecad_cadcraft::checks::Severity::Warning => Tone::Warning,
+                            ecad_cadcraft::checks::Severity::Info => Tone::Neutral,
+                        };
+                        let words = c.what();
+                        panel::status_pill(ui, tone, &words, &words);
+                        if c.page.is_some()
+                            && ecad_ui::control::link(ui, &format!("\u{2192} {}", if place.is_empty() { "Go to" } else { place })).clicked()
+                        {
+                            out.push(Out::Panel(crate::project_panel::Action::GotoCheck(Box::new(c.clone()))));
+                        }
+                    }
+                    return;
+                }
+            }
             // Its own checks.
             if d.checks.is_empty() {
                 let words = format!("No checks on {}", d.title);
@@ -612,9 +686,18 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             }
             ui.add_space(space::S);
             rule(ui);
-            // Brief 059: the cable editor (design 059 §5.2), before 057's Rating section.
+            // Brief 059: the cable editor (design 059 §5.2), with 057's Rating section between Part
+            // and Ends, as board 2.06 orders them.
             if let (Some((cable, ends)), Some(ed)) = (&d.cable_editor, cable_edit.take()) {
-                let asks = super::cable_editor::show(ui, ed, ends.clone(), writable, &|ui: &mut egui::Ui| panel::rule(ui, full));
+                let mut mid = Vec::new();
+                let mut middle = |ui: &mut egui::Ui| {
+                    for sec in d.sections.iter().filter(|s| !s.title.is_empty()) {
+                        mid.extend(draw_section(ui, sec, writable));
+                        panel::rule(ui, full);
+                    }
+                };
+                let asks = super::cable_editor::show(ui, ed, ends.clone(), writable, &|ui: &mut egui::Ui| panel::rule(ui, full), &mut middle);
+                out.extend(mid);
                 out.extend(asks.into_iter().map(|a| Out::Cable(*cable, a)));
                 rule(ui);
             }
@@ -625,39 +708,20 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
                 }
                 rule(ui);
             }
-            for sec in d.sections.iter().filter(|s| !s.title.is_empty()) {
-                let id = egui::Id::unique(("ecad.project.detail", sec.title));
-                if section_head(ui, id, sec.title, &sec.hint) {
-                    if let Some(rp) = &sec.rating {
-                        let rp = super::rating::Panel { writable, ..rp.clone() };
-                        out.extend(super::rating::show(ui, &rp).into_iter().map(|(c, v)| Out::Run(c, v)));
-                    }
-                    for p in &sec.props {
-                        prop_row(ui, p);
-                    }
-                    for (a, b) in &sec.lines {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(a).size(ui_type::BODY.size).color(ecad_ui::color(s.text)));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(b).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
-                            });
-                        });
-                    }
-                    if !sec.later.is_empty() {
-                        ui.horizontal(|ui| {
-                            for (label, why) in &sec.later {
-                                ui.add(prim::Button::new(label).small().disabled(why));
-                            }
-                        });
-                    }
-                    if let Some(n) = sec.note {
-                        ui.add(egui::Label::new(egui::RichText::new(n).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_3))).wrap());
-                    }
+            // A cable's sections (057's Rating) were drawn inside the editor, after Part.
+            if d.cable_editor.is_none() {
+                for sec in d.sections.iter().filter(|s| !s.title.is_empty()) {
+                    out.extend(draw_section(ui, sec, writable));
+                    rule(ui);
                 }
-                rule(ui);
             }
         });
     });
+    if cable_tab != tab_before
+        && let Some(r) = t.reports.as_mut()
+    {
+        r.cables.detail_tab = cable_tab;
+    }
     for o in out {
         match o {
             Out::Go(Go::Symbols(reps)) => {

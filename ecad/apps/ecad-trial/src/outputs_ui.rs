@@ -195,6 +195,8 @@ impl Reports {
         if self.cables_shown {
             let count = p.change_count();
             self.cables.sync_colours(p.ledger.document(), count);
+            // Brief 059: the Details pane's Checks tab.
+            self.cables.sync_checks(p, count);
         }
         let reference_style = p.ledger.document().settings.reference_style;
         let style = reference_style as u64;

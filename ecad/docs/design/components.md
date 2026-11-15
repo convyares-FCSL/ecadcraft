@@ -55,7 +55,7 @@ out one row; `panel::value_row` does it for a value with its kind.
 | Component | For | API |
 | --- | --- | --- |
 | Text area | Several lines typed here (a rating table's CSV rows): the entry box, taller, in the code font | `control::TextArea` |
-| Splitter | Resizing two stacked regions: a double hairline with a grip, a resize cursor and a hover highlight | `ecad_ui::splitter::horizontal(ui, name)` |
+| Splitter | Resizing two stacked regions: a clearly defined double line across the width (a filled band between two lines) with a grip, a resize cursor and a hover highlight | `ecad_ui::splitter::horizontal(ui, name)` |
 | Colour cell | A colour in a table cell: the colour bar, then the code | `ecad_ui::table` `Cell::Colour(bars, code)` |
 | Toggle cell | On or off in a table row (a core's Not used): `control::Toggle` in the cell; a click reports `TableEvent::Button` | `ecad_ui::table` `Cell::Toggle(on)` |
 

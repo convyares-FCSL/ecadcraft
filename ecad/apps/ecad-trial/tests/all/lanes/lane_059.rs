@@ -71,6 +71,11 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     assert!(h.query_all_by_label_contains("not drawn").next().is_some(), "the not drawn badge");
     assert!(h.query_all_by_label_contains("1 not drawn").next().is_some(), "the footer counts it");
     assert!(h.query_by_label("ecad.project.detail.cable.tag").is_some(), "the Tag box");
+    // Owner review of the side-by-sides: the rail says Cable; Cable | Checks tabs; the Rating
+    // section is shown with its note when there is nothing to rate.
+    assert_eq!(ecad_trial::shell::right::shows_word(h.state_mut()), "Cable");
+    assert!(h.query_all_by_label_contains(ecad_trial::lists::detail::CABLE_TABS).next().is_some(), "the Cable / Checks tabs");
+    assert!(h.query_all_by_label_contains("Set a cable type to rate").next().is_some(), "the Rating note");
     assert!(h.query_all_by_label_contains("ecad.project.detail.cable.drawn").next().is_some(), "Not drawn yet");
     // Typing a length commits one cableedit on Enter.
     let n = h.get_by_label("ecad.project.detail.cable.length");
@@ -134,6 +139,9 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     h.state_mut().reports.as_mut().unwrap().cables.details = true;
     h.run_steps(8);
     let head = doc(&mut h).cables.len();
+    // The footer is below the Rating section: scroll it into view first.
+    h.get_by_label(ecad_trial::lists::cable_editor::REMOVE).scroll_to_me();
+    h.run_steps(4);
     h.get_by_label(ecad_trial::lists::cable_editor::REMOVE).click();
     h.run_steps(6);
     assert_eq!(doc(&mut h).cables.len(), head, "nothing removed");
@@ -141,6 +149,14 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     assert!(refused.0.contains("-W01 is drawn on") && refused.0.contains("Delete it on its page."), "{refused:?}");
     assert!(!refused.1.is_empty(), "a Go to per page");
     assert!(h.query_by_label("ecad.lists.cables.remove.refused").is_some());
+    // The Checks tab lists -W01's own rows (its open core) with a Go to.
+    let rows = h.state().reports.as_ref().unwrap().cables.cable_checks.clone();
+    assert!(rows.iter().any(|(c, _)| c.kind == ecad_cadcraft::checks::Kind::CoreOpen), "{rows:?}");
+    h.state_mut().reports.as_mut().unwrap().cables.detail_tab = 1;
+    h.run_steps(4);
+    assert!(h.query_all_by_label_contains("core GNYE is not assigned").next().is_some(), "the Checks tab lists it");
+    h.state_mut().reports.as_mut().unwrap().cables.detail_tab = 0;
+    h.run_steps(2);
     shot(&h, &deltas, "059-remove-refused.png");
     let _ = std::fs::remove_dir_all(&dir);
 }

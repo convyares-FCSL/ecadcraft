@@ -237,8 +237,11 @@ fn type_value(c: &Copy, i: usize) -> serde_json::Value {
 }
 
 /// The cable's editable sections and footer (board 2.06), in the Details pane. `ends` are its
-/// drawn ends (`+CAB1 -X01`). Returns what was asked for; the caller runs it.
-pub fn show(ui: &mut egui::Ui, ed: &mut Editor, ends: [String; 2], writable: bool, rule: &dyn Fn(&mut egui::Ui)) -> Vec<Ask> {
+/// drawn ends (`+CAB1 -X01`); `middle` draws the sections that go between Part and Ends (057's
+/// Rating). Returns what was asked for; the caller runs it.
+pub fn show(
+    ui: &mut egui::Ui, ed: &mut Editor, ends: [String; 2], writable: bool, rule: &dyn Fn(&mut egui::Ui), middle: &mut dyn FnMut(&mut egui::Ui),
+) -> Vec<Ask> {
     let mut out = Vec::new();
     let s = ecad_ui::SHELL;
     // Identity.
@@ -278,6 +281,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, ends: [String; 2], writable: boo
     entry(ui, ed, CableField::Description, "Description", "ecad.project.detail.cable.description", writable, &mut out);
     entry(ui, ed, CableField::Length, "Length", "ecad.project.detail.cable.length", writable, &mut out);
     rule(ui);
+    // 057's Rating section (board 2.06: after Part).
+    middle(ui);
     // Ends: each end's drawn end, then its planned function and location (Q4).
     panel::section_header(ui, true, "Ends", "planned and drawn");
     for (i, side) in Side::BOTH.into_iter().enumerate() {

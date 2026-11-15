@@ -334,6 +334,11 @@ pub struct CablesView {
     pub edit: super::cable_editor::Editor,
     pub pending_select: Option<CableId>,
     pub undrawn: Vec<(CableId, String)>,
+    /// Brief 059 (owner, board 2.06): the Details pane's tab, Cable (0) or Checks (1), and the
+    /// selected cable's Checks rows with their place (`2/E3`), read with its copy.
+    pub detail_tab: usize,
+    pub cable_checks: Vec<(ecad_cadcraft::checks::Check, String)>,
+    checks_of: Option<(CableId, u64)>,
 }
 
 impl Default for CablesView {
@@ -361,6 +366,9 @@ impl Default for CablesView {
             edit: Default::default(),
             pending_select: None,
             undrawn: Vec::new(),
+            detail_tab: 0,
+            cable_checks: Vec::new(),
+            checks_of: None,
         }
     }
 }
@@ -481,6 +489,35 @@ impl CablesView {
         let rows = c.rows.rows.len();
         c.field_wires = (0..rows).map(|k| selected.map(|cab| beyond(doc, cab, &c.rows.text(k, "To"))).unwrap_or_default()).collect();
         self.core_table.update(&self.cores, Changed::All);
+    }
+
+    /// Brief 059 (board 2.06): the selected cable's Checks rows (the kept list's rows about it),
+    /// read again only when the selection or the project's change count changed.
+    pub fn sync_checks(&mut self, p: &mut ecad_cadcraft::project::Project, count: u64) {
+        let selected = self.selected().and_then(|k| self.ids.get(k).copied());
+        let want = selected.map(|k| (k, count));
+        if want == self.checks_of {
+            return;
+        }
+        self.checks_of = want;
+        self.cable_checks.clear();
+        let Some(k) = selected else { return };
+        let rows: Vec<ecad_cadcraft::checks::Check> =
+            p.checks().rows().filter(|c| c.object == ecad_cadcraft::checks::Object::Cable(k)).cloned().collect();
+        let doc = p.ledger.document();
+        let style = doc.settings.reference_style;
+        let mut rows = ecad_cadcraft::checks::sort(doc, rows);
+        rows.truncate(200);
+        self.cable_checks = rows
+            .into_iter()
+            .map(|c| {
+                let place = match (c.page, c.at) {
+                    (Some(pg), Some(at)) => ecad_model::wiring::place(doc, pg, at).map(|x| x.text(style)).unwrap_or_default(),
+                    _ => String::new(),
+                };
+                (c, place)
+            })
+            .collect();
     }
 
     /// The selected cable as drawn (board 2.06).
