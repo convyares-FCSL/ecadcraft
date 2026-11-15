@@ -27,9 +27,9 @@ use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, Project
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
 /// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `connector.` (brief 044),
-/// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047) and `continuation.` (brief 049). Keys already approved before
-/// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047) and `plc.` (brief 045). Keys already approved before
-/// the registry keep their names; the key-rule test reads this one list.
+/// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047), `plc.` (brief 045) and
+/// `continuation.` (brief 049). Keys already approved before the registry keep their names; the
+/// key-rule test reads this one list.
 /// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
 /// this file with `merge=union`.
 #[rustfmt::skip]
