@@ -267,8 +267,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             let mut cancel = false;
             egui::Frame::new().fill(c32(s.raised)).inner_margin(space::S).corner_radius(4.0).show(ui, |ui| {
                 ui.label(egui::RichText::new("Import a title block from a DXF, at 1:1").small().color(c32(s.text_2)));
-                let f = ui.add(egui::TextEdit::singleline(&mut ask.path).hint_text("C:\\drawings\\block.dxf").desired_width(f32::INFINITY));
-                f.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, IMPORT_PATH));
+                ecad_ui::control::TextEntry::new(&mut ask.path, IMPORT_PATH).placeholder("C:\\drawings\\block.dxf").show(ui);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("Sheet").small());
                     for size in ["A3", "A2", "A1", "A0"] {
@@ -324,8 +323,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             let mut ok = false;
             let mut cancel = false;
             ui.horizontal(|ui| {
-                let f = ui.add(egui::TextEdit::singleline(key).hint_text("job_no").desired_width(140.0));
-                f.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, "library.tb.palette.project_field.key"));
+                let f = ecad_ui::control::TextEntry::new(key, "library.tb.palette.project_field.key").placeholder("job_no").width(140.0).show(ui);
                 ok = ui.small_button("Add").clicked() || (f.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
                 cancel = ui.small_button("Cancel").clicked();
             });
@@ -388,7 +386,7 @@ fn row_menu(ui: &mut egui::Ui, r: &super::Row, writable: bool, acts: &mut Vec<Ac
 pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
     let s = ecad_ui::SHELL;
     let p = ui.painter();
-    p.rect(rect, 2.0, Color32::from_rgb(0xf6, 0xf4, 0xee), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
+    p.rect(rect, 2.0, ecad_ui::color(ecad_ui::tokens::sheet::PAPER.sheet), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
     let (w, h) = l.size;
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
         return;
@@ -399,7 +397,7 @@ pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
     let bw = (w * k) as f32;
     let bh = (h * k) as f32;
     let o = pos2(inner.right() - bw, inner.bottom());
-    let ink = Color32::from_rgb(0x33, 0x33, 0x33);
+    let ink = ecad_ui::color(ecad_ui::tokens::sheet::PAPER.ink);
     p.rect_stroke(Rect::from_min_max(inner.min, inner.max), 0.0, Stroke::new(0.8, ink), egui::StrokeKind::Inside);
     p.rect_stroke(Rect::from_min_max(pos2(o.x, o.y - bh), pos2(o.x + bw, o.y)), 0.0, Stroke::new(0.8, ink), egui::StrokeKind::Inside);
     for item in l.items.iter().take(200) {
