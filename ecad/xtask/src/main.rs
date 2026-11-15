@@ -60,7 +60,7 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-inspect", Class::Core),
     ("ecad-tokens", Class::Core),
     ("ecad-ui", Class::UiKit),
-    ("ecad-bench", Class::Adapter),
+    ("ecad-bench", Class::Dev),
     ("ecad-cli", Class::Ui),
     ("ecad-trial", Class::Ui),
     // Headless by construction: CADCraft crates below the UI only.
@@ -199,13 +199,13 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
 ];
 
 /// Apps that must reach the engine only through `ecad-cadcraft` (owner ruling, 2026-11-15; an
-/// app may depend on another app).
-const ENGINE_FREE: &[&str] = &["ecad-bench", "ecad-cli", "ecad-mcp", "ecad-trial"];
+/// app may depend on another app). Dev tools such as `ecad-bench` may use it directly (design 065).
+const ENGINE_FREE: &[&str] = &["ecad-cli", "ecad-mcp", "ecad-trial"];
 
 /// Apps of [`ENGINE_FREE`] that still use `cadcraft-engine` directly: the number of source lines
 /// (outside comments) that name `cadcraft_engine`, seeded on 2026-11-15 (brief 060). The counts
 /// only fall; at none, the entry and the dependency in the app's `Cargo.toml` go.
-const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-bench", 32), ("ecad-mcp", 5), ("ecad-trial", 54)];
+const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-mcp", 5), ("ecad-trial", 54)];
 
 /// Core crates that must not reach the file system, the environment, processes, the network or
 /// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is
@@ -1569,7 +1569,6 @@ let c = ecad_ui::color(SHELL.text);",
         let rows: &[(&str, &str, usize)] = &[
             ("ecad-model", "ecad-ui", 1),
             ("ecad-cadcraft", "ecad-ui", 1),
-            ("ecad-bench", "ecad-ui", 1),
             ("ecad-cadcraft", "epaint", 1),
             ("ecad-mcp", "egui_extras", 1),
             ("ecad-model", "ecad-tokens", 0),
