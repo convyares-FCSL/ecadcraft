@@ -14,8 +14,8 @@ use super::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind,
     terminal_for, v2,
 };
+use crate::cmd::terminal::{self, MAX_FENCE};
 use crate::strips;
-use crate::terminal_cmds::{self, MAX_FENCE};
 use crate::terminal_types as tt;
 
 // ---------------------------------------------------------------- Place Terminals (§3.2)
@@ -119,7 +119,7 @@ impl PlaceTerminals {
     }
 
     fn choose_level(&mut self, s: &Session, text: &str) -> R<Step> {
-        let level = read(s, |p, _| terminal_cmds::level_word(p.ledger.document(), self.strip, self.ty, text)).map_err(other)?;
+        let level = read(s, |p, _| terminal::level_word(p.ledger.document(), self.strip, self.ty, text)).map_err(other)?;
         self.level = level;
         self.stage = if level.is_some() { Stage::Position } else { Stage::Line };
         Ok(Step::Continue)
@@ -331,7 +331,7 @@ impl DrawBridge {
                 let Some((t, at, _)) = terminal_for(s, p) else {
                     return Err(other("No terminal there. Click a terminal of a strip (its ring)."));
                 };
-                let words = read(s, |p, _| Ok(terminal_cmds::terminal_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(terminal::terminal_words(p.ledger.document(), t))).unwrap_or_default();
                 match self.first.take() {
                     None => {
                         self.first = Some((t, at, words));
@@ -387,7 +387,7 @@ impl Interactive for DrawBridge {
             return Vec::new();
         }
         let b = terminal_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
-        let pts = terminal_cmds::staple(*a, b);
+        let pts = terminal::staple(*a, b);
         pts.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect()
     }
 }

@@ -25,7 +25,7 @@ use ecad_model::title_block::{
 use ecad_model::{Op, Primitive, Pt};
 use serde_json::{Value, json};
 
-use crate::commands::{err, with_project};
+use crate::cmd::{err, with_project};
 
 /// Largest DXF read, in bytes (a guard on hostile input).
 pub const MAX_DXF_BYTES: usize = 16 * 1024 * 1024;
@@ -269,14 +269,14 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         let prims = logo(&bytes).map_err(err)?;
         return with_project(s, |p, pg, _| {
             let doc = p.ledger.document();
-            let id = crate::title_block_cmds::target(doc, params)?;
+            let id = crate::cmd::title_block::target(doc, params)?;
             if id.is_builtin() {
-                return Err(crate::title_block_cmds::BUILTIN_READ_ONLY.into());
+                return Err(crate::cmd::title_block::BUILTIN_READ_ONLY.into());
             }
             let layer = [StyleLayer::Project, StyleLayer::Standard]
                 .into_iter()
                 .find(|l| crate::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
-                .ok_or(crate::title_block_cmds::NOT_A_FRAME)?;
+                .ok_or(crate::cmd::title_block::NOT_A_FRAME)?;
             let before = crate::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
             let mut after = before.clone().unwrap_or_default();
             let mut layout = after.title_block().cloned().ok_or("This frame has no title block yet; add a Logo item first.")?;
@@ -305,7 +305,7 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         let base = format!("{} imported block", crate::title_block::sheet_name(&spec));
         let name = match params.get("name").and_then(Value::as_str).map(str::trim) {
             Some(n) if ecad_model::style::is_name(n) => n.to_string(),
-            Some(_) => return Err(crate::style_cmds::STYLE_NEEDS_NAME.into()),
+            Some(_) => return Err(crate::cmd::style::STYLE_NEEDS_NAME.into()),
             None => {
                 let taken: Vec<String> =
                     crate::styles::rows(doc, &crate::styles::frame::CATALOGUE).into_iter().map(|r| r.name.to_lowercase()).collect();

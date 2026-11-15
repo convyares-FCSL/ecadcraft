@@ -117,7 +117,7 @@ pub(crate) fn read<R>(s: &Session, f: impl FnOnce(&Project, PageId) -> Result<R,
     let p = guard.as_any_mut().downcast_mut::<Project>().ok_or(NOT_OWNED)?;
     let page = p.page_of(uid).ok_or(NOT_OWNED)?;
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
-        return Err(crate::commands::UNAVAILABLE.into());
+        return Err(crate::cmd::UNAVAILABLE.into());
     }
     f(p, page)
 }

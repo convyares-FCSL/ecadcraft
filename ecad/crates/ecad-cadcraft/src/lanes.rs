@@ -1,7 +1,7 @@
 //! The command registrations of lanes in flight (owner, 2026-11-13).
 //!
 //! A lane (a brief being built on its feature branch) whose new module adds commands registers
-//! its `specs` in [`LANES`], one line, instead of adding a line to [`crate::commands::specs`]:
+//! its `specs` in [`LANES`], one line, instead of adding a line to [`crate::cmd::specs`]:
 //! lanes then add lines only here, and git merges this file with `merge=union`
 //! (`ecad/.gitattributes`), so two lanes adding a line at the same place keep both instead of
 //! conflicting. If the merged lines are out of brief order, the `lanes_are_in_brief_order` test
@@ -10,14 +10,14 @@
 
 use cadcraft_engine::CommandSpec;
 
-/// The lanes' command lists, appended after the ECAD commands in [`crate::commands::specs`]: one
+/// The lanes' command lists, appended after the ECAD commands in [`crate::cmd::specs`]: one
 /// line per lane, `("<brief>", crate::<module>::specs),`, in brief order.
 pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
     // ("NNN", crate::<module>::specs), one line per lane, below this one.
-    ("052", crate::location_cmds::specs),
-    ("054", crate::page_type_cmds::specs),
-    ("055", crate::title_block_cmds::specs),
-    ("056", crate::plc_cmds::exchange::specs),
-    ("057", crate::rating_cmds::specs),
-    ("059", crate::cable_cmds::specs),
+    ("052", crate::cmd::location::specs),
+    ("054", crate::cmd::page_type::specs),
+    ("055", crate::cmd::title_block::specs),
+    ("056", crate::cmd::plc::exchange::specs),
+    ("057", crate::cmd::rating::specs),
+    ("059", crate::cmd::cable::specs),
 ];

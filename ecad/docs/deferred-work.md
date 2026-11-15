@@ -25,6 +25,22 @@ started.
   (the debugger, the Tool Sets seam X8 and later work have changed files outside `ecad/` since the
   proposal was written against `baee1b8`), then get the owner's approval for implementation.
 
+## The commands in `history` and `merging` move to `cmd/` (lane 067 step 11)
+
+- **What:** lane 067 step 11 moved ecad-cadcraft's commands into `cmd/` (`commands.rs` →
+  `cmd/mod.rs`, each `*_cmds.rs` → `cmd/<area>.rs`, `plc_cmds/` → `cmd/plc/`, and `release.rs`'s
+  `specs`, `run_prerelease` and `run_release` → `cmd/release.rs`). The `specs` and `run_*`
+  functions of `history.rs` (`run_history`, `run_steps`, `run_pointinfo`, `run_version`,
+  `run_showpoint`, `run_closepoint`, `run_restore`, `run_branches`, `run_branch`,
+  `run_renamebranch`, `run_switchbranch`, `run_archivebranch`, `run_reopenbranch`), `merging.rs`
+  (`run_merge`, `run_undomerge`) stayed: they use private helpers of their modules (`node_json`,
+  `branch_json`, `kind_word`, `fork_of`, `from_text`, `unanswered_refusal`, …), so moving them
+  would split logic or widen visibility, not be a clean move.
+- **When:** with the R6 lane (typed command parameters, `docs/design/crates.md` §2.1), which
+  rewrites each command's JSON form anyway; move them to `cmd/history.rs` and `cmd/merging.rs`
+  then.
+- **Status:** deferred by the lane 067 brief (2026-11-15); nothing else depends on it.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration

@@ -226,6 +226,11 @@ crate edges already point at other modules going to E.
 | `xref` | 2,321 | 1 | split | Parse, classify, places and table are E. Drawing (`HAlign`, `VAlign`) is C. | `project::Mapped` stays C. `text_style` split (cut 4). |
 | `xref_cmds` | 211 | 7 | C | Commands. | — |
 
+**Since step 11:** `commands` is `cmd/mod.rs` (the registry and shared helpers), each `<area>_cmds` is
+`cmd/<area>` (`wire_cmds` → `cmd::wire`) and `plc_cmds/` is `cmd/plc/`. The old paths that other crates
+use stay as re-exports in `lib.rs`. `release`'s two commands are `cmd/release`; the `run_*` commands in
+`history` and `merging` stay there for now (`docs/deferred-work.md`).
+
 **Size.** E receives about 35,000–40,000 lines, C keeps about 45,000, and about 1,100 go to
 ecad-app (`actions`).
 

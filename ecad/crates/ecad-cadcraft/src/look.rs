@@ -1142,11 +1142,11 @@ pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
 }
 
 fn run_canvassheet(s: &mut cadcraft_engine::Session, params: &serde_json::Value) -> cadcraft_engine::Result<serde_json::Value> {
-    let dark = params.get("dark").and_then(serde_json::Value::as_bool).ok_or_else(|| crate::commands::err("`dark` is true or false."))?;
+    let dark = params.get("dark").and_then(serde_json::Value::as_bool).ok_or_else(|| crate::cmd::err("`dark` is true or false."))?;
     let changed = DARK_SHEET.swap(dark, std::sync::atomic::Ordering::Relaxed) != dark;
     if changed {
         // The open page only: there is one page window, and a page is projected afresh when shown.
-        let _ = crate::commands::with_any_page(s, |p, pg| {
+        let _ = crate::cmd::with_any_page(s, |p, pg| {
             p.redraw_window(pg, Some("canvassheet"));
             Ok(())
         });

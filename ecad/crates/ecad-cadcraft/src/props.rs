@@ -1014,7 +1014,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         let own = own.filter(|v| entry.parse(v).is_some());
         let default = format!("Default ({})", shown_words(inherited).to_ascii_lowercase());
         let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
-        let label = format!("{group}: {}", crate::text_cmds::kind_words(*kind));
+        let label = format!("{group}: {}", crate::cmd::text::kind_words(*kind));
         let mut r = Row::rw(&key, &label, value);
         r.inherited = own.is_none();
         r.choices = vec![default, "Shown".into(), "Hidden".into()];

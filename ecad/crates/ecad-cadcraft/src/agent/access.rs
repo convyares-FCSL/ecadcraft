@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use cadcraft_engine::{CommandSpec, Session};
 use serde_json::{Value, json};
 
-use crate::commands::{err, opt_typed, with_any_page};
+use crate::cmd::{err, opt_typed, with_any_page};
 use crate::project::Project;
 use crate::views::Settings;
 

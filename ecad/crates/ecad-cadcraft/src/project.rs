@@ -643,7 +643,7 @@ pub struct Project {
     /// ([`Project::refresh_page`]; tests: a commit that touched another page projects nothing).
     pub projections: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
-    pub revision_view: Option<crate::sheet_cmds::RevisionView>,
+    pub revision_view: Option<crate::cmd::sheet::RevisionView>,
     /// How many transactions the command now running may record, when its caller caps them (an
     /// agent's call through MCP); `None` for no cap. Commands that write files check it before
     /// they write (brief 027's release), so nothing reaches the disk that the cap would take back.
@@ -2359,7 +2359,7 @@ impl Project {
         // they bring back).
         let mut ops = ops;
         let rack_page = if kind.is_none() && numbering {
-            let (id, more) = crate::plc_cmds::page::rack_page_ops(self, &ops)?;
+            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops)?;
             ops.extend(more);
             id
         } else {
@@ -2691,7 +2691,7 @@ impl DocumentOwner for Project {
         }
         if view.unavailable {
             self.restore(pg, c.uid, page);
-            return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
+            return Verdict::Refuse(crate::cmd::UNAVAILABLE.into());
         }
         // OOPS brings back only the plain drawing the last erase on this page removed (brief 023).
         if c.command == "oops" && !self.oops.allows(c.uid, page, &last, &now) {
@@ -2980,7 +2980,7 @@ impl Project {
             && !std::mem::take(&mut self.confirm_issue_undo)
         {
             let date = self.ledger.document().properties.get(&crate::revisions::key(n, "date")).cloned();
-            let mut q = crate::sheet_cmds::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
+            let mut q = crate::cmd::sheet::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
             // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
             if self.ledger.document().properties.contains_key(&crate::revisions::key(n, crate::revisions::RELEASED)) {
                 q.push_str(" Its release folder stays on disk.");

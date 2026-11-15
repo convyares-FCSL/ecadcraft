@@ -28,7 +28,7 @@ use ecad_model::merge::{self, Choice, ConflictKind, Inputs, Obj, Plan, Scope};
 use ecad_model::{BranchPoint, Document, StepPoint, TxKind};
 use serde_json::{Value, json};
 
-use crate::commands::{err, with_any_page, with_project};
+use crate::cmd::{err, with_any_page, with_project};
 use crate::history::{self, NodeKind, Point};
 use crate::project::Project;
 
@@ -331,14 +331,14 @@ fn keeps(update: bool) -> impl Fn(&str) -> bool {
 /// would be (design §5.2: the property's own rules from 018/019/022): `Ok(value)` as stored.
 fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String, String> {
     let checked = match obj {
-        Obj::Component(c) if crate::device_cmds::is_device_property(ecad_model::ObjectRef::Component(c), key) => {
+        Obj::Component(c) if crate::cmd::device::is_device_property(ecad_model::ObjectRef::Component(c), key) => {
             crate::devices::property_value(doc, key, Some(value))?
         }
-        Obj::Conductor(c) => match crate::wire_cmds::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
+        Obj::Conductor(c) => match crate::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },
-        Obj::Cable(c) => match crate::wire_cmds::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
+        Obj::Cable(c) => match crate::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },

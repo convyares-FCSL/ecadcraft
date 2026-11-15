@@ -39,7 +39,7 @@ pub(crate) fn run_slash_continue(
     for (i, w) in plan.iter().enumerate() {
         ops.push(Op::AddCableMember { cable, index: start + i, member: ecad_model::CableMember { conductor: w.conductor, core: w.core.clone() } });
     }
-    let style = crate::commands::plain_style(p);
+    let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem {
         id: item,
         item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) },

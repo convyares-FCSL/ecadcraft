@@ -33,7 +33,7 @@ fn selected_cables(s: &Session) -> Vec<CableId> {
         let mut seen = BTreeSet::new();
         Ok(sel
             .iter()
-            .take(crate::commands::MAX_HANDLES)
+            .take(crate::cmd::MAX_HANDLES)
             .filter_map(|h| map.get(*h).and_then(|m| cable_named(doc, m).ok()))
             .filter(|k| seen.insert(*k))
             .collect())
@@ -508,7 +508,7 @@ impl Interactive for Goto {
     fn begin(&mut self, s: &mut Session) -> R<Step> {
         safely(s, "cablegoto", |s| {
             let sel = s.selection();
-            let found: BTreeSet<Found> = sel.iter().take(crate::commands::MAX_HANDLES).filter_map(|h| Self::named(s, *h).ok()).collect();
+            let found: BTreeSet<Found> = sel.iter().take(crate::cmd::MAX_HANDLES).filter_map(|h| Self::named(s, *h).ok()).collect();
             match found.iter().next() {
                 Some(Found::Cable(r, false)) if found.len() == 1 => Self::jump(s, *r),
                 Some(Found::Cable(_, true)) if found.len() == 1 => {

@@ -10,8 +10,8 @@ use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
 use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pt, read, terminal_for, v2};
+use crate::cmd::terminal;
 use crate::strips;
-use crate::terminal_cmds;
 
 /// A picked terminal: its strip, its label and where it is drawn.
 fn picked(s: &Session, p: Vec2) -> R<(TerminalId, ComponentId, String, Pt)> {
@@ -95,7 +95,7 @@ impl StripAccessory {
         match i {
             Input::Point(p) => {
                 let (t, c, label, at) = picked(s, p)?;
-                let words = read(s, |p, _| Ok(terminal_cmds::terminal_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(terminal::terminal_words(p.ledger.document(), t))).unwrap_or_default();
                 self.at = Some((c, label, words, Some(at)));
                 Ok(Step::Continue)
             }
@@ -217,7 +217,7 @@ impl Jumper {
                         self.extend = found.1;
                     }
                     Some((sc, tag)) if *sc != c => {
-                        let w = read(s, |p, _| Ok(terminal_cmds::terminal_words(p.ledger.document(), t))).unwrap_or_default();
+                        let w = read(s, |p, _| Ok(terminal::terminal_words(p.ledger.document(), t))).unwrap_or_default();
                         return Err(other(format!(
                             "{w} is on another strip; a link stays on one strip. Pick a terminal of {tag}, or Enter to finish."
                         )));

@@ -31,59 +31,36 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod access;
-pub mod accessory_cmds;
 // Design 065 §3, cut 12: the agent gate, shared by ecad-mcp and the window's live bridge.
 pub mod agent;
-pub mod bom_cmds;
-pub mod cable_cmds;
 pub mod cad;
-pub mod commands;
-pub mod connector_cmds;
-pub mod continuation_cmds;
+pub mod cmd;
 pub mod convert;
 pub mod debug;
-pub mod default_cmds;
-pub mod designation_cmds;
-mod device_cmds;
 pub mod draw;
 pub mod file;
 pub mod frame;
 pub mod history;
 pub mod interact;
 mod lanes;
-pub mod level_cmds;
-pub mod location_cmds;
 pub mod look;
 pub mod merging;
-pub mod numbering_cmds;
 pub mod oops;
-pub mod output_cmds;
-pub mod page_type_cmds;
-pub mod plc_cmds;
 pub mod preview;
 pub mod printbook;
 pub mod project;
 pub mod props;
-pub mod rating_cmds;
 pub mod release;
-pub mod sheet_cmds;
 pub mod strip_page;
-pub mod style_cmds;
-pub mod symbol_cmds;
-pub mod terminal_cmds;
 /// A builder for the small projects tests start from (brief 062); enabled only by tests.
 #[cfg(feature = "test-support")]
 pub mod test_support;
-pub mod text_cmds;
-pub mod title_block_cmds;
 mod translate;
 /// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
 #[cfg(feature = "translate-oracle")]
 pub mod translate_oracle;
 pub mod verify;
 pub mod views;
-mod wire_cmds;
-mod xref_cmds;
 
 // The electrical rules live in `ecad-electrical` (design 065 §5 step 6). Each module stays reachable under
 // its old name; a module with an engine half in `draw` is a facade over both halves.
@@ -183,6 +160,19 @@ pub mod xref {
     pub use ecad_electrical::xref::*;
 }
 
+// The commands' paths before step 11 of lane 067, used outside the crate.
+pub use cmd as commands;
+pub use cmd::cable as cable_cmds;
+pub use cmd::default as default_cmds;
+pub use cmd::designation as designation_cmds;
+pub use cmd::numbering as numbering_cmds;
+pub use cmd::sheet as sheet_cmds;
+pub use cmd::style as style_cmds;
+pub use cmd::symbol as symbol_cmds;
+pub use cmd::terminal as terminal_cmds;
+pub use cmd::text as text_cmds;
+pub use cmd::title_block as title_block_cmds;
+
 // Brief 035: a per-user settings file and a window's port; nothing of it on the web build. Its
 // path before cut 12.
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
@@ -202,7 +192,7 @@ pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 pub fn install() -> bool {
     // Brief 040: the sheet font for every page drawn or printed, in the window or headless.
     text_style::register_sheet_font();
-    cadcraft_engine::cmd::set_extension_commands(commands::specs)
+    cadcraft_engine::cmd::set_extension_commands(cmd::specs)
 }
 
 /// Fault injection for the experiment (`Faults::panic_in_commit`): a deliberate panic inside an

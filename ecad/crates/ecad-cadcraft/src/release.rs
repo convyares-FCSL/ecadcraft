@@ -32,13 +32,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use cadcraft_engine::{CommandSpec, Session};
 use ecad_model::{Document, ObjectRef, Op};
 use serde_json::{Map, Value, json};
 
 use crate::access::Pages;
 use crate::checks::{self, Check, Severity};
-use crate::commands::{err, opt_typed, with_any_page, with_project};
+use crate::cmd::opt_typed;
 use crate::outputs::{self, Group as BomGroup, Outputs, Table};
 use crate::printbook::{self, Options};
 use crate::project::Project;
@@ -167,7 +166,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 // ---------------------------------------------------------------- 026 seam
 
 /// The one place 027 calls brief 026's numbering (design 027 §4.4): the provisional items, the
-/// refusal without a choice, and `numbering_cmds::before_issue` (Finalise numbering as its own
+/// refusal without a choice, and `cmd::numbering::before_issue` (Finalise numbering as its own
 /// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
     use serde_json::Value;
@@ -186,7 +185,7 @@ pub mod numbering_seam {
         if params.get("provisional").is_some_and(|v| !v.is_null()) {
             return None;
         }
-        let items = crate::numbering_cmds::provisional_items(p.ledger.document());
+        let items = crate::cmd::numbering::provisional_items(p.ledger.document());
         (!items.is_empty()).then(|| {
             format!(
                 "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
@@ -199,8 +198,8 @@ pub mod numbering_seam {
     ///
     /// # Errors
     /// 026's refusal or a bad `provisional`.
-    pub fn plan(p: &mut Project, params: &Value) -> Result<crate::numbering_cmds::BeforeIssue, String> {
-        crate::numbering_cmds::plan_before_issue(p, params)
+    pub fn plan(p: &mut Project, params: &Value) -> Result<crate::cmd::numbering::BeforeIssue, String> {
+        crate::cmd::numbering::plan_before_issue(p, params)
     }
 
     /// Record a planned Finalise numbering.
@@ -208,7 +207,7 @@ pub mod numbering_seam {
     /// # Errors
     /// The commit was refused.
     pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::numbering::Plan) -> Result<(), String> {
-        crate::numbering_cmds::commit_finalise(p, pg, plan)
+        crate::cmd::numbering::commit_finalise(p, pg, plan)
     }
 }
 
@@ -907,7 +906,7 @@ pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<St
             "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
         ));
     }
-    if let Err(e) = crate::sheet_cmds::plan_issue(p, &json!({})) {
+    if let Err(e) = crate::cmd::sheet::plan_issue(p, &json!({})) {
         return Some(e);
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
@@ -1129,7 +1128,7 @@ pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
     (checks.changed, outputs.checks_key(), accept).hash(&mut h);
     revisions::pending(doc).map(|r| r.fields).hash(&mut h);
     revisions::issued(doc).len().hash(&mut h);
-    (&p.path, read_only(p), crate::sheet_cmds::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
+    (&p.path, read_only(p), crate::cmd::sheet::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
     Some(h.finish())
 }
 
@@ -1212,8 +1211,8 @@ pub(crate) fn release_pending(
     // 2. 026's finalise, when asked: planned now, recorded only with the issue (step 4), so a
     // release that stops before the issue records nothing at all (tester 027, 1).
     let (finalise, note) = match numbering_seam::plan(p, params)? {
-        crate::numbering_cmds::BeforeIssue::Go(note) => (None, note),
-        crate::numbering_cmds::BeforeIssue::Finalise(plan) => (Some(plan), None),
+        crate::cmd::numbering::BeforeIssue::Go(note) => (None, note),
+        crate::cmd::numbering::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
     // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
     // before anything reaches the disk, never found out after (tester 027, 3).
@@ -1225,7 +1224,7 @@ pub(crate) fn release_pending(
     }
     // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
     // the issue's, on the current document.
-    let mut plan = crate::sheet_cmds::plan_issue(p, &json!({}))?;
+    let mut plan = crate::cmd::sheet::plan_issue(p, &json!({}))?;
     if finalise.is_some() {
         // The issue names the step before it: Finalise, once recorded.
         plan.head += 1;
@@ -1467,44 +1466,4 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
         v["compare"] = c.json();
     }
     Ok(v)
-}
-
-// ---------------------------------------------------------------- commands
-
-/// The commands this module adds.
-pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("prerelease", "Pre-release Check", run_prerelease)
-            .params("{rev?: an issued rev (default the pending one), limit?: rows per group (50, max 2000)} (read only)")
-            .noundo(),
-        CommandSpec::new("release", "Release", run_release)
-            .params(
-                "{rev?: an issued rev to write again (records nothing; default: issue the pending one), folder?, outputs?: [slot], \
-accept?: \"errors\", provisional?: \"finalise\"|\"issue\", existing?: \"add-missing\"|\"replace\"|\"keep-both\", colour?: \"mono\"|\"screen\", \
-lineweights?: bool}",
-            )
-            .noundo(),
-    ]
-}
-
-fn run_prerelease(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| prerelease(p, params))
-}
-
-fn run_release(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let rev = params
-        .get("rev")
-        .filter(|v| !v.is_null())
-        .map(|v| v.as_str().map(str::to_string).ok_or_else(|| err("`rev` is text such as \"A\"")))
-        .transpose()?;
-    match rev {
-        Some(r) => {
-            let v = with_any_page(s, |p, _| release_issued(p, params, &r, &mut |_, _| true))?;
-            if let Some(m) = v.get("message").and_then(Value::as_str) {
-                s.echo(m.to_string());
-            }
-            Ok(v)
-        }
-        None => with_project(s, |p, pg, _| release_pending(p, pg, params, &mut |_, _| true)),
-    }
 }
