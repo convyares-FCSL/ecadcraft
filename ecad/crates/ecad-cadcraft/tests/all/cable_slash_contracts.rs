@@ -150,9 +150,9 @@ fn the_interactive_form_records_the_json_forms_transaction() {
     let h = &mut clicks.h;
     let head = h.head();
     h.s.start("cableslash").unwrap();
-    assert_eq!(prompt(h), "Specify first point of cable slash:");
+    assert_eq!(prompt(h), "Specify first point of cable slash or [Cable]:");
     click(h, 28.0, -3.0);
-    assert_eq!(prompt(h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(h), "Specify second point of cable slash or [Undo/Cable]:");
     let cursor = Vec2::new(32.0, 18.0);
     h.s.cursor = cursor;
     let preview = h.s.preview(cursor);
@@ -181,9 +181,9 @@ fn undo_enter_esc_and_a_repeated_point_write_nothing() {
     h.s.start("cableslash").unwrap();
     click(h, 28.0, -3.0);
     click(h, 28.0, -3.0);
-    assert_eq!(prompt(h), "Specify second point of cable slash or [Undo]:", "the same point is ignored");
+    assert_eq!(prompt(h), "Specify second point of cable slash or [Undo/Cable]:", "the same point is ignored");
     h.s.cmdline("U").unwrap();
-    assert_eq!(prompt(h), "Specify first point of cable slash:", "Undo drops the first point");
+    assert_eq!(prompt(h), "Specify first point of cable slash or [Cable]:", "Undo drops the first point");
     click(h, 28.0, -3.0);
     h.s.input(Input::Enter).unwrap();
     assert!(h.s.running.is_none(), "Enter at step 2 ends the command");
@@ -338,9 +338,9 @@ fn refusals_write_nothing_and_say_why() {
     click(&mut f.h, 40.0, 3.0);
     click(&mut f.h, 40.0, 7.0);
     assert!(f.h.s.running.is_some(), "the command goes on after a refusal");
-    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:");
     click(&mut f.h, f64::NAN, 0.0);
-    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:");
     f.h.s.cancel();
     assert_eq!(f.h.head(), head);
     // The preview says so in red before the click.

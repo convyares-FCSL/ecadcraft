@@ -83,6 +83,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
         Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
+        Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::lists::cable_manager::pair(f),
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
         Fix::Plc(_, ecad_cadcraft::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
@@ -228,6 +229,10 @@ impl ChecksPanel {
         if let Fix::CoreOpen(..) = f {
             return Some(Action::CoreFix(f, k));
         }
+        // Brief 059: the cable manager's rows.
+        if let Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..) = f {
+            return Some(Action::CableFix(f, k));
+        }
         if pair(f).is_some() {
             return Some(Action::AccessoryFix(f, k));
         }
@@ -283,6 +288,7 @@ impl ChecksPanel {
             (Fix::EditTitleBlock(page, item), _) => Action::EditTitleBlock(page, item),
             (Fix::ClearPageSheet(page), _) => Action::ClearPageSheet(page),
             (Fix::AddJunction(_) | Fix::Join(_), None) => return None,
+            (Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..), _) => Action::CableFix(f, k),
         })
     }
 

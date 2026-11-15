@@ -356,6 +356,7 @@ impl Trial {
             }
             ListsView::Checks => {}
             _ => {
+                let writable = self.project_writable();
                 if let Some(r) = self.reports.as_mut() {
                     match tab {
                         ListsView::Terminals => {
@@ -375,6 +376,9 @@ impl Trial {
                         }
                         ListsView::Cables => {
                             r.cables.table.filter_field(ui, placeholder_text, w);
+                            // Brief 059 (design 059 §5.1): + Cable, left of the filter, with its menu.
+                            ui.add_space(space::S);
+                            out.extend(add_cable(ui, &r.cables.undrawn, writable));
                         }
                         _ => {}
                     }
@@ -391,6 +395,8 @@ impl Trial {
                     r.cables.details = !r.cables.details;
                 }
             }
+            HeadAction::NewCable => self.new_cable(),
+            HeadAction::Assign(k) => self.assign_in_drawing(k),
             HeadAction::Beside => {
                 self.shell.state.companion = match self.shell.state.companion {
                     Some(_) => None,
@@ -546,6 +552,11 @@ impl Trial {
             ListsView::Cables => {
                 let (n, flagged, no_length) = r.map_or((0, 0, 0), |r| r.cables.counts());
                 let mut v = vec![(plural(n, "cable", "cables"), Tone::Neutral)];
+                // Brief 059: `4 cables · 1 not drawn`.
+                let undrawn = r.map_or(0, |r| r.cables.undrawn.len());
+                if undrawn > 0 {
+                    v.push((format!("{undrawn} not drawn"), Tone::Neutral));
+                }
                 if flagged > 0 {
                     v.push((format!("{flagged} with a check"), Tone::Error));
                 }
@@ -567,6 +578,46 @@ enum HeadAction {
     ImportTags,
     /// Brief 057: open or close the selected cable's details.
     Details,
+    /// Brief 059: + Cable (New cable), or Assign in the drawing for a cable not drawn.
+    NewCable,
+    Assign(ecad_model::CableId),
+}
+
+/// The accessible names of + Cable's chevron and menu (design 059 §5.7).
+pub const ADD_NAME: &str = "ecad.lists.cables.add";
+pub const ADD_MENU: &str = "ecad.lists.cables.add.menu";
+
+/// Brief 059 (design 059 §5.1): **+ Cable** (primary, small) and its chevron, whose menu has
+/// **New cable**, then `Assign in the drawing` and the cables not drawn. Laid out right to left,
+/// so the chevron comes first.
+fn add_cable(ui: &mut egui::Ui, undrawn: &[(ecad_model::CableId, String)], writable: bool) -> Vec<HeadAction> {
+    use super::cables::{ADD, ASSIGN_HEADER, NEW_CABLE};
+    let mut out = Vec::new();
+    let why = "This project cannot be changed here (a release, or writes off).";
+    let b =
+        |label| if writable { prim::Button::new(label).small().kind(prim::Kind::Primary) } else { prim::Button::new(label).small().disabled(why) };
+    let chevron = ui.add(b("\u{25be}"));
+    chevron.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, ADD_MENU));
+    egui::Popup::menu(&chevron).show(|ui| {
+        if ui.selectable_label(false, NEW_CABLE).clicked() {
+            out.push(HeadAction::NewCable);
+        }
+        if !undrawn.is_empty() {
+            ui.separator();
+            ui.label(egui::RichText::new(ASSIGN_HEADER).small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+            for (k, line) in undrawn {
+                if ui.selectable_label(false, line).clicked() {
+                    out.push(HeadAction::Assign(*k));
+                }
+            }
+        }
+    });
+    let add = ui.add(b(ADD));
+    add.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, ADD_NAME));
+    if add.clicked() {
+        out.push(HeadAction::NewCable);
+    }
+    out
 }
 
 /// The tabs' labels, for tests.

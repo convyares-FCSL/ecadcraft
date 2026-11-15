@@ -292,6 +292,15 @@ pub struct CableRow {
     /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
     pub from_devices: Vec<String>,
     pub to_devices: Vec<String>,
+    /// Brief 059: whether it is drawn (it has members or a representation); a cable built in
+    /// Project ▸ Cables is not drawn until assigned.
+    pub drawn: bool,
+    /// Brief 059: each end's planned function and location as shown (`=PUMP +CAB1`), from, to.
+    pub planned: [Option<String>; 2],
+    /// Brief 059 (059d): each end's gland, its own or its cable type's, from, to.
+    pub glands: [Option<String>; 2],
+    /// Brief 059: its shield word, its own or its cable type's (`none` shown as absent).
+    pub shield: Option<String>,
 }
 
 impl CableRow {
@@ -544,6 +553,8 @@ impl Scope {
                     // Brief 052: a rename in the project's list re-keys its users' rows.
                     if let Some((_, k, true)) = crate::designations::parse_list_property(key) {
                         self.renamed.insert(k.to_string());
+                        // Brief 059: the cables planning an end there show its new code.
+                        self.cables.extend(crate::cable_cmds::planning(doc, k));
                     }
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {
@@ -578,6 +589,10 @@ impl Scope {
                     if crate::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, crate::defaults::Scope::project()) == *id {
                         self.all_wires = true;
                     }
+                }
+                // Brief 059 (design 059 §8): a cable type's cores, shield and gland reach its users' rows.
+                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                    self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Other style records and the standard header change no report row.
                 Op::SetStyle { .. } | Op::SetStandard { .. } => {}
@@ -1540,7 +1555,8 @@ impl Outputs {
             let rows = |r: Option<&CableRow>| -> [usize; 3] {
                 r.map_or([0, 0, 0], |r| {
                     let known = r.count.offer.is_some();
-                    [usize::from(known && !r.count.over.is_empty()), r.count.twice.len(), usize::from(!known)]
+                    // Brief 059 (design 059 §6): a cable not drawn has no core-count row.
+                    [usize::from(known && !r.count.over.is_empty()), r.count.twice.len(), usize::from(!known && r.drawn)]
                 })
             };
             let (old, new) = (rows(before.as_ref()), rows(self.cables.get(&k)));
@@ -1625,12 +1641,19 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
-                count: crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads),
+                count: crate::strips::count_cores(crate::styles::cable::offer(doc, k), &heads),
                 members: heads.iter().map(|m| m.conductor).collect(),
                 member_cores: heads.iter().map(|m| m.core.clone()).collect(),
                 tails,
                 from_devices,
                 to_devices,
+                drawn: crate::cable_cmds::is_drawn(doc, k),
+                planned: crate::cable_cmds::Side::BOTH.map(|side| crate::cable_cmds::plan_words(doc, k, side)),
+                glands: crate::cable_cmds::Side::BOTH.map(|side| crate::cable_cmds::gland(doc, k, side).map(|(g, _)| g)),
+                shield: crate::cable_cmds::shield(doc, k)
+                    .map(|(w, _)| w)
+                    .filter(|w| *w != crate::cable_cmds::Shield::None)
+                    .map(|w| w.word().to_string()),
             },
         );
     }
@@ -1832,7 +1855,8 @@ impl Outputs {
         for r in self.cables.values() {
             let tag = r.tag.clone().unwrap_or_else(|| "?".into());
             let Some(offer) = &r.count.offer else {
-                unknown += 1;
+                // Brief 059 (design 059 §6): `cable-not-drawn` covers a cable not drawn yet.
+                unknown += usize::from(r.drawn);
                 for i in &r.count.twice {
                     out.push(self.core_twice(r, &tag, *i));
                 }
@@ -2474,9 +2498,21 @@ impl Outputs {
     }
 
     /// The cable report as a table; `Maker`, `Length` and `Designation` follow when any cable
-    /// has them.
+    /// has them. Brief 059: cables not drawn are listed (design 059 §4.5, Q3); see
+    /// [`Outputs::cable_table_with`].
     pub fn cable_table(&self) -> Table {
-        let rows = self.cables();
+        self.cable_table_with(true)
+    }
+
+    /// The cable report, with or without the cables not drawn yet (brief 059, Q3: the choice made
+    /// when the report is generated). `Glands`, `Shield`, `Planned from` and `Planned to` follow
+    /// when any listed cable has them, and `Drawn` when one is not drawn; a planned end reads
+    /// `(planned)`.
+    pub fn cable_table_with(&self, include_not_drawn: bool) -> Table {
+        let mut rows = self.cables();
+        if !include_not_drawn {
+            rows.retain(|r| r.drawn);
+        }
         let any = |f: fn(&CableRow) -> &Option<String>| rows.iter().any(|r| f(r).is_some());
         let extra: Vec<(&'static str, fn(&CableRow) -> &Option<String>)> = [
             ("Maker", (|r: &CableRow| &r.maker) as fn(&CableRow) -> &Option<String>),
@@ -2488,6 +2524,23 @@ impl Outputs {
         .collect();
         let mut t = Table { headers: vec!["Tag", "Type", "Cores", "From location", "To location", "Used", "Spare", "From", "To"], rows: Vec::new() };
         t.headers.extend(extra.iter().map(|(h, _)| *h));
+        // Brief 059 (design 059 §4.5): the manager's columns, when any listed cable has them.
+        let glands = rows.iter().any(|r| r.glands.iter().any(Option::is_some));
+        let shield = rows.iter().any(|r| r.shield.is_some());
+        let planned = rows.iter().any(|r| r.planned.iter().any(Option::is_some));
+        let drawn_col = rows.iter().any(|r| !r.drawn);
+        if glands {
+            t.headers.push("Glands");
+        }
+        if shield {
+            t.headers.push("Shield");
+        }
+        if planned {
+            t.headers.extend(["Planned from", "Planned to"]);
+        }
+        if drawn_col {
+            t.headers.push("Drawn");
+        }
         for r in rows {
             let why = r.location_reason.clone();
             let loc = |v: &Option<String>| match v {
@@ -2507,6 +2560,21 @@ impl Outputs {
             ];
             for (_, f) in &extra {
                 row.push(Cell::ok(f(r).clone().unwrap_or_default()));
+            }
+            let dash = |v: &Option<String>| v.clone().unwrap_or_else(|| "\u{2014}".into());
+            if glands {
+                row.push(Cell::ok(format!("{}, {}", dash(&r.glands[0]), dash(&r.glands[1]))));
+            }
+            if shield {
+                row.push(Cell::ok(r.shield.clone().unwrap_or_default()));
+            }
+            if planned {
+                for p in &r.planned {
+                    row.push(Cell::ok(p.as_ref().map(|p| format!("{p} (planned)")).unwrap_or_default()));
+                }
+            }
+            if drawn_col {
+                row.push(Cell::ok(if r.drawn { "yes" } else { "no" }));
             }
             t.rows.push(row);
         }

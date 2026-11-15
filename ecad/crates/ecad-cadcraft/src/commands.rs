@@ -1034,6 +1034,12 @@ fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         };
         // Brief 028 (design 028 §6.2, Q10): a cable with a core offer gives each new member the
         // next free core, in the order given.
+        // Brief 059 (design 059 §4.3): onto a cable not drawn yet, never more wires than free cores.
+        if let Some(k) = existing
+            && !crate::cable_cmds::is_drawn(doc, k)
+        {
+            crate::cable_cmds::assign_cores(doc, k, conductors.len())?;
+        }
         let mut spare: std::collections::VecDeque<String> =
             existing.and_then(|k| crate::strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
         for w in conductors {
@@ -1080,6 +1086,12 @@ fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             Some(_) => return Err("no such cable".into()),
             None => tag.as_deref().and_then(|t| crate::references::cable_tagged(doc, t)),
         };
+        // Brief 059 (FD5): a cable not drawn yet is assigned, not continued.
+        if let Some(k) = existing
+            && !crate::cable_cmds::is_drawn(doc, k)
+        {
+            return crate::cable_cmds::run_slash_assign(p, pg, page, k, from, to, &found);
+        }
         if let Some(k) = existing {
             return crate::references::run_slash_continue(p, pg, page, k, from, to, &found);
         }

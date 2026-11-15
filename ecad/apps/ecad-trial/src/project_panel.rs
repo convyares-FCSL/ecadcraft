@@ -225,6 +225,9 @@ pub enum Action {
     RatingFix(ecad_cadcraft::checks::Fix),
     /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
     CoreFix(ecad_cadcraft::checks::Fix, usize),
+    /// Brief 059: a cable manager row's button `k` (Assign in the drawing… / Remove, Use the drawing /
+    /// Go to, Set gland, Show).
+    CableFix(ecad_cadcraft::checks::Fix, usize),
     /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
     /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
     EditTitleBlock(PageId, u16),

@@ -46,6 +46,10 @@ are.
 | **wire number** | The number a net carries and every one of its conductors shows (`24V-07`). Automatic, or **fixed** by hand. Stored on the conductors once issued, so adding a wire never renumbers others. |
 | **cable** | A group of conductors that run together (`-W01`), made with a slash across their wires. Its members are its **cores**. Cable and device tags share one namespace (brief 026). |
 | **core** | One conductor of a cable, with its core number or colour (`1`, `BK`). |
+| **not drawn** | A cable built in Project ▸ Cables that has no wires and no slash yet (brief 059). It is shown as `not drawn`, never as an error. |
+| **assign** | Make wires the cores of an existing cable, by slashing them or with **Add to cable** (brief 059). |
+| **planned end** | Where each end of a cable is meant to be, as a function and location (`=PUMP +CAB1` at the cabinet end), set before it is drawn (brief 059). |
+| **gland** | The cable gland at each end of a cable, by its thread size (`M20`) (brief 059). |
 | **drawing order** | Page in book order, then column, then row of the sheet grid, then top to bottom and left to right inside a cell (brief 026). Renumber and Finalise number in it. |
 | **fixed** | A tag or wire number chosen by hand that Renumber and Finalise never change (`F`). Typing a tag fixes it. |
 | **provisional tag** | A placeholder tag (`-K?3`, `-W?1`, wire `24V-?`) that **Finalise numbering** replaces. Not issued. |

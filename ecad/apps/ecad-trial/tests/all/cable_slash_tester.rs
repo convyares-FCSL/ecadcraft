@@ -313,14 +313,14 @@ fn ac9_cable_slash_by_label_and_reference_screenshots() {
     h.state_mut().command = "stale text".into();
     button(&mut h, tools::TAB);
     button(&mut h, "Cable Slash");
-    assert_eq!(prompt(&h), "Specify first point of cable slash:");
+    assert_eq!(prompt(&h), "Specify first point of cable slash or [Cable]:");
     assert!(h.state().command.is_empty(), "the Command field is left empty");
     assert!(h.state().command_hint().is_none(), "no template note");
     assert_eq!(head(&mut h), before, "starting writes nothing");
     // First click, then the cursor at the second point: the preview (green rings, count).
     let a = screen(&h, 28.0, -3.0);
     click(&mut h, a);
-    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo/Cable]:");
     let b = screen(&h, 32.0, 18.0);
     pointer_to(&mut h, b);
     h.run_steps(3);
@@ -390,7 +390,7 @@ fn ac9_cable_slash_by_label_and_reference_screenshots() {
     let head1 = head(&mut h);
     click(&mut h, q);
     assert_eq!(head(&mut h), head1, "refused: nothing written");
-    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo]:", "the first point is kept");
+    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo/Cable]:", "the first point is kept");
     h.key_press(Key::Escape);
     h.run_steps(2);
     assert!(h.state().cad.session.running.is_none());

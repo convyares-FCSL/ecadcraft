@@ -148,6 +148,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "rating",
     "ratingtable",
     "ratings",
+    // Brief 059.
+    "cablenew",
+    "cableedit",
+    "cableremove",
     // Brief 052.
     "setlocation",
     "setfunction",

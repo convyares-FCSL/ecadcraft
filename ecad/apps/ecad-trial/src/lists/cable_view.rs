@@ -48,6 +48,11 @@ pub struct Drawing {
     pub from: String,
     pub to: String,
     pub cores: Vec<Core>,
+    /// Brief 059 (design 059 §5.5): not drawn yet: the ends show the plan (`=PUMP +CAB1
+    /// (planned)`), the cores are thin and grey, with no points and no open ends.
+    pub not_drawn: bool,
+    /// Brief 059 (059d): each end's gland size, cabinet then field (`M20`); empty when none.
+    pub glands: [String; 2],
 }
 
 /// The core colour of row `i` labelled `label`: the label itself when it is a colour code, else the
@@ -176,12 +181,15 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     let right = Rect::from_min_size(pos2(area.right() - space::XL - end_w, top), vec2(end_w, end_h));
     let (l_title, r_title, l_sub, r_sub) =
         if swapped { (&d.to, &d.from, "Field end", "Cabinet end") } else { (&d.from, &d.to, "Cabinet end", "Field end") };
+    let planned = |t: &String| if d.not_drawn && !t.is_empty() { format!("{t} (planned)") } else { t.clone() };
+    let (l_title, r_title) = (&planned(l_title), &planned(r_title));
     // The two end boxes.
     for (r, title, sub) in [(left, l_title, l_sub), (right, r_title, r_sub)] {
         p.rect_filled(r, ecad_ui::style::corner(radius::CARD), ecad_ui::color(s.panel));
         p.rect_stroke(r, ecad_ui::style::corner(radius::CARD), Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
-        let title = if title.is_empty() { "\u{2014}".to_string() } else { title.replace(' ', " \u{b7} ") };
-        p.text(r.left_top() + vec2(space::L, space::M), egui::Align2::LEFT_TOP, title, emph.clone(), ecad_ui::color(s.text));
+        let title = if title.is_empty() { "\u{2014}".to_string() } else { title.replace(' ', " \u{b7} ").replace("\u{b7} (planned)", "(planned)") };
+        let ink = if d.not_drawn { s.text_3 } else { s.text };
+        p.text(r.left_top() + vec2(space::L, space::M), egui::Align2::LEFT_TOP, title, emph.clone(), ecad_ui::color(ink));
         p.text(
             r.left_top() + vec2(space::L, space::M + ui_type::BODY.line + 2.0),
             egui::Align2::LEFT_TOP,
@@ -194,9 +202,11 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     let bar_h = n as f32 * PITCH + space::S;
     let l_bar = Rect::from_min_size(pos2(left.right() + space::L, rows_top - space::XS), vec2(10.0, bar_h));
     let r_bar = Rect::from_min_size(pos2(right.left() - space::L - 10.0, rows_top - space::XS), vec2(10.0, bar_h));
-    for b in [l_bar, r_bar] {
+    let (l_gland, r_gland) = if swapped { (&d.glands[1], &d.glands[0]) } else { (&d.glands[0], &d.glands[1]) };
+    for (b, g) in [(l_bar, l_gland), (r_bar, r_gland)] {
         p.rect_filled(b, ecad_ui::style::corner(3.0), ecad_ui::color(s.line_strong));
-        p.text(pos2(b.center().x, b.bottom() + space::S), egui::Align2::CENTER_TOP, "gland \u{2014}", small.clone(), ecad_ui::color(s.text_3));
+        let words = if g.is_empty() { "gland \u{2014}".to_string() } else { format!("gland {g}") };
+        p.text(pos2(b.center().x, b.bottom() + space::S), egui::Align2::CENTER_TOP, words, small.clone(), ecad_ui::color(s.text_3));
     }
     // The cable body between the glands, with its words over it.
     let jacket = Rect::from_min_max(pos2(l_bar.right() + 110.0, rows_top - space::S), pos2(r_bar.left() - 110.0, rows_top + bar_h));
@@ -205,11 +215,40 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     if jacket.width() > 40.0 {
         p.rect_filled(jacket, ecad_ui::style::corner(jacket.height() / 2.0), accent.gamma_multiply(0.22));
         p.rect_stroke(jacket, ecad_ui::style::corner(jacket.height() / 2.0), Stroke::new(1.5, accent), egui::StrokeKind::Inside);
-        let words = if d.words.is_empty() { d.tag.clone() } else { format!("{} \u{b7} {}", d.tag, d.words) };
+        let tag = if d.not_drawn { format!("{} \u{b7} not drawn", d.tag) } else { d.tag.clone() };
+        let words = if d.words.is_empty() { tag } else { format!("{tag} \u{b7} {}", d.words) };
         p.text(pos2(jacket.center().x, jacket.top() - space::S), egui::Align2::CENTER_BOTTOM, words, small.clone(), accent);
     }
     // The cores.
     let red = ecad_ui::color(s.error);
+    // Brief 059: a cable not drawn: each core thin and grey through the body, no points.
+    if d.not_drawn {
+        for (i, c) in d.cores.iter().enumerate() {
+            let y = rows_top + PITCH * i as f32 + PITCH / 2.0;
+            let jy = jacket.top() + jacket.height() * (i as f32 + 0.5) / n as f32;
+            let pts = [
+                pos2(l_bar.right(), y),
+                pos2(jacket.left() - 40.0, y),
+                pos2(jacket.left() + 20.0, jy),
+                pos2(jacket.right() - 20.0, jy),
+                pos2(jacket.right() + 40.0, y),
+                pos2(r_bar.left(), y),
+            ];
+            p.add(egui::Shape::line(pts.to_vec(), Stroke::new(1.5, ecad_ui::color(s.text_3))));
+            let name = match &c.colour {
+                Some(code) if !code.eq_ignore_ascii_case(&c.label) => format!("{} \u{b7} {code}", c.label),
+                _ => c.label.clone(),
+            };
+            p.text(
+                pos2(left.left() + space::L, y),
+                egui::Align2::LEFT_CENTER,
+                format!("{name} \u{b7} not assigned"),
+                body.clone(),
+                ecad_ui::color(s.text_3),
+            );
+        }
+        return;
+    }
     for (i, c) in d.cores.iter().enumerate() {
         let y = rows_top + PITCH * i as f32 + PITCH / 2.0;
         let (l_pt, r_pt) = if swapped { (&c.to, &c.from) } else { (&c.from, &c.to) };

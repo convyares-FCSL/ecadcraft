@@ -1056,6 +1056,10 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("rating", "the Rating section of Project ▸ Wires and Cables"),
     ("ratingtable", "Settings ▸ Standards ▸ Rating tables"),
     ("ratings", "a read; the Rating sections show the same results"),
+    // Brief 059 (design 059 §5): the cable manager on Project ▸ Cables.
+    ("cablenew", "Project ▸ Cables: + Cable (New cable)"),
+    ("cableedit", "Project ▸ Cables: the Details pane's boxes and Add a core"),
+    ("cableremove", "Project ▸ Cables: Remove (refused for a drawn cable)"),
 ];
 
 /// The action with this id.

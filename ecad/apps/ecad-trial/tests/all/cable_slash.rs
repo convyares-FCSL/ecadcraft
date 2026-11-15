@@ -98,12 +98,12 @@ fn a_cable_is_made_by_two_clicks_from_the_ecad_tab() {
     h.run_steps(3);
     h.get_by_label("Cable Slash").click();
     h.run_steps(3);
-    assert_eq!(prompt(&h), "Specify first point of cable slash:");
+    assert_eq!(prompt(&h), "Specify first point of cable slash or [Cable]:");
     assert!(h.state().command.is_empty(), "the Command field stays empty");
     // First point by a click in empty space below the wires, second typed exactly.
     let below = screen(&h, 28.0, -3.0);
     click(&mut h, below);
-    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo/Cable]:");
     let above = screen(&h, 32.0, 18.0);
     pointer_to(&mut h, above);
     let cursor = h.state().cad.canvas.cursor.unwrap();
@@ -148,7 +148,7 @@ fn a_refused_slash_keeps_the_first_point_and_esc_writes_nothing() {
     type_enter(&mut h, "40,3");
     type_enter(&mut h, "40,7");
     assert!(h.state().cad.session.running.is_some(), "refused: the command goes on");
-    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&h), "Specify second point of cable slash or [Undo/Cable]:");
     h.key_press(Key::Escape);
     h.run_steps(2);
     assert!(h.state().cad.session.running.is_none());

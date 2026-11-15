@@ -56,7 +56,62 @@ static FIELDS: &[Field] = &[
     Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(""), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(""), over: None },
+    // Brief 059 (design 059 §2.2, FD3): the cable's defaults.
+    Field { key: TYPE_CORES, label: "Cores", kind: Kind::Parsed { max_chars: 256, parse: is_offer }, builtin: Value::Text(""), over: None },
+    Field { key: TYPE_SHIELD, label: "Shield", kind: Kind::Parsed { max_chars: 16, parse: is_shield }, builtin: Value::Text("none"), over: None },
+    Field {
+        key: TYPE_GLAND,
+        label: "Gland",
+        kind: Kind::Parsed { max_chars: MAX_GLAND_CHARS, parse: is_gland },
+        builtin: Value::Text(""),
+        over: None,
+    },
+    Field {
+        key: TYPE_OUTER_DIAMETER,
+        label: "Outer diameter (mm)",
+        kind: Kind::Parsed { max_chars: 16, parse: is_outer_diameter },
+        builtin: Value::Text(""),
+        over: None,
+    },
 ];
+
+/// Brief 059: the cable type's core offer (`4G`, `BN,BK,GY,GNYE`), used when the cable has no
+/// `cores` of its own.
+pub const TYPE_CORES: &str = "cores";
+/// Brief 059: the cable type's shield (`none`, `overall`, `pairs`, `overall+pairs`).
+pub const TYPE_SHIELD: &str = "shield";
+/// Brief 059: the cable type's gland at both ends (`M20`).
+pub const TYPE_GLAND: &str = "gland";
+/// Brief 059: the cable type's outer diameter in millimetres, 1 to 200 (shown; computed glands later).
+pub const TYPE_OUTER_DIAMETER: &str = "outer_diameter";
+/// The longest gland size stored.
+pub const MAX_GLAND_CHARS: usize = 16;
+/// The shield words, as stored.
+pub const SHIELDS: [&str; 4] = ["none", "overall", "pairs", "overall+pairs"];
+
+fn is_offer(s: &str) -> bool {
+    crate::strips::parse_cores(s).is_ok()
+}
+
+fn is_shield(s: &str) -> bool {
+    SHIELDS.iter().any(|w| w.eq_ignore_ascii_case(s.trim()))
+}
+
+/// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
+/// zero-width) characters ([`crate::cable_cmds::is_hidden`], tester 059 f4).
+pub fn is_gland(s: &str) -> bool {
+    let t = s.trim();
+    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(crate::cable_cmds::is_hidden)
+}
+
+/// An outer diameter: a number of millimetres from 1 to 200.
+pub fn outer_diameter(s: &str) -> Option<f64> {
+    s.trim().parse::<f64>().ok().filter(|v| v.is_finite() && (1.0..=200.0).contains(v))
+}
+
+fn is_outer_diameter(s: &str) -> bool {
+    outer_diameter(s).is_some()
+}
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
     Vec::new()
@@ -70,6 +125,34 @@ pub static CATALOGUE: Catalogue =
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
     let v = doc.cables.get(&k)?.properties.get(CABLE_TYPE)?;
     StyleRef::parse(v).filter(|id| super::exists(doc, WORD, id))
+}
+
+/// The text of cable type `id`'s field `key`, when set (empty counts as unset).
+pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
+    super::field_of(doc, WORD, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
+/// else its cable type's `cores`, else its `type` notation; `None` when unknown.
+pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
+    let cab = doc.cables.get(&k)?;
+    offer_of_props(doc, &cab.properties)
+}
+
+/// [`offer`] for a cable holding `props` (a cable about to be edited).
+pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
+    if let Some(v) = props.get(crate::strips::CORES_KEY).map(|v| v.trim()).filter(|v| !v.is_empty())
+        && let Ok(c) = crate::strips::parse_cores(v)
+    {
+        return Some((c, crate::strips::OfferSource::Cores, v.to_string()));
+    }
+    let ty = props.get(CABLE_TYPE).and_then(|v| StyleRef::parse(v)).filter(|id| super::exists(doc, WORD, id));
+    if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
+        && let Ok(c) = crate::strips::parse_cores(&v)
+    {
+        return Some((c, crate::strips::OfferSource::Cores, v));
+    }
+    crate::strips::cable_offer(props)
 }
 
 /// The core colours of cable `k`'s cable type, in core order; empty when it has no type or no
@@ -111,7 +194,7 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
             Some(ecad_model::CableMember { conductor: first, core })
         })
         .collect();
-    let count = crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads);
+    let count = crate::strips::count_cores(offer(doc, k), &heads);
     let mut out: Vec<String> = count.offer.clone().unwrap_or_default();
     for i in 0..heads.len() {
         let l = count.matched.get(i).cloned().flatten().or_else(|| heads.get(i).and_then(|h| h.core.clone())).unwrap_or_else(|| (i + 1).to_string());
@@ -208,7 +291,7 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
             Some(ecad_model::CableMember { conductor: first, core })
         })
         .collect();
-    let count = crate::strips::count_cores(crate::strips::cable_offer(&cab.properties), &heads);
+    let count = crate::strips::count_cores(offer(doc, k), &heads);
     let mut out = Vec::new();
     for label in &count.spare {
         if !is_unused(doc, k, label) {

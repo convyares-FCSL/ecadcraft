@@ -166,6 +166,8 @@ pub struct Shell {
     pub forward: Vec<Visit>,
     last_visit: Option<Visit>,
     pub tools: tool_strip::ToolStrip,
+    /// Brief 059: the Cable slash tool's cable picker.
+    pub slash_picker: right::slash_picker::Picker,
     pub settings_open: bool,
     pub publish: PublishTab,
     /// The view Lists shows.
@@ -218,6 +220,7 @@ impl Shell {
             forward: Vec::new(),
             last_visit: None,
             tools: tool_strip::ToolStrip::default(),
+            slash_picker: right::slash_picker::Picker::default(),
             settings_open: false,
             publish: PublishTab::default(),
             lists: ListsView::default(),

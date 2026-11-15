@@ -445,19 +445,19 @@ fn ac5_interactive_refusal_keeps_the_first_point() {
     slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     let head = f.h.head();
     f.h.s.start("cableslash").unwrap();
-    assert_eq!(prompt(&f.h), "Specify first point of cable slash:");
+    assert_eq!(prompt(&f.h), "Specify first point of cable slash or [Cable]:");
     click(&mut f.h, 50.0, 3.0);
-    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:");
     click(&mut f.h, 50.0, 7.0);
     assert_eq!(f.h.head(), head, "refused: nothing written");
     assert!(last_log(&f.h).contains("already in cable"), "{}", last_log(&f.h));
     assert!(f.h.s.running.is_some(), "the command goes on");
-    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:");
     // Same first point, a second point in empty space: crosses no wires, refused, prompt stays.
     click(&mut f.h, 50.0, 4.0);
     assert_eq!(f.h.head(), head);
     assert_eq!(last_log(&f.h), "The slash crosses no wires; nothing was created.");
-    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:");
+    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:");
     // Esc: nothing written, command ends.
     f.h.s.input(Input::Cancel).unwrap();
     assert!(f.h.s.running.is_none());
@@ -654,11 +654,11 @@ fn ac7_prompt_machine_steps() {
     f.h.s.start("cableslash").unwrap();
     click(&mut f.h, 100.0, 100.0);
     f.h.s.cmdline("u").unwrap();
-    assert_eq!(prompt(&f.h), "Specify first point of cable slash:", "Undo drops the first point");
+    assert_eq!(prompt(&f.h), "Specify first point of cable slash or [Cable]:", "Undo drops the first point");
     click(&mut f.h, 28.0, -3.0);
     let logs = f.h.s.log.len();
     click(&mut f.h, 28.0, -3.0);
-    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:", "a repeated point is ignored");
+    assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:", "a repeated point is ignored");
     assert_eq!(f.h.s.log.len(), logs, "with no message");
     f.h.s.input(Input::Enter).unwrap();
     assert!(f.h.s.running.is_none(), "Enter at step 2 ends");
@@ -671,7 +671,7 @@ fn ac7_prompt_machine_steps() {
     interactive_slash(&mut f.h, (28.0, -3.0), (32.0, 18.0));
     assert_eq!(f.h.head(), head + 1);
     f.h.s.input(Input::Enter).unwrap();
-    assert_eq!(prompt(&f.h), "Specify first point of cable slash:", "Enter repeats cableslash");
+    assert_eq!(prompt(&f.h), "Specify first point of cable slash or [Cable]:", "Enter repeats cableslash");
     f.h.s.input(Input::Cancel).unwrap();
 }
 
@@ -867,12 +867,12 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
     for text in ["nan,0", "1e309,0", "1e13,0", "0,-1e13"] {
         let _ = f.h.s.cmdline(text);
         assert!(f.h.s.running.is_some(), "{text}: the prompt repeats");
-        assert_eq!(prompt(&f.h), "Specify first point of cable slash:", "{text}");
+        assert_eq!(prompt(&f.h), "Specify first point of cable slash or [Cable]:", "{text}");
     }
     click(&mut f.h, 28.0, -3.0);
     for text in ["nan,0", "inf,0", "1e13,0", "@1e13,0"] {
         let _ = f.h.s.cmdline(text);
-        assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo]:", "{text}");
+        assert_eq!(prompt(&f.h), "Specify second point of cable slash or [Undo/Cable]:", "{text}");
     }
     let _ = f.h.s.input(Input::Point(Vec2::new(f64::NAN, 1.0)));
     let _ = f.h.s.input(Input::Point(Vec2::new(f64::INFINITY, 1.0)));

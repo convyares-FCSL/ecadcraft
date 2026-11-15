@@ -598,7 +598,7 @@ pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &
 /// A cable's core count on `doc`.
 pub fn cable_cores(doc: &Document, k: CableId) -> Option<CoreCount> {
     let cab = doc.cables.get(&k)?;
-    Some(count_cores(cable_offer(&cab.properties), &cab.members))
+    Some(count_cores(crate::styles::cable::offer(doc, k), &cab.members))
 }
 
 /// The label `cablecore` gives a member whose label another member has (the `core-twice` fix):
@@ -606,7 +606,7 @@ pub fn cable_cores(doc: &Document, k: CableId) -> Option<CoreCount> {
 /// numeric label.
 pub fn next_free_label(doc: &Document, k: CableId) -> Option<String> {
     let cab = doc.cables.get(&k)?;
-    let count = count_cores(cable_offer(&cab.properties), &cab.members);
+    let count = count_cores(crate::styles::cable::offer(doc, k), &cab.members);
     if let Some(c) = count.next_free() {
         return Some(c);
     }
@@ -1725,7 +1725,7 @@ pub fn terminal_hover(doc: &Document, c: ComponentId, here: RepresentationId) ->
 /// A cable's hover line: `-W01  7G1.5: 5 used, 2 spare (6, GNYE)`; `None` with no offer.
 pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
     let cab = doc.cables.get(&k)?;
-    let count = count_cores(cable_offer(&cab.properties), &cab.members);
+    let count = count_cores(crate::styles::cable::offer(doc, k), &cab.members);
     let named = cab.properties.get("type").cloned().or_else(|| count.offer_text.clone())?;
     count.offer.as_ref()?;
     let spare = if count.spare.is_empty() { "0 spare".to_string() } else { format!("{} spare ({})", count.spare.len(), count.spare.join(", ")) };

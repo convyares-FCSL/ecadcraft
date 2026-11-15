@@ -38,6 +38,7 @@ pub mod actions;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod agent_access;
 pub mod bom;
+pub mod cable_cmds;
 pub mod checks;
 pub mod commands;
 pub mod connector_cmds;

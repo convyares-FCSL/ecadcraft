@@ -101,6 +101,29 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Brief 059: only the cable manager rows (design 059 §12) on one version 2 file.
+    if let [flag, file] = args.as_slice()
+        && flag == "--cables"
+    {
+        let scratch = std::env::temp_dir().join(format!("ecad-bench-cables-{}", std::process::id()));
+        let r = std::fs::create_dir_all(&scratch)
+            .map_err(|e| e.to_string())
+            .and_then(|()| ecad_bench::cables::measure(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch));
+        let _ = std::fs::remove_dir_all(&scratch);
+        return match r {
+            Ok(t) => {
+                println!(
+                    "cablenew {:.2} ms, cableedit {:.2} ms, cableassign {:.2} ms, cableslash {:.2} ms ({} cables)",
+                    t.cablenew_ms, t.cableedit_ms, t.cableassign_ms, t.cableslash_ms, t.cables
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // Brief 057: only the rating rows (design 057 §10) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--ratings"
