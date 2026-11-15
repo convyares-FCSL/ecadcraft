@@ -75,7 +75,7 @@ impl Trial {
 
     /// Pick item `i` (0: New cable): the `Cable` keyword, then the tag or `New`.
     pub fn slash_pick(&mut self, i: usize) {
-        use cadcraft_engine::Input;
+        use ecad_cadcraft::cad::Input;
         let tag = i.checked_sub(1).and_then(|j| self.shell.slash_picker.items.get(j)).map(|x| x.tag.clone());
         let _ = self.cad.session.input(Input::Keyword("Cable".into()));
         let r = match tag {

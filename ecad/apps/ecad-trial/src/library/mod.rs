@@ -444,7 +444,7 @@ impl Trial {
             self.cad.session.echo(e.to_string());
             return;
         }
-        if let Err(e) = self.cad.session.input(cadcraft_engine::Input::Text(key.to_string())) {
+        if let Err(e) = self.cad.session.input(ecad_cadcraft::cad::Input::Text(key.to_string())) {
             self.cad.session.echo(e.to_string());
         }
     }

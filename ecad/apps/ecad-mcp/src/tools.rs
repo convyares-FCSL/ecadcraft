@@ -4,8 +4,8 @@ use ecad_cadcraft::debug::tx_kind;
 use ecad_model::{Author, derive};
 use serde_json::{Map, Value, json};
 
-use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
+use ecad_cadcraft::cad::Session;
 
 use crate::gate::{self, Call, tx_summary};
 use crate::{MAX_TRANSACTIONS_PER_CALL, author_text};

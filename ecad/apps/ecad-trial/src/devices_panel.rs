@@ -124,7 +124,7 @@ pub struct DevicesPanel {
     /// The (project serial, change count) the table was brought up to.
     seen: Option<(u64, u64)>,
     /// The page selection last followed (handles), so the table follows only a new one.
-    followed: Vec<cadcraft_engine::doc::Handle>,
+    followed: Vec<ecad_cadcraft::cad::Handle>,
     pub selected: Option<ComponentId>,
     editing: Option<Editing>,
     /// Board 1.03: the grouping, folded groups, groups showing every device, the lines drawn and
@@ -205,7 +205,7 @@ impl DevicesPanel {
 
     /// The page's selection changed: select the devices it holds symbols of, and scroll to the
     /// first (row ↔ object link). Reads only the selected handles.
-    pub fn follow(&mut self, p: &ecad_cadcraft::Project, handles: &[cadcraft_engine::doc::Handle]) {
+    pub fn follow(&mut self, p: &ecad_cadcraft::Project, handles: &[ecad_cadcraft::cad::Handle]) {
         if self.followed == handles {
             return;
         }

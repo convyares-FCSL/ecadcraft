@@ -99,8 +99,8 @@ impl crate::Trial {
             self.cad.session.echo(e.to_string());
             return;
         }
-        let _ = self.cad.session.input(cadcraft_engine::Input::Keyword("Cable".into()));
-        match self.cad.session.input(cadcraft_engine::Input::Text(tag)) {
+        let _ = self.cad.session.input(ecad_cadcraft::cad::Input::Keyword("Cable".into()));
+        match self.cad.session.input(ecad_cadcraft::cad::Input::Text(tag)) {
             Ok(_) => self.shell.slash_picker = crate::shell::right::slash_picker::Picker { want: Some(cable), ..Default::default() },
             Err(e) => self.cad.session.echo(e.to_string()),
         }

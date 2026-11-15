@@ -15,7 +15,7 @@
 //! change count moved, and only while a tool runs; at rest nothing reads the project
 //! ([`Intent::reads`] counts reads).
 
-use cadcraft_engine::Input;
+use ecad_cadcraft::cad::Input;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::space;
 use eframe::egui::{self, Rect};
@@ -255,7 +255,7 @@ impl Trial {
         }
         if let (Some(at), Ok(st)) = (rf.at, self.cad.session.state_mut()) {
             let mut v = st.view();
-            v.center = cadcraft_engine::geom::Vec2::new(at[0], at[1]);
+            v.center = ecad_cadcraft::cad::Vec2::new(at[0], at[1]);
             let _ = st.set_view(v);
         }
     }

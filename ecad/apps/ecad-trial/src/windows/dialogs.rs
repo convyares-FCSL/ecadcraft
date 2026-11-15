@@ -129,7 +129,7 @@ impl Trial {
                     && let Ok(st) = self.cad.session.state_mut()
                 {
                     let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-                    let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at[0], at[1]), height, twist: 0.0 });
+                    let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at[0], at[1]), height, twist: 0.0 });
                 }
             }
             Some(renumber_dialog::Out::Cancel) => {

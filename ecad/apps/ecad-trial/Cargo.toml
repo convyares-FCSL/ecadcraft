@@ -19,7 +19,6 @@ ecad-file = { workspace = true }
 ecad-ui = { path = "../../crates/ecad-ui" }
 # The sheet colours the canvas paints (design 065 §1.1).
 ecad-drawing-style = { workspace = true }
-cadcraft-engine = { path = "../../../crates/engine" }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
 # remembers the window's size and position (brief 023).
@@ -48,3 +47,5 @@ ecad-store = { workspace = true }
 ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops", "fault-injection"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
+# The tests name engine types beyond `ecad_cadcraft::cad` (design 065 §3, cut 11); the library does not.
+cadcraft-engine = { path = "../../../crates/engine" }

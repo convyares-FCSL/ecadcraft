@@ -166,8 +166,8 @@ impl Trial {
             Some(tag) => self
                 .cad
                 .session
-                .input(cadcraft_engine::Input::Keyword("Device".into()))
-                .and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(tag.clone())))
+                .input(ecad_cadcraft::cad::Input::Keyword("Device".into()))
+                .and_then(|()| self.cad.session.input(ecad_cadcraft::cad::Input::Text(tag.clone())))
                 .map_err(|e| e.to_string()),
             None => Ok(()),
         };
@@ -199,7 +199,8 @@ impl Trial {
             // Brief 041: pages and actions are run by the shell, not placed.
             search::Pick::Page(_) | search::Pick::Action(_) => return Ok(()),
         };
-        let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(cadcraft_engine::Input::Text(text))).map_err(|e| e.to_string());
+        let r =
+            self.cad.session.start("place").and_then(|()| self.cad.session.input(ecad_cadcraft::cad::Input::Text(text))).map_err(|e| e.to_string());
         if let Err(e) = &r {
             self.cad.session.echo(e.clone());
         }
@@ -820,7 +821,7 @@ impl Trial {
             // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
             // only while empty may have a tiny or a huge view).
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
         Ok(())
@@ -843,7 +844,7 @@ impl Trial {
         })?;
         if let (Some(at), Ok(st)) = (check.at, self.cad.session.state_mut()) {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
         Ok(())
@@ -922,7 +923,7 @@ impl Trial {
             .unwrap_or_default();
         if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
     }
@@ -933,7 +934,7 @@ impl Trial {
             && let Ok(st) = self.cad.session.state_mut()
         {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
     }
 }

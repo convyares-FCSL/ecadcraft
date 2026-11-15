@@ -577,7 +577,7 @@ pub struct Inspector {
     what: Option<What>,
     deps: BTreeSet<ObjectRef>,
     /// (project serial, change count, page, selection).
-    seen: Option<(u64, u64, Option<PageId>, Vec<cadcraft_engine::doc::Handle>)>,
+    seen: Option<(u64, u64, Option<PageId>, Vec<ecad_cadcraft::cad::Handle>)>,
     /// The device's placements (its symbols), for "Select all placements".
     placements: Vec<RepresentationId>,
     /// Brief 044: a connector's Halves group and the selected pin's rows.
@@ -833,7 +833,7 @@ fn sync(t: &mut Trial) {
 
 /// What the selection on `page` is, for the inspector: nothing selected is the page; one symbol
 /// (or its tag text) is that symbol; one wire is that wire; anything else shows no defaults.
-fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> Option<What> {
+fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft::cad::Handle]) -> Option<What> {
     if selection.is_empty() {
         return Some(What::Page(page));
     }

@@ -80,7 +80,7 @@ impl Confirm {
 }
 
 /// The plan for `owned` on the branch shown.
-pub fn plan(s: &mut cadcraft_engine::Session, p: &ProjectHandle, owned: &OwnedSteps) -> Result<Plan, String> {
+pub fn plan(s: &mut ecad_cadcraft::cad::Session, p: &ProjectHandle, owned: &OwnedSteps) -> Result<Plan, String> {
     p.read(s, |p, _| {
         let stack = p.ledger.undo_stack();
         let log = p.ledger.log();

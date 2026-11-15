@@ -2,8 +2,8 @@
 //! spec's one shadow, so the page reads as paper on a desk, and the 0.25 mm dot grid every 5 mm
 //! inside the frame only. Worked out from the view each frame; nothing is read from the project.
 
-use cadcraft_engine::geom::Vec2;
 use cadcraft_ui_egui::canvas::Xf;
+use ecad_cadcraft::cad::Vec2;
 use eframe::egui::{self, Rect, pos2};
 
 /// The grid's pitch and dot size on paper, mm (spec §4 "Canvas colours").

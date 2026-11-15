@@ -7,9 +7,9 @@
 //!
 //! None of it is an entity: it is painted over CADCraft's drawing and never reaches a plot.
 
-use cadcraft_engine::doc::Handle;
-use cadcraft_engine::geom::Vec2;
 use cadcraft_ui_egui::canvas::Xf;
+use ecad_cadcraft::cad::Handle;
+use ecad_cadcraft::cad::Vec2;
 use ecad_cadcraft::look::Painted;
 use eframe::egui::{self, Pos2, Rect, Stroke, pos2, vec2};
 
@@ -47,7 +47,7 @@ pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, t: &
     let Ok(d) = t.cad.session.doc() else { return };
     let bounds = |h: &Handle| {
         let e = d.entity(*h)?;
-        let b = cadcraft_engine::doc::extent_bounds(d, e);
+        let b = ecad_cadcraft::cad::extent_bounds(d, e);
         let r = Rect::from_two_pos(xf.to_screen(b.min), xf.to_screen(b.max));
         (r.is_finite() && r.width() >= 0.0).then_some(r)
     };

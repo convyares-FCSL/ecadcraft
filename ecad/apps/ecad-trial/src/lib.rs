@@ -87,11 +87,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use cadcraft_engine::Session;
-use cadcraft_engine::doc::Handle;
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use cadcraft_ui_egui::{CadApp, Services};
 use debugger::Debugger;
+use ecad_cadcraft::cad::Handle;
+use ecad_cadcraft::cad::Session;
 use ecad_cadcraft::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
 use ecad_inspect::EventKind;
 use ecad_model::PageId;
@@ -570,9 +570,9 @@ impl Trial {
     /// the whole sheet). Returns `false` when there is no drawing to zoom to.
     pub fn zoom_to_drawing(&mut self) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
-        let mut b = cadcraft_engine::geom::Bounds2::default();
+        let mut b = ecad_cadcraft::cad::Bounds2::default();
         for e in d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER) {
-            b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
+            b = b.union(&ecad_cadcraft::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
             return false;

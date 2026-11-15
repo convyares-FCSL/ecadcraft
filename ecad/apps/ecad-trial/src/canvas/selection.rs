@@ -3,8 +3,8 @@
 //! outline, [`super::markers`]) and lists the rest ([`Related::elsewhere`], which 042's inspector
 //! shows with a go-to). The selection itself stays CADCraft's; nothing here selects.
 
-use cadcraft_engine::doc::Handle;
 use ecad_cadcraft::Project;
+use ecad_cadcraft::cad::Handle;
 use ecad_cadcraft::project::Mapped;
 use ecad_model::{ComponentId, PageId, RepresentationId, Subject};
 

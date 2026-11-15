@@ -18,7 +18,7 @@
 
 use std::time::Instant;
 
-use cadcraft_engine::doc::geom::Bounds2;
+use ecad_cadcraft::cad::Bounds2;
 use ecad_cadcraft::checks::Object;
 use ecad_drawing_style::sheet;
 use ecad_model::{ObjectRef, PageId, TxId};
@@ -150,8 +150,7 @@ impl Trial {
             };
             let mut top: Option<egui::Pos2> = None;
             for b in &o.boxes {
-                let corners =
-                    [b.min, cadcraft_engine::doc::geom::Vec2::new(b.max.x, b.min.y), b.max, cadcraft_engine::doc::geom::Vec2::new(b.min.x, b.max.y)];
+                let corners = [b.min, ecad_cadcraft::cad::Vec2::new(b.max.x, b.min.y), b.max, ecad_cadcraft::cad::Vec2::new(b.min.x, b.max.y)];
                 let pts: Vec<egui::Pos2> = corners.iter().map(|p| xf.to_screen(*p)).collect();
                 let width = (OUTLINE_MM * xf.scale as f32).max(line::HAIRLINE_PX);
                 let (dash, gap) = ((DASH_MM * xf.scale as f32).max(3.0), (GAP_MM * xf.scale as f32).max(2.0));
@@ -192,11 +191,11 @@ impl Trial {
                     let mut b = Bounds2::EMPTY;
                     for h in ecad_cadcraft::checks::handles_of(p, page, object) {
                         if let Some(e) = drawing.entity(h) {
-                            b = b.union(&cadcraft_engine::doc::entity_bounds(&drawing, e, 0));
+                            b = b.union(&ecad_cadcraft::cad::entity_bounds(&drawing, e, 0));
                         }
                     }
                     if !b.is_empty() && b.min.is_finite() && b.max.is_finite() {
-                        let m = cadcraft_engine::doc::geom::Vec2::new(MARGIN_MM, MARGIN_MM);
+                        let m = ecad_cadcraft::cad::Vec2::new(MARGIN_MM, MARGIN_MM);
                         boxes.push(Bounds2 { min: b.min - m, max: b.max + m });
                     }
                 }

@@ -22,8 +22,8 @@
 use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
+use ecad_cadcraft::cad::Session;
 use ecad_model::{Author, Transaction, TxId, TxKind};
 use serde_json::{Value, json};
 
@@ -275,7 +275,7 @@ pub fn tx_summary(t: &Transaction) -> Value {
 pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Value) -> Result<Value, String> {
     let given = req.get("command").and_then(Value::as_str).ok_or("missing `command`")?.to_string();
     let params = req.get("params").cloned().filter(|v| !v.is_null()).unwrap_or_else(|| json!({}));
-    let id = cadcraft_engine::find_command(&given).map_or_else(|| given.to_ascii_lowercase(), |c| c.id.to_string());
+    let id = ecad_cadcraft::cad::find_command(&given).map_or_else(|| given.to_ascii_lowercase(), |c| c.id.to_string());
     let ro = read_only(s, p)?;
     let writes_off = call.writes_off();
     policy::check(&id, &params, call.write, ro.as_deref()).map_err(|e| if e == policy::WRITES_OFF { writes_off } else { e })?;

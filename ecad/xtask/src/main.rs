@@ -217,8 +217,9 @@ const ENGINE_FREE: &[&str] = &["ecad-cli", "ecad-mcp", "ecad-trial"];
 
 /// Apps of [`ENGINE_FREE`] that still use `cadcraft-engine` directly: the number of source lines
 /// (outside comments) that name `cadcraft_engine`, seeded on 2026-11-15 (brief 060). The counts
-/// only fall; at none, the entry and the dependency in the app's `Cargo.toml` go.
-const ENGINE_ALLOWLIST: &[(&str, usize)] = &[("ecad-mcp", 5), ("ecad-trial", 54)];
+/// only fall; at none, the entry and the dependency in the app's `Cargo.toml` go. None left since
+/// `ecad_cadcraft::cad` (design 065 §3, cut 11).
+const ENGINE_ALLOWLIST: &[(&str, usize)] = &[];
 
 /// Core crates that must not reach the file system, the environment, processes, the network or
 /// the clock directly (owner, 2026-11-15, brief 060): Core stays pure data and rules, so it is

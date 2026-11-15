@@ -90,8 +90,8 @@ impl Trial {
                 if self.show_page(page).is_ok()
                     && let Ok(st) = self.cad.session.state_mut()
                 {
-                    let c = cadcraft_engine::geom::Vec2::new(view.center.x, view.center.y);
-                    let _ = st.set_view(cadcraft_engine::View { center: c, height: view.height, twist: 0.0 });
+                    let c = ecad_cadcraft::cad::Vec2::new(view.center.x, view.center.y);
+                    let _ = st.set_view(ecad_cadcraft::cad::View { center: c, height: view.height, twist: 0.0 });
                 }
             }
             None => {}

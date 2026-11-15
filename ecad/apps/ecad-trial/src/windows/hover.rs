@@ -9,7 +9,7 @@ impl Trial {
     /// The cable reference end under the pointer (its point within the pick box, or its text),
     /// with its hover lines; model space only, as for terminals.
     fn reference_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::RepresentationId, Vec<String>)> {
-        if self.cad.session.layout_space() != cadcraft_engine::doc::Space::Model {
+        if self.cad.session.layout_space() != ecad_cadcraft::cad::Space::Model {
             return None;
         }
         let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
@@ -26,7 +26,7 @@ impl Trial {
     fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
         // Terminals are at model positions: in a paper-space layout (or one of its viewports) the
         // canvas shows the sheet, and nothing on it is a terminal.
-        if self.cad.session.layout_space() != cadcraft_engine::doc::Space::Model {
+        if self.cad.session.layout_space() != ecad_cadcraft::cad::Space::Model {
             return None;
         }
         let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);

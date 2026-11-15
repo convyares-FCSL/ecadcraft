@@ -39,8 +39,8 @@ use std::cell::RefCell;
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
-use cadcraft_engine::Session;
 use cadcraft_mcp::{Backend, Headless, Server};
+use ecad_cadcraft::cad::Session;
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::Author;
 use serde_json::{Value, json};
@@ -359,7 +359,7 @@ fn install() -> Result<(), String> {
     ecad_cadcraft::install();
     // Brief 024: `printbook` plots through CADCraft's PDF plotter.
     ecad_cadcraft::printbook::install_io();
-    if cadcraft_engine::find_command("wire").is_none() {
+    if ecad_cadcraft::cad::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
     }
     Ok(())

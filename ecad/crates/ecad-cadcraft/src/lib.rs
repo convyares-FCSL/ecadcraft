@@ -38,6 +38,7 @@ pub mod actions;
 pub mod agent_access;
 pub mod bom_cmds;
 pub mod cable_cmds;
+pub mod cad;
 pub mod commands;
 pub mod connector_cmds;
 pub mod continuation_cmds;

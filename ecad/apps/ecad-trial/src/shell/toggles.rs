@@ -7,7 +7,7 @@
 //! - Grid: shown or hidden, spacing, style (greyed: one style today), major lines.
 //! - Ortho: 90° only (ortho), 45° steps (polar tracking at 45°), or free.
 
-use cadcraft_engine::Settings;
+use ecad_cadcraft::cad::Settings;
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 use serde_json::{Value, json};

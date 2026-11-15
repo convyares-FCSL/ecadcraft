@@ -15,8 +15,8 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
+use ecad_cadcraft::cad::Session;
 use ecad_cadcraft::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
 use ecad_ui::control::{Select, TextEntry};

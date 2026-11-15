@@ -28,7 +28,7 @@ pub mod sheet;
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use cadcraft_engine::doc::Handle;
+use ecad_cadcraft::cad::Handle;
 use eframe::egui::{self, Rect};
 use serde::{Deserialize, Serialize};
 
@@ -141,7 +141,7 @@ pub fn paint(t: &mut Trial, ui: &mut egui::Ui, page_rect: Option<Rect>) {
         return;
     }
     let (Some(rect), Some(xf)) = (t.cad.canvas.rect, t.cad.canvas.xf) else { return };
-    if t.cad.session.layout_space() != cadcraft_engine::doc::Space::Model {
+    if t.cad.session.layout_space() != ecad_cadcraft::cad::Space::Model {
         return;
     }
     let picked = refresh(t, &mut st);
@@ -228,7 +228,7 @@ fn leader_to_selection(t: &Trial, xf: &cadcraft_ui_egui::canvas::Xf, companion: 
         .selection()
         .iter()
         .take(selection::MAX_LOOKED_AT)
-        .filter_map(|h| d.entity(*h).map(|e| cadcraft_engine::doc::extent_bounds(d, e)))
+        .filter_map(|h| d.entity(*h).map(|e| ecad_cadcraft::cad::extent_bounds(d, e)))
         .map(|b| Rect::from_two_pos(xf.to_screen(b.min), xf.to_screen(b.max)))
         .filter(|r| r.is_finite())
         .reduce(|a, b| a.union(b))?

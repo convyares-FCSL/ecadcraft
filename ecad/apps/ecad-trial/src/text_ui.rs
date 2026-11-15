@@ -129,7 +129,7 @@ impl TextSection {
             });
         }
         let font = v.get("font").and_then(Value::as_str).unwrap_or_default().to_string();
-        let mut families: Vec<String> = cadcraft_engine::fonts::ttf::installed().into_iter().filter_map(|f| f.family).collect();
+        let mut families: Vec<String> = ecad_cadcraft::cad::installed_fonts().into_iter().filter_map(|f| f.family).collect();
         families.sort();
         families.dedup();
         families.truncate(MAX_FAMILIES);

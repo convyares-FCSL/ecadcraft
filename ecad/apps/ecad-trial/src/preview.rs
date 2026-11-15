@@ -12,10 +12,10 @@
 
 use std::sync::Arc;
 
-use cadcraft_engine::doc::Drawing;
 use cadcraft_ui_egui::icons::{self, Icon};
 use cadcraft_ui_egui::theme::Tokens;
 use ecad_cadcraft::ProjectHandle;
+use ecad_cadcraft::cad::Drawing;
 use ecad_cadcraft::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing, rasterise};
 use ecad_model::{PageId, Pt};
 use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
@@ -107,7 +107,7 @@ impl Preview {
 
     /// Bring the projection up to date (only when a change could have touched the page). Returns
     /// `false` when the page no longer exists.
-    pub fn update(&mut self, project: &ProjectHandle, s: &mut cadcraft_engine::Session) -> bool {
+    pub fn update(&mut self, project: &ProjectHandle, s: &mut ecad_cadcraft::cad::Session) -> bool {
         let page = self.page;
         if let Some((doc, name)) = self.revision.clone() {
             // A frozen copy: projected once.

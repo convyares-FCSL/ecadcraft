@@ -23,8 +23,8 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use cadcraft_engine::doc::Handle;
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
+use ecad_cadcraft::cad::Handle;
 use ecad_cadcraft::{Mapped, Project};
 use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, TerminalId};
 

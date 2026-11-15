@@ -10,9 +10,9 @@
 //! Update map: the wheel reads the object's kind and each slot's `enabled` once, when it opens;
 //! nothing while it is closed.
 
-use cadcraft_engine::Input;
-use cadcraft_engine::geom::Vec2;
 use ecad_cadcraft::actions::{self, Action, App, Choices, Context, Enabled, IdOf, ObjectKind, Params};
+use ecad_cadcraft::cad::Input;
+use ecad_cadcraft::cad::Vec2;
 use ecad_cadcraft::interact::kind::{self, Target};
 use ecad_model::{PageId, Subject};
 use ecad_ui::wheel::{Event, SlotSpec, Wheel};

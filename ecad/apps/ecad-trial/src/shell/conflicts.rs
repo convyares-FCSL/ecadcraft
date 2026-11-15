@@ -149,7 +149,7 @@ impl Trial {
             for (c, a) in &anchors {
                 let colour =
                     if Some(*c) == chosen { ecad_drawing_style::sheet::PAPER.warning } else { ecad_drawing_style::sheet::PAPER.wire_end_attached };
-                let at = xf.to_screen(cadcraft_engine::doc::geom::Vec2::new(a.x, a.y));
+                let at = xf.to_screen(ecad_cadcraft::cad::Vec2::new(a.x, a.y));
                 painter.circle_stroke(at, r, egui::Stroke::new(2.0, ecad_ui::color(colour)));
             }
         }
