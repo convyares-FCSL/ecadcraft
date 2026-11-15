@@ -45,13 +45,20 @@ impl crate::Trial {
             }
             (Fix::UseDrawing(cable, side), 0) => {
                 let Some(p) = self.project.clone() else { return };
+                // That end's plan becomes its drawn location and function (one `cableedit`).
                 let drawn = p.read(&mut self.cad.session, |p, _| {
                     let doc = p.ledger.document();
-                    cable_cmds::off_plan(doc, cable).into_iter().find(|(s, ..)| *s == side).map(|(_, _, at)| at)
+                    cable_cmds::off_plan(doc, cable).into_iter().find(|o| o.side == side).map(|o| o.drawn)
                 });
-                let Ok(Some(at)) = drawn else { return };
-                let Some(code) = at.split(", ").next().map(str::to_string) else { return };
-                let _ = self.run_value("cableedit", json!({"cable": cable.hex(), "set": {side.word(): {"location": code}}}));
+                let Ok(Some(end)) = drawn else { return };
+                let mut set = serde_json::Map::new();
+                if let Some(l) = end.locations.iter().next() {
+                    set.insert("location".into(), json!(l));
+                }
+                if let Some(f) = end.functions.iter().next() {
+                    set.insert("function".into(), json!(f));
+                }
+                let _ = self.run_value("cableedit", json!({"cable": cable.hex(), "set": {side.word(): set}}));
             }
             (Fix::UseDrawing(cable, _), _) => {
                 let Some(p) = self.project.clone() else { return };

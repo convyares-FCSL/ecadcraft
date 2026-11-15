@@ -282,18 +282,79 @@ fn and_list(v: &[String]) -> String {
     }
 }
 
+/// Most characters of a value a refusal echoes (tester 059a, rule 7): longer text ends with `…`.
+pub const MAX_ECHO: usize = 40;
+/// Most characters of a whole refusal.
+pub const MAX_WORDS: usize = 400;
+
+/// `t` cut to [`MAX_ECHO`] characters, with `…` when cut, and no hidden characters.
+pub fn clip(t: &str) -> String {
+    let shown: String = t.chars().filter(|c| !is_hidden(*c)).take(MAX_ECHO).collect();
+    if t.chars().filter(|c| !is_hidden(*c)).nth(MAX_ECHO).is_some() { format!("{shown}\u{2026}") } else { shown }
+}
+
+/// Serde's message with each quoted value (between backticks) clipped (an unknown key may be any
+/// length).
+fn clip_quoted(m: &str) -> String {
+    let mut out = String::new();
+    for (i, part) in m.split('`').enumerate() {
+        if i > 0 {
+            out.push('`');
+        }
+        if i % 2 == 1 { out.push_str(&clip(part)) } else { out.push_str(part) }
+    }
+    out
+}
+
+/// A character a value never holds (tester 059a, rule 7): control characters, and the invisible
+/// format characters that reorder or hide text (bidi controls, zero-width and joiner characters,
+/// the byte order mark, soft hyphen).
+pub fn is_hidden(c: char) -> bool {
+    c.is_control()
+        || matches!(c as u32,
+            0x00AD | 0x061C | 0x180E | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF | 0xFFF9..=0xFFFB)
+}
+
 impl fmt::Display for CableError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let words = self.words();
+        if words.chars().nth(MAX_WORDS).is_some() {
+            let cut: String = words.chars().take(MAX_WORDS).collect();
+            write!(f, "{cut}\u{2026}")
+        } else {
+            write!(f, "{words}")
+        }
+    }
+}
+
+impl CableError {
+    /// The words of design 059 §9, every echoed value clipped ([`clip`]).
+    fn words(&self) -> String {
+        let mut f = String::new();
+        let _ = self.write_words(&mut f);
+        f
+    }
+
+    fn write_words(&self, f: &mut String) -> fmt::Result {
+        use std::fmt::Write as _;
         match self {
             CableError::NoProject => write!(f, "No ECAD project is open."),
             CableError::ReadOnly => write!(f, "This project is read-only."),
-            CableError::NoSuchCable(t) => write!(f, "No cable {t:?}."),
-            CableError::TagTaken { tag, by } => write!(f, "{tag} is already the tag of {by}. Choose another tag."),
+            CableError::NoSuchCable(t) => write!(f, "No cable {:?}.", clip(t)),
+            CableError::TagTaken { tag, by } => write!(f, "{} is already the tag of {}. Choose another tag.", clip(tag), clip(by)),
             CableError::BadValue { field, value, reason } => {
-                let shown: String = value.chars().take(32).collect();
+                let shown = clip(value);
                 match (field, reason) {
                     (CableField::Length, _) => write!(f, "Length must be a number of metres from {MIN_LENGTH} to {MAX_LENGTH}."),
-                    (CableField::Cores | CableField::Type, BadReason::BadOffer(why)) => write!(f, "{}: {why}", field.label()),
+                    (CableField::Cores | CableField::Type | CableField::Tag, BadReason::BadOffer(why)) => {
+                        write!(f, "{}: {}", field.label(), clip_quoted(&why.replace(value.as_str(), &shown)))
+                    }
+                    (CableField::Tag, BadReason::Empty) => {
+                        write!(f, "A cable always has a tag. Type a new tag (such as -W05) instead of clearing it.")
+                    }
+                    (_, BadReason::NotAWord) if value.chars().any(is_hidden) => {
+                        write!(f, "{} holds a control or invisible character; type it again without one.", field.label())
+                    }
                     (CableField::CableType, BadReason::UnknownEntry) => write!(f, "No cable type {shown:?} in this project's standards."),
                     (CableField::Shield, _) => write!(f, "Shield is none, overall, pairs or overall+pairs."),
                     (_, BadReason::TooLong(n)) => write!(f, "{} is at most {n} characters.", field.label()),
@@ -321,9 +382,9 @@ impl fmt::Display for CableError {
                 if free.is_empty() { String::new() } else { format!(" ({})", free.join(", ")) }
             ),
             CableError::AlreadyInCable(words) => write!(f, "{words}"),
-            CableError::SlashedHere { tag } => write!(f, "{tag} already has a slash on this page."),
+            CableError::SlashedHere { tag } => write!(f, "{} already has a slash on this page.", clip(tag)),
             CableError::TooMany => write!(f, "{}", crate::slash::too_many()),
-            CableError::Params(m) => write!(f, "{m}"),
+            CableError::Params(m) => write!(f, "{}", clip_quoted(m)),
         }
     }
 }
@@ -351,7 +412,7 @@ pub fn length_of(text: &str) -> Option<f64> {
 }
 
 fn text_ok(t: &str, max: usize) -> bool {
-    !t.trim().is_empty() && t.chars().count() <= max && !t.chars().any(char::is_control)
+    !t.trim().is_empty() && t.chars().count() <= max && !t.chars().any(is_hidden)
 }
 
 /// A stored value of cable `k` that ECAD reads: its property for `field`, when within bounds.
@@ -520,53 +581,83 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
     v
 }
 
-/// The locations (codes) of the devices at cable `k`'s cores' ends, and whether a device there has
-/// none. Strips and wire-only parts (terminals) count; `wires::kind_of` items do not.
-fn drawn_locations(doc: &Document, k: CableId) -> (BTreeSet<String>, bool) {
-    let mut out = BTreeSet::new();
-    let mut missing = false;
-    let Some(cab) = doc.cables.get(&k) else { return (out, missing) };
-    for m in cab.members.iter().take(MAX_CABLE_MEMBERS) {
-        let Some(cond) = doc.conductors.get(&m.conductor) else { continue };
-        for t in cond.ends.iter().flatten() {
-            let Some(c) = doc.terminals.get(t).map(|x| x.component) else { continue };
+/// One end of a drawn cable as drawn: the functions and locations (codes) of the devices at that
+/// end of its cores. The cabinet end is where each core chain starts (its first wire's end A), the
+/// field end where it finishes (its last wire's end B), as 057's core table reads them. Wire-only
+/// items (`wires::kind_of`) do not count.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DrawnEnd {
+    pub locations: BTreeSet<String>,
+    pub functions: BTreeSet<String>,
+    /// A device there has no location (or no function): that aspect is not compared.
+    pub no_location: bool,
+    pub no_function: bool,
+}
+
+impl DrawnEnd {
+    /// `=FAN +JB1`, as the end is drawn.
+    pub fn words(&self) -> String {
+        let f: Vec<&str> = self.functions.iter().map(String::as_str).collect();
+        let l: Vec<&str> = self.locations.iter().map(String::as_str).collect();
+        [f.join(", "), l.join(", ")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" ")
+    }
+}
+
+/// Cable `k`'s two ends as drawn, cabinet then field (see [`DrawnEnd`]). Bounded by the cable's
+/// member bound.
+pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
+    let mut out = [DrawnEnd::default(), DrawnEnd::default()];
+    for chain in crate::references::core_chains(doc, k).iter().take(MAX_CABLE_MEMBERS) {
+        let ends = [
+            chain.first().and_then(|w| doc.conductors.get(w)).and_then(|c| c.ends[0]),
+            chain.last().and_then(|w| doc.conductors.get(w)).and_then(|c| c.ends[1]),
+        ];
+        for (slot, t) in out.iter_mut().zip(ends) {
+            let Some(c) = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component) else { continue };
             if crate::wires::kind_of(doc, c).is_some() {
                 continue;
             }
             match crate::locations::resolve(doc, c).value {
                 Some(l) => {
-                    out.insert(l);
+                    slot.locations.insert(l);
                 }
-                None => missing = true,
+                None => slot.no_location = true,
+            }
+            match crate::locations::resolve_function(doc, c).value {
+                Some(x) => {
+                    slot.functions.insert(x);
+                }
+                None => slot.no_function = true,
             }
         }
     }
-    (out, missing)
+    out
 }
 
-/// The ends of drawn cable `k` whose plan names a location none of its drawn ends has, with the
-/// drawn locations not planned at the other end (design 059 §6, Q4): `cable-end-off-plan`. The two
-/// ends differing from each other is normal and never raises. An end with no plan raises nothing.
-pub fn off_plan(doc: &Document, k: CableId) -> Vec<(Side, String, String)> {
+/// A drawn end away from that same end's plan (design 059 §6, Q4; tester 059a).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OffPlan {
+    pub side: Side,
+    pub drawn: DrawnEnd,
+}
+
+/// The ends of drawn cable `k` drawn away from that same end's plan: a planned location or
+/// function that the devices at that end do not have. The two ends differing from each other is
+/// normal and never raises; an end with no plan, or with no device drawn there, raises nothing.
+pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
     if doc.cables.get(&k).is_none_or(|c| c.members.is_empty()) {
         return Vec::new();
     }
-    let (drawn, _) = drawn_locations(doc, k);
-    if drawn.is_empty() {
-        return Vec::new();
-    }
-    let plans: Vec<(Side, Option<String>)> = Side::BOTH.into_iter().map(|s| (s, planned(doc, k, s, Aspect::Location))).collect();
-    let planned_set: BTreeSet<String> = plans.iter().filter_map(|(_, p)| p.clone()).collect();
-    let has = |code: &str| drawn.iter().any(|d| d.eq_ignore_ascii_case(code));
-    let unplanned: Vec<String> = drawn.iter().filter(|d| !planned_set.iter().any(|p| p.eq_ignore_ascii_case(d))).cloned().collect();
+    let ends = drawn_ends(doc, k);
     let mut out = Vec::new();
-    for (side, plan) in plans {
-        let Some(code) = plan else { continue };
-        if has(&code) {
-            continue;
+    for (side, end) in Side::BOTH.into_iter().zip(ends) {
+        let differs = |aspect: Aspect, have: &BTreeSet<String>| {
+            let Some(code) = planned(doc, k, side, aspect) else { return false };
+            !have.is_empty() && !have.iter().any(|d| d.eq_ignore_ascii_case(&code))
+        };
+        if differs(Aspect::Location, &end.locations) || differs(Aspect::Function, &end.functions) {
+            out.push(OffPlan { side, drawn: end });
         }
-        let at = if unplanned.is_empty() { drawn.iter().cloned().collect::<Vec<_>>().join(", ") } else { unplanned.join(", ") };
-        out.push((side, code, at));
     }
     out
 }
@@ -598,7 +689,8 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
     }
     let anchor = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k));
     let (page, at) = anchor.map_or((None, None), |(p, a)| (Some(p), Some(a)));
-    for (side, _, drawn_at) in off_plan(doc, k) {
+    for o in off_plan(doc, k) {
+        let (side, drawn_at) = (o.side, o.drawn.words());
         let plan = plan_words(doc, k, side).unwrap_or_default();
         out.push(Check {
             kind: Kind::CableEndOffPlan,
@@ -689,6 +781,11 @@ pub struct RemoveCable {
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(params: &Value) -> Result<T, CableError> {
+    // Only the documented form, an object (tester 059a): serde would also read a struct from an
+    // array of its fields in order.
+    if !params.is_null() && !params.is_object() {
+        return Err(CableError::Params("The parameters are an object, such as {\"cable\": \"-W01\"}. Nothing was changed.".into()));
+    }
     let p = if params.is_null() { json!({}) } else { params.clone() };
     serde_json::from_value(p).map_err(|e| CableError::Params(format!("{e}. Nothing was changed.")))
 }
@@ -727,6 +824,8 @@ fn as_text(field: CableField, v: &Value) -> Result<Option<String>, CableError> {
     match v {
         Value::Null => Ok(None),
         Value::String(s) if s.trim().is_empty() => Ok(None),
+        // Tester 059a: no control or invisible character in any value (a planned code, a maker…).
+        Value::String(s) if s.chars().any(is_hidden) => Err(CableError::BadValue { field, value: s.clone(), reason: BadReason::NotAWord }),
         Value::String(s) => Ok(Some(s.trim().to_string())),
         Value::Number(n) => Ok(Some(n.to_string())),
         other => Err(CableError::BadValue { field, value: other.to_string(), reason: BadReason::NotAWord }),
@@ -750,14 +849,14 @@ fn checked(
             None => Err(bad(BadReason::NotANumber)),
         },
         CableField::Gland(_) if t.chars().count() > cable::MAX_GLAND_CHARS => Err(bad(BadReason::TooLong(cable::MAX_GLAND_CHARS))),
-        CableField::Gland(_) if !cable::is_gland(&t) => Err(bad(BadReason::NotAWord)),
+        CableField::Gland(_) if !cable::is_gland(&t) || t.chars().any(is_hidden) => Err(bad(BadReason::NotAWord)),
         CableField::Gland(_) => Ok(Some(t)),
         CableField::Shield => Shield::parse(&t).map(|s| Some(s.word().to_string())).ok_or_else(|| bad(BadReason::NotAWord)),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => {
             if t.chars().count() > MAX_TEXT {
                 return Err(bad(BadReason::TooLong(MAX_TEXT)));
             }
-            if t.chars().any(char::is_control) {
+            if t.chars().any(is_hidden) {
                 return Err(bad(BadReason::NotAWord));
             }
             Ok(Some(t))
@@ -901,7 +1000,8 @@ pub fn edit_ops(
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {
             match as_text(field, v)? {
-                None => None,
+                // Tester 059a, rule 1: clearing the tag would leave the cable without one.
+                None => return Err(CableError::BadValue { field, value: String::new(), reason: BadReason::Empty }),
                 Some(t) => {
                     let n = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc)).map_err(|e| CableError::BadValue {
                         field,

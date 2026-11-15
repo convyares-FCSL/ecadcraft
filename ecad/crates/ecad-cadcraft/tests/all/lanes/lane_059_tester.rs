@@ -598,10 +598,10 @@ fn r7_the_command_line_refuses_the_same_input_writing_nothing() {
     let k = new_cable(&mut h, json!({}));
     let big = "x".repeat(50_000);
     let lines = [
-        format!("cablenew {{\"colour\": 1}}"),
+        "cablenew {\"colour\": 1}".to_string(),
         format!("cablenew {{\"{big}\": 1}}"),
         format!("cablenew {{\"maker\": \"{big}\"}}"),
-        format!("cablenew {{\"length\": \"abc\"}}"),
+        "cablenew {\"length\": \"abc\"}".to_string(),
         "cablenew {\"cores\": ".to_string(),
         "cablenew {not json}".to_string(),
         format!("cableedit {{\"cable\": \"{}\", \"set\": {{\"length\": 1e999}}}}", k.hex()),

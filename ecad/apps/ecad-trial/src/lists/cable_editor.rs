@@ -113,9 +113,9 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
     };
     c.next_offer = cable_cmds::next_offer(doc, k);
     c.pages = cable_cmds::drawn_pages(doc, k);
-    for (side, _, _) in cable_cmds::off_plan(doc, k) {
-        if let Some(slot) = c.off_plan.get_mut(usize::from(side == Side::To)) {
-            *slot = cable_cmds::plan_words(doc, k, side).map(|p| format!("planned {p}"));
+    for o in cable_cmds::off_plan(doc, k) {
+        if let Some(slot) = c.off_plan.get_mut(usize::from(o.side == Side::To)) {
+            *slot = cable_cmds::plan_words(doc, k, o.side).map(|p| format!("planned {p}"));
         }
     }
     let plan = |s: Side| cable_cmds::plan_words(doc, k, s).unwrap_or_else(|| super::report::DASH.to_string());
