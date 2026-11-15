@@ -3,15 +3,14 @@
 //! `Author::Agent(<client>)`, are refused with writes off, and one undo restores the document;
 //! `titleblocks` and `titleblock {id}` read with writes off. `path` names a file: refused.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp 055", 55, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 55;
 
 fn one_undoable(c: &mut Client, command: &str, params: Value, label: &str) -> Value {
     let before = c.doc();
@@ -41,7 +40,7 @@ fn dxf(lines: &[(f64, f64, f64, f64)]) -> String {
 
 #[test]
 fn the_title_block_commands_record_one_transaction_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let v = one_undoable(&mut c, "titleblock", json!({"new": {"from": "sheet", "sheet": "A3"}}), "New title block A3 title block");
     let id = v["id"].as_str().unwrap().to_string();
     let mut body = c.exec("titleblock", json!({"id": id}))["body"].clone();

@@ -9,11 +9,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 36, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 36;
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
@@ -34,7 +33,7 @@ fn set(ops: &[Op], key: &str) -> Option<String> {
 
 #[test]
 fn multi_level_terminal_commands_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     for (x0, y0) in [(10, 0), (10, 100)] {
         for i in 0..3 {
             let x = x0 + 10 * i;

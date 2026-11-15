@@ -9,21 +9,14 @@
 //! Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, Op};
+use ecad_model::Op;
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
-}
-
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> Vec<Op> {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    last.ops
 }
 
 fn sets_key(ops: &[Op], key: &str) -> bool {
@@ -68,11 +61,11 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         // The L fence makes the strip; each write after it one transaction by the agent.
         let n = c.log().len();
         let v = c.exec("terminals", json!({"strip": null, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]}));
-        one_by_agent(&mut c, n, &format!("terminals LNPE L → {v}"));
+        assert_one_by_agent(&mut c, n, &format!("terminals LNPE L → {v}"));
         let x1 = hex(&v, "strip");
         let n = c.log().len();
         let v = c.exec("terminals", json!({"strip": null, "type": "SEN", "level": "S", "from": [495, 200], "to": [515, 200]}));
-        one_by_agent(&mut c, n, &format!("terminals SEN S → {v}"));
+        assert_one_by_agent(&mut c, n, &format!("terminals SEN S → {v}"));
         let x2 = hex(&v, "strip");
         let writes: Vec<(&str, Value, &[&str])> = vec![
             ("terminals", json!({"strip": x1, "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}), &[]),
@@ -94,7 +87,7 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         for (cmd, params, keys) in writes {
             let n = c.log().len();
             let v = c.exec(cmd, params.clone());
-            let ops = one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
+            let ops = assert_one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}")).ops;
             for k in keys {
                 assert!(sets_key(&ops, k), "{cmd} {params}: sets {k}: {ops:?}");
             }
@@ -104,13 +97,13 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         for params in [json!({"terminal": t, "position": "7"}), json!({"terminal": t, "text": "2.1S"}), json!({"terminal": t, "text": null})] {
             let n = c.log().len();
             let v = c.exec("termlabel", params.clone());
-            one_by_agent(&mut c, n, &format!("termlabel {params} → {v}"));
+            assert_one_by_agent(&mut c, n, &format!("termlabel {params} → {v}"));
         }
         // Jumper on two picked levels of one position: a cross-level link.
         let (a, b) = (level(&mut c, &x1, "1", ".1"), level(&mut c, &x1, "1", ".3"));
         let n = c.log().len();
         c.exec("jumper", json!({"terminals": [a, b]}));
-        let ops = one_by_agent(&mut c, n, "jumper 1.1 → 1.3");
+        let ops = assert_one_by_agent(&mut c, n, "jumper 1.1 → 1.3").ops;
         assert!(
             ops.iter()
                 .any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key.starts_with("link.") && ["1.1-1.3", "1-1.3"].contains(&v.replace(' ', "").as_str()))),

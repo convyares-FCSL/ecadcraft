@@ -7,11 +7,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 52, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+pub(super) const WRITER_SEED: u64 = 52;
 
 fn last_by_agent(c: &mut Client) -> (String, Vec<Op>) {
     let last = c.log().last().cloned().unwrap();
@@ -25,7 +24,7 @@ fn hex(v: &Value, key: &str) -> String {
 
 #[test]
 fn location_and_list_commands_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [50, 50]})), "component");
     let v = c.exec("setlocation", json!({"component": k, "value": "+CP1"}));
     assert_eq!(v["location"], "+CP1");
@@ -57,7 +56,7 @@ fn location_and_list_commands_through_execute() {
 /// never prompts.
 #[test]
 fn proposals_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [300, 40]})), "component");
     c.exec("setlocation", json!({"component": k, "value": "+CP2"}));
     let v = c.exec("locationbox", json!({"location": "+CP1", "corners": [[20, 100], [200, 220]]}));

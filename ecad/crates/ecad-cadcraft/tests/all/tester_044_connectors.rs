@@ -13,13 +13,13 @@
 
 use std::collections::BTreeMap;
 
-use cadcraft_engine::Session;
+use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::{Author, ComponentId, ConductorId, DefinitionId, Document, Op, PageId, Pt, RepresentationId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
+use crate::common::{reopen, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
 
@@ -245,34 +245,13 @@ fn page_no(d: &Document, p: PageId) -> String {
     ecad_model::book::page_number(d, p)
 }
 
-fn tmp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ecad t044 {tag} Steckverbinder \u{e4} {}", ecad_store::disk::unique()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn close_all(h: &mut H) {
-    while !h.s.docs.is_empty() {
-        h.s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
-
-fn reopen(path: &str, seed: u64) -> H {
-    let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
-    let mut h = H { s, project, trail: Vec::new() };
-    let d = h.doc();
-    h.trail.push(d);
-    h
-}
-
 /// Save the ledger as it is (also after raw commits) and open it as a user would.
 fn reload(mut h: H, tag: &str, seed: u64) -> (H, String) {
     let dir = tmp_dir(tag);
     let path = dir.join("Stecker -X01 (S P).ecad").display().to_string();
     h.cfg(|p| p.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
-    close_all(&mut h);
+    h.close_all();
     drop(h);
     (reopen(&path, seed), path)
 }

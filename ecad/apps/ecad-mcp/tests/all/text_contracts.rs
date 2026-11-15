@@ -3,17 +3,13 @@
 //! and is refused with writes off; the reads answer with writes off and record nothing; the
 //! property commands refuse `text.` keys.
 
-use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
 const SEED: u64 = 0x0E_CAD0_0031;
-
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("text", SEED, Options { write: true, agent: None }).unwrap())
-}
 
 /// Run a write and check it recorded exactly one transaction by the agent; returns the reply.
 fn one_by_agent(c: &mut Client, command: &str, params: Value) -> Value {
@@ -27,7 +23,7 @@ fn one_by_agent(c: &mut Client, command: &str, params: Value) -> Value {
 
 #[test]
 fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let r = one_by_agent(&mut c, "textstyle", json!({"kind": "tag", "height": 3}));
     assert_eq!(r["changed"], json!(true));
     let tag = r["kinds"].as_array().unwrap().iter().find(|k| k["kind"] == "tag").unwrap().clone();
@@ -82,7 +78,7 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
 
 #[test]
 fn textstyle_refusals_write_nothing() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let n = c.log().len();
     for (p, words) in [
         (json!({"kind": "tag", "height": 0.1}), "A text height is 0.5 to 10 mm."),
@@ -105,7 +101,7 @@ fn textstyle_refusals_write_nothing() {
 
 #[test]
 fn the_property_commands_refuse_text_keys() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let page = c.doc().page_order[0].hex();
     let comp = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}))["component"].as_str().unwrap().to_string();
     let n = c.log().len();
@@ -148,7 +144,7 @@ fn defaults_lists_the_registry_with_writes_off() {
     assert_eq!(r.log().len(), n);
 
     // After a project change, the value and where it comes from follow.
-    let mut c = writer();
+    let mut c = writer(SEED);
     c.exec("setdefault", json!({"key": "text.run.gap", "value": 3}));
     let one = c.exec("defaults", json!({"key": "text.run.gap"}));
     assert_eq!((one["defaults"][0]["value"].as_f64(), one["defaults"][0]["from"].as_str()), (Some(3.0), Some("project")));
@@ -156,7 +152,7 @@ fn defaults_lists_the_registry_with_writes_off() {
 
 #[test]
 fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let page = c.doc().page_order[0].hex();
     let v = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}));
     let comp = v["component"].as_str().unwrap().to_string();
@@ -195,7 +191,7 @@ fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_write
 
 #[test]
 fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     one_by_agent(&mut c, "text", json!({"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}));
     let found = c.doc().items.values().any(|i| {
         matches!(
@@ -214,7 +210,7 @@ fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off
 
 #[test]
 fn movetext_and_its_reset_are_one_transaction_each_and_refused_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let v = c.exec("place", json!({"symbol": "no", "at": [100, 150]}));
     let comp = v["component"].as_str().unwrap().to_string();
     let rep = c

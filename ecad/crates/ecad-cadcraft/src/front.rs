@@ -966,6 +966,25 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     (d.out, fit)
 }
 
+/// The cover's rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with checks
+/// off. No commit scope reaches them: the cover's own update calls [`crate::checks::Checks::set_cover`].
+pub struct CoverRows;
+
+impl crate::checks::CheckSource for CoverRows {
+    fn key(&self) -> crate::checks::Key {
+        crate::checks::Key::Cover
+    }
+    fn touched(&self, _scope: &crate::checks::Scope) -> bool {
+        false
+    }
+    fn kept_on_pages_off(&self) -> bool {
+        true
+    }
+    fn checks(&self, doc: &Document) -> Vec<crate::checks::Check> {
+        check_rows(doc)
+    }
+}
+
 /// The cover's Checks rows (design 054 §9): `cover-legend-cut` when the legend shows fewer cells
 /// than are used, `cover-notes-cut` when the stored notes are past the bounds. Worked out on open
 /// and again only after a change [`touches`] names (the cover is laid out once for it).

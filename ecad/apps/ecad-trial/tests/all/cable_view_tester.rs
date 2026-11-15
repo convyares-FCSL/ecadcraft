@@ -15,75 +15,25 @@
 //! Every in-process harness points the project's settings at a temporary folder.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use crate::common::{self, Opts, Tmp, click, pointer_to};
+use crate::mouse_tester::Deltas;
 use cadcraft_engine::geom::Vec2;
-use ecad_cadcraft::views::{self, Settings};
+use ecad_cadcraft::views::{self};
 use ecad_trial::{Trial, tools};
-use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
+use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 
-type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
-
-struct Collect(Deltas);
-
-impl egui_kittest::TestRenderer for Collect {
-    fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
-        let mut out = self.0.lock().unwrap();
-        for (id, imgs) in delta.set.drain() {
-            out.extend(imgs.into_iter().map(|i| (id, Some(i))));
-        }
-        out.extend(delta.free.drain().map(|id| (id, None)));
-    }
-}
-
-struct Tmp(PathBuf);
-
-impl Tmp {
-    fn new(name: &str) -> Self {
-        let p = std::env::temp_dir().join(format!("ecad-005-ui-{name}-{}", ecad_store::disk::unique()));
-        std::fs::create_dir_all(&p).unwrap();
-        Tmp(p)
-    }
-}
-
-impl Drop for Tmp {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
 fn build(t: Trial, deltas: Option<Deltas>) -> Harness<'static, Trial> {
-    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
-    if let Some(d) = deltas {
-        b = b.renderer(Collect(d));
-    }
-    let mut h = b.build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        t,
-    );
-    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
-    // command line, which sit behind the shell's developer switch now.
-    h.state_mut().set_cad_chrome(true);
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().trial(t).deltas(deltas))
 }
 
 /// A new-project harness whose views are remembered in `settings`.
 fn harness(settings: &Tmp, deltas: Option<Deltas>) -> Harness<'static, Trial> {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
-    let mut t = Trial::new(None).unwrap();
-    t.hover_delay = 0.0;
-    let p = t.project().unwrap().clone();
-    let dir = settings.0.clone();
-    p.configure(&mut t.cad.session, move |p| p.settings = Settings::at(dir)).unwrap();
-    build(t, deltas)
+    common::harness(Opts::new().views_at(settings.0.clone()).deltas(deltas))
 }
 
 fn head(h: &mut Harness<'static, Trial>) -> u64 {
@@ -103,19 +53,6 @@ fn fan_lines(h: &mut Harness<'static, Trial>) -> usize {
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
     h.state().cad.canvas.xf.expect("canvas laid out").to_screen(Vec2::new(x, y))
-}
-
-fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
-    h.event(Event::PointerMoved(at));
-    h.run_steps(2);
-}
-
-fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
-    pointer_to(h, at);
-    for pressed in [true, false] {
-        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
-    }
-    h.run_steps(2);
 }
 
 fn prompt(h: &Harness<'static, Trial>) -> String {

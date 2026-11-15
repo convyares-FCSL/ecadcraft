@@ -3,33 +3,19 @@
 //! the canvas, the crossing preview before the second click, then the cable, its dots, the echo
 //! and one-step undo. Reference screenshots are the tester's; how it feels is the owner's.
 
+use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use ecad_model::Document;
 use ecad_trial::{Trial, tools};
-use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
+use eframe::egui::{Event, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 fn harness() -> Harness<'static, Trial> {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
-    let mut t = Trial::new(None).unwrap();
-    t.hover_delay = 0.0;
-    let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        t,
-    );
-    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
-    // command line, which sit behind the shell's developer switch now.
-    h.state_mut().set_cad_chrome(true);
-    h.run_steps(5);
-    h
+    common::harness(Opts::new())
 }
 
 fn doc(h: &mut Harness<'static, Trial>) -> Document {
@@ -46,19 +32,6 @@ fn head(h: &mut Harness<'static, Trial>) -> u64 {
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
     h.state().cad.canvas.xf.expect("the canvas was laid out").to_screen(Vec2::new(x, y))
-}
-
-fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
-    h.event(Event::PointerMoved(at));
-    h.run_steps(2);
-}
-
-fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
-    pointer_to(h, at);
-    for pressed in [true, false] {
-        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
-    }
-    h.run_steps(2);
 }
 
 /// Type at CADCraft's command line (no text field has the keyboard), then Enter.

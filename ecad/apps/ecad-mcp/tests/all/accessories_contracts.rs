@@ -9,11 +9,10 @@ use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 30, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 30;
 
 fn last_by_agent(c: &mut Client) -> (String, Vec<Op>) {
     let last = c.log().last().cloned().unwrap();
@@ -27,7 +26,7 @@ fn sets(ops: &[Op], key: &str) -> bool {
 
 #[test]
 fn accessory_and_jumper_commands_through_execute() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     for x in [100, 120, 140, 160] {
         c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
     }

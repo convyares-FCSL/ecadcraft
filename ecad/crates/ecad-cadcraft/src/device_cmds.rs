@@ -208,7 +208,7 @@ pub(crate) fn run_setprop(s: &mut Session, params: &Value, c: ComponentId, key: 
     with_project(s, |p, pg, _page| {
         let doc = p.ledger.document();
         let component = doc.components.get(&c).ok_or("no such object")?;
-        let value = devices::property_value(doc, &key, value.as_deref())?;
+        let value = crate::commands::component_value(doc, c, &key, value)?;
         let before = component.properties.get(&key).cloned();
         if key == TAG_KEY
             && let Some(t) = &value

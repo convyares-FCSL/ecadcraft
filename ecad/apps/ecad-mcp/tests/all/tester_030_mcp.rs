@@ -5,22 +5,14 @@
 //! the save and record nothing. Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{ObjectRef, Op, Transaction};
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client, TempDir};
+use crate::common::assert_one_by_agent;
+use crate::mcp_contracts::{Client, TempDir};
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
-}
-
-/// The command added exactly one transaction, by the agent; its label and ops.
-fn one_by_agent(c: &mut Client, before: usize, what: &str) -> (String, Vec<Op>) {
-    let log = c.log();
-    assert_eq!(log.len(), before + 1, "{what}: one transaction");
-    let last = log.last().cloned().unwrap();
-    assert_eq!(last.author, Author::Agent(AGENT.into()), "{what}: {}", last.label);
-    (last.label, last.ops)
 }
 
 fn sets_key(ops: &[Op], key: &str) -> bool {
@@ -81,7 +73,7 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         for (cmd, params, keys) in writes {
             let n = c.log().len();
             let v = c.exec(cmd, params.clone());
-            let (label, ops) = one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
+            let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
             for k in keys {
                 assert!(sets_key(&ops, k), "{cmd} {params}: sets {k} ({label}): {ops:?}");
             }
@@ -105,7 +97,7 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         // A link that joins two nets records the numbering pass's ops in the same transaction.
         let n = c.log().len();
         c.exec("jumper", json!({"terminals": [terms[3], terms[2]]}));
-        let (_, ops) = one_by_agent(&mut c, n, "jumper 4-3");
+        let Transaction { label: _, ops, .. } = assert_one_by_agent(&mut c, n, "jumper 4-3");
         assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("link."))), "{ops:?}");
         // `u` through MCP undoes it.
         c.exec("u", Value::Null);

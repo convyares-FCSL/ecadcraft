@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 
 use crate::common;
 
+use crate::common::close_all;
 use cadcraft_engine::Session;
 use common::{H, id, pts};
 use ecad_cadcraft::project::Mapped;
@@ -16,12 +17,6 @@ use ecad_model::{ComponentId, ObjectRef, Op, PageId, RepresentationId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 25;
-
-fn close_all(s: &mut Session) {
-    while !s.docs.is_empty() {
-        s.execute("close", &json!({"index": 0})).unwrap();
-    }
-}
 
 struct X {
     h: H,

@@ -94,6 +94,9 @@ pub mod symbol_cmds;
 pub mod symbols;
 pub mod terminal_cmds;
 pub mod terminal_types;
+/// A builder for the small projects tests start from (brief 062); enabled only by tests.
+#[cfg(feature = "test-support")]
+pub mod test_support;
 pub mod text_cmds;
 pub mod text_style;
 pub mod title_block;

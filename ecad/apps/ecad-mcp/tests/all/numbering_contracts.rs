@@ -9,13 +9,10 @@ use ecad_model::sheet::Grid;
 use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, TempDir, reader};
 
 const SEED: u64 = 0x0E_CAD0_0026;
-
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("numbering", SEED, Options { write: true, agent: None }).unwrap())
-}
 
 /// The point at the middle of column `col` (0-based) and row `row` of the first page's frame.
 fn cell(c: &mut Client, col: u32, row: u32) -> [f64; 2] {
@@ -49,7 +46,7 @@ fn last_is_agents(c: &mut Client) {
 
 #[test]
 fn renumber_previews_and_applies_one_transaction_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let (a, cc) = (cell(&mut c, 0, 1), cell(&mut c, 2, 1));
     let k07 = coil(&mut c, a, Some("-K07"));
     let k01 = coil(&mut c, cc, Some("-K01"));
@@ -85,7 +82,7 @@ fn renumber_previews_and_applies_one_transaction_by_the_agent() {
 
 #[test]
 fn apply_on_a_stale_preview_is_refused_and_records_nothing() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let k = coil_at(&mut c, 0, 1, Some("-K05"));
     let pv = c.exec("renumber", json!({"preview": true}));
     c.exec("setprop", json!({"component": k, "key": "description", "value": "Pump"}));
@@ -97,7 +94,7 @@ fn apply_on_a_stale_preview_is_refused_and_records_nothing() {
 
 #[test]
 fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let k4 = coil_at(&mut c, 0, 1, Some("-K04"));
     // A contact, so that it can later join the coil (018: one coil per device).
     let at = cell(&mut c, 1, 1);
@@ -136,7 +133,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
 
 #[test]
 fn cable_tags_share_the_namespace_and_swap() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     for y in [0.0, 10.0, 20.0, 30.0] {
         c.exec("wire", json!({"points": [[0, y], [60, y]]}));
     }
@@ -155,7 +152,7 @@ fn cable_tags_share_the_namespace_and_swap() {
 
 #[test]
 fn numbering_finalise_and_issue_with_provisional() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let n0 = c.log().len();
     let r = c.exec("numbering", json!({}));
     assert_eq!(r["provisional"], json!(false));

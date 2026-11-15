@@ -14,10 +14,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::geom::Vec2;
 use ecad_model::{Document, End, ItemKind, Primitive, Subject};
 use ecad_trial::{Trial, tools};
-use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
+use eframe::egui::{self, Event, Key, Modifiers, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
@@ -39,27 +40,7 @@ impl egui_kittest::TestRenderer for Collect {
 }
 
 pub(crate) fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
-    let mut t = Trial::new(None).unwrap();
-    t.hover_delay = 0.0;
-    crate::project_panel::open_panels(&mut t);
-    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
-    if let Some(d) = deltas {
-        b = b.renderer(Collect(d));
-    }
-    let mut h = b.build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        t,
-    );
-    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
-    // command line, which sit behind the shell's developer switch now.
-    h.state_mut().set_cad_chrome(true);
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().panels().deltas(deltas))
 }
 
 fn harness() -> Harness<'static, Trial> {
@@ -88,19 +69,6 @@ fn unsaved(h: &mut Harness<'static, Trial>) -> (bool, Vec<bool>) {
 
 pub(crate) fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
     h.state().cad.canvas.xf.expect("canvas laid out").to_screen(Vec2::new(x, y))
-}
-
-pub(crate) fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
-    h.event(Event::PointerMoved(at));
-    h.run_steps(2);
-}
-
-pub(crate) fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
-    pointer_to(h, at);
-    for pressed in [true, false] {
-        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
-    }
-    h.run_steps(2);
 }
 
 pub(crate) fn type_enter(h: &mut Harness<'static, Trial>, text: &str) {

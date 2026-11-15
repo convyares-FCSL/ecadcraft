@@ -41,6 +41,25 @@ pub fn touches(op: &Op) -> bool {
     }
 }
 
+/// The title block rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with
+/// checks off.
+pub struct TitleBlockRows;
+
+impl crate::checks::CheckSource for TitleBlockRows {
+    fn key(&self) -> crate::checks::Key {
+        crate::checks::Key::TitleBlocks
+    }
+    fn touched(&self, scope: &crate::checks::Scope) -> bool {
+        scope.title_blocks
+    }
+    fn kept_on_pages_off(&self) -> bool {
+        true
+    }
+    fn checks(&self, doc: &Document) -> Vec<Check> {
+        rows(doc)
+    }
+}
+
 /// Every title block row of `doc`.
 pub fn rows(doc: &Document) -> Vec<Check> {
     let mut out = unknown_rows(doc);

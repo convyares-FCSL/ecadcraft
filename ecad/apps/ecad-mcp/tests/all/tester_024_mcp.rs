@@ -2,14 +2,12 @@
 //! agent, in any spelling of the file parameter or mode; a book of more than 10 pages comes back
 //! as one base64 PDF; the location writes are refused with writes off.
 
-use ecad_mcp::{EcadMcp, Options};
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{Client, reader};
+use crate::common::writer;
+use crate::mcp_contracts::reader;
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp-t024", 0x24_7701, Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 0x24_7701;
 
 fn b64(s: &str) -> Vec<u8> {
     let val = |c: u8| -> Option<u32> {
@@ -40,7 +38,7 @@ fn b64(s: &str) -> Vec<u8> {
 fn printbook_and_reports_refuse_every_file_parameter_in_every_mode() {
     let dir = std::env::temp_dir().join(format!("ecad-t024-mcp-{}", std::process::id()));
     let target = dir.join("x.pdf");
-    for mut c in [writer(), reader()] {
+    for mut c in [writer(WRITER_SEED), reader()] {
         let before = c.log().len();
         for (cmd, params) in [
             ("printbook", json!({"path": target.to_string_lossy()})),
@@ -64,7 +62,7 @@ fn printbook_and_reports_refuse_every_file_parameter_in_every_mode() {
 
 #[test]
 fn printbook_of_twelve_pages_returns_one_base64_pdf() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("projectprops", json!({"title": "Twelve", "location": "+CP1"}));
     c.exec("newpage", json!({"generated": "cover"}));
     c.exec("newpage", json!({"generated": "contents"}));
