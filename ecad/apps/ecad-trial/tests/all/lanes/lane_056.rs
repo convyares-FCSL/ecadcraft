@@ -34,8 +34,8 @@ fn harness(deltas: Deltas) -> H {
     h
 }
 
-/// Fixture P56 (design 056 §13), as `ecad-cadcraft`'s lane test builds it, with the `plcrack`
-/// page in the book.
+/// Fixture P56 (design 056 §13), as `ecad-cadcraft`'s lane test builds it. The first rack brings
+/// the `plcrack` page into the book (tester F1), so the fixture adds none of its own.
 fn p56(h: &mut H) {
     ok(h, r#"place {"symbol":"plccpu","at":[30,250]}"#);
     for (i, key) in ["plcdi", "plcdq", "plcai", "plcao", "plcrtd"].iter().enumerate() {
@@ -67,7 +67,6 @@ fn p56(h: &mut H) {
     ok(h, &format!(r#"setprop {{"component":"{a03}","key":"description","value":"Outputs, pumps and valves"}}"#));
     ok(h, &format!(r#"setprop {{"component":"{a03}","key":"plc.kind","value":"relay"}}"#));
     ok(h, &format!(r#"setprop {{"component":"{a02}","key":"plc.kind","value":"24 V"}}"#));
-    ok(h, r#"newpage {"generated":"plcrack"}"#);
 }
 
 fn show_plc(h: &mut H) {
@@ -294,7 +293,17 @@ fn m_the_rack_sheet_prints_the_new_tile_lines() {
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     p56(&mut h);
+    let d = doc(&mut h);
+    let racks: Vec<_> = d
+        .page_order
+        .iter()
+        .copied()
+        .filter(|p| ecad_cadcraft::generated::kind_of(&d, *p) == Some(ecad_cadcraft::generated::GenKind::PlcRack))
+        .collect();
+    assert_eq!(racks.len(), 1, "one rack page, the one the first rack brought");
     h.state_mut().set_workspace(Workspace::Draw);
+    h.state_mut().show_page(racks[0]).unwrap();
+    h.run_steps(2);
     h.state_mut().zoom_to_drawing();
     h.run_steps(6);
     take(&h, &deltas, "056-rack-sheet.png");
