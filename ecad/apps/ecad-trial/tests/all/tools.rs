@@ -150,7 +150,7 @@ fn the_interactive_buttons_start_their_prompts() {
         ("Wire", "wire", "Specify first point of wire or [Potential/Category/Join] <auto>:"),
         ("Connect", "connect", "Select wire near the end to connect:"),
         ("Disconnect", "disconnect", "Select wire near the end to disconnect:"),
-        ("Cable Slash", "cableslash", "Specify first point of cable slash:"),
+        ("Cable Slash", "cableslash", "Specify first point of cable slash or [Cable]:"),
         ("Cable View", "cableview", "Select a cable to switch its view:"),
     ];
     for (label, id, first) in firsts {

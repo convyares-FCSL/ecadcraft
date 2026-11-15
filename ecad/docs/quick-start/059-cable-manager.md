@@ -48,3 +48,20 @@ cableslash 2.66 ms (500 cables). The rows time the whole command.
 
 Not done in 059b: Ins and Del keys on the list; the Tag text is focused but not selected; the
 report setting is per view, not stored in the project.
+
+## Assign in the drawing (059c)
+
+- The slash tool's prompt now reads `Specify first point of cable slash or [Cable]:`. Type `Cable`,
+  then a cable's tag (`-W03`), or Enter for **New** (the default): the slash then assigns that
+  cable. On a cable not drawn the crossed wires become its cores in order; the preview line says
+  `-> 3 wires onto -W03 (1, 2, 3)`.
+- While Cable slash runs, the right panel shows **Cable**: New cable, then the cables not drawn
+  (those planned on this page's location marked `matches`), then drawn cables not slashed on this
+  page.
+- **Assign in the drawing…** (the Details pane, + Cable's menu, the `cable-not-drawn` fix)
+  switches to Draw on the page whose location matches the planned cabinet end and starts the
+  slash with that cable picked: `Slash the wires of -W03 (4 cores).` Esc writes nothing.
+
+Not done in 059c: Add to cable's own picker (it has no cable prompt today; `cableadd {cable}` takes
+the free-core rule); after New cable the right panel does not jump to the new cable's Tag box; the
+`matches` mark compares the page's location boxes, not the crossed wires' devices.

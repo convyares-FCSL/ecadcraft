@@ -35,6 +35,7 @@ mod device;
 mod fields;
 mod layout_tab;
 mod placing_view;
+pub mod slash_picker;
 mod widgets;
 
 pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
@@ -192,6 +193,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
     };
     // Board 1.11: the device about to be placed, on Device and Layout.
     let placing = if t.shell.state.right_tab == RightTab::Checks { None } else { placing_view::of(t) };
+    // Brief 059: while Cable slash runs, the cable picker (design 059 §5.6).
+    t.sync_slash_picker();
+    let slash = t.shell.state.right_tab != RightTab::Checks && placing.is_none() && t.slash_running();
+    let picker = t.shell.slash_picker.clone();
+    let mut slash_pick = None;
     let standard = match placing {
         Some(_) => {
             let words = t.standard_words();
@@ -240,6 +246,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
                 egui::ScrollArea::vertical().id_salt(("ecad.shell.right.scroll", tab.label())).auto_shrink([false, false]).show(ui, |ui| {
                     if let Some(p) = &placing {
                         placing_view::show(ui, &mut cx, p, &standard);
+                    } else if slash {
+                        slash_pick = slash_picker::show(ui, &picker);
                     } else if tab == RightTab::Layout {
                         layout_tab::show(ui, &mut cx, &mut acts);
                     } else {
@@ -252,6 +260,9 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, slots: &Slots) {
         }
     }
     drop(sh);
+    if let Some(i) = slash_pick {
+        t.slash_pick(i);
+    }
     if collapse {
         t.shell.state.right_collapsed = true;
     }

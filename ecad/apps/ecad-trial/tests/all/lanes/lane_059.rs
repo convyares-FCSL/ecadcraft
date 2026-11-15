@@ -144,3 +144,32 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     shot(&h, &deltas, "059-remove-refused.png");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 059c (design 059 §5.6): Assign in the drawing starts Cable slash with the cable picked; the
+/// right panel's Cable picker lists New cable, then the cables not drawn; Esc writes nothing.
+#[test]
+fn assign_in_the_drawing_starts_the_slash_with_the_cable_picked() {
+    let deltas: Deltas = std::sync::Arc::default();
+    let mut h = harness(deltas.clone());
+    let dir = std::env::temp_dir().join(format!("ecad-059-slash-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    demo(&mut h, &dir);
+    ok(&mut h, r#"cablenew {"tag":"-W05","cores":"4G","type":"H07RN-F 4G1.5","from":{"location":"+CAB1"},"to":{"location":"+FIELD"}}"#);
+    let d = doc(&mut h);
+    let k = d.cables_tagged("-W05")[0];
+    let head = d.cables.len();
+    h.state_mut().assign_in_drawing(k);
+    h.run_steps(8);
+    assert!(h.state().slash_running(), "Cable slash runs");
+    let p = h.state().shell.slash_picker.clone();
+    assert_eq!(p.labels.first().map(String::as_str), Some(ecad_trial::shell::right::slash_picker::NEW_CABLE));
+    assert!(p.labels.iter().any(|l| l.contains("Not drawn: -W05")), "{:?}", p.labels);
+    assert_eq!(p.items.get(p.picked.wrapping_sub(1)).map(|i| i.cable), Some(k), "-W05 is picked");
+    assert!(h.query_by_label(ecad_trial::shell::right::slash_picker::NAME).is_some(), "the picker is shown");
+    shot(&h, &deltas, "059-slash-picker.png");
+    h.key_press(Key::Escape);
+    h.run_steps(4);
+    assert!(!h.state().slash_running());
+    assert_eq!(doc(&mut h).cables.len(), head, "Esc writes nothing");
+    let _ = std::fs::remove_dir_all(&dir);
+}

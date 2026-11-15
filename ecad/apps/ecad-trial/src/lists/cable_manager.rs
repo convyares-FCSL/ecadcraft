@@ -67,9 +67,9 @@ impl crate::Trial {
     }
 
     /// **Assign in the drawing…** for `cable` (design 059 §5.6): Draw, on the first page whose
-    /// location matches its planned cabinet end, else the active page. 059c starts the slash tool
-    /// there with the cable picked.
-    pub(crate) fn assign_in_drawing(&mut self, cable: ecad_model::CableId) {
+    /// location matches its planned cabinet end, else the active page, with the slash tool started
+    /// and the cable picked.
+    pub fn assign_in_drawing(&mut self, cable: ecad_model::CableId) {
         let Some(p) = self.project.clone() else { return };
         let page = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
@@ -82,6 +82,20 @@ impl crate::Trial {
         self.set_workspace(crate::shell::Workspace::Draw);
         if let Ok(Some(page)) = page {
             let _ = self.show_page(page);
+        }
+        // The slash tool with the cable already picked: the same `Cable` keyword the command
+        // line takes; the tool says `Slash the wires of -W03 (4 cores).`
+        let tag = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::views::cable_title(p.ledger.document(), cable));
+        let Ok(tag) = tag else { return };
+        self.focus_drawing = true;
+        if let Err(e) = self.cad.session.start("cableslash") {
+            self.cad.session.echo(e.to_string());
+            return;
+        }
+        let _ = self.cad.session.input(cadcraft_engine::Input::Keyword("Cable".into()));
+        match self.cad.session.input(cadcraft_engine::Input::Text(tag)) {
+            Ok(_) => self.shell.slash_picker = crate::shell::right::slash_picker::Picker { want: Some(cable), ..Default::default() },
+            Err(e) => self.cad.session.echo(e.to_string()),
         }
     }
 }

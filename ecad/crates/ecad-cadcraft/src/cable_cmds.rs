@@ -1090,3 +1090,49 @@ pub fn next_offer(doc: &Document, k: CableId) -> String {
     v.push((high + 1).to_string());
     v.join(",")
 }
+
+/// One item of the slash and Add to cable pickers (design 059 §5.6).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PickItem {
+    pub cable: CableId,
+    pub tag: String,
+    /// `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
+    pub line: String,
+    pub drawn: bool,
+    /// A cable not drawn whose planned end location is this page's (or one of its location boxes').
+    pub matches: bool,
+}
+
+/// The picker's cables on `page` (Q7): not drawn first (those whose planned end location matches
+/// the page's location, or one of its location boxes', before the rest, marked), then drawn cables
+/// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
+pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
+    let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
+    let page_loc = doc.pages.get(&page).and_then(|x| x.properties.get(Aspect::Location.property()));
+    if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.map(String::as_str)) {
+        here.insert(code);
+    }
+    let mut out: Vec<PickItem> = Vec::new();
+    for k in doc.cables.keys() {
+        let drawn = is_drawn(doc, *k);
+        if drawn && doc.representations_of(Subject::Cable(*k)).any(|(_, r)| r.page == page && r.role == "slash") {
+            continue;
+        }
+        let tag = crate::views::cable_title(doc, *k);
+        let matches = !drawn
+            && Side::BOTH.into_iter().any(|s| planned(doc, *k, s, Aspect::Location).is_some_and(|c| here.iter().any(|h| h.eq_ignore_ascii_case(&c))));
+        let dash = "\u{2014}";
+        let ends = format!(
+            "{} \u{2192} {}",
+            plan_words(doc, *k, Side::From).unwrap_or_else(|| dash.into()),
+            plan_words(doc, *k, Side::To).unwrap_or_else(|| dash.into())
+        );
+        let line = match read(doc, *k, CableField::Type) {
+            Some(t) => format!("{tag}  {t} \u{b7} {ends}"),
+            None => format!("{tag}  {ends}"),
+        };
+        out.push(PickItem { cable: *k, tag, line, drawn, matches });
+    }
+    out.sort_by(|a, b| (a.drawn, !a.matches).cmp(&(b.drawn, !b.matches)).then_with(|| crate::locations::natural_cmp(&a.tag, &b.tag)));
+    out
+}

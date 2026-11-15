@@ -311,3 +311,67 @@ fn the_cable_report_lists_cables_not_drawn_unless_told_not_to() {
     let drawn = h.run("cablelist", json!({"include_not_drawn": false})).unwrap();
     assert_eq!(drawn["total"], json!(1), "{drawn}");
 }
+
+/// 059c (design 059 §5.6): the slash tool's `Cable` keyword picks a cable not drawn; the slash
+/// assigns its cores; Esc after picking writes nothing.
+#[test]
+fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
+    let mut h = H::new(5914);
+    let ws = wires(&mut h, 2);
+    let k = new_cable(&mut h, json!({"cores": "3G"}));
+    // Esc after picking writes nothing.
+    let head = h.head();
+    h.cmdline("cableslash");
+    h.cmdline("Cable");
+    h.cmdline("-W01");
+    h.cmdline("-5,25");
+    let _ = h.s.input(cadcraft_engine::Input::Cancel);
+    assert_eq!(h.head(), head, "Esc writes nothing");
+    h.cmdline("cableslash");
+    h.cmdline("Cable");
+    h.cmdline("-W01");
+    h.cmdline("-5,25");
+    h.cmdline("500,25");
+    let doc = h.doc();
+    let members: Vec<(ConductorId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into()))]);
+    assert_eq!(doc.cables.len(), 1, "no new cable");
+    // `New` (the default) makes a new cable with the next free tag.
+    wires_at(&mut h, 600.0, 2);
+    h.cmdline("cableslash");
+    h.cmdline("Cable");
+    h.cmdline("");
+    h.cmdline("595,25");
+    h.cmdline("620,25");
+    assert_eq!(h.doc().cables.len(), 2);
+}
+
+/// Two wires at `x0`, `x0 + 10`.
+fn wires_at(h: &mut H, x0: f64, n: usize) {
+    for i in 0..n {
+        let x = x0 + 10.0 * i as f64;
+        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 50.0)])})).unwrap();
+    }
+}
+
+/// 059c: the picker lists cables not drawn first, those planned on this page's location before the
+/// rest, then drawn cables not slashed on this page; a cable slashed here is left out.
+#[test]
+fn the_picker_lists_cables_not_drawn_first_and_leaves_out_those_slashed_here() {
+    let mut h = H::new(5915);
+    wires(&mut h, 1);
+    let drawn: CableId = id(&slash(&mut h, None).unwrap(), "cable");
+    let a = new_cable(&mut h, json!({"tag": "-W05"}));
+    let b = new_cable(&mut h, json!({"tag": "-W07", "from": {"location": "+CAB1"}}));
+    let page = h.first_page();
+    h.run("setprop", json!({"page": page.hex(), "key": "location", "value": "+CAB1"})).ok();
+    let doc = h.doc();
+    let items = cable_cmds::picker(&doc, page);
+    let order: Vec<CableId> = items.iter().map(|i| i.cable).collect();
+    assert!(!order.contains(&drawn), "slashed on this page: absent");
+    assert_eq!(order.len(), 2);
+    assert!(order.contains(&a) && order.contains(&b));
+    if items.iter().any(|i| i.matches) {
+        assert_eq!(order.first(), Some(&b), "a planned match first");
+    }
+}
