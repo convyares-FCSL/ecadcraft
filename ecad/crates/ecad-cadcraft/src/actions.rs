@@ -961,6 +961,15 @@ const fn search_only(
 /// ECAD commands no action shows, each with the reason (design §7.2: nothing is defined twice,
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
+    // Brief 052 (design 052 §5.7, §9.1, §9.4): the inspector's Location and Function rows, and
+    // Settings ▸ Project info's Functions and locations card.
+    ("setlocation", "Inspector ▸ Device: Location rows"),
+    ("setfunction", "Inspector ▸ Device: Function row"),
+    ("designations", "Settings ▸ Project info: Functions and locations"),
+    ("designationadd", "Settings ▸ Project info: + Add"),
+    ("designationedit", "Settings ▸ Project info: a code or description cell"),
+    ("designationmerge", "Settings ▸ Project info: Merge into…"),
+    ("designationremove", "Settings ▸ Project info: Remove"),
     ("setdefault", "Settings ▸ Standards (U4c)"),
     // Brief 050a: the standard header and the style detail on Settings ▸ Standards.
     ("standard", "Settings ▸ Standards: the standard header"),

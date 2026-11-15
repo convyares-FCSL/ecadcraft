@@ -1138,7 +1138,7 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
 /// pass so the book is built at most once (review of #105, 1).
 pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId) -> Vec<Check> {
     let doc = places.doc();
-        let mut out = Vec::new();
+    let mut out = Vec::new();
     designation_checks(places, c, &mut out);
     let place = || doc.terminals_of(c).next().map_or((None, None), |(t, _)| terminal_place(doc, t));
     match kind_of(doc, c) {
@@ -1269,10 +1269,8 @@ fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Che
         && let Some(r) = doc.representations.get(second)
     {
         let mut xp = crate::xref::Places::new(doc);
-        let wheres: Vec<String> = heads
-            .iter()
-            .filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::xref::anchor(doc, x))))
-            .collect();
+        let wheres: Vec<String> =
+            heads.iter().filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::xref::anchor(doc, x)))).collect();
         out.push(Check {
             kind: Kind::TwoHeads,
             page: Some(r.page),

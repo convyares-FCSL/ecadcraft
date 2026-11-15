@@ -66,7 +66,11 @@ impl LocationBox {
                     if !crate::locations::is_device(doc, c) {
                         return None;
                     }
-                    let own = crate::designations::shown(doc, crate::designations::Aspect::Location, doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).map(String::as_str));
+                    let own = crate::designations::shown(
+                        doc,
+                        crate::designations::Aspect::Location,
+                        doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).map(String::as_str),
+                    );
                     Some((crate::locations::anchor(doc, r)?, own))
                 })
                 .collect())

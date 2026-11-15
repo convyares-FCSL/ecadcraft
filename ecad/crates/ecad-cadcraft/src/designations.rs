@@ -255,7 +255,11 @@ impl Pending {
         match self.new_codes.as_slice() {
             [] => None,
             [(a, c)] => Some(format!("New {} {c} added to the project's list.", a.word())),
-            many => Some(format!("{} new entries added to the project's list: {}.", many.len(), many.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>().join(", "))),
+            many => Some(format!(
+                "{} new entries added to the project's list: {}.",
+                many.len(),
+                many.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>().join(", ")
+            )),
         }
     }
 }

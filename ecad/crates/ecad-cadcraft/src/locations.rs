@@ -592,7 +592,9 @@ pub struct Planned {
 
 /// A box's properties for `values` typed per aspect (design 052 FP9): at least one of function
 /// and location, each stored as an entry key ([`designations::Pending`]).
-fn box_props(doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>) -> Result<ecad_model::Properties, String> {
+fn box_props(
+    doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>,
+) -> Result<ecad_model::Properties, String> {
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), KIND_VALUE.into());
     for (a, text) in values {
@@ -745,7 +747,9 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
             continue;
         }
         n += 1;
-        if b.location_key.is_some() && doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location_key.as_ref()) {
+        if b.location_key.is_some()
+            && doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location_key.as_ref())
+        {
             keeps += 1;
         }
     }

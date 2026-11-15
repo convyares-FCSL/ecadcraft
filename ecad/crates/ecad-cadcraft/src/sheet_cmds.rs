@@ -630,7 +630,9 @@ pub const MAX_STEP: u32 = 1000;
 fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
     // Brief 052: the project's list of functions and locations changes through its commands.
     if crate::designations::is_list_property(key) {
-        return Err("Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.".into());
+        return Err(
+            "Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.".into()
+        );
     }
     // Brief 031 (§10.6): `text.` keys are written by the text commands only.
     if crate::text_style::is_reserved_key(key) {

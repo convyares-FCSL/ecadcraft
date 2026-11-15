@@ -427,14 +427,17 @@ fn page_section(doc: &Document, page: PageId) -> Section {
 
 /// The codes of `key`'s aspect in the project's list, offered as completions (design 052 §9.1).
 fn codes(doc: &Document, key: &str) -> Vec<String> {
-    crate::designations::Aspect::of_property(key).map(|a| crate::designations::entries(doc, a).into_iter().map(|e| e.code).collect()).unwrap_or_default()
+    crate::designations::Aspect::of_property(key)
+        .map(|a| crate::designations::entries(doc, a).into_iter().map(|e| e.code).collect())
+        .unwrap_or_default()
 }
 
 /// A location box (design 024 §3.5, design 052 §5.8): Function and Location (editable, either may
 /// be empty), Vertices and Devices inside.
 fn box_section(doc: &Document, b: ComponentId) -> Section {
     let shape = doc.representations_of(Subject::Component(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
-    let shown = |key: &str| doc.components.get(&b).and_then(|c| c.properties.get(key)).map(|v| crate::designations::display(doc, key, v)).unwrap_or_default();
+    let shown =
+        |key: &str| doc.components.get(&b).and_then(|c| c.properties.get(key)).map(|v| crate::designations::display(doc, key, v)).unwrap_or_default();
     let location = shown(LOCATION_KEY);
     let mut rows = Vec::new();
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {

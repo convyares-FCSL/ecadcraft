@@ -19,6 +19,14 @@ fn loc(doc: &Document, c: ComponentId) -> (Option<String>, &'static str) {
     (l.value, l.source.word())
 }
 
+/// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
+/// project, or none.
+fn ctx(doc: &Document, c: ComponentId) -> (Option<String>, &'static str) {
+    let r = ecad_cadcraft::reps::goto(doc, c, None).unwrap();
+    let l = locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default());
+    (l.value, l.source.word())
+}
+
 fn s(v: &str) -> Option<String> {
     Some(v.to_string())
 }
@@ -40,25 +48,30 @@ fn same_as_built(h: &mut H) {
     assert_eq!(a, b);
 }
 
-/// §13 A: own value, page, project; one transaction for several; clear back to inherited.
+/// §13 A, brief 052 (design 052 §5.1): a device's location is only its own; the page and the
+/// project propose (the context) and give it nothing; one transaction for several; clear back to
+/// none.
 #[test]
-fn a_device_location_is_its_own_then_the_page_then_the_project() {
+fn a_device_location_is_only_its_own_and_the_page_and_project_propose() {
     let mut h = H::new(0x24_01);
     let k = place(&mut h, "coil", (100.0, 150.0));
     let q = place(&mut h, "coil", (150.0, 150.0));
     let doc = h.doc();
     assert_eq!(loc(&doc, k), (None, "none"));
+    assert_eq!(ctx(&doc, k), (None, "none"));
     h.run("projectprops", json!({"location": "CP1"})).unwrap();
-    assert_eq!(loc(&h.doc(), k), (s("+CP1"), "project"));
+    assert_eq!(loc(&h.doc(), k), (None, "none"), "the project's location is not inherited");
+    assert_eq!(ctx(&h.doc(), k), (s("+CP1"), "project"));
     h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
-    assert_eq!(loc(&h.doc(), k), (s("+FIELD"), "page"));
+    assert_eq!(loc(&h.doc(), k), (None, "none"), "the page's location is not inherited");
+    assert_eq!(ctx(&h.doc(), k), (s("+FIELD"), "page"));
     let head = h.head();
     h.run("setprop", json!({"components": [k.hex(), q.hex()], "key": "location", "value": "CP3"})).unwrap();
     assert_eq!(h.head(), head + 1, "several devices: one transaction");
     assert_eq!(loc(&h.doc(), k), (s("+CP3"), "device"));
     assert_eq!(loc(&h.doc(), q), (s("+CP3"), "device"));
     h.run("setprop", json!({"component": k.hex(), "key": "location", "value": null})).unwrap();
-    assert_eq!(loc(&h.doc(), k), (s("+FIELD"), "page"));
+    assert_eq!(loc(&h.doc(), k), (None, "none"));
     h.cmdline("u");
     assert_eq!(loc(&h.doc(), k), (s("+CP3"), "device"));
     // `devices` reports what is shown and where it comes from.
@@ -68,10 +81,11 @@ fn a_device_location_is_its_own_then_the_page_then_the_project() {
     same_as_built(&mut h);
 }
 
-/// §13 B: a box gives its location live; moving it or a symbol updates at once; nested boxes:
-/// the inner wins; an own differing value is kept, flagged, and fixed in one transaction.
+/// §13 B, brief 052 (design 052 §5.1, §5.3): a box proposes its location live (the context of the
+/// symbols inside) and gives the devices nothing; moving it updates the context at once; nested
+/// boxes: the inner wins; a stored value none of the symbols' contexts has is flagged.
 #[test]
-fn location_boxes_are_live_and_the_innermost_wins() {
+fn location_boxes_propose_live_and_the_innermost_wins() {
     let mut h = H::new(0x24_02);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
     let page = h.first_page();
@@ -88,8 +102,10 @@ fn location_boxes_are_live_and_the_innermost_wins() {
     assert_eq!(r["inside"], 2, "{r}");
     let boxc: ComponentId = id(&r, "component");
     let doc = h.doc();
-    assert_eq!(loc(&doc, m), (s("+JB1"), "box"));
-    let l = locations::resolve(&doc, m);
+    assert_eq!(loc(&doc, m), (None, "none"), "a box gives the devices inside nothing");
+    assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
+    let rm = ecad_cadcraft::reps::goto(&doc, m, None).unwrap();
+    let l = locations::rep_context(&doc, &doc.representations[&rm], &mut locations::BoxCache::default());
     assert_eq!(l.source, Source::Box { component: boxc, page });
     assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
     // Nothing is written on the devices.
@@ -101,16 +117,18 @@ fn location_boxes_are_live_and_the_innermost_wins() {
     let item: ecad_model::ItemId = id(&r, "item");
     let hd = h.handle_of(page, item);
     h.run("move", json!({"handles": [hd.hex()], "delta": [0, 200]})).unwrap();
-    assert_eq!(loc(&h.doc(), m), (s("+FIELD"), "page"));
+    assert_eq!(ctx(&h.doc(), m), (s("+FIELD"), "page"));
+    assert_eq!(loc(&h.doc(), m), (None, "none"));
     same_as_built(&mut h);
     h.cmdline("u");
-    assert_eq!(loc(&h.doc(), m), (s("+JB1"), "box"));
+    assert_eq!(ctx(&h.doc(), m), (s("+JB1"), "box"));
     same_as_built(&mut h);
     // A polyline box nested inside: the inner wins for the device inside it only.
     h.run("locationbox", json!({"location": "+JB2", "points": [[90, 90], [120, 90], [125, 105], [120, 120], [90, 120]]})).unwrap();
     let doc = h.doc();
-    assert_eq!(loc(&doc, m).0, s("+JB2"));
-    assert_eq!(loc(&doc, x).0, s("+JB1"));
+    assert_eq!(ctx(&doc, m).0, s("+JB2"));
+    assert_eq!(ctx(&doc, x).0, s("+JB1"));
+    assert_eq!((loc(&doc, m).0, loc(&doc, x).0), (None, None));
     same_as_built(&mut h);
     // Brief 052: a stored value none of its symbols' contexts has: flagged, one-click fix.
     h.run("setprop", json!({"component": x.hex(), "key": "location", "value": "+CP9"})).unwrap();
@@ -122,13 +140,14 @@ fn location_boxes_are_live_and_the_innermost_wins() {
     assert_eq!(own[0].fix, Some(Fix::UseContext(x, ecad_cadcraft::designations::Aspect::Location)));
     same_as_built(&mut h);
     h.run("setprop", json!({"component": x.hex(), "key": "location", "value": null})).unwrap();
-    assert_eq!(loc(&h.doc(), x), (s("+JB1"), "box"));
+    assert_eq!(loc(&h.doc(), x), (None, "none"));
+    assert_eq!(ctx(&h.doc(), x), (s("+JB1"), "box"));
     // Erasing the box deletes it with its outline.
     let hd = h.handle_of(page, item);
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
     let doc = h.doc();
     assert!(!doc.components.contains_key(&boxc), "the box component goes with its outline");
-    assert_eq!(loc(&doc, x), (s("+FIELD"), "page"));
+    assert_eq!(ctx(&doc, x), (s("+FIELD"), "page"));
     same_as_built(&mut h);
 }
 
@@ -160,19 +179,20 @@ fn a_box_needs_room_and_a_closed_polyline() {
 }
 
 /// §13 C: a symbol drawn away from its device's location shows the prefix; the device keeps its
-/// main symbol's location.
+/// stored location (brief 052: set on the device, not taken from the coil's context).
 #[test]
 fn a_contact_away_from_its_coil_shows_the_location_prefix() {
     let mut h = H::new(0x24_04);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
     let p1 = h.first_page();
     let k = place(&mut h, "coil", (100.0, 150.0));
+    h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     let r = h.run("newpage", json!({"title": "Field"})).unwrap();
     let p2: PageId = id(&r, "page");
     h.run("locationbox", json!({"location": "+JB1", "corners": [[50, 50], [200, 200]]})).unwrap();
     h.run("place", json!({"symbol": "no", "at": [100, 100], "device": k.hex()})).unwrap();
     let doc = h.doc();
-    assert_eq!(loc(&doc, k).0, s("+CP1"), "main-symbol rule");
+    assert_eq!(loc(&doc, k), (s("+CP1"), "device"), "the stored value, wherever its symbols are");
     let tag = ecad_cadcraft::devices::tag_of(&doc, k).unwrap().to_string();
     let texts2: Vec<String> = ecad_cadcraft::devices::texts_on_page(&doc, p2).into_iter().map(|t| t.value).collect();
     assert!(texts2.contains(&format!("+CP1{tag}")), "{texts2:?}");
@@ -197,6 +217,8 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     let a = h.run("place", json!({"symbol": "terminal", "at": [0, 0], "tag": "X1"})).unwrap();
     let b = h.run("place", json!({"symbol": "terminal", "at": [60, 0], "tag": "X2"})).unwrap();
     let (a, b): (ComponentId, ComponentId) = (id(&a, "component"), id(&b, "component"));
+    // Brief 052: the project's location proposes; the devices store theirs.
+    h.run("setlocation", json!({"components": [a.hex(), b.hex()], "value": "+CP1"})).unwrap();
     let w = wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)]);
     h.run("setprop", json!({"component": a.hex(), "key": "maker", "value": "Phoenix"})).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "part_number", "value": "UT 2.5"})).unwrap();
@@ -258,7 +280,7 @@ fn generated_pages_follow_the_project_and_print() {
     ecad_cadcraft::printbook::install_io();
     let mut h = H::new(0x24_06);
     h.run("projectprops", json!({"title": "Pump panel", "location": "+CP1"})).unwrap();
-    place(&mut h, "coil", (100.0, 150.0));
+    let mut coils = vec![place(&mut h, "coil", (100.0, 150.0))];
     let head = h.head();
     let r = h.run("newpage", json!({"generated": "bom-location"})).unwrap();
     assert_eq!(h.head(), head + 1);
@@ -273,8 +295,11 @@ fn generated_pages_follow_the_project_and_print() {
     let first = h.first_page();
     h.activate(first);
     for i in 0..60 {
-        place(&mut h, "coil", (20.0 + f64::from(i % 10) * 35.0, 60.0 + f64::from(i / 10) * 30.0));
+        coils.push(place(&mut h, "coil", (20.0 + f64::from(i % 10) * 35.0, 60.0 + f64::from(i / 10) * 30.0)));
     }
+    // Brief 052: the project's location proposes; the devices store theirs.
+    let hexes: Vec<String> = coils.iter().map(|c| c.hex()).collect();
+    h.run("setlocation", json!({"components": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::generated::sheets(&doc, bom_page, Some(&Outputs::build(&doc))), 2);
     let parts = ecad_cadcraft::generated::parts_of(&doc, bom_page, None);
@@ -333,7 +358,7 @@ fn cover_contents_and_revision_list_show_the_project() {
 fn _unused(_: Value) {}
 
 /// Tester 024, bug 2 (owner ruling): PEDIT Open of a box outline is refused with the way out, and
-/// the box keeps giving its location.
+/// the box keeps proposing its location (brief 052: the context; the device stays unset).
 #[test]
 fn opening_a_box_outline_is_refused_with_the_way_out() {
     let mut h = H::new(0x24_08);
@@ -346,7 +371,8 @@ fn opening_a_box_outline_is_refused_with_the_way_out() {
     let e = h.run("pedit", json!({"handle": hd.hex(), "option": "open"})).unwrap_err();
     assert!(e.contains("cannot be opened") && e.contains("erase the box"), "{e}");
     assert_eq!(h.head(), head, "nothing recorded");
-    assert_eq!(loc(&h.doc(), k).0, s("+JB1"));
+    assert_eq!(ctx(&h.doc(), k), (s("+JB1"), "box"));
+    assert_eq!(loc(&h.doc(), k), (None, "none"));
 }
 
 /// Review of PR #51, finding 1: project settings changes go through the update map. A potential's

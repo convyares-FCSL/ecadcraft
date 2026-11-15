@@ -13,8 +13,14 @@ use serde_json::{Value, json};
 use crate::commands::{MAX_HANDLES, err, id_list, opt_id, with_project};
 use crate::designations::{self, Aspect};
 
-/// The commands this module adds.
+/// The commands of brief 052: these and [`crate::designation_cmds::specs`] (one lane line).
 pub fn specs() -> Vec<CommandSpec> {
+    let mut v = own_specs();
+    v.extend(crate::designation_cmds::specs());
+    v
+}
+
+fn own_specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("setlocation", "Set Location", run_setlocation)
             .params(

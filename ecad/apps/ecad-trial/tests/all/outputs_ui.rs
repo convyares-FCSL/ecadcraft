@@ -72,14 +72,31 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
 
-    // 1. -K01's coil: Location +CP1 (project), shown faint in Properties.
+    // 1. -K01's coil: brief 052, no location stored (nothing is inherited); Properties offers the
+    // project's +CP1 as the proposal.
     let k1 = main_symbol(&mut h, "-K01");
     h.state_mut().goto_symbol(k1).unwrap();
     h.run_steps(4);
     let rows = h.state().props.lock().unwrap().view.sections.clone();
     let loc = rows.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == "location").unwrap().clone();
-    assert_eq!((loc.value.as_str(), loc.inherited), ("+CP1 (project)", true), "{loc:?}");
+    assert_eq!((loc.value.as_str(), loc.inherited), ("", false), "{loc:?}");
+    assert_eq!(loc.proposal, Some(("+CP1".to_string(), "From the project".to_string())), "{loc:?}");
     save(&h, &deltas, "024-props-location.png");
+    // Take every device's proposal (its go-to symbol's context), as the user would, so the rest
+    // of the demo has its locations stored.
+    let d = doc(&mut h);
+    let mut proposed: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for c in d.components.keys().copied().filter(|c| ecad_cadcraft::locations::is_device(&d, *c)) {
+        let Some(r) = ecad_cadcraft::reps::goto(&d, c, None) else { continue };
+        let ctx = ecad_cadcraft::locations::rep_context(&d, &d.representations[&r], &mut ecad_cadcraft::locations::BoxCache::default());
+        if let Some(v) = ctx.value {
+            proposed.entry(v).or_default().push(c.hex());
+        }
+    }
+    assert!(proposed.contains_key("+CP1"), "{proposed:?}");
+    for (v, cs) in proposed {
+        ok(&mut h, &format!(r#"setlocation {{"components":{},"value":"{v}"}}"#, serde_json::json!(cs)));
+    }
 
     // 2. Page 3: the box +JB1 round -X02, a polyline box added, and -K01's NC contact prefixed.
     let p3 = page(&mut h, 2);
@@ -87,7 +104,11 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     ok(&mut h, r#"locationbox {"location":"+JB2","points":[[110,60],[150,60],[160,75],[150,92],[110,92]]}"#);
     let d = doc(&mut h);
     let m1 = d.components_tagged("-M01")[0];
-    assert_eq!(ecad_cadcraft::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"));
+    // Brief 052: the new box proposes +JB2 for -M01; its stored location does not change.
+    let m1_rep = ecad_cadcraft::reps::goto(&d, m1, None).unwrap();
+    let m1_ctx = ecad_cadcraft::locations::rep_context(&d, &d.representations[&m1_rep], &mut ecad_cadcraft::locations::BoxCache::default());
+    assert_eq!(m1_ctx.value.as_deref(), Some("+JB2"));
+    assert_ne!(ecad_cadcraft::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"), "a box gives nothing");
     let texts: Vec<String> = h
         .state()
         .cad
@@ -101,7 +122,10 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
             _ => None,
         })
         .collect();
-    assert!(texts.contains(&"+CP1-K01".to_string()), "{texts:?}");
+    // Brief 052 (design 052 §5.8): -K01's stored function =PUMP differs from the page's (none),
+    // so it shows before the location; -M01 keeps its stored +FIELD inside the new +JB2 box.
+    assert!(texts.contains(&"=PUMP+CP1-K01".to_string()), "{texts:?}");
+    assert!(texts.contains(&"+FIELD-M01".to_string()), "{texts:?}");
     assert!(texts.contains(&"+JB1".to_string()) && texts.contains(&"+JB2".to_string()), "box labels");
     view(&mut h, 30.0, 45.0, 175.0, 160.0);
     save(&h, &deltas, "024-location-box.png");

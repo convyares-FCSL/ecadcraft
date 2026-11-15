@@ -14,7 +14,7 @@ use ecad_model::ComponentId;
 use serde_json::{Value, json};
 
 /// The fixture of design 047 §12: contactors -K03…-K06, an 8-way fuse bank -F01, a strip -X05
-/// with six positions (fuse positions 1, 5 and 6), project location +CP1.
+/// with six positions (fuse positions 1, 5 and 6), project location +CP1, every device set to +CP1.
 struct F {
     h: H,
     k: Vec<ComponentId>,
@@ -42,6 +42,9 @@ fn fixture(seed: u64) -> F {
     for (i, sym) in ["terminal", "terminal", "terminal", "termfuse", "termfuse"].iter().enumerate() {
         place(&mut h, json!({"symbol": sym, "at": [270.0 + 20.0 * i as f64, 200], "device": x05.hex()}));
     }
+    // Brief 052: the project's location only proposes; the devices store +CP1.
+    let all: Vec<String> = k.iter().chain([&f01, &x05]).map(|c| c.hex()).collect();
+    h.run("setlocation", json!({"components": all, "value": "+CP1"})).unwrap();
     F { h, k, f01, x05 }
 }
 

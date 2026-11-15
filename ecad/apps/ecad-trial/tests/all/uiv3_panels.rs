@@ -181,16 +181,21 @@ fn devices_groups_by_location_with_not_on_a_page_yet_first() {
     assert!(h.query_by_label_contains("Group -K").is_some(), "grouped by its tag's letter");
 }
 
-/// Review finding 2: Location groups by where the device is (here, its page's location), not only
-/// by a value stored on the device.
+/// Brief 052 (design 052 §5.1): Location groups by the location stored on the device; a page's
+/// location only proposes it, so an unset device is under No location until it takes one.
 #[test]
-fn devices_group_by_the_location_the_device_takes_from_its_page() {
+fn devices_group_by_their_stored_location_not_their_page() {
     let mut h = harness();
     crate::project_panel::ok(&mut h, r#"pageprops {"location":"+CAB1"}"#);
     crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1"}"#);
     h.get_by_label(&tool_strip::panel_label(LeftTab::Devices)).click();
     h.run_steps(4);
-    assert!(h.query_by_label_contains("Group +CAB1").is_some(), "grouped under its page's location");
+    assert!(h.query_by_label_contains("Group No location").is_some(), "unset: the page only proposes");
+    let d = crate::project_panel::doc(&mut h);
+    let k = d.components_tagged("-K1")[0];
+    crate::project_panel::ok(&mut h, &format!(r#"setlocation {{"component":"{}","value":"+CAB1"}}"#, k.hex()));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("Group +CAB1").is_some(), "grouped under its stored location");
     assert!(h.query_by_label_contains("Group No location").is_none());
 }
 
