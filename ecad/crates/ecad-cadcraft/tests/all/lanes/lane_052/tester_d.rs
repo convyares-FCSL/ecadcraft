@@ -305,3 +305,45 @@ fn hostile_proposal_parameters_are_refused() {
     assert!(accepted.is_empty(), "accepted instead of refused: {accepted:#?}");
     let _ = k;
 }
+
+/// Merge of 055 (title blocks): the block shows a page's and the project's location and function
+/// as codes, never keys; a rename in the list redraws the block on the page shown (the harness
+/// compares it with a fresh projection) and the new code is drawn; undo brings the old one back.
+#[test]
+fn the_title_block_shows_codes_and_follows_a_rename() {
+    use cadcraft_engine::doc::EntityKind;
+    use ecad_cadcraft::frame::{self, FrameInput};
+    use ecad_model::book::Book;
+    let texts = |h: &mut H, page: PageId| -> Vec<String> {
+        let doc = h.doc();
+        frame::parts(&FrameInput::of(&doc, page, &Book::of(&doc)))
+            .into_iter()
+            .filter_map(|p| match p.kind {
+                EntityKind::Text(t) => Some(t.value),
+                _ => None,
+            })
+            .collect()
+    };
+    let mut h = H::new(0x52_d00a);
+    let p1 = h.first_page();
+    h.run("pageprops", json!({"page": p1.hex(), "location": "+CP1", "function": "=F1", "proposal": "keep"})).unwrap();
+    let p2: PageId = id(&h.run("newpage", json!({"title": "2"})).unwrap(), "page");
+    h.run("projectprops", json!({"location": "+PRJ", "proposal": "keep"})).unwrap();
+    let d = h.doc();
+    let i1 = FrameInput::of(&d, p1, &Book::of(&d));
+    assert_eq!((i1.location.as_str(), i1.function.as_str()), ("+CP1", "=F1"), "codes, not keys");
+    let i2 = FrameInput::of(&d, p2, &Book::of(&d));
+    assert_eq!(i2.location, "+PRJ", "page 2 shows the project's");
+    // Rename with page 1 shown, then the project's entry with page 2 shown.
+    h.activate(p1);
+    h.run("designationedit", json!({"aspect": "location", "code": "+CP1", "to": "+CP10"})).unwrap();
+    h.run("designationedit", json!({"aspect": "function", "code": "=F1", "to": "=F10"})).unwrap();
+    let t = texts(&mut h, p1);
+    assert!(t.iter().any(|x| x == "+CP10") && t.iter().any(|x| x == "=F10"), "{t:?}");
+    assert!(!t.iter().any(|x| x == "+CP1" || x == "=F1"), "{t:?}");
+    h.activate(p2);
+    h.run("designationedit", json!({"aspect": "location", "code": "+PRJ", "to": "+PRJ2"})).unwrap();
+    assert!(texts(&mut h, p2).iter().any(|x| x == "+PRJ2"));
+    h.cmdline("u");
+    assert!(texts(&mut h, p2).iter().any(|x| x == "+PRJ"));
+}
