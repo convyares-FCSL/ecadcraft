@@ -57,7 +57,7 @@ pub(crate) use connectors::connector;
 pub(crate) use continuations::contcaption;
 pub(crate) use devices::{devicedelete, deviceprops, place};
 pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
-pub(crate) use location_form::locationbox;
+pub(crate) use location_form::{functionbox, locationbox};
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 pub(crate) use terminals::{bridge, terminals};
 pub(crate) use wiring_forms::{joinwires, junction, renumberwires, wirenumber};

@@ -1836,9 +1836,24 @@ impl Trial {
             A::Finalise => self.open_renumber(true, false, None),
             A::Renumber => self.open_renumber(false, false, None),
             A::RenumberFolder(f) => self.open_renumber(false, false, Some(f)),
-            A::UseBoxLocation(c) => {
-                let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "location", "value": null})));
+            A::UseContext(c, a) => {
+                let code = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::locations::shared_context(p.ledger.document(), c, a)).ok().flatten()
+                });
+                if let Some(code) = code {
+                    let _ = self.run_line(&format!("setlocation {}", json!({"component": c.hex(), "aspect": a.word(), "value": code})));
+                }
             }
+            A::GoToDevice(c) => {
+                let rep = self
+                    .project
+                    .clone()
+                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::reps::goto(p.ledger.document(), c, None)).ok().flatten());
+                if let Some(rep) = rep {
+                    let _ = self.goto_symbol(rep);
+                }
+            }
+            A::ShowDesignations => self.open_settings(settings::Section::Project),
             A::ShowReports => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {
@@ -2942,7 +2957,7 @@ impl Trial {
                     outputs_ui::Tab::Bom => {
                         let row = o.bom(group).into_iter().nth(k)?;
                         let c = *row.devices.first()?;
-                        o.device(c).and_then(|d| d.main).map(|(rep, _, _)| To::Symbol(rep))
+                        o.device(c).and_then(|d| d.goto).map(|(rep, _, _)| To::Symbol(rep))
                     }
                     outputs_ui::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
                     outputs_ui::Tab::Cables if cores => None,

@@ -26,7 +26,8 @@ fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
 
 /// Fixture T (design 028 §12): `+CP1` over the top half, `+FIELD` over the bottom half; `-K01`
 /// and `-K02` with contacts in `+CP1`; four wires down to `-M01:U1`, `V1`, `W1` and `-S01:13` in
-/// `+FIELD`; `-W01` (`7G1.5`) slashed across them inside `+FIELD`.
+/// `+FIELD`; `-W01` (`7G1.5`) slashed across them inside `+FIELD`. Each device stores the location
+/// of the box it is drawn in (brief 052: a box only proposes).
 fn fixture(seed: u64) -> T {
     let mut h = H::new(seed);
     let page = h.first_page();
@@ -37,7 +38,10 @@ fn fixture(seed: u64) -> T {
     h.run("place", json!({"symbol": "no", "at": [200, 220], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()})).unwrap();
     let m1: ComponentId = id(&place(&mut h, "motor3", (110.0, 50.0)), "component");
-    place(&mut h, "pbno", (250.0, 60.0));
+    let s1: ComponentId = id(&place(&mut h, "pbno", (250.0, 60.0)), "component");
+    // Brief 052: the boxes only propose; the devices store their locations.
+    h.run("setlocation", json!({"components": [k1.hex(), k2.hex()], "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"components": [m1.hex(), s1.hex()], "value": "+FIELD"})).unwrap();
     let routes = [
         vec![(100.0, 210.0), (100.0, 65.0)],
         vec![(150.0, 210.0), (150.0, 100.0), (110.0, 100.0), (110.0, 65.0)],
@@ -133,6 +137,9 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["message"], "Placed -X01:1\u{2026}4 on 4 wires.", "{v}");
+    // Brief 052: the strip stores the location of the box it is drawn in.
+    let x1: ComponentId = id(&v, "strip");
+    t.h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let labels: Vec<&str> = v["terminals"].as_array().unwrap().iter().map(|x| x["label"].as_str().unwrap()).collect();
     assert_eq!(labels, ["1", "2", "3", "4"]);
@@ -209,18 +216,21 @@ fn place_terminals_bridges_cores_and_the_plan() {
     assert_eq!(plan["strips"][0]["location"], "+CP1");
 }
 
-/// F (second half): a field device wired without a cable is outside by its location; moving it
-/// into `+CP1` flips only its row.
+/// F (second half), brief 052: a field device wired without a cable is outside by its stored
+/// location; moving it into the `+CP1` box changes nothing (the box only proposes); setting it to
+/// `+CP1` flips only its row.
 #[test]
-fn moving_a_field_device_flips_only_its_rows() {
+fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     let mut t = fixture(0x28_03);
     t.h.cfg(|p| {
         p.outputs();
     });
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let _ = v;
+    let x1: ComponentId = id(&v, "strip");
+    t.h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
     let lamp = place(&mut t.h, "lamp", (340.0, 60.0));
     let h1: ComponentId = id(&lamp, "component");
+    t.h.run("setlocation", json!({"component": h1.hex(), "value": "+FIELD"})).unwrap();
     // A wire from -K01's coil top? Use a free wire from (330,175) to the lamp X1 (340, 70).
     let k = t.h.run("wire", json!({"points": pts(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)])})).unwrap();
     let _w: ConductorId = id(&k, "conductor");
@@ -233,10 +243,15 @@ fn moving_a_field_device_flips_only_its_rows() {
     assert_eq!(row5["label"], "5");
     assert_eq!(row5["outside"][0]["target"], "-H01:X1", "{row5}");
     let others: Vec<Value> = plan["strips"][0]["rows"].as_array().unwrap()[..4].to_vec();
-    // Move -H01 into +CP1: its far side matches the strip's location, so it is inside now.
+    // Move -H01 into the +CP1 box: it keeps +FIELD, so its row stays outside.
     let item = t.h.symbol_item(h1);
     let hd = t.h.handle_of(t.page, item);
     t.h.run("move", json!({"handles": [hd.hex()], "delta": [0, 180]})).unwrap();
+    same_as_built(&mut t.h);
+    let plan = strip_plan(&mut t.h);
+    assert_eq!(plan["strips"][0]["rows"][4]["outside"][0]["target"], "-H01:X1", "a box proposes, it moves nothing: {plan}");
+    // Set -H01 to +CP1: its far side matches the strip's location, so it is inside now.
+    t.h.run("setlocation", json!({"component": h1.hex(), "value": "+CP1"})).unwrap();
     let work = t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work);
     assert_eq!(work, 1, "one strip recomputed");
     same_as_built(&mut t.h);

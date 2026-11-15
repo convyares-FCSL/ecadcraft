@@ -61,6 +61,18 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
             .on_hover_text("Choose");
         }
     });
+    // Brief 052 (design 052 §9.1): an unset function or location offers the selected symbol's
+    // context as **Use +CP1**.
+    if let Some((code, from)) = &row.proposal {
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(w::LABEL_W);
+            let r = ecad_ui::control::link(ui, &format!("Use {code}")).on_hover_text(from.as_str());
+            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, format!("ecad.inspector.{}.use", row.key)));
+            if r.clicked() {
+                commit = Some(code.clone());
+            }
+        });
+    }
     if let (Some(v), Some(tg)) = (commit, target) {
         let value = if v.trim().is_empty() { None } else { Some(v) };
         sh.edits.push((tg.clone(), row.key.clone(), value));

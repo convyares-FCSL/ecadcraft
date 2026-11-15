@@ -79,6 +79,8 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
+    // Brief 052: the project's list of functions and locations, with counts, reads the project.
+    "designations",
     // Brief 055: the title blocks' list reads the project.
     "titleblocks",
 ];
@@ -93,6 +95,8 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
     ("standard", &[]),
     // Brief 055: `titleblock {id, sheet?}` reads one frame and its block.
     ("titleblock", &["id", "sheet"]),
+    // Brief 052d: `conflicts {}` lists the waiting conflicts.
+    ("conflicts", &[]),
 ];
 
 /// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another

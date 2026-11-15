@@ -945,13 +945,13 @@ fn item_fields(v: &Value) -> Result<BTreeMap<&'static str, Option<String>>, Stri
     Ok(out)
 }
 
-/// `Slotted trunking 50x75, 3.6 m in +CP1`.
-pub fn item_words(props: &Properties) -> String {
+/// `Slotted trunking 50x75, 3.6 m in +CP1` (brief 052: the location's code from the list).
+pub fn item_words(doc: &Document, props: &Properties) -> String {
     let d = props.get("description").map_or("?", String::as_str);
     let metres = props.get(UNIT_KEY).is_some_and(|u| parse_unit(u).unwrap_or(false));
     let q = props.get(QTY_KEY).and_then(|q| parse_qty(q, metres).ok()).unwrap_or(Qty::ONE);
     let unit = if metres { " m" } else { "" };
-    match props.get("location") {
+    match props.get("location").map(|l| crate::designations::display(doc, "location", l)) {
         Some(l) => format!("{d}, {q}{unit} in {l}"),
         None => format!("{d}, {q}{unit}"),
     }
@@ -963,7 +963,7 @@ fn run_bomitem(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         if let Some(item) = opt_id::<ComponentId>(params, "item")? {
             let comp = doc.components.get(&item).filter(|c| is_item_component(c)).ok_or_else(|| format!("{} is not an item.", item.hex()))?;
             if params.get("delete").and_then(Value::as_bool) == Some(true) {
-                let words = item_words(&comp.properties);
+                let words = item_words(doc, &comp.properties);
                 let ops = vec![Op::DeleteComponent { id: item, component: comp.clone() }];
                 p.apply_edit(pg, "bomitem", "Delete item", ops)?;
                 return Ok(json!({"changed": true, "item": item.hex(), "message": format!("Deleted item {words}.")}));
@@ -980,9 +980,14 @@ fn run_bomitem(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                 None => props.get(QTY_KEY).cloned(),
             };
             let mut ops = Vec::new();
+            let mut pending = crate::designations::Pending::default();
             for key in ITEM_FIELDS {
                 let Some(v) = fields.get(key) else { continue };
-                let after = item_value(doc, key, v.as_deref(), metres, qty.as_deref())?;
+                let after = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
+                    // Brief 052: an item's location is an entry key of the project's list.
+                    ("location", Some(t)) => Some(pending.store(doc, &mut p.ids, crate::designations::Aspect::Location, t, &mut ops)?),
+                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
+                };
                 let before = props.get(key).cloned();
                 if before != after {
                     ops.push(Op::SetProperty { object: ObjectRef::Component(item), key: key.to_string(), before, after });
@@ -1012,18 +1017,25 @@ fn run_bomitem(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
         if metres {
             props.insert(UNIT_KEY.into(), METRES.into());
         }
+        let mut ops = Vec::new();
+        let mut pending = crate::designations::Pending::default();
         for key in ITEM_FIELDS {
             if key == UNIT_KEY {
                 continue;
             }
             let Some(v) = fields.get(key) else { continue };
-            if let Some(x) = item_value(doc, key, v.as_deref(), metres, qty.as_deref())? {
+            let x = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
+                ("location", Some(t)) => Some(pending.store(doc, &mut p.ids, crate::designations::Aspect::Location, t, &mut ops)?),
+                _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
+            };
+            if let Some(x) = x {
                 props.insert(key.to_string(), x);
             }
         }
-        let words = item_words(&props);
+        let words = item_words(p.ledger.document(), &props);
         let id: ComponentId = p.ids.fresh();
-        p.apply_edit(pg, "bomitem", "Add item", vec![Op::CreateComponent { id, component: Component { properties: props, definition: None } }])?;
+        ops.push(Op::CreateComponent { id, component: Component { properties: props, definition: None } });
+        p.apply_edit(pg, "bomitem", "Add item", ops)?;
         Ok(json!({"changed": true, "item": id.hex(), "message": format!("Added item {words}.")}))
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

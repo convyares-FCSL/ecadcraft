@@ -96,7 +96,8 @@ fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed()
     let cx = ecad_cadcraft::actions::Context { target: None, writable: true };
     let greyed: Vec<&str> =
         ToolGroup::ALL.iter().flat_map(|g| g.tools()).filter(|a| matches!((a.enabled)(&cx), Enabled::Greyed { .. })).map(|a| a.id).collect();
-    assert_eq!(greyed, ["terminal.swap", "terminal.reorder", "box.function", "box.both", "box.outline"]);
+    // Brief 052d: Function box is a tool now.
+    assert_eq!(greyed, ["terminal.swap", "terminal.reorder", "box.both", "box.outline"]);
 
     let dir = temp("flyouts");
     let mut h = window(None);
@@ -112,7 +113,7 @@ fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed()
     }
     // A placeholder does nothing when clicked; the Terminal manager link opens Project ▸ Terminals.
     open_flyout(&mut h, "Location group");
-    h.get_by_label("Function box").click();
+    h.get_by_label("Function and location box").click();
     h.run_steps(2);
     assert_eq!(running(&h), None, "a placeholder starts nothing");
     open_flyout(&mut h, "Terminal group");

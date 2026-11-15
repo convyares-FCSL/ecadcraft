@@ -140,6 +140,16 @@ const ECAD_COMMANDS: &[&str] = &[
     "makesymbol",
     // Brief 049.
     "contcaption",
+    // Brief 052.
+    "setlocation",
+    "setfunction",
+    "designations",
+    "designationadd",
+    "designationedit",
+    "designationmerge",
+    "designationremove",
+    "conflicts",
+    "functionbox",
     // Brief 055.
     "titleblocks",
     "titleblock",

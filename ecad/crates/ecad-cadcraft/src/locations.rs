@@ -1,13 +1,19 @@
-//! Device locations and location boxes (brief 024, design 024 §3).
+//! Device locations and functions, and location boxes (briefs 024 and 052, design 052 §5).
 //!
 //! # Semantics
-//! - A device's **location** (IEC 81346 `+` aspect) is its own `location` property when set,
-//!   else the **context** of its main symbol ([`main_rep`]): the innermost location box on that
-//!   symbol's page whose outline holds the symbol's anchor, else the page's `location`, else the
-//!   project's. Nothing of this is stored: it is worked out from where symbols and boxes are.
-//! - A **location box** is a tagless component with property `kind: "location_box"` and its own
-//!   `location`, drawn as one closed polyline item (layer [`LAYER`], linetype `DASHED`) of a
-//!   drawn representation with role [`ROLE`] (design 024 FP2). Its `+…` label is derived.
+//! - A device's **location** (IEC 81346 `+` aspect) and **function** (`=`) are what is stored on
+//!   it: its `location` and `function` properties, each an entry key of the project's list
+//!   ([`crate::designations`]). Unset means none, shown `?`. Nothing is inherited from boxes,
+//!   pages or the project (design 052 §5.1, FP2): those only **propose** ([`context_in`]).
+//! - A representation's location ([`rep_location`], §5.2): a strip's for every position and level;
+//!   else the device's override `location.<type>` (`socket`/`plug` for connector halves); else the
+//!   device's.
+//! - A symbol's **context** for an aspect is the innermost box carrying that aspect at its anchor,
+//!   else its page's value, else the project's. Its tag shows the device's value as a prefix where
+//!   the context differs (`=F1+CP1-K01`, [`shown_tag`]); that reads the symbol's own page only.
+//! - A **location box** is a tagless component with property `kind: "location_box"` carrying a
+//!   `location`, a `function` or both (FP9), drawn as one closed polyline item (layer [`LAYER`])
+//!   of a drawn representation with role [`ROLE`] (design 024 FP2). Its label is derived.
 //! - Containment ([`contains`]) is point in polygon by the even-odd rule; a point within
 //!   [`EDGE_TOL`] of the outline counts as inside. Innermost is the smallest polygon area, ties by
 //!   component ID.
@@ -21,12 +27,14 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::book::LOCATION_KEY;
+use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
 use ecad_model::connectivity::KIND;
 use ecad_model::{
     Color, Component, ComponentId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Op, PageId, Primitive, Pt, Representation,
     RepresentationId, Style, Subject,
 };
+
+use crate::designations::{self, Aspect};
 
 /// The `kind` of a location box component.
 pub const KIND_VALUE: &str = "location_box";
@@ -56,7 +64,14 @@ pub struct LocBox {
     pub rep: RepresentationId,
     pub item: ItemId,
     pub page: PageId,
+    /// Its location's code (`None`: no location, or a key with no entry).
     pub location: Option<String>,
+    /// Its stored location key.
+    pub location_key: Option<String>,
+    /// Its function's code.
+    pub function: Option<String>,
+    /// Its stored function key.
+    pub function_key: Option<String>,
     pub vertices: Vec<Pt>,
     pub lo: Pt,
     pub hi: Pt,
@@ -95,12 +110,17 @@ pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> 
         return None;
     }
     let (lo, hi) = bounds(&vertices);
+    let location_key = comp.properties.get(LOCATION_KEY).cloned();
+    let function_key = comp.properties.get(FUNCTION_KEY).cloned();
     Some(LocBox {
         component: c,
         rep: rid,
         item,
         page: r.page,
-        location: comp.properties.get(LOCATION_KEY).cloned(),
+        location: designations::shown(doc, Aspect::Location, location_key.as_deref()),
+        function: designations::shown(doc, Aspect::Function, function_key.as_deref()),
+        location_key,
+        function_key,
         area: area(&vertices),
         vertices,
         lo,
@@ -215,18 +235,50 @@ fn first_point(k: &ItemKind) -> Option<Pt> {
 
 /// The innermost of `boxes` holding `p` (smallest area, then component ID).
 pub fn innermost(boxes: &[LocBox], p: Pt) -> Option<&LocBox> {
+    innermost_where(boxes, p, |_| true)
+}
+
+/// The innermost of `boxes` carrying aspect `a` and holding `p` (design 052 §5.8: a box without a
+/// function is ignored when looking for the function context, and the other way round).
+pub fn innermost_in(boxes: &[LocBox], a: Aspect, p: Pt) -> Option<&LocBox> {
+    innermost_where(boxes, p, |b| b.key(a).is_some())
+}
+
+fn innermost_where(boxes: &[LocBox], p: Pt, keep: impl Fn(&LocBox) -> bool) -> Option<&LocBox> {
     boxes
         .iter()
+        .filter(|b| keep(b))
         .filter(|b| p.x >= b.lo.x - EDGE_TOL && p.x <= b.hi.x + EDGE_TOL && p.y >= b.lo.y - EDGE_TOL && p.y <= b.hi.y + EDGE_TOL)
         .filter(|b| contains(&b.vertices, p))
         .min_by(|a, b| a.area.total_cmp(&b.area).then(a.component.cmp(&b.component)))
 }
 
-/// Where a location comes from.
+impl LocBox {
+    /// Its stored key for aspect `a`.
+    pub fn key(&self, a: Aspect) -> Option<&str> {
+        match a {
+            Aspect::Function => self.function_key.as_deref(),
+            Aspect::Location => self.location_key.as_deref(),
+        }
+    }
+
+    /// Its code for aspect `a`.
+    pub fn code(&self, a: Aspect) -> Option<&str> {
+        match a {
+            Aspect::Function => self.function.as_deref(),
+            Aspect::Location => self.location.as_deref(),
+        }
+    }
+}
+
+/// Where a value comes from: stored ([`Source::Device`], [`Source::Override`]) or, for a context
+/// (a proposal), a box, a page or the project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Source {
     /// The device's own value.
     Device,
+    /// The device's override for a type of its symbols (`location.<type>`).
+    Override,
     /// A location box on a page.
     Box { component: ComponentId, page: PageId },
     /// A page's `location`.
@@ -242,6 +294,7 @@ impl Source {
     pub fn word(self) -> &'static str {
         match self {
             Source::Device => "device",
+            Source::Override => "override",
             Source::Box { .. } => "box",
             Source::Page(_) => "page",
             Source::Project => "project",
@@ -250,16 +303,28 @@ impl Source {
     }
 }
 
-/// A location and where it comes from.
+/// A location (or function) and where it comes from.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Located {
+    /// The code shown (`None`: unset, or a stored key with no entry).
     pub value: Option<String>,
     pub source: Source,
+    /// The stored entry key.
+    pub key: Option<String>,
 }
 
 impl Located {
     fn none() -> Located {
-        Located { value: None, source: Source::None }
+        Located { value: None, source: Source::None, key: None }
+    }
+
+    fn of(doc: &Document, a: Aspect, key: &str, source: Source) -> Located {
+        Located { value: designations::code_of(doc, a, key), source, key: Some(key.to_string()) }
+    }
+
+    /// Whether a value is stored but names no entry of the list (design 052 §5.9).
+    pub fn missing(&self) -> bool {
+        self.key.is_some() && self.value.is_none()
     }
 
     /// `(from box on 105)`, `(from page 105)`, `(project)`; empty for an own value or none.
@@ -268,7 +333,7 @@ impl Located {
             Source::Box { page, .. } => format!("(from box on {})", ecad_model::book::page_number(doc, page)),
             Source::Page(p) => format!("(from page {})", ecad_model::book::page_number(doc, p)),
             Source::Project => "(project)".into(),
-            Source::Device | Source::None => String::new(),
+            Source::Device | Source::Override | Source::None => String::new(),
         }
     }
 
@@ -302,27 +367,39 @@ impl BoxCache {
     }
 }
 
-/// The context of a point `at` on `page` with that page's `boxes` (design 024 §3.1).
+/// The location context of a point `at` on `page` with that page's `boxes` (design 024 §3.1):
+/// what is proposed there.
 pub fn context_at(doc: &Document, page: PageId, at: Option<Pt>, boxes: &[LocBox]) -> Located {
-    if let Some(b) = at.and_then(|p| innermost(boxes, p))
-        && let Some(v) = &b.location
+    context_in(doc, Aspect::Location, page, at, boxes)
+}
+
+/// The context of aspect `a` at `at` on `page` (design 052 §5.3, §5.8): the innermost box
+/// carrying `a`, else the page's value, else the project's.
+pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes: &[LocBox]) -> Located {
+    if let Some(b) = at.and_then(|p| innermost_in(boxes, a, p))
+        && let Some(k) = b.key(a)
     {
-        return Located { value: Some(v.clone()), source: Source::Box { component: b.component, page } };
+        return Located::of(doc, a, k, Source::Box { component: b.component, page });
     }
-    if let Some(v) = doc.pages.get(&page).and_then(|p| p.properties.get(LOCATION_KEY)) {
-        return Located { value: Some(v.clone()), source: Source::Page(page) };
+    if let Some(k) = doc.pages.get(&page).and_then(|p| p.properties.get(a.property())) {
+        return Located::of(doc, a, k, Source::Page(page));
     }
-    if let Some(v) = doc.properties.get(LOCATION_KEY) {
-        return Located { value: Some(v.clone()), source: Source::Project };
+    if let Some(k) = doc.properties.get(a.property()) {
+        return Located::of(doc, a, k, Source::Project);
     }
     Located::none()
 }
 
-/// The context of representation `r`.
+/// The location context of representation `r`.
 pub fn rep_context(doc: &Document, r: &Representation, cache: &mut BoxCache) -> Located {
+    rep_context_in(doc, Aspect::Location, r, cache)
+}
+
+/// The context of aspect `a` of representation `r`.
+pub fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cache: &mut BoxCache) -> Located {
     let at = anchor(doc, r);
     let boxes = cache.on(doc, r.page);
-    context_at(doc, r.page, at, boxes)
+    context_in(doc, a, r.page, at, boxes)
 }
 
 /// The box (if any) holding the anchor of `r`.
@@ -331,61 +408,103 @@ pub fn box_holding(doc: &Document, r: &Representation, cache: &mut BoxCache) -> 
     innermost(cache.on(doc, r.page), at).cloned()
 }
 
-/// A device's main representation (design 024 §3.2): role `main`; if none, the first in book
-/// order, then top-left to bottom-right.
-pub fn main_rep(doc: &Document, c: ComponentId) -> Option<(RepresentationId, &Representation)> {
-    let reps: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Component(c)).collect();
-    if let Some(m) = reps.iter().find(|(_, r)| r.role == "main") {
-        return Some(*m);
+/// The code of the one context of aspect `a` all of device `c`'s symbols share, if they share
+/// one that has a value (the Checks row's **Use it**, design 052 §6).
+pub fn shared_context(doc: &Document, c: ComponentId, a: Aspect) -> Option<String> {
+    let mut cache = BoxCache::default();
+    let mut shared: Option<Located> = None;
+    for (_, r) in doc.representations_of(Subject::Component(c)) {
+        let x = rep_context_in(doc, a, r, &mut cache);
+        match &shared {
+            None => shared = Some(x),
+            Some(s) if s.key != x.key => return None,
+            Some(_) => {}
+        }
     }
-    if let [one] = reps.as_slice() {
-        return Some(*one);
-    }
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    reps.into_iter().min_by(|(ia, a), (ib, b)| {
-        let pa = order.get(&a.page).copied().unwrap_or(usize::MAX);
-        let pb = order.get(&b.page).copied().unwrap_or(usize::MAX);
-        let qa = anchor(doc, a).unwrap_or(Pt::new(0.0, 0.0));
-        let qb = anchor(doc, b).unwrap_or(Pt::new(0.0, 0.0));
-        pa.cmp(&pb).then(qb.y.total_cmp(&qa.y)).then(qa.x.total_cmp(&qb.x)).then(ia.cmp(ib))
-    })
+    shared.and_then(|s| s.value)
 }
 
-/// Device `c`'s location (design 024 §3.2), with `cache` for the pages read.
-pub fn resolve_with(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Located {
-    if let Some(v) = doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)) {
-        return Located { value: Some(v.clone()), source: Source::Device };
+/// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own property, else none.
+pub fn resolve_in(doc: &Document, c: ComponentId, a: Aspect) -> Located {
+    match doc.components.get(&c).and_then(|x| x.properties.get(a.property())) {
+        Some(k) => Located::of(doc, a, k, Source::Device),
+        None => Located::none(),
     }
-    match main_rep(doc, c) {
-        Some((_, r)) => rep_context(doc, r, cache),
-        None => match doc.properties.get(LOCATION_KEY) {
-            Some(v) => Located { value: Some(v.clone()), source: Source::Project },
-            None => Located::none(),
-        },
-    }
+}
+
+/// Device `c`'s location: its stored `location`, else none (no inheritance, FP2). `cache` is not
+/// read; it stays for callers that also read contexts.
+pub fn resolve_with(doc: &Document, c: ComponentId, _cache: &mut BoxCache) -> Located {
+    resolve_in(doc, c, Aspect::Location)
 }
 
 /// Device `c`'s location.
 pub fn resolve(doc: &Document, c: ComponentId) -> Located {
-    resolve_with(doc, c, &mut BoxCache::default())
+    resolve_in(doc, c, Aspect::Location)
 }
 
-/// The box device `c`'s main symbol sits in when `c` has an own location that differs from it
-/// (design 024 §8.3): the box and its location.
-pub fn own_differs(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Option<LocBox> {
-    let own = doc.components.get(&c)?.properties.get(LOCATION_KEY)?;
-    let (_, r) = main_rep(doc, c)?;
-    let b = box_holding(doc, r, cache)?;
-    (b.location.as_ref().is_some_and(|l| l != own)).then_some(b)
+/// Device `c`'s function.
+pub fn resolve_function(doc: &Document, c: ComponentId) -> Located {
+    resolve_in(doc, c, Aspect::Function)
 }
 
-/// The tag a symbol representation `r` of device `c` shows (design 024 §3.3): the tag, with the
-/// device's location as a prefix when the symbol's context differs from it.
+/// The override property of representation `r` (design 052 §5.2): `location.socket` or
+/// `location.plug` for a connector half or pin (a pin pair uses the socket's), else
+/// `location.<type>`; `None` for a head.
+pub fn override_key(doc: &Document, r: &Representation) -> Option<String> {
+    use crate::symbols::Side;
+    if let Some(side) = crate::connectors::rep_side(doc, r) {
+        return Some(format!("{LOCATION_KEY}.{}", if side == Side::Plug { "plug" } else { "socket" }));
+    }
+    let t = crate::reps::rep_type(doc, r);
+    (t != crate::reps::RepType::Head).then(|| format!("{LOCATION_KEY}.{}", t.word()))
+}
+
+/// Whether `t` may name an override (design 052 FP3): a §3.1 type word other than `head`, or
+/// `socket` / `plug`.
+pub fn override_type_ok(t: &str) -> bool {
+    matches!(t, "socket" | "plug") || crate::reps::RepType::of_word(t).is_some_and(|x| x != crate::reps::RepType::Head)
+}
+
+/// Representation `r`'s location (design 052 §5.2), first match wins: a strip's own (a strip has
+/// no overrides); the device's override for `r`'s type; the device's; none.
+pub fn rep_location(doc: &Document, c: ComponentId, r: &Representation) -> Located {
+    if crate::strips::is_strip(doc, c) {
+        return resolve(doc, c);
+    }
+    let props = doc.components.get(&c).map(|x| &x.properties);
+    if let Some(k) = override_key(doc, r).and_then(|key| props.and_then(|p| p.get(&key))) {
+        return Located::of(doc, Aspect::Location, k, Source::Override);
+    }
+    resolve(doc, c)
+}
+
+/// The location of half `side` of connector `c` (design 052 §5.2): `location.socket` /
+/// `location.plug`, else the connector's.
+pub fn half_location(doc: &Document, c: ComponentId, side: crate::symbols::Side) -> Located {
+    let key = format!("{LOCATION_KEY}.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
+    match doc.components.get(&c).and_then(|x| x.properties.get(&key)) {
+        Some(k) => Located::of(doc, Aspect::Location, k, Source::Override),
+        None => resolve(doc, c),
+    }
+}
+
+/// The tag a symbol representation `r` of device `c` shows (design 024 §3.3, design 052 §5.8):
+/// the tag after the device's function and its representation's location, each where the
+/// symbol's context for that aspect differs (`=F1+CP1-K01`). Reads `r`'s page only.
 pub fn shown_tag(doc: &Document, c: ComponentId, r: &Representation, tag: &str, cache: &mut BoxCache) -> String {
-    let device = resolve_with(doc, c, cache);
-    let Some(loc) = device.value else { return tag.to_string() };
-    let here = rep_context(doc, r, cache);
-    if here.value.as_deref() == Some(loc.as_str()) { tag.to_string() } else { located_tag(&loc, tag) }
+    let mut prefix = String::new();
+    for a in Aspect::ALL {
+        let own = match a {
+            Aspect::Function => resolve_function(doc, c),
+            Aspect::Location => rep_location(doc, c, r),
+        };
+        let (Some(key), Some(code)) = (own.key, own.value) else { continue };
+        if rep_context_in(doc, a, r, cache).key.as_deref() != Some(key.as_str()) {
+            prefix.push_str(&code);
+        }
+    }
+    if prefix.is_empty() { tag.to_string() } else { located_tag(&prefix, tag) }
 }
 
 /// `tag` after location `loc` (`+X1`). A tag stored without its `-` (the project's tag dash off)
@@ -396,11 +515,27 @@ pub fn located_tag(loc: &str, tag: &str) -> String {
     if t.is_empty() || t.starts_with(['-', '=', '+']) { format!("{loc}{t}") } else { format!("{loc}-{t}") }
 }
 
-/// The label of a box: its location at the top-left vertex (greatest y, then least x).
+/// The label of a box at its top-left vertex (greatest y, then least x): `+CP1`, `=F1`, or both
+/// (`=F1 +CP1`); a key with no entry shows its sign and `?`.
 pub fn label_of(b: &LocBox) -> (String, Pt) {
     let tl = b.vertices.iter().copied().max_by(|p, q| p.y.total_cmp(&q.y).then(q.x.total_cmp(&p.x))).unwrap_or(b.lo);
-    (b.location.clone().unwrap_or_else(|| "+?".into()), Pt::new(tl.x + LABEL_INSET, tl.y - LABEL_INSET))
+    let part = |a: Aspect| b.key(a).map(|_| b.code(a).map_or_else(|| format!("{}?", a.sign()), str::to_string));
+    let text = [part(Aspect::Function), part(Aspect::Location)].into_iter().flatten().collect::<Vec<_>>().join(" ");
+    (if text.is_empty() { "+?".into() } else { text }, Pt::new(tl.x + LABEL_INSET, tl.y - LABEL_INSET))
 }
+
+/// The style of a box with `props` on layer `layer`: dash-dot when it carries a function (design
+/// 052 §5.8, `ecad.function-box.linetype`), else dashed.
+fn box_style_for(layer: LayerId, props: &ecad_model::Properties) -> Style {
+    let mut s = box_style(layer);
+    if props.contains_key(FUNCTION_KEY) {
+        s.linetype = FUNCTION_LINETYPE.into();
+    }
+    s
+}
+
+/// The linetype of a box carrying a function (design 052 §9.5, our own definition).
+pub const FUNCTION_LINETYPE: &str = "DASHDOT";
 
 /// The style of a box outline on layer `layer`.
 fn box_style(layer: LayerId) -> Style {
@@ -451,31 +586,64 @@ pub struct Planned {
     pub rep: RepresentationId,
     pub item: ItemId,
     pub ops: Vec<Op>,
+    /// The echo for codes the box added to the project's list (design 052 §5.9).
+    pub added: Option<String>,
 }
+
+/// A box's properties for `values` typed per aspect (design 052 FP9): at least one of function
+/// and location, each stored as an entry key ([`designations::Pending`]).
+fn box_props(
+    doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>,
+) -> Result<ecad_model::Properties, String> {
+    let mut props = ecad_model::Properties::new();
+    props.insert(KIND.into(), KIND_VALUE.into());
+    for (a, text) in values {
+        if text.trim().is_empty() {
+            continue;
+        }
+        let key = pending.store(doc, ids, *a, text, ops)?;
+        props.insert(a.property().into(), key);
+    }
+    if !props.contains_key(LOCATION_KEY) && !props.contains_key(FUNCTION_KEY) {
+        return Err(NO_VALUE.into());
+    }
+    Ok(props)
+}
+
+/// Refusal of a box with neither a function nor a location (design 052 §5.8).
+pub const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or +CP1.";
 
 /// The ops of a new location box `location` drawn on `page` with outline `vertices`
 /// (design 024 §7): `CreateComponent`, `AddItem` (closed polyline), `LinkRepresentation`.
 ///
 /// # Errors
-/// As [`check_outline`] and [`location_value`].
+/// As [`plan_box_with`].
 pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &str, vertices: Vec<Pt>) -> Result<Planned, String> {
+    plan_box_with(doc, ids, page, &[(Aspect::Location, location)], vertices)
+}
+
+/// The ops of a new box carrying `values` (a function, a location or both, design 052 FP9),
+/// drawn on `page` with outline `vertices`. A code not in the project's list adds its entry in
+/// the same ops.
+///
+/// # Errors
+/// As [`check_outline`]; a value that is not a valid code; neither value given.
+pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>) -> Result<Planned, String> {
     if !doc.pages.contains_key(&page) {
         return Err("no such page".into());
     }
     check_outline(&vertices)?;
-    let location = location_value(doc, location)?;
+    let mut pending = designations::Pending::default();
+    let mut list_ops = Vec::new();
+    let props = box_props(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
+    ops.extend(list_ops);
     let component: ComponentId = ids.fresh();
     let item: ItemId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
-    let mut props = ecad_model::Properties::new();
-    props.insert(KIND.into(), KIND_VALUE.into());
-    props.insert(LOCATION_KEY.into(), location);
+    let style = box_style_for(layer, &props);
     ops.push(Op::CreateComponent { id: component, component: Component { properties: props, definition: None } });
-    ops.push(Op::AddItem {
-        id: item,
-        item: Item { page, style: box_style(layer), kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) },
-    });
+    ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) } });
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
@@ -487,15 +655,23 @@ pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &
             connection_points: BTreeMap::new(),
         },
     });
-    Ok(Planned { component, rep, item, ops })
+    Ok(Planned { component, rep, item, ops, added: pending.words() })
 }
 
 /// The ops that turn the existing closed polyline `item` into location box `location`
 /// (design 024 §3.5, §7).
 ///
 /// # Errors
-/// Not a closed polyline, part of another object, or as [`plan_box`].
+/// As [`plan_from_item_with`].
 pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, location: &str) -> Result<Planned, String> {
+    plan_from_item_with(doc, ids, item, &[(Aspect::Location, location)])
+}
+
+/// The ops that turn the existing closed polyline `item` into a box carrying `values`.
+///
+/// # Errors
+/// Not a closed polyline, part of another object, or as [`plan_box_with`].
+pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, values: &[(Aspect, &str)]) -> Result<Planned, String> {
     let it = doc.items.get(&item).ok_or("no such item")?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
@@ -511,15 +687,15 @@ pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, locat
         _ => return Err(NOT_CLOSED.into()),
     };
     check_outline(&vertices)?;
-    let location = location_value(doc, location)?;
+    let mut pending = designations::Pending::default();
+    let mut list_ops = Vec::new();
+    let props = box_props(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
+    ops.extend(list_ops);
     let component: ComponentId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
-    let mut props = ecad_model::Properties::new();
-    props.insert(KIND.into(), KIND_VALUE.into());
-    props.insert(LOCATION_KEY.into(), location);
+    let after = Item { style: box_style_for(layer, &props), ..it.clone() };
     ops.push(Op::CreateComponent { id: component, component: Component { properties: props, definition: None } });
-    let after = Item { style: box_style(layer), ..it.clone() };
     if after != *it {
         ops.push(Op::ModifyItem { id: item, before: it.clone(), after });
     }
@@ -534,7 +710,61 @@ pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, locat
             connection_points: BTreeMap::new(),
         },
     });
-    Ok(Planned { component, rep, item, ops })
+    Ok(Planned { component, rep, item, ops, added: pending.words() })
+}
+
+/// The box a [`Planned`] box will be, read from its ops (for proposals before it is committed).
+pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
+    let mut props = None;
+    let mut vertices = None;
+    let mut page = None;
+    for op in &p.ops {
+        match op {
+            Op::CreateComponent { id, component } if *id == p.component => props = Some(component.properties.clone()),
+            Op::AddItem { id, item } | Op::ModifyItem { id, after: item, .. } if *id == p.item => {
+                page = Some(item.page);
+                if let ItemKind::Primitive(Primitive::Polyline { vertices: v, .. }) = &item.kind {
+                    vertices = Some(v.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    let (props, page) = (props?, page.or_else(|| doc.items.get(&p.item).map(|i| i.page))?);
+    let vertices = vertices.or_else(|| match &doc.items.get(&p.item)?.kind {
+        ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
+        _ => None,
+    })?;
+    let (lo, hi) = bounds(&vertices);
+    let location_key = props.get(LOCATION_KEY).cloned();
+    let function_key = props.get(FUNCTION_KEY).cloned();
+    // A code the box adds to the list is in the ops, not in `doc` yet.
+    let code = |a: Aspect, k: &Option<String>| {
+        k.as_ref().and_then(|k| {
+            designations::code_of(doc, a, k).or_else(|| {
+                p.ops.iter().find_map(|op| match op {
+                    Op::SetProperty { object: ecad_model::ObjectRef::Project, key, after, .. } if *key == designations::code_property(a, k) => {
+                        after.clone()
+                    }
+                    _ => None,
+                })
+            })
+        })
+    };
+    Some(LocBox {
+        component: p.component,
+        rep: p.rep,
+        item: p.item,
+        page,
+        location: code(Aspect::Location, &location_key),
+        function: code(Aspect::Function, &function_key),
+        location_key,
+        function_key,
+        area: area(&vertices),
+        vertices,
+        lo,
+        hi,
+    })
 }
 
 /// Why changing item `id` of `doc` to `after` is refused (tester 024, owner ruling): a location
@@ -549,7 +779,7 @@ pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<Strin
     if ok {
         return None;
     }
-    let loc = doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).cloned().unwrap_or_else(|| "+?".into());
+    let loc = boxes_on(doc, r.page).into_iter().find(|b| b.component == c).map_or_else(|| "+?".to_string(), |b| label_of(&b).0);
     Some(format!(
         "Location box {loc} is a closed outline of at least three points, so it cannot be opened or cut down to a line. \
          To use a plain polyline instead, erase the box (its outline or its {loc} label; U brings it back) and draw the polyline."
@@ -571,7 +801,9 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
             continue;
         }
         n += 1;
-        if doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location.as_ref()) {
+        if b.location_key.is_some()
+            && doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location_key.as_ref())
+        {
             keeps += 1;
         }
     }

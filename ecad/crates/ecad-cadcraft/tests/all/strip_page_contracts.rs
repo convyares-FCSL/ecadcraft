@@ -41,7 +41,10 @@ fn fixture(seed: u64) -> G {
     h.run("place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()})).unwrap();
     let m1: ComponentId = id(&place(&mut h, "motor3", (110.0, 50.0)), "component");
     h.run("setprop", json!({"component": m1.hex(), "key": "description", "value": "Pump"})).unwrap();
-    place(&mut h, "pbno", (250.0, 60.0));
+    let s1: ComponentId = id(&place(&mut h, "pbno", (250.0, 60.0)), "component");
+    // Brief 052: the boxes only propose; the devices store the location of the box they are in.
+    h.run("setlocation", json!({"components": [k1.hex(), k2.hex()], "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"components": [m1.hex(), s1.hex()], "value": "+FIELD"})).unwrap();
     for r in [
         vec![(100.0, 210.0), (100.0, 65.0)],
         vec![(150.0, 210.0), (150.0, 100.0), (110.0, 100.0), (110.0, 65.0)],
@@ -55,6 +58,7 @@ fn fixture(seed: u64) -> G {
     h.run("setprop", json!({"cable": cable.hex(), "key": "type", "value": "YSLY-JZ 7G1.5"})).unwrap();
     let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: ComponentId = id(&v, "strip");
+    h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     // A PE and a fuse position on wires of their own.
     for x in [300.0, 340.0] {

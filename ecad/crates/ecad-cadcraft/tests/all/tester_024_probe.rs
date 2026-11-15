@@ -8,8 +8,9 @@
 //! After every command it checks, as an oracle:
 //! - the kept report models (BOM by location and by part, wires, cables, the location Checks rows,
 //!   every device's location) equal a fresh `Outputs::build`;
-//! - no command other than `setprop`, undo and redo changes a device's own `location` property
-//!   (box locations are derived, never written);
+//! - no command other than `setprop`, undo and redo changes a device's own `location` property,
+//!   except a proposal taken by a device that had none (brief 052d: place, box, page, project,
+//!   the move follow-up);
 //! - a BOM page's sheet count from the kept models equals the rebuilt one;
 //! - the harness's own project checks (projection equals the page drawing, replay, mismatches).
 //!
@@ -72,6 +73,13 @@ fn page_of(doc: &Document, c: ComponentId) -> Option<PageId> {
 fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> ComponentId {
     let r = h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap();
     id(&r, "component")
+}
+
+/// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
+/// project, or none.
+fn context(doc: &Document, c: ComponentId) -> locations::Located {
+    let r = ecad_cadcraft::reps::goto(doc, c, None).unwrap();
+    locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default())
 }
 
 fn s(v: &str) -> Option<String> {
@@ -350,11 +358,16 @@ fn run_random(seed: u64, steps: usize) {
         }
         let what = format!("seed {seed:#x} step {i} {act:?} -> {}", res.as_ref().map_or_else(|e| format!("Err({e})"), |_| "ok".into()));
         verify(&mut f.h, &what);
+        // Brief 052d: outside setprop, undo and redo, a device's own location changes only from
+        // none to a value (a proposal taken: place, box, page, project, the move follow-up); a
+        // device that had a value keeps it.
         if !matches!(act, Act::OwnLoc | Act::Undo | Act::Redo) {
             let after = own(&f.h.doc());
             for (c, v) in &before {
-                if let Some(w) = after.get(c) {
-                    assert_eq!(v, w, "{what}: the device's own location changed without setprop");
+                if v.is_some()
+                    && let Some(w) = after.get(c)
+                {
+                    assert_eq!(v, w, "{what}: a device's stored location changed without setprop");
                 }
             }
         }
@@ -380,18 +393,24 @@ fn random_edits_keep_locations_and_reports_equal_to_a_rebuild_long() {
 
 // ---------------------------------------------------------------- targeted update-map probes
 
-/// Setting the project's location must reach devices that had no location at all (source `none`),
-/// not only those whose location already came from the project.
+/// Brief 052d (design 052 §5.6): setting the project's location reaches a device that had none:
+/// the device, whose symbol's context is the project, takes it in the same transaction; clearing
+/// the project's location changes no stored value. The kept models stay equal to a rebuild.
 #[test]
-fn setting_the_project_location_reaches_devices_that_had_none() {
+fn setting_the_project_location_gives_it_to_devices_that_had_none() {
     let mut h = H::new(0x24_7101);
     keep_models(&mut h);
     let k = place(&mut h, "coil", (100.0, 100.0));
     assert_eq!(locations::resolve(&h.doc(), k).source, Source::None);
+    let head = h.head();
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
-    assert_eq!(locations::resolve(&h.doc(), k).value, s("+CP1"));
+    assert_eq!(h.head(), head + 1, "one transaction");
+    let doc = h.doc();
+    assert_eq!((locations::resolve(&doc, k).value, locations::resolve(&doc, k).source), (s("+CP1"), Source::Device), "taken");
+    assert_eq!((context(&doc, k).value, context(&doc, k).source), (s("+CP1"), Source::Project));
     verify(&mut h, "project location set");
     h.run("projectprops", json!({"location": null})).unwrap();
+    assert_eq!(locations::resolve(&h.doc(), k).value, s("+CP1"), "a stored value is never cleared by the project's");
     verify(&mut h, "project location cleared");
     h.run("u", Value::Null).unwrap();
     verify(&mut h, "undo of the clear");
@@ -535,7 +554,8 @@ fn outline(doc: &Document, item: ItemId) -> (Vec<Pt>, bool) {
 }
 
 /// Rotating, mirroring and scaling a box together with the devices inside keeps it a box, keeps
-/// them inside, and records nothing on the devices.
+/// them inside (the box is still their context, design 052 §5.3), and changes no stored location
+/// (brief 052d: the context does not change, so no move proposal).
 #[test]
 fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
     let mut h = H::new(0x24_7201);
@@ -547,6 +567,7 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
     let out = place(&mut h, "coil", (300.0, 200.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
     let (bc, item): (ComponentId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let stored = own(&h.doc());
     let sel = |h: &mut H| {
         let mut v = vec![h.handle_of(page, item).hex()];
         v.extend(h.rep_handles(page, k1));
@@ -570,11 +591,11 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
         assert_eq!(doc.items[&item].style.linetype, "DASHED", "{cmd}");
         if res.is_ok() {
             for c in [k1, k2] {
-                assert_eq!(locations::resolve(&doc, c).value, s("+JB1"), "{cmd} {params}: {c:?} still inside");
+                assert_eq!(context(&doc, c).value, s("+JB1"), "{cmd} {params}: {c:?} still inside");
             }
         }
-        assert_eq!(locations::resolve(&doc, out).value, s("+PAGE"), "{cmd}");
-        assert!(own(&doc).values().all(Option::is_none), "{cmd}: nothing written on the devices");
+        assert_eq!(context(&doc, out).value, s("+PAGE"), "{cmd}");
+        assert_eq!(own(&doc), stored, "{cmd}: no stored location changed");
         verify(&mut h, cmd);
     }
 }
@@ -955,7 +976,8 @@ fn reopen(path: &str, seed: u64) -> H {
 }
 
 /// Boxes, own locations, page and project locations and generated pages survive save and reopen;
-/// the reports are the same after reopening.
+/// the reports are the same after reopening. Brief 052: k1 took the project's +CP1 when placed and
+/// keeps it inside the +JB1 box drawn later (its context).
 #[test]
 fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
     let d = TempDir::new("reopen");
@@ -979,8 +1001,10 @@ fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
     assert_eq!(h2.doc(), doc);
     assert!(!h2.p(|p| p.unsaved()));
     let d2 = h2.doc();
-    assert_eq!(locations::resolve(&d2, k1).value, s("+JB1"));
+    assert_eq!(context(&d2, k1).value, s("+JB1"));
+    assert_eq!((locations::resolve(&d2, k1).value, locations::resolve(&d2, k1).source), (s("+CP1"), Source::Device));
     assert_eq!(locations::resolve(&d2, k2).source, Source::Device);
+    assert_eq!(locations::resolve(&d2, k2).value, s("+CP9"));
     assert_eq!(h2.run("bom", json!({})).unwrap()["rows"], bom);
     assert_eq!(h2.run("wirelist", json!({})).unwrap()["rows"], wires);
     h2.check();
@@ -992,7 +1016,7 @@ fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
     let hd = h2.handle_of(p, item).hex();
     h2.run("move", json!({"handles": [hd], "delta": [0, 200]})).unwrap();
     verify(&mut h2, "move after reopen");
-    assert_eq!(locations::resolve(&h2.doc(), k1).value, s("+CP1"));
+    assert_eq!(context(&h2.doc(), k1).value, s("+CP1"), "the project's location proposes once the box has gone");
 }
 
 /// A project with nothing of 024 in it opens with no change: nothing written, no unsaved mark, no
@@ -1020,7 +1044,7 @@ fn a_project_without_024_opens_unchanged() {
     assert!(
         checks.iter().all(|c| !matches!(
             c.kind,
-            ecad_cadcraft::checks::Kind::OwnLocation | ecad_cadcraft::checks::Kind::BoxCrosses | ecad_cadcraft::checks::Kind::BoxesOverlap
+            ecad_cadcraft::checks::Kind::LocationUnused | ecad_cadcraft::checks::Kind::BoxCrosses | ecad_cadcraft::checks::Kind::BoxesOverlap
         )),
         "{checks:?}"
     );
@@ -1050,7 +1074,8 @@ fn the_golden_v1_project_opens_and_reports_build() {
 }
 
 /// A box edited on a branch and on main: merging gives a valid box, consistent models and the
-/// devices' locations from the merged outline.
+/// devices' contexts from the merged outline (brief 052d: a device's stored value, if any, is one
+/// a box proposed on one side).
 #[test]
 fn merging_a_branch_with_a_box_edited_on_both_sides() {
     let d = TempDir::new("merge");
@@ -1091,8 +1116,11 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     assert!(b[0].vertices.len() >= 3);
     for c in [k1, k2] {
         let want =
-            locations::innermost(&b, locations::anchor(&doc, locations::main_rep(&doc, c).unwrap().1).unwrap()).and_then(|x| x.location.clone());
-        assert_eq!(locations::resolve(&doc, c).value, want, "{c:?}");
+            locations::innermost(&b, locations::anchor(&doc, &doc.representations[&ecad_cadcraft::reps::goto(&doc, c, None).unwrap()]).unwrap())
+                .and_then(|x| x.location.clone());
+        assert_eq!(context(&doc, c).value, want, "{c:?}");
+        let stored = locations::resolve(&doc, c).value;
+        assert!(stored.is_none() || ["+JB1", "+JB2", "+JB3"].contains(&stored.as_deref().unwrap_or_default()), "{c:?}: {stored:?}");
     }
     verify(&mut h, "after merge");
     raw(&mut h, "undomerge", json!({})).unwrap();

@@ -87,6 +87,7 @@ impl Trial {
         self.placing_frame(ui);
         self.maker_frame(ui);
         self.intent_frame(ui);
+        self.conflicts_frame(ui);
         self.shell.tools.was_running = self.cad.session.running.is_some();
     }
 

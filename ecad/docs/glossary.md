@@ -76,8 +76,9 @@ are.
 
 | Word | Means |
 | --- | --- |
-| **location** | Where a device physically is (`+CP1`, `+FIELD`), the IEC 81346 `+` aspect. A device's own value, else inherited: the location box its main symbol is in, then its page's, then the project's. |
-| **location box** | A dashed rectangle or closed polyline labelled `+…` on a page; every device symbol inside it takes its location, live. Innermost wins. |
+| **function** | What a device is for (`=F1`, `=PUMPS`), the IEC 81346 `=` aspect. Stored on the device and set by you; a function box or page function proposes it when you place or move a symbol. Each function is an entry in the project's list (Settings ▸ Project info); renaming it there renames it everywhere. |
+| **location** | Where a device physically is (`+CP1`, `+FIELD`), the IEC 81346 `+` aspect. Stored on the device and set by you; a location box or page location proposes it when you place or move a symbol. A part of a device (a connector half, a field device's cabinet-side terminals) may have its own. Each location is an entry in the project's list (Settings ▸ Project info); renaming it there renames it everywhere. |
+| **location box** | A dashed rectangle or closed polyline labelled `+…` (a function box: dash-dot, `=…`) on a page. It proposes its location or function for the symbols placed or moved into it; it never changes a device by itself. Innermost wins. |
 | **report** | A table derived from the project (BOM, wire report, cable report), shown and exported as CSV, never stored. Wires are never on the BOM. |
 | **Print Book** | One PDF of every page (or a folder, or a page list) in book order, generated pages included. |
 

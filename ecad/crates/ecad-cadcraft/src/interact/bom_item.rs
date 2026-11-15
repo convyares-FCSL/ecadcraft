@@ -13,7 +13,8 @@ pub(crate) fn bomitem(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (metres, location) = super::read(s, |p, _| {
         let doc = p.ledger.document();
-        Ok((crate::bom::item_unit_metres(doc), doc.properties.get(ecad_model::book::LOCATION_KEY).cloned()))
+        let stored = doc.properties.get(ecad_model::book::LOCATION_KEY).map(String::as_str);
+        Ok((crate::bom::item_unit_metres(doc), crate::designations::shown(doc, crate::designations::Aspect::Location, stored)))
     })
     .unwrap_or((false, None));
     Ok(Box::new(Safe(BomItem { step: 0, fields: Map::new(), metres, location })))

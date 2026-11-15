@@ -138,7 +138,9 @@ fn merging_an_already_merged_branch_is_never_a_second_copy_of_its_changes() {
     assert_eq!(r["merged"], json!(true), "{r}");
     assert_eq!(current(&mut c), "main");
     assert_eq!(prop(&mut c, &coil, "description").as_deref(), Some("Main pump"));
-    assert_eq!(prop(&mut c, &coil, "location").as_deref(), Some("+A1"));
+    // Brief 052: the stored key, and the list entry the branch added, both merged: it shows +A1.
+    let stored = prop(&mut c, &coil, "location").unwrap_or_default();
+    assert_eq!(ecad_cadcraft::designations::display(&c.doc(), "location", &stored), "+A1");
     c.ok("save", json!({}));
     assert_eq!(status(&mut c, "Option B"), "merged");
     // A closed (merged) branch merged again: refused with a way through, or nothing to merge.

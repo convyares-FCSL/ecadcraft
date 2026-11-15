@@ -26,8 +26,11 @@ pub const JOIN: &str = "Join";
 pub const NUMBER_THEM: &str = "Number them";
 /// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
-/// Brief 024's fix buttons.
-pub const USE_BOX_LOCATION: &str = "Use the box's location";
+/// Brief 052's fix buttons (design 052 §6).
+pub const USE_CONTEXT: &str = "Use it";
+pub const SET_LOCATION: &str = "Set location";
+pub const SET_FUNCTION: &str = "Set function";
+pub const SHOW_IN_SETTINGS: &str = "Show in Settings";
 pub const SHOW: &str = "Show";
 /// Brief 050a: a style row's fix opens Settings ▸ Standards.
 pub const GO_TO_STANDARDS: &str = "Go to Standards";
@@ -225,7 +228,9 @@ impl ChecksPanel {
             (Fix::Join(at), Some(page)) => Action::JoinWires(page, at),
             (Fix::NumberThem, _) => Action::NumberThem,
             (Fix::Finalise, _) => Action::Finalise,
-            (Fix::UseBoxLocation(c), _) => Action::UseBoxLocation(c),
+            (Fix::UseContext(c, a), _) => Action::UseContext(c, a),
+            (Fix::SetDesignation(c, _), _) => Action::GoToDevice(c),
+            (Fix::ShowDesignations, _) => Action::ShowDesignations,
             (Fix::ShowReports, _) => Action::ShowReports,
             (Fix::OfferDrawn(c), _) => Action::OfferDrawn(c),
             (Fix::RenumberStrip(c), _) => Action::RenumberStrip(c),
