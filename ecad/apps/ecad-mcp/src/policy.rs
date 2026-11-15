@@ -81,12 +81,21 @@ pub const READ_COMMANDS: &[&str] = &[
     "iolist",
     // Brief 056: the tag table as text (no `path` from an agent); export changes nothing.
     "plcexport",
+    // Brief 055: the title blocks' list reads the project.
+    "titleblocks",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
 /// `projectprops {}`; brief 026: `numbering {}`; brief 031: `textstyle {}`.
-const READ_WITHOUT_FIELDS: &[(&str, &[&str])] =
-    &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[]), ("textstyle", &[]), ("standard", &[])];
+const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
+    ("pageprops", &["page"]),
+    ("projectprops", &[]),
+    ("numbering", &[]),
+    ("textstyle", &[]),
+    ("standard", &[]),
+    // Brief 055: `titleblock {id, sheet?}` reads one frame and its block.
+    ("titleblock", &["id", "sheet"]),
+];
 
 /// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
 /// project file, which stays with the person who started the server).

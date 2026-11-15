@@ -14,5 +14,6 @@ use cadcraft_engine::CommandSpec;
 /// line per lane, `("<brief>", crate::<module>::specs),`, in brief order.
 pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
     // ("NNN", crate::<module>::specs), one line per lane, below this one.
+    ("055", crate::title_block_cmds::specs),
     ("056", crate::plc::exchange::specs),
 ];

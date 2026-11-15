@@ -145,6 +145,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "plcexport",
     "plcimport",
     "plccardtype",
+    // Brief 055.
+    "titleblocks",
+    "titleblock",
+    "titleblockimport",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

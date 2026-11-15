@@ -387,6 +387,31 @@ fn divider(ui: &mut egui::Ui) {
     ui.painter().vline(r.center().x, r.y_range(), Stroke::new(1.0, c32(ecad_ui::SHELL.line)));
 }
 
+/// The Library's tabs, one pill (also the title block editor's toolbar, brief 055).
+pub fn tabs(ui: &mut egui::Ui, b: &mut Browser, list: &Listing) {
+    let labels: Vec<String> = LibraryTab::ALL
+        .iter()
+        .map(|t| match t {
+            LibraryTab::Symbols => format!("{} {}", t.label(), list.project_count() + list.builtin_count()),
+            _ => t.label().to_string(),
+        })
+        .collect();
+    let widths: Vec<f32> = labels.iter().map(|l| bar::text_width(ui, l, ui_type::BODY) + 2.0 * space::M).collect();
+    let (pill, _) = ui.allocate_exact_size(vec2(widths.iter().sum::<f32>() + 2.0 * space::XS, 28.0), Sense::hover());
+    bar::pill(ui, pill);
+    let mut x = pill.left() + space::XS;
+    for ((tab, label), w) in LibraryTab::ALL.iter().zip(&labels).zip(&widths) {
+        let r = Rect::from_min_size(pos2(x, pill.top() + 3.0), vec2(*w, 22.0));
+        let on = b.tab == *tab;
+        let resp = bar::text_button(ui, r, label, &tab.name(), on, false);
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, tab.name()));
+        if resp.clicked() {
+            b.tab = *tab;
+        }
+        x += w;
+    }
+}
+
 /// The browser in the main view.
 pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, sheet: &ecad_ui::tokens::Sheet) -> Vec<Act> {
     let s = ecad_ui::SHELL;
@@ -401,28 +426,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, shee
     let total = list.entries.len();
     ui.scope_builder(egui::UiBuilder::new().max_rect(head.shrink2(vec2(space::M, space::S))), |ui| {
         ui.horizontal_centered(|ui| {
-            // The tabs, one pill.
-            let labels: Vec<String> = LibraryTab::ALL
-                .iter()
-                .map(|t| match t {
-                    LibraryTab::Symbols => format!("{} {}", t.label(), list.project_count() + list.builtin_count()),
-                    _ => t.label().to_string(),
-                })
-                .collect();
-            let widths: Vec<f32> = labels.iter().map(|l| bar::text_width(ui, l, ui_type::BODY) + 2.0 * space::M).collect();
-            let (pill, _) = ui.allocate_exact_size(vec2(widths.iter().sum::<f32>() + 2.0 * space::XS, 28.0), Sense::hover());
-            bar::pill(ui, pill);
-            let mut x = pill.left() + space::XS;
-            for ((tab, label), w) in LibraryTab::ALL.iter().zip(&labels).zip(&widths) {
-                let r = Rect::from_min_size(pos2(x, pill.top() + 3.0), vec2(*w, 22.0));
-                let on = b.tab == *tab;
-                let resp = bar::text_button(ui, r, label, &tab.name(), on, false);
-                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, tab.name()));
-                if resp.clicked() {
-                    b.tab = *tab;
-                }
-                x += w;
-            }
+            tabs(ui, b, list);
             ui.add_space(space::M);
             let f = ecad_ui::prim::Field::new(&mut b.query, ecad_ui::prim::FieldKind::Search, SEARCH)
                 .placeholder("Find a symbol by name, tag letter or pin")

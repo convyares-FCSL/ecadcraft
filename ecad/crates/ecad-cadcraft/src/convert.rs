@@ -155,7 +155,7 @@ pub fn marker_position(e: &Entity) -> Option<Pt> {
     }
 }
 
-fn primitive_from(kind: &EntityKind) -> Option<Primitive> {
+pub(crate) fn primitive_from(kind: &EntityKind) -> Option<Primitive> {
     Some(match kind {
         EntityKind::Line(l) => Primitive::Line { a: pt(l.a), b: pt(l.b) },
         EntityKind::LwPolyline(p) => Primitive::Polyline { vertices: p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(), closed: p.closed },

@@ -9,9 +9,10 @@
 //! **Update map.** Nothing of its own: it shows what the tab's view holds this frame.
 
 use ecad_model::{ComponentId, PageId, Pt, RepresentationId};
+use ecad_ui::panel;
 use ecad_ui::prim::{self, Tone};
-use ecad_ui::tokens::{line, radius, space, ui_type};
-use eframe::egui::{self, Rect, Stroke, pos2, vec2};
+use ecad_ui::tokens::{space, ui_type};
+use eframe::egui::{self, Rect, vec2};
 
 use crate::Trial;
 use crate::shell::ListsView;
@@ -34,6 +35,8 @@ pub const NOTHING: &str = "Select a row to see it here.";
 /// The greyed parts buttons' reason.
 pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
 pub const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
+/// A cross-section's unit.
+const MM2: &str = "mm\u{b2}";
 
 fn first<K: Copy + Ord>(t: &ecad_ui::table::Table<K>) -> Option<K> {
     t.selection.cursor().or_else(|| t.selection.keys().iter().next().copied())
@@ -75,18 +78,60 @@ struct Prop {
     set: bool,
     /// Not built yet: greyed with this reason.
     later: Option<&'static str>,
+    /// Its unit (`mm²`), whether it is the key identity value (bold), its colour swatch, and
+    /// whether it is one of a list (a chevron).
+    unit: &'static str,
+    bold: bool,
+    swatch: Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)>,
+    choice: bool,
+}
+
+impl Prop {
+    fn unit(mut self, unit: &'static str) -> Self {
+        self.unit = unit;
+        self
+    }
+    fn bold(mut self) -> Self {
+        self.bold = true;
+        self
+    }
+    fn choice(mut self) -> Self {
+        self.choice = true;
+        self
+    }
+    fn swatch(mut self, code: &str) -> Self {
+        self.swatch = swatch(code);
+        self
+    }
+}
+
+/// A wire colour code's swatch in its insulation colours (the paper sheet's, on either shell:
+/// black insulation stays black); none for a code that is not a colour.
+fn swatch(code: &str) -> Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)> {
+    let sheet = &ecad_ui::tokens::sheet::PAPER;
+    ecad_cadcraft::look::wire_colours(code, sheet).map(|c| (c.solid, c.dashes))
 }
 
 fn read(label: &'static str, value: impl Into<String>) -> Prop {
-    Prop { label, value: value.into(), hint: String::new(), set: false, later: None }
+    Prop { label, value: value.into(), hint: String::new(), set: false, later: None, unit: "", bold: false, swatch: None, choice: false }
 }
 
 fn set(label: &'static str, value: impl Into<String>, hint: impl Into<String>) -> Prop {
-    Prop { label, value: value.into(), hint: hint.into(), set: true, later: None }
+    Prop { label, value: value.into(), hint: hint.into(), set: true, later: None, unit: "", bold: false, swatch: None, choice: false }
 }
 
 fn later(label: &'static str, why: &'static str) -> Prop {
-    Prop { label, value: super::report::DASH.into(), hint: String::new(), set: false, later: Some(why) }
+    Prop {
+        label,
+        value: super::report::DASH.into(),
+        hint: String::new(),
+        set: false,
+        later: Some(why),
+        unit: "",
+        bold: false,
+        swatch: None,
+        choice: false,
+    }
 }
 
 /// A folding section.
@@ -315,6 +360,21 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
     let number = rows.text(k, "Wire number");
     let (from, to, page) = (rows.text(k, "From"), rows.text(k, "To"), rows.text(k, "Page"));
     let checks = rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Warning)).collect()).unwrap_or_default();
+    // Board 2.05's hints: a number is given by the numbering ("auto") unless it is provisional; a
+    // colour or size is the category's ("from category") unless the wire sets its own ("set
+    // here"), as the wire report records it.
+    let number_hint = match (v.source.provisional(k), number.trim().is_empty()) {
+        (true, _) => "provisional",
+        (false, false) => "auto",
+        (false, true) => "",
+    };
+    let has_category = !rows.text(k, "Category").trim().is_empty();
+    let (colour_own, size_own) = v.own.get(k).copied().unwrap_or_default();
+    let source = |own: bool, value: &str| match (own, has_category && !value.trim().is_empty()) {
+        (true, _) => "set here",
+        (false, true) => "from category",
+        (false, false) => "",
+    };
     Some(Detail {
         title: number.clone(),
         provisional: v.source.provisional(k),
@@ -326,8 +386,8 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
             Section {
                 title: "Identity",
                 props: vec![
-                    read("Number", nonempty(&number)),
-                    read("Potential", nonempty(&rows.text(k, "Potential"))),
+                    set("Number", nonempty(&number), number_hint).bold(),
+                    set("Potential", nonempty(&rows.text(k, "Potential")), "from the drawing"),
                     read("From", nonempty(&from)),
                     read("To", nonempty(&to)),
                 ],
@@ -337,9 +397,9 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
                 title: "Made as",
                 hint: "from the category".into(),
                 props: vec![
-                    read("Category", nonempty(&rows.text(k, "Category"))),
-                    read("Colour", nonempty(&rows.text(k, "Colour"))),
-                    read("Size", nonempty(&rows.text(k, "Cross-section"))),
+                    set("Category", nonempty(&rows.text(k, "Category")), "").choice(),
+                    set("Colour", nonempty(&rows.text(k, "Colour")), source(colour_own, &rows.text(k, "Colour"))).swatch(&rows.text(k, "Colour")),
+                    set("Size", nonempty(&rows.text(k, "Cross-section")), source(size_own, &rows.text(k, "Cross-section"))).unit(MM2),
                     read("Cable", nonempty(&rows.text(k, "Cable"))),
                 ],
                 ..Section::default()
@@ -377,7 +437,7 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
             Section {
                 title: "Identity",
                 props: vec![
-                    read("Tag", nonempty(&tag)),
+                    set("Tag", nonempty(&tag), "").bold(),
                     read("Runs", format!("{} \u{2192} {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))),
                 ],
                 ..Section::default()
@@ -386,10 +446,10 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
                 title: "Part",
                 hint: "sets the cores".into(),
                 props: vec![
-                    read("Type", nonempty(&rows.text(k, "Type"))),
+                    set("Type", nonempty(&rows.text(k, "Type")), "").choice(),
                     read("Cores", format!("{} \u{b7} {} used", nonempty(&rows.text(k, "Cores")), nonempty(&rows.text(k, "Used")))),
                     read("Maker", nonempty(&rows.text(k, "Maker"))),
-                    read("Length", nonempty(&length)),
+                    set("Length", nonempty(&length), "").unit("m"),
                 ],
                 ..Section::default()
             },
@@ -465,39 +525,13 @@ fn detail(t: &Trial) -> Option<Detail> {
 
 /// One value row: the label, the value (boxed when set here), its hint at the right.
 fn prop_row(ui: &mut egui::Ui, p: &Prop) {
-    let s = ecad_ui::SHELL;
-    let h = ecad_ui::tokens::size::CONTROL;
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h + space::XS), egui::Sense::hover());
-    let painter = ui.painter();
-    let label_w = 96.0;
-    let small = ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL);
-    let body = ecad_ui::fonts::font(ui.ctx(), ui_type::BODY);
-    painter.text(pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, p.label, small.clone(), ecad_ui::color(s.text_2));
-    let value = Rect::from_min_max(pos2(rect.left() + label_w, rect.top() + space::XXS), pos2(rect.right(), rect.bottom() - space::XXS));
-    if p.set {
-        painter.rect_filled(value, ecad_ui::style::corner(radius::FIELD), ecad_ui::color(s.raised));
-    }
-    let ink = if p.later.is_some() {
-        s.text_3
-    } else if p.set {
-        s.text
-    } else {
-        s.text_2
+    let kind = match (p.later.is_some(), p.set) {
+        (true, _) => panel::ValueKind::Later,
+        (false, true) => panel::ValueKind::Set,
+        (false, false) => panel::ValueKind::Read,
     };
-    let hint_w = if p.hint.is_empty() {
-        0.0
-    } else {
-        let g = painter.layout_no_wrap(p.hint.clone(), small.clone(), ecad_ui::color(s.text_3));
-        let w = g.size().x;
-        painter.galley(pos2(value.right() - space::M - w, value.center().y - g.size().y / 2.0), g, ecad_ui::color(s.text_3));
-        w + space::M
-    };
-    let room = (value.width() - 2.0 * space::M - hint_w).max(0.0);
-    let g = ecad_ui::table::cells::fitted(ui, &p.value, ui_type::BODY, ecad_ui::color(ink), room);
-    let _ = body;
-    ui.painter().galley(pos2(value.left() + space::M, value.center().y - g.size().y / 2.0), g, ecad_ui::color(ink));
-    let label = format!("{}: {}", p.label, p.value);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
+    let decor = ecad_ui::control::Decor { hint: &p.hint, unit: p.unit, bold: p.bold, swatch: p.swatch };
+    let resp = panel::value_row(ui, p.label, &p.value, decor, kind, p.choice);
     if let Some(why) = p.later {
         resp.on_hover_text(why);
     }
@@ -505,30 +539,18 @@ fn prop_row(ui: &mut egui::Ui, p: &Prop) {
 
 /// A section's head: its title and fold mark, its hint at the right. Returns whether it is open.
 fn section_head(ui: &mut egui::Ui, id: egui::Id, title: &str, hint: &str) -> bool {
-    let s = ecad_ui::SHELL;
     let open_id = id.with("open");
     let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(true);
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), egui::Sense::click());
+    let resp = panel::section_header(ui, open, title, hint);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, title));
     if resp.clicked() {
         open = !open;
         ui.data_mut(|d| d.insert_temp(open_id, open));
     }
-    let icon = Rect::from_center_size(pos2(rect.left() + 6.0, rect.center().y), vec2(12.0, 12.0));
-    ecad_ui::icons::paint(ui.painter(), icon, if open { ecad_ui::Icon::ChevronDown } else { ecad_ui::Icon::ChevronRight }, ecad_ui::color(s.text_2));
-    let font = ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
-    ui.painter().text(pos2(icon.right() + space::S, rect.center().y), egui::Align2::LEFT_CENTER, title, font, ecad_ui::color(s.text));
-    if !hint.is_empty() {
-        let small = ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL);
-        ui.painter().text(pos2(rect.right(), rect.center().y), egui::Align2::RIGHT_CENTER, hint, small, ecad_ui::color(s.text_3));
+    if open {
+        ui.add_space(panel::BODY_GAP);
     }
     open
-}
-
-fn rule(ui: &mut egui::Ui) {
-    let s = ecad_ui::SHELL;
-    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), space::M), egui::Sense::hover());
-    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
 }
 
 /// What the panel asks the trial for.
@@ -556,6 +578,8 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let writable = t.project_writable();
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
+    let full = rect.x_range();
+    let rule = |ui: &mut egui::Ui| panel::rule(ui, full);
     crate::shell::in_rect(ui, rect.shrink2(vec2(space::L, space::M)), "ecad.project.detail", |ui| {
         egui::ScrollArea::vertical().id_salt("ecad.project.detail.scroll").auto_shrink([false, false]).show(ui, |ui| {
             // The head: the name, where it is, the go-to.
@@ -574,10 +598,11 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             ui.add_space(space::S);
             // Its own checks.
             if d.checks.is_empty() {
-                prim::pill(ui, &format!("\u{2713} No checks on {}", d.title), Tone::Ok);
+                let words = format!("No checks on {}", d.title);
+                panel::status_pill(ui, Tone::Ok, &words, &format!("\u{2713} {words}"));
             } else {
                 for (c, tone) in &d.checks {
-                    prim::pill(ui, c, *tone);
+                    panel::status_pill(ui, *tone, c, c);
                 }
             }
             ui.add_space(space::S);

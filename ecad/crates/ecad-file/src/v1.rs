@@ -868,6 +868,9 @@ pub struct StyleRecord {
     pub name: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, String>,
+    /// Brief 055 (FP1): a frame's title block, left out while absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<m::title_block::StyleBody>,
 }
 
 /// A standard's header (brief 050a, FP1). `origin` is reserved for 2.1 and left out while absent.
@@ -904,13 +907,13 @@ fn mlayer(l: StyleLayer) -> m::StyleLayer {
 
 impl From<&m::StyleRecord> for StyleRecord {
     fn from(r: &m::StyleRecord) -> Self {
-        StyleRecord { name: r.name.clone(), fields: r.fields.clone() }
+        StyleRecord { name: r.name.clone(), fields: r.fields.clone(), body: r.body.clone() }
     }
 }
 
 impl From<StyleRecord> for m::StyleRecord {
     fn from(r: StyleRecord) -> Self {
-        m::StyleRecord { name: r.name, fields: r.fields }
+        m::StyleRecord { name: r.name, fields: r.fields, body: r.body }
     }
 }
 

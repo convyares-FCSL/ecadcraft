@@ -72,7 +72,7 @@ pub static REVISION_COLUMNS: Entry = Entry {
     group: "Revisions",
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: crate::revisions::MAX_COLUMNS_CHARS, parse: crate::revisions::columns_ok },
-    builtin: Value::Text("rev@12, date@24, description, drawn@22, checked@22, approved@22"),
+    builtin: Value::Text("rev@12, ecr:ECR@18, date@24, description, drawn@22, checked@22, approved@22"),
     levels: SP,
     project: ProjectSource::Property,
 };

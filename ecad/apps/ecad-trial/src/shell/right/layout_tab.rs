@@ -67,10 +67,8 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         }
         w::read(ui, "Variant", &d.symbol_name, "ecad.inspector.layout.variant").on_hover_text("Other variants: not available yet");
         w::row(ui, "Lock", |ui| {
-            let (rect, r) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::hover());
-            ui.painter().rect_filled(rect, ecad_ui::style::corner(ecad_ui::tokens::radius::pill(rect.height())), w::raised());
-            ui.painter().circle_filled(pos2(rect.left() + 8.0, rect.center().y), 5.5, w::text_3());
-            r.on_hover_text(super::device::NOT_YET);
+            let mut locked = false;
+            ecad_ui::control::Toggle::new(&mut locked, "ecad.inspector.layout.lock").read_only(true).show(ui).on_hover_text(super::device::NOT_YET);
             ui.label(w::rich(ui, "can be moved and joined", ui_type::SMALL, w::text_2()));
         });
     });

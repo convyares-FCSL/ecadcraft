@@ -220,12 +220,13 @@ pub fn tiles_per_row(width: f64) -> usize {
 /// [`crate::generated`] lays it out.
 fn page_area(doc: &Document, page: PageId) -> (f64, f64, f64, f64) {
     let spec = ecad_model::sheet::sheet_of(doc, page);
-    let m = ecad_model::sheet::MARGIN_MM;
+    // Brief 055 (FP4): the frame's margins and its block's height.
+    let m = ecad_model::sheet::margins_of(doc, page);
     (
-        m + 5.0,
-        m + ecad_model::sheet::TITLE_BLOCK_MM + 5.0,
-        f64::from(spec.width) - m - 5.0,
-        f64::from(spec.height) - ecad_model::sheet::TOP_MARGIN_MM - 5.0,
+        m.left + 5.0,
+        m.bottom + ecad_model::sheet::keep_out(doc, page) + 5.0,
+        f64::from(spec.width) - m.right - 5.0,
+        f64::from(spec.height) - m.top - 5.0,
     )
 }
 

@@ -15,7 +15,7 @@ fn header(name: &str) -> StandardHeader {
 }
 
 fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
-    StyleRecord { name: name.into(), fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect() }
+    StyleRecord { name: name.into(), fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), body: None }
 }
 
 fn tag() -> StyleRef {
