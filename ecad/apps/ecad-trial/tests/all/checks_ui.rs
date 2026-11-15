@@ -12,7 +12,8 @@ use ecad_trial::{checks_panel, project_panel};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, pointer_to, screen, shot};
+use crate::common::pointer_to;
+use crate::mouse_tester::{Deltas, doc, harness_with, ok, screen, shot};
 
 type H = Harness<'static, ecad_trial::Trial>;
 
@@ -201,7 +202,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let empty = screen(&h, pe.check.at.unwrap().x + 40.0, pe.check.at.unwrap().y + 40.0);
     pointer_to(&mut h, empty);
     assert!(h.state().cad.canvas.hover.is_none(), "nothing under the pointer");
-    crate::mouse_tester::click(&mut h, empty);
+    crate::common::click(&mut h, empty);
     h.run_steps(3);
     assert_eq!(ring_of(&mut h), None, "a click on empty space clears the ring");
     // The click started a selection window; Esc ends it.

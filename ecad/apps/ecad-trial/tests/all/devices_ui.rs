@@ -13,7 +13,8 @@ use eframe::egui::{self, Event};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Deltas, button, doc, harness_with, ok, pointer_to, prompt, screen, shot, type_enter};
+use crate::common::pointer_to;
+use crate::mouse_tester::{Deltas, button, doc, harness_with, ok, prompt, screen, shot, type_enter};
 
 type H = Harness<'static, ecad_trial::Trial>;
 
@@ -183,7 +184,7 @@ fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
     h.state_mut().search.open = false;
     h.run_steps(2);
     let at = screen(&h, 20.0, 0.0);
-    crate::mouse_tester::click(&mut h, at);
+    crate::common::click(&mut h, at);
     let log: Vec<String> = h.state().cad.session.log.iter().rev().take(4).cloned().collect();
     assert_eq!(doc(&mut h).representations_of(Subject::Component(k1)).count(), 2, "the click placed it: {} {log:?}", prompt(&h));
     save(&h, &deltas, "018-choices.png");

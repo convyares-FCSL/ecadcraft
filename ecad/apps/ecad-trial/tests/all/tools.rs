@@ -3,6 +3,7 @@
 //! interactive tools start their prompts (brief 008), Convert uses the selection or asks for one,
 //! and templates fill the Command field without running their placeholders.
 
+use crate::common::{self, Opts};
 use cadcraft_engine::doc::{EntityKind, Handle};
 use ecad_trial::Trial;
 use ecad_trial::tools::{self, Kind, TOOLS};
@@ -19,18 +20,7 @@ fn trial() -> Trial {
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1200.0)).build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        t,
-    );
-    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
-    // command line, which sit behind the shell's developer switch now.
-    h.state_mut().set_cad_chrome(true);
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().trial(t))
 }
 
 fn doc(t: &mut Trial) -> ecad_model::Document {

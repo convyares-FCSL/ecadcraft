@@ -11,53 +11,22 @@
 //!   written to `$ECAD_TESTER_SHOTS` when set and a wgpu adapter exists; pixel checks then run on
 //!   the rendered frames. `004-slash.png` is committed in `reference/` for the owner's approval.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use crate::common::{self, Opts, click, pointer_to};
+use crate::mouse_tester::Deltas;
 use cadcraft_engine::geom::Vec2;
 use ecad_model::Document;
 use ecad_trial::{Trial, tools};
-use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
+use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 /// Texture updates in order: `Some(image)` sets, `None` frees.
-type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
-
 /// Keeps every texture delta so a frame can be rendered later (see `shot`).
-struct Collect(Deltas);
-
-impl egui_kittest::TestRenderer for Collect {
-    fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
-        let mut out = self.0.lock().unwrap();
-        for (id, imgs) in delta.set.drain() {
-            out.extend(imgs.into_iter().map(|i| (id, Some(i))));
-        }
-        out.extend(delta.free.drain().map(|id| (id, None)));
-    }
-}
-
 fn harness_with(deltas: Option<Deltas>) -> Harness<'static, Trial> {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
-    let mut t = Trial::new(None).unwrap();
-    t.hover_delay = 0.0;
-    let mut b = Harness::builder().with_size(egui::vec2(1920.0, 1200.0));
-    if let Some(d) = deltas {
-        b = b.renderer(Collect(d));
-    }
-    let mut h = b.build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        t,
-    );
-    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
-    // command line, which sit behind the shell's developer switch now.
-    h.state_mut().set_cad_chrome(true);
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().deltas(deltas))
 }
 
 fn doc(h: &mut Harness<'static, Trial>) -> Document {
@@ -74,19 +43,6 @@ fn head(h: &mut Harness<'static, Trial>) -> u64 {
 
 fn screen(h: &Harness<'static, Trial>, x: f64, y: f64) -> Pos2 {
     h.state().cad.canvas.xf.expect("canvas laid out").to_screen(Vec2::new(x, y))
-}
-
-fn pointer_to(h: &mut Harness<'static, Trial>, at: Pos2) {
-    h.event(Event::PointerMoved(at));
-    h.run_steps(2);
-}
-
-fn click(h: &mut Harness<'static, Trial>, at: Pos2) {
-    pointer_to(h, at);
-    for pressed in [true, false] {
-        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
-    }
-    h.run_steps(2);
 }
 
 fn button(h: &mut Harness<'static, Trial>, label: &str) {

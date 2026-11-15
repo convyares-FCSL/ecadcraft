@@ -3,6 +3,7 @@
 //! and the click-only path of the quick start (Cable Reference, Continue Cable, Go to Reference)
 //! works through the buttons.
 
+use crate::common::{self, Opts};
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use ecad_trial::Trial;
@@ -19,18 +20,7 @@ fn trial() -> Trial {
 }
 
 fn harness(t: Trial) -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1200.0)).build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        t,
-    );
-    // Brief 038: these tests drive CADCraft's Tool Sets (the ECAD tab), layout tabs and typed
-    // command line, which sit behind the shell's developer switch now.
-    h.state_mut().set_cad_chrome(true);
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().trial(t))
 }
 
 fn doc(t: &mut Trial) -> ecad_model::Document {

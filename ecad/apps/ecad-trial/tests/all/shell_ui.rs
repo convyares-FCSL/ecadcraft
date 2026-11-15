@@ -447,7 +447,7 @@ fn hover_tooltips_stay_off_hosted_views() {
     h.run_steps(3);
     let reference_end = |h: &mut Harness<'static, Trial>| {
         let at = crate::mouse_tester::screen(h, 65.0, 5.0);
-        crate::mouse_tester::pointer_to(h, at);
+        crate::common::pointer_to(h, at);
         h.run_steps(3);
         h.state().hover_lines().map(<[String]>::to_vec)
     };

@@ -3,6 +3,7 @@
 //! state, the strip's order and keys, the inspector rail, the bottom bar's groups, the sheet
 //! fitted with a 24 px margin, and the screenshots for the side-by-side with the board.
 
+use crate::common::{self, Opts};
 use crate::project_panel::{doc, rev3_trial as trial};
 use ecad_cadcraft::actions::ToolGroup;
 use ecad_trial::Trial;
@@ -86,15 +87,7 @@ fn the_strip_is_in_the_specs_order_with_five_keys() {
 }
 
 fn harness() -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        trial(),
-    );
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
 }
 
 #[test]

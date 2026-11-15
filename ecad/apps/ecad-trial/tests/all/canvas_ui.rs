@@ -12,18 +12,11 @@ use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
+use crate::common::{self, Opts};
 use crate::project_panel::{click, trial};
 
 fn harness() -> Harness<'static, Trial> {
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).build_ui_state(
-        |ui, t: &mut Trial| {
-            t.logic(&ui.ctx().clone());
-            t.ui(ui);
-        },
-        trial(),
-    );
-    h.run_steps(5);
-    h
+    common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).trial(trial()))
 }
 
 fn exec(h: &mut Harness<'static, Trial>, cmd: &str, params: Value) -> Value {
