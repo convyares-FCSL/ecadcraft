@@ -241,11 +241,23 @@ fn run_setfunction(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
     run_with(s, params, Aspect::Function, "setfunction")
 }
 
-/// `conflicts {answer?, components?}` (design 052 §5.5): the waiting conflicts; Move or Leave.
+/// `conflicts {answer?, components?, aspect?}` (design 052 §5.5): the waiting conflicts; Move,
+/// Half or Leave. `components` and `aspect` choose rows (Choose: one row is one device and one
+/// aspect). Move and Half act only on the rows that still hold (an undo may have taken them away).
 fn run_conflicts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let answer = params.get("answer").and_then(Value::as_str).map(|a| a.trim().to_ascii_lowercase());
+    let answer = match params.get("answer") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(a)) => Some(a.trim().to_ascii_lowercase()),
+        Some(_) => return Err(err("`answer` is \"move\", \"half\" or \"leave\"")),
+    };
     let only: Option<Vec<ComponentId>> =
         if params.get("components").is_some() { Some(id_list(params, "components", MAX_HANDLES).map_err(err)?) } else { None };
+    let aspect = match params.get("aspect") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(w)) => Some(Aspect::of_word(w).ok_or_else(|| err("`aspect` is \"location\" or \"function\""))?),
+        Some(_) => return Err(err("`aspect` is \"location\" or \"function\"")),
+    };
+    let picked = |c: &crate::proposals::Conflict| only.as_ref().is_none_or(|o| o.contains(&c.component)) && aspect.is_none_or(|a| a == c.aspect);
     let v = match answer.as_deref() {
         None => crate::commands::with_any_page(s, |p, _| {
             let doc = p.ledger.document();
@@ -258,9 +270,9 @@ fn run_conflicts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             Ok(json!({"changed": false, "message": words}))
         })?,
         Some("half") => with_project(s, |p, pg, _| {
-            let chosen: Vec<crate::proposals::Conflict> =
-                p.conflicts.iter().filter(|c| c.half.is_some() && only.as_ref().is_none_or(|o| o.contains(&c.component))).cloned().collect();
             let doc = p.ledger.document();
+            let chosen: Vec<crate::proposals::Conflict> =
+                crate::proposals::still_valid(doc, &p.conflicts).into_iter().filter(|c| c.half.is_some() && picked(c)).collect();
             let ops = crate::proposals::half_ops(doc, &chosen);
             if ops.is_empty() {
                 return Err("No connector half is waiting: Half answers a half or pin just placed.".into());
@@ -273,13 +285,13 @@ fn run_conflicts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             Ok(json!({"changed": true, "message": format!("{label}.")}))
         })?,
         Some("move") => with_project(s, |p, pg, _| {
-            let chosen: Vec<crate::proposals::Conflict> =
-                p.conflicts.iter().filter(|c| only.as_ref().is_none_or(|o| o.contains(&c.component))).cloned().collect();
             let doc = p.ledger.document();
+            let valid = crate::proposals::still_valid(doc, &p.conflicts);
+            let chosen: Vec<crate::proposals::Conflict> = valid.iter().filter(|c| picked(c)).cloned().collect();
             let ops = crate::proposals::move_ops(doc, &chosen);
             if ops.is_empty() {
-                p.conflicts.clear();
-                return Ok(json!({"changed": false}));
+                p.conflicts = valid;
+                return Ok(json!({"changed": false, "message": "Nothing to move: those devices no longer differ, or the entry is gone."}));
             }
             let label = crate::proposals::move_label(&chosen);
             p.apply_edit(pg, "conflicts", &label, ops)?;

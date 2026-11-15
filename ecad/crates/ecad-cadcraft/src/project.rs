@@ -2891,6 +2891,9 @@ impl Project {
     fn history(&mut self, pg: &mut Pages<'_>, undo: bool) -> cadcraft_engine::Result<Option<String>> {
         let command = if undo { "undo" } else { "redo" };
         self.oops.stale();
+        // Brief 052d (tester 052d, finding 1): an undo or redo changes what the waiting
+        // conflicts were about; they are left.
+        self.conflicts.clear();
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }

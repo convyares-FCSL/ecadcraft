@@ -115,13 +115,7 @@ fn text_field(p: &Value, key: &str) -> Result<Option<Option<String>>, String> {
 /// A page's or the project's `proposal` parameter (brief 052d): "propose" (default), "move" or
 /// "keep".
 fn proposal_mode(params: &Value) -> Result<crate::proposals::Mode, String> {
-    match params.get("proposal").and_then(Value::as_str).map(|m| m.trim().to_ascii_lowercase()) {
-        None => Ok(crate::proposals::Mode::Propose),
-        Some(m) if m == "propose" => Ok(crate::proposals::Mode::Propose),
-        Some(m) if m == "move" => Ok(crate::proposals::Mode::Move),
-        Some(m) if m == "keep" => Ok(crate::proposals::Mode::Keep),
-        Some(_) => Err("`proposal` is \"propose\", \"move\" or \"keep\"".into()),
-    }
+    crate::proposals::proposal_param(params)
 }
 
 fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, String> {

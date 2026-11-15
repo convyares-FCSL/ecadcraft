@@ -12,6 +12,8 @@
 //! leaves it as it is.
 
 use ecad_cadcraft::designations::Aspect;
+use ecad_ui::control;
+use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui;
 use serde_json::{Value, json};
@@ -149,8 +151,8 @@ fn aspect(ui: &mut egui::Ui, a: Aspect, entries: &[Value], ro: bool) -> Ask {
         }
         // The new row: Enter adds, Esc drops it.
         if let Some(mut buf) = ui.data(|d| d.get_temp::<String>(adding_id)) {
-            let r = ui.add(egui::TextEdit::singleline(&mut buf).hint_text(ecad_cadcraft::designations::example(a)).desired_width(90.0));
-            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, format!("ecad.designation.{letter}.new")));
+            let name = format!("ecad.designation.{letter}.new");
+            let r = control::TextEntry::new(&mut buf, &name).placeholder(ecad_cadcraft::designations::example(a)).width(90.0).show(ui);
             r.request_focus();
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 ui.data_mut(|d| d.remove::<String>(adding_id));
@@ -180,22 +182,19 @@ fn entry_row(ui: &mut egui::Ui, a: Aspect, e: &Value, codes: &[String], entries:
     let mut buf = ui.data(|d| d.get_temp::<String>(code_id)).unwrap_or_else(|| code.clone());
     let typed = buf.trim().to_string();
     let clash = (!typed.eq_ignore_ascii_case(&code)).then(|| codes.iter().find(|c| c.eq_ignore_ascii_case(&normal(a, &typed))).cloned()).flatten();
+    let clash_words = clash.as_ref().map(|other| format!("{other} is already in the list."));
+    let code_name = format!("{base}.code");
     let cell = ui
         .vertical(|ui| {
-            let mut edit = egui::TextEdit::singleline(&mut buf).desired_width(90.0).font(egui::TextStyle::Monospace);
-            if clash.is_some() {
-                edit = edit.text_color(ecad_ui::color(ecad_ui::SHELL.error));
-            }
-            let r = ui.add_enabled(!ro, edit);
-            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, !ro, format!("{base}.code")));
+            let r = control::TextEntry::new(&mut buf, &code_name).width(90.0).read_only(ro).invalid(clash_words.as_deref()).show(ui);
             if r.has_focus() {
                 ui.data_mut(|d| d.insert_temp(code_id, buf.clone()));
-                match &clash {
-                    Some(other) => {
-                        ui.label(small(ui, &format!("{other} is already in the list."), false).color(ecad_ui::color(ecad_ui::SHELL.error)));
+                match &clash_words {
+                    Some(w) => {
+                        let _ = prim::pill(ui, w, Tone::Error);
                     }
                     None => {
-                        ui.label(small(ui, &format!("Renames it on {uses}."), true));
+                        let _ = prim::read_value(ui, &format!("Renames it on {uses}."));
                     }
                 }
             } else if r.lost_focus() {
@@ -209,7 +208,7 @@ fn entry_row(ui: &mut egui::Ui, a: Aspect, e: &Value, codes: &[String], entries:
         .inner;
     if let Some(other) = &clash
         && !ro
-        && ui.small_button(format!("Merge into {other}")).clicked()
+        && ui.add(prim::Button::new(&format!("Merge into {other}")).small()).clicked()
     {
         ask = line("designationmerge", json!({"aspect": a.word(), "from": key, "into": other}));
         ui.data_mut(|d| d.remove::<String>(code_id));
@@ -219,8 +218,8 @@ fn entry_row(ui: &mut egui::Ui, a: Aspect, e: &Value, codes: &[String], entries:
     let desc = e["description"].as_str().unwrap_or_default().to_string();
     let desc_id = egui::Id::unique((&base, "description"));
     let mut dbuf = ui.data(|d| d.get_temp::<String>(desc_id)).unwrap_or_else(|| desc.clone());
-    let r = ui.add_enabled(!ro, egui::TextEdit::singleline(&mut dbuf).desired_width(160.0));
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, !ro, format!("{base}.description")));
+    let desc_name = format!("{base}.description");
+    let r = control::TextEntry::new(&mut dbuf, &desc_name).width(160.0).read_only(ro).placeholder("—").show(ui);
     if r.has_focus() {
         ui.data_mut(|d| d.insert_temp(desc_id, dbuf.clone()));
     } else if r.lost_focus() {
@@ -233,11 +232,12 @@ fn entry_row(ui: &mut egui::Ui, a: Aspect, e: &Value, codes: &[String], entries:
     // Count, default marker and the row's actions.
     ui.horizontal(|ui| {
         let n = e["devices"].as_u64().unwrap_or(0);
-        let shown = if unused { "0   (unused)".to_string() } else { n.to_string() };
-        let r = ui.label(small(ui, &shown, unused)).on_hover_text(uses.as_str());
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{base}.count")));
+        let shown = n.to_string();
+        let hint = if unused { "unused" } else { "" };
+        let d = control::Decor { hint, ..control::Decor::default() };
+        let _ = control::read_text(ui, &shown, d, &format!("{base}.count")).on_hover_text(uses.as_str());
         if e["default"] == json!(true) {
-            let r = ui.label(small(ui, "\u{25cf}", false)).on_hover_text("The project default");
+            let r = prim::pill(ui, "\u{25cf} default", Tone::Neutral).on_hover_text("The project default");
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{base}.default")));
         }
     });

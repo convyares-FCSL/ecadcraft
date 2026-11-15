@@ -97,13 +97,7 @@ fn run_box(s: &mut Session, params: &Value, command: &str) -> cadcraft_engine::R
     use crate::designations::Aspect;
     let text = |k: &str| params.get(k).and_then(Value::as_str).map(str::to_string);
     let (location, function) = (text("location"), text("function"));
-    let mode = match params.get("proposal").and_then(Value::as_str).map(|m| m.trim().to_ascii_lowercase()) {
-        None => crate::proposals::Mode::Propose,
-        Some(m) if m == "propose" => crate::proposals::Mode::Propose,
-        Some(m) if m == "move" => crate::proposals::Mode::Move,
-        Some(m) if m == "keep" => crate::proposals::Mode::Keep,
-        Some(_) => return Err(err("`proposal` is \"propose\", \"move\" or \"keep\"")),
-    };
+    let mode = crate::proposals::proposal_param(params).map_err(err)?;
     let corners = params.get("corners").filter(|v| !v.is_null()).map(|v| points(v, "corners")).transpose().map_err(err)?;
     let pts = params.get("points").filter(|v| !v.is_null()).map(|v| points(v, "points")).transpose().map_err(err)?;
     let item: Option<ItemId> = opt_id(params, "item").map_err(err)?;

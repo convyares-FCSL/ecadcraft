@@ -101,12 +101,13 @@ impl Trial {
                             prim::read_value(ui, &head);
                             for (c, tag, aspect, from, to, half) in rows.iter().take(MAX_ROWS) {
                                 let row = ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(tag).monospace().color(ecad_ui::color(s.text)));
-                                    ui.label(egui::RichText::new(from).monospace().color(ecad_ui::color(s.warning)));
-                                    ui.label(egui::RichText::new(format!("\u{2192} {to}")).monospace().color(ecad_ui::color(s.text)));
+                                    // Read values: the tag, its stored value (flagged) and the proposal.
+                                    let _ = prim::read_value(ui, tag);
+                                    let _ = prim::pill(ui, from, Tone::Warning);
+                                    let _ = prim::read_value(ui, &format!("\u{2192} {to}"));
                                     let r = ui.add(prim::Button::new("Move").small()).on_hover_text(format!("Set {tag}'s {aspect} to {to}"));
                                     if r.clicked() {
-                                        ask = Some(format!("conflicts {}", json!({"answer": "move", "components": [c.hex()]})));
+                                        ask = Some(format!("conflicts {}", json!({"answer": "move", "components": [c.hex()], "aspect": aspect})));
                                     }
                                     // A connector half just placed: give that half its own location.
                                     if *half {

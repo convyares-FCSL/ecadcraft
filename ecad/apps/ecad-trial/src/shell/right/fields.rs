@@ -66,7 +66,7 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
     if let Some((code, from)) = &row.proposal {
         ui.horizontal_wrapped(|ui| {
             ui.add_space(w::LABEL_W);
-            let r = ui.link(w::rich(ui, format!("Use {code}"), ui_type::SMALL, w::text_2())).on_hover_text(from.as_str());
+            let r = ecad_ui::control::link(ui, &format!("Use {code}")).on_hover_text(from.as_str());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, format!("ecad.inspector.{}.use", row.key)));
             if r.clicked() {
                 commit = Some(code.clone());

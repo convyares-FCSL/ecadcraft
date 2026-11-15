@@ -528,6 +528,40 @@ pub(crate) fn finish_place(
     }
 }
 
+/// The `proposal` parameter of boxes, pages and the project: "propose" (default), "move" or
+/// "keep"; anything else, a value that is not text included, is refused (tester 052d,
+/// finding 3).
+///
+/// # Errors
+/// Not one of the three words.
+pub fn proposal_param(params: &Value) -> Result<Mode, String> {
+    const WORDS: &str = "`proposal` is \"propose\", \"move\" or \"keep\"";
+    match params.get("proposal") {
+        None | Some(Value::Null) => Ok(Mode::Propose),
+        Some(Value::String(m)) => match m.trim().to_ascii_lowercase().as_str() {
+            "propose" => Ok(Mode::Propose),
+            "move" => Ok(Mode::Move),
+            "keep" => Ok(Mode::Keep),
+            _ => Err(WORDS.into()),
+        },
+        Some(_) => Err(WORDS.into()),
+    }
+}
+
+/// The waiting `conflicts` that still hold on `doc` (tester 052d, finding 1): the device is still
+/// there, the proposed entry is still in the list, and the device's value still differs. An
+/// undo, a redo or another edit may have taken any of these away.
+pub fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
+    conflicts
+        .iter()
+        .filter(|c| {
+            let Some(comp) = doc.components.get(&c.component) else { return false };
+            designations::code_of(doc, c.aspect, &c.to_key).is_some() && comp.properties.get(c.aspect.property()) != Some(&c.to_key)
+        })
+        .cloned()
+        .collect()
+}
+
 /// The ops moving `conflicts` to their proposals (the answer **Move**).
 pub fn move_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
     conflicts
