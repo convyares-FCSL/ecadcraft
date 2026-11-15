@@ -80,10 +80,25 @@ impl H {
 
     fn after(&mut self, before: u64) {
         let head = self.head();
-        assert!(head <= before + 1, "one command appends at most one transaction");
+        // One command, one transaction (008 §2). The one exception is brief 052d's move
+        // follow-up (design 052 §5.4, owner answer Q3): a move, then `Set location …` (or
+        // function) as its own transaction, so `u` undoes the location first. The state between
+        // the two goes on the trail too, so undo is checked step by step.
+        let follow_up = head == before + 2
+            && self.p(|p| p.ledger.log().last().is_some_and(|t| t.label.starts_with("Set location") || t.label.starts_with("Set function")));
+        assert!(head <= before + 1 || follow_up, "one command appends at most one transaction");
         if self.s.running.is_some() {
             // Mid-command the drawing holds uncommitted work; it is checked at the commit.
             return;
+        }
+        if follow_up {
+            let mut mid = self.doc();
+            let ops = self.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
+            for op in ops.iter().rev() {
+                op.inverse().apply(&mut mid).unwrap();
+            }
+            mid.rebuild_index();
+            self.trail.push(mid);
         }
         if head > before {
             let d = self.doc();

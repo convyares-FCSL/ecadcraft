@@ -361,6 +361,54 @@ pub fn type_notation(kind: &str) -> Option<Notation> {
     (n.cores() <= MAX_CORES).then_some(n)
 }
 
+/// The cross-section a type's notation names, in mm² (brief 057, design 057 §2.2): the number
+/// after the count's `G`, `X` or multiplier (`H07RN-F 4G1.5` → 1.5, `3x2.5` → 2.5, `4x2x0.25` →
+/// 0.25); `None` without a notation or a readable size. [`Notation`] is unchanged.
+pub fn notation_size(kind: &str) -> Option<f64> {
+    let c: Vec<char> = kind.chars().take(MAX_TYPE_CHARS).collect();
+    let mut i = 0;
+    while i < c.len() {
+        let starts = c.get(i).is_some_and(char::is_ascii_digit)
+            && (i == 0 || !c.get(i - 1).is_some_and(|p| p.is_ascii_alphanumeric() || *p == '.' || *p == ','));
+        if !starts {
+            i += 1;
+            continue;
+        }
+        let Some((_, mut j)) = digits_at(&c, i) else { break };
+        let mut seen = false;
+        // One or two `G`/`X`/`x` steps (`4G1.5`, `4x2x0.25`, `4(2x0.25)`), then the size.
+        loop {
+            let k = skip_spaces(&c, j);
+            let k = if c.get(k) == Some(&'(') { skip_spaces(&c, k + 1) } else { k };
+            match c.get(k) {
+                Some(x) if is_times(*x) || matches!(x, 'G' | 'g') => {
+                    let k2 = skip_spaces(&c, k + 1);
+                    let mut e = k2;
+                    while c.get(e).is_some_and(|ch| ch.is_ascii_digit() || *ch == '.' || *ch == ',') {
+                        e += 1;
+                    }
+                    if e == k2 {
+                        break;
+                    }
+                    seen = true;
+                    let s: String = c.get(k2..e).map(|v| v.iter().collect()).unwrap_or_default();
+                    let k3 = skip_spaces(&c, e);
+                    let more = c.get(k3).is_some_and(|x| is_times(*x));
+                    if more {
+                        j = e;
+                        continue;
+                    }
+                    return crate::rating::parse::cross_section(&s);
+                }
+                _ => break,
+            }
+        }
+        let _ = seen;
+        i = j.max(i + 1);
+    }
+    None
+}
+
 /// Read a core offer (§6.1): `7`, `7G`, `5X`, a type's notation (`4x2x0.25`, `4(2x0.25)`,
 /// `3x1.5`, `12G0.5`), or a list `BN,BK,GY,BU,GNYE`.
 ///

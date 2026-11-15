@@ -28,6 +28,7 @@
 //!
 //! This module reads the document; it changes nothing.
 
+use ecad_model::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
@@ -93,8 +94,19 @@ pub enum Kind {
     ProvisionalTag,
     /// Nets without a number while provisional tags are on: one summary row (Q6).
     ProvisionalWires,
-    /// Brief 024 (design 024 §8.3): a device's own location differs from its box's.
-    OwnLocation,
+    /// Brief 052 (design 052 §6): a device's stored location is the context of none of its
+    /// symbols.
+    LocationUnused,
+    /// The same for its function.
+    FunctionUnused,
+    /// Devices without a function (one count row, when some function is set).
+    NoFunction,
+    /// A stored function or location names no entry of the project's list.
+    DesignationMissing,
+    /// Two entries of one aspect share a code (only a branch merge makes them).
+    DesignationDuplicate,
+    /// A device with two heads (only a merge makes them).
+    TwoHeads,
     /// A location box outline crosses itself.
     BoxCrosses,
     /// Two location boxes overlap without nesting.
@@ -219,6 +231,43 @@ pub enum Kind {
     CoverLegendCut,
     /// Brief 054b (design 054 §6.4): stored cover notes past the bounds, read cut.
     CoverNotesCut,
+    /// Brief 057 (design 057 §7).
+    RatingUnder,
+    /// Brief 057 (design 057 §7).
+    RatingTooHot,
+    /// Brief 057 (design 057 §7).
+    RatingLoadOver,
+    /// Brief 057 (design 057 §7).
+    VoltdropOver,
+    /// Brief 057 (design 057 §7).
+    RatingBundlingUnset,
+    /// Brief 057 (design 057 §7).
+    RatingDeviceMissing,
+    /// Brief 057 (design 057 §7).
+    RatingNoDevice,
+    /// Brief 057 (design 057 §7).
+    RatingTwoDevices,
+    /// Brief 057 (design 057 §7).
+    RatingDeviceUnread,
+    /// Brief 057 (design 057 §7).
+    RatingNamedDevice,
+    /// Brief 057 (design 057 §7).
+    RatingNoData,
+    /// Brief 057 (design 057 §7).
+    RatingNoTable,
+    /// Brief 057 (design 057 §7).
+    RatingTableBadRow,
+    /// Brief 057 (design 057 §7).
+    RatingTableOdd,
+    /// Brief 057 (design 057 §7).
+    RatingAssumed,
+    /// Brief 057 (design 057 §7).
+    RatingNoCurrent,
+    /// Brief 057 (design 057 §7).
+    RatingBadValue,
+    /// Brief 057 (owner rule, board 2.06): a cable core not connected at both ends, not ticked
+    /// Not used.
+    CoreOpen,
     /// Brief 055 (design 055 §8): a bound value is cut in the title block on at least one page.
     TitleValueCut,
     /// Brief 055: a frame has fields this build cannot fill, or items past the bounds.
@@ -228,7 +277,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 81] = [
+    pub const ALL: [Kind; 104] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -246,7 +295,12 @@ impl Kind {
         Kind::DuplicateTag,
         Kind::ProvisionalTag,
         Kind::ProvisionalWires,
-        Kind::OwnLocation,
+        Kind::LocationUnused,
+        Kind::FunctionUnused,
+        Kind::NoFunction,
+        Kind::DesignationMissing,
+        Kind::DesignationDuplicate,
+        Kind::TwoHeads,
         Kind::BoxCrosses,
         Kind::BoxesOverlap,
         Kind::NoPartNumber,
@@ -307,6 +361,24 @@ impl Kind {
         Kind::FolderRunsOverlap,
         Kind::CoverLegendCut,
         Kind::CoverNotesCut,
+        Kind::RatingUnder,
+        Kind::RatingTooHot,
+        Kind::RatingLoadOver,
+        Kind::VoltdropOver,
+        Kind::RatingBundlingUnset,
+        Kind::RatingDeviceMissing,
+        Kind::RatingNoDevice,
+        Kind::RatingTwoDevices,
+        Kind::RatingDeviceUnread,
+        Kind::RatingNamedDevice,
+        Kind::RatingNoData,
+        Kind::RatingNoTable,
+        Kind::RatingTableBadRow,
+        Kind::RatingTableOdd,
+        Kind::RatingAssumed,
+        Kind::RatingNoCurrent,
+        Kind::RatingBadValue,
+        Kind::CoreOpen,
         Kind::TitleValueCut,
         Kind::TitleBindingUnknown,
         Kind::FrameSheetDiffers,
@@ -332,7 +404,12 @@ impl Kind {
             Kind::DuplicateTag => "duplicate-tag",
             Kind::ProvisionalTag => "provisional-tag",
             Kind::ProvisionalWires => "provisional-wires",
-            Kind::OwnLocation => "own-location",
+            Kind::LocationUnused => "location-unused",
+            Kind::FunctionUnused => "function-unused",
+            Kind::NoFunction => "function-none",
+            Kind::DesignationMissing => "designation-missing",
+            Kind::DesignationDuplicate => "designation-duplicate",
+            Kind::TwoHeads => "two-heads",
             Kind::BoxCrosses => "box-crosses",
             Kind::BoxesOverlap => "boxes-overlap",
             Kind::NoPartNumber => "no-part-number",
@@ -393,6 +470,24 @@ impl Kind {
             Kind::FolderRunsOverlap => "folder-runs-overlap",
             Kind::CoverLegendCut => "cover-legend-cut",
             Kind::CoverNotesCut => "cover-notes-cut",
+            Kind::RatingUnder => "rating-under",
+            Kind::RatingTooHot => "rating-too-hot",
+            Kind::RatingLoadOver => "rating-load-over",
+            Kind::VoltdropOver => "voltdrop-over",
+            Kind::RatingBundlingUnset => "rating-bundling-unset",
+            Kind::RatingDeviceMissing => "rating-device-missing",
+            Kind::RatingNoDevice => "rating-no-device",
+            Kind::RatingTwoDevices => "rating-two-devices",
+            Kind::RatingDeviceUnread => "rating-device-unread",
+            Kind::RatingNamedDevice => "rating-named-device",
+            Kind::RatingNoData => "rating-no-data",
+            Kind::RatingNoTable => "rating-no-table",
+            Kind::RatingTableBadRow => "rating-table-bad-row",
+            Kind::RatingTableOdd => "rating-table-odd",
+            Kind::RatingAssumed => "rating-assumed",
+            Kind::RatingNoCurrent => "rating-no-current",
+            Kind::RatingBadValue => "rating-bad-value",
+            Kind::CoreOpen => "core-open",
             Kind::TitleValueCut => "title-value-cut",
             Kind::TitleBindingUnknown => "title-binding-unknown",
             Kind::FrameSheetDiffers => "frame-sheet-differs",
@@ -424,7 +519,12 @@ impl Kind {
             Kind::DuplicateTag => "Two cables share a tag",
             Kind::ProvisionalTag => "Provisional tag",
             Kind::ProvisionalWires => "Wire numbers provisional",
-            Kind::OwnLocation => "Own location differs from its box",
+            Kind::LocationUnused => "Location used by none of its symbols",
+            Kind::FunctionUnused => "Function used by none of its symbols",
+            Kind::NoFunction => "Devices without a function",
+            Kind::DesignationMissing => "Function or location no longer in the list",
+            Kind::DesignationDuplicate => "Two entries share a code",
+            Kind::TwoHeads => "A device with two heads",
             Kind::BoxCrosses => "Location box outline crosses itself",
             Kind::BoxesOverlap => "Location boxes overlap without nesting",
             Kind::NoPartNumber => "Devices without a part number",
@@ -485,6 +585,24 @@ impl Kind {
             Kind::FolderRunsOverlap => "A folder's page numbers run into another folder's",
             Kind::CoverLegendCut => "The cover's symbol legend does not show every symbol",
             Kind::CoverNotesCut => "The cover's notes are past 40 notes of 400 characters; the rest are not shown",
+            Kind::RatingUnder => "Wire or cable rated below its protective device",
+            Kind::RatingTooHot => "Conductor at or above its maximum temperature",
+            Kind::RatingLoadOver => "Load above the protective device's rating",
+            Kind::VoltdropOver => "Cable volt drop over its limit",
+            Kind::RatingBundlingUnset => "Panel wires with no bundling factor",
+            Kind::RatingDeviceMissing => "Protected by names no device",
+            Kind::RatingNoDevice => "Rated wires and cables with no protective device",
+            Kind::RatingTwoDevices => "Fed by two protective devices",
+            Kind::RatingDeviceUnread => "Device rating has no readable current",
+            Kind::RatingNamedDevice => "Protected by a device that is not a protective kind",
+            Kind::RatingNoData => "Protected wires with no rating data",
+            Kind::RatingNoTable => "No rating table value for this subject",
+            Kind::RatingTableBadRow => "Rating table rows not read",
+            Kind::RatingTableOdd => "Rating table values out of order",
+            Kind::RatingAssumed => "Cables with no cable type (values assumed)",
+            Kind::RatingNoCurrent => "Cables with no load and no device (no volt drop)",
+            Kind::RatingBadValue => "Rating value ECAD does not read",
+            Kind::CoreOpen => "Cable core open at an end (tick Not used for a spare)",
             Kind::TitleValueCut => "A value is cut in the title block",
             Kind::TitleBindingUnknown => "Title block fields this build cannot fill",
             Kind::FrameSheetDiffers => "Page sheet differs from its frame's; the frame wins",
@@ -501,7 +619,10 @@ impl Kind {
             | Kind::LevelTwice
             | Kind::SlotTwice
             | Kind::ChannelTwice
-            | Kind::ConnectorPinTwice => Severity::Error,
+            | Kind::ConnectorPinTwice
+            | Kind::CoreOpen
+            | Kind::RatingUnder
+            | Kind::RatingTooHot => Severity::Error,
             Kind::OpenEnd
             | Kind::LooseWire
             | Kind::LooksConnected
@@ -514,7 +635,11 @@ impl Kind {
             | Kind::TooManyTerminals
             | Kind::TooManyCores
             | Kind::CoreTwice
-            | Kind::OwnLocation
+            | Kind::LocationUnused
+            | Kind::FunctionUnused
+            | Kind::DesignationMissing
+            | Kind::DesignationDuplicate
+            | Kind::TwoHeads
             | Kind::BoxCrosses
             | Kind::OrphanReference
             | Kind::AccessoryOrphan
@@ -542,8 +667,12 @@ impl Kind {
             | Kind::PageTypeField
             | Kind::FolderRunsOverlap
             | Kind::CoverNotesCut
-            | Kind::FrameSheetDiffers
-            | Kind::WireThroughCard => Severity::Warning,
+            | Kind::WireThroughCard
+            | Kind::RatingLoadOver
+            | Kind::VoltdropOver
+            | Kind::RatingBundlingUnset
+            | Kind::RatingDeviceMissing
+            | Kind::FrameSheetDiffers => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -572,8 +701,13 @@ pub enum Fix {
     NumberThem,
     /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
     Finalise,
-    /// Brief 024: clear the device's own location (`setprop … value: null`): Use the box's location.
-    UseBoxLocation(ComponentId),
+    /// Brief 052 (design 052 §6): **Use +CP1**: set the device's value of the aspect to the one
+    /// context all its symbols share (`setlocation`).
+    UseContext(ComponentId, crate::designations::Aspect),
+    /// Brief 052: **Set location** / **Set function**: the inspector's row of that device or box.
+    SetDesignation(ComponentId, crate::designations::Aspect),
+    /// Brief 052: **Show in Settings**: Settings ▸ Project info ▸ Functions and locations.
+    ShowDesignations,
     /// Brief 024: open Reports on the BOM tab with Only ? on.
     ShowReports,
     /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
@@ -633,6 +767,23 @@ pub enum Fix {
     OpenStandards(&'static str),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
     Page(crate::page_types::PageFix),
+    /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
+    ShowRating(crate::rating::RatedSubject),
+    /// Brief 057: **Use 2.5 mm²**: the conductor's own `cross_section`.
+    UseSize(ConductorId, f64),
+    /// Brief 057: **Change cable type…** filtered to this size (mm²).
+    PickCableType(CableId, f64),
+    /// Brief 057: **Use Datasheet** (`rating {basis}`).
+    SetBasis(crate::rating::RatedSubject, crate::rating::Basis),
+    /// Brief 057: **Clear Protected by**.
+    ClearProtectedBy(crate::rating::RatedSubject),
+    /// Brief 057: **Choose a table**, **Set project bundling**: Settings ▸ Standards ▸ Defaults at Rating.
+    ChooseRatingTable,
+    /// Brief 057: **Show** the rated wires (Project ▸ Wires).
+    ShowRatedWires,
+    /// Brief 057 (owner): an open core, by its place in [`crate::styles::cable::open_cores`]:
+    /// **Tick Not used** (one `setprop`) or **Go to the open end**.
+    CoreOpen(CableId, u16),
     /// Brief 055: **Edit block** opens Library ▸ Title blocks on the page's frame with item `n` selected.
     EditTitleBlock(PageId, u16),
     /// Brief 055: **Clear the page's sheet** (`setprop` page `sheet` null).
@@ -675,6 +826,7 @@ impl Check {
             | Kind::FolderStartUnknown
             | Kind::FolderRunsOverlap
             | Kind::CoverLegendCut
+            | Kind::CoreOpen
             | Kind::TitleValueCut
             | Kind::TitleBindingUnknown
             | Kind::FrameSheetDiffers
@@ -682,6 +834,8 @@ impl Check {
             {
                 self.which.clone()
             }
+            // Brief 057: every rating row says its own sentence.
+            k if crate::rating::is_rating_kind(k) && !self.which.is_empty() => self.which.clone(),
             _ => self.kind.words().to_string(),
         }
     }
@@ -753,6 +907,12 @@ pub enum Key {
     Styles,
     /// Brief 054b: the cover's rows (legend cut, notes cut), refreshed when the cover changes.
     Cover,
+    /// Brief 057: a rated subject's own rows.
+    Rating(crate::rating::RatedSubject),
+    /// Brief 057: the count rows, unread devices and the rating table's own rows.
+    RatingSummary,
+    /// Brief 052: the project's list of functions and locations (duplicate codes).
+    Designations,
     /// Brief 055: the title block rows (cut values, unknown fields, sheets that differ).
     TitleBlocks,
 }
@@ -932,7 +1092,7 @@ fn net_words(doc: &Document, net: &NetData) -> String {
 
 /// Where a conductor is: its first page in book order and the midpoint of its longest segment
 /// there, or a given end.
-fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
+pub fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
     let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let routes = routes_of(doc, c);
     let Some((page, v)) = routes.iter().min_by_key(|(p, _)| order.get(p).copied().unwrap_or(usize::MAX)) else {
@@ -1170,7 +1330,15 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
 /// The checks of component `c`: a junction with fewer than three wires, a continuation with no
 /// partner.
 pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
+    component_checks_in(&mut Places::new(doc), c)
+}
+
+/// As [`component_checks`], reading the book and grids through `places`, shared across a Checks
+/// pass so the book is built at most once (review of #105, 1).
+pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId) -> Vec<Check> {
+    let doc = places.doc();
     let mut out = Vec::new();
+    designation_checks(places, c, &mut out);
     let place = || doc.terminals_of(c).next().map_or((None, None), |(t, _)| terminal_place(doc, t));
     match kind_of(doc, c) {
         Some(JUNCTION) => {
@@ -1194,7 +1362,7 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 && (ecad_model::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
             {
                 // Located only when there is a row to show (a build visits every device).
-                let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+                let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
                 if ecad_model::tag::is_provisional(t) {
                     out.push(Check {
                         kind: Kind::ProvisionalTag,
@@ -1238,6 +1406,106 @@ pub fn component_checks(doc: &Document, c: ComponentId) -> Vec<Check> {
     out
 }
 
+/// The rows of design 052 §6 for component `c`: a stored function or location naming no entry
+/// (devices and boxes); for a device, a value none of its symbols' contexts has, and two heads.
+/// O(its representations and their pages' boxes).
+fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Check>) {
+    use crate::designations::{self as d, Aspect};
+    let doc = places.doc();
+    let Some(comp) = doc.components.get(&c) else { return };
+    let is_box = crate::locations::is_box_component(comp);
+    if !is_box && !crate::locations::is_device(doc, c) {
+        return;
+    }
+    let who = if is_box { "A box".to_string() } else { crate::devices::tag_words(doc, c) };
+    let (page, at) = if is_box {
+        doc.representations_of(Subject::Component(c)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)))
+    } else {
+        crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a))
+    };
+    for (k, v) in &comp.properties {
+        let Some(a) = Aspect::of_property(k) else { continue };
+        if d::code_of(doc, a, v).is_none() {
+            out.push(Check {
+                kind: Kind::DesignationMissing,
+                page,
+                at,
+                object: Object::Component(c),
+                which: format!("{who}'s {} is no longer in the list", a.word()),
+                fix: Some(Fix::SetDesignation(c, a)),
+            });
+        }
+    }
+    if is_box {
+        return;
+    }
+    let reps: Vec<&ecad_model::Representation> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r).collect();
+    if reps.is_empty() {
+        return;
+    }
+    let mut cache = crate::locations::BoxCache::default();
+    for a in Aspect::ALL {
+        let own = crate::locations::resolve_in(doc, c, a);
+        let (Some(key), Some(code)) = (own.key.clone(), own.value.clone()) else { continue };
+        let contexts: Vec<crate::locations::Located> = reps.iter().map(|r| crate::locations::rep_context_in(doc, a, r, &mut cache)).collect();
+        if contexts.iter().any(|x| x.key.as_deref() == Some(key.as_str())) {
+            continue;
+        }
+        // **Use +CP1** when every symbol is in one context that has a value.
+        let shared = contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).and_then(|f| f.value.clone());
+        let use_words = shared.map(|s| format!(" (all of them are in {s})")).unwrap_or_default();
+        out.push(Check {
+            kind: if a == Aspect::Location { Kind::LocationUnused } else { Kind::FunctionUnused },
+            page,
+            at,
+            object: Object::Component(c),
+            which: format!("{who} is {code}, but none of its symbols is in {code}{use_words}"),
+            fix: contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).map(|_| Fix::UseContext(c, a)),
+        });
+    }
+    let heads = crate::reps::heads(doc, c);
+    if let [_, second, ..] = heads.as_slice()
+        && let Some(r) = doc.representations.get(second)
+    {
+        let mut xp = crate::xref::Places::new(doc);
+        let wheres: Vec<String> =
+            heads.iter().filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::xref::anchor(doc, x)))).collect();
+        out.push(Check {
+            kind: Kind::TwoHeads,
+            page: Some(r.page),
+            at: crate::xref::anchor(doc, r),
+            object: Object::Component(c),
+            which: format!("{who} has two {}s ({})", crate::devices::head_noun(doc, *second), wheres.join(", ")),
+            fix: None,
+        });
+    }
+}
+
+/// The rows of the project's list (design 052 §6): two entries of one aspect sharing a code.
+pub fn designation_rows(doc: &Document) -> Vec<Check> {
+    use crate::designations::{self as d, Aspect};
+    let mut out = Vec::new();
+    for a in Aspect::ALL {
+        let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+        for e in d::entries(doc, a) {
+            *seen.entry(e.code.to_uppercase()).or_default() += 1;
+        }
+        for (code, n) in seen {
+            if n > 1 {
+                out.push(Check {
+                    kind: Kind::DesignationDuplicate,
+                    page: None,
+                    at: None,
+                    object: Object::None,
+                    which: format!("Two {} are called {code}", a.plural()),
+                    fix: Some(Fix::ShowDesignations),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// The checks of cable `k`'s reference ends (brief 027, design 027 §4.2): a cable with exactly one
 /// reference end has an orphan (`/?`). Reads that cable's representations only.
 pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
@@ -1253,12 +1521,52 @@ pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
 
 /// The checks of cable `k` (brief 026): a provisional tag; a tag another cable or a device holds.
 pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
+    cable_checks_in(&mut Places::new(doc), k)
+}
+
+/// As [`cable_checks`], reading the book and grids through `places`.
+pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<Check> {
+    let doc = places.doc();
     let mut out = Vec::new();
+    // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
+    let open = crate::styles::cable::open_cores(doc, k);
+    if !open.is_empty() {
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let name = crate::views::cable_title(doc, k);
+        for (i, o) in open.into_iter().enumerate() {
+            let how = if o.unwired { "has no wire" } else { "is open at an end" };
+            out.push(Check {
+                kind: Kind::CoreOpen,
+                page,
+                at,
+                object: Object::Cable(k),
+                which: format!("{name} core {} {how}; connect it, or tick Not used", o.label),
+                fix: Some(Fix::CoreOpen(k, u16::try_from(i).unwrap_or(u16::MAX))),
+            });
+        }
+    }
+    // Tester re-check 2, item 4: `unused.` keys a file made elsewhere holds that ECAD does not read.
+    let (bad, n) = crate::styles::cable::bad_unused(doc, k);
+    if n > 0 {
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let name = crate::views::cable_title(doc, k);
+        let more = if n > bad.len() { format!(" (and {} more)", n - bad.len()) } else { String::new() };
+        for (key, v) in &bad {
+            out.push(Check {
+                kind: Kind::RatingBadValue,
+                page,
+                at,
+                object: Object::Cable(k),
+                which: format!("{name} has {key} '{v}', which ECAD does not read{more}"),
+                fix: None,
+            });
+        }
+    }
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
     if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
     }
-    let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+    let (page, at) = ecad_model::numbering::rep_anchor_in(places, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
     if ecad_model::tag::is_provisional(t) {
         out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.to_string(), fix: Some(Fix::Finalise) });
     }
@@ -1289,6 +1597,8 @@ pub struct Checks {
     pub changed: u64,
     /// Brief 054: the pages whose type has checks and references off.
     off: BTreeSet<PageId>,
+    /// Brief 057: the kept rating results and their indexes (design 057 §10).
+    pub rating: crate::rating::Kept,
 }
 
 impl Checks {
@@ -1312,18 +1622,29 @@ impl Checks {
         for t in doc.terminals.keys() {
             ch.set(Key::Terminal(*t), terminal_checks(doc, *t));
         }
+        // One drawing order for the pass: the book is built at most once (review of #105, 1).
+        let mut places = Places::new(doc);
         for c in doc.components.keys() {
-            ch.set(Key::Component(*c), component_checks(doc, *c));
+            ch.set(Key::Component(*c), component_checks_in(&mut places, *c));
         }
         for k in doc.cables.keys() {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
-            ch.set(Key::Cable(*k), cable_checks(doc, *k));
+            ch.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
         }
         for page in doc.pages.keys() {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         ch.set(Key::Styles, crate::styles::checks::rows(doc));
         ch.set(Key::Cover, crate::front::check_rows(doc));
+        // Brief 057.
+        ch.rating = crate::rating::Kept::build(doc);
+        let rows: Vec<(crate::rating::RatedSubject, Vec<Check>)> =
+            ch.rating.results.values().map(|r| (r.subject, crate::rating::rows(doc, r))).collect();
+        for (s, v) in rows {
+            ch.set(Key::Rating(s), v);
+        }
+        ch.set(Key::RatingSummary, crate::rating::summary_rows(doc, &ch.rating));
+        ch.set(Key::Designations, designation_rows(doc));
         ch.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
         ch.provisional = ecad_model::numbering::provisional_on(doc);
         ch.set_unnumbered();
@@ -1483,14 +1804,15 @@ impl Checks {
         for t in &scope.terminals {
             self.set(Key::Terminal(*t), terminal_checks(doc, *t));
         }
+        let mut places = Places::new(doc);
         for c in &scope.components {
-            self.set(Key::Component(*c), component_checks(doc, *c));
+            self.set(Key::Component(*c), component_checks_in(&mut places, *c));
         }
         for k in &scope.cable_references {
             self.set(Key::CableReferences(*k), reference_checks(doc, *k));
         }
         for k in &scope.cables {
-            self.set(Key::Cable(*k), cable_checks(doc, *k));
+            self.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
         }
         // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
         // that had a row (a wire removed or recoloured there).
@@ -1504,6 +1826,18 @@ impl Checks {
         }
         if scope.styles {
             self.set(Key::Styles, crate::styles::checks::rows(doc));
+        }
+        // Brief 057 (design 057 §10): the subjects the ops reach, and the count rows.
+        let touched = self.rating.update(doc, &scope.rating);
+        if !touched.is_empty() || scope.rating.any() {
+            for s in touched {
+                let rows = self.rating.results.get(&s).map(|r| crate::rating::rows(doc, r)).unwrap_or_default();
+                self.set(Key::Rating(s), rows);
+            }
+            self.set(Key::RatingSummary, crate::rating::summary_rows(doc, &self.rating));
+        }
+        if scope.designations {
+            self.set(Key::Designations, designation_rows(doc));
         }
         if scope.title_blocks {
             self.set(Key::TitleBlocks, crate::title_block::checks::rows(doc));
@@ -1534,6 +1868,10 @@ pub struct Scope {
     cables: BTreeSet<ecad_model::CableId>,
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
     styles: bool,
+    /// Brief 057: what the ops reach of the rating results.
+    rating: crate::rating::Touch,
+    /// Brief 052: the list's rows (an entry's code changed, added or removed).
+    designations: bool,
     /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
     title_blocks: bool,
 }
@@ -1562,11 +1900,14 @@ impl Scope {
             }
             s.nodes.insert(n);
         };
+        self.rating.collect(doc, ops);
         for op in ops {
             self.styles |= crate::styles::checks::touches(op);
             self.title_blocks |= crate::title_block::checks::touches(op);
             match op {
                 Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
+                    // Brief 057: a member's ends decide its cable's open cores.
+                    self.cables.extend(doc.cables_of(*id));
                     self.conductors.insert(*id);
                     self.routes.insert(*id);
                     node(self, Node::Conductor(*id));
@@ -1577,6 +1918,7 @@ impl Scope {
                     }
                 }
                 Op::AttachEnd { conductor, before, after, .. } => {
+                    self.cables.extend(doc.cables_of(*conductor));
                     self.conductors.insert(*conductor);
                     self.routes.insert(*conductor);
                     node(self, Node::Conductor(*conductor));
@@ -1606,6 +1948,13 @@ impl Scope {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Component(c), key, before, after } => {
+                    // Brief 052 (design 052 §6): a box's value is a context for the devices on its
+                    // pages.
+                    if crate::locations::is_box(doc, *c) {
+                        for p in doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                            self.devices_on(doc, p);
+                        }
+                    }
                     if key == ecad_model::tag::TAG_KEY {
                         self.tag_holders(doc, [before, after].into_iter().flatten());
                     }
@@ -1695,6 +2044,28 @@ impl Scope {
                         }
                     }
                 }
+                // Brief 052 (design 052 §6): a page's function or location is a context for the
+                // devices on it; the project's for every device (rare); the list's codes for the
+                // objects storing that entry, and the duplicate rows.
+                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
+                    self.relocate = true;
+                    self.devices_on(doc, *p);
+                }
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
+                    self.relocate = true;
+                    self.components.extend(doc.components.keys().copied());
+                }
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
+                    self.relocate = true;
+                    self.designations = true;
+                    if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
+                        for (c, x) in &doc.components {
+                            if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+                                self.components.insert(*c);
+                            }
+                        }
+                    }
+                }
                 // Page numbers, folders and the page order change where rows say they are (brief
                 // 019), not what they find: the rows are copied again.
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. }
@@ -1714,6 +2085,17 @@ impl Scope {
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
                 // Brief 050a: style records and the standard reach only the style rows (above).
                 Op::SetStyle { .. } | Op::SetStandard { .. } => {}
+            }
+        }
+    }
+
+    /// Every device with a symbol on `page` (brief 052: their contexts may have changed).
+    fn devices_on(&mut self, doc: &Document, page: PageId) {
+        for (_, r) in doc.representations_on(page) {
+            if let Subject::Component(c) = r.subject
+                && crate::locations::is_device(doc, c)
+            {
+                self.components.insert(c);
             }
         }
     }
@@ -1759,6 +2141,10 @@ impl Scope {
                 self.routes.insert(c);
             }
             Subject::Component(c) => {
+                // Brief 052: a box drawn, moved or erased changes the contexts on its page.
+                if crate::locations::is_box(doc, c) {
+                    self.devices_on(doc, r.page);
+                }
                 // Its points moved: the wires attached to them may now be drawn away; a
                 // continuation's place moves its partners' rows.
                 self.component(doc, c, None);

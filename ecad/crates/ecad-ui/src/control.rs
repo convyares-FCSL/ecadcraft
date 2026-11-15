@@ -371,6 +371,85 @@ impl<'a> TextEntry<'a> {
     }
 }
 
+/// Several lines of text typed here (brief 057: a rating table's CSV rows): the box of a
+/// [`TextEntry`], taller, in the code font, scrolling past `rows` lines. The response is the
+/// editor's.
+#[derive(Debug)]
+pub struct TextArea<'a> {
+    text: &'a mut String,
+    name: &'a str,
+    rows: usize,
+    look: Look,
+}
+
+impl<'a> TextArea<'a> {
+    pub fn new(text: &'a mut String, name: &'a str) -> Self {
+        Self { text, name, rows: 8, look: Look::Auto }
+    }
+    /// How many lines show before it scrolls.
+    pub fn rows(mut self, rows: usize) -> Self {
+        self.rows = rows.clamp(2, 40);
+        self
+    }
+    pub fn look(mut self, look: Look) -> Self {
+        self.look = look;
+        self
+    }
+    pub fn show(self, ui: &mut Ui) -> Response {
+        let s = crate::SHELL;
+        let disabled = !ui.is_enabled();
+        let font = egui::FontId::monospace(ui_type::SMALL.size);
+        let line_h = ui.fonts_mut(|f| f.row_height(&font));
+        let h = line_h * self.rows as f32 + 2.0 * space::S;
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::hover());
+        let behind = ui.painter().add(egui::Shape::Noop);
+        let name = self.name;
+        let inner_r = rect.shrink2(vec2(space::M, space::S));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner_r));
+        let r = egui::ScrollArea::vertical()
+            .id_salt(("ecad.textarea", name))
+            .max_height(inner_r.height())
+            .auto_shrink([false, false])
+            .show(&mut child, |ui| {
+                ui.add(
+                    TextEdit::multiline(self.text)
+                        .frame(egui::Frame::NONE)
+                        .font(font)
+                        .text_color(color(if disabled { s.text_3 } else { s.text }))
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(self.rows),
+                )
+            })
+            .inner;
+        let value_len = self.text.len();
+        accessible(
+            &r,
+            || WidgetInfo {
+                current_text_value: Some(format!("{value_len} bytes")),
+                ..WidgetInfo::labeled(Role::MultilineTextInput, !disabled, name)
+            },
+            None,
+        );
+        if ui.is_rect_visible(rect) {
+            let hovered = !disabled && self.look.hovered(&r);
+            let focused = !disabled && self.look.focused(&r);
+            let fill = if disabled { s.panel } else { s.raised };
+            ui.painter().set(behind, egui::epaint::RectShape::filled(rect, corner(radius::FIELD), color(fill)));
+            if focused {
+                ui.painter().rect_stroke(rect, corner(radius::FIELD), Stroke::new(line::FOCUS_RING_PX, color(s.accent_text)), StrokeKind::Inside);
+            } else if hovered || disabled {
+                ui.painter().rect_stroke(
+                    rect,
+                    corner(radius::FIELD),
+                    Stroke::new(line::HAIRLINE_PX, color(if disabled { s.line } else { s.line_strong })),
+                    StrokeKind::Inside,
+                );
+            }
+        }
+        r
+    }
+}
+
 /// One of a list: a box showing the choice with a chevron; a click opens the list. Read-only shows
 /// the choice as [`read_text`]. The response reports `changed` when the choice changes.
 #[derive(Debug)]

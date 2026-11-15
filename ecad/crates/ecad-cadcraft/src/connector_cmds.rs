@@ -404,17 +404,17 @@ fn place_row(
         } else {
             Placement { origin, rotation: rot, mirror: false, scale: 1.0 }
         };
-        let (c, main) = match &made {
-            Some((c, _, _)) => (*c, false),
+        let c = match &made {
+            Some((c, _, _)) => *c,
             None => {
                 let pins_prop = Some(n);
                 let list = matches!(names, Names::List(_)).then_some(pin_names.as_slice());
                 let (c, tag) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, None, pins_prop, list, &mut ops)?;
                 made = Some((c, tag, true));
-                (c, true)
+                c
             }
         };
-        let (_, _, sh) = cn::symbol_ops(&mut p.ids, page, style.clone(), def, starter, c, &pin_names, placement, main, &mut ops)?;
+        let (_, _, sh) = cn::symbol_ops(&mut p.ids, page, style.clone(), def, starter, c, &pin_names, placement, &mut ops)?;
         shown.extend(sh);
     }
     let (component, tag, new) = made.ok_or("Nothing to place.")?;
@@ -529,18 +529,8 @@ fn place_pins(
         take(halves, &name, &mut taken);
         let rotation = along_wire(doc, page, &on);
         let placement = Placement { origin: on.at, rotation, mirror: false, scale: 1.0 };
-        let (_, _, shown) = cn::symbol_ops(
-            &mut p.ids,
-            page,
-            style.clone(),
-            def,
-            starter,
-            component,
-            std::slice::from_ref(&name),
-            placement,
-            new && i == 0,
-            &mut ops,
-        )?;
+        let (_, _, shown) =
+            cn::symbol_ops(&mut p.ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)?;
         let land = cn::land_pin(doc, &mut p.ids, page, on, &shown, placement)
             .map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, on.conductor)))?;
         if let Some((n, _)) = &land.dropped_number {
@@ -643,7 +633,7 @@ pub(crate) fn run_place_half(
             _ => degrees.to_radians(),
         };
         let placement = Placement { origin, rotation, mirror, scale: 1.0 };
-        let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, new, &mut ops)?;
+        let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(cn::land_pin(doc, &mut p.ids, page, on, &shown, placement)?),
             None => None,
@@ -652,6 +642,9 @@ pub(crate) fn run_place_half(
             ops.extend(l.ops.clone());
         }
         let label = if new { format!("Place connector {tag_text}") } else { format!("Add symbol to {tag_text}") };
+        // Brief 052d (design 052 §5.3): the place proposes; a half's conflict may answer Half.
+        let proposed = crate::proposals::plan_place(p, params, c, page, origin, starter.side())?;
+        ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
         let doc = p.ledger.document();
@@ -678,6 +671,7 @@ pub(crate) fn run_place_half(
         v["joined"] = json!(!new);
         v["representation"] = json!(rep.hex());
         v["definition"] = json!(def.hex());
+        crate::proposals::finish_place(p, pg, c, !new, &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

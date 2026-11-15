@@ -49,18 +49,17 @@ out one row; `panel::value_row` does it for a value with its kind.
 | Section header | A folding section: chevron, title, right-aligned summary (`18.8 A ≥ 4 A`) | A group of rows in a panel | `panel::section_header` |
 | Buttons | Primary (one per view), secondary, quiet, danger; small in panels | An action, not a value | `prim::Button` |
 
-### Coming with 057 (`feature/ratings`, PR #108)
-
-These are shared widgets too. Use them, don't add another of either:
+### Shared table and layout pieces (057)
 
 | Component | For | API |
 | --- | --- | --- |
+| Text area | Several lines typed here (a rating table's CSV rows): the entry box, taller, in the code font | `control::TextArea` |
 | Splitter | Resizing two stacked regions: a double hairline with a grip, a resize cursor and a hover highlight | `ecad_ui::splitter::horizontal(ui, name)` |
 | Colour cell | A colour in a table cell: the colour bar, then the code | `ecad_ui::table` `Cell::Colour(bars, code)` |
+| Toggle cell | On or off in a table row (a core's Not used): `control::Toggle` in the cell; a click reports `TableEvent::Button` | `ecad_ui::table` `Cell::Toggle(on)` |
 
 A colour shown as a panel value uses `Decor::swatch`; one in a table uses `Cell::Colour`. Both show
-a bar before the code. Once 057 is on `dev` they join the gallery, and the two colour bars should
-share one drawing.
+a bar before the code. All four are in the gallery (`showcase::components`).
 
 ### Details that make a value read right
 
@@ -72,8 +71,8 @@ share one drawing.
 
 ## Reviewing a panel or dialog
 
-- Every value the person can change is a `TextEntry`, `Select`, `Segmented`, `Toggle` or
-  `ValueBox`, never a bare `ui.label`.
+- Every value the person can change is a `TextEntry`, `TextArea`, `Select`, `Segmented`, `Toggle`
+  or `ValueBox` (in a table: an input cell or `Cell::Toggle`), never a bare `ui.label`.
 - Every read value is `read_text` or `read_value`, never boxed.
 - No raw `egui::TextEdit`, `ComboBox` or hand-drawn switch. `cargo xtask layers` checks the
   first two.

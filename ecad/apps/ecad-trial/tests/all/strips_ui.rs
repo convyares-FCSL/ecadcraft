@@ -100,6 +100,21 @@ fn terminal_strips_in_the_trial() {
         h.run_steps(3);
         assert_eq!(h.state().reports.as_ref().unwrap().copies, copies + 1, "the strip's own edit copies once");
     }
+    // Brief 052: locations are stored, never inherited: accept each device's proposal (its go-to
+    // symbol's context), as a person does from the inspector's Use link.
+    let d = doc(&mut h);
+    let proposals: Vec<(ecad_model::ComponentId, String)> = d
+        .components
+        .keys()
+        .filter(|c| ecad_cadcraft::locations::is_device(&d, **c))
+        .filter_map(|c| {
+            let r = &d.representations[&ecad_cadcraft::reps::goto(&d, *c, None)?];
+            ecad_cadcraft::locations::rep_context(&d, r, &mut ecad_cadcraft::locations::BoxCache::default()).value.map(|v| (*c, v))
+        })
+        .collect();
+    for (c, v) in proposals {
+        ok(&mut h, &format!(r#"setlocation {{"component":"{}","value":"{v}"}}"#, c.hex()));
+    }
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
     h.run_steps(4);
     let t = h.state().reports.as_ref().unwrap().table().clone();

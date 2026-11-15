@@ -20,10 +20,25 @@ fn other_value(e: &Entry) -> Option<String> {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
         Kind::Text { .. } | Kind::Parsed { .. } => {
-            ["ZZ", "X", "Y", "1,N,3", "1,2,3", "1,2", "A,B", "none", "rev, date, description", "rev@12, description", "Plex", "-"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
+            [
+                "ZZ",
+                "X",
+                "Y",
+                "1,N,3",
+                "1,2,3",
+                "1,2",
+                "A,B",
+                "none",
+                "rev, date, description",
+                "rev@12, description",
+                "Plex",
+                "-",
+                // Brief 057: a bundling factor.
+                "0.8",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
         }
         // Brief 050a: a style choice takes another built-in style of its catalogue.
         Kind::Style(cat) => ecad_cadcraft::styles::catalogue(cat).map(|c| c.builtins.iter().map(|b| b.id.to_string()).collect()).unwrap_or_default(),
@@ -87,7 +102,8 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
         let Some(value) = other_value(e) else {
             // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
             // only its built-in exists.
-            let single = |c: &str| ecad_cadcraft::styles::catalogue(c).is_some_and(|c| c.builtins.len() == 1);
+            // Brief 057: a catalogue with no built-in styles (rating tables) has none to choose.
+            let single = |c: &str| ecad_cadcraft::styles::catalogue(c).is_some_and(|c| c.builtins.len() <= 1);
             assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };

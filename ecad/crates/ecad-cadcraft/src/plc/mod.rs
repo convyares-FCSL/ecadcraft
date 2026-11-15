@@ -1101,6 +1101,7 @@ pub fn props_rows(doc: &Document, c: ComponentId, rows: &mut Vec<crate::props::R
         inherited,
         varies: false,
         choices,
+        proposal: None,
     };
     if ty.is_rack() {
         let (first, n) = rack::slot_range(doc, c);
@@ -1349,6 +1350,7 @@ pub fn channel_rows(
         inherited,
         varies: false,
         choices: Vec::new(),
+        proposal: None,
     };
     rows.push(row(format!("plc.channel#{i}"), "Channel", (i + first).to_string(), false, false));
     let props = doc.components.get(&c).map(|x| &x.properties);

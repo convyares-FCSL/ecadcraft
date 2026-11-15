@@ -23,6 +23,7 @@ pub mod measure;
 pub mod outputs;
 pub mod pages;
 pub mod plc;
+pub mod ratings;
 pub mod release;
 pub mod report;
 pub mod strips;

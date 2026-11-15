@@ -112,6 +112,12 @@ fn text_field(p: &Value, key: &str) -> Result<Option<Option<String>>, String> {
 
 /// A value under the 018 §6.1 rules (trimmed, 200 characters, no control characters; `function`
 /// starts with `=`, `location` with `+`; empty clears).
+/// A page's or the project's `proposal` parameter (brief 052d): "propose" (default), "move" or
+/// "keep".
+fn proposal_mode(params: &Value) -> Result<crate::proposals::Mode, String> {
+    crate::proposals::proposal_param(params)
+}
+
 fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, String> {
     crate::devices::property_value(doc, key, v)
 }
@@ -534,10 +540,13 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&cra
         "number_stored": prop(NUMBER_KEY),
         "position": book.position(page),
         "title": pg.map(|x| x.title.clone()),
-        "function": prop(FUNCTION_KEY),
-        "location": prop(LOCATION_KEY),
-        "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)),
-        "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)),
+        // Brief 052: stored as entry keys of the project's list, shown as codes.
+        "function": prop(FUNCTION_KEY).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
+        "location": prop(LOCATION_KEY).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
+        "function_key": prop(FUNCTION_KEY),
+        "location_key": prop(LOCATION_KEY),
+        "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
+        "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
         "sheet": prop(SHEET_KEY),
         "sheet_shown": ecad_model::sheet::sheet_of(doc, page).summary(),
         "folder": folder.map(FolderId::hex),
@@ -613,11 +622,36 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             }
             put(NUMBER_KEY, n, &mut ops);
         }
+        // Brief 052 (design 052 §5.9): a typed code is stored as its entry's key; an unknown code
+        // adds its entry in the same transaction.
+        let mut pending = crate::designations::Pending::default();
+        // Brief 052d (design 052 §5.6): a new page value proposes itself for the device symbols on
+        // the page outside every box carrying that aspect (`proposal`, as `locationbox`).
+        let mode = proposal_mode(params)?;
+        let mut proposed = crate::proposals::Planned::default();
         for (key, v) in [(FUNCTION_KEY, function), (LOCATION_KEY, location)] {
             if let Some(v) = v {
-                put(key, value(doc, key, v.as_deref())?, &mut ops);
+                let a = crate::designations::Aspect::of_property(key).ok_or("not an aspect")?;
+                let stored = match v.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                    Some(t) => Some(pending.store(doc, &mut p.ids, a, t, &mut ops)?),
+                    None => None,
+                };
+                let old = old.properties.get(key).cloned();
+                if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
+                    let code = crate::designations::code_of(doc, a, k)
+                        .or_else(|| pending.new_codes.iter().rev().find(|(x, _)| *x == a).map(|(_, c)| c.clone()))
+                        .unwrap_or_default();
+                    let spots = crate::proposals::spots_on_page(doc, a, page);
+                    let x = crate::proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &mode);
+                    proposed.ops.extend(x.ops);
+                    proposed.set.extend(x.set);
+                    proposed.conflicts.extend(x.conflicts);
+                    proposed.moved += x.moved;
+                }
+                put(key, stored, &mut ops);
             }
         }
+        ops.extend(proposed.ops.iter().cloned());
         if let Some(v) = sheet {
             let v = v.map(|t| t.trim().to_string()).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("project"));
             let spec = match v {
@@ -641,6 +675,12 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             return Ok(v);
         }
         p.apply_edit(pg, "pageprops", "Page properties", ops)?;
+        if proposed.moved == 0 {
+            p.conflicts = proposed.conflicts.clone();
+        }
+        for l in crate::proposals::conflict_words(p.ledger.document(), &proposed.conflicts) {
+            pg.echo(l);
+        }
         let doc = p.ledger.document();
         let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
         v["changed"] = json!(true);
@@ -668,6 +708,12 @@ pub const MAX_COVER_NOTE_CHARS: usize = 400;
 pub const COVER_NOTES_TOO_LONG: &str = "The cover takes up to 40 notes of 400 characters.";
 
 fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
+    // Brief 052: the project's list of functions and locations changes through its commands.
+    if crate::designations::is_list_property(key) {
+        return Err(
+            "Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.".into()
+        );
+    }
     // Brief 031 (§10.6): `text.` keys are written by the text commands only.
     if crate::text_style::is_reserved_key(key) {
         return Err(crate::text_style::RESERVED_KEY.into());
@@ -716,7 +762,8 @@ fn style_word(s: ReferenceStyle) -> &'static str {
 pub fn project_json(doc: &Document) -> Value {
     let mut fields = Map::new();
     for k in PROJECT_KEYS {
-        fields.insert(k.into(), doc.properties.get(k).map_or(Value::Null, |v| Value::String(v.clone())));
+        // Brief 052: the function and location show their codes.
+        fields.insert(k.into(), doc.properties.get(k).map_or(Value::Null, |v| Value::String(crate::designations::display(doc, k, v))));
     }
     let free: Map<String, Value> = doc
         .properties
@@ -727,6 +774,7 @@ pub fn project_json(doc: &Document) -> Value {
                 && !k.starts_with("numbering.")
                 && !k.starts_with("tags.")
                 && !k.starts_with("revisions.")
+                && !crate::designations::is_list_property(k)
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
@@ -860,11 +908,36 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
     with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
         let mut ops = Vec::new();
+        let mut pending = crate::designations::Pending::default();
+        // Brief 052d (design 052 §5.6): a new project value proposes itself for the device symbols
+        // whose context falls back to the project (the one project-wide case).
+        let mode = proposal_mode(params)?;
+        let mut proposed = crate::proposals::Planned::default();
         for k in PROJECT_KEYS {
             if let Some(v) = text_field(params, k)? {
-                ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, value(doc, k, v.as_deref())?));
+                // Brief 052 (design 052 §5.9): the project's function and location are entry keys.
+                let after = match (crate::designations::Aspect::of_property(k), v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
+                    (Some(a), Some(t)) => Some(pending.store(doc, &mut p.ids, a, t, &mut ops)?),
+                    (Some(_), None) => None,
+                    (None, _) => value(doc, k, v.as_deref())?,
+                };
+                if let (Some(a), Some(key)) = (crate::designations::Aspect::of_property(k), after.as_ref())
+                    && doc.properties.get(k) != Some(key)
+                {
+                    let code = crate::designations::code_of(doc, a, key)
+                        .or_else(|| pending.new_codes.iter().rev().find(|(x, _)| *x == a).map(|(_, c)| c.clone()))
+                        .unwrap_or_default();
+                    let spots = crate::proposals::spots_of_project(doc, a);
+                    let x = crate::proposals::plan_change(doc, a, &spots, doc.properties.get(k).map(String::as_str), key, &code, &mode);
+                    proposed.ops.extend(x.ops);
+                    proposed.set.extend(x.set);
+                    proposed.conflicts.extend(x.conflicts);
+                    proposed.moved += x.moved;
+                }
+                ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
             }
         }
+        ops.extend(proposed.ops.iter().cloned());
         if let Some(props) = params.get("props") {
             let m = props.as_object().ok_or("`props` must be an object of key: value|null")?;
             for (k, v) in m {
@@ -982,6 +1055,12 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             return Ok(v);
         }
         p.apply_edit(pg, "projectprops", "Project properties", ops)?;
+        if proposed.moved == 0 {
+            p.conflicts = proposed.conflicts.clone();
+        }
+        for l in crate::proposals::conflict_words(p.ledger.document(), &proposed.conflicts) {
+            pg.echo(l);
+        }
         let doc = p.ledger.document();
         let mut v = project_json(doc);
         v["changed"] = json!(true);

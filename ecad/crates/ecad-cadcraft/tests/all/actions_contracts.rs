@@ -144,6 +144,20 @@ const ECAD_COMMANDS: &[&str] = &[
     "folderprops",
     "renumberpages",
     "deletepage",
+    // Brief 057.
+    "rating",
+    "ratingtable",
+    "ratings",
+    // Brief 052.
+    "setlocation",
+    "setfunction",
+    "designations",
+    "designationadd",
+    "designationedit",
+    "designationmerge",
+    "designationremove",
+    "conflicts",
+    "functionbox",
     // Brief 055.
     "titleblocks",
     "titleblock",

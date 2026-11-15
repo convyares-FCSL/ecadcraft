@@ -36,6 +36,8 @@ pub const IMPORT_LIST: &str = "Import a list";
 pub const IMPORT_IO: &str = "Import an I/O list";
 pub const EXPORT: &str = "Export";
 pub const OPEN_BESIDE: &str = "Open beside the page";
+/// Brief 057 (owner): Project ▸ Cables opens as a list; Details opens the selected cable below it.
+pub const DETAILS: &str = "Details";
 pub const CLOSE_BESIDE: &str = "Close the page beside";
 pub const RENUMBER: &str = "Renumber\u{2026}";
 pub const REGENERATE: &str = "Regenerate all";
@@ -302,6 +304,9 @@ impl Trial {
             placeholder(ui, REGENERATE, REPORTS_COME);
             return out;
         }
+        if tab == ListsView::Cables && button(ui, DETAILS) {
+            out.push(HeadAction::Details);
+        }
         if tab != ListsView::Wires {
             let beside = if companion { CLOSE_BESIDE } else { OPEN_BESIDE };
             if button(ui, beside) {
@@ -371,6 +376,11 @@ impl Trial {
 
     fn head_action(&mut self, ctx: &egui::Context, a: HeadAction) {
         match a {
+            HeadAction::Details => {
+                if let Some(r) = &mut self.reports {
+                    r.cables.details = !r.cables.details;
+                }
+            }
             HeadAction::Beside => {
                 self.shell.state.companion = match self.shell.state.companion {
                     Some(_) => None,
@@ -526,6 +536,8 @@ impl Trial {
 enum HeadAction {
     Beside,
     Export,
+    /// Brief 057: open or close the selected cable's details.
+    Details,
 }
 
 /// The tabs' labels, for tests.

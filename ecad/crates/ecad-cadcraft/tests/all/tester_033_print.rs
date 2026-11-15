@@ -211,7 +211,10 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     printbook::install_io();
     let mut h = H::new(0x33_04);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
-    place(&mut h, "coil", (100.0, 150.0)); // no maker, no part number: missing cells
+    let k: ComponentId = id(&place(&mut h, "coil", (100.0, 150.0)), "component"); // no maker, no part number: missing cells
+    // Brief 052: the project's location only proposes; the coil stores it, so the only `?` are
+    // the missing maker and part number.
+    h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
     let parts = generated::parts_of(&doc, bom, Some(&Outputs::build(&doc)));

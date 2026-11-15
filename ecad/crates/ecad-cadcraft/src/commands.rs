@@ -351,7 +351,7 @@ fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
                     subject: Subject::Component(c),
                     page,
                     form: Form::Drawn,
-                    role: "main".into(),
+                    role: "drawn".into(),
                     items,
                     connection_points: BTreeMap::new(),
                 },
@@ -558,6 +558,13 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
     if crate::text_style::is_reserved_key(&key) {
         return Err(err(crate::text_style::RESERVED_KEY));
     }
+    // Brief 052 (design 052 §5.9): a function or location (and the retired connector half key)
+    // is stored as an entry key of the project's list, on components only.
+    if (params.get("component").is_some() || params.get("components").is_some())
+        && let Some(prop) = crate::location_cmds::aspect_property(&key)
+    {
+        return crate::location_cmds::run_setprop(s, params, prop);
+    }
     // Several devices at once (brief 019, the Properties panel): one transaction for all.
     if params.get("components").is_some() {
         let cs: Vec<ComponentId> = id_list(params, "components", MAX_HANDLES).map_err(err)?;
@@ -618,6 +625,10 @@ fn run_setprop(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value
             // A strip's offer; on another device `terminals` stays free text (review of PR #55, 5).
             (ObjectRef::Component(c), crate::strips::OFFER_KEY) if crate::strips::is_strip(doc, c) => crate::strips::offer_value(value.as_deref())?,
             (ObjectRef::Cable(_), crate::strips::CORES_KEY) => crate::strips::cores_value(value.as_deref())?,
+            // Brief 057 (tester re-check 2): a core's Not used tick, bounded.
+            (ObjectRef::Cable(k), key) if key.starts_with(crate::styles::cable::UNUSED_PREFIX) => {
+                crate::styles::cable::unused_value(doc, k, key, value.as_deref())?
+            }
             (ObjectRef::Component(_), crate::strips::PE_PART_KEY | crate::strips::PE_MAKER_KEY) => {
                 crate::devices::property_value(doc, &key, value.as_deref())?
             }
@@ -1225,7 +1236,7 @@ fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
                 subject: Subject::Component(c),
                 page,
                 form: Form::Symbol,
-                role: "main".into(),
+                role: crate::symbols::of_definition(&def).map_or_else(|| "symbol".to_string(), |s| s.key.to_string()),
                 items: vec![item],
                 connection_points: BTreeMap::new(),
             },

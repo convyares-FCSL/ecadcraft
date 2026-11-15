@@ -192,8 +192,13 @@ pub enum Action {
     RevisionPage(PageId),
     /// Brief 020a: something the History tab asked for.
     History(crate::history_panel::Do),
-    /// Brief 024: Checks' **Use the box's location** (`setprop … value: null`).
-    UseBoxLocation(ecad_model::ComponentId),
+    /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
+    UseContext(ecad_model::ComponentId, ecad_cadcraft::designations::Aspect),
+    /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
+    /// inspector shows its row.
+    GoToDevice(ecad_model::ComponentId),
+    /// Brief 052: Checks' **Show in Settings**: Settings ▸ Project info.
+    ShowDesignations,
     /// Brief 024: Checks' **Show**: Reports, BOM, Only ?.
     ShowReports,
     /// Brief 024: open the Reports window.
@@ -215,6 +220,11 @@ pub enum Action {
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
+    /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
+    /// Choose a table, Show the rated wires).
+    RatingFix(ecad_cadcraft::checks::Fix),
+    /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
+    CoreFix(ecad_cadcraft::checks::Fix, usize),
     /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
     /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
     EditTitleBlock(PageId, u16),

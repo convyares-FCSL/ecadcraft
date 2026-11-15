@@ -15,10 +15,10 @@
 //! | Op (kind, target) | Recomputed |
 //! | --- | --- |
 //! | `CreateComponent` / `DeleteComponent` / `SetProperty` / terminal and representation ops of a device, its items moved | that device; the conductors at its connection points; their cables |
-//! | the same of a location box on page P | the devices whose main symbol is on P (before and after); their conductors and cables; P's box checks |
-//! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | the devices whose main symbol is on P; conductors routed on P (their Page cell) |
+//! | the same of a location box on page P | P's box checks only: a device's location is stored, never derived from a box (brief 052, design 052 §8.3) |
+//! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | conductors routed on P (their Page cell); no device row |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
-//! | `SetProperty(Project, location)` | devices whose location comes from the project or that have none (the one project-wide case) |
+//! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list, brief 052) | the devices, connectors and items storing that key (the one wide case, by intent) |
 //! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
 //! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
@@ -107,11 +107,13 @@ pub struct DeviceRow {
     pub part_number: Option<String>,
     /// Brief 047: its main part's article number.
     pub article_number: Option<String>,
+    /// Its stored location (brief 052: never derived from boxes or pages).
     pub location: Located,
-    /// The page of its main symbol and where that symbol is.
-    pub main: Option<(RepresentationId, PageId, Option<Pt>)>,
-    /// Its own location differs from the box its main symbol is in: that box and its location.
-    pub own_box: Option<(ComponentId, String)>,
+    /// Its stored function (brief 052).
+    pub function: Located,
+    /// Where go-to lands ([`crate::reps::goto`]: its head, else its first symbol in drawing
+    /// order): the symbol, its page and its anchor. Display only: it is in no scope.
+    pub goto: Option<(RepresentationId, PageId, Option<Pt>)>,
 }
 
 /// Sort key of a tag: prefix, number, text.
@@ -434,6 +436,8 @@ pub struct Scope {
     conductors: BTreeSet<ConductorId>,
     cables: BTreeSet<CableId>,
     project_location: bool,
+    /// Brief 052: entry keys of the project's list whose code changed.
+    renamed: BTreeSet<String>,
     /// Potentials (lower case; `""`: none) whose table row changed.
     potentials: BTreeSet<String>,
     /// The project's sheet changed: pages without their own sheet.
@@ -455,6 +459,7 @@ impl Scope {
     /// Whether nothing is in scope.
     pub fn is_empty(&self) -> bool {
         !self.project_location
+            && self.renamed.is_empty()
             && self.devices.is_empty()
             && self.pages.is_empty()
             && self.route_pages.is_empty()
@@ -520,10 +525,8 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.cables.insert(*k);
                 }
+                Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == LOCATION_KEY => {}
                 Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
-                    if key == LOCATION_KEY {
-                        self.pages.insert(*p);
-                    }
                     if key == NUMBER_KEY {
                         self.route_pages.insert(*p);
                     }
@@ -534,8 +537,13 @@ impl Scope {
                     if key == ecad_model::wiring::WIRE_CATEGORY {
                         self.all_wires = true;
                     }
+                    // Brief 047: an item without its own location shows the project's.
                     if key == LOCATION_KEY {
                         self.project_location = true;
+                    }
+                    // Brief 052: a rename in the project's list re-keys its users' rows.
+                    if let Some((_, k, true)) = crate::designations::parse_list_property(key) {
+                        self.renamed.insert(k.to_string());
                     }
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {
@@ -638,15 +646,11 @@ impl Scope {
             }
         }
         self.conductors.extend(mates);
-        // Devices whose main symbol sits on a page in scope.
-        for p in &self.pages {
-            if doc.pages.contains_key(p) {
-                for (_, r) in doc.representations_on(*p) {
-                    if let Subject::Component(c) = r.subject
-                        && locations::is_device(doc, c)
-                    {
-                        self.devices.insert(c);
-                    }
+        // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
+        if !self.renamed.is_empty() {
+            for (c, x) in &doc.components {
+                if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && self.renamed.contains(v)) {
+                    self.devices.insert(*c);
                 }
             }
         }
@@ -657,9 +661,9 @@ impl Scope {
 #[derive(Debug, Clone, Default)]
 pub struct Outputs {
     devices: BTreeMap<ComponentId, DeviceRow>,
-    by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
+    /// Brief 047: items whose location is the project's, or none: a project location set reaches
+    /// them. Devices never are (brief 052: a device's location is stored).
     from_project: BTreeSet<ComponentId>,
-    /// Devices with no location at all: a project location set reaches them (tester 024, bug 1).
     from_none: BTreeSet<ComponentId>,
     /// Brief 047 (design 047 §4, §10): the BOM entries (main parts, part lines, items) and the
     /// rows they make, kept by key.
@@ -700,6 +704,8 @@ pub struct Outputs {
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
     no_location: usize,
+    /// Brief 052: devices with no function (one count row when some device has one).
+    no_function: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
     pub strips: crate::strips::Strips,
     /// Brief 045: the PLC racks and cards (design 045 §11.1).
@@ -717,9 +723,7 @@ pub struct Outputs {
     pub build_id: u64,
     /// How many sorted row lists were made (tests: an unrelated edit makes none).
     pub sorts: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    /// Devices whose own location differs from their box's (one warning row each), and the
-    /// location box rows by severity (warnings, info): kept with the rows (brief 027's badge).
-    own_box: usize,
+    /// The location box rows by severity (warnings, info): kept with the rows (brief 027's badge).
     box_counts: [usize; 2],
     /// Bumped only when the check rows may read differently (brief 027's Release dialog).
     pub checks_changed: u64,
@@ -728,9 +732,6 @@ pub struct Outputs {
     cable_checks: [usize; 3],
     /// Brief 044 (design 044 §8): each connector's BOM rows, one per drawn half.
     connectors: BTreeMap<ComponentId, Vec<BomRow>>,
-    /// Brief 044 (review of #81, 1): the pages of each connector's halves' main symbols (also in
-    /// `by_page`), so a box or page location there reaches the half.
-    connector_pages: BTreeMap<ComponentId, BTreeSet<PageId>>,
     /// Brief 044 (review of #81, 2): the half rows' groups, kept beside `loc_rows` / `by_part`:
     /// (location, group) and group → how many halves; location → how many groups.
     half_loc: BTreeMap<(LocKey, HalfKey), usize>,
@@ -878,10 +879,6 @@ impl Outputs {
     pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
         let mut s = Scope::default();
         s.collect(before, ops);
-        // The devices whose main symbol was on a page in scope.
-        for p in &s.pages {
-            s.devices.extend(self.by_page.get(p).into_iter().flatten().copied());
-        }
         s
     }
 
@@ -1103,22 +1100,11 @@ impl Outputs {
     fn remove_device(&mut self, c: ComponentId) {
         self.remove_connector(c);
         let Some(old) = self.devices.remove(&c) else { return };
-        if let Some((_, p, _)) = old.main
-            && let Some(set) = self.by_page.get_mut(&p)
-        {
-            set.remove(&c);
-            if set.is_empty() {
-                self.by_page.remove(&p);
-            }
-        }
         self.from_project.remove(&c);
         self.from_none.remove(&c);
         self.no_part_number -= usize::from(old.part_number.is_none());
         self.no_location -= usize::from(old.location.value.is_none());
-        self.own_box -= usize::from(old.own_box.is_some());
-        if old.own_box.is_some() {
-            self.checks_changed += 1;
-        }
+        self.no_function -= usize::from(old.function.key.is_none());
     }
 
     /// Brief 047: take every entry of `c` out of the rows and counts.
@@ -1299,12 +1285,13 @@ impl Outputs {
     fn set_item(&mut self, doc: &Document, c: ComponentId) {
         let Some(comp) = doc.components.get(&c) else { return };
         let props = &comp.properties;
-        let own = clean(props.get(LOCATION_KEY));
-        let location = match own {
-            Some(v) => Located { value: Some(v), source: Source::Device },
-            None => match clean(doc.properties.get(LOCATION_KEY)) {
-                Some(v) => Located { value: Some(v), source: Source::Project },
-                None => Located { value: None, source: Source::None },
+        // Brief 052: stored values are entry keys of the project's list; shown by their codes.
+        let shown = |k: Option<String>| k.map(|k| (crate::designations::code_of(doc, crate::designations::Aspect::Location, &k), k));
+        let location = match shown(clean(props.get(LOCATION_KEY))) {
+            Some((value, key)) => Located { value, source: Source::Device, key: Some(key) },
+            None => match shown(clean(doc.properties.get(LOCATION_KEY))) {
+                Some((value, key)) => Located { value, source: Source::Project, key: Some(key) },
+                None => Located { value: None, source: Source::None, key: None },
             },
         };
         match location.source {
@@ -1368,8 +1355,7 @@ impl Outputs {
         let Some(comp) = doc.components.get(&c) else { return };
         let props = &comp.properties;
         let location = locations::resolve_with(doc, c, cache);
-        let main = locations::main_rep(doc, c).map(|(rid, r)| (rid, r.page, locations::anchor(doc, r)));
-        let own_box = locations::own_differs(doc, c, cache).map(|b| (b.component, b.location.unwrap_or_default()));
+        let goto = crate::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
             tag: props.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_default(),
@@ -1378,27 +1364,15 @@ impl Outputs {
             part_number: clean(props.get("part_number")),
             article_number: clean(props.get(bom::ARTICLE_KEY)),
             location,
-            main,
-            own_box,
+            function: locations::resolve_function(doc, c),
+            goto,
         };
-        if let Some((_, p, _)) = row.main {
-            self.by_page.entry(p).or_default().insert(c);
-        }
-        match row.location.source {
-            Source::Project => {
-                self.from_project.insert(c);
-            }
-            Source::None => {
-                self.from_none.insert(c);
-            }
-            _ => {}
-        }
         // Brief 044 (design 044 §8.1): a connector has one BOM row per drawn half, kept apart;
         // its part lines are entries (brief 047), each under its half (`part.<n>.half`).
         let connector = crate::connectors::is_connector(doc, c);
         if connector {
-            let (rows, pages) = connector_rows(doc, c, cache);
-            self.set_connector(c, rows, pages);
+            let rows = connector_rows(doc, c, cache);
+            self.set_connector(c, rows);
         }
         // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
         // part lines are entries like a device's (brief 047).
@@ -1420,10 +1394,7 @@ impl Outputs {
         });
         self.no_part_number += usize::from(row.part_number.is_none());
         self.no_location += usize::from(row.location.value.is_none());
-        self.own_box += usize::from(row.own_box.is_some());
-        if row.own_box.is_some() {
-            self.checks_changed += 1;
-        }
+        self.no_function += usize::from(row.function.key.is_none());
         self.devices.insert(c, row);
         self.set_entries(doc, c, main);
     }
@@ -1724,18 +1695,6 @@ impl Outputs {
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.box_checks.values().flatten().cloned().collect();
         out.extend(self.continuation.iter().cloned());
-        for d in self.devices.values() {
-            if let Some((_, loc)) = &d.own_box {
-                out.push(Check {
-                    kind: Kind::OwnLocation,
-                    page: d.main.map(|(_, p, _)| p),
-                    at: d.main.and_then(|(_, _, a)| a),
-                    object: Object::Component(d.component),
-                    which: format!("{} is {} but sits in box {loc}", d.tag, d.location.text()),
-                    fix: Some(Fix::UseBoxLocation(d.component)),
-                });
-            }
-        }
         let (n, l) = (self.no_part_number, self.lines_no_part);
         if n > 0 || l > 0 {
             let devices = if n == 1 { "1 device".to_string() } else { format!("{n} devices") };
@@ -1752,6 +1711,12 @@ impl Outputs {
         if n > 0 && n < self.devices.len() {
             let which = if n == 1 { "1 device has no location".to_string() } else { format!("{n} devices have no location") };
             out.push(Check { kind: Kind::NoLocation, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
+        }
+        // Brief 052 (design 052 §6): `function-none`, as `location-none`.
+        let n = self.no_function;
+        if n > 0 && n < self.devices.len() {
+            let which = if n == 1 { "1 device has no function".to_string() } else { format!("{n} devices have no function") };
+            out.push(Check { kind: Kind::NoFunction, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
         out.extend(self.strip_checks());
         out.extend(self.plc.checks());
@@ -1949,7 +1914,7 @@ impl Outputs {
         }
         for (c, n) in &self.for_missing {
             let Some(e) = self.entries.get(&(*c, *n)) else { continue };
-            let main = self.devices.get(c).and_then(|d| d.main);
+            let main = self.devices.get(c).and_then(|d| d.goto);
             let what = if self.strips.get(*c).is_some() { "position" } else { "fuse" };
             let names = e.missing.join(", ");
             let plural = if e.missing.len() == 1 { "" } else { "s" };
@@ -1964,7 +1929,7 @@ impl Outputs {
         }
         for (c, keys) in &self.bad_part_keys {
             let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
-            let main = self.devices.get(c).and_then(|d| d.main);
+            let main = self.devices.get(c).and_then(|d| d.goto);
             let first = keys.first().cloned().unwrap_or_default();
             let more = if keys.len() > 1 { format!(" (and {} more)", keys.len() - 1) } else { String::new() };
             let which = match self.entries.get(&(*c, 0)).filter(|e| e.item) {
@@ -2000,10 +1965,10 @@ impl Outputs {
             + usize::from(self.fuse_gap_count() > 0)
             + self.bad_part_keys.len()
             + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
+            + usize::from(self.no_function > 0 && self.no_function < self.devices.len())
             + usize::from(self.cable_checks[2] > 0);
         // Brief 028: the strips' and cables' rows, kept with them.
-        let warnings = self.own_box
-            + self.box_counts[0]
+        let warnings = self.box_counts[0]
             + self.strips.check_warnings
             + self.cable_checks[0]
             + self.cable_checks[1]
@@ -2013,9 +1978,9 @@ impl Outputs {
         (self.strips.check_errors, warnings, info)
     }
 
-    /// What the check rows depend on besides [`Outputs::checks_changed`]: the two count rows.
-    pub fn checks_key(&self) -> (u64, usize, usize, usize) {
-        (self.checks_changed, self.no_part_number, self.no_location, self.devices.len())
+    /// What the check rows depend on besides [`Outputs::checks_changed`]: the three count rows.
+    pub fn checks_key(&self) -> (u64, usize, usize, usize, usize) {
+        (self.checks_changed, self.no_part_number, self.no_location, self.no_function, self.devices.len())
     }
 
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
@@ -2872,9 +2837,9 @@ fn half_key(r: &BomRow) -> HalfKey {
 }
 
 impl Outputs {
-    /// Keep connector `c`'s half rows, their groups and their main symbols' pages (review of
-    /// #81, 1 and 2). `set_device` has taken the old ones out.
-    fn set_connector(&mut self, c: ComponentId, rows: Vec<BomRow>, pages: BTreeSet<PageId>) {
+    /// Keep connector `c`'s half rows and their groups (review of #81, 2). `set_device` has taken
+    /// the old ones out.
+    fn set_connector(&mut self, c: ComponentId, rows: Vec<BomRow>) {
         for r in &rows {
             let (lk, hk) = (loc_key(r.location.as_deref()), half_key(r));
             let n = self.half_loc.entry((lk.clone(), hk.clone())).or_default();
@@ -2884,10 +2849,6 @@ impl Outputs {
             }
             *self.half_part.entry(hk).or_default() += 1;
         }
-        for p in &pages {
-            self.by_page.entry(*p).or_default().insert(c);
-        }
-        self.connector_pages.insert(c, pages);
         self.connectors.insert(c, rows);
     }
 
@@ -2913,22 +2874,14 @@ impl Outputs {
                 }
             }
         }
-        for p in self.connector_pages.remove(&c).unwrap_or_default() {
-            if let Some(set) = self.by_page.get_mut(&p) {
-                set.remove(&c);
-                if set.is_empty() {
-                    self.by_page.remove(&p);
-                }
-            }
-        }
     }
 }
 
-/// Connector `c`'s BOM rows, one per drawn half (design 044 §8.1), and its halves' main pages.
-fn connector_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> (Vec<BomRow>, BTreeSet<PageId>) {
+/// Connector `c`'s BOM rows, one per drawn half (design 044 §8.1), each at its half's stored
+/// location (design 052 §5.2).
+fn connector_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<BomRow> {
     let halves = crate::connectors::half_rows(doc, c, cache);
-    let pages = halves.iter().filter_map(|h| h.main.map(|(_, p)| p)).collect();
-    let rows = halves
+    halves
         .into_iter()
         .map(|h| BomRow {
             location: h.location.value,
@@ -2940,8 +2893,7 @@ fn connector_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> (Vec<
             part_number: h.part_number,
             ..BomRow::default()
         })
-        .collect();
-    (rows, pages)
+        .collect()
 }
 
 /// Half rows grouped as device rows are (design 024 §6.1): by location and part, or by part with

@@ -66,7 +66,14 @@ pub fn keys(layout: &TitleBlockLayout) -> (BTreeSet<String>, BTreeSet<String>) {
 /// input: every key read is present (empty when unset), so a change to it is seen.
 pub fn read(doc: &Document, layout: &TitleBlockLayout) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
     let (pk, rk) = keys(layout);
-    let project = pk.into_iter().map(|k| (k.clone(), doc.properties.get(&k).cloned().unwrap_or_default())).collect();
+    // Brief 052: a function or location is an entry key of the project's list, shown by its code.
+    let project = pk
+        .into_iter()
+        .map(|k| {
+            let v = doc.properties.get(&k).map(|v| crate::designations::display(doc, &k, v)).unwrap_or_default();
+            (k, v)
+        })
+        .collect();
     let newest = if rk.is_empty() { None } else { crate::revisions::issued(doc).into_iter().next() };
     let revision = rk.into_iter().map(|k| (k.clone(), newest.as_ref().map(|r| r.get(&k).to_string()).unwrap_or_default())).collect();
     (project, revision)

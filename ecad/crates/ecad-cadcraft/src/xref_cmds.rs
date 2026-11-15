@@ -162,7 +162,7 @@ pub(crate) fn mirror_for(doc: &ecad_model::Document, c: ComponentId, params: &Va
         (Some(p), None) => {
             let dev = xref::device(doc, c);
             let head =
-                dev.head.and_then(|h| doc.representations.get(&h)).ok_or("This device has no coil (or other main symbol) to put a table under.")?;
+                dev.head.and_then(|h| doc.representations.get(&h)).ok_or("This device has no coil (or other head symbol) to put a table under.")?;
             let origin = xref::anchor(doc, head).ok_or("This device's coil cannot be located.")?;
             let k = match doc.settings.length_unit {
                 ecad_model::LengthUnit::Millimetre => 1.0,
