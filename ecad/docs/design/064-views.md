@@ -1,7 +1,9 @@
 # Design 064: one update pipeline for derived views (R9)
 
-Status: Approved (owner, 2026-11-15: all ten decisions in §14 as recommended). §2's crate
-targets will be renamed to the crate map of lane 065 once that map is approved. Brief: `docs/briefs/064-views.md`.
+Status: Approved (owner, 2026-11-15: all ten decisions in §14 as recommended). Amended the same
+day for the approved crate map (`docs/design/crates.md`, lane 065): `Views` and `derived/` live in
+the new Core crate **ecad-electrical** from the start. ECAD is desktop-only (owner ruling: no
+web build), so nothing here depends on wasm. Brief: `docs/briefs/064-views.md`.
 Source: finding 1 and row R9 of the 2026-11 code review (not committed). This is an internal design
 with no new controls. Its user-facing promise: nothing a person sees changes, except that views
 can no longer go stale after an edit that a hand-written list forgot.
@@ -11,7 +13,10 @@ classification of the ops. All three commit paths run the same pipeline, so a ne
 silently ignored and a new view takes one struct and one line.
 
 Inventory taken on `dev` at `445787b8` (059 cable manager merged, #116). `Op` still has 33
-variants; 059 added none.
+variants; 059 added none. File paths in §1 are as on `dev` before the crate split. After the
+split (065), every module the crate map marks **E** is in `ecad-electrical`, still re-exported
+under its old `ecad_cadcraft::` path. That covers checks, outputs, xref, references, connectors,
+plc, rating, generated, device_list, props and the rest. `project` stays in ecad-cadcraft.
 
 ---
 
@@ -90,19 +95,35 @@ works on any path today; owner decision 9).
 
 ## 2. Where things live (so nothing moves twice)
 
-The types lane (StyleCatalogue enum, property keys registry `keys.rs`) lands before this lane.
-The crate split (an engine-free `ecad-domain` plus a thin `ecad-cadcraft` adapter) lands after it.
+Two lanes land before this one: first the types lane (StyleCatalogue enum, property keys registry
+`keys.rs`), then lane 065's crate split. The split creates **ecad-electrical** (Core: the
+electrical rules, depending on `ecad-model` and `ecad-tokens` only). It leaves ecad-cadcraft
+(Engine) with only the CADCraft link, the commands and the interaction forms. So each piece of
+this lane goes straight to its final crate and never moves:
 
-| Piece | Crate / module | Moves at the split? |
+| Piece | Crate / module | Layer |
 |---|---|---|
-| `Effect`, `Effects::of`, `EffectKind`, `Area`, `Key` | `ecad-model/src/effect.rs` | No. ecad-model is already engine-free. |
-| `DerivedView` trait, `Phase`, `NoteCx`, `Outcome`, `ViewScope` | `ecad-model/src/view.rs` (recommended; owner decision 1) | No. |
-| `Views` (the set, stages, `begin`/`finish`, `verify`) and one adapter file per view (`derived/<view>.rs`) | `ecad-cadcraft/src/derived/` | Once, whole, into `ecad-domain`. The module has no `cadcraft_*` import, and `xtask layers` gets a rule for that (step 2 of the brief). |
-| `Changes` → redraw, change log, front page | `ecad-cadcraft/src/project/changes.rs` (after the split, §8) | The `Changes` type is engine-free. Only the redraw half stays in the adapter. |
-| `DocumentOwner` (interactive commit, undo, redo) | `ecad-cadcraft/src/project/owner.rs` | Stays in the adapter. |
+| `Effect`, `Effects::of`, `EffectKind`, `Area`, `Key` | `ecad-model/src/effect.rs` | Core |
+| `DerivedView` trait, `Phase`, `NoteCx`, `Outcome`, `ViewScope` | `ecad-model/src/view.rs` (owner decision 1) | Core |
+| `Views` (the set, stages, `begin`/`finish`, `verify`), `Pending`, and one adapter file per view (`derived/<view>.rs`) | `ecad-electrical/src/derived/` | Core. The crate already refuses `cadcraft_*`, so no extra layers rule is needed. |
+| `Changes` (the engine-free record: pages, named pages, feeds, list, frame, echo) | `ecad-electrical/src/derived/changes.rs` | Core |
+| `apply_changes`: change log, redraw, front page | `ecad-cadcraft/src/project/changes.rs` (after the `project.rs` split, §8) | Engine |
+| `DocumentOwner` (interactive commit, undo, redo) | `ecad-cadcraft/src/project/owner.rs` | Engine |
+| Trial consumers (§6) | `ecad-app` (ecad-trial's library after 065 step 9) | App |
 
-The name `crate::views` is already taken by the cable fan-view settings (`views::Settings`), so
-the new module is `derived`.
+`Project` (Engine) owns one `ecad_electrical::derived::Views` and calls it from its three paths,
+so `Views`, `Pending` and `Changes` are `pub` in ecad-electrical. The views' own state (the frame
+stale flag, the pending flag, the cover uses, the xref reuse) moves out of `Project` into the
+views.
+
+Several modules are split in the crate map: `frame`, `front`, `generated`, `device_list` and
+`xref`. In each, the update-map half reads only the document and so sits in ecad-electrical.
+`props` stays in ecad-cadcraft because it builds the palette for an engine selection. Its
+`touched` reads only the document, though, so it moves into `derived/props_feed.rs`. No view's
+`note` needs the engine.
+
+The cable fan-view settings (`views::Settings`) stay in ecad-cadcraft under that name. To keep
+the two words apart, the new module is called `derived`.
 
 ---
 
@@ -354,7 +375,7 @@ The page list is read only when some kind changed, as it is today. A contract te
 ## 5. `Views`: one pipeline, three paths
 
 ```rust
-pub(crate) struct Views {
+pub struct Views {
     // Stage 1: indexes that depend only on the document.
     pub refs: RefsView, pub connectors: ConnectorsView,
     // Stage 2: models.
@@ -365,8 +386,8 @@ pub(crate) struct Views {
     pub devices: DevicesFeed, pub props: PropsFeed, pub tree: TreeFeed,
 }
 
-pub(crate) struct Pending { /* one Scope per kept view, from the Before phase */ }
-pub(crate) struct Changes {
+pub struct Pending { /* one Scope per kept view, from the Before phase */ }
+pub struct Changes {
     pub pages: PageSet, pub named: BTreeSet<PageId>, pub devices: DeviceTouch,
     pub props: Option<BTreeSet<ObjectRef>>, pub list: bool, pub frame_stale: bool,
     pub echo: Vec<String>, pub problems: Vec<String>,
@@ -387,7 +408,8 @@ impl Views {
 `Lazy<V>` holds `Option<V>`, built on first show as `Project::checks()` and `outputs()` are today.
 A view that isn't built yet is skipped in both phases, at no cost.
 
-**Every path, the same five lines** (inside `project/changes.rs`):
+**Every path, the same five lines** (inside ecad-cadcraft's `project/changes.rs`, calling
+ecad-electrical's `Views`):
 
 ```text
 let pending = self.derived.begin(before_doc, &ops);          // nothing changes yet
@@ -412,10 +434,11 @@ ops arrive in the After phase. These are the only behaviour changes, and each ge
 (§10). Today `note_frame_ops` sets `frame_stale` before the commit and puts it back on a
 refusal. In the new pipeline the flag is set only in `finish`, so nothing has to be put back.
 
-### 5.1 Parallelism (optional, decided by lane 061)
+### 5.1 Parallelism (the `parallel` feature)
 
-The owner wants rayon for views, checks and parsing. Lane 061 (crate review) decides whether to
-adopt it. The design makes parallel updates **possible without making them necessary**:
+The owner wants rayon for views, checks and parsing, and the approved crate map allows it in
+ecad-electrical. ECAD is desktop-only, so every target can build it. The design makes parallel
+updates **possible without making them necessary**:
 
 - **Before and After phases:** `note` takes `&self` and `&Document` and writes only its own
   scope, so each view's notes are independent. Under the feature they run as one task per view.
@@ -425,10 +448,11 @@ adopt it. The design makes parallel updates **possible without making them neces
 - **Determinism:** each view's result depends only on its scope and the document. `Changes` is
   merged in the fixed field order, so a run with the feature on equals a run with it off, and a
   test checks that (§10).
-- **Seam now, rayon later.** `Views` iterates stages through one private helper (`for_each_view`).
-  Without the feature it's a plain loop. With `--features parallel` (ecad-cadcraft, off by
-  default, never on wasm) it's `rayon::scope`. If 061 rejects rayon, the helper stays a loop and
-  nothing else changes.
+- **One switch.** `Views` iterates stages through one private helper (`for_each_view`). Without
+  the feature it's a plain loop. With `--features parallel` (an ecad-electrical feature) it's
+  `rayon::scope`. The feature is simply on or off. It stays **off by default until the bench shows
+  it helps**: the `views.*` rows of §10, run both ways. Turning it on by default is then a
+  one-line change for the overseer to approve.
 - **Precondition:** `Document: Sync` and every view `Send`. Step 0 asserts both at compile time.
   If `Document` isn't `Sync` (a lazily filled cache, for example), the feature isn't offered, and
   the overseer is told which field blocks it.
@@ -515,12 +539,13 @@ and the new view never both feed the change log: each view step deletes the old 
 paths in the same commit.
 
 0. **Preconditions.** R0's `Op::ALL`/`Op::name` coverage has landed, along with the types lane's
-   `StyleCatalogue` and `keys.rs`. A compile-time assert for `Document: Sync`.
+   `StyleCatalogue` and `keys.rs`, and so has the crate split (065) with `ecad-electrical`. A
+   compile-time assert for `Document: Sync`.
 1. **Split `project.rs`** (§8). A pure move.
 2. **ecad-model.** `effect.rs` (Effect, `Effects::of`, `Area`, `AreaSet`) and `view.rs` (the
    trait). `Touched::add` rewritten over `Effects`. `defaults::AREAS` derived from `Area`. In
-   ecad-cadcraft, `derived/` with an empty `Views`, already called by all three paths (`begin` /
-   `finish` / `apply_changes`), plus the layers rule (no `cadcraft_*` imports in `derived/`).
+   ecad-electrical, `derived/` with an empty `Views` and `Changes`. In ecad-cadcraft, all three
+   paths call them already (`begin` / `finish` / `apply_changes`).
 3. **Feeds:** `TreeFeed`, `DevicesFeed`, `PropsFeed`. `with_numbered` goes.
 4. **`FrameView`** (D1 closed). `note_frame_ops` goes.
 5. **`ConnectorsView`**, then **`RefsView`** (xref, cable references, continuation names, reuse).
@@ -532,15 +557,16 @@ paths in the same commit.
 10. **The matrix** (§7), `xtask update-maps`, the wildcard deny on `derived/`, the `starts_with`
     ratchet.
 11. **Trial consumers** (§6): the Checks row delta and `rows_of`, the Cables open cores.
-12. **Parallel seam** (§5.1): `for_each_view`, and the `parallel` feature only if 061 has
-    approved rayon.
+12. **Parallel seam** (§5.1): `for_each_view` and the `parallel` feature, off by default, with
+    the bench run both ways.
 
 ---
 
 ## 10. Tester plan
 
 A tester is required, because the lane touches the commit path, `translate.rs`'s caller and the
-store's commit. Tests go in `tests/all/lanes/lane_064.rs` (ecad-model and ecad-cadcraft) and in
+store's commit. Tests go in `tests/all/lanes/lane_064.rs` (ecad-model, ecad-electrical for the
+views, ecad-cadcraft for the three paths) and in
 the trial's lane module for §6.
 
 | # | Test | Checks |
@@ -556,7 +582,7 @@ the trial's lane module for §6.
 | C9 | `checks_panel_patches` | Ordinary edits: `ChecksPanel::sorts` doesn't move, and rows are added or removed by delta. A page renumber sorts once. |
 | C10 | `cables_tab_reads_one_cable` | With the Cables tab shown, an edit to cable A reads no other cable's open cores (counter). |
 | C11 | `parallel_equals_serial` | Only with `--features parallel`: C5's corpus gives identical `Changes` and kept views. |
-| C12 | existing suites | ecad-cadcraft, ecad-model, ecad-mcp and ecad-trial fast tests unchanged. The 059 and 058-adjacent update-map tests (`lists::*` counters) unchanged. |
+| C12 | existing suites | ecad-model, ecad-electrical, ecad-cadcraft, ecad-mcp and ecad-app (ecad-trial) fast tests unchanged. The 059 and 058-adjacent update-map tests (`lists::*` counters) unchanged. |
 
 No command is added or changed, so the MCP contract-test rule (brief 011) adds no new test. The
 existing `ecad-mcp` contracts must still pass, because they drive the Path A pipeline.
@@ -622,14 +648,15 @@ away here. After 064:
 lane, T1 and T2 fixed in step 11, and the bench targets in decision 10.
 
 1. **Where the trait lives.** `Effect` and `DerivedView` both go in ecad-model (`effect.rs`,
-   `view.rs`), so neither moves at the crate split, and `Views` goes in ecad-cadcraft
-   `derived/`, engine-free, which moves once into ecad-domain. *Recommended.* The alternative
+   `view.rs`), and `Views` goes in `derived/`. *Recommended.* *Amended for the crate map:*
+   `derived/` is in ecad-electrical from the start (no move), not in ecad-cadcraft. The alternative
    is the trait in `derived/`, which moves with it. That keeps "views" out of ecad-model but
    moves the trait once.
 2. **Exhaustive notes.** `#![deny(clippy::wildcard_enum_match_arm)]` on `effect.rs` and
    `derived/`, so every view names every `Effect` kind it ignores. *Recommended.*
-3. **Parallelism.** Build the seam now (§5.1), with rayon behind an off-by-default `parallel`
-   feature, never on wasm, and only if lane 061 approves the dependency. *Recommended.*
+3. **Parallelism.** Build the seam now (§5.1), with rayon behind a `parallel` feature of
+   ecad-electrical, off by default until the bench shows it helps. *Recommended.* *Amended:* ECAD
+   is desktop-only, so the wasm condition is gone, and the crate map allows rayon.
 4. **Split `project.rs` first**, as a pure-move step 1. *Recommended.* The alternative is to
    split it last, which makes the pipeline diffs larger but leaves `project.rs` stable longer.
 5. **Fix T1 and T2 here** (the Checks panel's full sort and the Cables tab's scan of every cable),
