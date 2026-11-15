@@ -148,10 +148,12 @@ fn the_demo_locations_reports_and_generated_pages() {
         let x = ecad_cadcraft::locations::rep_context(doc, r, &mut ecad_cadcraft::locations::BoxCache::default());
         (ecad_cadcraft::locations::resolve(doc, c).value, x.value.unwrap_or_default(), x.source.word())
     };
-    assert_eq!(proposal(&doc, "-K01"), (None, "+CP1".to_string(), "project"));
-    assert_eq!(proposal(&doc, "-G01"), (None, "+CP1".to_string(), "project"));
-    assert_eq!(proposal(&doc, "-M01"), (None, "+FIELD".to_string(), "page"));
-    assert_eq!(proposal(&doc, "-X02"), (None, "+JB1".to_string(), "box"));
+    // Brief 052d: each device took its proposal when placed; the demo's +JB1 box moved -X02.
+    let s = |v: &str| Some(v.to_string());
+    assert_eq!(proposal(&doc, "-K01"), (s("+CP1"), "+CP1".to_string(), "project"));
+    assert_eq!(proposal(&doc, "-G01"), (s("+CP1"), "+CP1".to_string(), "project"));
+    assert_eq!(proposal(&doc, "-M01"), (s("+FIELD"), "+FIELD".to_string(), "page"));
+    assert_eq!(proposal(&doc, "-X02"), (s("+JB1"), "+JB1".to_string(), "box"));
     // Accept every device's proposal, as a person does from the inspector's Use link.
     let tagged: Vec<(ecad_model::ComponentId, String)> = doc
         .components

@@ -257,4 +257,5 @@ fn go_to_and_numbering_share_one_drawing_order() {
     assert_eq!(xref::device(&d, q).head, Some(rep(&c2)));
 }
 
+mod proposed;
 mod stored;

@@ -139,8 +139,16 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             }
             _ => None,
         };
+        // Brief 052d (design 052 §5.3): the context here proposes a function and a location; an
+        // unset device takes it in this transaction, a device with another value is asked about.
+        let modes = crate::proposals::Mode::both(params)?;
+        let spot = crate::proposals::Spot { device: plan.component, page, at: Some(origin) };
+        let mut pending = crate::designations::Pending::default();
+        let proposed = crate::proposals::plan(p.ledger.document(), &mut p.ids, &[spot], &modes, &[], &mut pending)?;
+        plan.ops.extend(proposed.ops.iter().cloned());
         let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
+        p.conflicts = proposed.conflicts.iter().filter(|_| proposed.moved == 0).cloned().collect();
         p.last_placed = Some((starter.key.to_string(), plan.component));
         let doc = p.ledger.document();
         let landed = land.map(|(t, l)| crate::terminal_cmds::land_result(doc, t, &l));
@@ -162,6 +170,12 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         });
+        if let (Some(o), Some(x)) = (v.as_object_mut(), crate::proposals::json(doc, &proposed).as_object()) {
+            o.extend(x.clone());
+        }
+        for line in crate::proposals::place_words(doc, plan.component, plan.joined, &proposed) {
+            pg.echo(line);
+        }
         if let Some((t, (r, slot))) = card_slot {
             let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), devices::tag_words(doc, r));
             v["rack"] = json!(r.hex());

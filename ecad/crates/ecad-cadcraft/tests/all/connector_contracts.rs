@@ -358,8 +358,8 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
 // ------------------------------------------------------------------------------- fix round 1
 
 /// Review of #81, 1, brief 052 (design 052 §5.2): a half's BOM location is its own override
-/// (`location.plug`), else the connector's; a box or a page `location` on the half's own page only
-/// proposes (its context), also when that page is not the connector's first.
+/// (`location.plug`), else the connector's; a box or a page `location` on the half's own page is
+/// only its context (proposals kept off here), also when that page is not the connector's first.
 #[test]
 fn a_half_location_is_its_override_else_the_connector_not_its_page() {
     let mut h = H::new(4420);
@@ -376,11 +376,12 @@ fn a_half_location_is_its_override_else_the_connector_not_its_page() {
         let r = ecad_cadcraft::reps::goto(&d, c, Some(Side::Plug)).unwrap();
         ecad_cadcraft::locations::rep_context(&d, &d.representations[&r], &mut ecad_cadcraft::locations::BoxCache::default()).value
     };
-    h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
-    assert_eq!(half_location(&mut h, ".P"), Value::Null, "a page location gives the plug nothing");
+    // Brief 052d: `keep`, so the connector is not given the proposal (that is the outputs tests').
+    h.run("pageprops", json!({"location": "+FIELD", "proposal": "keep"})).unwrap();
+    assert_eq!(half_location(&mut h, ".P"), Value::Null, "a page location is not the plug's location");
     assert_eq!(plug_context(&mut h).as_deref(), Some("+FIELD"), "it proposes");
-    h.run("locationbox", json!({"location": "+JB1", "corners": [[0, 0], [300, 200]]})).unwrap();
-    assert_eq!(half_location(&mut h, ".P"), Value::Null, "nor does a box around the plug");
+    h.run("locationbox", json!({"location": "+JB1", "corners": [[0, 0], [300, 200]], "proposal": "keep"})).unwrap();
+    assert_eq!(half_location(&mut h, ".P"), Value::Null, "nor is a box around the plug");
     assert_eq!(plug_context(&mut h).as_deref(), Some("+JB1"), "the box proposes");
     // The connector's own location reaches both halves; the plug's override beats it.
     h.run("setlocation", json!({"component": c.hex(), "value": "+CP1"})).unwrap();

@@ -58,6 +58,35 @@ no longer in the list. Re-make them; nothing converts them.
    **Remove** (only when nothing uses it).
 4. **Remove unused (n)** removes every entry nothing uses, in one step.
 
+## Part d: proposals, the conflict list and function boxes
+
+A box, a page or the project **proposes** a location (or function) where you place or move a
+symbol. A device with none takes it; a device with another value is listed and never changed
+silently. Leave is always the default.
+
+### Try it
+
+1. **Place a contactor in a box.** Draw a location box `+CP1`, then place a coil inside it: it is
+   `+CP1` at once. One undo removes the coil and its location together.
+2. **Draw a box around an existing device.** Devices with no location inside take the box's; a
+   device with another location is listed under the intent line: `-K05  +CP2 → +CP1`, with
+   **Move all**, **Leave all** and a **Move** per row. Esc (or any other edit) leaves them.
+3. **Move a contact into another box and leave it.** Drag an unset device's only symbol into box
+   `+CP1`: it is set (the echo says so). `u` clears the location; `u` again moves it back. Move a
+   device that already has `+CP2`: it is listed, and Leave keeps `+CP2` (its symbol there shows
+   `+CP2-K05`).
+4. **Draw a function box.** Location ▸ Function box, type `=F1`, draw it around a location box.
+   It is dash-dot and labelled `=F1`. A device placed inside takes both `=F1` and `+CP1`.
+5. **Give a box another entry.** Type `+CP3` in a box's Location row: devices inside at `+CP1`
+   are listed; devices inside at another value are not.
+6. **Page and project values.** A new page location proposes itself for the unset devices on that
+   page outside every box.
+
+For agents: `place`, `pageprops` and `projectprops` take `location` / `function` (on `place`) or
+`proposal` (on boxes, pages and the project): `propose` (default), `move`, `keep`, or a code on
+`place`. JSON calls never prompt; `conflicts {}` lists what waits, `conflicts {answer: "move"}`
+moves it.
+
 ### Automated checks
 
 - `cargo test -p ecad-cadcraft --test all lane_052`

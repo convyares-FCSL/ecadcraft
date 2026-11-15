@@ -181,13 +181,14 @@ fn devices_groups_by_location_with_not_on_a_page_yet_first() {
     assert!(h.query_by_label_contains("Group -K").is_some(), "grouped by its tag's letter");
 }
 
-/// Brief 052 (design 052 §5.1): Location groups by the location stored on the device; a page's
-/// location only proposes it, so an unset device is under No location until it takes one.
+/// Brief 052 (design 052 §5.1, §5.3): Location groups by the location stored on the device. A
+/// page's location proposes it at placement (taken by a new device), and a device placed with
+/// `location: keep` stays under No location until it is given one.
 #[test]
 fn devices_group_by_their_stored_location_not_their_page() {
     let mut h = harness();
     crate::project_panel::ok(&mut h, r#"pageprops {"location":"+CAB1"}"#);
-    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1"}"#);
+    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1","location":"keep"}"#);
     h.get_by_label(&tool_strip::panel_label(LeftTab::Devices)).click();
     h.run_steps(4);
     assert!(h.query_by_label_contains("Group No location").is_some(), "unset: the page only proposes");
@@ -197,6 +198,10 @@ fn devices_group_by_their_stored_location_not_their_page() {
     h.run_steps(4);
     assert!(h.query_by_label_contains("Group +CAB1").is_some(), "grouped under its stored location");
     assert!(h.query_by_label_contains("Group No location").is_none());
+    // A device placed on the page takes its proposal.
+    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[90,50],"tag":"-K2"}"#);
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("Group No location").is_none(), "the new device took +CAB1");
 }
 
 /// Review finding 4: "Not on a page yet" offers no drag while placing from the list has no

@@ -713,6 +713,60 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     Ok(Planned { component, rep, item, ops, added: pending.words() })
 }
 
+/// The box a [`Planned`] box will be, read from its ops (for proposals before it is committed).
+pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
+    let mut props = None;
+    let mut vertices = None;
+    let mut page = None;
+    for op in &p.ops {
+        match op {
+            Op::CreateComponent { id, component } if *id == p.component => props = Some(component.properties.clone()),
+            Op::AddItem { id, item } | Op::ModifyItem { id, after: item, .. } if *id == p.item => {
+                page = Some(item.page);
+                if let ItemKind::Primitive(Primitive::Polyline { vertices: v, .. }) = &item.kind {
+                    vertices = Some(v.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    let (props, page) = (props?, page.or_else(|| doc.items.get(&p.item).map(|i| i.page))?);
+    let vertices = vertices.or_else(|| match &doc.items.get(&p.item)?.kind {
+        ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
+        _ => None,
+    })?;
+    let (lo, hi) = bounds(&vertices);
+    let location_key = props.get(LOCATION_KEY).cloned();
+    let function_key = props.get(FUNCTION_KEY).cloned();
+    // A code the box adds to the list is in the ops, not in `doc` yet.
+    let code = |a: Aspect, k: &Option<String>| {
+        k.as_ref().and_then(|k| {
+            designations::code_of(doc, a, k).or_else(|| {
+                p.ops.iter().find_map(|op| match op {
+                    Op::SetProperty { object: ecad_model::ObjectRef::Project, key, after, .. } if *key == designations::code_property(a, k) => {
+                        after.clone()
+                    }
+                    _ => None,
+                })
+            })
+        })
+    };
+    Some(LocBox {
+        component: p.component,
+        rep: p.rep,
+        item: p.item,
+        page,
+        location: code(Aspect::Location, &location_key),
+        function: code(Aspect::Function, &function_key),
+        location_key,
+        function_key,
+        area: area(&vertices),
+        vertices,
+        lo,
+        hi,
+    })
+}
+
 /// Why changing item `id` of `doc` to `after` is refused (tester 024, owner ruling): a location
 /// box's outline cannot be opened or cut below three points. The words give the way out.
 pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<String> {

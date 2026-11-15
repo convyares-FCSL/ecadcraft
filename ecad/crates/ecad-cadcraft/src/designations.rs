@@ -83,10 +83,14 @@ impl Aspect {
     }
 
     /// The aspect a stored property key belongs to: `function`; `location` and `location.<type>`.
+    ///
+    /// `location.<t>` counts only for an override type (`socket`, `plug`, or a symbol type other
+    /// than `head`, design 052 FP3): other `location.*` keys, such as a box's `location.style`
+    /// (brief 050a), are not locations (tester 052, finding 2).
     pub fn of_property(key: &str) -> Option<Aspect> {
         if key == FUNCTION_KEY {
             Some(Aspect::Function)
-        } else if key == LOCATION_KEY || key.strip_prefix("location.").is_some_and(|t| !t.is_empty()) {
+        } else if key == LOCATION_KEY || key.strip_prefix("location.").is_some_and(crate::locations::override_type_ok) {
             Some(Aspect::Location)
         } else {
             None
@@ -161,12 +165,16 @@ pub fn code_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
 }
 
 /// The entry `key_or_code` names: a code (starting with the aspect's sign) or a key.
+///
+/// A code may be typed without its sign (`CP1`), as `setlocation` and `designationadd` take it
+/// (tester 052, finding 5): text that is not a key is read as a code.
 pub fn find(doc: &Document, a: Aspect, key_or_code: &str) -> Option<Entry> {
     let t = key_or_code.trim();
+    let by_code = |c: &str| entries(doc, a).into_iter().find(|e| e.code.eq_ignore_ascii_case(c));
     if t.starts_with(a.sign()) {
-        return entries(doc, a).into_iter().find(|e| e.code.eq_ignore_ascii_case(t));
+        return by_code(t);
     }
-    let code = code_of(doc, a, t)?;
+    let Some(code) = code_of(doc, a, t) else { return by_code(&format!("{}{t}", a.sign())) };
     Some(Entry {
         aspect: a,
         key: t.to_string(),

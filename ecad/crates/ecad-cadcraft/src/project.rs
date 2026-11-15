@@ -590,6 +590,10 @@ pub struct Project {
     /// Brief 052 (design 052 §5.9): the use index of the project's list of functions and
     /// locations, read from the log as it grows; rebuilt on a branch switch.
     pub(crate) designation_uses: crate::designations::Uses,
+    /// Brief 052d (design 052 §5.5): the devices whose stored value differs from what the last
+    /// placement, move or box proposed, waiting for Move or Leave (Leave by default; any other
+    /// edit leaves them).
+    pub conflicts: Vec<crate::proposals::Conflict>,
     /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
     page_list_version: u64,
     /// What OOPS may bring back on each page document (brief 023, [`crate::oops`]).
@@ -1202,6 +1206,7 @@ impl Project {
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
             designation_uses: crate::designations::Uses::default(),
+            conflicts: Vec::new(),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
@@ -1297,6 +1302,7 @@ impl Project {
             change_count: 0,
             tag_high: crate::devices::TagHigh::default(),
             designation_uses: crate::designations::Uses::default(),
+            conflicts: Vec::new(),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
@@ -1433,6 +1439,7 @@ impl Project {
             change_count: 0,
             tag_high: crate::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
             designation_uses: crate::designations::Uses::default(),
+            conflicts: Vec::new(),
             page_list_version: 0,
             last_placed: None,
             last_continuation: None,
@@ -1537,6 +1544,7 @@ impl Project {
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.designation_uses.reset();
+        self.conflicts.clear();
         self.views.retain(|c| cables.contains(c));
         self.checks = None;
         self.outputs = None;
@@ -1930,6 +1938,37 @@ impl Project {
         self.pending_known = true;
     }
 
+    /// Brief 052d (design 052 §5.4, Q3): after a move, the moved symbols whose context changed
+    /// propose it. Unset devices take it in one follow-up transaction (`u` undoes it first, then
+    /// the move); devices with another value wait in [`Project::conflicts`] (Leave by default).
+    fn move_follow_up(&mut self, pg: &mut Pages<'_>, moved: &[crate::proposals::Moved], label: &str) {
+        if moved.is_empty() {
+            return;
+        }
+        let doc = self.ledger.document();
+        let planned = match crate::proposals::after_move(doc, &mut self.ids, moved) {
+            Ok(p) => p,
+            Err(e) => {
+                pg.echo(e);
+                return;
+            }
+        };
+        let words = crate::proposals::conflict_words(doc, &planned.conflicts);
+        let conflicts = planned.conflicts.clone();
+        if !planned.ops.is_empty() {
+            let follow = crate::proposals::follow_up_label(&planned);
+            let set: Vec<String> = planned.set.iter().map(|(c, _, v)| format!("{} is now in {v}", crate::devices::tag_words(doc, *c))).collect();
+            match self.apply_edit(pg, "move", &follow, planned.ops) {
+                Ok(_) => pg.echo(format!("{label}; {}.", set.join("; "))),
+                Err(e) => pg.echo(format!("Not set ({e}).")),
+            }
+        }
+        self.conflicts = conflicts;
+        for w in words {
+            pg.echo(w);
+        }
+    }
+
     fn record_change(
         &mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
         tree: bool,
@@ -2258,6 +2297,8 @@ impl Project {
         if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
+        // Brief 052d (design 052 §5.5): any other edit is a Leave of the conflicts waiting.
+        self.conflicts.clear();
         // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
         if let Some(m) = crate::generated::refusal(self.ledger.document(), &ops) {
             return Err(m);
@@ -2652,6 +2693,8 @@ impl DocumentOwner for Project {
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &t.ops));
         let n = t.ops.len();
+        // Brief 052d (design 052 §5.4): the moved device symbols' contexts before the move.
+        let moved = crate::proposals::before_move(self.ledger.document(), &t.ops);
         // The numbering pass (brief 022) extends the same transaction.
         if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign) {
             self.restore(pg, c.uid, page);
@@ -2689,6 +2732,7 @@ impl DocumentOwner for Project {
         for note in &t.notes {
             pg.echo(note.clone());
         }
+        self.move_follow_up(pg, &moved, &label);
         self.sync_saved(pg);
         Verdict::Accept
     }

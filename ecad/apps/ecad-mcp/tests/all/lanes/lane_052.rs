@@ -52,6 +52,39 @@ fn location_and_list_commands_through_execute() {
     assert_eq!(v["functions"]["entries"][0]["devices"], 1, "{v}");
 }
 
+/// Brief 052d (design 052 §10.22): `place` with `location` / `function` modes, `locationbox` and
+/// `functionbox` returning `conflicts` with their aspect, and `conflicts {answer: "move"}`; `place`
+/// never prompts.
+#[test]
+fn proposals_through_execute() {
+    let mut c = writer();
+    let k = hex(&c.exec("place", json!({"symbol": "coil", "at": [300, 40]})), "component");
+    c.exec("setlocation", json!({"component": k, "value": "+CP2"}));
+    let v = c.exec("locationbox", json!({"location": "+CP1", "corners": [[20, 100], [200, 220]]}));
+    assert_eq!(last_by_agent(&mut c).0, "Location box +CP1");
+    assert_eq!(v["conflicts"], json!([]), "{v}");
+    // A new device inside: set in the place's own transaction.
+    let n = hex(&c.exec("place", json!({"symbol": "coil", "at": [75, 180]})), "component");
+    let (label, ops) = last_by_agent(&mut c);
+    assert_eq!(label, "Place symbol");
+    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), key, .. } if key == "location")), "{ops:?}");
+    // Joining -K (at +CP2) inside the box: `move` moves it, `keep` for function proposes nothing.
+    let v = c.exec("place", json!({"symbol": "no", "at": [120, 160], "device": k, "location": "move", "function": "keep"}));
+    assert_eq!(v["location"]["conflicts"][0]["proposed"], "+CP1", "{v}");
+    let (_, ops) = last_by_agent(&mut c);
+    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key == "location")), "moved in the same transaction");
+    // A function box around them: unset devices take =F1; the result carries each aspect.
+    let v = c.exec("functionbox", json!({"function": "=F1", "corners": [[10, 90], [260, 230]]}));
+    assert_eq!(last_by_agent(&mut c).0, "Function box =F1");
+    assert_eq!(v["function"]["set"].as_array().map(Vec::len), Some(2), "{v}");
+    // A device with =F2 inside a new =F3 box is a conflict with its aspect; Move sets it.
+    c.exec("setfunction", json!({"component": n, "value": "=F2"}));
+    let v = c.exec("functionbox", json!({"function": "=F3", "corners": [[60, 170], [90, 190]]}));
+    assert_eq!(v["conflicts"][0]["aspect"], "function", "{v}");
+    c.exec("conflicts", json!({"answer": "move"}));
+    assert_eq!(last_by_agent(&mut c).0, "Set function =F3");
+}
+
 #[test]
 fn with_writes_off_the_location_writes_are_refused_and_the_list_reads() {
     let mut c = reader();
@@ -63,10 +96,15 @@ fn with_writes_off_the_location_writes_are_refused_and_the_list_reads() {
         ("designationedit", json!({"aspect": "location", "code": "+CP1", "to": "+CP2"})),
         ("designationmerge", json!({"aspect": "location", "from": "+CP1", "into": "+CP2"})),
         ("designationremove", json!({"aspect": "location", "code": "+CP1"})),
+        ("place", json!({"symbol": "coil", "at": [0, 0], "location": "move", "function": "keep"})),
+        ("locationbox", json!({"location": "+CP1", "corners": [[0, 0], [20, 20]], "proposal": "propose"})),
+        ("functionbox", json!({"function": "=F1", "corners": [[0, 0], [20, 20]], "proposal": "propose"})),
+        ("conflicts", json!({"answer": "move"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
     }
     c.exec("designations", json!({}));
+    c.exec("conflicts", json!({}));
     assert_eq!(c.log().len(), before.len());
 }

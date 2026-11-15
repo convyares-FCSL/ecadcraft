@@ -30,6 +30,7 @@
 
 pub mod bar;
 pub mod compare;
+pub mod conflicts;
 pub mod connector;
 pub mod drawer;
 pub mod glyphs;

@@ -22,6 +22,11 @@ pub fn specs() -> Vec<CommandSpec> {
 
 fn own_specs() -> Vec<CommandSpec> {
     vec![
+        CommandSpec::new("conflicts", "Location Conflicts", run_conflicts)
+            .params(
+                "{answer?: \"move\" | \"leave\", components?: [id] (Choose: only these)} (the devices the last placement, move or box left with another function or location; no answer lists them; `move` sets them in one transaction; `leave` writes nothing)",
+            )
+            .noundo(),
         CommandSpec::new("setlocation", "Set Location", run_setlocation)
             .params(
                 "{component: id | components: [id], value: code | null, aspect?: \"location\" (default) | \"function\", type?: \"socket\" | \"plug\" | \"terminal\" | a symbol type (an override, location only)} \
@@ -142,9 +147,31 @@ fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<
         if planned.changed == 0 {
             return Ok(v);
         }
-        p.apply_edit(pg, command, &label(a, planned.value.as_ref(), planned.changed), planned.ops)?;
-        if let Some(m) = planned.added {
-            v["message"] = json!(m);
+        // Brief 052d (design 052 §5.6): a box given another entry proposes it for the devices
+        // inside: unset ones take it in this transaction; those at the box's old value are asked.
+        let mut ops = planned.ops;
+        let mut conflicts = Vec::new();
+        if let ([b], Some((key, code))) = (objects.as_slice(), planned.value.as_ref())
+            && prop == a.property()
+            && let Some(lb) =
+                doc.representations_of(ecad_model::Subject::Component(*b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r))
+        {
+            let spots = crate::proposals::spots_inside(doc, &lb);
+            let proposed = crate::proposals::plan_change(doc, a, &spots, lb.key(a), key, code, &crate::proposals::Mode::Propose);
+            ops.extend(proposed.ops);
+            v["proposals"] = crate::proposals::json(
+                doc,
+                &crate::proposals::Planned { set: proposed.set, conflicts: proposed.conflicts.clone(), ..Default::default() },
+            );
+            conflicts = proposed.conflicts;
+        }
+        let words = crate::proposals::conflict_words(doc, &conflicts);
+        p.apply_edit(pg, command, &label(a, planned.value.as_ref(), planned.changed), ops)?;
+        p.conflicts = conflicts;
+        let mut message: Vec<String> = planned.added.into_iter().collect();
+        message.extend(words);
+        if !message.is_empty() {
+            v["message"] = json!(message.join("\n"));
         }
         Ok(v)
     })?;
@@ -154,9 +181,12 @@ fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<
     Ok(v)
 }
 
+/// The components named, each once, in the order first named (tester 052, finding 4: a device
+/// named twice is set once, not refused).
 fn objects(params: &Value) -> Result<Vec<ComponentId>, String> {
     if params.get("components").is_some() {
-        return id_list(params, "components", MAX_HANDLES);
+        let mut seen = std::collections::BTreeSet::new();
+        return Ok(id_list::<ComponentId>(params, "components", MAX_HANDLES)?.into_iter().filter(|c| seen.insert(*c)).collect());
     }
     opt_id::<ComponentId>(params, "component")?.map(|c| vec![c]).ok_or_else(|| "`component` or `components` (hex ids) is required".to_string())
 }
@@ -173,7 +203,13 @@ fn text_value(params: &Value) -> Result<Option<String>, String> {
 fn run_with(s: &mut Session, params: &Value, a: Aspect, command: &str) -> cadcraft_engine::Result<Value> {
     let objects = objects(params).map_err(err)?;
     let text = text_value(params).map_err(err)?;
-    let prop = match params.get("type").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()) {
+    // A `type` that is not text is refused, never read as no type (tester 052, finding 3).
+    let ty = match params.get("type") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) => Some(t.trim()).filter(|t| !t.is_empty()),
+        Some(_) => return Err(err("`type` is text: socket, plug or a symbol type such as terminal")),
+    };
+    let prop = match ty {
         None => a.property().to_string(),
         Some(_) if a == Aspect::Function => return Err(err("A function has no overrides: a device's parts share its function.")),
         Some(t) => format!("location.{}", t.to_ascii_lowercase()),
@@ -196,6 +232,43 @@ fn run_setfunction(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
         return Err(err("A function has no overrides: a device's parts share its function."));
     }
     run_with(s, params, Aspect::Function, "setfunction")
+}
+
+/// `conflicts {answer?, components?}` (design 052 §5.5): the waiting conflicts; Move or Leave.
+fn run_conflicts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let answer = params.get("answer").and_then(Value::as_str).map(|a| a.trim().to_ascii_lowercase());
+    let only: Option<Vec<ComponentId>> =
+        if params.get("components").is_some() { Some(id_list(params, "components", MAX_HANDLES).map_err(err)?) } else { None };
+    let v = match answer.as_deref() {
+        None => crate::commands::with_any_page(s, |p, _| {
+            let doc = p.ledger.document();
+            Ok(json!({"conflicts": crate::proposals::json(doc, &crate::proposals::Planned { conflicts: p.conflicts.clone(), ..Default::default() })}))
+        })?,
+        Some("leave") => crate::commands::with_any_page(s, |p, _| {
+            let doc = p.ledger.document();
+            let words = crate::proposals::left_words(doc, &p.conflicts);
+            p.conflicts.clear();
+            Ok(json!({"changed": false, "message": words}))
+        })?,
+        Some("move") => with_project(s, |p, pg, _| {
+            let chosen: Vec<crate::proposals::Conflict> =
+                p.conflicts.iter().filter(|c| only.as_ref().is_none_or(|o| o.contains(&c.component))).cloned().collect();
+            let doc = p.ledger.document();
+            let ops = crate::proposals::move_ops(doc, &chosen);
+            if ops.is_empty() {
+                p.conflicts.clear();
+                return Ok(json!({"changed": false}));
+            }
+            let label = crate::proposals::move_label(&chosen);
+            p.apply_edit(pg, "conflicts", &label, ops)?;
+            Ok(json!({"changed": true, "message": format!("{label}.")}))
+        })?,
+        Some(_) => return Err(err("`answer` is \"move\" or \"leave\"")),
+    };
+    if let Some(m) = v.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()) {
+        s.echo(m.to_string());
+    }
+    Ok(v)
 }
 
 /// `setprop` of an aspect property (`prop` from [`aspect_property`]) on one component or several.

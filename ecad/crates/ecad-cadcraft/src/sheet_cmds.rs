@@ -112,6 +112,18 @@ fn text_field(p: &Value, key: &str) -> Result<Option<Option<String>>, String> {
 
 /// A value under the 018 §6.1 rules (trimmed, 200 characters, no control characters; `function`
 /// starts with `=`, `location` with `+`; empty clears).
+/// A page's or the project's `proposal` parameter (brief 052d): "propose" (default), "move" or
+/// "keep".
+fn proposal_mode(params: &Value) -> Result<crate::proposals::Mode, String> {
+    match params.get("proposal").and_then(Value::as_str).map(|m| m.trim().to_ascii_lowercase()) {
+        None => Ok(crate::proposals::Mode::Propose),
+        Some(m) if m == "propose" => Ok(crate::proposals::Mode::Propose),
+        Some(m) if m == "move" => Ok(crate::proposals::Mode::Move),
+        Some(m) if m == "keep" => Ok(crate::proposals::Mode::Keep),
+        Some(_) => Err("`proposal` is \"propose\", \"move\" or \"keep\"".into()),
+    }
+}
+
 fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, String> {
     crate::devices::property_value(doc, key, v)
 }
@@ -575,6 +587,10 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
         // Brief 052 (design 052 §5.9): a typed code is stored as its entry's key; an unknown code
         // adds its entry in the same transaction.
         let mut pending = crate::designations::Pending::default();
+        // Brief 052d (design 052 §5.6): a new page value proposes itself for the device symbols on
+        // the page outside every box carrying that aspect (`proposal`, as `locationbox`).
+        let mode = proposal_mode(params)?;
+        let mut proposed = crate::proposals::Planned::default();
         for (key, v) in [(FUNCTION_KEY, function), (LOCATION_KEY, location)] {
             if let Some(v) = v {
                 let a = crate::designations::Aspect::of_property(key).ok_or("not an aspect")?;
@@ -582,9 +598,22 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
                     Some(t) => Some(pending.store(doc, &mut p.ids, a, t, &mut ops)?),
                     None => None,
                 };
+                let old = old.properties.get(key).cloned();
+                if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
+                    let code = crate::designations::code_of(doc, a, k)
+                        .or_else(|| pending.new_codes.iter().rev().find(|(x, _)| *x == a).map(|(_, c)| c.clone()))
+                        .unwrap_or_default();
+                    let spots = crate::proposals::spots_on_page(doc, a, page);
+                    let x = crate::proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &mode);
+                    proposed.ops.extend(x.ops);
+                    proposed.set.extend(x.set);
+                    proposed.conflicts.extend(x.conflicts);
+                    proposed.moved += x.moved;
+                }
                 put(key, stored, &mut ops);
             }
         }
+        ops.extend(proposed.ops.iter().cloned());
         if let Some(v) = sheet {
             let v = v.map(|t| t.trim().to_string()).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("project"));
             let spec = match v {
@@ -608,6 +637,12 @@ fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             return Ok(v);
         }
         p.apply_edit(pg, "pageprops", "Page properties", ops)?;
+        if proposed.moved == 0 {
+            p.conflicts = proposed.conflicts.clone();
+        }
+        for l in crate::proposals::conflict_words(p.ledger.document(), &proposed.conflicts) {
+            pg.echo(l);
+        }
         let doc = p.ledger.document();
         let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
         v["changed"] = json!(true);
@@ -825,6 +860,10 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         let doc = p.ledger.document();
         let mut ops = Vec::new();
         let mut pending = crate::designations::Pending::default();
+        // Brief 052d (design 052 §5.6): a new project value proposes itself for the device symbols
+        // whose context falls back to the project (the one project-wide case).
+        let mode = proposal_mode(params)?;
+        let mut proposed = crate::proposals::Planned::default();
         for k in PROJECT_KEYS {
             if let Some(v) = text_field(params, k)? {
                 // Brief 052 (design 052 §5.9): the project's function and location are entry keys.
@@ -833,9 +872,23 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
                     (Some(_), None) => None,
                     (None, _) => value(doc, k, v.as_deref())?,
                 };
+                if let (Some(a), Some(key)) = (crate::designations::Aspect::of_property(k), after.as_ref())
+                    && doc.properties.get(k) != Some(key)
+                {
+                    let code = crate::designations::code_of(doc, a, key)
+                        .or_else(|| pending.new_codes.iter().rev().find(|(x, _)| *x == a).map(|(_, c)| c.clone()))
+                        .unwrap_or_default();
+                    let spots = crate::proposals::spots_of_project(doc, a);
+                    let x = crate::proposals::plan_change(doc, a, &spots, doc.properties.get(k).map(String::as_str), key, &code, &mode);
+                    proposed.ops.extend(x.ops);
+                    proposed.set.extend(x.set);
+                    proposed.conflicts.extend(x.conflicts);
+                    proposed.moved += x.moved;
+                }
                 ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
             }
         }
+        ops.extend(proposed.ops.iter().cloned());
         if let Some(props) = params.get("props") {
             let m = props.as_object().ok_or("`props` must be an object of key: value|null")?;
             for (k, v) in m {
@@ -935,6 +988,12 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
             return Ok(v);
         }
         p.apply_edit(pg, "projectprops", "Project properties", ops)?;
+        if proposed.moved == 0 {
+            p.conflicts = proposed.conflicts.clone();
+        }
+        for l in crate::proposals::conflict_words(p.ledger.document(), &proposed.conflicts) {
+            pg.echo(l);
+        }
         let doc = p.ledger.document();
         let mut v = project_json(doc);
         v["changed"] = json!(true);

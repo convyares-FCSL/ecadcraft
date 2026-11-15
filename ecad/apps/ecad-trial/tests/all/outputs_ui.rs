@@ -72,15 +72,15 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
 
-    // 1. -K01's coil: brief 052, no location stored (nothing is inherited); Properties offers the
-    // project's +CP1 as the proposal.
+    // 1. -K01's coil: brief 052d, it took the project's +CP1 when it was placed (a proposal, now
+    // stored on the device); nothing is inherited, so no proposal is offered for it any more.
     let k1 = main_symbol(&mut h, "-K01");
     h.state_mut().goto_symbol(k1).unwrap();
     h.run_steps(4);
     let rows = h.state().props.lock().unwrap().view.sections.clone();
     let loc = rows.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == "location").unwrap().clone();
-    assert_eq!((loc.value.as_str(), loc.inherited), ("", false), "{loc:?}");
-    assert_eq!(loc.proposal, Some(("+CP1".to_string(), "From the project".to_string())), "{loc:?}");
+    assert_eq!((loc.value.as_str(), loc.inherited), ("+CP1", false), "{loc:?}");
+    assert_eq!(loc.proposal, None, "{loc:?}");
     save(&h, &deltas, "024-props-location.png");
     // Take every device's proposal (its go-to symbol's context), as the user would, so the rest
     // of the demo has its locations stored.

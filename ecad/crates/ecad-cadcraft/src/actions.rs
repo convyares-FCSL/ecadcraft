@@ -621,7 +621,7 @@ pub const ACTIONS: &[Action] = &[
     tool("draw.circle", "circle", "Circle", Icon::Circle, ToolGroup::Draw, 3, &["geometry"]),
     tool("draw.arc", "arc", "Arc", Icon::Arc, ToolGroup::Draw, 4, &["geometry"]),
     tool("box.location", "locationbox", "Location box", Icon::LocationBox, ToolGroup::Location, 0, &["location", "+"]),
-    coming_tool("box.function", "Function box", Icon::Box, ToolGroup::Location, 1),
+    tool("box.function", "functionbox", "Function box", Icon::Box, ToolGroup::Location, 1, &["function", "="]),
     coming_tool("box.both", "Function and location box", Icon::Box, ToolGroup::Location, 2),
     coming_tool("box.outline", "Device or PLC outline", Icon::Rectangle, ToolGroup::Location, 3),
     tool("text.text", "text", "Text", Icon::Text, ToolGroup::Text, 0, &["free text"]),
@@ -964,6 +964,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     // Brief 052 (design 052 §5.7, §9.1, §9.4): the inspector's Location and Function rows, and
     // Settings ▸ Project info's Functions and locations card.
     ("setlocation", "Inspector ▸ Device: Location rows"),
+    ("conflicts", "The prompt strip's conflict list: Move and Leave"),
     ("setfunction", "Inspector ▸ Device: Function row"),
     ("designations", "Settings ▸ Project info: Functions and locations"),
     ("designationadd", "Settings ▸ Project info: + Add"),

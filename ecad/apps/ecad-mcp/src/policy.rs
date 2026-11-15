@@ -86,7 +86,7 @@ pub const READ_COMMANDS: &[&str] = &[
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
 /// `projectprops {}`; brief 026: `numbering {}`; brief 031: `textstyle {}`.
 const READ_WITHOUT_FIELDS: &[(&str, &[&str])] =
-    &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[]), ("textstyle", &[]), ("standard", &[])];
+    &[("pageprops", &["page"]), ("projectprops", &[]), ("numbering", &[]), ("textstyle", &[]), ("standard", &[]), ("conflicts", &[])];
 
 /// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
 /// project file, which stays with the person who started the server).

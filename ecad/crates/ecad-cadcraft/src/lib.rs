@@ -73,6 +73,7 @@ pub mod plc;
 pub mod preview;
 pub mod printbook;
 pub mod project;
+pub mod proposals;
 pub mod props;
 pub mod references;
 pub mod release;

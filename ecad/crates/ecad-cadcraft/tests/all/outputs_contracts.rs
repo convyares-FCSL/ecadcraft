@@ -48,22 +48,26 @@ fn same_as_built(h: &mut H) {
     assert_eq!(a, b);
 }
 
-/// §13 A, brief 052 (design 052 §5.1): a device's location is only its own; the page and the
-/// project propose (the context) and give it nothing; one transaction for several; clear back to
-/// none.
+/// §13 A, brief 052 (design 052 §5.1, §5.6): a device's location is its own stored value; a new
+/// project location is proposed to the unset devices and taken in the same transaction; a new page
+/// location never changes a stored value (it is only the context); one transaction for several;
+/// clear back to none.
 #[test]
-fn a_device_location_is_only_its_own_and_the_page_and_project_propose() {
+fn a_device_stores_its_location_and_unset_devices_take_a_new_project_location() {
     let mut h = H::new(0x24_01);
     let k = place(&mut h, "coil", (100.0, 150.0));
     let q = place(&mut h, "coil", (150.0, 150.0));
     let doc = h.doc();
     assert_eq!(loc(&doc, k), (None, "none"));
     assert_eq!(ctx(&doc, k), (None, "none"));
+    let head = h.head();
     h.run("projectprops", json!({"location": "CP1"})).unwrap();
-    assert_eq!(loc(&h.doc(), k), (None, "none"), "the project's location is not inherited");
+    assert_eq!(h.head(), head + 1, "the proposal is taken in the same transaction");
+    assert_eq!(loc(&h.doc(), k), (s("+CP1"), "device"), "an unset device takes the project's");
+    assert_eq!(loc(&h.doc(), q), (s("+CP1"), "device"));
     assert_eq!(ctx(&h.doc(), k), (s("+CP1"), "project"));
     h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
-    assert_eq!(loc(&h.doc(), k), (None, "none"), "the page's location is not inherited");
+    assert_eq!(loc(&h.doc(), k), (s("+CP1"), "device"), "a stored value is never changed by a page location");
     assert_eq!(ctx(&h.doc(), k), (s("+FIELD"), "page"));
     let head = h.head();
     h.run("setprop", json!({"components": [k.hex(), q.hex()], "key": "location", "value": "CP3"})).unwrap();
@@ -81,11 +85,12 @@ fn a_device_location_is_only_its_own_and_the_page_and_project_propose() {
     same_as_built(&mut h);
 }
 
-/// §13 B, brief 052 (design 052 §5.1, §5.3): a box proposes its location live (the context of the
-/// symbols inside) and gives the devices nothing; moving it updates the context at once; nested
-/// boxes: the inner wins; a stored value none of the symbols' contexts has is flagged.
+/// §13 B, brief 052 (design 052 §5.1, §5.3, §5.5): a box is the live context of the symbols inside
+/// and, when drawn, gives its location to the unset devices inside in the same transaction; moving
+/// it updates the context at once and changes no stored value; nested boxes: the inner wins and a
+/// device with a value keeps it; a stored value none of the symbols' contexts has is flagged.
 #[test]
-fn location_boxes_propose_live_and_the_innermost_wins() {
+fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     let mut h = H::new(0x24_02);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
     let page = h.first_page();
@@ -94,31 +99,33 @@ fn location_boxes_propose_live_and_the_innermost_wins() {
     h.cfg(|p| {
         p.outputs();
     });
-    let m = place(&mut h, "coil", (100.0, 100.0));
-    let x = place(&mut h, "coil", (140.0, 100.0));
+    // Placed keeping no location (the page would propose +FIELD), so the box has unset devices.
+    let m: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [100, 100], "location": "keep"})).unwrap(), "component");
+    let x: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [140, 100], "location": "keep"})).unwrap(), "component");
+    assert_eq!((loc(&h.doc(), m).0, loc(&h.doc(), x).0), (None, None));
     let head = h.head();
     let r = h.run("locationbox", json!({"location": "JB1", "corners": [[80, 80], [160, 130]]})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     assert_eq!(r["inside"], 2, "{r}");
     let boxc: ComponentId = id(&r, "component");
     let doc = h.doc();
-    assert_eq!(loc(&doc, m), (None, "none"), "a box gives the devices inside nothing");
+    assert_eq!(loc(&doc, m), (s("+JB1"), "device"), "the unset devices inside take the box's");
+    assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
     assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
     let rm = ecad_cadcraft::reps::goto(&doc, m, None).unwrap();
     let l = locations::rep_context(&doc, &doc.representations[&rm], &mut locations::BoxCache::default());
     assert_eq!(l.source, Source::Box { component: boxc, page });
     assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
-    // Nothing is written on the devices.
-    assert!(!doc.components[&m].properties.contains_key("location"));
     same_as_built(&mut h);
-    // Move the box off them: the page's location at once; `u` brings it back.
+    // Move the box off them: the page's location is the context at once, the stored value stays;
+    // `u` brings it back.
     let item = h.run("devices", json!({})).unwrap();
     let _ = item;
     let item: ecad_model::ItemId = id(&r, "item");
     let hd = h.handle_of(page, item);
     h.run("move", json!({"handles": [hd.hex()], "delta": [0, 200]})).unwrap();
     assert_eq!(ctx(&h.doc(), m), (s("+FIELD"), "page"));
-    assert_eq!(loc(&h.doc(), m), (None, "none"));
+    assert_eq!(loc(&h.doc(), m), (s("+JB1"), "device"));
     same_as_built(&mut h);
     h.cmdline("u");
     assert_eq!(ctx(&h.doc(), m), (s("+JB1"), "box"));
@@ -128,13 +135,14 @@ fn location_boxes_propose_live_and_the_innermost_wins() {
     let doc = h.doc();
     assert_eq!(ctx(&doc, m).0, s("+JB2"));
     assert_eq!(ctx(&doc, x).0, s("+JB1"));
-    assert_eq!((loc(&doc, m).0, loc(&doc, x).0), (None, None));
+    assert_eq!((loc(&doc, m).0, loc(&doc, x).0), (s("+JB1"), s("+JB1")), "a device with a value keeps it");
     same_as_built(&mut h);
     // Brief 052: a stored value none of its symbols' contexts has: flagged, one-click fix.
     h.run("setprop", json!({"component": x.hex(), "key": "location", "value": "+CP9"})).unwrap();
     assert_eq!(loc(&h.doc(), x), (s("+CP9"), "device"));
     let checks = ecad_cadcraft::checks::all(&h.doc(), 1e-6);
-    let own: Vec<_> = checks.iter().filter(|c| c.kind == Kind::LocationUnused).collect();
+    // `m` (+JB1, now inside +JB2) is flagged too; this is `x`'s row.
+    let own: Vec<_> = checks.iter().filter(|c| c.kind == Kind::LocationUnused && c.which.contains("+CP9")).collect();
     assert_eq!(own.len(), 1, "{checks:?}");
     assert!(own[0].which.contains("is +CP9, but none of its symbols is in +CP9"), "{}", own[0].which);
     assert_eq!(own[0].fix, Some(Fix::UseContext(x, ecad_cadcraft::designations::Aspect::Location)));
@@ -358,7 +366,8 @@ fn cover_contents_and_revision_list_show_the_project() {
 fn _unused(_: Value) {}
 
 /// Tester 024, bug 2 (owner ruling): PEDIT Open of a box outline is refused with the way out, and
-/// the box keeps proposing its location (brief 052: the context; the device stays unset).
+/// the box stays the context of the device inside (brief 052: which took +JB1 when the box was
+/// drawn).
 #[test]
 fn opening_a_box_outline_is_refused_with_the_way_out() {
     let mut h = H::new(0x24_08);
@@ -372,7 +381,7 @@ fn opening_a_box_outline_is_refused_with_the_way_out() {
     assert!(e.contains("cannot be opened") && e.contains("erase the box"), "{e}");
     assert_eq!(h.head(), head, "nothing recorded");
     assert_eq!(ctx(&h.doc(), k), (s("+JB1"), "box"));
-    assert_eq!(loc(&h.doc(), k), (None, "none"));
+    assert_eq!(loc(&h.doc(), k), (s("+JB1"), "device"));
 }
 
 /// Review of PR #51, finding 1: project settings changes go through the update map. A potential's

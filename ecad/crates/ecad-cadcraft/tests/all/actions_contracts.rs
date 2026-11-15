@@ -148,6 +148,8 @@ const ECAD_COMMANDS: &[&str] = &[
     "designationedit",
     "designationmerge",
     "designationremove",
+    "conflicts",
+    "functionbox",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {
