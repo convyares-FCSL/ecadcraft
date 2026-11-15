@@ -41,6 +41,16 @@ impl H {
         h
     }
 
+    /// Take over a project made by [`ecad_cadcraft::test_support::ProjectBuilder`], with its trail started
+    /// at the built document and the harness checks run once.
+    pub fn from_built(b: ecad_cadcraft::test_support::Built) -> H {
+        let mut h = H { s: b.s, project: b.project, trail: Vec::new() };
+        let d = h.doc();
+        h.trail.push(d);
+        h.check();
+        h
+    }
+
     /// Read the project. The session is borrowed for the call, so `f` cannot call it.
     pub fn p<R>(&mut self, f: impl FnOnce(&Project) -> R) -> R {
         self.project.read(&mut self.s, |p, _| f(p)).expect("project not busy")
