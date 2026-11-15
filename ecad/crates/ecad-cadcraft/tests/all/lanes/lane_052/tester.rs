@@ -57,8 +57,9 @@ fn page(h: &mut H, number: &str) -> PageId {
     id(&h.run("newpage", json!({"title": number, "number": number})).unwrap(), "page")
 }
 
+/// Place with proposals off (`keep`, brief 052d): these fixtures set every value themselves.
 fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> ComponentId {
-    id(&h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap(), "component")
+    id(&h.run("place", json!({"symbol": symbol, "at": [at.0, at.1], "location": "keep", "function": "keep"})).unwrap(), "component")
 }
 
 fn code(d: &Document, c: ComponentId) -> Option<String> {
@@ -110,11 +111,13 @@ fn old_project(dir: &TempDir) -> (H, ComponentId, ComponentId, ComponentId, Page
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
     let k = place(&mut h, "coil", (75.0, 180.0));
     let p2 = page(&mut h, "105");
-    let no = h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
+    let no = h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
     let x: ComponentId =
         id(&h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [200, 50]})).unwrap(), "component");
-    let bx: ComponentId =
-        id(&h.run("locationbox", json!({"location": "+TMP", "page": p2.hex(), "corners": [[60, 110], [140, 190]]})).unwrap(), "component");
+    let bx: ComponentId = id(
+        &h.run("locationbox", json!({"location": "+TMP", "page": p2.hex(), "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(),
+        "component",
+    );
     let no_rep = id(&no, "representation");
     h.cfg(|p| {
         let d = p.ledger.document();
@@ -202,7 +205,7 @@ fn users(seed: u64) -> Users {
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
     let k = place(&mut h, "coil", (75.0, 180.0));
     let p2 = page(&mut h, "105");
-    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
     let x: ComponentId =
         id(&h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [250, 50]})).unwrap(), "component");
     let p3 = page(&mut h, "110");
@@ -210,10 +213,12 @@ fn users(seed: u64) -> Users {
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP01"})).unwrap();
     h.run("setlocation", json!({"component": x.hex(), "type": "plug", "value": "+CP01"})).unwrap();
     h.run("setlocation", json!({"component": x.hex(), "value": "+CP2"})).unwrap();
-    let bx: ComponentId =
-        id(&h.run("locationbox", json!({"location": "+CP01", "page": p1.hex(), "corners": [[300, 100], [380, 180]]})).unwrap(), "component");
-    h.run("pageprops", json!({"page": p1.hex(), "location": "+CP01"})).unwrap();
-    h.run("projectprops", json!({"location": "+CP01"})).unwrap();
+    let bx: ComponentId = id(
+        &h.run("locationbox", json!({"location": "+CP01", "page": p1.hex(), "corners": [[300, 100], [380, 180]], "proposal": "keep"})).unwrap(),
+        "component",
+    );
+    h.run("pageprops", json!({"page": p1.hex(), "location": "+CP01", "proposal": "keep"})).unwrap();
+    h.run("projectprops", json!({"location": "+CP01", "proposal": "keep"})).unwrap();
     h.run("designationadd", json!({"aspect": "location", "code": "+CP1", "description": "Main panel"})).unwrap();
     Users { h, k, x, bx, p1, p2, p3 }
 }
@@ -291,7 +296,7 @@ fn the_use_index_follows_undo_redo_and_equals_a_reopen() {
     h.cmdline("u");
     h.cmdline("u");
     // Not the project default here: renaming that is its own test.
-    h.run("projectprops", json!({"location": "+CP2"})).unwrap();
+    h.run("projectprops", json!({"location": "+CP2", "proposal": "keep"})).unwrap();
     h.run("designationedit", json!({"aspect": "location", "code": "+CP1", "to": "+CP10"})).unwrap();
     let kept = designations_now(h);
     same_as_built(h, "after the sequence");
@@ -315,7 +320,7 @@ fn a_rename_redraws_its_users_pages_and_no_other() {
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     h.activate(bom);
     // Not the project default: that would touch every page by design.
-    h.run("projectprops", json!({"location": "+CP2"})).unwrap();
+    h.run("projectprops", json!({"location": "+CP2", "proposal": "keep"})).unwrap();
     let n = change_n(h);
     h.run("designationedit", json!({"aspect": "location", "code": "+CP01", "to": "+CP10"})).unwrap();
     let pages = changed_pages(h, n);
@@ -354,7 +359,7 @@ fn renaming_the_project_default_redraws_the_shown_page() {
     let mut h = H::new(0x52_7104);
     let p1 = h.first_page();
     place(&mut h, "coil", (75.0, 180.0));
-    h.run("projectprops", json!({"location": "+CP1"})).unwrap();
+    h.run("projectprops", json!({"location": "+CP1", "proposal": "keep"})).unwrap();
     h.activate(p1);
     h.run("designationedit", json!({"aspect": "location", "code": "+CP1", "to": "+CP10"})).unwrap();
     h.cmdline("u");
@@ -370,21 +375,21 @@ fn device_box_and_page_values_name_only_their_pages() {
     let p105 = h.first_page();
     let k = place(&mut h, "coil", (75.0, 180.0));
     let p110 = page(&mut h, "110");
-    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
     let p120 = page(&mut h, "120");
     place(&mut h, "coil", (75.0, 180.0));
     // The first box adds the box layer, which may touch any page; draw one before measuring.
-    h.run("locationbox", json!({"location": "+X", "page": p120.hex(), "corners": [[300, 100], [380, 180]]})).unwrap();
+    h.run("locationbox", json!({"location": "+X", "page": p120.hex(), "corners": [[300, 100], [380, 180]], "proposal": "keep"})).unwrap();
     h.activate(p120);
     let n = change_n(&mut h);
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP2"})).unwrap();
     assert_eq!(changed_pages(&mut h, n), BTreeSet::from([p105, p110]), "the device's pages only");
     let n = change_n(&mut h);
-    h.run("locationbox", json!({"location": "+FIELD", "page": p110.hex(), "corners": [[60, 110], [140, 190]]})).unwrap();
+    h.run("locationbox", json!({"location": "+FIELD", "page": p110.hex(), "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap();
     assert_eq!(changed_pages(&mut h, n), BTreeSet::from([p110]), "a box: its page only");
     assert_eq!(code(&h.doc(), k).as_deref(), Some("+CP2"), "the box changed no device");
     let n = change_n(&mut h);
-    h.run("pageprops", json!({"page": p120.hex(), "location": "+CP3"})).unwrap();
+    h.run("pageprops", json!({"page": p120.hex(), "location": "+CP3", "proposal": "keep"})).unwrap();
     assert_eq!(changed_pages(&mut h, n), BTreeSet::from([p120]), "a page value: that page only");
     let n = change_n(&mut h);
     h.run("designationadd", json!({"aspect": "function", "code": "=SPARE"})).unwrap();
@@ -504,7 +509,8 @@ fn oversized_input_is_refused() {
 #[test]
 fn a_box_location_style_is_not_a_missing_location() {
     let mut h = H::new(0x52_7401);
-    let bx: ComponentId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]]})).unwrap(), "component");
+    let bx: ComponentId =
+        id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(), "component");
     let style = h.run("styles", json!({"catalogue": "location"})).unwrap();
     let ids: Vec<String> = style["styles"]
         .as_array()

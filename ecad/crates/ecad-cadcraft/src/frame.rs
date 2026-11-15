@@ -229,6 +229,17 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
         Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text",
         Op::SetStandard { before, after } => before.is_none() != after.is_none(),
+        // Brief 052 (design 052 §8.2a, tester 052 finding 1): a rename in the project's list
+        // reaches the title block when it shows the entry's old code.
+        Op::SetProperty { object: ObjectRef::Project, key, before, .. } if crate::designations::is_list_property(key) => {
+            crate::designations::parse_list_property(key).is_some_and(|(a, _, is_code)| {
+                let field = match a {
+                    crate::designations::Aspect::Function => &shown.function,
+                    crate::designations::Aspect::Location => &shown.location,
+                };
+                is_code && before.as_deref().is_some_and(|b| b == field)
+            })
+        }
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             [TITLE, CUSTOMER, DRAWING_NUMBER, STATUS, FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
                 // Brief 033 (design 033 §9.1).

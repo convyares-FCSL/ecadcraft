@@ -70,7 +70,8 @@ pub struct Planned {
 /// No such object; an override on a function, a box or a strip; an override type that is not one;
 /// a box left with neither value; a code that is not valid.
 pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop: &str, text: Option<&str>) -> Result<Planned, String> {
-    let a = Aspect::of_property(prop).ok_or("not a function or location property")?;
+    // The type's own refusals first: `location.head` and `location.<bogus>` are no aspect
+    // property at all.
     if let Some(t) = prop.strip_prefix("location.") {
         if t == "head" {
             return Err("The head is the device; set the device's location.".into());
@@ -79,6 +80,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop
             return Err(format!("`type` is socket, plug or a symbol type such as terminal, not \"{t}\"."));
         }
     }
+    let a = Aspect::of_property(prop).ok_or("not a function or location property")?;
     let mut out = Planned::default();
     let mut pending = designations::Pending::default();
     let key = match text.map(str::trim).filter(|t| !t.is_empty()) {
@@ -134,7 +136,8 @@ fn label(a: Aspect, value: Option<&(String, String)>, n: usize) -> String {
 
 /// Run a planned set on the project and answer in JSON.
 fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
-    let a = Aspect::of_property(&prop).ok_or_else(|| err("not a function or location property"))?;
+    let a = (if prop.starts_with("location.") { Some(Aspect::Location) } else { Aspect::of_property(&prop) })
+        .ok_or_else(|| err("not a function or location property"))?;
     let v = with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
         let planned = plan(doc, &mut p.ids, &objects, &prop, text.as_deref())?;
@@ -181,12 +184,16 @@ fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<
     Ok(v)
 }
 
+/// Most components one `setlocation` names (tester 052: a list over it is refused before any
+/// work).
+pub const MAX_DEVICES: usize = 10_000;
+
 /// The components named, each once, in the order first named (tester 052, finding 4: a device
 /// named twice is set once, not refused).
 fn objects(params: &Value) -> Result<Vec<ComponentId>, String> {
     if params.get("components").is_some() {
         let mut seen = std::collections::BTreeSet::new();
-        return Ok(id_list::<ComponentId>(params, "components", MAX_HANDLES)?.into_iter().filter(|c| seen.insert(*c)).collect());
+        return Ok(id_list::<ComponentId>(params, "components", MAX_DEVICES)?.into_iter().filter(|c| seen.insert(*c)).collect());
     }
     opt_id::<ComponentId>(params, "component")?.map(|c| vec![c]).ok_or_else(|| "`component` or `components` (hex ids) is required".to_string())
 }
