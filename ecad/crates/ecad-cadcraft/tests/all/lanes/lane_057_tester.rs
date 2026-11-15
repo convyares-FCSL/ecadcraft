@@ -1162,7 +1162,7 @@ fn core01_an_unticked_spare_core_is_an_error_until_ticked_not_used() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     let t = rows[0].to_string();
     assert!(t.contains("\"severity\":\"error\""), "an Error: {t}");
-    assert!(t.contains(&format!("-W01 core {label} has no wire; connect it, or tick Not used")), "{t}");
+    assert!(t.contains(&format!("-W01 core {label} is not assigned: slash or add a wire, or tick Not used.")), "{t}");
     let head = h.head();
     h.run("setprop", json!({"cable": k.hex(), "key": format!("unused.{label}"), "value": "yes"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
@@ -1227,7 +1227,10 @@ fn core03_an_old_projects_spare_core_is_now_a_clear_error() {
     let rows = checks_of(&mut h, "core-open");
     assert_eq!(rows.len(), 1, "{rows:?}");
     let t = rows[0].to_string();
-    assert!(t.contains("\"severity\":\"error\"") && t.contains("-W01 core") && t.contains("has no wire; connect it, or tick Not used"), "{t}");
+    assert!(
+        t.contains("\"severity\":\"error\"") && t.contains("-W01 core") && t.contains("is not assigned: slash or add a wire, or tick Not used."),
+        "{t}"
+    );
     assert!(t.contains("\"page\":\"1\""), "goes to the cable's page: {t}");
     assert_eq!(h.head(), head, "opening and checking record nothing");
     assert!(!open_of(&mut h, k).is_empty());

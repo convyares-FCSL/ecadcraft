@@ -142,9 +142,10 @@ pub fn grouped(rows: &[Check]) -> BTreeMap<Group, Vec<&Check>> {
     out
 }
 
-/// Counts by severity: (errors, warnings, info).
+/// Counts by severity in the release check: (errors, warnings, info). A cable not drawn yet counts
+/// as a warning here (brief 059, Q2).
 pub fn counts(rows: &[Check]) -> (usize, usize, usize) {
-    rows.iter().fold((0, 0, 0), |(e, w, i), c| match c.severity() {
+    rows.iter().fold((0, 0, 0), |(e, w, i), c| match c.release_severity() {
         Severity::Error => (e + 1, w, i),
         Severity::Warning => (e, w + 1, i),
         Severity::Info => (e, w, i + 1),

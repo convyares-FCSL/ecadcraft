@@ -121,7 +121,7 @@ fn the_demo_nets_and_wire_numbers() {
     assert_eq!(
         checks,
         [
-            "CoreOpen 2/E3 -W01 core GNYE has no wire; connect it, or tick Not used",
+            "CoreOpen 2/E3 -W01 core GNYE is not assigned: slash or add a wire, or tick Not used.",
             "FunctionUnused 2/E1 -K01 is =PUMP, but none of its symbols is in =PUMP",
             "LonelyContinuation 2/D3 L1",
             "LonelyContinuation 2/D3 L2",

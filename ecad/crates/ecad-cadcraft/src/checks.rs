@@ -261,10 +261,19 @@ pub enum Kind {
     TitleBindingUnknown,
     /// Brief 055: a page's own sheet differs from its frame's; the frame wins.
     FrameSheetDiffers,
+    /// Brief 059 (design 059 §6): a cable built in Project ▸ Cables that is not in the drawing yet
+    /// (Info; Warning in the release check).
+    CableNotDrawn,
+    /// Brief 059: a drawn cable end differs from that end's planned location.
+    CableEndOffPlan,
+    /// Brief 059 (059d): a drawn cable end with no gland size.
+    NoGland,
+    /// Brief 059: a cable value ECAD does not read (out of bounds); it is ignored.
+    CableBadValue,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 98] = [
+    pub const ALL: [Kind; 102] = [
         Kind::JoinsPotentials,
         Kind::SharedNumber,
         Kind::TwoFixed,
@@ -363,6 +372,10 @@ impl Kind {
         Kind::TitleValueCut,
         Kind::TitleBindingUnknown,
         Kind::FrameSheetDiffers,
+        Kind::CableNotDrawn,
+        Kind::CableEndOffPlan,
+        Kind::NoGland,
+        Kind::CableBadValue,
     ];
 
     /// The JSON name.
@@ -466,6 +479,10 @@ impl Kind {
             Kind::TitleValueCut => "title-value-cut",
             Kind::TitleBindingUnknown => "title-binding-unknown",
             Kind::FrameSheetDiffers => "frame-sheet-differs",
+            Kind::CableNotDrawn => "cable-not-drawn",
+            Kind::CableEndOffPlan => "cable-end-off-plan",
+            Kind::NoGland => "no-gland",
+            Kind::CableBadValue => "cable-bad-value",
         }
     }
 
@@ -575,6 +592,10 @@ impl Kind {
             Kind::TitleValueCut => "A value is cut in the title block",
             Kind::TitleBindingUnknown => "Title block fields this build cannot fill",
             Kind::FrameSheetDiffers => "Page sheet differs from its frame's; the frame wins",
+            Kind::CableNotDrawn => "Cable not in the drawing yet",
+            Kind::CableEndOffPlan => "Cable end drawn away from its plan",
+            Kind::NoGland => "Cable end with no gland size",
+            Kind::CableBadValue => "Cable value ECAD does not read",
         }
     }
 
@@ -637,7 +658,9 @@ impl Kind {
             | Kind::VoltdropOver
             | Kind::RatingBundlingUnset
             | Kind::RatingDeviceMissing
-            | Kind::FrameSheetDiffers => Severity::Warning,
+            | Kind::FrameSheetDiffers
+            | Kind::CableEndOffPlan
+            | Kind::CableBadValue => Severity::Warning,
             _ => Severity::Info,
         }
     }
@@ -751,6 +774,14 @@ pub enum Fix {
     EditTitleBlock(PageId, u16),
     /// Brief 055: **Clear the page's sheet** (`setprop` page `sheet` null).
     ClearPageSheet(PageId),
+    /// Brief 059 (design 059 §6): **Assign in the drawing…** (the slash tool with the cable picked)
+    /// or **Remove** (`cableremove`).
+    AssignCable(CableId),
+    /// Brief 059: **Use the drawing**: set that end's plan to its drawn location (one `cableedit`),
+    /// or **Go to** that end.
+    UseDrawing(CableId, crate::cable_cmds::Side),
+    /// Brief 059: **Set gland** / **Show**: focus that row of the cable's Details pane.
+    ShowCableField(CableId, crate::cable_cmds::CableField),
 }
 
 /// One row of the Checks list.
@@ -768,6 +799,15 @@ pub struct Check {
 impl Check {
     pub fn severity(&self) -> Severity {
         self.kind.severity()
+    }
+
+    /// The severity in the release check (029; brief 059, Q2): a cable not drawn yet is a Warning
+    /// there, Info elsewhere.
+    pub fn release_severity(&self) -> Severity {
+        match self.kind {
+            Kind::CableNotDrawn => Severity::Warning,
+            _ => self.severity(),
+        }
     }
 
     /// The row's text: the kind's words, or for the unnumbered row its count. Brief 044 (design
@@ -788,6 +828,10 @@ impl Check {
             | Kind::TitleValueCut
             | Kind::TitleBindingUnknown
             | Kind::FrameSheetDiffers
+            | Kind::CableNotDrawn
+            | Kind::CableEndOffPlan
+            | Kind::NoGland
+            | Kind::CableBadValue
                 if !self.which.is_empty() =>
             {
                 self.which.clone()
@@ -1476,19 +1520,39 @@ pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
 pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<Check> {
     let doc = places.doc();
     let mut out = Vec::new();
+    // Brief 059 (design 059 §6): a cable not drawn yet has one Info row and no core rows; its
+    // planned ends and glands are not checked until it is drawn.
+    let drawn = crate::cable_cmds::is_drawn(doc, k);
+    if !drawn && doc.cables.contains_key(&k) {
+        let name = crate::views::cable_title(doc, k);
+        out.push(Check {
+            kind: Kind::CableNotDrawn,
+            page: None,
+            at: None,
+            object: Object::Cable(k),
+            which: format!("{name} is not in the drawing yet."),
+            fix: Some(Fix::AssignCable(k)),
+        });
+    }
+    out.extend(crate::cable_cmds::value_checks(doc, k, drawn));
     // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
-    let open = crate::styles::cable::open_cores(doc, k);
+    let open = if drawn { crate::styles::cable::open_cores(doc, k) } else { Vec::new() };
     if !open.is_empty() {
         let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         let name = crate::views::cable_title(doc, k);
         for (i, o) in open.into_iter().enumerate() {
-            let how = if o.unwired { "has no wire" } else { "is open at an end" };
+            // Brief 059 (design 059 §6): an unwired core is "not assigned".
+            let which = if o.unwired {
+                format!("{name} core {} is not assigned: slash or add a wire, or tick Not used.", o.label)
+            } else {
+                format!("{name} core {} is open at an end; connect it, or tick Not used", o.label)
+            };
             out.push(Check {
                 kind: Kind::CoreOpen,
                 page,
                 at,
                 object: Object::Cable(k),
-                which: format!("{name} core {} {how}; connect it, or tick Not used", o.label),
+                which,
                 fix: Some(Fix::CoreOpen(k, u16::try_from(i).unwrap_or(u16::MAX))),
             });
         }
@@ -1881,6 +1945,15 @@ impl Scope {
                     if key == ecad_model::tag::TAG_KEY {
                         self.tag_holders(doc, [before, after].into_iter().flatten());
                     }
+                    // Brief 059 (design 059 §8): a device's location or function is where the
+                    // cables at its points are drawn (`cable-end-off-plan`).
+                    if crate::designations::Aspect::of_property(key).is_some() {
+                        for (t, _) in doc.terminals_of(*c) {
+                            for (w, _) in doc.ends_at(t) {
+                                self.cables.extend(doc.cables_of(w));
+                            }
+                        }
+                    }
                     for n in [before, after].into_iter().flatten() {
                         self.component(doc, *c, Some(n));
                         node(self, Node::Name(name_key(n)));
@@ -1982,6 +2055,8 @@ impl Scope {
                     self.relocate = true;
                     self.designations = true;
                     if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
+                        // Brief 059: the cables planning an end there (their rows name its code).
+                        self.cables.extend(crate::cable_cmds::planning(doc, entry));
                         for (c, x) in &doc.components {
                             if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
                                 self.components.insert(*c);
@@ -2006,6 +2081,10 @@ impl Scope {
                     }
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
+                // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
+                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                    self.cables.extend(crate::styles::cable::users(doc, id));
+                }
                 // Brief 050a: style records and the standard reach only the style rows (above).
                 Op::SetStyle { .. } | Op::SetStandard { .. } => {}
             }

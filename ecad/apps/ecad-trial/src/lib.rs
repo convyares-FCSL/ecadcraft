@@ -1925,6 +1925,7 @@ impl Trial {
             A::OpenStandards(word) => self.open_standards_at(word),
             A::RatingFix(f) => self.rating_fix(f),
             A::CoreFix(f, k) => self.core_fix(f, k),
+            A::CableFix(f, k) => self.cable_fix(f, k),
             A::EditTitleBlock(page, item) => self.open_title_blocks(Some((page, item))),
             A::ClearPageSheet(page) => {
                 let _ = self.run_line(&format!("pageprops {}", serde_json::json!({"page": page, "sheet": null})));

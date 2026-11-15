@@ -101,6 +101,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::CoreOpen(..) => cp::TICK_NOT_USED,
         Fix::EditTitleBlock(..) => cp::EDIT_BLOCK,
         Fix::ClearPageSheet(_) => cp::CLEAR_PAGE_SHEET,
+        // Brief 059: the pairs are in `cable_manager::pair`.
+        Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..) => crate::lists::cable_manager::single(f),
     }]
 }
 
