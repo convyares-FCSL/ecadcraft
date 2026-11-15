@@ -15,7 +15,7 @@
 //!   ops (never a rescan on an ordinary commit) and rebuilt on open and branch switch.
 //!
 //! Excludes: proposals and contexts (`crate::locations`), the commands
-//! (`crate::designation_cmds`, `crate::location_cmds`). This module reads and plans ops only.
+//! (`ecad_cadcraft::cmd::designation`, `ecad_cadcraft::cmd::location`). This module reads and plans ops only.
 
 use std::collections::{BTreeMap, BTreeSet};
 

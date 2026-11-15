@@ -17,7 +17,7 @@
 //!   interactive preview both use it, so what is previewed is what is committed.
 //!
 //! This module has no UI and records nothing: the commands that use it commit through their JSON
-//! forms (`crate::commands`).
+//! forms (`ecad_cadcraft::cmd`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

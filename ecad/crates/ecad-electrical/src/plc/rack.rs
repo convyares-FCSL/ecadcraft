@@ -10,7 +10,7 @@
 //! - A card property that is not one of these forms, or names something that is not a rack, is a
 //!   Checks row (`crate::plc::Plc::checks`), never a refusal on open and never a crash.
 //!
-//! Every write (the commands, in ecad-cadcraft's `plc_cmds`) is one transaction.
+//! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
 use std::collections::BTreeSet;
 

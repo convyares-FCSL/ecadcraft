@@ -1,7 +1,7 @@
 //! Lane W's defaults (032, wires and nets). Owned by lane W: append `pub static` entries and list them in
 //! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
 //!
-//! Read them through `wire_cmds::join_by_default`, `wires::label_rule`, `wires::label_rule_word` and
+//! Read them through `ecad_cadcraft::cmd::wire::join_by_default`, `wires::label_rule`, `wires::label_rule_word` and
 //! `wires::label_min_length`, not by key. The label rule's built-ins are `ecad-model`'s constants
 //! (`wiring::DEFAULT_LABEL_RULE`, `DEFAULT_LABEL_MIN_LENGTH`), referenced here, never copied.
 

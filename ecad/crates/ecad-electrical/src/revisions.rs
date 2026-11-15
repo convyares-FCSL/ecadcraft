@@ -9,7 +9,7 @@
 //!   `NameVersion { "Rev <rev>", head }` in one transaction, so `Ledger::state_at(at)` reopens the
 //!   project exactly as it was issued.
 //!
-//! This module reads and plans; the commands commit (`crate::sheet_cmds`).
+//! This module reads and plans; the commands commit (`ecad_cadcraft::cmd::sheet`).
 
 use ecad_model::book::MAX_FOLDER_DEPTH;
 use ecad_model::{Document, FolderId, ObjectRef, Op};

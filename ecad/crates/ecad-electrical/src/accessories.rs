@@ -13,7 +13,7 @@
 //!   `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
 //! - Nothing here refuses because of a check; orphans and crossings are Checks rows (§8).
 //!
-//! This module excludes drawing (`link_lines`) and commands (`terminal_cmds`).
+//! This module excludes drawing (`link_lines`) and commands (`ecad_cadcraft::cmd::terminal`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

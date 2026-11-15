@@ -12,7 +12,7 @@
 //!   recomputed; `plcchannel {pins}` relabels them.
 //! - Spare and reserved are derived, never stored (§6).
 //!
-//! Every write (the commands, in ecad-cadcraft's `plc_cmds`) is one transaction.
+//! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
 use std::collections::{BTreeMap, BTreeSet};
 

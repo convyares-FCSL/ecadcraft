@@ -24,7 +24,7 @@
 //! length unit and this area's keys ([`is_wide_key`]) redraw every page with an arrow. Every other
 //! op names nothing.
 //!
-//! Excludes: commands (`crate::continuation_cmds`), the arrow's name text (`crate::wires`), checks.
+//! Excludes: commands (`ecad_cadcraft::cmd::continuation`), the arrow's name text (`crate::wires`), checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 

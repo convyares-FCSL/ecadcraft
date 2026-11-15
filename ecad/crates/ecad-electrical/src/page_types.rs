@@ -4,7 +4,7 @@
 //! # Semantics
 //! - A folder's **start number** is the project property `folder.<folder id>.start` (FP7): 1 to 6
 //!   digits, leading zeros setting the width. Setting it renumbers nothing. The first page added
-//!   to a folder with one takes it (`sheet_cmds::new_page_ops_at`).
+//!   to a folder with one takes it (`ecad_cadcraft::cmd::sheet::new_page_ops_at`).
 //! - **Renumber pages** walks the book order. Each page belongs to the **run** of the nearest
 //!   folder above it with a start number, else the book's run from `1`; each run numbers its pages
 //!   in book order from its start by the project's step. A number given in this renumber, a
