@@ -47,6 +47,8 @@ pub const CARD_IEC: &str = "ecad.standards.card.iec";
 pub const HEADER: &str = "ecad.standards.header";
 pub const MAKE: &str = "ecad.standards.header.make";
 pub const RENAME: &str = "ecad.standards.header.rename";
+/// Brief 055: Standards ▸ Frames, a frame's **Edit in Library**.
+pub const EDIT_IN_LIBRARY: &str = "ecad.standards.frame.edit_in_library";
 pub const COPY_FROM: &str = "ecad.standards.header.copy_from";
 pub const BACK_TO_IEC: &str = "ecad.standards.header.back_to_iec";
 pub const HEADER_NAME: &str = "ecad.standards.header.name";
@@ -713,6 +715,13 @@ fn style_detail_ui(t: &mut Trial, ui: &mut egui::Ui, writable: bool) {
     {
         src.used = Some((row, d.users.0.to_string()));
         tb.update(src, Changed::Keys(vec![row]));
+    }
+    // Brief 055 (design 055 §0.3): a frame's block is edited in Library ▸ Title blocks.
+    if cat.word == "frame" && ui.button("Edit in Library").widget_info_named(EDIT_IN_LIBRARY).clicked() {
+        t.open_title_blocks(None);
+        t.tb_refresh();
+        t.tb_open(&id.text());
+        return;
     }
     let actions = sc::show_detail(ui, cat, &d, &mut t.settings.standards.style_detail, writable, &others);
     for a in actions {

@@ -326,8 +326,8 @@ pub enum Class {
     Head,
     /// A symbol with contact poles.
     Child,
-    /// Brief 044 (design 044 §7): a connector half's main symbol (a pin pair that is both
-    /// halves' main symbol: `Both`).
+    /// Brief 044 (design 044 §7, design 052 §3.4): a connector half's whole-half symbol. A
+    /// pin-only half has none.
     Half(crate::symbols::Side),
     /// Brief 044: any other connector symbol, by the side it draws.
     Pin(crate::symbols::Side),
@@ -362,10 +362,13 @@ pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
 }
 
 /// The class of a component representation by its symbol alone (a second head is made `Other`
-/// by [`device`]).
+/// by [`device`]): a head by its type ([`crate::reps::rep_type`]), a child when its symbol carries
+/// poles.
 fn raw_class(doc: &Document, r: &Representation) -> Class {
+    if crate::reps::rep_type(doc, r) == crate::reps::RepType::Head {
+        return Class::Head;
+    }
     match starter_of(doc, r) {
-        Some(s) if is_head(s) => Class::Head,
         Some(s) if !poles_of(s).is_empty() => Class::Child,
         _ => Class::Other,
     }
@@ -389,7 +392,8 @@ pub struct DrawnPole {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
     pub component: ComponentId,
-    /// Its head (the lowest-ID head symbol).
+    /// Its head ([`crate::reps::head`]: the first head symbol in book order, then top-left; never
+    /// by ID or placement order, design 052 §3.4).
     pub head: Option<RepresentationId>,
     /// Its children, in ID order.
     pub children: Vec<RepresentationId>,
@@ -435,24 +439,21 @@ pub fn terminal_points(doc: &Document, c: ComponentId, r: &Representation) -> Ve
 
 /// Device `c` as the reference rule sees it: O(its representations).
 pub fn device(doc: &Document, c: ComponentId) -> Device {
-    let mut head = None;
+    let head = crate::reps::head(doc, c);
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Component(c)) {
-        match raw_class(doc, r) {
-            Class::Head if head.is_none() => head = Some(rid),
-            Class::Child => {
-                children.push(rid);
-                let Some(s) = starter_of(doc, r) else { continue };
-                let kinds = poles_of(s);
-                let pts = crate::devices::shown_terminals(doc, c, r);
-                let at = anchor(doc, r);
-                for (i, (kind, power)) in kinds.iter().enumerate() {
-                    let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
-                    poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
-                }
-            }
-            _ => {}
+        if raw_class(doc, r) != Class::Child {
+            continue;
+        }
+        children.push(rid);
+        let Some(s) = starter_of(doc, r) else { continue };
+        let kinds = poles_of(s);
+        let pts = crate::devices::shown_terminals(doc, c, r);
+        let at = anchor(doc, r);
+        for (i, (kind, power)) in kinds.iter().enumerate() {
+            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
+            poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
         }
     }
     Device { component: c, head, children, poles }
@@ -474,10 +475,7 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
         Subject::Component(c) => match raw_class(doc, r) {
-            Class::Head => {
-                let first = doc.representations_of(Subject::Component(c)).find(|(_, x)| raw_class(doc, x) == Class::Head).map(|(id, _)| id);
-                Some((Group::Device(c), if first == Some(rid) { Class::Head } else { Class::Other }))
-            }
+            Class::Head => Some((Group::Device(c), if crate::reps::head(doc, c) == Some(rid) { Class::Head } else { Class::Other })),
             Class::Child => Some((Group::Device(c), Class::Child)),
             _ => None,
         },
@@ -844,7 +842,7 @@ pub fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
     let g = ecad_model::sheet::Grid::of(doc, page);
     let k = unit(doc);
     let gap = crate::defaults::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, crate::defaults::Scope::project()).length(doc);
-    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * k + gap);
+    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::keep_out(doc, page) * k + gap);
     let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
     (lo, hi)
 }
@@ -857,7 +855,7 @@ fn inside(b: (Pt, Pt), free: (Pt, Pt)) -> bool {
 /// Whether the box `b` enters the title block of `page` (the user-placed check of design 033 §4.1).
 pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
     let g = ecad_model::sheet::Grid::of(doc, page);
-    let line = g.frame_bottom() + ecad_model::sheet::TITLE_BLOCK_MM * unit(doc);
+    let line = g.frame_bottom() + ecad_model::sheet::keep_out(doc, page) * unit(doc);
     let (left, right) = (g.frame_left(), g.frame_left() + g.area_width());
     b.0.y < line && b.1.y > g.frame_bottom() && b.1.x > left && b.0.x < right
 }
@@ -1674,6 +1672,21 @@ impl Scope {
                     self.wide = true;
                 }
                 _ => {}
+            }
+            // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
+            // area above the block, so its pages' devices, tables and arrows follow it.
+            match crate::title_block::frame_reach(doc, op) {
+                crate::title_block::Reach::Pages(ps) => {
+                    for p in ps {
+                        self.devices.extend(idx.devices_on(doc, p));
+                        self.names.extend(crate::continuations::names_on(doc, idx, p));
+                    }
+                }
+                crate::title_block::Reach::Wide => {
+                    self.wide = true;
+                    self.arrows_wide = true;
+                }
+                crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
             }
             // Brief 049: what continuation arrows the op could change.
             match op {

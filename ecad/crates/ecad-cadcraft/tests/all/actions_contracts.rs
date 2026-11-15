@@ -144,6 +144,20 @@ const ECAD_COMMANDS: &[&str] = &[
     "rating",
     "ratingtable",
     "ratings",
+    // Brief 052.
+    "setlocation",
+    "setfunction",
+    "designations",
+    "designationadd",
+    "designationedit",
+    "designationmerge",
+    "designationremove",
+    "conflicts",
+    "functionbox",
+    // Brief 055.
+    "titleblocks",
+    "titleblock",
+    "titleblockimport",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

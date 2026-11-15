@@ -216,17 +216,23 @@ fn run_location(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
         }
         None => return Err(err("Give `temperature` (\u{b0}C), or null to clear it.")),
     };
-    let loc = loc.to_string();
+    let typed = loc.to_string();
     with_project(s, |p, pg, _| {
         let doc = p.ledger.document();
-        let boxes: Vec<ecad_model::ComponentId> = doc
-            .components
-            .iter()
-            .filter(|(_, x)| {
-                crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == loc)
-            })
-            .map(|(c, _)| *c)
-            .collect();
+        // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
+        let entry = crate::designations::find(doc, crate::designations::Aspect::Location, &typed);
+        let loc = entry.as_ref().map_or_else(|| typed.clone(), |e| e.code.clone());
+        let boxes: Vec<ecad_model::ComponentId> = match &entry {
+            None => Vec::new(),
+            Some(e) => doc
+                .components
+                .iter()
+                .filter(|(_, x)| {
+                    crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == e.key)
+                })
+                .map(|(c, _)| *c)
+                .collect(),
+        };
         if boxes.is_empty() {
             return Err(format!("No location box is {loc}; draw one with Location Box first."));
         }
@@ -341,7 +347,7 @@ fn run_ratingtable(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
         let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&name)).map(|r| r.id);
         let id = existing.clone().unwrap_or_else(|| StyleRef::Own(p.ids.fresh::<u128>()));
         let before = styles::record(doc, layer, cat.word, &id).cloned();
-        let mut rec = before.clone().unwrap_or(StyleRecord { name: name.clone(), fields: Default::default() });
+        let mut rec = before.clone().unwrap_or(StyleRecord { name: name.clone(), fields: Default::default(), body: None });
         if rec.name.is_empty() && existing.is_none() {
             rec.name = name.clone();
         }

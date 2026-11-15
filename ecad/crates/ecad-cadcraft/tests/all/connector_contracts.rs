@@ -251,8 +251,8 @@ fn halves_reference_each_other_across_pages() {
     h.activate(p2);
     row(&mut h, json!({"halves": "plug", "device": c.hex()}));
     let d = h.doc();
-    let s = connectors::main_symbol(&d, c, Side::Socket).unwrap();
-    let p = connectors::main_symbol(&d, c, Side::Plug).unwrap();
+    let s = connectors::half_goto(&d, c, Side::Socket).unwrap();
+    let p = connectors::half_goto(&d, c, Side::Plug).unwrap();
     let list = connectors::ref_classes(&d, c);
     let edges = connectors::ref_edges(&d, c, &list);
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)));
@@ -357,23 +357,39 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
 
 // ------------------------------------------------------------------------------- fix round 1
 
-/// Review of #81, 1: a half's BOM location follows a box and a page `location` on its own page,
-/// also when that page is not the connector's first.
+/// Review of #81, 1, brief 052 (design 052 §5.2): a half's BOM location is its own override
+/// (`location.plug`), else the connector's; a box or a page `location` on the half's own page is
+/// only its context (proposals kept off here), also when that page is not the connector's first.
 #[test]
-fn a_half_location_follows_its_own_page() {
+fn a_half_location_is_its_override_else_the_connector_not_its_page() {
     let mut h = H::new(4420);
     let c: ComponentId = id(&row(&mut h, json!({"halves": "socket"})), "component");
     let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
     row(&mut h, json!({"halves": "plug", "device": c.hex()}));
-    let plug_location = |h: &mut H| -> Value {
+    let half_location = |h: &mut H, end: &str| -> Value {
         let rows = h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
-        rows.into_iter().find(|r| r["tags"].as_str().is_some_and(|t| t.ends_with(".P"))).map(|r| r["location"].clone()).unwrap_or(Value::Null)
+        rows.into_iter().find(|r| r["tags"].as_str().is_some_and(|t| t.ends_with(end))).map(|r| r["location"].clone()).unwrap_or(Value::Null)
     };
-    h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
-    assert_eq!(plug_location(&mut h), "+FIELD", "a page location on the plug's page");
-    h.run("locationbox", json!({"location": "+JB1", "corners": [[0, 0], [300, 200]]})).unwrap();
-    assert_eq!(plug_location(&mut h), "+JB1", "a box around the plug");
+    let plug_context = |h: &mut H| {
+        let d = h.doc();
+        let r = ecad_cadcraft::reps::goto(&d, c, Some(Side::Plug)).unwrap();
+        ecad_cadcraft::locations::rep_context(&d, &d.representations[&r], &mut ecad_cadcraft::locations::BoxCache::default()).value
+    };
+    // Brief 052d: `keep`, so the connector is not given the proposal (that is the outputs tests').
+    h.run("pageprops", json!({"location": "+FIELD", "proposal": "keep"})).unwrap();
+    assert_eq!(half_location(&mut h, ".P"), Value::Null, "a page location is not the plug's location");
+    assert_eq!(plug_context(&mut h).as_deref(), Some("+FIELD"), "it proposes");
+    h.run("locationbox", json!({"location": "+JB1", "corners": [[0, 0], [300, 200]], "proposal": "keep"})).unwrap();
+    assert_eq!(half_location(&mut h, ".P"), Value::Null, "nor is a box around the plug");
+    assert_eq!(plug_context(&mut h).as_deref(), Some("+JB1"), "the box proposes");
+    // The connector's own location reaches both halves; the plug's override beats it.
+    h.run("setlocation", json!({"component": c.hex(), "value": "+CP1"})).unwrap();
+    assert_eq!(half_location(&mut h, ".P"), "+CP1");
+    assert_eq!(half_location(&mut h, ".S"), "+CP1");
+    h.run("setlocation", json!({"component": c.hex(), "type": "plug", "value": "+JB1"})).unwrap();
+    assert_eq!(half_location(&mut h, ".P"), "+JB1", "the plug's override");
+    assert_eq!(half_location(&mut h, ".S"), "+CP1", "the socket keeps the connector's");
 }
 
 /// Review of #81, 2: the half rows' groups are kept; an unrelated edit groups nothing, and the

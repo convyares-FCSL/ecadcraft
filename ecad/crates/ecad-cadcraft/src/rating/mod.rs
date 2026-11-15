@@ -337,7 +337,7 @@ pub struct Rating {
     pub voltdrop: Option<VoltDrop>,
     /// The cross-section used.
     pub size: Option<f64>,
-    /// A wire's ends' locations (the `at` index, design 057 §10); the first is the one whose
+    /// A wire's ends' locations as entry keys (brief 052; the `at` index, design 057 §10); the first is the one whose
     /// temperature was used, when one was.
     pub locations: Vec<String>,
     pub issues: Vec<Issue>,
@@ -381,7 +381,8 @@ impl Rating {
 /// What every evaluation shares, read once per build or update.
 pub struct Context {
     pub looks: wire::WireLooks,
-    /// Location → its panel temperature (location boxes with `rating.temperature`).
+    /// Location entry key → its panel temperature (location boxes with `rating.temperature`;
+    /// brief 052: a stored location is an entry key, shown as its code).
     temps: BTreeMap<String, f64>,
     boxes: crate::locations::BoxCache,
     /// The chosen rating table, parsed once and shared (design 057 FP8: the rows are user data
@@ -433,6 +434,7 @@ impl Context {
 /// read (`rating-bad-value`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoxTemp {
+    /// The box's stored location: an entry key of the project's list (brief 052).
     pub location: String,
     pub temp: Result<f64, String>,
 }
@@ -443,6 +445,11 @@ pub fn box_temp(doc: &Document, c: ComponentId) -> Option<BoxTemp> {
     let v = x.properties.get(TEMPERATURE)?;
     let location = x.properties.get(ecad_model::book::LOCATION_KEY).map(|l| l.trim().to_string()).unwrap_or_default();
     Some(BoxTemp { location, temp: parse::ambient(v).ok_or_else(|| v.chars().take(32).collect()) })
+}
+
+/// The code of location entry `key` (brief 052), or the key itself when the list has no entry.
+pub fn location_code(doc: &Document, key: &str) -> String {
+    crate::designations::code_of(doc, crate::designations::Aspect::Location, key).unwrap_or_else(|| key.to_string())
 }
 
 /// Every location box that sets a temperature (open, reload, first show).
@@ -532,11 +539,13 @@ fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: ConductorId) -> (f
     if let Some(x) = doc.conductors.get(&c) {
         for t in x.ends.iter().flatten() {
             let Some(comp) = doc.terminals.get(t).map(|t| t.component) else { continue };
-            let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).value.map(|l| l.trim().to_string()) else { continue };
+            // Brief 052: the device's stored location is an entry key; boxes match by key, and the
+            // row shows the entry's code.
+            let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).key.map(|l| l.trim().to_string()) else { continue };
             if let Some(temp) = ctx.temps.get(&loc).copied()
                 && best.as_ref().is_none_or(|(b, _)| temp > *b)
             {
-                best = Some((temp, format!("location {loc}")));
+                best = Some((temp, format!("location {}", location_code(doc, &loc))));
                 locations.retain(|l| *l != loc);
                 locations.insert(0, loc.clone());
             }
@@ -1044,6 +1053,11 @@ impl Touch {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                    // Brief 052: a location entry's code changed (or the entry came or went): the
+                    // rows naming it are worded again.
+                    if let Some((crate::designations::Aspect::Location, k, true)) = crate::designations::parse_list_property(key) {
+                        self.locations.insert(k.to_string());
+                    }
                     if key.starts_with("rating.") || key.starts_with("wire.") {
                         self.all_results = true;
                         self.table |= key == defaults::rating::TABLE.key;
@@ -1685,6 +1699,8 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
         });
     }
     for (c, loc, v) in k.bad_boxes() {
+        // Brief 052: the box stores an entry key; the row names the entry's code.
+        let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
         let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingBadValue,
@@ -1693,7 +1709,7 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
             object: Object::Component(c),
             which: format!(
                 "{} has {TEMPERATURE} '{v}', which ECAD does not read (\u{2212}40 to 90 \u{b0}C)",
-                if loc.is_empty() { "A location box" } else { loc }
+                if loc.is_empty() { "A location box" } else { loc.as_str() }
             ),
             fix: None,
         });

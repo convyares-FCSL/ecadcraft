@@ -211,7 +211,10 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     printbook::install_io();
     let mut h = H::new(0x33_04);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
-    place(&mut h, "coil", (100.0, 150.0)); // no maker, no part number: missing cells
+    let k: ComponentId = id(&place(&mut h, "coil", (100.0, 150.0)), "component"); // no maker, no part number: missing cells
+    // Brief 052: the project's location only proposes; the coil stores it, so the only `?` are
+    // the missing maker and part number.
+    h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
     let parts = generated::parts_of(&doc, bom, Some(&Outputs::build(&doc)));
@@ -544,7 +547,8 @@ fn ac10_revision_columns_and_custom_fields() {
     assert_eq!(h.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
     h.activate(page);
     let texts = frame_texts(&mut h, page);
-    assert!(texts.iter().any(|t| t == "Checked") && !texts.iter().any(|t| t == "ECR"), "back to the six: {texts:?}");
+    // Brief 055 (FP5): the built-in columns now hold ECR, so its value shows again.
+    assert!(texts.iter().any(|t| t == "Checked") && texts.iter().any(|t| t == "ECR-1"), "back to the built-in columns: {texts:?}");
 }
 
 // ------------------------------------------------------------------------------------ AC11, AC12

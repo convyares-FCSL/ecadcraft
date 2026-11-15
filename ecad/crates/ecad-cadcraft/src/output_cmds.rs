@@ -15,9 +15,15 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("locationbox", "Location Box", run_locationbox)
             .params(
-                "{location: \"+CP1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id (a closed polyline), page?: id} (exactly one of corners, points, item; default the active page)",
+                "{location: \"+CP1\", function?: \"=F1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id (a closed polyline), page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (exactly one of corners, points, item; default the active page; brief 052: it proposes its values for the devices inside)",
             )
             .interactive(crate::interact::locationbox)
+            .noundo(),
+        CommandSpec::new("functionbox", "Function Box", run_functionbox)
+            .params(
+                "{function: \"=F1\", location?: \"+CP1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id, page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (brief 052: drawn dash-dot; it proposes its values for the devices inside)",
+            )
+            .interactive(crate::interact::functionbox)
             .noundo(),
         CommandSpec::new("bom", "Bill of Materials", run_bom)
             .params(
@@ -59,15 +65,39 @@ pub fn rectangle(a: Pt, b: Pt) -> Vec<Pt> {
 /// The echo of a new box: `Location box +CP1: 4 devices inside, 3 now in +CP1 (1 keeps its own +CP2).`
 pub fn box_words(location: &str, inside: usize, keeps: usize) -> String {
     let devices = if inside == 1 { "1 device".to_string() } else { format!("{inside} devices") };
+    // Brief 052: a box proposes; it never changes a device's stored location by itself.
     if keeps == 0 {
-        format!("Location box {location}: {devices} inside, now in {location}.")
+        format!("Location box {location}: {devices} inside.")
     } else {
-        format!("Location box {location}: {devices} inside, {} now in {location} ({keeps} keep their own location).", inside - keeps)
+        format!("Location box {location}: {devices} inside ({keeps} with another location).")
     }
 }
 
 fn run_locationbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let location = params.get("location").and_then(Value::as_str).ok_or_else(|| err("`location` is required, such as \"+CP1\""))?.to_string();
+    if params.get("location").and_then(Value::as_str).is_none() {
+        return Err(err("`location` is required, such as \"+CP1\""));
+    }
+    run_box(s, params, "locationbox")
+}
+
+/// `functionbox {function, location?, corners | points | item, page?, proposal?}` (brief 052d,
+/// design 052 §5.8): a box carrying a function (and a location, when given), drawn dash-dot.
+fn run_functionbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    if params.get("function").and_then(Value::as_str).is_none() {
+        return Err(err("`function` is required, such as \"=F1\""));
+    }
+    run_box(s, params, "functionbox")
+}
+
+/// A box (design 024 §7, design 052 §5.6, §5.8): its values, outline, and the proposal it makes
+/// for the device symbols inside. Unset devices take its values in the same transaction; devices
+/// with another value are listed as conflicts (`proposal`: "propose" (default), "move" or
+/// "keep").
+fn run_box(s: &mut Session, params: &Value, command: &str) -> cadcraft_engine::Result<Value> {
+    use crate::designations::Aspect;
+    let text = |k: &str| params.get(k).and_then(Value::as_str).map(str::to_string);
+    let (location, function) = (text("location"), text("function"));
+    let mode = crate::proposals::proposal_param(params).map_err(err)?;
     let corners = params.get("corners").filter(|v| !v.is_null()).map(|v| points(v, "corners")).transpose().map_err(err)?;
     let pts = params.get("points").filter(|v| !v.is_null()).map(|v| points(v, "points")).transpose().map_err(err)?;
     let item: Option<ItemId> = opt_id(params, "item").map_err(err)?;
@@ -79,29 +109,73 @@ fn run_locationbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<V
     with_project(s, |p, pg, active| {
         let page = page.unwrap_or(active);
         let doc = p.ledger.document();
+        let mut values: Vec<(Aspect, &str)> = Vec::new();
+        if let Some(f) = &function {
+            values.push((Aspect::Function, f));
+        }
+        if let Some(l) = &location {
+            values.push((Aspect::Location, l));
+        }
         let planned = match (corners, pts, item) {
             (Some(c), _, _) => match c.as_slice() {
-                [a, b] => crate::locations::plan_box(doc, &mut p.ids, page, &location, rectangle(*a, *b))?,
+                [a, b] => crate::locations::plan_box_with(doc, &mut p.ids, page, &values, rectangle(*a, *b))?,
                 _ => return Err("`corners` must hold two points".into()),
             },
-            (_, Some(v), _) => crate::locations::plan_box(doc, &mut p.ids, page, &location, v)?,
-            (_, _, Some(i)) => crate::locations::plan_from_item(doc, &mut p.ids, i, &location)?,
+            (_, Some(v), _) => crate::locations::plan_box_with(doc, &mut p.ids, page, &values, v)?,
+            (_, _, Some(i)) => crate::locations::plan_from_item_with(doc, &mut p.ids, i, &values)?,
             _ => return Err("nothing to draw".into()),
         };
-        let shown = crate::locations::location_value(doc, &location)?;
-        p.apply_edit(pg, "locationbox", &format!("Location box {shown}"), planned.ops)?;
+        let b = crate::locations::planned_box(doc, &planned).ok_or("the box could not be read back")?;
+        let shown = crate::locations::label_of(&b).0;
+        // Brief 052d: the box proposes its values for the device symbols inside it.
+        let spots = crate::proposals::spots_inside(doc, &b);
+        let modes = [
+            if b.function_key.is_some() { mode.clone() } else { crate::proposals::Mode::Keep },
+            if b.location_key.is_some() { mode.clone() } else { crate::proposals::Mode::Keep },
+        ];
+        let mut pending = crate::designations::Pending::default();
+        let proposed = crate::proposals::plan(doc, &mut p.ids, &spots, &modes, std::slice::from_ref(&b), &mut pending)?;
+        let inside: std::collections::BTreeSet<_> = spots.iter().map(|s| s.device).collect();
+        let mut ops = planned.ops.clone();
+        ops.extend(proposed.ops.iter().cloned());
+        let added = planned.added.clone();
+        let kind = if b.function_key.is_some() { "Function box" } else { "Location box" };
+        p.apply_edit(pg, command, &format!("{kind} {shown}"), ops)?;
+        if proposed.moved == 0 {
+            p.conflicts = proposed.conflicts.clone();
+        }
         let doc = p.ledger.document();
-        let (inside, keeps) = doc
-            .representations
-            .get(&planned.rep)
-            .and_then(|r| crate::locations::box_of_rep(doc, planned.rep, r))
-            .map_or((0, 0), |b| crate::locations::inside_counts(doc, &b));
-        let message = box_words(&shown, inside, keeps);
+        let set: std::collections::BTreeSet<_> = proposed.set.iter().map(|(c, _, _)| *c).collect();
+        let keeps: std::collections::BTreeSet<_> = proposed.conflicts.iter().map(|c| c.component).collect();
+        let n = inside.len();
+        let devices = if n == 1 { "1 device".to_string() } else { format!("{n} devices") };
+        let mut message = format!("{kind} {shown}: {devices} inside");
+        if !set.is_empty() || !keeps.is_empty() {
+            let same = n.saturating_sub(set.len() + keeps.len());
+            message.push_str(&format!("; {} set to {shown}, {same} already {shown}, {} kept", set.len(), keeps.len()));
+        }
+        message.push('.');
+        if let Some(a) = added {
+            message = format!("{message} {a}");
+        }
         pg.echo(message.clone());
-        Ok(json!({
+        for l in crate::proposals::conflict_words(doc, &proposed.conflicts) {
+            pg.echo(l);
+        }
+        let mut v = json!({
             "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
-            "inside": inside, "keeps_own": keeps, "message": message,
-        }))
+            "inside": n, "keeps_own": keeps.len(), "message": message,
+        });
+        if let (Some(o), Some(x)) = (v.as_object_mut(), crate::proposals::json(doc, &proposed).as_object()) {
+            o.extend(x.clone());
+        }
+        let conflicts: Vec<Value> = proposed
+            .conflicts
+            .iter()
+            .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
+            .collect();
+        v["conflicts"] = json!(conflicts);
+        Ok(v)
     })
 }
 

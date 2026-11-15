@@ -42,8 +42,9 @@ pub const PINS_KEY: &str = "pins";
 pub const PIN_NAMES_KEY: &str = "pin_names";
 /// The start of the per-half property keys (FP4).
 pub const HALF_PREFIX: &str = "half.";
-/// The per-half fields the BOM and locations read (FP4).
-pub const HALF_FIELDS: [&str; 4] = ["description", "maker", "part_number", "location"];
+/// The per-half fields the BOM reads (FP4). A half's location is the connector's override
+/// `location.socket` / `location.plug` (brief 052, FP4: `half.<s>.location` is retired).
+pub const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
 /// The start of a connector's ignored-warning keys (`ignore.connector-family`; overseer, fix round
 /// 1: the Checks rows' Ignore button).
 pub const IGNORE_PREFIX: &str = "ignore.";
@@ -629,13 +630,11 @@ pub fn side_symbols(doc: &Document, c: ComponentId, side: Side) -> Vec<Represent
     v.into_iter().map(|(_, r)| r).collect()
 }
 
-/// The main symbol of half `side` (design 044 §7): its whole-half symbol, else its first pin
-/// symbol in book order; `None` when the half is not drawn.
-pub fn main_symbol(doc: &Document, c: ComponentId, side: Side) -> Option<RepresentationId> {
-    if let Some((rid, _, _)) = whole_halves(doc, c).into_iter().find(|(_, s, _)| *s == side) {
-        return Some(rid);
-    }
-    side_symbols(doc, c, side).into_iter().next()
+/// Where go-to lands for half `side` ([`crate::reps::goto`], design 052 §4): its whole-half
+/// symbol, else its first pin symbol in book order, then top-left; `None` when the half is not
+/// drawn. Display only: it decides nothing about the half.
+pub fn half_goto(doc: &Document, c: ComponentId, side: Side) -> Option<RepresentationId> {
+    crate::reps::goto(doc, c, Some(side))
 }
 
 /// The family of half `side`: its whole-half symbol's, else the connector's definition's (a
@@ -667,14 +666,15 @@ pub struct Shown {
 
 /// Plan one connector symbol of `starter` on connector `c`, its pins named `names` (a whole half:
 /// one name per point; a pin: one name): one terminal per point keyed by its side, shown through
-/// explicit connection points (design 044 §3.1, §4.6). `main`: the connector's first symbol.
+/// explicit connection points (design 044 §3.1, §4.6). Its role is the starter key, whichever
+/// symbol of the connector it is (design 052 §4).
 ///
 /// # Errors
 /// Fewer names than points; the definition could not be built.
 #[allow(clippy::too_many_arguments)]
 pub fn symbol_ops(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &Starter, c: ComponentId, names: &[String], placement: Placement,
-    main: bool, ops: &mut Vec<Op>,
+    ops: &mut Vec<Op>,
 ) -> Result<(RepresentationId, ItemId, Vec<Shown>), String> {
     let d = starter.definition()?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
@@ -700,7 +700,7 @@ pub fn symbol_ops(
             subject: Subject::Component(c),
             page,
             form: Form::Symbol,
-            role: if main { "main".into() } else { starter.key.into() },
+            role: starter.key.into(),
             items: vec![item],
             connection_points: cps,
         },
@@ -755,7 +755,7 @@ pub fn check_whole_half(doc: &Document, c: ComponentId, side: Side, taken: &BTre
     if !has {
         return Ok(());
     }
-    let at = main_symbol(doc, c, side).map(|r| format!(" ({})", where_words(doc, r))).unwrap_or_default();
+    let at = half_goto(doc, c, side).map(|r| format!(" ({})", where_words(doc, r))).unwrap_or_default();
     Err(format!(
         "{} already has a {} half{at}. Place a {} half, or Enter for a new connector.",
         crate::devices::tag_words(doc, c),
@@ -908,13 +908,7 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
         if field.is_empty() || field.chars().count() > 32 || !field.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
             return Some(Err(format!("A half's field is a word such as {}: half.{letter}.description.", HALF_FIELDS.join(", "))));
         }
-        return Some(match field {
-            "location" => match value.map(str::trim).filter(|v| !v.is_empty()) {
-                None => Ok(None),
-                Some(v) => crate::locations::location_value(doc, v).map(Some),
-            },
-            _ => crate::devices::property_value(doc, "description", value),
-        });
+        return Some(crate::devices::property_value(doc, "description", value));
     }
     if crate::defaults::connectors::is_naming_key(key) {
         if !is_connector(doc, c) {
@@ -947,8 +941,8 @@ pub struct HalfRow {
     pub maker: Option<String>,
     pub part_number: Option<String>,
     pub location: Located,
-    /// Its main symbol and page.
-    pub main: Option<(RepresentationId, PageId)>,
+    /// Where its go-to lands ([`half_goto`]) and that symbol's page.
+    pub goto: Option<(RepresentationId, PageId)>,
 }
 
 /// The pin count of half `side`: its whole-half size, else the connector's pin count.
@@ -968,28 +962,20 @@ pub fn default_description(doc: &Document, family: Family, side: Side, n: usize)
 
 /// One row per drawn half of connector `c` (design 044 §8.1): its half tag, own fields or the
 /// registry's description, and its location (§8.2). Empty for a connector with nothing drawn.
-pub fn half_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<HalfRow> {
+pub fn half_rows(doc: &Document, c: ComponentId, _cache: &mut BoxCache) -> Vec<HalfRow> {
     if !is_connector(doc, c) {
         return Vec::new();
     }
     let d = drawn(doc, c);
     let mut out = Vec::new();
     for side in [Side::Socket, Side::Plug] {
-        let Some(main) = main_symbol(doc, c, side) else { continue };
+        let Some(main) = half_goto(doc, c, side) else { continue };
         let description = half_prop(doc, c, side, "description").or_else(|| {
             let v = default_description(doc, half_family(doc, c, side), side, half_size(doc, c, side, &d));
             (!v.is_empty()).then_some(v)
         });
-        let location = match half_prop(doc, c, side, "location") {
-            Some(v) => Located { value: Some(v), source: crate::locations::Source::Device },
-            None => match doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
-                Some(v) => Located { value: Some(v.clone()), source: crate::locations::Source::Device },
-                None => match doc.representations.get(&main) {
-                    Some(r) => crate::locations::rep_context(doc, r, cache),
-                    None => Located { value: None, source: crate::locations::Source::None },
-                },
-            },
-        };
+        // Brief 052 (design 052 §5.2): the half's override, else the connector's stored location.
+        let location = crate::locations::half_location(doc, c, side);
         out.push(HalfRow {
             side,
             tag: half_tag(doc, c, side),
@@ -997,7 +983,7 @@ pub fn half_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<Ha
             maker: half_prop(doc, c, side, "maker"),
             part_number: half_prop(doc, c, side, "part_number"),
             location,
-            main: doc.representations.get(&main).map(|r| (main, r.page)),
+            goto: doc.representations.get(&main).map(|r| (main, r.page)),
         });
     }
     out
@@ -1137,30 +1123,30 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
 
 // ---------------------------------------------------------------- references (design 044 §7)
 
-/// The reference members of connector `c` (design 044 §7): each half's main symbol is a half of
-/// that side, every other connector symbol a pin of its side (a pin pair: `Both`).
+/// The reference members of connector `c` (design 044 §7, design 052 §3.4): each half's
+/// whole-half symbol ([`crate::reps::half_anchor`]) is a half of that side, every other connector
+/// symbol a pin of its side (a pin pair: `Both`). A pin-only half has no half member: its pins
+/// keep their mate edges.
 pub fn ref_classes(doc: &Document, c: ComponentId) -> Vec<(RepresentationId, crate::xref::Class)> {
     use crate::xref::Class;
     if !is_connector(doc, c) {
         return Vec::new();
     }
-    let mains: BTreeMap<RepresentationId, Side> =
-        [Side::Socket, Side::Plug].into_iter().filter_map(|s| main_symbol(doc, c, s).map(|r| (r, s))).collect();
+    let halves: BTreeMap<RepresentationId, Side> =
+        [Side::Socket, Side::Plug].into_iter().filter_map(|s| crate::reps::half_anchor(doc, c, s).map(|r| (r, s))).collect();
     doc.representations_of(Subject::Component(c))
         .filter_map(|(rid, r)| {
             let side = rep_side(doc, r)?;
-            Some(match (mains.get(&rid), side) {
-                // A pin pair that is a main symbol is both halves' main symbol.
-                (Some(_), Side::Both) => (rid, Class::Half(Side::Both)),
-                (Some(s), _) => (rid, Class::Half(*s)),
-                (None, s) => (rid, Class::Pin(s)),
+            Some(match halves.get(&rid) {
+                Some(s) => (rid, Class::Half(*s)),
+                None => (rid, Class::Pin(side)),
             })
         })
         .collect()
 }
 
-/// The edges between connector `c`'s members (design 044 §7): each half's main symbol shows the
-/// other half's main symbol, and a pin whose mate is drawn only on other pages shows those.
+/// The edges between connector `c`'s members (design 044 §7): each half's whole-half symbol shows
+/// the other half's, and a pin whose mate is drawn only on other pages shows those.
 pub fn ref_edges(doc: &Document, c: ComponentId, list: &[(RepresentationId, crate::xref::Class)]) -> Vec<(RepresentationId, RepresentationId)> {
     use crate::xref::Class;
     let mut out = Vec::new();
@@ -1211,7 +1197,7 @@ pub fn hover_words(doc: &Document, c: ComponentId, side: Side) -> Option<String>
     let d = drawn(doc, c);
     let n = d.side(side).map_or(0, BTreeMap::len);
     let me = half_tag(doc, c, side);
-    Some(match main_symbol(doc, c, side.other()) {
+    Some(match half_goto(doc, c, side.other()) {
         Some(r) => format!(
             "{me} ({}, {n} pin{}) mates with {} on {}.",
             side.word(),

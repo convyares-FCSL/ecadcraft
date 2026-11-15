@@ -62,7 +62,10 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::Join(_) => cp::JOIN,
         Fix::NumberThem => cp::NUMBER_THEM,
         Fix::Finalise => cp::FINALISE,
-        Fix::UseBoxLocation(_) => cp::USE_BOX_LOCATION,
+        Fix::UseContext(..) => cp::USE_CONTEXT,
+        Fix::SetDesignation(_, ecad_cadcraft::designations::Aspect::Location) => cp::SET_LOCATION,
+        Fix::SetDesignation(_, ecad_cadcraft::designations::Aspect::Function) => cp::SET_FUNCTION,
+        Fix::ShowDesignations => cp::SHOW_IN_SETTINGS,
         Fix::ShowReports | Fix::ShowCables => cp::SHOW,
         Fix::OpenStandards(_) => cp::GO_TO_STANDARDS,
         Fix::OfferDrawn(_) => cp::OFFER,
@@ -96,6 +99,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::ShowRatedWires => cp::SHOW,
         // Two buttons, named by `cp::pair`.
         Fix::CoreOpen(..) => cp::TICK_NOT_USED,
+        Fix::EditTitleBlock(..) => cp::EDIT_BLOCK,
+        Fix::ClearPageSheet(_) => cp::CLEAR_PAGE_SHEET,
     }]
 }
 

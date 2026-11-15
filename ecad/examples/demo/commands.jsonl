@@ -107,7 +107,7 @@
 // Brief 024: the motor terminals sit in junction box +JB1 (a location box); -W01 is a 4G1.5;
 // -S01 is left without maker and part number, so the BOM shows ?. Generated pages close the book
 // (the quick start adds a cover and contents at the front by clicking).
-{"command":"locationbox","params":{"location":"+JB1","corners":[[100,100],[160,122]]}}
+{"command":"locationbox","params":{"location":"+JB1","corners":[[100,100],[160,122]],"proposal":"move"}}
 {"command":"setprop","params":{"cable":"$w1.cable","key":"type","value":"4G1.5"}}
 {"command":"newpage","params":{"generated":"revisions"}}
 {"command":"newpage","params":{"generated":"bom-location"}}

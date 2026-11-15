@@ -296,7 +296,9 @@ pub fn summary_line(plan: &Plan) -> String {
 /// As [`numbering::plan`].
 pub fn plan_for(p: &mut Project, req: &Request) -> Result<Plan, String> {
     p.tag_high.catch_up(&p.ledger);
-    numbering::plan(p.ledger.document(), req, p.tag_high.marks())
+    // Design 052 §4: a device is numbered at its head, else its first symbol in drawing order.
+    let doc = p.ledger.document();
+    numbering::plan_ranked(doc, req, p.tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r))
 }
 
 fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_engine::Result<Value> {

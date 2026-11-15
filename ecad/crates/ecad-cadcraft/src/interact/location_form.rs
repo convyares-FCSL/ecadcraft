@@ -1,7 +1,8 @@
-//! Brief 024's Location Box tool (design 024 §3.5): a location, then a rectangle (two corners), a
-//! closed polyline (points, then Close) or an existing closed polyline (Select). Live, the device
-//! symbols the outline would hold get a ring. Esc at any step writes nothing; the commit is the
-//! `locationbox` JSON form, one transaction.
+//! Brief 024's Location Box tool (design 024 §3.5) and brief 052d's Function Box tool (design 052
+//! §5.8): a location (or function), then a rectangle (two corners), a closed polyline (points,
+//! then Close) or an existing closed polyline (Select). Live, the device symbols the outline would
+//! hold get a ring (`ecad.check-warning` for one with another value). Esc at any step writes
+//! nothing; the commit is the `locationbox` / `functionbox` JSON form, one transaction.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,7 +10,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::book::LOCATION_KEY;
 use ecad_model::{ItemId, ItemKind, Primitive, Pt, Subject};
 use serde_json::json;
 
@@ -21,19 +21,42 @@ use crate::convert::kind_for_primitive;
 static POLYLINE: AtomicBool = AtomicBool::new(false);
 /// The last location used, the next prompt's default.
 static LAST: Mutex<Option<String>> = Mutex::new(None);
+/// The last function used (brief 052d).
+static LAST_FUNCTION: Mutex<Option<String>> = Mutex::new(None);
+
+fn last(a: Aspect) -> &'static Mutex<Option<String>> {
+    match a {
+        Aspect::Function => &LAST_FUNCTION,
+        Aspect::Location => &LAST,
+    }
+}
 /// `ecad.check-warning`.
 const WARNING_ACI: u8 = 2;
 
+use crate::designations::Aspect;
+
 /// `locationbox`: the click-based form.
 pub(crate) fn locationbox(s: &Session) -> R<Box<dyn Interactive>> {
+    start(s, Aspect::Location)
+}
+
+/// `functionbox` (brief 052d, design 052 §5.8): the same form for a function.
+pub(crate) fn functionbox(s: &Session) -> R<Box<dyn Interactive>> {
+    start(s, Aspect::Function)
+}
+
+fn start(s: &Session, aspect: Aspect) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let page_default = read(s, |p, page| {
         let doc = p.ledger.document();
-        Ok(doc.pages.get(&page).and_then(|x| x.properties.get(LOCATION_KEY)).or_else(|| doc.properties.get(LOCATION_KEY)).cloned())
+        // Brief 052: a stored entry key, shown by its code.
+        let stored = doc.pages.get(&page).and_then(|x| x.properties.get(aspect.property())).or_else(|| doc.properties.get(aspect.property()));
+        Ok(crate::designations::shown(doc, aspect, stored.map(String::as_str)))
     })
     .unwrap_or(None);
-    let default = LAST.lock().ok().and_then(|g| g.clone()).or(page_default).unwrap_or_else(|| "+CP1".into());
-    Ok(Box::new(Safe(LocationBox { default, location: None, mode: Mode::Start, points: Vec::new(), anchors: Vec::new() })))
+    let fallback = crate::designations::example(aspect).to_string();
+    let default = last(aspect).lock().ok().and_then(|g| g.clone()).or(page_default).unwrap_or(fallback);
+    Ok(Box::new(Safe(LocationBox { aspect, default, location: None, mode: Mode::Start, points: Vec::new(), anchors: Vec::new() })))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +68,8 @@ enum Mode {
 }
 
 struct LocationBox {
+    /// Which value the box carries (brief 052d).
+    aspect: Aspect,
     default: String,
     location: Option<String>,
     mode: Mode,
@@ -64,7 +89,11 @@ impl LocationBox {
                     if !crate::locations::is_device(doc, c) {
                         return None;
                     }
-                    let own = doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).cloned();
+                    let own = crate::designations::shown(
+                        doc,
+                        self.aspect,
+                        doc.components.get(&c).and_then(|x| x.properties.get(self.aspect.property())).map(String::as_str),
+                    );
                     Some((crate::locations::anchor(doc, r)?, own))
                 })
                 .collect())
@@ -84,10 +113,25 @@ impl LocationBox {
         }
     }
 
+    /// The command and its value parameter.
+    fn command(&self) -> (&'static str, &'static str) {
+        match self.aspect {
+            Aspect::Function => ("functionbox", "function"),
+            Aspect::Location => ("locationbox", "location"),
+        }
+    }
+
+    /// The JSON form with the value and `shape` (corners, points or item).
+    fn params(&self, shape: (&str, serde_json::Value)) -> serde_json::Value {
+        let mut v = json!({ self.command().1: self.location });
+        v[shape.0] = shape.1;
+        v
+    }
+
     fn finish(&mut self, s: &mut Session, params: serde_json::Value) -> R<Step> {
-        match commit(s, "locationbox", &params) {
+        match commit(s, self.command().0, &params) {
             Ok(r) => {
-                if let Ok(mut g) = LAST.lock() {
+                if let Ok(mut g) = last(self.aspect).lock() {
                     *g = self.location.clone();
                 }
                 let _ = r;
@@ -110,7 +154,7 @@ impl LocationBox {
             return Ok(Step::Continue);
         }
         let pts: Vec<[f64; 2]> = self.points.iter().map(|p| [p.x, p.y]).collect();
-        let params = json!({"location": self.location, "points": pts});
+        let params = self.params(("points", json!(pts)));
         self.finish(s, params)
     }
 
@@ -180,7 +224,7 @@ impl LocationBox {
                             Ok(Step::Continue)
                         }
                         Some(a) => {
-                            let params = json!({"location": self.location, "corners": [[a.x, a.y], [at.x, at.y]]});
+                            let params = self.params(("corners", json!([[a.x, a.y], [at.x, at.y]])));
                             self.finish(s, params)
                         }
                     },
@@ -197,7 +241,7 @@ impl LocationBox {
                         let item = read(s, |p, page| Ok(outline_at(p.ledger.document(), page, at, tol))).map_err(other)?;
                         match item {
                             Some(id) => {
-                                let params = json!({"location": self.location, "item": id.hex()});
+                                let params = self.params(("item", json!(id.hex())));
                                 self.finish(s, params)
                             }
                             None => {
@@ -241,11 +285,18 @@ fn seg_dist(p: Pt, a: Pt, b: Pt) -> f64 {
 
 impl Interactive for LocationBox {
     fn name(&self) -> &'static str {
-        "LOCATIONBOX"
+        match self.aspect {
+            Aspect::Function => "FUNCTIONBOX",
+            Aspect::Location => "LOCATIONBOX",
+        }
     }
     fn prompt(&self, _s: &Session) -> Prompt {
         if self.location.is_none() {
-            return Prompt::new(format!("Location for the box <{}>", self.default), Accept::TEXT).default(self.default.clone());
+            let what = match self.aspect {
+                Aspect::Function => "Function",
+                Aspect::Location => "Location",
+            };
+            return Prompt::new(format!("{what} for the box <{}>", self.default), Accept::TEXT).default(self.default.clone());
         }
         match (self.mode, self.points.len()) {
             (Mode::Start, _) => {
@@ -261,7 +312,8 @@ impl Interactive for LocationBox {
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
-        safely(s, "locationbox", |s| self.step(s, i))
+        let command = self.command().0;
+        safely(s, command, |s| self.step(s, i))
     }
     fn preview(&self, _s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let v = self.outline(Some(pt(cursor)));
@@ -276,7 +328,8 @@ impl Interactive for LocationBox {
             return Vec::new();
         }
         let r = pick_radius(s).unwrap_or(1.0) * 1.5;
-        let loc = self.location.as_deref().map(|l| if l.starts_with('+') { l.to_string() } else { format!("+{l}") });
+        let sign = self.aspect.sign();
+        let loc = self.location.as_deref().map(|l| if l.starts_with(sign) { l.to_string() } else { format!("{sign}{l}") });
         self.anchors
             .iter()
             .filter(|(a, _)| crate::locations::contains(&v, *a))

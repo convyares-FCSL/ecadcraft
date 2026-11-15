@@ -29,6 +29,7 @@ pub mod strips;
 pub mod styles;
 pub mod symbols;
 pub mod text;
+pub mod title_blocks;
 pub mod v2;
 pub mod wires_nets;
 

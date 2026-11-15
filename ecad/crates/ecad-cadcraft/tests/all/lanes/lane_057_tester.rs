@@ -369,6 +369,9 @@ fn c06_a_wire_across_two_locations_takes_the_hotter() {
     // +CAB2 over the lamp end only (the lamp's X1 is at y 210).
     let cab2: ComponentId = id(&h.run("locationbox", json!({"location": "+CAB2", "corners": [[60, 160], [140, 230]]})).unwrap(), "component");
     box_temp(&mut h, cab2, "56");
+    // Brief 052: a box only proposes; the lamp, placed inside +CAB1, is moved to +CAB2 by hand.
+    let lamp = h.doc().components_tagged("-H01")[0];
+    h.run("setlocation", json!({"component": lamp.hex(), "value": "+CAB2"})).unwrap();
     // k = round2(√(24/60)) = round2(0.632456) = 0.63.
     let r = wire_r(&mut h, wire);
     assert!((fval(&r, "panel") - 0.63).abs() < EPS, "the hotter end: {r}");

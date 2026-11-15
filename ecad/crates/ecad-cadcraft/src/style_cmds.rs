@@ -227,7 +227,7 @@ fn field_value(doc: &Document, f: &styles::Field, v: &Value) -> Result<Option<St
 }
 
 /// The `fields` of a call, each checked against the catalogue.
-fn fields_param(doc: &Document, cat: &Catalogue, params: &Value) -> Result<Vec<(String, Option<String>)>, String> {
+pub(crate) fn fields_param(doc: &Document, cat: &Catalogue, params: &Value) -> Result<Vec<(String, Option<String>)>, String> {
     let Some(v) = params.get("fields").filter(|v| !v.is_null()) else { return Ok(Vec::new()) };
     let o = v.as_object().ok_or("`fields` is an object of field: value | null.")?;
     if o.len() > MAX_FIELDS_PER_CALL {
@@ -458,7 +458,7 @@ fn run_style(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
                 None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
             };
             let id = StyleRef::Own(p.ids.fresh::<u128>());
-            let mut rec = StyleRecord { name: name.to_string(), fields: Default::default() };
+            let mut rec = StyleRecord { name: name.to_string(), fields: Default::default(), body: None };
             for f in cat.fields {
                 let Some(from) = &from else { break };
                 // 050b: a copy is no potential's default (one category per potential).

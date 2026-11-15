@@ -592,3 +592,28 @@ fn a_strip_fuse_position_protects_its_out_point_only() {
     let r = ratings(&mut h, json!({"wire": supply.hex()}));
     assert!(r["device"].is_null(), "the supply side is not protected by the fuse: {r}");
 }
+
+/// Brief 052: a stored location is an entry key shown as its code. A box's panel temperature
+/// still reaches the wires there after the entry's code is renamed, the row shows the new code,
+/// and `rating {location}` takes the new code.
+#[test]
+fn a_location_temperature_follows_the_entry_when_its_code_is_renamed() {
+    let mut f = fixture();
+    rate_category(&mut f.h);
+    let _ = cab1(&mut f.h);
+    f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
+    let panel = |h: &mut H, w: ConductorId| {
+        let r = ratings(h, json!({"wire": w.hex()}));
+        r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap()
+    };
+    let before = panel(&mut f.h, f.l2);
+    assert_eq!(before["from"], json!("location +CAB1"), "{before}");
+    f.h.run("designationedit", json!({"aspect": "location", "code": "+CAB1", "to": "+CAB9"})).unwrap();
+    let after = panel(&mut f.h, f.l2);
+    assert_eq!(after["factor"], before["factor"], "{after}");
+    assert_eq!(after["from"], json!("location +CAB9"), "{after}");
+    let r = f.h.run("rating", json!({"location": "+CAB9", "temperature": 45})).unwrap();
+    assert_eq!(r["boxes"], json!(1), "{r}");
+    assert_eq!(r["location"], json!("+CAB9"), "{r}");
+    assert!(f.h.run("rating", json!({"location": "+CAB1", "temperature": 45})).is_err());
+}

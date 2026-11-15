@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
 use ecad_model::book::{self, Book};
-use ecad_model::sheet::{MARGIN_MM, TITLE_BLOCK_MM, TOP_MARGIN_MM, unit_scale};
+use ecad_model::sheet::unit_scale;
 use ecad_model::{Document, ObjectRef, Op, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
@@ -483,7 +483,9 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextLook) -> V
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
 pub(crate) fn area(input: &FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
-    (MARGIN_MM + 5.0, MARGIN_MM + TITLE_BLOCK_MM + 5.0, w - MARGIN_MM - 5.0, h - TOP_MARGIN_MM - 5.0)
+    // Brief 055 (FP4): the frame's margins and its block's height.
+    let m = input.look.margins;
+    (m.left + 5.0, m.bottom + input.keep_out() + 5.0, w - m.right - 5.0, h - m.top - 5.0)
 }
 
 /// A table row: cells, and whether it is a heading (BOM location blocks, strips).
@@ -930,7 +932,15 @@ fn content(
     let mut last_dot: Option<(usize, f64)> = None;
     for row in page_rows {
         if row.heading {
-            d.text((l + 1.0, y - ROW_MM / 2.0), heading, row.cells.first().map_or("", String::as_str), HAlign::Left, None, Some(r - l - 2.0));
+            let text = row.cells.first().map_or("", String::as_str);
+            if text == MISSING {
+                // Brief 052 (tester 052, finding 6): devices with no location head a `?` group,
+                // flagged like a missing cell: the mark in the first column's width.
+                let w = widths.first().copied().unwrap_or(r - l).min(r - l);
+                d.out.extend(missing_mark(doc, d.p(l, y - ROW_MM), d.p(l + w, y), d.k, heading));
+            } else {
+                d.text((l + 1.0, y - ROW_MM / 2.0), heading, text, HAlign::Left, None, Some(r - l - 2.0));
+            }
             last_dot = None;
         } else {
             let mut x = l;

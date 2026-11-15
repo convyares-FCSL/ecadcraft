@@ -41,6 +41,11 @@ impl Trial {
             self.keep_draft();
             return;
         }
+        // Brief 055: the Title blocks tab is the title block editor.
+        if self.library.browser.tab == browser::LibraryTab::TitleBlocks {
+            self.title_blocks_view(ui, main);
+            return;
+        }
         let key = self.drafts_key();
         let drafts = key.as_deref().map(|k| self.library.drafts.of(k).to_vec()).unwrap_or_default();
         let listing = match self.project.clone().filter(|p| p.is_attached(&self.cad.session)) {
@@ -113,6 +118,10 @@ impl Trial {
     /// The right panel in the Library: the builder's Details, or the selected symbol's.
     pub(crate) fn library_right(&mut self, ui: &mut egui::Ui) {
         let writable = self.project_open() && self.writable();
+        if self.library.builder.is_none() && self.library.browser.tab == browser::LibraryTab::TitleBlocks {
+            self.title_blocks_right(ui);
+            return;
+        }
         if self.library.builder.is_none() {
             let page = self.panel.active.and_then(|a| self.panel.rows().iter().find(|r| r.id == a)).map(|r| r.number.clone());
             let acts = browser::details(ui, &self.library.browser, &self.library.listing, writable, page.as_deref());

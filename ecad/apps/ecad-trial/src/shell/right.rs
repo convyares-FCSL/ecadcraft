@@ -438,13 +438,11 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::ComponentId, rep: R
         } else {
             "from standard"
         };
+        // Brief 052 (design 052 §5.2): the half's override, else the connector's stored value.
         let loc_origin = match h.location.source {
-            _ if own("location") => "set here",
+            ecad_cadcraft::locations::Source::Override => "set here",
             ecad_cadcraft::locations::Source::Device => "from device",
-            ecad_cadcraft::locations::Source::Box { .. } => "from box",
-            ecad_cadcraft::locations::Source::Page(_) => "from page",
-            ecad_cadcraft::locations::Source::Project => "from project",
-            ecad_cadcraft::locations::Source::None => "none",
+            _ => "none",
         };
         out.push(row("description", "Description", h.description.clone(), desc_origin, Some(h.tag.clone())));
         out.push(row("maker", "Maker", h.maker.clone(), if own("maker") { "set here" } else { "none" }, None));

@@ -353,7 +353,10 @@ fn a01_location_and_frame_catalogues_ship_box_and_sheet() {
     assert!(near(field_num(f, "inner_weight"), 0.25));
     assert_eq!(field_text(f, "line_colour"), "none");
     assert_eq!(field_text(f, "grid_labels"), "on");
-    assert_eq!(field_text(f, "title_block"), "standard");
+    // Brief 055 (FP2, FP3): `title_block` is retired; the frame says its sheet and centre marks.
+    assert!(f["fields"]["title_block"].is_null(), "{f}");
+    assert_eq!(field_text(f, "sheet"), "page");
+    assert_eq!(field_text(f, "centre_marks"), "on");
     // Every catalogue at once: text + location + frame (050b adds wire).
     let all = rows_of(h.run("styles", json!({})).unwrap());
     for cat in ["text", "location", "frame"] {
