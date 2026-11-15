@@ -4,7 +4,7 @@ This is the **one maintained guide** for building, running and manually testing 
 app. Other READMEs link here instead of repeating it. It is updated in the same pull request as
 any change that affects these instructions (see `ecad/CLAUDE.md`).
 
-> **What you are running.** `ecad-trial` is an experiment, not an ECAD application. It is
+> **What you are running.** `ecad-desktop` (formerly `ecad-trial`) is an experiment, not an ECAD application. It is
 > CADCraft's drawing window with the ECAD commands and one ECAD project open at a time. Projects
 > are saved as `.ecad` files (persistence stage 2a). The **PROJECT** panel on the far left lists
 > the project's pages, shows one of them at a time and holds New, Open, Save, Save As and Close
@@ -102,18 +102,18 @@ Three kinds of evidence exist, and they are kept apart:
 
 | Kind | Who | Covers |
 | --- | --- | --- |
-| **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/all/disk_contracts.rs`, `disk_edge_contracts.rs`). The model outcomes of sections 5 to 7 (what the project holds, not how it looks), across the trial, tools, mouse and files tests together: `the_quick_start_trial_runs_headless` (`ecad/apps/ecad-trial/tests/all/trial.rs`) follows the typed version of sections 5 to 7, saving through the dialog as `~/ecad-projects/demo` under a temporary home folder and checking the banner line and tab title quoted in section 7; the click-based steps are in `mouse.rs` and `tools.rs` (next row and below); plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/apps/ecad-trial/tests/all/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/all/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/apps/ecad-trial/tests/all/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
-| **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/apps/ecad-trial/tests/all/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/all/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks** | `cargo xtask ci` and plain `cargo test --workspace`, in GitHub CI on Linux and natively on Windows (jobs `ecad` and `ecad-windows`), and locally on Windows with Rust 1.99.1 | The file tests run on Windows with none ignored (brief 002): a file renamed over or deleted and recreated behind an open project is refused; Save As is confirmed only after a real folder flush; read-only files, a lock that cannot be taken, the unnamed lock holder on Windows, retries while another program briefly holds a file, and a killed process's lock released within 2 s (`ecad/crates/ecad-store/tests/disk_contracts.rs`, `ecad/crates/ecad-file/tests/all/disk_contracts.rs`, `disk_edge_contracts.rs`). The model outcomes of sections 5 to 7 (what the project holds, not how it looks), across the trial, tools, mouse and files tests together: `the_quick_start_trial_runs_headless` (`ecad/crates/ecad-app/tests/all/trial.rs`) follows the typed version of sections 5 to 7, saving through the dialog as `~/ecad-projects/demo` under a temporary home folder and checking the banner line and tab title quoted in section 7; the click-based steps are in `mouse.rs` and `tools.rs` (next row and below); plus fault injection at every step of Save and Save As, a crash in the middle of a save, a killed process holding the lock, a second opener, external changes and damaged files. **Stage 2b:** section 8's worked example (`ecad/crates/ecad-app/tests/all/debugger.rs`, `the_quick_start_debugger_example_runs_headless`); the trail from a selected wire to its record bytes, compared with the file; pending, unconfirmed and failed saves never shown as saved; a busy project not waited for; history views and checks leaving the live project unchanged (`ecad/crates/ecad-cadcraft/tests/all/debugger.rs`) **ECAD Tool Sets tab:** every button names an existing command; opening the ECAD tab and clicking Convert to Component converts the selection once, and `u` undoes it; a command waiting at a prompt is cancelled first; templates fill the Command field and run nothing, and an unedited template is refused; IDs come from the selection, and a huge selection is followed only so far; a read-only project behaves as with typed commands (`ecad/crates/ecad-app/tests/all/tools.rs`). Without extra tabs, Drafting and Modeling are unchanged (`crates/ui-egui/tests/toolsets_extra.rs`) |
+| **Automated checks, brief 008 (ECAD tools by mouse)** | `cargo xtask ci` and plain `cargo test --workspace` locally on Windows (Rust 1.99.1), 2026-11-01; CADCraft's own tests for the overlay change (`cargo test -p cadcraft-engine -p cadcraft-ui-egui`) | Section 5 by clicks and keys in a 1280×800 window (`ecad/crates/ecad-app/tests/all/mouse.rs`, `the_quick_start_example_is_built_by_clicks_and_keys`): window selection, **Convert to Component**, **Add Terminal** with `40,10` and `0,10`, **Place Symbol** with `R`, **Wire** by four clicks ending within 5 pixels of the coil's terminal; Esc while drawing a wire writes nothing, and `u` undoes one object; hovering names the coil and the wire and writes nothing. Every interactive form records exactly the transaction its JSON form records for the same values; Esc at every prompt; capture inside and outside the aperture; error messages; hostile input (`ecad/crates/ecad-cadcraft/tests/all/interactive_contracts.rs`). Marks keep their size at every zoom (`crates/ui-egui/tests/owner_overlay.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 018 (devices and tags)** | written with the branch and run by the worker on native Windows 11 (Rust 1.99.1), 2026-11-08: `cargo xtask test-changed` and the medium bench | Section 5E without a display (`ecad/crates/ecad-cadcraft/tests/all/device_contracts.rs`): all 18 starter symbols get their prefix and the next number and their definitions' terminal names, each definition embedded once with its origin; a coil and two contacts on two pages are one `-K01` with `13`/`14` and `21`/`22`; renaming the tag is one `Set tag` transaction that `u` undoes; a duplicate tag names the device and the ways forward; placing with an existing tag adds to that device; merging a renamed device moves its symbols, terminals and wires in one undoable transaction; deleted tags are not reused; save, close and reopen keep it all; the interactive Place Symbol (search, Device, Tag, the Yes/Choose another question), Device Properties and Delete Device; refusals and hostile input; erasing one symbol, then the last one; a moved contact's wire follows; a copy gets the next tag; the hover lens. MCP: `place`, the join and `setprop` tag record the JSON forms' transactions as the agent, a duplicate is refused, writes off refuse device writes (`ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`). The model rule (`ecad/crates/ecad-model/tests/all/device_contracts.rs`). Not checked: anything on a display, and the Find Symbol window by clicks |
-| **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/apps/ecad-trial/tests/all/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/all/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
-| **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/apps/ecad-trial/tests/all/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-cadcraft/tests/all/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
-| **Automated checks, brief 010 (cable references)** | written with the branch (the worker ran only the new tests once); run by the tester and by CI on Linux and Windows | Section 5D: **Cable Reference**, **Continue Cable** and **Go to Reference** clicked by their labels, their first prompts, the click-only path (reference, continue with Enter and two clicks, jump back), and the **Rename Page** and **Move Page** templates filling in the current page (`ecad/apps/ecad-trial/tests/all/cable_references.rs`). One cable on two pages keeps its ID, members and nets; continuing is one transaction with the design's ops and geometry; the texts `/2.1` and `/1.2` and where they sit; no end mark where a wire leaves toward a reference; moving or renaming a page is one transaction and the texts follow with none of their own; erasing one drawing makes the other end a red orphan with a diagnostic and a message, and `u` restores it; save, reopen and replay; the hover lens; `cablegoto` there and back; the interactive and JSON forms record the same transactions; refusals R1 to R6; hostile input; the debugger trail; fan view keeps the reference (`ecad/crates/ecad-cadcraft/tests/all/cable_reference_contracts.rs`, whose JSON-form table is written to move to the MCP harness of brief 011). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/crates/ecad-app/tests/all/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-cadcraft/tests/all/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
+| **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/crates/ecad-app/tests/all/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-cadcraft/tests/all/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
+| **Automated checks, brief 010 (cable references)** | written with the branch (the worker ran only the new tests once); run by the tester and by CI on Linux and Windows | Section 5D: **Cable Reference**, **Continue Cable** and **Go to Reference** clicked by their labels, their first prompts, the click-only path (reference, continue with Enter and two clicks, jump back), and the **Rename Page** and **Move Page** templates filling in the current page (`ecad/crates/ecad-app/tests/all/cable_references.rs`). One cable on two pages keeps its ID, members and nets; continuing is one transaction with the design's ops and geometry; the texts `/2.1` and `/1.2` and where they sit; no end mark where a wire leaves toward a reference; moving or renaming a page is one transaction and the texts follow with none of their own; erasing one drawing makes the other end a red orphan with a diagnostic and a message, and `u` restores it; save, reopen and replay; the hover lens; `cablegoto` there and back; the interactive and JSON forms record the same transactions; refusals R1 to R6; hostile input; the debugger trail; fan view keeps the reference (`ecad/crates/ecad-cadcraft/tests/all/cable_reference_contracts.rs`, whose JSON-form table is written to move to the MCP harness of brief 011). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 011 (agent access through MCP)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 7A without a client (`ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`): the tools and every ECAD command with its parameter docs are listed; the cable examples of sections 5A and 5B through `execute` record exactly the JSON forms' transactions, each by `agent <client name>`, and `u` undoes each in one step; with writes off, or on a project opened read-only, every change and `save` is refused and the history is unchanged; the Block Editor, REFEDIT and LISP are refused with your refusal; save only with `--write`, and reopening shows the agent as author; malformed, oversized and non-UTF-8 requests, long batches and unknown tools get JSON-RPC errors; the built `ecad-mcp` over real stdin and stdout. Briefs 009 and 010's commands through MCP (`ecad/apps/ecad-mcp/tests/all/cable_command_contracts.rs`): `cablecore`, `cablefan`, `cableref`, `cablecontinue`, `renamepage` and `movepage` record exactly their JSON forms' transactions by the agent, `u` undoes each in one step, and refusals change nothing; `cablerefs` and `cablegoto` run with writes off, record nothing, and `cablegoto` only switches the open page. Not checked: Claude Code itself connected to it |
-| **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/apps/ecad-trial/tests/all/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_trial_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
+| **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/crates/ecad-app/tests/all/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_trial_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
 | **Agent smoke run on a virtual display, ECAD Tool Sets tab** | the development agent, as above, 2026-10-15 | Tool Sets shows **Drafting**, **Modeling** and **ECAD** tabs; the ECAD tab shows Components, Wiring, Edit, Pages and Inspect; clicking a rectangle's four lines and then **Convert to Component** converted them (the banner's change count went up by one, the lines stayed selected). The first version (a group at the bottom of Drafting) was also run: **Wire** filled the Command field with its template and note, and Enter on it unedited was refused. Not looked at: a real WSLg display |
-| **Tried by you (the owner), brief 004 (cable slash)** | you, on native Windows, 2026-11-06, branch `ecad/cable-slash` (exact commit and build not restated) | You reported that every check passed: the steps of section 5A; the preview text readable past the Dynamic Input box; the red refusal text readable near the right edge of the drawing; the red `-> no wires`; and the crossing rules behaving as designed. You approved the three reference images `004-slash.png`, `004-slash-preview.png` and `004-slash-refused.png` (`ecad/apps/ecad-trial/tests/reference/`) |
+| **Tried by you (the owner), brief 004 (cable slash)** | you, on native Windows, 2026-11-06, branch `ecad/cable-slash` (exact commit and build not restated) | You reported that every check passed: the steps of section 5A; the preview text readable past the Dynamic Input box; the red refusal text readable near the right edge of the drawing; the red `-> no wires`; and the crossing rules behaving as designed. You approved the three reference images `004-slash.png`, `004-slash-preview.png` and `004-slash-refused.png` (`ecad/crates/ecad-app/tests/reference/`) |
 | **Tried by you (the owner), brief 008 (ECAD tools by mouse)** | you, on native Windows 11, 2026-11-01, branch `ecad/usability-mouse-tools` at `8c64c08` (release build of `ecad-trial`, CADCraft 0.15.1) | By clicking: a drawn component with terminals (cyan rings), a second component with terminal A1, and a wire whose ends attached to both (green rings). Hovering terminal A1 showed "Terminal A1", its component's ID, its own ID and its wire ("end B"). You reported it as a big improvement that starts to feel like an ECAD. Not reported as tried: save and reopen, Esc and undo, connect and disconnect, and the paper-space refusal; the three reference screenshots are not yet approved. Noted for the later tidy-up (not a separate brief): the tooltip shows long IDs where tags or names would read better, along with default sizes and feel |
 | **Tried by you (the owner), stage 2b and the ECAD Tool Sets tab** | you, on WSL, 2026-10-15; you accepted both for merging (PRs #11 and #12) | You observed the debugger panel's appearance, the revised **ECAD** tab with its five groups (Components, Wiring, Edit, Pages, Inspect), and a successful **Convert to Component** from that tab. Nothing else was reported as tried: see "Not yet tried by you" below |
 | **Tried by you (the owner), first ECAD Tool Sets version** | you, on WSL, 2026-10-15, the first version of PR #12 (a group at the bottom of Drafting) | The ECAD group appeared; you asked for it as a tab of its own beside Drafting and Modeling, which the merged version does |
@@ -211,7 +211,7 @@ Recorded as you reported them:
    ```sh
    cd ~/ecadcraft/ecad
    export CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_INCREMENTAL=0
-   cargo run --release -p ecad-trial
+   cargo run --release -p ecad-desktop
    ```
 
 6. If no window appears, or rendering fails:
@@ -257,14 +257,14 @@ OneDrive or the OneDrive-redirected Documents folder (unverified).
    ```powershell
    cd C:\dev\ecadcraft\ecad
    $env:CARGO_PROFILE_RELEASE_DEBUG = "0"; $env:CARGO_INCREMENTAL = "0"
-   cargo run --release -p ecad-trial
+   cargo run --release -p ecad-desktop
    ```
 
    A release build opens only the trial's window, with no console window beside it, and shows no
    console output, also when run from PowerShell or through `cargo run`. For `--help` and usage
-   errors use a debug build (`cargo run -p ecad-trial -- --help`), or redirect the output
+   errors use a debug build (`cargo run -p ecad-desktop -- --help`), or redirect the output
    (`... > out.txt`).
-   To open a saved project: `cargo run --release -p ecad-trial -- C:\dev\ecad-projects\demo.ecad`.
+   To open a saved project: `cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\demo.ecad`.
    To update later, use section 2's commands in `C:\dev\ecadcraft`.
 
 Everything from section 4 on is the same on Windows. Only file paths differ: where this guide says
@@ -304,9 +304,9 @@ Linux); open it as below. It is rebuilt from `ecad/examples/demo/commands.jsonl`
 ```sh
 cd ~/ecadcraft/ecad
 export CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_INCREMENTAL=0
-cargo run --release -p ecad-trial                                    # a new project
-cargo run --release -p ecad-trial -- ~/ecad-projects/demo.ecad       # open a saved project
-cargo run --release -p ecad-trial -- --snapshots ~/ecad-trial-snapshots   # allow diagnostic snapshots
+cargo run --release -p ecad-desktop                                    # a new project
+cargo run --release -p ecad-desktop -- ~/ecad-projects/demo.ecad       # open a saved project
+cargo run --release -p ecad-desktop -- --snapshots ~/ecad-trial-snapshots   # allow diagnostic snapshots
 ```
 
 On native Windows (PowerShell):
@@ -314,9 +314,9 @@ On native Windows (PowerShell):
 ```powershell
 cd C:\dev\ecadcraft\ecad
 $env:CARGO_PROFILE_RELEASE_DEBUG = "0"; $env:CARGO_INCREMENTAL = "0"
-cargo run --release -p ecad-trial                                           # a new project
-cargo run --release -p ecad-trial -- C:\dev\ecad-projects\demo.ecad         # open a saved project
-cargo run --release -p ecad-trial -- --snapshots C:\dev\ecad-trial-snapshots   # allow diagnostic snapshots
+cargo run --release -p ecad-desktop                                           # a new project
+cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\demo.ecad         # open a saved project
+cargo run --release -p ecad-desktop -- --snapshots C:\dev\ecad-trial-snapshots   # allow diagnostic snapshots
 ```
 
 `--snapshots <folder>` and a project file can be given together.
@@ -1248,7 +1248,7 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
    project is open:
 
    ```sh
-   cargo run --release -p ecad-trial -- ~/ecad-projects/demo.ecad
+   cargo run --release -p ecad-desktop -- ~/ecad-projects/demo.ecad
    ```
 
    Expected: the same pages, drawing and wire.
@@ -1263,13 +1263,13 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
    terminal, using the binary the first run built:
 
    ```sh
-   ~/ecadcraft/ecad/target/release/ecad-trial ~/ecad-projects/demo.ecad
+   ~/ecadcraft/ecad/target/release/ecad-desktop ~/ecad-projects/demo.ecad
    ```
 
    On native Windows (PowerShell):
 
    ```powershell
-   C:\dev\ecadcraft\ecad\target\release\ecad-trial.exe C:\dev\ecad-projects\demo.ecad
+   C:\dev\ecadcraft\ecad\target\release\ecad-desktop.exe C:\dev\ecad-projects\demo.ecad
    ```
 
    Expected: it opens read-only and says that another session is editing it. Save is refused
@@ -1396,13 +1396,13 @@ Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your sys
    released, then open the same file. Native Windows:
 
    ```powershell
-   cargo run --release -p ecad-trial -- C:\dev\ecad-projects\agent.ecad
+   cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\agent.ecad
    ```
 
    Linux or WSL:
 
    ```sh
-   cargo run --release -p ecad-trial -- ~/ecad-projects/agent.ecad
+   cargo run --release -p ecad-desktop -- ~/ecad-projects/agent.ecad
    ```
 
    Expected: the wires and the slash on page 1; the debugger (section 8) shows each transaction
@@ -1482,7 +1482,7 @@ and its bytes.**
 
 ### Worked example: what to inspect when placing, wiring, moving, undoing and saving
 
-Start a new project (`cargo run --release -p ecad-trial`) and click **Debugger** (PROJECT panel >
+Start a new project (`cargo run --release -p ecad-desktop`) and click **Debugger** (PROJECT panel >
 Developer). Type commands in the ECAD command field at the top of the Developer section. IDs and offsets will differ from any shown here.
 
 1. **At the start.** Expected: `live at seq 1`; **History** shows `#1 [pending] New project`.
@@ -1708,13 +1708,13 @@ A release build on Windows has no console, so its stderr is lost unless you redi
 file is always written. From Git Bash, in `ecad/`:
 
 ```sh
-ECAD_STARTUP_TIMING=1 target/release/ecad-trial.exe 2> startup-1.txt
+ECAD_STARTUP_TIMING=1 target/release/ecad-desktop.exe 2> startup-1.txt
 ```
 
 In PowerShell (stderr is not captured; read the JSON file):
 
 ```powershell
-$env:ECAD_STARTUP_TIMING = "1"; .\target\release\ecad-trial.exe; Remove-Item Env:ECAD_STARTUP_TIMING
+$env:ECAD_STARTUP_TIMING = "1"; .\target\release\ecad-desktop.exe; Remove-Item Env:ECAD_STARTUP_TIMING
 # then open the newest ecad-startup-*.json in $env:TEMP
 ```
 
@@ -1740,7 +1740,7 @@ need `GetProcessTimes`, which needs `unsafe` (forbidden in this workspace) or a 
 To measure the time before `main` on Windows, while the trial is still open run, in PowerShell:
 
 ```powershell
-([DateTimeOffset](Get-Process ecad-trial).StartTime).ToUnixTimeMilliseconds()
+([DateTimeOffset](Get-Process ecad-desktop).StartTime).ToUnixTimeMilliseconds()
 ```
 
 and subtract that number from `main_unix_ms` in the run's JSON file: the difference is the
@@ -1977,7 +1977,7 @@ Your table of three clean runs goes here once you have run it.
   durability guarantees are not known to hold there.
 - **Windows release builds** open no console window and show no console output, however they
   are started; `--help`, `--version` and usage errors print only when the output is redirected to
-  a file or pipe. Use a debug build (`cargo run -p ecad-trial -- --help`) to see them.
+  a file or pipe. Use a debug build (`cargo run -p ecad-desktop -- --help`) to see them.
 - Only the trial's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
   in the ECAD command field saves only into a folder that already exists.
 - The `.ecad` format is version 1, a development format. Files from a later format version are

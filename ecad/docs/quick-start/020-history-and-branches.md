@@ -21,7 +21,7 @@ the devices it changed (`-K05 added`); **F2** renames the branch shown. Section 
   the merge index and the merged status through merge, undo and redo across saves, the first-save
   snapshot), `ecad/apps/ecad-mcp/tests/all/merge_contracts.rs` (merge, update, a conflict refused
   without a choice and merged with one, undo merge, writes off), the merge engine's unit tests in
-  `ecad/crates/ecad-model/src/merge.rs`, and `ecad/apps/ecad-trial/tests/all/merge_ui.rs` (the
+  `ecad/crates/ecad-model/src/merge.rs`, and `ecad/crates/ecad-app/tests/all/merge_ui.rs` (the
   branch bar's Merge into main…, the dialog with one conflict, Merge, the join, Undo merge asked).
 - *Agent-observed:* the worker looked at the headless screenshots `020-merge.png` and
   `020-undomerge.png`; no agent has clicked through the live window.

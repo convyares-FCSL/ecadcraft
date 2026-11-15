@@ -1,5 +1,5 @@
 //! The engine boundary (design 065 §3, cut 11): the CADCraft engine types and functions that the
-//! App and the Programs (ecad-trial, ecad-mcp) may name. They reach the engine only through this
+//! App and the Programs (ecad-app, ecad-desktop, ecad-mcp) may name. They reach the engine only through this
 //! list, never through `cadcraft_engine` directly.
 //!
 //! # Semantics

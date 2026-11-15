@@ -32,7 +32,6 @@
 
 mod access;
 pub mod accessory_cmds;
-pub mod actions;
 // Design 065 §3, cut 12: the agent gate, shared by ecad-mcp and the window's live bridge.
 pub mod agent;
 pub mod bom_cmds;

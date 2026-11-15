@@ -49,8 +49,8 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 | [`ecad-cadcraft`](ecad-cadcraft/README.md) | Engine | Draws pages from the model and runs commands on CADCraft. *README comes after the split.* |
 | [`ecad-ui`](ecad-ui/README.md) | UI kit | Widgets: controls, primitives, panels, tables, dialogs. |
 | [`ecad-tokens`](ecad-tokens/README.md) | UI kit | The screen's look as constants: shell colours, spacing, type, icons. |
-| `ecad-app` | App | The application: shell, panels, dialogs, lists. *Being created by the split (from ecad-trial).* |
-| `ecad-desktop` | Programs | The desktop program. *Being created by the split (ecad-trial's binary).* |
+| [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table (from ecad-trial's library). |
+| `ecad-desktop` | Programs | The desktop program: command line, window, start-up timing (ecad-trial's binary). |
 | [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (`ecad upgrade`). |
 | [`ecad-mcp`](../apps/ecad-mcp/README.md) | Programs | ECAD for agents over MCP, with a write gate. |
 | [`ecad-bench`](../dev/ecad-bench/README.md) | Dev | The load benchmark (`cargo xtask bench`). |

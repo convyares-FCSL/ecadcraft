@@ -8,7 +8,7 @@
 //! - [`unracked_tiles`]: one tile per card in no rack, by tag.
 //! - Everything is read from the kept [`Plc`] model and the document; nothing is stored.
 //!
-//! Excludes: drawing. Lists ▸ PLC draws the tiles in `ecad-trial`; the sheet in
+//! Excludes: drawing. Lists ▸ PLC draws the tiles in `ecad-app`; the sheet in
 //! [`crate::generated`] (via `sheet_parts`).
 
 use ecad_model::{ComponentId, Document, PageId, Subject};

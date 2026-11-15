@@ -49,7 +49,7 @@ What brief 041 changed, and how to try it by clicking. Listed in the index of
 6. Ctrl+K, type `fix number`, click the action row with the wire selected: Fix number starts on
    that wire.
 
-Checked by the automated tests (`cargo test -p ecad-trial wheel_ui`, `-p ecad-ui wheel`,
+Checked by the automated tests (`cargo test -p ecad-app wheel_ui`, `-p ecad-ui wheel`,
 `-p ecad-cadcraft actions_contracts`); the steps above have not been tried by the owner yet.
 
 ## Not in this brief

@@ -98,6 +98,6 @@ hand stays. A version no copy uses any more after an update is removed in the sa
   `-p ecad-mcp symbol_builder_contracts`: the op `SetComponentDefinition` (apply, undo, diff, merge), the
   definition's new fields and their content hash, design 048 §12 rows 1–9 and 11–14, and the MCP
   contract.
-- `cargo test -p ecad-trial symbol_builder_ui`: the builder, the review with a clash, Make symbol from
+- `cargo test -p ecad-app symbol_builder_ui`: the builder, the review with a clash, Make symbol from
   lines and from a drawn device, the wheel slots, Compare and Update; screenshots with
   `ECAD_TESTER_SHOTS`.

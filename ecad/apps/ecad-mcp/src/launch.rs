@@ -1,7 +1,7 @@
 //! Opening the ECAD window for `--launch` (brief 035, design §9.3), on Windows and Linux.
 //!
 //! # Semantics
-//! - The trial is found as `ECAD_TRIAL` (a full path), else `ecad-trial(.exe)` beside the running
+//! - The trial is found as `ECAD_TRIAL` (a full path), else `ecad-desktop(.exe)` beside the running
 //!   `ecad-mcp`, else on `PATH` ([`find_trial`]).
 //! - It starts with `--control <port>` (and the project, when the server was given one), with
 //!   stdin, stdout and stderr to null, so nothing of it reaches the MCP stream, and detached from
@@ -25,11 +25,11 @@ pub const TRIAL_ENV: &str = "ECAD_TRIAL";
 
 /// The trial's file name on this platform.
 pub fn trial_file_name() -> &'static str {
-    if cfg!(windows) { "ecad-trial.exe" } else { "ecad-trial" }
+    if cfg!(windows) { "ecad-desktop.exe" } else { "ecad-desktop" }
 }
 
 /// Said when no trial is found.
-pub const NOT_FOUND: &str = "--launch could not find ecad-trial; set ECAD_TRIAL to its path.";
+pub const NOT_FOUND: &str = "--launch could not find ecad-desktop; set ECAD_TRIAL to its path.";
 /// Said on Linux without a display.
 pub const NO_DISPLAY: &str = "No display for the ECAD window (DISPLAY/WAYLAND_DISPLAY unset); running headless is not possible with --launch.";
 
@@ -109,7 +109,7 @@ pub fn set_project(p: &str) {
 /// No trial, no display, the start failed, or the port did not answer in time; in words.
 pub fn launch_and_wait(port: u16) -> Result<(), String> {
     if cfg!(target_os = "macos") {
-        return Err("--launch is not available on macOS yet; open ecad-trial with --control yourself.".into());
+        return Err("--launch is not available on macOS yet; open ecad-desktop with --control yourself.".into());
     }
     if !has_display(std::env::var_os("DISPLAY"), std::env::var_os("WAYLAND_DISPLAY")) {
         return Err(NO_DISPLAY.into());
@@ -165,14 +165,14 @@ mod tests {
         // Null stdio: nothing of the window reaches the MCP stream (checked by the command's
         // own debug form, which names the program and arguments only; the stdio is set in
         // `command`, covered by the manual spawn test).
-        let c = command(Path::new("ecad-trial"), &trial_args(1, None));
-        assert_eq!(c.get_program(), "ecad-trial");
+        let c = command(Path::new("ecad-desktop"), &trial_args(1, None));
+        assert_eq!(c.get_program(), "ecad-desktop");
     }
 
     /// The real spawn, by hand: needs a built trial and a display, and `ECAD_TEST_LAUNCH` set, so
     /// an `--include-ignored` run never opens a window.
     #[test]
-    #[ignore = "manual: starts the ECAD window (needs a built ecad-trial, a display and ECAD_TEST_LAUNCH)"]
+    #[ignore = "manual: starts the ECAD window (needs a built ecad-desktop, a display and ECAD_TEST_LAUNCH)"]
     fn launch_opens_the_window_by_hand() {
         if std::env::var_os("ECAD_TEST_LAUNCH").is_none() {
             return;

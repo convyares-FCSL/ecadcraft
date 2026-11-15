@@ -1,0 +1,26 @@
+[package]
+name = "ecad-desktop"
+description = "ECAD desktop program: command line, window and start-up around ecad-app (experiment only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# The application the window runs (design 065 §2.2).
+ecad-app = { path = "../../crates/ecad-app" }
+ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-model = { workspace = true }
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
+# remembers the window's size and position (brief 023).
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence"] }
+# Reads eframe's app.ron to tell whether a window state was saved (`window::saved_window`); the
+# version eframe uses, so nothing is built twice.
+ron = "0.12"
+# Brief 015: the start-up timing file.
+serde_json = { workspace = true }

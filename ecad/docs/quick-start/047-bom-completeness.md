@@ -59,7 +59,7 @@ that `for` as it rewrites links.
   with its fix; kits and the nested layout; missing `for` names and unread keys; the update map;
   hostile values; save and reopen; follow-up: renumbering keeps a strip line's `for`, strip part
   article numbers by level), `cargo test -p ecad-mcp --test all bom_contracts` (2 tests: every
-  write by the agent, refused with writes off, `bom` still reads) and `cargo test -p ecad-trial
+  write by the agent, refused with writes off, `bom` still reads) and `cargo test -p ecad-app
   --test all bom_ui` (3 tests: the Columns menu, + Item's prompts, the inspector's Parts).
 - *Agent-observed:* screenshots in the pull request, from the headless renderer.
 - *Owner-tried:* not yet.

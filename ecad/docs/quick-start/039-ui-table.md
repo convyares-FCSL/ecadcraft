@@ -30,7 +30,7 @@ Until the new shell (U2) gives Lists its place, the tables sit where the old lis
 ## Try it
 
 1. Open a project with devices, checks and a terminal strip, for example
-   `cargo run --release -p ecad-trial -- C:\dev\ecad-projects\<project>.ecad`, or the demo
+   `cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\<project>.ecad`, or the demo
    project built in `docs/quick-start.md`.
 2. **Devices.** Project panel ▸ Devices. Click a row: its first symbol's page is shown and all
    the device's symbols on that page are selected (follow-up to 039). Select a symbol on the page: its row is selected and scrolled to. With a row

@@ -1336,6 +1336,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "ecad-app"
+version = "0.3.0-dev"
+dependencies = [
+ "cadcraft-engine",
+ "cadcraft-mcp",
+ "cadcraft-ui-egui",
+ "chrono",
+ "ecad-cadcraft",
+ "ecad-desktop",
+ "ecad-drawing-style",
+ "ecad-file",
+ "ecad-inspect",
+ "ecad-mcp",
+ "ecad-model",
+ "ecad-store",
+ "ecad-ui",
+ "eframe",
+ "egui",
+ "egui_kittest",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ecad-bench"
 version = "0.3.0-dev"
 dependencies = [
@@ -1364,7 +1389,6 @@ dependencies = [
  "ecad-inspect",
  "ecad-model",
  "ecad-store",
- "ecad-tokens",
  "serde",
  "serde_json",
 ]
@@ -1376,6 +1400,19 @@ dependencies = [
  "ecad-file",
  "ecad-model",
  "ecad-store",
+ "serde_json",
+]
+
+[[package]]
+name = "ecad-desktop"
+version = "0.3.0-dev"
+dependencies = [
+ "cadcraft-ui-egui",
+ "ecad-app",
+ "ecad-cadcraft",
+ "ecad-model",
+ "eframe",
+ "ron",
  "serde_json",
 ]
 
@@ -1467,31 +1504,6 @@ name = "ecad-tokens"
 version = "0.3.0-dev"
 dependencies = [
  "ecad-drawing-style",
-]
-
-[[package]]
-name = "ecad-trial"
-version = "0.3.0-dev"
-dependencies = [
- "cadcraft-engine",
- "cadcraft-mcp",
- "cadcraft-ui-egui",
- "chrono",
- "ecad-cadcraft",
- "ecad-drawing-style",
- "ecad-file",
- "ecad-inspect",
- "ecad-mcp",
- "ecad-model",
- "ecad-store",
- "ecad-ui",
- "eframe",
- "egui",
- "egui_kittest",
- "log",
- "ron",
- "serde",
- "serde_json",
 ]
 
 [[package]]

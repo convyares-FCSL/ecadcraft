@@ -7,7 +7,7 @@
 //! - [`cells`]: drawing a cell; [`export`]: CSV.
 //!
 //! The table draws and reports [`TableEvent`]s; it never runs a command. Its owner turns a commit
-//! into the same command the page runs (`ecad-trial`'s `lists`), and reports changes back through
+//! into the same command the page runs (`ecad-app`'s `lists`), and reports changes back through
 //! [`Table::update`] with the keys its update map names. Rows are virtualised
 //! (`egui_extras::TableBuilder`, heterogeneous rows): a frame lays out only the visible ones.
 //!

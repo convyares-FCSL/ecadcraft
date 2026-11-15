@@ -42,6 +42,12 @@ enum Class {
     Adapter,
     /// May use anything.
     Ui,
+    /// The application (design 065 §4): for now the same rules as [`Class::Ui`]; the split lane's
+    /// step 10 gives it the §4 table's.
+    App,
+    /// The programs (design 065 §4): for now the same rules as [`Class::Ui`]; the split lane's
+    /// step 10 gives them the §4 table's.
+    Programs,
     /// ECAD's interface kit (design `ui-architecture.md` §2): may use egui, epaint and
     /// egui_extras, the token crate and the drawing style (design 065 §1.1), but no `cadcraft-*`
     /// crate and no other ECAD crate, so the widgets stay swappable and test without wgpu.
@@ -66,7 +72,9 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-ui", Class::UiKit),
     ("ecad-bench", Class::Dev),
     ("ecad-cli", Class::Ui),
-    ("ecad-trial", Class::Ui),
+    // The application, and the desktop program that runs it (design 065 §2.2, split step 9).
+    ("ecad-app", Class::App),
+    ("ecad-desktop", Class::Programs),
     // Headless by construction: CADCraft crates below the UI only.
     ("ecad-mcp", Class::Adapter),
     ("ecad-inspector", Class::Dev),
@@ -79,12 +87,11 @@ const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", 
 
 /// Dependencies that break the layer rules for now, each with the step of the crate split (design
 /// 065 §5) that removes it. An entry no longer needed fails `layers`.
-const LAYER_EXCEPTIONS: &[(&str, &str, &str)] =
-    &[("ecad-cadcraft", "ecad-tokens", "the action table's icons; `actions` moves to ecad-app with the app split (step 9)")];
+const LAYER_EXCEPTIONS: &[(&str, &str, &str)] = &[];
 
 /// Product crates whose `dev` feature may be on by default (owner, 2026-11-12, design 029 Q1: the
-/// trial app's debugger, while the trial is the only app).
-const DEV_BY_DEFAULT: &[&str] = &["ecad-trial"];
+/// trial app's debugger, while the trial is the only app; ecad-app since the split, step 9).
+const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 
 /// Features whose code lives only in a crate's `dev` module (design 029 §12.2, owner Q3).
 const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "translate-oracle", "fault-injection", "test-ops"];
@@ -126,15 +133,15 @@ const LOCAL_STYLE: &[&str] = &[
 /// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
 /// that styles locally is a violation.
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/library/builder.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/library/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/library/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/preview.rs", 6, "restyled with the page view (U4a)"),
-    ("apps/ecad-trial/src/project_panel.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/publish.rs", 5, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/library/builder.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/library/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/library/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/preview.rs", 6, "restyled with the page view (U4a)"),
+    ("crates/ecad-app/src/project_panel.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/publish.rs", 5, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/shell/right/layout_tab.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
 ];
 
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
@@ -146,19 +153,19 @@ const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 /// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
 /// uses one is a violation.
 const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/developer.rs", 5, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/lists/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/publish.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/text_ui.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/developer.rs", 5, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/lists/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/publish.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/shell/right/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/text_ui.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
 ];
 
 /// Sizes written as literals in ECAD UI code (brief 060; review 2026-11, finding 8): a stroke width,
@@ -170,50 +177,50 @@ const LITERAL_SIZE: &[&str] = &["Stroke::new(", "add_space(", "vec2("];
 /// on 2026-11-15 (brief 060). Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not
 /// listed that has one is a violation.
 const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
-    ("apps/ecad-trial/src/agent/last_write.rs", 1),
-    ("apps/ecad-trial/src/canvas/leader.rs", 1),
-    ("apps/ecad-trial/src/canvas/markers.rs", 5),
-    ("apps/ecad-trial/src/devices_panel.rs", 9),
-    ("apps/ecad-trial/src/history_panel.rs", 23),
-    ("apps/ecad-trial/src/library/browser.rs", 7),
-    ("apps/ecad-trial/src/library/builder.rs", 18),
-    ("apps/ecad-trial/src/library/details.rs", 6),
-    ("apps/ecad-trial/src/library/review.rs", 1),
-    ("apps/ecad-trial/src/library/title_blocks/canvas.rs", 25),
-    ("apps/ecad-trial/src/library/title_blocks/frame_popover.rs", 3),
-    ("apps/ecad-trial/src/library/title_blocks/list.rs", 7),
-    ("apps/ecad-trial/src/lists/cable_view.rs", 7),
-    ("apps/ecad-trial/src/lists/workspace.rs", 1),
-    ("apps/ecad-trial/src/preview.rs", 5),
-    ("apps/ecad-trial/src/project_panel.rs", 20),
-    ("apps/ecad-trial/src/publish.rs", 11),
-    ("apps/ecad-trial/src/settings/mod.rs", 7),
-    ("apps/ecad-trial/src/settings/pages.rs", 16),
-    ("apps/ecad-trial/src/settings/project.rs", 1),
-    ("apps/ecad-trial/src/settings/standards.rs", 3),
-    ("apps/ecad-trial/src/shell/conflicts.rs", 1),
-    ("apps/ecad-trial/src/shell/connector.rs", 2),
-    ("apps/ecad-trial/src/shell/glyphs.rs", 11),
-    ("apps/ecad-trial/src/shell/intent.rs", 1),
-    ("apps/ecad-trial/src/shell/left.rs", 1),
-    ("apps/ecad-trial/src/shell/new_page.rs", 3),
-    ("apps/ecad-trial/src/shell/placing.rs", 2),
-    ("apps/ecad-trial/src/shell/right.rs", 1),
-    ("apps/ecad-trial/src/shell/right/checks_tab.rs", 5),
-    ("apps/ecad-trial/src/shell/right/device.rs", 1),
-    ("apps/ecad-trial/src/shell/right/layout_tab.rs", 8),
-    ("apps/ecad-trial/src/shell/right/placing_view.rs", 4),
-    ("apps/ecad-trial/src/shell/right/widgets.rs", 10),
-    ("apps/ecad-trial/src/shell/status_bar.rs", 14),
-    ("apps/ecad-trial/src/shell/table_editor.rs", 1),
-    ("apps/ecad-trial/src/shell/tool_strip.rs", 2),
-    ("apps/ecad-trial/src/shell/top_bar.rs", 11),
-    ("apps/ecad-trial/src/window.rs", 9),
+    ("crates/ecad-app/src/agent/last_write.rs", 1),
+    ("crates/ecad-app/src/canvas/leader.rs", 1),
+    ("crates/ecad-app/src/canvas/markers.rs", 5),
+    ("crates/ecad-app/src/devices_panel.rs", 9),
+    ("crates/ecad-app/src/history_panel.rs", 23),
+    ("crates/ecad-app/src/library/browser.rs", 7),
+    ("crates/ecad-app/src/library/builder.rs", 18),
+    ("crates/ecad-app/src/library/details.rs", 6),
+    ("crates/ecad-app/src/library/review.rs", 1),
+    ("crates/ecad-app/src/library/title_blocks/canvas.rs", 25),
+    ("crates/ecad-app/src/library/title_blocks/frame_popover.rs", 3),
+    ("crates/ecad-app/src/library/title_blocks/list.rs", 7),
+    ("crates/ecad-app/src/lists/cable_view.rs", 7),
+    ("crates/ecad-app/src/lists/workspace.rs", 1),
+    ("crates/ecad-app/src/preview.rs", 5),
+    ("crates/ecad-app/src/project_panel.rs", 20),
+    ("crates/ecad-app/src/publish.rs", 11),
+    ("crates/ecad-app/src/settings/mod.rs", 7),
+    ("crates/ecad-app/src/settings/pages.rs", 16),
+    ("crates/ecad-app/src/settings/project.rs", 1),
+    ("crates/ecad-app/src/settings/standards.rs", 3),
+    ("crates/ecad-app/src/shell/conflicts.rs", 1),
+    ("crates/ecad-app/src/shell/connector.rs", 2),
+    ("crates/ecad-app/src/shell/glyphs.rs", 11),
+    ("crates/ecad-app/src/shell/intent.rs", 1),
+    ("crates/ecad-app/src/shell/left.rs", 1),
+    ("crates/ecad-app/src/shell/new_page.rs", 3),
+    ("crates/ecad-app/src/shell/placing.rs", 2),
+    ("crates/ecad-app/src/shell/right.rs", 1),
+    ("crates/ecad-app/src/shell/right/checks_tab.rs", 5),
+    ("crates/ecad-app/src/shell/right/device.rs", 1),
+    ("crates/ecad-app/src/shell/right/layout_tab.rs", 8),
+    ("crates/ecad-app/src/shell/right/placing_view.rs", 4),
+    ("crates/ecad-app/src/shell/right/widgets.rs", 10),
+    ("crates/ecad-app/src/shell/status_bar.rs", 14),
+    ("crates/ecad-app/src/shell/table_editor.rs", 1),
+    ("crates/ecad-app/src/shell/tool_strip.rs", 2),
+    ("crates/ecad-app/src/shell/top_bar.rs", 11),
+    ("apps/ecad-desktop/src/window.rs", 9),
 ];
 
 /// Apps that must reach the engine only through `ecad-cadcraft` (owner ruling, 2026-11-15; an
 /// app may depend on another app). Dev tools such as `ecad-bench` may use it directly (design 065).
-const ENGINE_FREE: &[&str] = &["ecad-cli", "ecad-mcp", "ecad-trial"];
+const ENGINE_FREE: &[&str] = &["ecad-app", "ecad-cli", "ecad-desktop", "ecad-mcp"];
 
 /// Apps of [`ENGINE_FREE`] that still use `cadcraft-engine` directly: the number of source lines
 /// (outside comments) that name `cadcraft_engine`, seeded on 2026-11-15 (brief 060). The counts
@@ -238,7 +245,7 @@ const CORE_OS_ALLOWLIST: &[(&str, usize)] = &[];
 /// Crates that may use `anyhow` (owner, 2026-11-15, brief 060): the apps and xtask. A library
 /// returns its own error type, so a caller can react to the kind of failure (review 2026-11,
 /// finding 3); `anyhow` erases it, which only a program's `main` may do.
-const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-cli", "ecad-mcp", "ecad-trial", "ecad-xtask"];
+const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-cli", "ecad-desktop", "ecad-mcp", "ecad-xtask"];
 
 /// UI toolkits and ECAD's own UI kit: Core and Adapter crates may depend on none of them (the
 /// kit too, so the document and adapter crates never draw; design `ui-architecture.md` §2).
@@ -329,14 +336,14 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
                 }
                 Class::Adapter => ui && !dev,
                 Class::UiKit => !dev && !UIKIT_ALLOWED.contains(&dep),
-                Class::Ui | Class::Dev | Class::Exempt => false,
+                Class::Ui | Class::App | Class::Programs | Class::Dev | Class::Exempt => false,
             };
             if bad && !dev && LAYER_EXCEPTIONS.iter().any(|(n, d, _)| *n == name && *d == dep) {
                 used_exceptions.insert((name, dep));
             } else if bad {
                 out.push(format!("{name} ({class:?}) must not depend on {dep}"));
             }
-            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui | Class::UiKit);
+            let product = matches!(class, Class::Core | Class::Adapter | Class::Ui | Class::App | Class::Programs | Class::UiKit);
             if product
                 && class_of(dep) == Some(Class::Dev)
                 && let Some(why) = dev_dependency_problem(p, d, dep)
@@ -733,7 +740,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         let class = class_of(name);
-        if !matches!(class, Some(Class::Core | Class::Adapter | Class::Ui | Class::UiKit)) {
+        if !matches!(class, Some(Class::Core | Class::Adapter | Class::Ui | Class::App | Class::Programs | Class::UiKit)) {
             continue;
         }
         let Some(dir) = p["manifest_path"].as_str().map(PathBuf::from).and_then(|m| m.parent().map(Path::to_path_buf)) else { continue };
@@ -750,7 +757,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                 _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
             }
             out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
-            if class == Some(Class::Ui) {
+            if matches!(class, Some(Class::Ui | Class::App | Class::Programs)) {
                 let places = local_style_places(&rel, &text);
                 match STYLE_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
                     Some((path, allowed, brief)) => {
@@ -1229,7 +1236,7 @@ mod tests {
                 "dev on by default",
             ),
             (
-                pkg("ecad-trial", "apps\\ecad-trial", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
+                pkg("ecad-app", "crates\\ecad-app", insp(true, None), serde_json::json!({"default": ["dev"], "dev": ["dep:ecad-inspector"]})),
                 0,
                 "the trial's dev on by default (Q1)",
             ),
@@ -1377,28 +1384,40 @@ mod tests {
         assert_eq!(
             pick("ecad/crates/ecad-model/src/lib.rs"),
             [
+                "ecad-app",
                 "ecad-bench",
                 "ecad-cadcraft",
                 "ecad-cli",
+                "ecad-desktop",
                 "ecad-electrical",
                 "ecad-file",
                 "ecad-inspect",
                 "ecad-inspector",
                 "ecad-mcp",
-                "ecad-model",
-                "ecad-trial"
+                "ecad-model"
             ]
         );
-        assert_eq!(pick("ecad/apps/ecad-trial/src/lib.rs"), ["ecad-trial"]);
+        assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-bench", "ecad-cadcraft", "ecad-cli", "ecad-electrical", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store", "ecad-trial"]
+            [
+                "ecad-app",
+                "ecad-bench",
+                "ecad-cadcraft",
+                "ecad-cli",
+                "ecad-desktop",
+                "ecad-electrical",
+                "ecad-file",
+                "ecad-inspector",
+                "ecad-mcp",
+                "ecad-store"
+            ]
         );
-        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-bench", "ecad-cadcraft", "ecad-mcp", "ecad-trial"]);
+        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-cadcraft", "ecad-desktop", "ecad-mcp"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
-        // The demo's command list is embedded by ecad-mcp; the trial's Checks UI test opens the demo
+        // The demo's command list is embedded by ecad-mcp; the app's Checks UI test opens the demo
         // through it (brief 022).
-        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp", "ecad-trial"]);
+        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 
@@ -1458,7 +1477,7 @@ let c = ecad_ui::color(SHELL.text);",
             ("let c = theme::tokens().text; // not Color32::from_rgb", 0),
         ];
         for (text, n) in rows {
-            assert_eq!(local_style_places("apps/ecad-trial/src/x.rs", text).len(), *n, "{text}");
+            assert_eq!(local_style_places("crates/ecad-app/src/x.rs", text).len(), *n, "{text}");
         }
     }
 
@@ -1477,7 +1496,7 @@ let c = ecad_ui::color(SHELL.text);",
             ("let v = egui::vec2(w, 0.0); ui.add_space(8.0); // vec2(3", 1),
         ];
         for (text, n) in rows {
-            assert_eq!(literal_size_places("apps/ecad-trial/src/x.rs", text).len(), *n, "{text}");
+            assert_eq!(literal_size_places("crates/ecad-app/src/x.rs", text).len(), *n, "{text}");
         }
     }
 
@@ -1519,9 +1538,10 @@ let c = ecad_ui::color(SHELL.text);",
         let rows: &[(&str, Value, usize)] = &[
             ("ecad-model", dep("anyhow", Value::Null, Value::Null), 1),
             ("ecad-model", dep("anyhow", "dev".into(), Value::Null), 0),
-            ("ecad-trial", dep("anyhow", Value::Null, Value::Null), 0),
+            ("ecad-desktop", dep("anyhow", Value::Null, Value::Null), 0),
+            ("ecad-app", dep("anyhow", Value::Null, Value::Null), 1),
             ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), 0),
-            ("ecad-trial", dep("tokio", Value::Null, Value::Null), 1),
+            ("ecad-desktop", dep("tokio", Value::Null, Value::Null), 1),
             ("ecad-store", dep("tokio", "dev".into(), Value::Null), 1),
             ("ecad-model", dep("rayon", Value::Null, Value::Null), 0),
             ("ecad-model", dep("serde", Value::Null, Value::Null), 0),
@@ -1550,7 +1570,7 @@ let c = ecad_ui::color(SHELL.text);",
     #[test]
     fn a_new_ui_file_that_styles_locally_fails_layers() {
         let root = std::env::temp_dir().join(format!("ecad-xtask-style-{}", std::process::id()));
-        let src = root.join("apps").join("ecad-trial").join("src");
+        let src = root.join("crates").join("ecad-app").join("src");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(
             src.join("new_panel.rs"),
@@ -1566,11 +1586,11 @@ let c = ecad_ui::color(SHELL.text);",
         .unwrap();
         let meta = serde_json::json!({
             "workspace_root": root.to_string_lossy(),
-            "packages": [{"name": "ecad-trial", "manifest_path": root.join("apps").join("ecad-trial").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
+            "packages": [{"name": "ecad-app", "manifest_path": root.join("crates").join("ecad-app").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
         });
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
-        assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
+        assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
         assert!(!v.iter().any(|m| m.contains("preview.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
     }
 
@@ -1579,17 +1599,17 @@ let c = ecad_ui::color(SHELL.text);",
     #[test]
     fn a_new_ui_file_with_a_raw_text_edit_fails_layers() {
         let root = std::env::temp_dir().join(format!("ecad-xtask-raw-{}", std::process::id()));
-        let src = root.join("apps").join("ecad-trial").join("src");
+        let src = root.join("crates").join("ecad-app").join("src");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(src.join("new_panel.rs"), "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n").unwrap();
         std::fs::write(src.join("search.rs"), "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n").unwrap();
         let meta = serde_json::json!({
             "workspace_root": root.to_string_lossy(),
-            "packages": [{"name": "ecad-trial", "manifest_path": root.join("apps").join("ecad-trial").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
+            "packages": [{"name": "ecad-app", "manifest_path": root.join("crates").join("ecad-app").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
         });
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
-        assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no raw egui value controls")), "{v:?}");
+        assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/new_panel.rs:1:") && m.contains("no raw egui value controls")), "{v:?}");
         assert!(!v.iter().any(|m| m.contains("search.rs") && m.contains("raw egui value controls")), "allowlisted: {v:?}");
         assert_eq!(
             raw_control_places("x.rs", "// egui::ComboBox::from_id_salt(1)\nlet c = ecad_ui::control::Select::new(&mut i, &o, \"n\");").len(),
@@ -1611,8 +1631,9 @@ let c = ecad_ui::color(SHELL.text);",
             ("ecad-electrical", "ecad-file", 0),
             ("ecad-file", "ecad-electrical", 1),
             ("ecad-model", "ecad-store", 1),
-            ("ecad-cadcraft", "ecad-tokens", 0),
-            ("ecad-trial", "ecad-ui", 0),
+            ("ecad-cadcraft", "ecad-tokens", 1),
+            ("ecad-app", "ecad-ui", 0),
+            ("ecad-desktop", "ecad-ui", 0),
         ];
         for (krate, dep, n) in rows {
             let meta = serde_json::json!({"packages": [{"name": krate, "dependencies": [{"name": dep, "kind": null}]}], "workspace_root": ""});

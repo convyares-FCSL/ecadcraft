@@ -19,7 +19,7 @@ What it does today (the plan, release by release, is in [`docs/roadmap.md`](docs
 ## Run it
 
 **To build, run and try the app, see [`docs/quick-start.md`](docs/quick-start.md)**, the single
-maintained guide. The desktop program is currently `ecad-trial` (being renamed `ecad-desktop`).
+maintained guide. The desktop program is `ecad-desktop` (`cargo run --release -p ecad-desktop`).
 
 ## Structure
 

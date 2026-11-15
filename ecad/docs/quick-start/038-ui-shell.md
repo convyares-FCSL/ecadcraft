@@ -45,7 +45,7 @@ the page preview.
 
 ## Try it
 
-1. `cargo run --release -p ecad-trial` (from `ecad/`), maximised at 1920 × 1080.
+1. `cargo run --release -p ecad-desktop` (from `ecad/`), maximised at 1920 × 1080.
 2. Click through Draw, Lists, Library and Publish, then Ctrl+1 to Ctrl+4.
 3. In Draw, hover each tool-strip button; start Wire from its flyout and draw a wire; press W
    twice over the page.
@@ -55,6 +55,6 @@ the page preview.
 
 ## Checks
 
-Automated (agent, native Windows 11, 2026-11-13): `cargo test -p ecad-trial` (all tests, the
+Automated (agent, native Windows 11, 2026-11-13): `cargo test -p ecad-app` (all tests, the
 new `shell_ui` ones included) and `cargo test -p cadcraft-ui-egui --test embedded_view`
 (upstream seam US1). Nobody has tried it by hand yet.

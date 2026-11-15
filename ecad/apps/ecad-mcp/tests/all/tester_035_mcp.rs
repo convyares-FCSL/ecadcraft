@@ -4,7 +4,7 @@
 //! [`launch`] so phase 2 adapts them in one place.
 //!
 //! The bridged checks (a real trial on the port) are in the trial's `tester_035_bridge` module:
-//! `ecad-trial` depends on `ecad-mcp`, not the other way round.
+//! `ecad-app` depends on `ecad-mcp` (for its tests), not the other way round.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -206,7 +206,7 @@ fn launch_finds_the_trial_in_order_and_starts_it_with_the_port() {
     assert_eq!(launch::find_trial(None, Some(&server), None, |_: &Path| false), None);
     // An ECAD_TRIAL that names nothing is not silently replaced by another copy.
     assert_eq!(launch::find_trial(Some(OsString::from(r"C:\missing\x.exe")), Some(&server), Some(path_var), all), None);
-    assert_eq!(launch::NOT_FOUND, "--launch could not find ecad-trial; set ECAD_TRIAL to its path.");
+    assert_eq!(launch::NOT_FOUND, "--launch could not find ecad-desktop; set ECAD_TRIAL to its path.");
     // The arguments: --control <port>, then the project when one was given.
     assert_eq!(launch::trial_args(47823, None), vec!["--control".to_string(), "47823".to_string()]);
     assert_eq!(launch::trial_args(5000, Some(r"C:\p q\a b.ecad")), vec!["--control".to_string(), "5000".into(), r"C:\p q\a b.ecad".into()]);

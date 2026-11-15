@@ -447,7 +447,7 @@ fn review_2_the_frame_stands_for_the_card() {
     let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.xref(part.rep, part.index))).expect("mapped");
     let u = h.s.state().unwrap().uid;
     let t = h.p(|p| ecad_cadcraft::interact::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
-    assert_eq!(t.kind, ecad_cadcraft::actions::ObjectKind::Device, "{t:?}");
+    assert_eq!(t.kind, ecad_cadcraft::kinds::ObjectKind::Device, "{t:?}");
     assert_eq!(t.component, Some(di));
     let words = ecad_cadcraft::xref::refusal(&d, Some(ecad_cadcraft::project::Mapped::Xref(part.rep)));
     assert_eq!(words, ecad_cadcraft::plc::look::FRAME_DERIVED);

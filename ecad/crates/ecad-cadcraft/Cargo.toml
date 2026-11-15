@@ -37,9 +37,6 @@ ecad-electrical = { workspace = true }
 # Brief 040: canvas colours and markers (`look::sheet`, `overlay_marks`), the sheet font and wire
 # dashes, from the drawing style (design 065 §1.1).
 ecad-drawing-style = { workspace = true }
-# Brief 041: the action table names its icons. The table moves to ecad-app with the app split
-# (design 065 §5 step 9), and this dependency goes with it.
-ecad-tokens = { path = "../ecad-tokens" }
 cadcraft-engine = { path = "../../../crates/engine" }
 # Brief 024: Print Book installs CADCraft's PDF plotter as the engine's plot hook (no PDF code in
 # ECAD); already in the graph through `cadcraft-mcp`.

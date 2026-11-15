@@ -37,7 +37,7 @@ No name is stored for a person: History says **You** (owner, 2026-11-13).
 
 ## Checks
 
-- *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-trial --test all
+- *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-app --test all
   agent_banner_ui` (4 tests: the states and controls by 035's element names; the slot, pill, go-to,
   Pause, Undo session and Dismiss over the live bridge; History's groups and chips; the outline,
   not an entity, absent over Lists, and no project read over 300 idle frames) and `cargo test -p

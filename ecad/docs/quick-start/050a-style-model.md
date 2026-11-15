@@ -68,4 +68,4 @@ styles {"catalogue": "location", "users": true}
 ## Checked here
 
 Automated: `cargo test -p ecad-model style_contracts`, `-p ecad-file style_contracts`, `-p ecad-cadcraft
-style_contracts`, `-p ecad-mcp style_contracts`, `-p ecad-trial style_ui`. Not owner-tried yet.
+style_contracts`, `-p ecad-mcp style_contracts`, `-p ecad-app style_ui`. Not owner-tried yet.
