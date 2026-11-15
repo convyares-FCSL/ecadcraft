@@ -1,0 +1,79 @@
+# ECAD crates: the overall structure
+
+ECAD is a Cargo workspace in `ecad/` (`crates/`, `apps/`, `dev/`, `xtask/`). Every crate belongs to
+one of six **layers**, and a crate may use only crates in the layers above it. The full reasoning
+is in [`docs/design/crates.md`](../docs/design/crates.md). ECAD is desktop-only: there is no web
+build.
+
+## The layers
+
+| Layer | What it is |
+|---|---|
+| **Core** | What an ECAD project *is* and what it *means*, including how its drawing is defined, with no screen and no drawing engine. |
+| **Engine** | The link to CADCraft: draws pages from the model, turns edits into transactions, runs commands. |
+| **UI kit** | ECAD's widgets and screen look: how a value, button, table or panel looks. Knows nothing about projects. |
+| **App** | The ECAD application: shell, workspaces, panels, dialogs, lists and tabs, on a CADCraft window. |
+| **Programs** | Things a person or agent starts: one thin `main` each. |
+| **Dev** | Developer and test tools under `dev/`. Never shipped. |
+
+## Who may use whom
+
+```text
+Programs   ecad-desktop   ecad-cli   ecad-mcp      (may also use each other)
+   |            |
+   v            v
+  App        ecad-app
+   |     \        \
+   v      v        v
+Engine  ecad-cadcraft      UI kit: ecad-ui, ecad-tokens     <- Engine and UI kit are siblings:
+   |            |                       |                      neither uses the other
+   v            v                       v
+Core   model -> drawing-style -> store -> file -> inspect -> electrical
+Dev    ecad-bench, ecad-inspector, xtask   (may use anything; nothing uses them)
+```
+
+Inside Core the order is fixed: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
+`ecad-inspect`, `ecad-electrical`. A Core crate uses only Core crates before it in that list, so a
+cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and nothing else of ours.
+
+## Every crate
+
+| Crate | Layer | Purpose |
+|---|---|---|
+| [`ecad-model`](ecad-model/README.md) | Core | The document, ops, transactions, history, merge, numbering, nets. |
+| [`ecad-drawing-style`](ecad-drawing-style/README.md) | Core | How a page is drawn and printed: sheet colours, line weights, sheet font. |
+| [`ecad-store`](ecad-store/README.md) | Core | Bytes under the file: media, the writer lock, atomic replace. The only Core crate that touches the OS. |
+| [`ecad-file`](ecad-file/README.md) | Core | The `.ecad` file: records, integrity chain, read, save, recover. |
+| [`ecad-inspect`](ecad-inspect/README.md) | Core | Read-only snapshots and the runtime event log. |
+| `ecad-electrical` | Core | The electrical rules: devices, wires, cables, strips, checks, reports. *Being created by the split.* |
+| [`ecad-cadcraft`](ecad-cadcraft/README.md) | Engine | Draws pages from the model and runs commands on CADCraft. *README comes after the split.* |
+| [`ecad-ui`](ecad-ui/README.md) | UI kit | Widgets: controls, primitives, panels, tables, dialogs. |
+| [`ecad-tokens`](ecad-tokens/README.md) | UI kit | The screen's look as constants: shell colours, spacing, type, icons. |
+| `ecad-app` | App | The application: shell, panels, dialogs, lists. *Being created by the split (from ecad-trial).* |
+| `ecad-desktop` | Programs | The desktop program. *Being created by the split (ecad-trial's binary).* |
+| [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (`ecad upgrade`). |
+| [`ecad-mcp`](../apps/ecad-mcp/README.md) | Programs | ECAD for agents over MCP, with a write gate. |
+| [`ecad-bench`](../dev/ecad-bench/README.md) | Dev | The load benchmark (`cargo xtask bench`). |
+| [`ecad-inspector`](../dev/ecad-inspector/README.md) | Dev | `ecadinspect`: look inside a `.ecad` file, text or web page. |
+| [`xtask`](../xtask/) | Dev | The project's own commands: `ci`, `layers`, `bench`, `test-changed`. |
+
+## The rules `cargo xtask layers` checks
+
+- **Core has no UI and no CADCraft**: no `cadcraft-*` crate, no UI crate, nothing from a layer above it.
+- **OS access only in `ecad-store`**: other Core crates may not use files, environment, processes, network, clocks or randomness.
+- **Layer order**: each crate uses only the layers (and the Core order) above; nothing outside `dev/` uses a Dev crate, and a crate is under `dev/` exactly when it is Dev.
+- **Engine and UI kit stay apart**; App and Programs reach CADCraft's engine only through `ecad-cadcraft`, never `cadcraft-engine` directly.
+- **`anyhow` only in Programs, `xtask` and `ecad-bench`'s binary**; libraries use their own error type.
+- **No `tokio`** in any ECAD crate.
+- **UI code uses `ecad-ui` components**: no new raw `egui::TextEdit` or `ComboBox`.
+- **Every crate has a README** with the six headings and the right `Layer:` line.
+
+To change a rule, edit the table in `xtask/src/main.rs` and the matching section of
+[`docs/design/crates.md`](../docs/design/crates.md) (§4), and tell the owner: layers are a recorded
+decision.
+
+## Working on a crate
+
+Each README ends with how to test that crate. Everyday checks are scoped to what you changed
+(`cargo xtask test-changed`); see [`CLAUDE.md`](../CLAUDE.md) for the full process and
+[`docs/quick-start.md`](../docs/quick-start.md) to run the app.
