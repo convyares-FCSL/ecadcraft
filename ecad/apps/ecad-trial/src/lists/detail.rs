@@ -335,16 +335,20 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
     let (from, to, page) = (rows.text(k, "From"), rows.text(k, "To"), rows.text(k, "Page"));
     let checks = rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Warning)).collect()).unwrap_or_default();
     // Board 2.05's hints: a number is given by the numbering ("auto") unless it is provisional; a
-    // colour and size with a category are the category's. The wire list does not say whether a
-    // wire overrides its category, so "from category" stands for "the category's or the wire's
-    // own" until it does.
+    // colour or size is the category's ("from category") unless the wire sets its own ("set
+    // here"), as the wire report records it.
     let number_hint = match (v.source.provisional(k), number.trim().is_empty()) {
         (true, _) => "provisional",
         (false, false) => "auto",
         (false, true) => "",
     };
     let has_category = !rows.text(k, "Category").trim().is_empty();
-    let from_category = |value: &str| if has_category && !value.trim().is_empty() { "from category" } else { "" };
+    let (colour_own, size_own) = v.own.get(k).copied().unwrap_or_default();
+    let source = |own: bool, value: &str| match (own, has_category && !value.trim().is_empty()) {
+        (true, _) => "set here",
+        (false, true) => "from category",
+        (false, false) => "",
+    };
     Some(Detail {
         title: number.clone(),
         provisional: v.source.provisional(k),
@@ -368,8 +372,8 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
                 hint: "from the category".into(),
                 props: vec![
                     set("Category", nonempty(&rows.text(k, "Category")), "").choice(),
-                    set("Colour", nonempty(&rows.text(k, "Colour")), from_category(&rows.text(k, "Colour"))).swatch(&rows.text(k, "Colour")),
-                    set("Size", nonempty(&rows.text(k, "Cross-section")), from_category(&rows.text(k, "Cross-section"))).unit(MM2),
+                    set("Colour", nonempty(&rows.text(k, "Colour")), source(colour_own, &rows.text(k, "Colour"))).swatch(&rows.text(k, "Colour")),
+                    set("Size", nonempty(&rows.text(k, "Cross-section")), source(size_own, &rows.text(k, "Cross-section"))).unit(MM2),
                     read("Cable", nonempty(&rows.text(k, "Cable"))),
                 ],
                 ..Section::default()
