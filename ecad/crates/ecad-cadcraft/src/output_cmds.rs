@@ -35,7 +35,7 @@ limit?: n (500, max 5000), after?: n} (columns and lines override the project's 
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
             .noundo(),
         CommandSpec::new("cablelist", "Cable Report", run_cablelist)
-            .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
+            .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n, include_not_drawn?: bool (true; brief 059)}")
             .noundo(),
         CommandSpec::new("printbook", "Print Book", run_printbook)
             .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"colour\", lineweights?: bool}")
@@ -311,14 +311,21 @@ fn run_wirelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
 
 fn run_cablelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let pg = paging(params).map_err(err)?;
+    // Brief 059 (design 059 §4.5, Q3): the cables not drawn are listed unless this run says not.
+    let include = match params.get("include_not_drawn") {
+        None | Some(Value::Null) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(err("`include_not_drawn` is true or false")),
+    };
     with_any_page(s, |p, _| {
         let o = p.outputs();
-        let t = o.cable_table();
+        let t = o.cable_table_with(include);
         // Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the
         // offer is unknown) and the devices at each end; these keys are 027's CSV columns.
         let ids: Vec<Value> = o
             .cables()
             .iter()
+            .filter(|r| include || r.drawn)
             .map(|r| {
                 let mut v = json!({
                     "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
@@ -336,6 +343,11 @@ fn run_cablelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
             keys.push(match *h {
                 "Maker" => "maker",
                 "Length" => "length",
+                "Glands" => "glands",
+                "Shield" => "shield",
+                "Planned from" => "planned_from",
+                "Planned to" => "planned_to",
+                "Drawn" => "drawn",
                 _ => "designation",
             });
         }

@@ -27,3 +27,24 @@ assigned: slash or add a wire, or tick Not used.`
 
 `ecad-bench --cables <medium.ecad>`: cablenew 2.09 ms, cableedit 0.08 ms, cableassign 2.41 ms,
 cableslash 2.66 ms (500 cables). The rows time the whole command.
+
+## Project ▸ Cables (059b): try it by clicking
+
+1. Open a project, **Project ▸ Cables**. Click **+ Cable** (left of the filter): a new `-W` row
+   appears, selected, badge `not drawn`, and the Details pane opens with the cursor in **Tag**.
+   The footer counts `1 not drawn`.
+2. In the Details pane, type a **Length** (`12`) and press Enter: one undo step. Type `4Q` in
+   **Cores** and press Enter: the box turns red with the reason under it, nothing is written.
+3. Pick a **Cable type**, a **Shield**, and each end's planned **Function** and **Location**
+   (Ends). The list's From and To show the plan, `+FIELD (planned)`. The cable view shows the
+   planned ends and grey cores marked `not assigned`.
+4. The chevron beside **+ Cable** lists **New cable**, then the cables not drawn (Assign in the
+   drawing switches to Draw on the page whose location matches the planned cabinet end).
+5. **Remove** (footer) removes a cable that is not drawn at once. On a drawn cable it is refused:
+   `-W01 is drawn on 2/D1. Delete it on its page.` with a Go to per page.
+6. **Add a core** raises the offer by one (`4G` → `5G`).
+7. Reports ▸ Cables: **Include not-drawn cables** (on by default) leaves them out for that view;
+   `cablelist {"include_not_drawn": false}` does the same for a CSV.
+
+Not done in 059b: Ins and Del keys on the list; the Tag text is focused but not selected; the
+report setting is per view, not stored in the project.

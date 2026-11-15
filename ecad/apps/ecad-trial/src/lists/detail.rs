@@ -157,6 +157,8 @@ struct Detail {
     core_fixes: Vec<ecad_cadcraft::checks::Fix>,
     /// The Devices row's property editor goes after the head.
     editor: bool,
+    /// Brief 059: the cable editor goes after the head, with the cable's drawn ends.
+    cable_editor: Option<(ecad_model::CableId, [String; 2])>,
     sections: Vec<Section>,
 }
 
@@ -209,6 +211,7 @@ fn device(t: &Trial, c: ComponentId) -> Option<Detail> {
         go,
         checks,
         editor: true,
+        cable_editor: None,
         core_fixes: Vec::new(),
         sections: vec![
             Section {
@@ -268,6 +271,7 @@ fn terminal(t: &Trial, k: super::terminals::TermKey) -> Option<Detail> {
         go: row.go.map(|(pg, at)| (place.clone(), Go::Place(pg, at))),
         checks,
         editor: false,
+        cable_editor: None,
         core_fixes: Vec::new(),
         sections: vec![
             Section {
@@ -315,6 +319,7 @@ fn card(t: &Trial, i: usize) -> Option<Detail> {
         go,
         checks,
         editor: false,
+        cable_editor: None,
         core_fixes: Vec::new(),
         sections: vec![
             Section { title: "Identity", props: vec![read("Card", tile.what.clone()), read("Slot", tile.head.clone())], ..Section::default() },
@@ -363,6 +368,7 @@ fn wire(t: &Trial, k: usize) -> Option<Detail> {
         go: v.gos.get(k).copied().flatten().map(|(pg, at)| (page.clone(), Go::Place(pg, at))),
         checks,
         editor: false,
+        cable_editor: None,
         core_fixes: Vec::new(),
         sections: vec![
             Section {
@@ -416,8 +422,13 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
     let rows = &v.source.rows;
     let tag = rows.text(k, "Tag");
     let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
-    let mut checks: Vec<(String, Tone)> =
-        rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default();
+    // Brief 059: a cable not drawn has no drawing to flag (no type, no ends yet): its one row is
+    // "not in the drawing yet".
+    let mut checks: Vec<(String, Tone)> = if v.source.drawn(k) {
+        rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     // Brief 057 (owner rule): each open core, as an error, with its two fixes.
     let mut core_fixes = Vec::new();
     for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
@@ -430,47 +441,27 @@ fn cable(t: &Trial, k: usize) -> Option<Detail> {
     if spare.parse::<u32>().is_ok_and(|n| n > 0) {
         checks.push((format!("{spare} spare core{}.", if spare == "1" { "" } else { "s" }), Tone::Neutral));
     }
-    let length = rows.text(k, "Length");
+    // Brief 059 (design 059 §6): a cable not drawn says so (Info), with no core rows.
+    let drawn = v.source.drawn(k);
+    if !drawn {
+        checks.push((format!("{tag} is not in the drawing yet."), Tone::Neutral));
+    }
+    let subtitle = if drawn {
+        format!("{} to {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))
+    } else {
+        "not drawn".to_string()
+    };
     Some(Detail {
         title: tag.clone(),
         provisional: false,
-        subtitle: format!("{} to {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location"))),
+        subtitle,
         go: v.gos.get(k).copied().flatten().map(|(pg, at)| ("Page".to_string(), Go::Place(pg, at))),
         checks,
         editor: false,
+        cable_editor: v.ids.get(k).map(|c| (*c, [from, to])),
         core_fixes,
-        sections: vec![
-            Section {
-                title: "Identity",
-                props: vec![
-                    set("Tag", nonempty(&tag), "").bold(),
-                    read("Runs", format!("{} \u{2192} {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))),
-                ],
-                ..Section::default()
-            },
-            Section {
-                title: "Part",
-                hint: "sets the cores".into(),
-                props: vec![
-                    set("Type", nonempty(&rows.text(k, "Type")), "").choice(),
-                    read("Cores", format!("{} \u{b7} {} used", nonempty(&rows.text(k, "Cores")), nonempty(&rows.text(k, "Used")))),
-                    read("Maker", nonempty(&rows.text(k, "Maker"))),
-                    set("Length", nonempty(&length), "").unit("m"),
-                ],
-                ..Section::default()
-            },
-            rating_section(t, v.source.rating(k), &v.source.rating.methods),
-            Section {
-                title: "Ends",
-                props: vec![
-                    read("Cabinet", nonempty(&from)),
-                    read("Field", nonempty(&to)),
-                    later("Glands", CABLE_MANAGER_COMES),
-                    later("Shield", CABLE_MANAGER_COMES),
-                ],
-                ..Section::default()
-            },
-        ],
+        // Brief 059: Identity, Part and Ends are the cable editor's; the Rating section stays 057's.
+        sections: vec![rating_section(t, v.source.rating(k), &v.source.rating.methods)],
     })
 }
 
@@ -490,6 +481,7 @@ fn report(t: &Trial, k: usize) -> Option<Detail> {
         go: None,
         checks,
         editor: false,
+        cable_editor: None,
         core_fixes: Vec::new(),
         sections: vec![
             Section {
@@ -566,6 +558,8 @@ enum Out {
     Panel(crate::project_panel::Action),
     /// Brief 057: a `rating` call from the Rating section.
     Run(&'static str, serde_json::Value),
+    /// Brief 059: the cable editor's ask, on its cable.
+    Cable(ecad_model::CableId, super::cable_editor::Ask),
 }
 
 /// Draw the right panel for the Project workspace in `rect`.
@@ -581,6 +575,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
     let writable = t.project_writable();
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
+    let mut cable_edit = t.reports.as_mut().map(|r| &mut r.cables.edit);
     let full = rect.x_range();
     let rule = |ui: &mut egui::Ui| panel::rule(ui, full);
     crate::shell::in_rect(ui, rect.shrink2(vec2(space::L, space::M)), "ecad.project.detail", |ui| {
@@ -617,6 +612,12 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             }
             ui.add_space(space::S);
             rule(ui);
+            // Brief 059: the cable editor (design 059 §5.2), before 057's Rating section.
+            if let (Some((cable, ends)), Some(ed)) = (&d.cable_editor, cable_edit.take()) {
+                let asks = super::cable_editor::show(ui, ed, ends.clone(), writable, &|ui: &mut egui::Ui| panel::rule(ui, full));
+                out.extend(asks.into_iter().map(|a| Out::Cable(*cable, a)));
+                rule(ui);
+            }
             if d.editor {
                 let id = egui::Id::unique("ecad.project.detail.properties");
                 if section_head(ui, id, "Identity", "set here") {
@@ -668,6 +669,7 @@ pub fn show(t: &mut Trial, ui: &mut egui::Ui, rect: Rect) {
             Out::Run(cmd, params) => {
                 let _ = t.run_value(cmd, params);
             }
+            Out::Cable(k, a) => t.cable_ask(k, a),
         }
     }
 }

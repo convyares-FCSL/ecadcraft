@@ -297,3 +297,17 @@ fn a_cable_not_drawn_survives_join_and_the_report_lists_it() {
     assert!(matches!(ops.last(), Some(Op::DeleteCable { id, .. }) if *id == k));
     assert!(doc.cables[&k].members.is_empty());
 }
+
+#[test]
+fn the_cable_report_lists_cables_not_drawn_unless_told_not_to() {
+    let mut h = H::new(5913);
+    wires(&mut h, 1);
+    slash(&mut h, None).unwrap();
+    new_cable(&mut h, json!({"to": {"location": "+FIELD"}}));
+    let all = h.run("cablelist", json!({})).unwrap();
+    assert_eq!(all["total"], json!(2), "{all}");
+    let rows = all["rows"].as_array().unwrap();
+    assert!(rows.iter().any(|r| r["planned_to"] == json!("+FIELD (planned)") && r["drawn"] == json!("no")), "{all}");
+    let drawn = h.run("cablelist", json!({"include_not_drawn": false})).unwrap();
+    assert_eq!(drawn["total"], json!(1), "{drawn}");
+}

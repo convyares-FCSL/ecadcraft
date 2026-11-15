@@ -110,6 +110,9 @@ pub struct Reports {
     pub strips: Vec<(ecad_model::ComponentId, String)>,
     /// Brief 030: the Accessories check box is off (gap rows hidden; view only).
     pub hide_accessories: bool,
+    /// Brief 059 (design 059 §5.8, Q3): Include not-drawn cables is off for this run (view only;
+    /// on by default).
+    pub hide_not_drawn: bool,
     /// Brief 028: the cable whose core list the Cables tab shows instead of the schedule.
     pub cores_of: Option<ecad_model::CableId>,
     /// Where each Terminals row goes.
@@ -217,7 +220,7 @@ impl Reports {
             Tab::Terminals => o.build_id.wrapping_mul(1 << 40).wrapping_add(o.strips.changed_at(self.strip).wrapping_mul(8)).wrapping_add(style),
             _ => o.revision,
         };
-        let revision = revision.wrapping_add(u64::from(self.hide_accessories));
+        let revision = revision.wrapping_add(u64::from(self.hide_accessories)).wrapping_add(u64::from(self.hide_not_drawn) << 1);
         if self.tab == Tab::Terminals {
             self.terminals.sync(serial, o, self.strip, !self.hide_accessories, reference_style);
         }
@@ -239,7 +242,7 @@ impl Reports {
             (Tab::Bom, _) => o.bom_table(self.group),
             (Tab::Wires, _) => o.wire_table(),
             (Tab::Cables, Some(k)) => o.core_table(k),
-            (Tab::Cables, None) => o.cable_table(),
+            (Tab::Cables, None) => o.cable_table_with(!self.hide_not_drawn),
             (Tab::Terminals, _) => {
                 let (t, gos) = o.terminal_table_with(self.strip, !self.hide_accessories);
                 self.gos = gos;
@@ -407,6 +410,14 @@ impl Reports {
                             .on_disabled_hover_text("Pick one strip (or place terminals) first.")
                             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.terminals.accessory"));
                         });
+                    }
+                    // Brief 059 (Q3): Include not-drawn cables, for this run.
+                    if self.tab == Tab::Cables && self.cores_of.is_none() {
+                        let mut on = !self.hide_not_drawn;
+                        ui.label(RichText::new("Include not-drawn cables").small());
+                        if ecad_ui::control::Toggle::new(&mut on, "ecad.reports.cables.include_not_drawn").show(ui).changed() {
+                            self.hide_not_drawn = !on;
+                        }
                     }
                     if self.tab == Tab::Cables
                         && self.cores_of.is_some()

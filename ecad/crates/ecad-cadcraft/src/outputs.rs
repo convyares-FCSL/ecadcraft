@@ -2498,9 +2498,21 @@ impl Outputs {
     }
 
     /// The cable report as a table; `Maker`, `Length` and `Designation` follow when any cable
-    /// has them.
+    /// has them. Brief 059: cables not drawn are listed (design 059 §4.5, Q3); see
+    /// [`Outputs::cable_table_with`].
     pub fn cable_table(&self) -> Table {
-        let rows = self.cables();
+        self.cable_table_with(true)
+    }
+
+    /// The cable report, with or without the cables not drawn yet (brief 059, Q3: the choice made
+    /// when the report is generated). `Glands`, `Shield`, `Planned from` and `Planned to` follow
+    /// when any listed cable has them, and `Drawn` when one is not drawn; a planned end reads
+    /// `(planned)`.
+    pub fn cable_table_with(&self, include_not_drawn: bool) -> Table {
+        let mut rows = self.cables();
+        if !include_not_drawn {
+            rows.retain(|r| r.drawn);
+        }
         let any = |f: fn(&CableRow) -> &Option<String>| rows.iter().any(|r| f(r).is_some());
         let extra: Vec<(&'static str, fn(&CableRow) -> &Option<String>)> = [
             ("Maker", (|r: &CableRow| &r.maker) as fn(&CableRow) -> &Option<String>),
@@ -2512,6 +2524,23 @@ impl Outputs {
         .collect();
         let mut t = Table { headers: vec!["Tag", "Type", "Cores", "From location", "To location", "Used", "Spare", "From", "To"], rows: Vec::new() };
         t.headers.extend(extra.iter().map(|(h, _)| *h));
+        // Brief 059 (design 059 §4.5): the manager's columns, when any listed cable has them.
+        let glands = rows.iter().any(|r| r.glands.iter().any(Option::is_some));
+        let shield = rows.iter().any(|r| r.shield.is_some());
+        let planned = rows.iter().any(|r| r.planned.iter().any(Option::is_some));
+        let drawn_col = rows.iter().any(|r| !r.drawn);
+        if glands {
+            t.headers.push("Glands");
+        }
+        if shield {
+            t.headers.push("Shield");
+        }
+        if planned {
+            t.headers.extend(["Planned from", "Planned to"]);
+        }
+        if drawn_col {
+            t.headers.push("Drawn");
+        }
         for r in rows {
             let why = r.location_reason.clone();
             let loc = |v: &Option<String>| match v {
@@ -2531,6 +2560,21 @@ impl Outputs {
             ];
             for (_, f) in &extra {
                 row.push(Cell::ok(f(r).clone().unwrap_or_default()));
+            }
+            let dash = |v: &Option<String>| v.clone().unwrap_or_else(|| "\u{2014}".into());
+            if glands {
+                row.push(Cell::ok(format!("{}, {}", dash(&r.glands[0]), dash(&r.glands[1]))));
+            }
+            if shield {
+                row.push(Cell::ok(r.shield.clone().unwrap_or_default()));
+            }
+            if planned {
+                for p in &r.planned {
+                    row.push(Cell::ok(p.as_ref().map(|p| format!("{p} (planned)")).unwrap_or_default()));
+                }
+            }
+            if drawn_col {
+                row.push(Cell::ok(if r.drawn { "yes" } else { "no" }));
             }
             t.rows.push(row);
         }

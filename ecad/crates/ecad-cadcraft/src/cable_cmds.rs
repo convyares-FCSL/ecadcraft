@@ -1071,3 +1071,22 @@ pub(crate) fn run_slash_assign(
         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
     }))
 }
+
+/// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
+/// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
+pub fn next_offer(doc: &Document, k: CableId) -> String {
+    let members = doc.cables.get(&k).map_or(0, |c| c.members.len());
+    let Some((cores, _, text)) = cable::offer(doc, k) else { return (members + 1).to_string() };
+    let t = text.trim();
+    let digits: String = t.chars().take_while(char::is_ascii_digit).collect();
+    let rest = &t[digits.len()..];
+    if let Ok(n) = digits.parse::<usize>()
+        && (rest.is_empty() || rest.eq_ignore_ascii_case("G") || rest.eq_ignore_ascii_case("X"))
+    {
+        return format!("{}{}", n.saturating_add(1), rest.to_ascii_uppercase());
+    }
+    let high = cores.iter().filter_map(|c| c.parse::<usize>().ok()).max().unwrap_or(0);
+    let mut v = cores;
+    v.push((high + 1).to_string());
+    v.join(",")
+}
