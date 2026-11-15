@@ -70,33 +70,36 @@ impl Trial {
             NameBoxKind::New => "New page",
             NameBoxKind::Rename(_) => "Rename page",
         };
-        let (mut ok, mut cancel) = (false, false);
-        egui::Modal::new(egui::Id::unique("ecad.page_name_box")).show(ctx, |ui| {
-            ui.set_width(320.0);
-            ui.label(RichText::new(heading).strong());
-            ui.add_space(4.0);
-            let id = egui::Id::unique("ecad.page_name_box.field");
-            let field = ui.add(egui::TextEdit::singleline(&mut b.text).id(id).desired_width(f32::INFINITY)).accessible_name(NAME_BOX_FIELD);
-            if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                ok = true;
-            } else if !b.focused {
-                field.request_focus();
-                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
-                    let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(b.text.chars().count()));
-                    state.cursor.set_char_range(Some(all));
-                    state.store(ui.ctx(), id);
-                    b.focused = true;
+        let mut enter = false;
+        let shown = ecad_ui::dialog::Dialog::new(egui::Id::unique("ecad.page_name_box"), heading, "ecad.page_name_box").small().show(
+            ctx,
+            |ui| {
+                let id = egui::Id::unique("ecad.page_name_box.field");
+                let field = ecad_ui::control::TextEntry::new(&mut b.text, NAME_BOX_FIELD).id(id).show(ui);
+                if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    enter = true;
+                } else if !b.focused {
+                    field.request_focus();
+                    if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), id) {
+                        let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(b.text.chars().count()));
+                        state.cursor.set_char_range(Some(all));
+                        state.store(ui.ctx(), id);
+                        b.focused = true;
+                    }
                 }
-            }
-            if let Some(e) = &b.error {
-                ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
-            }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ok |= ui.button("OK").clicked();
-                cancel = ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
-            });
-        });
+                if let Some(e) = &b.error {
+                    ecad_ui::prim::note(ui, e, ecad_ui::prim::Tone::Error);
+                }
+            },
+            |ui| {
+                use ecad_ui::prim::Kind;
+                let ok = ecad_ui::dialog::action(ui, "OK", Kind::Primary, "OK", None).clicked();
+                let cancel = ecad_ui::dialog::action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked();
+                (ok, cancel)
+            },
+        );
+        let ok = enter || shown.footer.0;
+        let cancel = shown.footer.1 || shown.closed;
         // The key that closed the box is the box's: CADCraft's command line must not take it too.
         if ok || cancel {
             ctx.input_mut(|i| {

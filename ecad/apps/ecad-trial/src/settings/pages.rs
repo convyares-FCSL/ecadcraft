@@ -554,28 +554,10 @@ fn section(ui: &mut egui::Ui, id: &str, title: &str, summary: &str, add: impl Fn
     let s = ecad_ui::SHELL;
     let key = egui::Id::unique(("ecad.settings.pages.section", id));
     let mut open = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, true));
-    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, format!("ecad.settings.pages.panel.{id}")));
-    let icon = if open { ecad_ui::tokens::Icon::ChevronDown } else { ecad_ui::tokens::Icon::ChevronRight };
-    ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 6.0, r.center().y), vec2(10.0, 10.0)), icon, ecad_ui::color(s.text_2));
-    ui.painter().text(
-        pos2(r.left() + 20.0, r.center().y),
-        egui::Align2::LEFT_CENTER,
-        title,
-        bar::font(ui, ui_type::BODY_EMPHASIS),
-        ecad_ui::color(s.text),
-    );
-    if !open {
-        ui.painter().text(
-            pos2(r.right(), r.center().y),
-            egui::Align2::RIGHT_CENTER,
-            summary,
-            bar::font(ui, ui_type::SMALL),
-            ecad_ui::color(s.text_3),
-        );
-    }
-    if resp.clicked() {
-        open = !open;
+    let name = format!("ecad.settings.pages.panel.{id}");
+    let was = open;
+    ecad_ui::prim::SectionHeader::new(&mut open, title).summary(if was { "" } else { summary }).name(&name).show(ui);
+    if open != was {
         ui.ctx().data_mut(|d| d.insert_temp(key, open));
     }
     if open {
@@ -739,32 +721,15 @@ fn preview(p: &egui::Painter, r: Rect, row: &TypeRow) {
 
 /// Rev 3's project sheet and numbering rows, in one folded section (design 054 §5.4).
 fn project_section(t: &mut Trial, ui: &mut egui::Ui) {
-    let s = ecad_ui::SHELL;
-    let open = t.settings.pages.project_open;
-    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, PROJECT));
-    let icon = if open { ecad_ui::tokens::Icon::ChevronDown } else { ecad_ui::tokens::Icon::ChevronRight };
-    ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 6.0, r.center().y), vec2(10.0, 10.0)), icon, ecad_ui::color(s.text_2));
-    ui.painter().text(
-        pos2(r.left() + 20.0, r.center().y),
-        egui::Align2::LEFT_CENTER,
-        "Project sheet and numbering",
-        bar::font(ui, ui_type::BODY_EMPHASIS),
-        ecad_ui::color(s.text),
-    );
-    if !open {
-        let summary = t.settings.pages.snapshot.as_ref().map(|x| sheet_words(&x.project_sheet)).unwrap_or_default();
-        ui.painter().text(
-            pos2(r.left() + 240.0, r.center().y),
-            egui::Align2::LEFT_CENTER,
-            format!("{summary} · numbering, references, tags and revisions"),
-            bar::font(ui, ui_type::SMALL),
-            ecad_ui::color(s.text_3),
-        );
-    }
-    if resp.clicked() {
-        t.settings.pages.project_open = !open;
-    }
+    let mut open = t.settings.pages.project_open;
+    let summary = if open {
+        String::new()
+    } else {
+        let sheet = t.settings.pages.snapshot.as_ref().map(|x| sheet_words(&x.project_sheet)).unwrap_or_default();
+        format!("{sheet} \u{b7} numbering, references, tags and revisions")
+    };
+    ecad_ui::prim::SectionHeader::new(&mut open, "Project sheet and numbering").summary(&summary).name(PROJECT).show(ui);
+    t.settings.pages.project_open = open;
     if open {
         ui.set_max_width(900.0);
         super::project::body(t, ui, crate::sheets_ui::Popout::Settings, crate::sheets_ui::Part::Settings);

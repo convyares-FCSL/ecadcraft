@@ -36,6 +36,13 @@ semantic token, and moves the files that never used `ecad_ui` onto it.
    `debugger` to `ecad_ui`; the hand-made section headers to `SectionHeader`; the hand-made
    property rows to `PropertyRow`; the hand-made `egui::Window` dialogs to `dialog::Dialog`. The
    preview window (a viewer that is moved and resized) and the search palette stay windows.
+   **As built:** the questions became `dialog::Dialog` (merge, undo merge, renumber, the six
+   History dialogs, undo issue, issue Rev, convert, notice, close, file, page name). Windows
+   that are not questions keep their window but use the kit inside: Release and Revisions (the
+   person fixes things while they are open), Reports and Print Book (hosted in a workspace
+   slot). The fold headers of History, Settings ▸ Pages and the connector panel use
+   `SectionHeader`; the group rows of the Devices list and the Project tree (drag, rename, +)
+   are tree rows, not section headers, and are left for the views lane (064).
 4. **Ratchet.** Lower the `STYLE_ALLOWLIST` and `RAW_CONTROL_ALLOWLIST` counts in `xtask` to what
    remains. 060 widens the same list in parallel; on merging, keep both changes and recount.
 5. **Split** `apps/ecad-trial/src/lib.rs` into `args`, `file_ops`, `actions` and `windows/*`.

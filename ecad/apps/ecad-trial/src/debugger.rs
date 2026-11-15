@@ -19,7 +19,11 @@ use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
 use ecad_cadcraft::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
-use eframe::egui::{self, Color32, RichText};
+use ecad_ui::control::{Select, TextEntry};
+use ecad_ui::prim::{self, Button, IconButton, Kind, ListRow, SectionHeader, Tone};
+use ecad_ui::tokens::{radius, size, space};
+use ecad_ui::{Icon, SHELL, color};
+use eframe::egui::{self, RichText};
 
 /// The ECAD Dev Debugger button's hover text.
 pub const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";
@@ -420,35 +424,35 @@ impl Debugger {
     pub fn show(&mut self, ui: &mut egui::Ui) -> Option<Action> {
         let mut action = None;
         ui.horizontal(|ui| {
-            ui.label(RichText::new("ECAD debugger (read-only)").strong());
-            if ui.button("Refresh").on_hover_text("Take a new snapshot now").clicked() {
+            prim::heading(ui, "ECAD debugger (read-only)");
+            if ui.add(Button::new("Refresh").small()).on_hover_text("Take a new snapshot now").clicked() {
                 action = Some(Action::Refresh);
             }
-            if ui.button("Close").clicked() {
+            if ui.add(Button::new("Close").kind(Kind::Quiet).small()).clicked() {
                 action = Some(Action::Close);
             }
         });
-        let warn = ui.visuals().warn_fg_color;
         let Some(snap) = &self.snap else {
-            ui.label(match &self.stale {
+            let words = match &self.stale {
                 Some(e) => format!("No snapshot yet: {e}"),
                 None => "No snapshot yet.".to_string(),
-            });
+            };
+            prim::body(ui, &words, true);
             return action;
         };
-        ui.label(format!("Snapshot: {} of \"{}\", taken {} (#{}).", snap.label(), snap.name, self.taken, self.builds));
-        ui.label(saved_summary(snap));
+        prim::body(ui, &format!("Snapshot: {} of \"{}\", taken {} (#{}).", snap.label(), snap.name, self.taken, self.builds), false);
+        prim::body(ui, &saved_summary(snap), false);
         if let Some(e) = &self.stale {
-            ui.label(RichText::new(format!("Stale: {e}. Showing the snapshot above.")).color(warn));
+            prim::note(ui, &format!("Stale: {e}. Showing the snapshot above."), Tone::Warning);
         }
-        ui.horizontal_wrapped(|ui| {
-            for v in View::ALL {
-                if ui.selectable_label(self.view == v, v.title()).clicked() {
-                    self.view = v;
-                }
-            }
-        });
-        ui.separator();
+        // Nine views: a selector rather than a segmented choice (more than about five).
+        let titles = View::ALL.map(View::title);
+        let mut chosen = View::ALL.iter().position(|v| *v == self.view).unwrap_or(0);
+        prim::property_row(ui, "View", |ui| Select::new(&mut chosen, &titles, "ecad.debug.view").width(size::LABEL_COLUMN * 2.0).show(ui));
+        if let Some(v) = View::ALL.get(chosen) {
+            self.view = *v;
+        }
+        rule(ui);
         let trail_open = !self.focus.is_empty() || self.tx.is_some() || !self.focus_from.is_empty();
         let list_height = if trail_open { ui.available_height() * 0.45 } else { ui.available_height() };
         egui::ScrollArea::vertical().id_salt("dbg_view").max_height(list_height).auto_shrink([false, true]).show(ui, |ui| match self.view {
@@ -471,7 +475,7 @@ impl Debugger {
             }
         });
         if trail_open {
-            ui.separator();
+            rule(ui);
             egui::ScrollArea::vertical().id_salt("dbg_trail").auto_shrink([false, false]).show(ui, |ui| {
                 self.trail(ui);
             });
@@ -482,11 +486,11 @@ impl Debugger {
     fn selection_view(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
         if snap.active_page.is_none() {
-            ui.label("The active drawing is not a page of the ECAD project.");
+            prim::body(ui, "The active drawing is not a page of the ECAD project.", true);
             return;
         }
         if snap.selection.is_empty() {
-            ui.label("Nothing is selected. Click objects in the drawing; they are listed here with their ECAD IDs.");
+            prim::body(ui, "Nothing is selected. Click objects in the drawing; they are listed here with their ECAD IDs.", true);
             return;
         }
         let mut follow = None;
@@ -498,12 +502,12 @@ impl Debugger {
                 }
                 None => format!("{} {} → not an ECAD object", sel.entity, sel.handle.hex()),
             };
-            if ui.selectable_label(false, text).on_hover_text("Follow it into the model and the history").clicked() {
+            if ListRow::new(&text).show(ui).on_hover_text("Follow it into the model and the history").clicked() {
                 follow = Some(i);
             }
         }
         if snap.selection_total > snap.selection.len() {
-            ui.label(format!("… and {} more selected.", snap.selection_total - snap.selection.len()));
+            prim::body(ui, &format!("… and {} more selected.", snap.selection_total - snap.selection.len()), true);
         }
         if let Some(i) = follow {
             self.follow_selection(i);
@@ -513,13 +517,10 @@ impl Debugger {
     fn model_view(&mut self, ui: &mut egui::Ui, definitions: bool) {
         let Some(snap) = &self.snap else { return };
         let counts = debug::counts(&snap.doc);
-        ui.label(counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "));
-        ui.horizontal(|ui| {
-            ui.label("Search:");
-            if ui.text_edit_singleline(&mut self.query).changed() {
-                self.list_page = 0;
-            }
-        });
+        prim::body(ui, &counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "), true);
+        if prim::SearchField::new(&mut self.query, "ecad.debug.search").show(ui).changed() {
+            self.list_page = 0;
+        }
         let q = self.query.trim().to_lowercase();
         let rows: Vec<(ObjectId, String)> = debug::objects(&snap.doc)
             .into_iter()
@@ -533,12 +534,12 @@ impl Debugger {
         pager(ui, "objects", rows.len(), &mut self.list_page);
         for (id, label) in rows.iter().skip(self.list_page * PAGE).take(PAGE) {
             let chosen = self.focus.first() == Some(id);
-            if ui.selectable_label(chosen, format!("{} {}  {label}", id.kind(), id.short())).clicked() {
+            if ListRow::new(&format!("{} {}  {label}", id.kind(), id.short())).selected(chosen).show(ui).clicked() {
                 follow = Some(*id);
             }
         }
         if rows.is_empty() {
-            ui.label(if definitions { "No embedded definitions." } else { "Nothing matches." });
+            prim::body(ui, if definitions { "No embedded definitions." } else { "Nothing matches." }, true);
         }
         if let Some(id) = follow {
             self.follow_object(id);
@@ -547,41 +548,35 @@ impl Debugger {
 
     fn history_view(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
-        let warn = ui.visuals().warn_fg_color;
         let head = snap.head;
         let where_ = snap.file.path.clone().unwrap_or_else(|| "no file yet".into());
-        ui.label(RichText::new(format!("Saved durably ({where_}): transactions 1–{}.", snap.persisted)).color(ok_color()));
+        prim::note(ui, &format!("Saved durably ({where_}): transactions 1–{}.", snap.persisted), Tone::Ok);
         let c = snap.state_counts();
         if c.unconfirmed > 0 {
-            ui.label(
-                RichText::new(format!(
-                    "Written but not confirmed durable (Save confirms them): transactions {}–{}.",
-                    c.saved + 1,
-                    c.saved + c.unconfirmed
-                ))
-                .color(warn),
+            prim::note(
+                ui,
+                &format!("Written but not confirmed durable (Save confirms them): transactions {}–{}.", c.saved + 1, c.saved + c.unconfirmed),
+                Tone::Warning,
             );
         }
         if c.pending > 0 {
-            ui.label(
-                RichText::new(format!("Pending (in memory only; lost unless saved): transactions {}–{head}.", head - c.pending + 1)).color(warn),
-            );
+            prim::note(ui, &format!("Pending (in memory only; lost unless saved): transactions {}–{head}.", head - c.pending + 1), Tone::Warning);
         } else {
-            ui.label("Nothing pending.");
+            prim::body(ui, "Nothing pending.", true);
         }
         ui.horizontal(|ui| {
-            ui.label("State at transaction");
-            ui.add(egui::TextEdit::singleline(&mut self.at_text).desired_width(60.0));
-            if ui.button("Rebuild").on_hover_text("Rebuilt from a copy of the history; the live project is unchanged").clicked() {
+            prim::body(ui, "State at transaction", true);
+            TextEntry::new(&mut self.at_text, "ecad.debug.at").width(size::LABEL_COLUMN * 0.75).show(ui);
+            if ui.add(Button::new("Rebuild").small()).on_hover_text("Rebuilt from a copy of the history; the live project is unchanged").clicked() {
                 let seq = self.at_text.trim().parse::<u64>().unwrap_or(head);
                 self.show_at(seq);
             }
-            if self.historical.is_some() && ui.button("Hide").clicked() {
+            if self.historical.is_some() && ui.add(Button::new("Hide").kind(Kind::Quiet).small()).clicked() {
                 self.historical = None;
             }
         });
         self.historical_view(ui);
-        ui.separator();
+        rule(ui);
         let snap = match &self.snap {
             Some(s) => s,
             None => return,
@@ -590,11 +585,8 @@ impl Debugger {
         pager(ui, "transactions", self.log.len(), &mut self.history_page);
         for tx in self.log.iter().rev().skip(self.history_page * PAGE).take(PAGE) {
             let state = snap.record_state(tx.seq);
-            let text =
-                RichText::new(format!("#{} [{}] {} ({}, {} ops)", tx.seq, state.label(), tx.label, debug::tx_kind(tx, &self.log), tx.ops.len()));
-            let chosen = self.tx == Some(tx.seq);
-            let text = if chosen { text } else { text.color(state_color(state, warn)) };
-            if ui.selectable_label(chosen, text).clicked() {
+            let text = format!("#{} {} ({}, {} ops)", tx.seq, tx.label, debug::tx_kind(tx, &self.log), tx.ops.len());
+            if state_row(ui, &text, state, self.tx == Some(tx.seq)).clicked() {
                 pick = Some(tx.seq);
             }
         }
@@ -605,18 +597,18 @@ impl Debugger {
 
     fn historical_view(&mut self, ui: &mut egui::Ui) {
         let Some(h) = &mut self.historical else { return };
-        let frame = egui::Frame::group(ui.style());
-        frame.show(ui, |ui| match &h.doc {
+        card().show(ui, |ui| match &h.doc {
             Err(e) => {
-                ui.label(format!("History at seq {}: {e}", h.seq));
+                prim::note(ui, &format!("History at seq {}: {e}", h.seq), Tone::Warning);
             }
             Ok(doc) => {
-                ui.label(RichText::new(format!("History at seq {} (rebuilt from a copy of the log; the live project is unchanged)", h.seq)).strong());
+                prim::caption(ui, &format!("History at seq {} (rebuilt from a copy of the log; the live project is unchanged)", h.seq));
                 let counts = debug::counts(doc);
-                ui.label(counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "));
+                prim::body(ui, &counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "), true);
                 let mut pick = None;
                 for id in debug::objects(doc).into_iter().filter(|i| !matches!(i, ObjectId::Item(_))).take(PAGE) {
-                    if ui.selectable_label(h.focus == Some(id), format!("{} {}  {}", id.kind(), id.short(), debug::object_label(doc, id))).clicked() {
+                    let text = format!("{} {}  {}", id.kind(), id.short(), debug::object_label(doc, id));
+                    if ListRow::new(&text).selected(h.focus == Some(id)).show(ui).clicked() {
                         pick = Some(id);
                     }
                 }
@@ -624,7 +616,7 @@ impl Debugger {
                     h.focus = Some(id);
                 }
                 if let Some(v) = h.focus.and_then(|id| debug::object_json(doc, id)) {
-                    ui.monospace(json_text(&v));
+                    mono(ui, json_text(&v));
                 }
             }
         });
@@ -633,12 +625,12 @@ impl Debugger {
     fn persistence_view(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
         let f = &snap.file;
-        let warn = ui.visuals().warn_fg_color;
+        // A grid rather than property rows: these labels are longer than the label column.
         egui::Grid::new("dbg_persistence").num_columns(2).striped(true).show(ui, |ui| {
             let mut row = |k: &str, v: String| {
-                ui.label(k);
+                prim::body(ui, k, true);
                 // Long paths wrap instead of widening the panel.
-                ui.add(egui::Label::new(v).wrap());
+                prim::body(ui, &v, false);
                 ui.end_row();
             };
             row("Persistence", f.persistence.map_or_else(String::new, |p| format!("{p:?}")));
@@ -670,22 +662,23 @@ impl Debugger {
             row("Opening found", f.open_report.clone().unwrap_or_else(|| "(created in this session, not opened from a file)".into()));
         });
         if let Some(r) = &f.read_only {
-            ui.label(RichText::new(format!("Read-only: {r}")).color(warn));
+            prim::note(ui, &format!("Read-only: {r}"), Tone::Warning);
         }
         if f.unconfirmed {
-            ui.label(RichText::new("The last Save As is not confirmed durable; Save confirms it.").color(warn));
+            prim::note(ui, "The last Save As is not confirmed durable; Save confirms it.", Tone::Warning);
         }
         if let Some(a) = &f.attempt {
-            ui.label(
-                RichText::new(format!(
+            prim::note(
+                ui,
+                &format!(
                     "A failed save ({:?}) of transactions {}–{} may have left {} bytes at offset {}; the next Save removes them first.",
                     a.stage, a.first_seq, a.last_seq, a.len, a.offset
-                ))
-                .color(warn),
+                ),
+                Tone::Warning,
             );
         }
         if let Some(n) = f.pending_fragment {
-            ui.label(RichText::new(format!("An incomplete trailing write of {n} bytes is still in the file.")).color(warn));
+            prim::note(ui, &format!("An incomplete trailing write of {n} bytes is still in the file."), Tone::Warning);
         }
     }
 
@@ -694,13 +687,14 @@ impl Debugger {
     fn storage_view(&mut self, ui: &mut egui::Ui) -> bool {
         let Some(snap) = &self.snap else { return false };
         let Some(st) = &snap.file.storage else {
-            ui.label("The project has no version 2 file yet (Save As writes one).");
+            prim::body(ui, "The project has no version 2 file yet (Save As writes one).", true);
             return false;
         };
+        // A grid rather than property rows: these labels are longer than the label column.
         egui::Grid::new("dbg_storage").num_columns(2).striped(true).show(ui, |ui| {
             let mut row = |k: &str, v: String| {
-                ui.label(k);
-                ui.add(egui::Label::new(v).wrap());
+                prim::body(ui, k, true);
+                prim::body(ui, &v, false);
                 ui.end_row();
             };
             row("Container", "version 2 (redb), codec json/1, Zstandard".into());
@@ -723,34 +717,36 @@ impl Debugger {
             row("Converted from version 1", st.link_v1.as_ref().map_or_else(|| "no".into(), |(h, n)| format!("{n} transactions, final hash {h}")));
             row("Writable", if st.writable { "yes".into() } else { "no (read-only)".into() });
         });
-        let ask =
-            ui.button("Read table sizes").on_hover_text("Reads the file's tables and version rows (on request; the project is not locked)").clicked();
+        let ask = ui
+            .add(Button::new("Read table sizes").small())
+            .on_hover_text("Reads the file's tables and version rows (on request; the project is not locked)")
+            .clicked();
         if let Some((read, when)) = &self.storage {
-            ui.label(format!("Read {when}:"));
+            prim::body(ui, &format!("Read {when}:"), true);
             match read {
                 Ok(r) => {
-                    ui.label(format!("File: {} bytes", r.file_bytes));
+                    prim::body(ui, &format!("File: {} bytes", r.file_bytes), false);
                     egui::Grid::new("dbg_tables").num_columns(5).striped(true).show(ui, |ui| {
                         for h in ["table", "rows", "stored bytes", "metadata", "fragmented"] {
-                            ui.label(RichText::new(h).strong());
+                            prim::caption(ui, h);
                         }
                         ui.end_row();
                         for t in &r.tables {
-                            ui.label(t.name);
-                            ui.label(t.rows.to_string());
-                            ui.label(t.stored_bytes.to_string());
-                            ui.label(t.metadata_bytes.to_string());
-                            ui.label(t.fragmented_bytes.to_string());
+                            prim::body(ui, t.name, false);
+                            prim::body(ui, &t.rows.to_string(), false);
+                            prim::body(ui, &t.stored_bytes.to_string(), false);
+                            prim::body(ui, &t.metadata_bytes.to_string(), false);
+                            prim::body(ui, &t.fragmented_bytes.to_string(), false);
                             ui.end_row();
                         }
                     });
-                    ui.label(format!("{} version rows:", r.versions.len()));
+                    prim::body(ui, &format!("{} version rows:", r.versions.len()), false);
                     for (b, kind, name, seq, chunks) in r.versions.iter().rev().take(PAGE) {
-                        ui.label(format!("{b}: {kind} {name:?} at {seq} ({chunks} chunks)"));
+                        prim::body(ui, &format!("{b}: {kind} {name:?} at {seq} ({chunks} chunks)"), true);
                     }
                 }
                 Err(e) => {
-                    ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
+                    prim::note(ui, e, Tone::Warning);
                 }
             }
         }
@@ -761,24 +757,28 @@ impl Debugger {
     fn branches_view(&mut self, ui: &mut egui::Ui) {
         match &self.branches {
             None => {
-                ui.label("The project has no version 2 file yet (Save As writes one).");
+                prim::body(ui, "The project has no version 2 file yet (Save As writes one).", true);
             }
             Some(Err(e)) => {
-                ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
+                prim::note(ui, e, Tone::Warning);
             }
             Some(Ok(rows)) => {
-                ui.label("Each branch is its own append-only log; a branch starts after a transaction of its parent.");
+                prim::body(ui, "Each branch is its own append-only log; a branch starts after a transaction of its parent.", true);
                 for b in rows {
                     let from = match &b.fork {
                         Some((p, seq)) => format!("forked from {p} after transaction {seq}"),
                         None => "from the project root".into(),
                     };
-                    let frame = egui::Frame::group(ui.style());
-                    frame.show(ui, |ui| {
-                        ui.label(RichText::new(format!("{} ({})", b.name, b.status)).strong());
-                        ui.label(format!("head {}, {} rows, {from}{}", b.head, b.rows, if b.release_line { ", release line" } else { "" }));
-                        ui.monospace(format!("ID {}  head chain {}", b.id, b.head_chain));
+                    card().show(ui, |ui| {
+                        prim::body(ui, &format!("{} ({})", b.name, b.status), false);
+                        prim::body(
+                            ui,
+                            &format!("head {}, {} rows, {from}{}", b.head, b.rows, if b.release_line { ", release line" } else { "" }),
+                            true,
+                        );
+                        mono(ui, format!("ID {}  head chain {}", b.id, b.head_chain));
                     });
+                    ui.add_space(space::XS);
                 }
             }
         }
@@ -786,9 +786,9 @@ impl Debugger {
 
     fn diagnostics_view(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
-        ui.label(RichText::new("Pages").strong());
+        prim::caption(ui, "Pages");
         for p in &snap.pages {
-            ui.label(format!(
+            let line = format!(
                 "{} {}: {}{}",
                 p.title,
                 p.id.short(),
@@ -798,45 +798,47 @@ impl Debugger {
                     _ => "closed".to_string(),
                 },
                 if p.unavailable { ", UNAVAILABLE (reopen it)" } else { "" }
-            ));
+            );
+            prim::body(ui, &line, false);
         }
-        ui.separator();
+        rule(ui);
         // Brief 010: derived once per snapshot from its copy of the document, never saved; paged.
-        ui.label(RichText::new("Cable references").strong());
+        prim::caption(ui, "Cable references");
         pager(ui, "references", self.ref_lines.len(), &mut self.refs_page);
         for line in self.ref_lines.iter().skip(self.refs_page * PAGE).take(PAGE) {
-            ui.label(line.as_str());
+            prim::body(ui, line, false);
         }
-        ui.separator();
-        ui.label(RichText::new("Runtime events (diagnostics; never saved in the project)").strong());
+        rule(ui);
+        prim::caption(ui, "Runtime events (diagnostics; never saved in the project)");
         pager(ui, "events", snap.events.len(), &mut self.events_page);
         for e in snap.events.iter().rev().skip(self.events_page * PAGE).take(PAGE) {
-            ui.label(format!(
+            let line = format!(
                 "#{} {:?}{} at seq {}: {}",
                 e.n,
                 e.kind,
                 e.command.as_deref().map_or_else(String::new, |c| format!(" [{c}]")),
                 e.seq,
                 e.message
-            ));
+            );
+            prim::body(ui, &line, false);
         }
     }
 
     fn checks_view(&mut self, ui: &mut egui::Ui) -> Option<CheckKind> {
         let mut run = None;
-        ui.label("Checks run only when asked, on copies, and never change the project.");
+        prim::body(ui, "Checks run only when asked, on copies, and never change the project.", true);
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Verify replay").on_hover_text("Replay the history and compare with the live document").clicked() {
+            if ui.add(Button::new("Verify replay").small()).on_hover_text("Replay the history and compare with the live document").clicked() {
                 run = Some(CheckKind::Replay);
             }
-            if ui.button("Verify projection").on_hover_text("Reproject the open pages and compare with their drawings").clicked() {
+            if ui.add(Button::new("Verify projection").small()).on_hover_text("Reproject the open pages and compare with their drawings").clicked() {
                 run = Some(CheckKind::Projection);
             }
-            if ui.button("Verify file").on_hover_text("Re-read the file: frames, checksums, hash chain, history").clicked() {
+            if ui.add(Button::new("Verify file").small()).on_hover_text("Re-read the file: frames, checksums, hash chain, history").clicked() {
                 run = Some(CheckKind::File);
             }
             if ui
-                .button("Check index")
+                .add(Button::new("Check index").small())
                 .on_hover_text("Rebuild the reference index from a copy and compare it with the kept one")
                 .accessible_name("ecad.debug.xrefcheck")
                 .clicked()
@@ -844,12 +846,11 @@ impl Debugger {
                 run = Some(CheckKind::Index);
             }
         });
-        let warn = ui.visuals().warn_fg_color;
         for r in self.checks.iter().rev() {
             let head = format!("{} {} at seq {}, {}", if r.check.ok { "PASS" } else { "FAIL" }, r.check.what, r.check.at_seq, r.time);
-            ui.label(RichText::new(head).strong().color(if r.check.ok { ok_color() } else { warn }));
+            prim::note(ui, &head, if r.check.ok { Tone::Ok } else { Tone::Warning });
             for l in &r.check.lines {
-                ui.label(format!("  {l}"));
+                prim::body(ui, &format!("  {l}"), true);
             }
         }
         run
@@ -857,37 +858,33 @@ impl Debugger {
 
     fn trail(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
-        let warn = ui.visuals().warn_fg_color;
-        ui.label(RichText::new(format!("Trail from {}", self.focus_from)).strong());
+        prim::caption(ui, &format!("Trail from {}", self.focus_from));
         // ECAD IDs → model objects (live values).
         for id in &self.focus {
             let label = debug::object_label(&snap.doc, *id);
-            egui::CollapsingHeader::new(format!("{} {} {label}", id.kind(), id.short())).id_salt(("dbg_obj", id.hex(), id.kind())).show(ui, |ui| {
-                ui.monospace(format!("ID {}", id.hex()));
+            fold(ui, ui.scope_id().with(("dbg_obj", id.hex(), id.kind())), &format!("{} {} {label}", id.kind(), id.short()), |ui| {
+                mono(ui, format!("ID {}", id.hex()));
                 let users = debug::used_by(&snap.doc, *id);
                 if !users.is_empty() {
                     let shown: Vec<String> = users.iter().take(PAGE).map(|u| format!("{} {}", u.kind(), u.short())).collect();
-                    ui.label(format!("Used by: {}{}", shown.join(", "), if users.len() > PAGE { ", …" } else { "" }));
+                    prim::body(ui, &format!("Used by: {}{}", shown.join(", "), if users.len() > PAGE { ", …" } else { "" }), false);
                 }
                 match debug::object_json(&snap.doc, *id) {
-                    Some(v) => ui.monospace(json_text(&v)),
-                    None => ui.label("Not in the live model (deleted or never created)."),
+                    Some(v) => mono(ui, json_text(&v)),
+                    None => prim::body(ui, "Not in the live model (deleted or never created).", true),
                 };
             });
         }
         // → the transactions that touched them.
         let touching = self.touching();
         if !self.focus.is_empty() {
-            ui.label(format!("Transactions that touched them: {}", touching.len()));
+            prim::body(ui, &format!("Transactions that touched them: {}", touching.len()), false);
         }
         let mut pick = None;
         for seq in touching.iter().rev().take(PAGE) {
             let Some(tx) = snap.tx_in(&self.log, *seq) else { continue };
             let state = snap.record_state(*seq);
-            let chosen = self.tx == Some(*seq);
-            let text = RichText::new(format!("#{} [{}] {}", seq, state.label(), tx.label));
-            let text = if chosen { text } else { text.color(state_color(state, warn)) };
-            if ui.selectable_label(chosen, text).clicked() {
+            if state_row(ui, &format!("#{} {}", seq, tx.label), state, self.tx == Some(*seq)).clicked() {
                 pick = Some(*seq);
             }
         }
@@ -899,80 +896,82 @@ impl Debugger {
         let Some(seq) = self.tx else { return };
         let Some(tx) = snap.tx_in(&self.log, seq) else { return };
         let state = snap.record_state(seq);
-        ui.separator();
-        ui.label(RichText::new(format!("Transaction #{seq}: {}", tx.label)).strong().color(state_color(state, warn)));
-        ui.label(format!(
-            "{}, by {}, {}, ID {}",
-            debug::tx_kind(tx, &self.log),
-            author(&tx.author),
-            tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_file::disk::utc(ms / 1000)),
-            tx.id.short()
-        ));
+        rule(ui);
+        prim::note(ui, &format!("Transaction #{seq}: {}", tx.label), state_tone(state));
+        prim::body(
+            ui,
+            &format!(
+                "{}, by {}, {}, ID {}",
+                debug::tx_kind(tx, &self.log),
+                author(&tx.author),
+                tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_file::disk::utc(ms / 1000)),
+                tx.id.short()
+            ),
+            true,
+        );
         let command = snap.events.iter().find(|e| e.seq == seq && e.command.is_some());
         if let Some(e) = command {
-            ui.label(format!("Recorded by command {} (event #{} {:?})", e.command.as_deref().unwrap_or(""), e.n, e.kind));
+            prim::body(ui, &format!("Recorded by command {} (event #{} {:?})", e.command.as_deref().unwrap_or(""), e.n, e.kind), true);
         }
         let mut read = false;
         let mut read_row = false;
         match state {
             RecordState::Saved(None) if snap.store.is_some() => {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label("Saved: a row of the file's transactions table.");
-                    read_row = ui.button("Read row").clicked();
+                    prim::body(ui, "Saved: a row of the file's transactions table.", false);
+                    read_row = ui.add(Button::new("Read row").small()).clicked();
                 });
             }
             RecordState::Saved(Some(s)) | RecordState::Unconfirmed(s) => {
                 let what = if state.durable() { "Saved" } else { "Written but NOT confirmed durable" };
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(format!("{what}: offset {} in the file, {} bytes.", s.offset, s.len));
-                    read = ui.button("Read bytes").clicked();
+                    prim::body(ui, &format!("{what}: offset {} in the file, {} bytes.", s.offset, s.len), false);
+                    read = ui.add(Button::new("Read bytes").small()).clicked();
                 });
             }
             RecordState::Saved(None) => {
-                ui.label("Saved (the writer does not know the record's position).");
+                prim::body(ui, "Saved (the writer does not know the record's position).", false);
             }
             RecordState::Pending { attempt } => {
-                ui.label(
-                    RichText::new(match attempt {
-                        None => "Pending: only in memory, not in the file. Save writes it.".to_string(),
-                        Some(st) => format!("Pending: a save of it failed ({st:?}); only in memory. Save retries it."),
-                    })
-                    .color(warn),
-                );
+                let words = match attempt {
+                    None => "Pending: only in memory, not in the file. Save writes it.".to_string(),
+                    Some(st) => format!("Pending: a save of it failed ({st:?}); only in memory. Save retries it."),
+                };
+                prim::note(ui, &words, Tone::Warning);
             }
             RecordState::NotSaved => {
-                ui.label("This project has no persistence; nothing is saved.");
+                prim::body(ui, "This project has no persistence; nothing is saved.", false);
             }
         }
         match &self.record {
             Some(Ok(r)) => {
                 match &r.check {
-                    Ok(()) => ui.label(RichText::new("The bytes are a valid record holding exactly this transaction.").color(ok_color())),
-                    Err(e) => ui.label(RichText::new(format!("The bytes do NOT match: {e}")).color(warn)),
+                    Ok(()) => prim::note(ui, "The bytes are a valid record holding exactly this transaction.", Tone::Ok),
+                    Err(e) => prim::note(ui, &format!("The bytes do NOT match: {e}"), Tone::Warning),
                 };
-                ui.monospace(debug::printable(&r.shown));
+                mono(ui, debug::printable(&r.shown));
                 if r.truncated {
-                    ui.label(format!("… cut at {} bytes", r.shown.len()));
+                    prim::body(ui, &format!("… cut at {} bytes", r.shown.len()), true);
                 }
             }
             Some(Err(e)) => {
-                ui.label(RichText::new(e.as_str()).color(warn));
+                prim::note(ui, e, Tone::Warning);
             }
             None => {}
         }
-        ui.label(format!("{} ops, with the values they replaced (before) and set (after):", tx.ops.len()));
+        prim::body(ui, &format!("{} ops, with the values they replaced (before) and set (after):", tx.ops.len()), false);
         for (i, op) in tx.ops.iter().take(MAX_OPS).enumerate() {
             let v = op_view(op);
             let targets = v.targets.iter().map(|t| t.short()).collect::<Vec<_>>().join(", ");
-            egui::CollapsingHeader::new(format!("{} {}  {targets}", i + 1, v.name)).id_salt(("dbg_op", seq, i)).show(ui, |ui| {
-                ui.label("before:");
-                ui.monospace(v.before.as_ref().map_or_else(|| "(none)".into(), json_text));
-                ui.label("after:");
-                ui.monospace(v.after.as_ref().map_or_else(|| "(none)".into(), json_text));
+            fold(ui, ui.scope_id().with(("dbg_op", seq, i)), &format!("{} {}  {targets}", i + 1, v.name), |ui| {
+                prim::caption(ui, "before:");
+                mono(ui, v.before.as_ref().map_or_else(|| "(none)".into(), json_text));
+                prim::caption(ui, "after:");
+                mono(ui, v.after.as_ref().map_or_else(|| "(none)".into(), json_text));
             });
         }
         if tx.ops.len() > MAX_OPS {
-            ui.label(format!("… {} more ops", tx.ops.len() - MAX_OPS));
+            prim::body(ui, &format!("… {} more ops", tx.ops.len() - MAX_OPS), true);
         }
         if read {
             self.read_record();
@@ -1001,12 +1000,42 @@ pub fn saved_summary(snap: &DebugSnapshot) -> String {
     s
 }
 
-fn ok_color() -> Color32 {
-    Color32::from_rgb(0x2e, 0x9e, 0x4f)
+/// Durable records in the ok tone, everything else (pending, unconfirmed) as a warning.
+fn state_tone(state: RecordState) -> Tone {
+    if state.durable() { Tone::Ok } else { Tone::Warning }
 }
 
-fn state_color(state: RecordState, warn: Color32) -> Color32 {
-    if state.durable() { ok_color() } else { warn }
+/// A transaction's list row: its text, and its record state at the right in the state's tone.
+fn state_row(ui: &mut egui::Ui, text: &str, state: RecordState, chosen: bool) -> egui::Response {
+    ListRow::new(text).selected(chosen).show_with(ui, |ui| {
+        prim::note(ui, &format!("[{}]", state.label()), state_tone(state));
+    })
+}
+
+/// A data line (JSON, record bytes, IDs) in the code font.
+fn mono(ui: &mut egui::Ui, text: String) -> egui::Response {
+    ui.label(RichText::new(text).monospace().color(color(SHELL.text)))
+}
+
+/// A hairline between parts of the panel, across its width.
+fn rule(ui: &mut egui::Ui) {
+    let full = ui.max_rect().x_range();
+    ecad_ui::panel::rule(ui, full);
+}
+
+/// The inset card a rebuilt state or a branch is shown in.
+fn card() -> egui::Frame {
+    egui::Frame::new().fill(color(SHELL.raised)).corner_radius(ecad_ui::style::corner(radius::INSET_CARD)).inner_margin(space::M)
+}
+
+/// A folding section (closed at first), its open state kept under `id`; `add` draws its body.
+fn fold(ui: &mut egui::Ui, id: egui::Id, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+    let mut open = ui.data_mut(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    SectionHeader::new(&mut open, title).show(ui);
+    ui.data_mut(|d| d.insert_temp(id, open));
+    if open {
+        ui.indent(id, add);
+    }
 }
 
 /// A resolved selection in words.
@@ -1036,11 +1065,11 @@ fn pager(ui: &mut egui::Ui, what: &str, n: usize, page: &mut usize) {
         return;
     }
     ui.horizontal(|ui| {
-        if ui.add_enabled(*page > 0, egui::Button::new("◀")).clicked() {
+        if ui.add_enabled(*page > 0, IconButton::new(Icon::ChevronLeft, "Previous page")).clicked() {
             *page -= 1;
         }
-        ui.label(format!("{what} page {} of {pages} ({n})", *page + 1));
-        if ui.add_enabled(*page + 1 < pages, egui::Button::new("▶")).clicked() {
+        prim::body(ui, &format!("{what} page {} of {pages} ({n})", *page + 1), true);
+        if ui.add_enabled(*page + 1 < pages, IconButton::new(Icon::ChevronRight, "Next page")).clicked() {
             *page += 1;
         }
     });

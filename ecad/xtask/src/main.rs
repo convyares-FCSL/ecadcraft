@@ -102,16 +102,7 @@ const LOCAL_STYLE: &[&str] = &[
 /// restyles the file (design §3.2). The counts only fall: more lines than the count fail `layers`,
 /// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
 /// that styles locally is a violation.
-const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/debugger.rs", 1, "developer tool: restyled when U2 moves the Developer section"),
-    ("apps/ecad-trial/src/history_panel.rs", 3, "038 (U2) moves it; restyled by U4d"),
-    ("apps/ecad-trial/src/merge_dialog.rs", 2, "restyled with History (U4d)"),
-    ("apps/ecad-trial/src/outputs_ui.rs", 5, "restyled with Publish (after U2)"),
-    ("apps/ecad-trial/src/preview.rs", 5, "restyled with the page view (U4a)"),
-    ("apps/ecad-trial/src/release_ui.rs", 4, "restyled with Publish (after U2)"),
-    ("apps/ecad-trial/src/renumber_dialog.rs", 2, "restyled with Lists (after U3)"),
-    ("apps/ecad-trial/src/sheets_ui.rs", 5, "restyled with Publish (after U2)"),
-];
+const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[("apps/ecad-trial/src/preview.rs", 5, "restyled with the page view (U4a)")];
 
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
 /// `ecad_ui::control` (text entry, number with unit, selector, toggle, value box) instead, so
@@ -122,22 +113,15 @@ const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 /// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
 /// uses one is a violation.
 const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("apps/ecad-trial/src/debugger.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/developer.rs", 5, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/lib.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/lists/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/merge_dialog.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/outputs_ui.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/publish.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/release_ui.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/renumber_dialog.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("apps/ecad-trial/src/sheets_ui.rs", 21, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/shell/right/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
     ("apps/ecad-trial/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
@@ -1176,7 +1160,7 @@ let c = ecad_ui::color(SHELL.text);",
         )
         .unwrap();
         std::fs::write(
-            src.join("history_panel.rs"),
+            src.join("preview.rs"),
             "fn f() -> egui::Color32 { egui::Color32::from_gray(7) }
 ",
         )
@@ -1188,7 +1172,7 @@ let c = ecad_ui::color(SHELL.text);",
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("apps/ecad-trial/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
-        assert!(!v.iter().any(|m| m.contains("history_panel.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
+        assert!(!v.iter().any(|m| m.contains("preview.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
     }
 
     /// A UI file not in the raw-control allowlist that uses `egui::TextEdit` or a `ComboBox` fails

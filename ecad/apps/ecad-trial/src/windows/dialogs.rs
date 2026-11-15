@@ -4,6 +4,8 @@
 use crate::actions::with_param;
 use crate::file_ops::in_default_folder;
 use crate::*;
+use ecad_ui::dialog::{Dialog, action};
+use ecad_ui::prim::{self, Kind, Tone};
 
 impl Trial {
     /// The symbol search window (brief 018): its rows and second step are read from the project
@@ -45,26 +47,23 @@ impl Trial {
     pub(crate) fn issue_prompt_window(&mut self, ctx: &egui::Context) {
         let Some((line, text)) = self.issue_prompt.clone() else { return };
         let rev = self.revisions.as_ref().and_then(|d| d.pending.first().cloned()).unwrap_or_default();
-        let mut chosen = None;
-        egui::Window::new(format!("Issue Rev {rev}"))
-            .id(egui::Id::unique("ecad.issue"))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.label(egui::RichText::new(&text).small().monospace());
-                ui.horizontal(|ui| {
-                    if ui.button("Finalise numbering now").accessible_name("ecad.issue.finalise").clicked() {
-                        chosen = Some(1);
-                    }
-                    if ui.button("Issue anyway").accessible_name("ecad.issue.anyway").clicked() {
-                        chosen = Some(2);
-                    }
-                    if ui.button("Cancel").accessible_name("ecad.issue.cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        chosen = Some(0);
-                    }
-                });
-            });
+        let title = format!("Issue Rev {rev}");
+        let shown = Dialog::new(egui::Id::unique("ecad.issue"), &title, "ecad.issue").small().show(
+            ctx,
+            |ui| prim::body(ui, &text, false),
+            |ui| {
+                if action(ui, "Finalise numbering now", Kind::Primary, "ecad.issue.finalise", None).clicked() {
+                    Some(1)
+                } else if action(ui, "Issue anyway", Kind::Secondary, "ecad.issue.anyway", None).clicked() {
+                    Some(2)
+                } else if action(ui, "Cancel", Kind::Secondary, "ecad.issue.cancel", None).clicked() {
+                    Some(0)
+                } else {
+                    None
+                }
+            },
+        );
+        let chosen = shown.footer.or(shown.closed.then_some(0));
         match chosen {
             Some(1) => {
                 self.issue_prompt = None;
@@ -202,26 +201,28 @@ impl Trial {
         if let Some(h) = &self.held {
             self.close_dialog(ctx, h.title.clone(), h.changes);
         } else if let Some((source, output)) = self.convert_offer.clone() {
-            let mut answer = None;
-            egui::Modal::new(egui::Id::unique("ecad_trial_convert")).show(ctx, |ui| {
-                ui.set_width(520.0);
-                ui.label(RichText::new("Convert this project to the new file format?").strong());
-                ui.add_space(4.0);
-                ui.label(format!("{source} is a version 1 project file. This version saves projects in version 2."));
-                ui.label(format!(
-                    "Converting writes a new file, {output}, checks it by replaying both, and opens it. \
-                     The original file is left untouched."
-                ));
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Convert and open").clicked() {
-                        answer = Some(true);
+            let shown = Dialog::new(egui::Id::unique("ecad_trial_convert"), "Convert this project?", "ecad.convert").medium().show(
+                ctx,
+                |ui| {
+                    prim::body(ui, &format!("{source} is a version 1 project file. This version saves projects in version 2."), false);
+                    prim::body(
+                        ui,
+                        &format!(
+                            "Converting writes a new file, {output}, checks it by replaying both, and opens it. \
+                             The original file is left untouched."
+                        ),
+                        true,
+                    );
+                },
+                |ui| {
+                    if action(ui, "Convert and open", Kind::Primary, "Convert and open", None).clicked() {
+                        Some(true)
+                    } else {
+                        action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked().then_some(false)
                     }
-                    if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        answer = Some(false);
-                    }
-                });
-            });
+                },
+            );
+            let answer = shown.footer.or(shown.closed.then_some(false));
             match answer {
                 Some(true) => {
                     if let Err(e) = self.accept_conversion() {
@@ -236,15 +237,12 @@ impl Trial {
         } else if self.name_box.is_some() {
             self.name_box_dialog(ctx);
         } else if let Some(msg) = self.notice.clone() {
-            let mut ok = false;
-            egui::Modal::new(egui::Id::unique("ecad_trial_notice")).show(ctx, |ui| {
-                ui.set_width(460.0);
-                ui.label(RichText::new("ECAD trial").strong());
-                ui.add_space(4.0);
-                ui.label(msg);
-                ui.add_space(10.0);
-                ok = ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
-            });
+            let shown = Dialog::new(egui::Id::unique("ecad_trial_notice"), "ECAD trial", "ecad.notice").small().show(
+                ctx,
+                |ui| prim::body(ui, &msg, false),
+                |ui| action(ui, "OK", Kind::Primary, "OK", None).clicked(),
+            );
+            let ok = shown.footer || shown.closed;
             if ok {
                 self.notice = None;
             }
@@ -254,38 +252,38 @@ impl Trial {
     fn close_dialog(&mut self, ctx: &egui::Context, title: String, changes: u64) {
         let file = self.status().map(|s| s.file).unwrap_or_default();
         let name = self.status().map_or_else(|| PROJECT_NAME.to_string(), |s| s.name);
-        let mut answer = None;
-        egui::Modal::new(egui::Id::unique("ecad_trial_close")).show(ctx, |ui| {
-            ui.set_width(460.0);
-            ui.label(RichText::new(format!("Save changes to project \"{name}\"?")).strong());
-            ui.add_space(4.0);
-            let _ = title;
-            ui.label(format!("Closing the project. It has {changes} unsaved change{}.", if changes == 1 { "" } else { "s" }));
-            ui.label(match (&file.path, &file.read_only) {
-                (Some(_), Some(r)) => format!("The project is read-only ({r}); Save asks for another file name."),
-                (Some(p), None) => format!("Save writes them to {p}."),
-                (None, _) => "The project has no file yet; Save asks for a file name.".to_string(),
-            });
-            ui.label(RichText::new("Discard closes it and loses the unsaved changes.").color(ui.visuals().warn_fg_color));
-            if self.snapshots.is_some() {
-                ui.label(format!("Discard exports a snapshot first. {SNAPSHOT_NOTE}"));
-            }
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    answer = Some(Answer::Save);
+        let _ = title;
+        let heading = format!("Save changes to project \"{name}\"?");
+        let snapshots = self.snapshots.is_some();
+        let shown = Dialog::new(egui::Id::unique("ecad_trial_close"), &heading, "ecad.close").small().show(
+            ctx,
+            |ui| {
+                prim::body(ui, &format!("Closing the project. It has {changes} unsaved change{}.", if changes == 1 { "" } else { "s" }), false);
+                prim::body(
+                    ui,
+                    &match (&file.path, &file.read_only) {
+                        (Some(_), Some(r)) => format!("The project is read-only ({r}); Save asks for another file name."),
+                        (Some(p), None) => format!("Save writes them to {p}."),
+                        (None, _) => "The project has no file yet; Save asks for a file name.".to_string(),
+                    },
+                    true,
+                );
+                prim::note(ui, "Discard closes it and loses the unsaved changes.", Tone::Warning);
+                if snapshots {
+                    prim::body(ui, &format!("Discard exports a snapshot first. {SNAPSHOT_NOTE}"), true);
                 }
-                if ui.button("Discard").clicked() {
-                    answer = Some(Answer::Discard);
+            },
+            |ui| {
+                if action(ui, "Save", Kind::Primary, "Save", None).clicked() {
+                    Some(Answer::Save)
+                } else if action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked() {
+                    Some(Answer::Cancel)
+                } else {
+                    action(ui, "Discard", Kind::Danger, "Discard", None).clicked().then_some(Answer::Discard)
                 }
-                if ui.button("Cancel").clicked() {
-                    answer = Some(Answer::Cancel);
-                }
-            });
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                answer = Some(Answer::Cancel);
-            }
-        });
+            },
+        );
+        let answer = shown.footer.or(shown.closed.then_some(Answer::Cancel));
         if let Some(a) = answer {
             self.answer(a);
             ctx.request_repaint();
@@ -294,39 +292,41 @@ impl Trial {
 
     fn file_dialog(&mut self, ctx: &egui::Context) {
         let Some(d) = &mut self.dialog else { return };
-        let (heading, action) = match d.kind {
+        let (heading, verb) = match d.kind {
             DialogKind::Open => ("Open project", "Open"),
             DialogKind::SaveAs => ("Save project as", "Save"),
         };
-        let mut confirm = false;
-        let mut cancel = false;
-        egui::Modal::new(egui::Id::unique("ecad_trial_file")).show(ctx, |ui| {
-            ui.set_width(520.0);
-            ui.label(RichText::new(heading).strong());
-            ui.add_space(4.0);
-            ui.label(format!(
-                "A .ecad project file (the extension is added if missing). Keep projects in a local folder, for \
-example {}; other locations are unverified.",
-                in_default_folder("demo.ecad")
-            ));
-            let field = ui.add(egui::TextEdit::singleline(&mut d.path).desired_width(f32::INFINITY));
-            // Enter ends the text field's input (it gives up focus): checked before focus is
-            // requested, which would otherwise cancel that.
-            if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                confirm = true;
-            } else if !d.focused {
-                field.request_focus();
-                d.focused = true;
-            }
-            if let Some(e) = &d.error {
-                ui.label(RichText::new(e.as_str()).color(ui.visuals().warn_fg_color));
-            }
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                confirm |= ui.button(action).clicked();
-                cancel = ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
-            });
-        });
+        let mut enter = false;
+        let hint = format!(
+            "A .ecad project file (the extension is added if missing). Keep projects in a local folder, for example {}; other \
+             locations are unverified.",
+            in_default_folder("demo.ecad")
+        );
+        let shown = Dialog::new(egui::Id::unique("ecad_trial_file"), heading, "ecad.file").medium().show(
+            ctx,
+            |ui| {
+                prim::body(ui, &hint, true);
+                let field = ecad_ui::control::TextEntry::new(&mut d.path, "ecad.file.path").show(ui);
+                // Enter ends the text field's input (it gives up focus): checked before focus is
+                // requested, which would otherwise cancel that.
+                if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    enter = true;
+                } else if !d.focused {
+                    field.request_focus();
+                    d.focused = true;
+                }
+                if let Some(e) = &d.error {
+                    prim::note(ui, e, Tone::Error);
+                }
+            },
+            |ui| {
+                let ok = action(ui, verb, Kind::Primary, verb, None).clicked();
+                let cancel = action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked();
+                (ok, cancel)
+            },
+        );
+        let confirm = enter || shown.footer.0;
+        let cancel = shown.footer.1 || shown.closed;
         if cancel {
             self.cancel_dialog();
         } else if confirm {

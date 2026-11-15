@@ -8,7 +8,11 @@
 //! commits (design §11); a refused Apply asks for it again. Words are short (design §10): `Dev`,
 //! `Cbl`, `Wire`, `Sel`, `Prov`, `At`, row marks `→ F = –`.
 
-use eframe::egui::{self, Color32, RichText};
+use ecad_ui::control::{self, Decor, Select, TextEntry};
+use ecad_ui::dialog::{Dialog, action};
+use ecad_ui::prim::{self, Checkbox, Kind, Radio, Segmented, Tone};
+use ecad_ui::tokens::{size, space};
+use eframe::egui::{self, RichText};
 use serde_json::{Value, json};
 
 /// The dialog's window id.
@@ -174,220 +178,193 @@ impl RenumberDialog {
 
     /// The dialog (design §3).
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
+        let title = if self.finalise { "Finalise numbering" } else { "Renumber" };
+        let n = self.preview["changes"].as_u64().unwrap_or(0);
+        let blocked = if n == 0 { Some("Nothing to change.") } else { self.params(false).is_err().then_some("Fix Start and Digits first.") };
+        let read_only = self.read_only;
+        let shown = Dialog::new(egui::Id::unique(DIALOG_ID), title, DIALOG_ID).medium().show(
+            ctx,
+            |ui| self.body(ui),
+            |ui| {
+                // Laid right to left: the primary first.
+                let apply = !read_only && action(ui, &format!("Apply {n}"), Kind::Primary, "ecad.renumber.apply", blocked).clicked();
+                let cancel = action(ui, "Cancel", Kind::Secondary, "ecad.renumber.cancel", None).clicked();
+                (apply, cancel)
+            },
+        );
+        let (apply, cancel) = shown.footer;
+        if apply && let Ok((c, v)) = self.params(false) {
+            return Some(Out::Apply(c, v));
+        }
+        if cancel || shown.closed {
+            return Some(Out::Cancel);
+        }
+        match shown.body {
+            (Some(o), _) => Some(o),
+            (None, true) => self.ask(),
+            (None, false) => None,
+        }
+    }
+
+    /// The options and the preview. Returns a go-to, and whether an option changed.
+    fn body(&mut self, ui: &mut egui::Ui) -> (Option<Out>, bool) {
         let mut out = None;
         let mut changed = false;
-        let red = Color32::from_rgb(0xe0, 0x60, 0x60);
-        let orange = Color32::from_rgb(0xff, 0x7f, 0x00);
-        let title = if self.finalise { "Finalise numbering" } else { "Renumber" };
-        egui::Window::new(title)
-            .id(egui::Id::unique(DIALOG_ID))
-            .collapsible(false)
-            .resizable(true)
-            .default_width(560.0)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.style_mut().spacing.item_spacing = egui::vec2(8.0, 4.0);
-                ui.label(RichText::new(title).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, DIALOG_ID));
-                let fixed = self.finalise;
-                ui.add_enabled_ui(!fixed, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("What").small());
-                        for (w, label, name) in [
-                            (What::Devices, "Dev", "devices"),
-                            (What::Cables, "Cbl", "cables"),
-                            (What::Wires, "Wire", "wires"),
-                            (What::Terminals, "Trm", "terminals"),
-                            (What::All, "All", "all"),
-                        ] {
-                            if ui.radio(self.what == w, RichText::new(label).small()).accessible_name(format!("ecad.renumber.kind.{name}")).clicked()
-                            {
-                                self.what = w;
-                                if w == What::Wires && self.which == Which::Prefix {
-                                    self.prefix = self.potentials.first().cloned().unwrap_or_default();
-                                }
-                                changed = true;
-                            }
-                        }
-                    });
-                    ui.add_space(4.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Which").small());
-                        if ui.radio(self.which == Which::All, RichText::new("All").small()).accessible_name("ecad.renumber.scope.all").clicked() {
-                            self.which = Which::All;
-                            changed = true;
-                        }
-                        let n = self.selection.len();
-                        let sel = ui
-                            .add_enabled(n > 0, egui::RadioButton::new(self.which == Which::Selection, RichText::new(format!("Sel ({n})")).small()))
-                            .accessible_name("ecad.renumber.scope.selection");
-                        if sel.clicked() {
-                            self.which = Which::Selection;
-                            changed = true;
-                        }
-                        if ui
-                            .radio(self.which == Which::Prefix, RichText::new("Prefix").small())
-                            .accessible_name("ecad.renumber.scope.prefix")
-                            .clicked()
-                        {
-                            self.which = Which::Prefix;
-                            changed = true;
-                        }
-                        let list = if self.what == What::Wires { self.potentials.clone() } else { self.prefixes.clone() };
-                        egui::ComboBox::from_id_salt("ecad.renumber.prefix").selected_text(RichText::new(&self.prefix).small().monospace()).show_ui(
-                            ui,
-                            |ui| {
-                                for p in &list {
-                                    if ui.selectable_label(*p == self.prefix, RichText::new(p).small().monospace()).clicked() {
-                                        self.prefix = p.clone();
-                                        self.which = Which::Prefix;
-                                        changed = true;
-                                    }
-                                }
-                            },
-                        );
-                        let has_folders = !self.folders.is_empty();
-                        if ui
-                            .add_enabled(has_folders, egui::RadioButton::new(self.which == Which::Folder, RichText::new("Folder").small()))
-                            .accessible_name("ecad.renumber.scope.folder")
-                            .clicked()
-                        {
-                            self.which = Which::Folder;
-                            changed = true;
-                        }
-                        let shown = self.folders.get(self.folder).map(|f| f.1.clone()).unwrap_or_default();
-                        egui::ComboBox::from_id_salt("ecad.renumber.folder").selected_text(RichText::new(shown).small()).show_ui(ui, |ui| {
-                            for (i, (_, path)) in self.folders.iter().enumerate() {
-                                if ui.selectable_label(i == self.folder, RichText::new(path).small()).clicked() {
-                                    self.folder = i;
-                                    self.which = Which::Folder;
-                                    changed = true;
-                                }
-                            }
-                        });
-                        let prov = format!("Prov ({})", self.provisional);
-                        if ui
-                            .radio(self.which == Which::Provisional, RichText::new(prov).small())
-                            .accessible_name("ecad.renumber.scope.provisional")
-                            .clicked()
-                        {
-                            self.which = Which::Provisional;
-                            changed = true;
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                ui.label(RichText::new("Order  page · col · row").small());
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Start").small());
-                    let next = self.finalise || (self.which == Which::Provisional && self.start.trim() == "next");
-                    let r = ui.add_enabled(!next, egui::TextEdit::singleline(&mut self.start).desired_width(70.0).font(egui::TextStyle::Monospace));
-                    let r = r.on_disabled_hover_text("Each prefix continues after its highest number in use.");
-                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, "ecad.renumber.start"));
-                    if r.changed() {
+        ui.spacing_mut().item_spacing.y = space::XS;
+        let fixed = self.finalise;
+        ui.add_enabled_ui(!fixed, |ui| {
+            prim::property_row(ui, "What", |ui| {
+                const WHAT: [What; 5] = [What::Devices, What::Cables, What::Wires, What::Terminals, What::All];
+                let mut k = WHAT.iter().position(|w| *w == self.what).unwrap_or(0);
+                if Segmented::new(&mut k, &["Devices", "Cables", "Wires", "Terminals", "All"]).name("ecad.renumber.kind").show(ui).clicked.is_some() {
+                    let w = WHAT.get(k).copied().unwrap_or(What::Devices);
+                    self.what = w;
+                    if w == What::Wires && self.which == Which::Prefix {
+                        self.prefix = self.potentials.first().cloned().unwrap_or_default();
+                    }
+                    changed = true;
+                }
+            });
+            prim::property_row(ui, "Which", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if Radio::new(self.which == Which::All, "All").show(ui).accessible_name("ecad.renumber.scope.all").clicked() {
+                        self.which = Which::All;
                         changed = true;
                     }
-                    ui.label(RichText::new("Digits").small());
-                    let r = ui.add_enabled(
-                        !self.finalise,
-                        egui::TextEdit::singleline(&mut self.digits).desired_width(30.0).font(egui::TextStyle::Monospace),
-                    );
-                    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, "ecad.renumber.digits"));
-                    if r.changed() {
+                    let n = self.selection.len();
+                    let label = format!("Selection ({n})");
+                    let sel = ui.add_enabled_ui(n > 0, |ui| Radio::new(self.which == Which::Selection, &label).show(ui)).inner;
+                    if sel.accessible_name("ecad.renumber.scope.selection").clicked() {
+                        self.which = Which::Selection;
                         changed = true;
                     }
-                    if !self.finalise {
-                        ui.checkbox(&mut self.new_tags, RichText::new("Also for new tags").small()).accessible_name("ecad.renumber.newtags");
-                    }
-                });
-                if let Err(e) = self.params(true) {
-                    ui.label(RichText::new(e).small().color(red));
-                }
-                ui.separator();
-                let p = self.preview.clone();
-                ui.label(RichText::new(p["summary"].as_str().unwrap_or_default()).small().strong());
-                let rows: Vec<Value> = p["rows"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .chain(p["skipped"].as_array().cloned().unwrap_or_default())
-                    .collect();
-                let all = self.what == What::All || self.finalise;
-                ui.label(
-                    RichText::new(format!("{}{:<8} {:<3}{:<8} {:<10} Desc", if all { "     " } else { "" }, "Old", "", "New", "At"))
-                        .small()
-                        .monospace(),
-                );
-                egui::ScrollArea::vertical().id_salt("ecad.renumber.rows").max_height(320.0).auto_shrink([false, true]).show_rows(
-                    ui,
-                    ROW_H,
-                    rows.len(),
-                    |ui, range| {
-                        for i in range {
-                            let Some(r) = rows.get(i) else { continue };
-                            let skipped = r.get("why").is_some_and(|w| !w.is_null()) || r.get("tag").is_some();
-                            let (old, new, mark, at) = if r.get("tag").is_some() {
-                                (r["tag"].as_str().unwrap_or_default().to_string(), String::new(), "–".to_string(), String::new())
-                            } else {
-                                (
-                                    r["old"].as_str().unwrap_or_default().to_string(),
-                                    r["new"].as_str().unwrap_or_default().to_string(),
-                                    r["mark"].as_str().unwrap_or_default().to_string(),
-                                    r["at"].as_str().unwrap_or_default().to_string(),
-                                )
-                            };
-                            let new = if matches!(mark.as_str(), "→" | "F" | "=") { new } else { String::new() };
-                            let why = r["why"].as_str().or_else(|| r["desc"].as_str()).unwrap_or_default();
-                            let kind = match r["kind"].as_str() {
-                                Some("devices") => "Dev  ",
-                                Some("cables") => "Cbl  ",
-                                Some("terminals") => "Trm  ",
-                                _ => "Wire ",
-                            };
-                            let text = format!("{}{old:<8} {mark:<3}{new:<8} {at:<10} {why}", if all { kind } else { "" });
-                            let colour = if old.contains('?') && !skipped { orange } else { ui.visuals().text_color() };
-                            let resp = ui.add(egui::Label::new(RichText::new(text).small().monospace().color(colour)).sense(egui::Sense::click()));
-                            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.renumber.row.{i}")));
-                            if resp.clicked()
-                                && let (Some(page), Some(pt)) = (r["page"].as_str(), r["point"].as_array())
-                            {
-                                let x = pt.first().and_then(Value::as_f64).unwrap_or(0.0);
-                                let y = pt.get(1).and_then(Value::as_f64).unwrap_or(0.0);
-                                out = Some(Out::Goto(page.to_string(), [x, y]));
-                            }
-                        }
-                    },
-                );
-                if p["more"].as_u64().unwrap_or(0) > 0 {
-                    ui.label(RichText::new(format!("… {} more", p["more"])).small());
-                }
-                ui.separator();
-                if let Some(e) = &self.error {
-                    ui.label(RichText::new(e).small().color(red));
-                }
-                ui.horizontal(|ui| {
-                    let n = p["changes"].as_u64().unwrap_or(0);
-                    if self.read_only {
-                        ui.label(RichText::new("Read-only: preview only.").small());
-                    } else {
-                        let ok = ui
-                            .add_enabled(n > 0 && self.params(false).is_ok(), egui::Button::new(format!("Apply {n}")))
-                            .accessible_name("ecad.renumber.apply");
-                        let ok = ok.on_disabled_hover_text("Nothing to change.");
-                        if ok.clicked()
-                            && let Ok((c, v)) = self.params(false)
-                        {
-                            out = Some(Out::Apply(c, v));
-                        }
-                    }
-                    if ui.button("Cancel").accessible_name("ecad.renumber.cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        out = Some(Out::Cancel);
+                    let prov = format!("Provisional ({})", self.provisional);
+                    if Radio::new(self.which == Which::Provisional, &prov).show(ui).accessible_name("ecad.renumber.scope.provisional").clicked() {
+                        self.which = Which::Provisional;
+                        changed = true;
                     }
                 });
             });
-        if out.is_none() && changed {
-            out = self.ask();
+            prim::property_row(ui, "", |ui| {
+                if Radio::new(self.which == Which::Prefix, "Prefix").show(ui).accessible_name("ecad.renumber.scope.prefix").clicked() {
+                    self.which = Which::Prefix;
+                    changed = true;
+                }
+                let list = if self.what == What::Wires { self.potentials.clone() } else { self.prefixes.clone() };
+                let names: Vec<&str> = list.iter().map(String::as_str).collect();
+                let mut k = list.iter().position(|p| *p == self.prefix).unwrap_or(usize::MAX);
+                if Select::new(&mut k, &names, "ecad.renumber.prefix").width(PICK_WIDTH).show(ui).changed()
+                    && let Some(p) = list.get(k)
+                {
+                    self.prefix = p.clone();
+                    self.which = Which::Prefix;
+                    changed = true;
+                }
+                ui.add_space(space::L);
+                let has_folders = !self.folders.is_empty();
+                let folder = ui.add_enabled_ui(has_folders, |ui| Radio::new(self.which == Which::Folder, "Folder").show(ui)).inner;
+                if folder.accessible_name("ecad.renumber.scope.folder").clicked() {
+                    self.which = Which::Folder;
+                    changed = true;
+                }
+                let paths: Vec<&str> = self.folders.iter().map(|(_, p)| p.as_str()).collect();
+                let mut k = self.folder;
+                let r = ui.add_enabled_ui(has_folders, |ui| Select::new(&mut k, &paths, "ecad.renumber.folder").width(PICK_WIDTH).show(ui)).inner;
+                if r.changed() && k < self.folders.len() {
+                    self.folder = k;
+                    self.which = Which::Folder;
+                    changed = true;
+                }
+            });
+        });
+        prim::property_row(ui, "Order", |ui| control::read_text(ui, "page \u{b7} column \u{b7} row", Decor::default(), "Order"));
+        prim::property_row(ui, "Start", |ui| {
+            let next = self.finalise || (self.which == Which::Provisional && self.start.trim() == "next");
+            let r = ui.add_enabled_ui(!next, |ui| TextEntry::new(&mut self.start, "ecad.renumber.start").width(NUMBER_WIDTH).show(ui)).inner;
+            if r.on_disabled_hover_text("Each prefix continues after its highest number in use.").changed() {
+                changed = true;
+            }
+            ui.add_space(space::L);
+            prim::caption(ui, "DIGITS");
+            let r =
+                ui.add_enabled_ui(!self.finalise, |ui| TextEntry::new(&mut self.digits, "ecad.renumber.digits").width(NUMBER_WIDTH).show(ui)).inner;
+            if r.changed() {
+                changed = true;
+            }
+            if !self.finalise {
+                ui.add_space(space::L);
+                Checkbox::new(&mut self.new_tags, "Also for new tags").show(ui).accessible_name("ecad.renumber.newtags");
+            }
+        });
+        if let Err(e) = self.params(true) {
+            prim::note(ui, &e, Tone::Error);
         }
-        out
+        ui.separator();
+        let p = self.preview.clone();
+        prim::body(ui, p["summary"].as_str().unwrap_or_default(), false);
+        let rows: Vec<Value> =
+            p["rows"].as_array().cloned().unwrap_or_default().into_iter().chain(p["skipped"].as_array().cloned().unwrap_or_default()).collect();
+        let all = self.what == What::All || self.finalise;
+        let s = ecad_ui::SHELL;
+        let mono = |text: String, ink| RichText::new(text).monospace().color(ecad_ui::color(ink));
+        ui.label(mono(format!("{}{:<8} {:<3}{:<8} {:<10} Desc", if all { "     " } else { "" }, "Old", "", "New", "At"), s.text_3));
+        egui::ScrollArea::vertical().id_salt("ecad.renumber.rows").max_height(ROWS_HEIGHT).auto_shrink([false, true]).show_rows(
+            ui,
+            ROW_H,
+            rows.len(),
+            |ui, range| {
+                for i in range {
+                    let Some(r) = rows.get(i) else { continue };
+                    let skipped = r.get("why").is_some_and(|w| !w.is_null()) || r.get("tag").is_some();
+                    let (old, new, mark, at) = if r.get("tag").is_some() {
+                        (r["tag"].as_str().unwrap_or_default().to_string(), String::new(), "–".to_string(), String::new())
+                    } else {
+                        (
+                            r["old"].as_str().unwrap_or_default().to_string(),
+                            r["new"].as_str().unwrap_or_default().to_string(),
+                            r["mark"].as_str().unwrap_or_default().to_string(),
+                            r["at"].as_str().unwrap_or_default().to_string(),
+                        )
+                    };
+                    let new = if matches!(mark.as_str(), "→" | "F" | "=") { new } else { String::new() };
+                    let why = r["why"].as_str().or_else(|| r["desc"].as_str()).unwrap_or_default();
+                    let kind = match r["kind"].as_str() {
+                        Some("devices") => "Dev  ",
+                        Some("cables") => "Cbl  ",
+                        Some("terminals") => "Trm  ",
+                        _ => "Wire ",
+                    };
+                    let text = format!("{}{old:<8} {mark:<3}{new:<8} {at:<10} {why}", if all { kind } else { "" });
+                    // A provisional tag in the provisional colour, as everywhere (design §5).
+                    let ink = if old.contains('?') && !skipped { s.provisional } else { s.text };
+                    let resp = ui.add(egui::Label::new(mono(text, ink)).sense(egui::Sense::click()));
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.renumber.row.{i}")));
+                    if resp.clicked()
+                        && let (Some(page), Some(pt)) = (r["page"].as_str(), r["point"].as_array())
+                    {
+                        let x = pt.first().and_then(Value::as_f64).unwrap_or(0.0);
+                        let y = pt.get(1).and_then(Value::as_f64).unwrap_or(0.0);
+                        out = Some(Out::Goto(page.to_string(), [x, y]));
+                    }
+                }
+            },
+        );
+        if p["more"].as_u64().unwrap_or(0) > 0 {
+            prim::body(ui, &format!("\u{2026} {} more", p["more"]), true);
+        }
+        if self.read_only {
+            prim::note(ui, "Read-only: preview only.", Tone::Neutral);
+        }
+        if let Some(e) = &self.error {
+            prim::note(ui, e, Tone::Error);
+        }
+        (out, changed)
     }
 }
+
+/// The height of the preview's rows.
+const ROWS_HEIGHT: f32 = size::DIALOG_S - size::ROW_GROUP * 2.0;
+/// The width of the prefix and folder pickers.
+const PICK_WIDTH: f32 = size::LABEL_COLUMN + size::CONTROL;
+/// The width of Start and Digits.
+const NUMBER_WIDTH: f32 = size::LABEL_COLUMN * 0.75;
