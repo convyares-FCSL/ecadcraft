@@ -177,6 +177,7 @@ px at 100 % UI scale (`ecad_tokens::space`, `ecad_tokens::size`).
 | `size.page_well` | `880 px` | The bottom bar's page well |
 | `size.icon_button` | `28 px` | Icon button outside the tool strip |
 | `size.icon` | `16 px` | Icon grid |
+| `size.label_column` | `96 px` | The label column of a panel's value rows (inspector, Project panel) |
 
 ## Radii
 

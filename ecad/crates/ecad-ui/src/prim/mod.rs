@@ -19,7 +19,7 @@ pub use button::{Button, IconButton, Kind, button, icon_button};
 pub use field::{Field, FieldKind, field};
 pub use label::{Chip, ChipResponse, badge, chip, keycap, pill};
 pub use row::{RowKind, RowSpec, provisional, read_value, row};
-pub use segmented::{Segmented, segmented};
+pub use segmented::{Segmented, SegmentedResponse, segmented};
 
 use ecad_tokens::Color;
 use ecad_tokens::ui_type::TypeStyle;

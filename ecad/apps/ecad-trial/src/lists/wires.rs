@@ -191,6 +191,9 @@ pub struct WiresView {
     pub group: usize,
     /// Where each row's wire is drawn (its go-to).
     pub gos: Vec<Option<(ecad_model::PageId, ecad_model::Pt)>>,
+    /// Whether each row's colour and cross-section are its own, overriding its category's (the
+    /// right panel's hints: "set here" or "from category").
+    pub own: Vec<(bool, bool)>,
     seen: Option<(u64, u64)>,
     /// How many times the copy was taken (tests: the update map).
     pub copies: u64,
@@ -201,7 +204,7 @@ impl Default for WiresView {
         let mut table = Table::new("ecad.lists.wires", "wires");
         table.toolbar = false;
         table.empty = "No wires yet.";
-        Self { source: WiresSource::default(), table, group: 1, gos: Vec::new(), seen: None, copies: 0 }
+        Self { source: WiresSource::default(), table, group: 1, gos: Vec::new(), own: Vec::new(), seen: None, copies: 0 }
     }
 }
 
@@ -216,6 +219,7 @@ impl WiresView {
         self.source.rows.take(o.wire_table());
         self.gos = o.wires().iter().map(|w| w.go).collect();
         self.source.ids = o.wires().iter().map(|w| w.conductor).collect();
+        self.own = o.wires().iter().map(|w| (w.colour_own, w.cross_section_own)).collect();
         self.copies += 1;
         self.table.update(&self.source, Changed::All);
         self.apply_group();
