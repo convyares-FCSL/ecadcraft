@@ -14,7 +14,7 @@ use ecad_model::style::StyleLayer;
 use ecad_model::{Document, StyleRef};
 
 use super::{Catalogue, Field};
-use crate::defaults::{Kind, Scope, Value};
+use crate::defaults::{Kind, Scope, Slot};
 use crate::rating::dataset::{self, Dataset};
 
 /// The catalogue word.
@@ -30,10 +30,10 @@ fn any_text(_: &str) -> bool {
     true
 }
 
-static FIELDS: &[Field] = &[
-    Field { key: SOURCE, label: "Source", kind: Kind::Parsed { max_chars: MAX_SOURCE_CHARS, parse: any_text }, builtin: Value::Text(""), over: None },
+static FIELDS: [Field; 2] = [
+    Field { key: SOURCE, label: "Source", kind: Kind::Parsed { max_chars: MAX_SOURCE_CHARS, parse: any_text }, slot: Slot::new(), over: None },
     // Read raw by `rows_text`; listed so `style` knows the key.
-    Field { key: ROWS, label: "Rows", kind: Kind::Parsed { max_chars: 1, parse: any_text }, builtin: Value::Text(""), over: None },
+    Field { key: ROWS, label: "Rows", kind: Kind::Parsed { max_chars: 1, parse: any_text }, slot: Slot::new(), over: None },
 ];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
@@ -42,7 +42,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The rating table catalogue: no built-in entries.
 pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Rating tables", one: "Rating table", fields: FIELDS, builtins: &[], choices, project_field: None };
+    Catalogue { word: WORD, plural: "Rating tables", one: "Rating table", fields: &FIELDS, builtins: &[], choices, project_field: None };
 
 /// The project's chosen rating table, when it names one that exists.
 pub fn chosen(doc: &Document) -> Option<StyleRef> {

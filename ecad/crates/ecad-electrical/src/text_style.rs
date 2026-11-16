@@ -474,7 +474,7 @@ pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
 /// The family CADCraft's resolver looks for when the project's family is missing: the built-in of
 /// `text.font` (§2.2 step 3).
 pub(crate) fn default_family() -> &'static str {
-    match d::FONT.builtin {
+    match d::FONT.builtin() {
         defaults::Value::Text(t) => t,
         _ => "",
     }
@@ -1041,7 +1041,7 @@ mod tests {
         (TextKind::Reference, 2.0, Weight::Regular),
         // Brief 049 (design 049 §7).
         (TextKind::ContinuationCaption, 2.5, Weight::Regular),
-        (TextKind::WireLabel, ecad_model::wiring::DEFAULT_LABEL_HEIGHT, Weight::Regular),
+        (TextKind::WireLabel, 2.5, Weight::Regular),
         (TextKind::CableText, 1.6, Weight::Regular),
         (TextKind::LocationLabel, 1.6, Weight::Regular),
         (TextKind::TitleValue, 2.5, Weight::Regular),
@@ -1110,7 +1110,7 @@ mod tests {
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });
         doc.settings.length_unit = LengthUnit::Inch;
         assert!((text_style(&doc, TextKind::Tag).height - 3.0 / 25.4).abs() < 1e-12);
-        doc.settings.wiring.label_height = 2.0;
+        doc.settings.wiring.label_height = Some(2.0);
         assert!((text_style(&doc, TextKind::WireLabel).height - 2.0 / 25.4).abs() < 1e-12);
     }
 

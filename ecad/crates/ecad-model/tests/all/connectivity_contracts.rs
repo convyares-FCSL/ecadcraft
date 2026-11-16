@@ -286,7 +286,7 @@ fn settings_changes_never_renumber_until_renumber_wires() {
     let before = p.doc().settings.clone();
     let mut after = before.clone();
     after.wiring.scheme = Scheme::Page;
-    after.wiring.digits = 3;
+    after.wiring.digits = Some(3);
     p.commit(vec![Op::SetProjectSettings { before, after }]);
     assert_eq!(p.number(a).as_deref(), Some("24V-01"));
     let b = p.wire_props(None, None, &[("potential", "24V")]);

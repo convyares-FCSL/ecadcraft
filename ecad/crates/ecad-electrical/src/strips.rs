@@ -1213,7 +1213,7 @@ fn far_cell(doc: &Document, o: &Outputs, w: ConductorId, far: End, cx: &PageCx) 
         _ => None,
     };
     let cell = o.end_cell_of(doc, t, at, cx);
-    (cell.text(doc.settings.reference_style), comp)
+    (cell.text(doc.settings.reference_style()), comp)
 }
 
 fn clean(v: Option<&String>) -> Option<String> {
@@ -1612,7 +1612,7 @@ fn type_parts(
 impl StripData {
     /// Its kept sheet and BOM row counts, from its rows and accessories.
     fn finish(&mut self) {
-        self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::ROWS_PER_SHEET - 1).max(1);
+        self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::rows_per_sheet() - 1).max(1);
         self.bom_rows = self.types.iter().filter(|t| t.qty() > 0).count() + self.acc.bom.len();
     }
 

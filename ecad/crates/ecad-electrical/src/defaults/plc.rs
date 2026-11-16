@@ -17,7 +17,7 @@
 
 use ecad_model::ProjectSettings;
 
-use super::{Entry, Kind, Level, ProjectSource, Value};
+use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 const GROUP: &str = "PLC";
 const BRIEF: &str = "045";
@@ -34,7 +34,7 @@ pub static SLOTS: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Number { min: 1.0, max: 999.0 },
-    builtin: Value::Number(32.0),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -45,13 +45,13 @@ pub static SLOT_FIRST: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Choice(&["0", "1"]),
-    builtin: Value::Choice("1"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
 
 macro_rules! channels {
-    ($($name:ident = $code:literal, $builtin:literal, $label:literal;)*) => {
+    ($($name:ident = $code:literal, $label:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("plc.", $code, ".channels"),
@@ -59,7 +59,7 @@ macro_rules! channels {
                 group: GROUP,
                 brief: BRIEF,
                 kind: Kind::Number { min: 0.0, max: 256.0 },
-                builtin: Value::Number($builtin),
+                slot: Slot::new(),
                 levels: SP,
                 project: ProjectSource::Property,
             };
@@ -76,12 +76,12 @@ macro_rules! channels {
 }
 
 channels! {
-    CHANNELS_DI = "di", 16.0, "DI";
-    CHANNELS_DQ = "dq", 16.0, "DQ";
-    CHANNELS_AI = "ai", 4.0, "AI";
-    CHANNELS_AO = "ao", 4.0, "AO";
-    CHANNELS_RTD = "rtd", 4.0, "RTD";
-    CHANNELS_IOL = "iol", 4.0, "IO-Link";
+    CHANNELS_DI = "di", "DI";
+    CHANNELS_DQ = "dq", "DQ";
+    CHANNELS_AI = "ai", "AI";
+    CHANNELS_AO = "ao", "AO";
+    CHANNELS_RTD = "rtd", "RTD";
+    CHANNELS_IOL = "iol", "IO-Link";
 }
 
 /// Whether `t` is a caption pattern: text whose only `{…}` parts are `{rack}`, `{slot}` and
@@ -110,7 +110,7 @@ pub static CAPTION: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: 40, parse: caption_ok },
-    builtin: Value::Text("{rack} slot {slot}"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -121,7 +121,7 @@ pub static CAPTION_SHOW: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Choice(ON_OFF),
-    builtin: Value::Choice("on"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -132,7 +132,7 @@ fn prefix_ok(t: &str) -> bool {
 }
 
 macro_rules! prefixes {
-    ($($name:ident = $key:literal, $prefix:literal, $symbol:literal;)*) => {
+    ($($name:ident = $key:literal, $symbol:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("plc.", $key, ".prefix"),
@@ -140,7 +140,7 @@ macro_rules! prefixes {
                 group: "Tag prefixes",
                 brief: BRIEF,
                 kind: Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTERS + 1, parse: prefix_ok },
-                builtin: Value::Text($prefix),
+                slot: Slot::new(),
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -165,15 +165,15 @@ macro_rules! prefixes {
 }
 
 prefixes! {
-    PLCIM = "plcim", "A", "PLC head module";
-    PLCPM = "plcpm", "A", "PLC power module";
-    PLCCM = "plccm", "A", "PLC communication module";
-    CHDI = "chdi", "A", "PLC digital input channel";
-    CHDQ = "chdq", "A", "PLC digital output channel";
-    CHAI = "chai", "A", "PLC analogue input channel";
-    CHAO = "chao", "A", "PLC analogue output channel";
-    CHRTD = "chrtd", "A", "PLC RTD channel";
-    CHIOL = "chiol", "A", "PLC IO-Link port";
+    PLCIM = "plcim", "PLC head module";
+    PLCPM = "plcpm", "PLC power module";
+    PLCCM = "plccm", "PLC communication module";
+    CHDI = "chdi", "PLC digital input channel";
+    CHDQ = "chdq", "PLC digital output channel";
+    CHAI = "chai", "PLC analogue input channel";
+    CHAO = "chao", "PLC analogue output channel";
+    CHRTD = "chrtd", "PLC RTD channel";
+    CHIOL = "chiol", "PLC IO-Link port";
 }
 
 pub static CHANNEL_FIRST: Entry = Entry {
@@ -182,7 +182,7 @@ pub static CHANNEL_FIRST: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(&["0", "1"]),
-    builtin: Value::Choice("0"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -193,7 +193,7 @@ pub static PINS: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(&["role", "channel"]),
-    builtin: Value::Choice("role"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -204,7 +204,7 @@ pub static ADDRESS_STYLE: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(&["byte.bit", "iec", "percent", "slot", "none"]),
-    builtin: Value::Choice("byte.bit"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -215,7 +215,7 @@ pub static START_INPUT: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Number { min: 0.0, max: 65535.0 },
-    builtin: Value::Number(0.0),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -226,7 +226,7 @@ pub static START_OUTPUT: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Number { min: 0.0, max: 65535.0 },
-    builtin: Value::Number(0.0),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -237,7 +237,7 @@ pub static ANALOG_BYTES: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Number { min: 1.0, max: 16.0 },
-    builtin: Value::Number(2.0),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -248,7 +248,7 @@ pub static IOL_BYTES: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Number { min: 1.0, max: 32.0 },
-    builtin: Value::Number(2.0),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -259,7 +259,7 @@ pub static SPARE_TEXT: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Text { max_chars: 16 },
-    builtin: Value::Text("Spare"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -270,7 +270,7 @@ pub static CHANNEL_SHOW: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(ON_OFF),
-    builtin: Value::Choice("on"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -281,7 +281,7 @@ pub static ADDRESS_SHOW: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(ON_OFF),
-    builtin: Value::Choice("on"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -292,7 +292,7 @@ pub static ROTATION: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(&["90", "0"]),
-    builtin: Value::Choice("90"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -303,7 +303,7 @@ pub static XREF_TABLE: Entry = Entry {
     group: GROUP,
     brief: "045",
     kind: Kind::Choice(ON_OFF),
-    builtin: Value::Choice("off"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -335,7 +335,7 @@ pub static FRAME_SHOW: Entry = Entry {
     group: GROUP,
     brief: "051",
     kind: Kind::Choice(ON_OFF),
-    builtin: Value::Choice("on"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -346,7 +346,7 @@ pub static PAGE_TITLE: Entry = Entry {
     group: GROUP,
     brief: "051",
     kind: Kind::Parsed { max_chars: 40, parse: page_title_ok },
-    builtin: Value::Text("{tag} {type} {channels}"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -358,7 +358,7 @@ pub static SAFE_DQ: Entry = Entry {
     group: GROUP,
     brief: "056",
     kind: Kind::Choice(&["off", "on", "hold"]),
-    builtin: Value::Choice("off"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -370,7 +370,7 @@ pub static SAFE_AO: Entry = Entry {
     group: GROUP,
     brief: "056",
     kind: Kind::Text { max_chars: 16 },
-    builtin: Value::Text("hold"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };

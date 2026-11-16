@@ -352,7 +352,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
 
 /// The Sheet combo's choices for a page: the project's sheet, then the presets.
 pub fn sheet_choices(doc: &Document) -> Vec<String> {
-    let mut out = vec![format!("Project ({})", doc.settings.sheet.summary())];
+    let mut out = vec![format!("Project ({})", doc.settings.sheet().summary())];
     out.extend(ecad_model::sheet::PRESETS.iter().map(|p| p.0.to_string()));
     out
 }
@@ -386,7 +386,7 @@ fn page_section(doc: &Document, page: PageId) -> Section {
         "Sheet",
         match prop(ecad_model::sheet::SHEET_KEY) {
             Some(t) => t,
-            None => format!("Project ({})", doc.settings.sheet.summary()),
+            None => format!("Project ({})", doc.settings.sheet().summary()),
         },
     );
     sheet.choices = sheet_choices(doc);
@@ -506,7 +506,7 @@ fn device_section(
                 .or_else(|| r.connection_points.values().next().copied());
             let place = at
                 .and_then(|p| ecad_model::derive::place_on(&grid, &book.number(doc, r.page), p))
-                .map_or_else(|| "?".into(), |pl| pl.text(doc.settings.reference_style));
+                .map_or_else(|| "?".into(), |pl| pl.text(doc.settings.reference_style()));
             rows.push(Row::ro("where", "Where", place));
         }
         format!("ECAD · DEVICE {tag}")

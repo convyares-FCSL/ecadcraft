@@ -502,13 +502,13 @@ fn ac6_a_types_sheet_reaches_its_pages_and_undo_restores() {
 }
 
 /// FP3, §3.1: the chain page `sheet` → type's stored sheet (project record, then standard record)
-/// → `settings.sheet` → A3; a malformed stored sheet falls through and Checks has `page-type-field`.
+/// → `settings.sheet()` → A3; a malformed stored sheet falls through and Checks has `page-type-field`.
 #[test]
 fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     let (mut h, p) = pages(0x54_0602, 2);
     assert!(sheet_text(&mut h, p[0]).starts_with("A3"), "A3 by default");
     h.run("projectprops", json!({"sheet": "A1"})).unwrap();
-    assert!(sheet_text(&mut h, p[0]).starts_with("A1"), "settings.sheet");
+    assert!(sheet_text(&mut h, p[0]).starts_with("A1"), "settings.sheet()");
     h.run("standard", json!({"new": "House"})).unwrap();
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "layer": "standard", "fields": {"sheet": "A0"}})).unwrap();
     assert!(sheet_text(&mut h, p[0]).starts_with("A0"), "the standard's record");
@@ -520,7 +520,7 @@ fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     // `project` in the project's record means the project's sheet (§2.1), not the standard's
     // record below it (question 2 in the tester's plan).
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "project"}})).unwrap();
-    assert!(sheet_text(&mut h, p[1]).starts_with("A1"), "`project`: settings.sheet");
+    assert!(sheet_text(&mut h, p[1]).starts_with("A1"), "`project`: settings.sheet()");
 }
 
 /// FP3: a stored type record whose `sheet` does not parse or is out of limits (`A0 999x999`, a

@@ -245,7 +245,7 @@ pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
         .into_iter()
         .map(|r| {
             let spec = sheet::frame_field(doc, &r.id, sheet::FRAME_SHEET_FIELD).and_then(sheet::parse_frame_sheet);
-            let shown = spec.unwrap_or(doc.settings.sheet);
+            let shown = spec.unwrap_or(doc.settings.sheet());
             let layout = title_block_cmds::layout_of(doc, &r.id, &shown);
             let pages = title_block_cmds::pages_using(doc, &r.id).len();
             let sheet_text = match spec {

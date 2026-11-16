@@ -166,45 +166,46 @@ pub fn colour_text(style: ColourStyle, value: &str) -> String {
 #[serde(default)]
 pub struct WiringSettings {
     pub scheme: Scheme,
-    /// Digits the sequence is padded to (1-6; the `page-column` scheme does not pad).
-    pub digits: u8,
+    /// Digits the sequence is padded to (1-6; the `page-column` scheme does not pad), when the
+    /// project chose (brief 066, F3: `None` follows the built-in, [`WiringSettings::digits`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digits: Option<u8>,
     /// The prefix of a net with no potential (design 022 Q8: empty, so `07`).
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
-    /// How label colours are written (IEC 60757 codes by default).
-    pub colour_style: ColourStyle,
-    /// Text height of conductor labels, millimetres ([`DEFAULT_LABEL_HEIGHT`]; read through
-    /// [`WiringSettings::label_height`], which keeps it in range).
-    pub label_height: f64,
+    /// How label colours are written, when the project chose (brief 066, F3: `None` follows the
+    /// built-in, [`WiringSettings::colour_style`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub colour_style: Option<ColourStyle>,
+    /// Text height of conductor labels, millimetres, when the project chose one (brief 066, F2:
+    /// `None` follows the built-in, the registry's `text.wire_label.height`; a chosen value is kept
+    /// even when it equals the built-in). Read through the registry, which keeps it in range.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label_height: Option<f64>,
     /// Brief 032 (FP-W1): which wires get a label, [`LABEL_RULE_NET`] (one per net per page) or
-    /// [`LABEL_RULE_EACH`] ([`DEFAULT_LABEL_RULE`]; registered as `wiring.label_rule`).
-    pub label_rule: String,
+    /// [`LABEL_RULE_EACH`], when the project chose one (brief 066, F2: `None` follows the
+    /// registry's `wiring.label_rule`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label_rule: Option<String>,
     /// Brief 032 (FP-W1): with `each`, the shortest labelled wire (its longest segment),
-    /// millimetres, in [`LABEL_MIN_LENGTHS`] ([`DEFAULT_LABEL_MIN_LENGTH`]; registered as
-    /// `wiring.label_min_length`).
-    pub label_min_length: f64,
+    /// millimetres, in [`LABEL_MIN_LENGTHS`], when the project chose one (brief 066, F2: `None`
+    /// follows the registry's `wiring.label_min_length`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label_min_length: Option<f64>,
 }
 
 /// Brief 032: one label per net per page.
 pub const LABEL_RULE_NET: &str = "net";
 /// Brief 032: a label on every wire long enough.
 pub const LABEL_RULE_EACH: &str = "each";
-/// Brief 032 (owner Q6): the label rule of every project that does not set one.
-pub const DEFAULT_LABEL_RULE: &str = LABEL_RULE_NET;
-/// Brief 032: the default shortest labelled wire, millimetres.
-pub const DEFAULT_LABEL_MIN_LENGTH: f64 = 0.0;
 /// Brief 032: the shortest labelled wire lengths a project may set, millimetres.
 pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
 
-/// The default conductor label height, millimetres (owner, 2026-11-09: smaller than tags; 1.8
-/// until brief 031, FP6: 1.6, the dense-schematic size). Lane T's registry entry
-/// `text.wire_label.height` names it as its built-in.
-pub const DEFAULT_LABEL_HEIGHT: f64 = 1.6;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
-/// The default sequence padding.
-pub const DEFAULT_DIGITS: u8 = 2;
+/// The words of the colour styles ([`ColourStyle::name`]).
+pub const COLOUR_STYLE_WORDS: &[&str] = &["iec", "three-letter"];
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
@@ -231,27 +232,27 @@ impl Default for WiringSettings {
     fn default() -> Self {
         Self {
             scheme: Scheme::default(),
-            digits: DEFAULT_DIGITS,
+            digits: None,
             unclassified_prefix: String::new(),
             potentials: default_potentials(),
-            colour_style: ColourStyle::default(),
-            label_height: DEFAULT_LABEL_HEIGHT,
-            label_rule: DEFAULT_LABEL_RULE.to_string(),
-            label_min_length: DEFAULT_LABEL_MIN_LENGTH,
+            colour_style: None,
+            label_height: None,
+            label_rule: None,
+            label_min_length: None,
         }
     }
 }
 
 impl WiringSettings {
-    /// The label height in range ([`LABEL_HEIGHTS`]; the default for a value out of it or not
-    /// finite).
-    pub fn label_height(&self) -> f64 {
-        if LABEL_HEIGHTS.contains(&self.label_height) { self.label_height } else { DEFAULT_LABEL_HEIGHT }
+    /// The label height the project chose, if it chose one in range ([`LABEL_HEIGHTS`]); `None`
+    /// follows the built-in (brief 066).
+    pub fn label_height(&self) -> Option<f64> {
+        self.label_height.filter(|h| LABEL_HEIGHTS.contains(h))
     }
 
     /// `value` as a label writes it ([`colour_text`] in this project's style).
     pub fn colour(&self, value: &str) -> String {
-        colour_text(self.colour_style, value)
+        colour_text(self.colour_style(), value)
     }
 
     /// The table row of potential `name`, case-insensitively.
@@ -260,9 +261,14 @@ impl WiringSettings {
         self.potentials.iter().find(|p| p.name.eq_ignore_ascii_case(n))
     }
 
-    /// Digits clamped to 1..=[`MAX_DIGITS`].
+    /// The colour style: the project's choice, else the built-in ([`crate::builtins`]).
+    pub fn colour_style(&self) -> ColourStyle {
+        self.colour_style.unwrap_or_else(|| crate::builtins::builtins().colour_style)
+    }
+
+    /// Digits clamped to 1..=[`MAX_DIGITS`]: the project's choice, else the built-in.
     pub fn digits(&self) -> usize {
-        usize::from(self.digits.clamp(1, MAX_DIGITS))
+        usize::from(self.digits.unwrap_or_else(|| crate::builtins::builtins().wire_digits).clamp(1, MAX_DIGITS))
     }
 }
 
@@ -352,7 +358,7 @@ pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate:
 pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     let first_column = |page: Option<PageId>| match page {
         Some(p) => crate::sheet::Grid::of(doc, p).column_label(1),
-        None => doc.settings.sheet.column_labels.label(1),
+        None => doc.settings.sheet().column_labels.label(1),
     };
     let fallback = || ("1".to_string(), first_column(None));
     let Some(first) = net.first_conductor() else { return fallback() };

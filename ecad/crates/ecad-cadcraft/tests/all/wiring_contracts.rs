@@ -516,7 +516,8 @@ fn labels_are_small_and_never_touch() {
     let doc = h.doc();
     let labels = wires::labels_on_page(&doc, page);
     assert_eq!(labels.len(), 10);
-    assert!(labels.iter().all(|l| (l.height - ecad_model::wiring::DEFAULT_LABEL_HEIGHT).abs() < 1e-9));
+    let builtin = ecad_cadcraft::defaults::text::WIRE_LABEL_HEIGHT.builtin();
+    assert!(labels.iter().all(|l| ecad_cadcraft::defaults::Value::Length(l.height) == builtin));
     for (i, x) in labels.iter().enumerate() {
         for y in labels.iter().skip(i + 1) {
             let (p, q) = (wires::label_box(x), wires::label_box(y));

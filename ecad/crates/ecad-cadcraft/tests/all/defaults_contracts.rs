@@ -15,7 +15,7 @@ const SEED: u64 = 42;
 
 /// A valid value for `entry` that is not its built-in, as typed (`None` for a one-word choice).
 fn other_value(e: &Entry) -> Option<String> {
-    let builtin = defaults::Resolved { value: e.builtin, from: Source::Builtin }.text();
+    let builtin = defaults::Resolved { value: e.builtin(), from: Source::Builtin }.text();
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),

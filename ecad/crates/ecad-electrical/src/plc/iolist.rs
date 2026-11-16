@@ -91,7 +91,7 @@ pub(crate) fn rep_place(doc: &Document, r: &ecad_model::Representation) -> (Opti
     let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied());
     let place = at
         .and_then(|a| ecad_model::wiring::place(doc, r.page, a))
-        .map(|p| p.text(doc.settings.reference_style))
+        .map(|p| p.text(doc.settings.reference_style()))
         .or_else(|| Some(crate::references::page_number_words(doc, r.page)));
     (place, at)
 }

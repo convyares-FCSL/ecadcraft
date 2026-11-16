@@ -394,7 +394,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
     if refs.is_empty() {
         return Vec::new();
     }
-    let style = doc.settings.reference_style;
+    let style = doc.settings.reference_style();
     let book = Book::of(doc);
     // Each page's grid and shown number, worked out once per page.
     let mut pages: BTreeMap<PageId, (Grid, String)> = BTreeMap::new();

@@ -453,8 +453,7 @@ pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
         .and_then(|p| p.properties.get(SHEET_KEY))
         .and_then(|t| SheetSpec::parse(t).ok())
         .or_else(|| page_type_sheet(doc, page).filter(|s| s.check().is_ok()))
-        .or_else(|| doc.settings.sheet.check().ok().map(|()| doc.settings.sheet))
-        .unwrap_or_default()
+        .unwrap_or_else(|| doc.settings.sheet())
 }
 
 // ---------------------------------------------------------------- page types (brief 054, FP3)

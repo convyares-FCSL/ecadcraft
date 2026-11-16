@@ -1608,7 +1608,7 @@ fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTree
     let (t, s) = (ctx.inp.target, ctx.inp.source);
     let mut out = BTreeSet::new();
     let mut taken: BTreeSet<String> = m.pages.keys().filter_map(|p| crate::book::stored_number(m, *p)).map(str::to_string).collect();
-    let step = m.settings.page_number_step;
+    let step = m.settings.page_number_step();
     let ours: Vec<PageId> = objects.iter().filter_map(|o| if let Obj::Page(p) = o { Some(*p) } else { None }).collect();
     for p in ours {
         let Some(num) = crate::book::stored_number(m, p).map(str::to_string) else { continue };

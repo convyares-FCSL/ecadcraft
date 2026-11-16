@@ -314,7 +314,7 @@ impl<'a> Places<'a> {
     pub fn text(&mut self, page: PageId, at: Pt) -> String {
         let doc = self.doc;
         let label = self.book().number(doc, page);
-        let style = self.doc.settings.reference_style;
+        let style = self.doc.settings.reference_style();
         let g = self.grid(page);
         crate::derive::place_on(g, &label, at).map_or(label, |p| p.text(style))
     }
@@ -587,7 +587,7 @@ fn plan_tags(
             id: k.0,
         });
     }
-    let digits = req.digits.unwrap_or_else(|| doc.settings.tag_padding.min(tag::MAX_PADDING));
+    let digits = req.digits.unwrap_or_else(|| doc.settings.tag_padding().min(tag::MAX_PADDING));
     let style = tag::Style::of(doc);
     // Which items are numbered: in a chosen kind, in scope, not fixed, in a numberable form.
     let mut chosen: Vec<(usize, String)> = Vec::new(); // (item index, prefix)

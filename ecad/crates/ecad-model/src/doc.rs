@@ -356,14 +356,15 @@ pub enum LengthUnit {
 }
 
 /// Project-wide settings (proposal §3.2, §20.13). Set at creation; changed only by a recorded op.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
-    /// How many digits automatic tag numbers are padded to (brief 018, owner decision
-    /// 2026-11-08): [`DEFAULT_TAG_PADDING`] unless the project says otherwise. Values above
-    /// [`crate::tag::MAX_PADDING`] count as that maximum.
-    pub tag_padding: u8,
+    /// How many digits automatic tag numbers are padded to (brief 018), when the project chose
+    /// (brief 066, F3: `None` follows the built-in, [`ProjectSettings::tag_padding`]). Values
+    /// above [`crate::tag::MAX_PADDING`] count as that maximum.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_padding: Option<u8>,
     /// The project's own tag prefix per starter symbol key (`"coil" → "KA"`), overriding the
     /// built-in IEC 81346 default. Empty by default.
     pub tag_prefixes: BTreeMap<String, String>,
@@ -371,13 +372,18 @@ pub struct ProjectSettings {
     /// the file while it holds [`WiringSettings::default`].
     pub wiring: crate::wiring::WiringSettings,
     /// The project's sheet: size and grid of every page's frame unless a page sets its own
-    /// (brief 019, decision FP2). A3 landscape, `A`–`H` by `1`–`6` by default.
-    pub sheet: crate::sheet::SheetSpec,
-    /// What a new page's number adds to the number before it (design 019 §6.1, owner answer
-    /// Q11): 1 by default.
-    pub page_number_step: u32,
-    /// How cross-references name a place (owner answer Q1, 2026-11-08): `105-C-4` by default.
-    pub reference_style: ReferenceStyle,
+    /// (brief 019, decision FP2), when the project chose one (brief 066, F3: `None` follows the
+    /// built-in, [`ProjectSettings::sheet`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<crate::sheet::SheetSpec>,
+    /// What a new page's number adds to the number before it (design 019 §6.1), when the project
+    /// chose (brief 066, F3: [`ProjectSettings::page_number_step`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_number_step: Option<u32>,
+    /// How cross-references name a place (owner answer Q1, 2026-11-08), when the project chose
+    /// (brief 066, F3: [`ProjectSettings::reference_style`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_style: Option<ReferenceStyle>,
     /// Where a device's contact mirror table goes unless the device says otherwise (brief 025,
     /// FP3): `auto` by default, and then left out of every file.
     #[serde(skip_serializing_if = "ContactMirror::is_auto")]
@@ -439,24 +445,44 @@ pub enum ReferenceStyle {
     PageZone,
 }
 
-/// The page number step of a project that sets none.
-pub const DEFAULT_PAGE_NUMBER_STEP: u32 = 1;
+impl ReferenceStyle {
+    /// The words of the styles, as `projectprops` and the defaults data write them.
+    pub const WORDS: &'static [&'static str] = &["page-zone", "page-column-row", "page-column"];
 
-/// The tag padding of a project that sets none (owner decision 2026-11-08).
-pub const DEFAULT_TAG_PADDING: u8 = 2;
-
-impl Default for ProjectSettings {
-    fn default() -> Self {
-        Self {
-            length_unit: LengthUnit::default(),
-            tag_padding: DEFAULT_TAG_PADDING,
-            tag_prefixes: BTreeMap::new(),
-            wiring: crate::wiring::WiringSettings::default(),
-            sheet: crate::sheet::SheetSpec::default(),
-            page_number_step: DEFAULT_PAGE_NUMBER_STEP,
-            reference_style: ReferenceStyle::default(),
-            contact_mirror: ContactMirror::default(),
+    /// Its word.
+    pub fn word(self) -> &'static str {
+        match self {
+            ReferenceStyle::PageZone => "page-zone",
+            ReferenceStyle::PageColumnRow => "page-column-row",
+            ReferenceStyle::PageColumn => "page-column",
         }
+    }
+
+    /// The style a word names, if any.
+    pub fn parse(word: &str) -> Option<ReferenceStyle> {
+        [ReferenceStyle::PageZone, ReferenceStyle::PageColumnRow, ReferenceStyle::PageColumn].into_iter().find(|s| s.word() == word.trim())
+    }
+}
+
+impl ProjectSettings {
+    /// The tag padding: the project's choice, else the built-in ([`crate::builtins`]).
+    pub fn tag_padding(&self) -> u8 {
+        self.tag_padding.unwrap_or_else(|| crate::builtins::builtins().tag_padding)
+    }
+
+    /// The project sheet: the project's choice when it is within the limits, else the built-in.
+    pub fn sheet(&self) -> crate::sheet::SheetSpec {
+        self.sheet.filter(|s| s.check().is_ok()).unwrap_or(crate::builtins::builtins().sheet)
+    }
+
+    /// The page number step, at least 1: the project's choice, else the built-in.
+    pub fn page_number_step(&self) -> u32 {
+        self.page_number_step.unwrap_or_else(|| crate::builtins::builtins().page_number_step).max(1)
+    }
+
+    /// The reference style: the project's choice, else the built-in.
+    pub fn reference_style(&self) -> ReferenceStyle {
+        self.reference_style.unwrap_or_else(|| crate::builtins::builtins().reference_style)
     }
 }
 

@@ -75,7 +75,7 @@ pub struct Geometry {
 impl Default for Geometry {
     /// The built-ins.
     fn default() -> Self {
-        let n = |e: &crate::defaults::Entry| match e.builtin {
+        let n = |e: &crate::defaults::Entry| match e.builtin() {
             crate::defaults::Value::Length(x) | crate::defaults::Value::Number(x) => x,
             _ => 0.0,
         };
@@ -128,7 +128,7 @@ impl Geometry {
 
 /// The project's sheet (a page with no sheet of its own).
 fn project_sheet(doc: &Document) -> SheetSpec {
-    doc.settings.sheet.check().ok().map(|()| doc.settings.sheet).unwrap_or_default()
+    doc.settings.sheet()
 }
 
 /// One column of a strip's layout.

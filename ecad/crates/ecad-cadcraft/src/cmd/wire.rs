@@ -82,11 +82,11 @@ fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
-        "colour_style": w.colour_style.name(),
-        "label_height": w.label_height(),
+        "colour_style": w.colour_style().name(),
+        "label_height": crate::cmd::sheet::wire_label_height(doc),
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
-        "digits": w.digits,
+        "digits": w.digits(),
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
             "name": p.name, "prefix": p.prefix, "numbered": p.numbered,

@@ -734,7 +734,12 @@ impl App {
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_cadcraft::props::selected_objects(p, pg, &handles)).unwrap_or_default();
-            (ecad_cadcraft::numbering_cmds::choices(doc), objects, ecad_cadcraft::devices::padding(doc), doc.settings.wiring.digits)
+            (
+                ecad_cadcraft::numbering_cmds::choices(doc),
+                objects,
+                ecad_cadcraft::devices::padding(doc),
+                u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::wiring::MAX_DIGITS),
+            )
         });
         let Ok((choices, objects, digits, wire_digits)) = read else { return };
         let mut d = renumber_dialog::RenumberDialog::new(&choices, objects, digits, read_only, finalise);

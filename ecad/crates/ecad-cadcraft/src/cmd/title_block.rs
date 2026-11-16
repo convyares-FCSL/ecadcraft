@@ -69,7 +69,7 @@ pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
 fn sheet_param(doc: &Document, params: &Value) -> Result<SheetSpec, String> {
     match text_param(params, "sheet") {
         Some(t) => SheetSpec::parse(t).map_err(String::from),
-        None => Ok(doc.settings.sheet.check().map(|()| doc.settings.sheet).unwrap_or_default()),
+        None => Ok(doc.settings.sheet()),
     }
 }
 
@@ -102,7 +102,7 @@ fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
 
 /// One row of `titleblocks`.
 fn row_json(doc: &Document, row: &styles::Row) -> Value {
-    let spec = sheet::frame_field(doc, &row.id, sheet::FRAME_SHEET_FIELD).and_then(sheet::parse_frame_sheet).unwrap_or(doc.settings.sheet);
+    let spec = sheet::frame_field(doc, &row.id, sheet::FRAME_SHEET_FIELD).and_then(sheet::parse_frame_sheet).unwrap_or(doc.settings.sheet());
     let layout = layout_of(doc, &row.id, &spec);
     let keys: Vec<String> = own_keys(&layout).into_iter().collect();
     json!({

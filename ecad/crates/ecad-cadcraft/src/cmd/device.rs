@@ -331,7 +331,7 @@ pub(crate) fn tag_settings_params(
 /// Apply tag settings read by [`tag_settings_params`] to `after`.
 pub(crate) fn apply_tag_settings(after: &mut ecad_model::ProjectSettings, padding: Option<u8>, changes: Vec<(String, Option<String>)>) {
     if let Some(n) = padding {
-        after.tag_padding = n;
+        after.tag_padding = Some(n);
     }
     for (k, v) in changes {
         match v {

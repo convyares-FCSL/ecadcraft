@@ -19,7 +19,7 @@
 
 use ecad_model::ProjectSettings;
 
-use super::{Entry, Kind, Level, ProjectSource, Value};
+use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 const GROUP: &str = "Terminals";
 const BRIEF: &str = "036";
@@ -67,7 +67,7 @@ pub static SEPARATOR: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: 4, parse: separator_ok },
-    builtin: Value::Text("."),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -78,7 +78,7 @@ fn prefix_ok(t: &str) -> bool {
 }
 
 macro_rules! prefixes {
-    ($($name:ident = $key:literal, $prefix:literal, $symbol:literal;)*) => {
+    ($($name:ident = $key:literal, $symbol:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("terminal.", $key, ".prefix"),
@@ -86,7 +86,7 @@ macro_rules! prefixes {
                 group: "Tag prefixes",
                 brief: BRIEF,
                 kind: Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTERS + 1, parse: prefix_ok },
-                builtin: Value::Text($prefix),
+                slot: Slot::new(),
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -111,30 +111,30 @@ macro_rules! prefixes {
 }
 
 prefixes! {
-    TERM2_1 = "term2.1", "X", "Two-level terminal, level 1";
-    TERM2_2 = "term2.2", "X", "Two-level terminal, level 2";
-    TERM2 = "term2", "X", "Two-level terminal";
-    TERM2B_1 = "term2b.1", "X", "Two-level terminal, bridged, level 1";
-    TERM2B_2 = "term2b.2", "X", "Two-level terminal, bridged, level 2";
-    TERM2B = "term2b", "X", "Two-level terminal, bridged";
-    TERM3_1 = "term3.1", "X", "Three-level terminal, level 1";
-    TERM3_2 = "term3.2", "X", "Three-level terminal, level 2";
-    TERM3_3 = "term3.3", "X", "Three-level terminal, level 3";
-    TERM3 = "term3", "X", "Three-level terminal";
-    TERMLNPE_1 = "termlnpe.1", "X", "L/N/PE terminal, level L";
-    TERMLNPE_2 = "termlnpe.2", "X", "L/N/PE terminal, level N";
-    TERMLNPE_3 = "termlnpe.3", "X", "L/N/PE terminal, level PE";
-    TERMLNPE = "termlnpe", "X", "L/N/PE terminal";
-    TERMSENSOR_1 = "termsensor.1", "X", "Sensor terminal, level S";
-    TERMSENSOR_2 = "termsensor.2", "X", "Sensor terminal, level +";
-    TERMSENSOR_3 = "termsensor.3", "X", "Sensor terminal, level -";
-    TERMSENSOR = "termsensor", "X", "Sensor terminal";
-    TERMDISC = "termdisc", "X", "Disconnect terminal";
-    TERMFUSE = "termfuse", "X", "Fuse terminal (strip position)";
+    TERM2_1 = "term2.1", "Two-level terminal, level 1";
+    TERM2_2 = "term2.2", "Two-level terminal, level 2";
+    TERM2 = "term2", "Two-level terminal";
+    TERM2B_1 = "term2b.1", "Two-level terminal, bridged, level 1";
+    TERM2B_2 = "term2b.2", "Two-level terminal, bridged, level 2";
+    TERM2B = "term2b", "Two-level terminal, bridged";
+    TERM3_1 = "term3.1", "Three-level terminal, level 1";
+    TERM3_2 = "term3.2", "Three-level terminal, level 2";
+    TERM3_3 = "term3.3", "Three-level terminal, level 3";
+    TERM3 = "term3", "Three-level terminal";
+    TERMLNPE_1 = "termlnpe.1", "L/N/PE terminal, level L";
+    TERMLNPE_2 = "termlnpe.2", "L/N/PE terminal, level N";
+    TERMLNPE_3 = "termlnpe.3", "L/N/PE terminal, level PE";
+    TERMLNPE = "termlnpe", "L/N/PE terminal";
+    TERMSENSOR_1 = "termsensor.1", "Sensor terminal, level S";
+    TERMSENSOR_2 = "termsensor.2", "Sensor terminal, level +";
+    TERMSENSOR_3 = "termsensor.3", "Sensor terminal, level -";
+    TERMSENSOR = "termsensor", "Sensor terminal";
+    TERMDISC = "termdisc", "Disconnect terminal";
+    TERMFUSE = "termfuse", "Fuse terminal (strip position)";
 }
 
 macro_rules! levels {
-    ($($name:ident = $code:literal, $parse:ident, $builtin:literal, $label:literal;)*) => {
+    ($($name:ident = $code:literal, $parse:ident, $label:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("terminal.", $code, ".levels"),
@@ -142,7 +142,7 @@ macro_rules! levels {
                 group: GROUP,
                 brief: BRIEF,
                 kind: Kind::Parsed { max_chars: 64, parse: $parse },
-                builtin: Value::Text($builtin),
+                slot: Slot::new(),
                 levels: SPO,
                 project: ProjectSource::Property,
             };
@@ -159,11 +159,11 @@ macro_rules! levels {
 }
 
 levels! {
-    LEVELS_X2 = "x2", names2_ok, "1,2", "Level names: two-level terminal";
-    LEVELS_X2B = "x2b", names2_ok, "1,2", "Level names: two-level terminal, bridged";
-    LEVELS_X3 = "x3", names3_ok, "1,2,3", "Level names: three-level terminal";
-    LEVELS_LNPE = "lnpe", names3_ok, "L,N,PE", "Level names: L/N/PE terminal";
-    LEVELS_SEN = "sen", names3_ok, "S,+,-", "Level names: sensor terminal";
+    LEVELS_X2 = "x2", names2_ok, "Level names: two-level terminal";
+    LEVELS_X2B = "x2b", names2_ok, "Level names: two-level terminal, bridged";
+    LEVELS_X3 = "x3", names3_ok, "Level names: three-level terminal";
+    LEVELS_LNPE = "lnpe", names3_ok, "Level names: L/N/PE terminal";
+    LEVELS_SEN = "sen", names3_ok, "Level names: sensor terminal";
 }
 
 macro_rules! descriptions {
@@ -175,7 +175,7 @@ macro_rules! descriptions {
                 group: GROUP,
                 brief: BRIEF,
                 kind: Kind::Text { max_chars: 64 },
-                builtin: Value::Text($builtin),
+                slot: Slot::new(),
                 levels: SP,
                 project: ProjectSource::Property,
             };
@@ -253,7 +253,7 @@ mod tests {
             assert!(description_entry(t.code).is_some(), "{}", t.code);
             assert_eq!(levels_entry(t.code).is_some(), t.multi(), "{}", t.code);
             if let Some(e) = levels_entry(t.code) {
-                assert_eq!(e.builtin, Value::Text(Box::leak(t.levels.join(",").into_boxed_str())));
+                assert_eq!(e.builtin(), Value::Text(Box::leak(t.levels.join(",").into_boxed_str())));
             }
         }
         assert_eq!(setprop_value("terminal.level.separator", Some("")), Some(Ok(Some("none".into()))));

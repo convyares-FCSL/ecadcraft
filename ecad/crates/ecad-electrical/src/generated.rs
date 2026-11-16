@@ -6,7 +6,7 @@
 //!
 //! # Semantics
 //! - A generated page has one or more **sheets**: a table that does not fit continues on the next
-//!   sheet of the same page, header repeated ([`ROWS_PER_SHEET`] rows per A3 sheet). Sheets are
+//!   sheet of the same page, header repeated ([`rows_per_sheet`] rows per A3 sheet). Sheets are
 //!   drawn side by side, sheet *i* at x = *i* × (paper width + [`SHEET_GAP`]).
 //! - Each sheet has the page's frame and title block: the page title gets ` (2/3)`, Next shows the
 //!   same number on all but the last sheet, and Total counts sheets in the whole book (owner
@@ -37,15 +37,34 @@ pub const KEY: &str = "generated";
 pub const STRIP_KEY: &str = "strip";
 /// The reserved layer of generated content (`ecad.generated`), locked.
 pub const LAYER: &str = "ECAD-GENERATED";
-/// Rows per A3 sheet.
-pub const ROWS_PER_SHEET: usize = crate::outputs::ROWS_PER_SHEET;
 /// Gap between the sheets of one page, in millimetres.
 pub const SHEET_GAP: f64 = 50.0;
-/// `ecad.table-header` and `ecad.table-row`.
-pub const HEADER_MM: f64 = 7.0;
-pub const ROW_MM: f64 = 5.0;
 /// The column widths of design 024 §5.2 are for an A3 drawing area this wide.
 pub const A3_AREA: f64 = 390.0;
+/// The height of that A3 drawing area ([`area`] of an A3 sheet in the house frame): what the rows
+/// per sheet are computed from (brief 066c).
+pub const A3_TABLE_MM: f64 = 230.0;
+
+/// `ecad.table-row`: a report table's row height, millimetres (the `[layout]` value
+/// `page.report.row_height` in `pages.toml`, data since brief 066c).
+pub fn row_mm() -> f64 {
+    crate::defaults::data::layout("page.report.row_height")
+}
+
+/// `ecad.table-header`: a report table's header height, millimetres (`page.report.header_height`).
+pub fn header_mm() -> f64 {
+    crate::defaults::data::layout("page.report.header_height")
+}
+
+/// Rows per A3 sheet of a generated table (design 024 §5.2): as many rows as fit under the header
+/// in [`A3_TABLE_MM`] (44 at 5 mm rows and a 7 mm header), at least 2.
+pub fn rows_per_sheet() -> usize {
+    static ROWS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *ROWS.get_or_init(|| {
+        let n = ((A3_TABLE_MM - header_mm()) / row_mm()).floor();
+        if n.is_finite() && n >= 2.0 { n as usize } else { 2 }
+    })
+}
 /// `ecad.flagged` (`ecad.check-warning`, ACI 2): `?` values on screen.
 pub const FLAGGED_ACI: u8 = 2;
 /// `ecad.flagged-print` (ACI 7): a missing value's `?` and box when printed (design 033 §3.1).
@@ -165,7 +184,7 @@ pub fn bom_sheets(o: &Outputs) -> usize {
 
 /// The sheets of a table whose row `i` is a heading when `heads[i]` is `Some`: (first row, end,
 /// the heading repeated as `(continued)` at the top). A continued heading takes a row of the
-/// sheet, so every sheet holds at most [`ROWS_PER_SHEET`] lines (tester 024, bug 4).
+/// sheet, so every sheet holds at most [`rows_per_sheet`] lines (tester 024, bug 4).
 pub fn paginate(heads: &[Option<String>]) -> Vec<(usize, usize, Option<String>)> {
     paginate_with(heads, false)
 }
@@ -179,7 +198,7 @@ pub fn paginate_with(heads: &[Option<String>], break_on_heading: bool) -> Vec<(u
     let mut current: Option<String> = None;
     loop {
         let cont = if start > 0 && start < n && heads.get(start).is_some_and(Option::is_none) { current.clone() } else { None };
-        let cap = ROWS_PER_SHEET - usize::from(cont.is_some());
+        let cap = rows_per_sheet() - usize::from(cont.is_some());
         let mut end = (start + cap).min(n);
         if break_on_heading && let Some(k) = heads.get(start + 1..end).and_then(|h| h.iter().position(Option::is_some)) {
             end = start + 1 + k;
@@ -224,7 +243,7 @@ mod tests {
         let sheets = paginate(&heads);
         assert_eq!(sheets.len(), 3);
         for (start, end, cont) in &sheets {
-            assert!(end - start + usize::from(cont.is_some()) <= ROWS_PER_SHEET);
+            assert!(end - start + usize::from(cont.is_some()) <= rows_per_sheet());
         }
         assert_eq!(sheets[1].2.as_deref(), Some("+CP1"));
         assert_eq!(paginate(&[]).len(), 1);
@@ -245,11 +264,11 @@ pub fn sheets_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usi
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, Outputs::cable_count),
         // Brief 051 (design 051 §4.1): cards packed on sheets, from the kept row counts.
-        Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(ROWS_PER_SHEET)),
+        Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(rows_per_sheet())),
         // Brief 051 (design 051 §4.2): racks packed on sheets, from the kept slot counts.
         Some(GenKind::PlcRack) => return outputs.map_or(1, |o| crate::plc::sheets::rack_sheets(doc, page, &o.plc)),
     };
-    rows.div_ceil(ROWS_PER_SHEET).max(1)
+    rows.div_ceil(rows_per_sheet()).max(1)
 }
 
 /// The number of sheet `i` (0-based) of a generated page numbered `number` (design 033 §5.1):
@@ -620,7 +639,7 @@ const TERMINAL_COLUMNS: [(&str, f64); 9] = [
 /// The terminal plan's rows of `page`: per strip a heading, then one line per position and
 /// conductor (a second conductor on one side on its own sub-row, labelled `3′`).
 fn terminal_rows(doc: &Document, page: PageId, o: &Outputs) -> Vec<TRow> {
-    let style = doc.settings.reference_style;
+    let style = doc.settings.reference_style();
     let mut rows = Vec::new();
     for s in strips_shown(doc, page, o) {
         let mut head = format!("{}  {}  {}", s.tag, s.location.clone().unwrap_or_else(|| "?".into()), s.counts_text());

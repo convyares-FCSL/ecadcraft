@@ -19,6 +19,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod book;
+pub mod builtins;
 pub mod connectivity;
 pub mod derive;
 mod dev;
@@ -42,9 +43,9 @@ pub mod wiring;
 
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
-    Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFAULT_PAGE_NUMBER_STEP, DEFAULT_TAG_PADDING,
-    DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings,
-    Properties, ReferenceStyle, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign,
+    Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form,
+    Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
+    SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};

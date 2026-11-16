@@ -931,7 +931,7 @@ fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Val
     let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
     let accessories = opt_typed(params, "accessories", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
     with_any_page(s, |p, _| {
-        let style = p.ledger.document().settings.reference_style;
+        let style = p.ledger.document().settings.reference_style();
         let o = p.outputs();
         let shown: Vec<&StripData> = match strip {
             Some(c) => vec![o.strips.get(c).ok_or("No such terminal strip.")?],
@@ -972,7 +972,7 @@ fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         let row = o.cable_row(k).cloned().ok_or("no such cable")?;
         let wire = |w: ConductorId| o.wire(w).cloned();
         let doc = p.ledger.document();
-        let style = doc.settings.reference_style;
+        let style = doc.settings.reference_style();
         let o_chain = |i: usize| o.chain_ends(&row, i, style);
         let count = &row.count;
         let member_json = |i: usize, label: Option<String>, state: &str| {

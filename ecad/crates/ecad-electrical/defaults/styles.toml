@@ -1,0 +1,187 @@
+# Brief 050a: style choices; the location, frame, wire, page, cable and rating table catalogues.
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"text.tag.style" = "tag"
+"text.point_label.style" = "point_label"
+"text.description.style" = "description"
+"text.part_number.style" = "part_number"
+"text.continuation_name.style" = "continuation_name"
+"text.reference.style" = "reference"
+"text.continuation_caption.style" = "continuation_caption"
+"text.wire_label.style" = "wire_label"
+"text.cable_text.style" = "cable_text"
+"text.location.style" = "location"
+"text.title_value.style" = "title_value"
+"text.title_caption.style" = "title_caption"
+"text.title_main.style" = "title_main"
+"text.grid.style" = "grid"
+"text.table.style" = "table"
+"text.table_header.style" = "table_header"
+"text.free.style" = "free"
+"text.title_page.style" = "title_page"
+"text.title_rev.style" = "title_rev"
+"text.table_heading.style" = "table_heading"
+"text.cover.style" = "cover"
+"text.channel_text.style" = "channel_text"
+"text.address.style" = "address"
+"location.style" = "box"
+"print.frame.style" = "sheet"
+"wire.category" = "none"
+
+[fields.location]
+line_type = "dashed"
+line_weight = 0.25
+line_colour = "none"
+label_style = "location"
+fill = "none"
+
+[styles.location.box]
+
+[fields.frame]
+border_weight = 0.5
+inner_weight = 0.25
+line_colour = "none"
+grid_labels = "on"
+sheet = "page"
+margins = "10,10,10,7"
+centre_marks = "on"
+block = "bottom_full"
+
+[styles.frame.sheet]
+
+[fields.wire]
+potential = ""
+colour = "none"
+cross_section = "none"
+line_colour = "wire"
+line_type = "continuous"
+line_weight = 0.25
+label_rule = "project"
+part_number = ""
+maker = ""
+description = ""
+allowance = 0.0
+rated_current = ""
+rated_at = 30.0
+max_temperature = 70.0
+material = "cu"
+conductor_class = "5"
+
+[styles.wire.l]
+potential = "L"
+colour = "BN"
+cross_section = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[styles.wire.l1]
+potential = "L1"
+colour = "BN"
+cross_section = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[styles.wire.l2]
+potential = "L2"
+colour = "BK"
+cross_section = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[styles.wire.l3]
+potential = "L3"
+colour = "GY"
+cross_section = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[styles.wire.n]
+potential = "N"
+colour = "BU"
+cross_section = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[styles.wire.pe]
+potential = "PE"
+colour = "GNYE"
+cross_section = "2.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[styles.wire.dc24]
+potential = "24V"
+colour = "BU"
+cross_section = "0.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[styles.wire.dc0]
+potential = "0V"
+colour = "BU"
+cross_section = "0.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[styles.wire.signal]
+cross_section = "0.5"
+line_colour = "ink"
+line_weight = 0.25
+
+[styles.wire.analogue]
+cross_section = "0.5"
+line_colour = "ink"
+line_weight = 0.25
+
+[fields.page]
+sheet = "project"
+frame = "project"
+title_block = "frame"
+zones = "on"
+checks = "on"
+holds = "none"
+
+[styles.page.front]
+holds = "front"
+zones = "off"
+
+[styles.page.schematic]
+
+[styles.page.network]
+
+[styles.page.singleline]
+
+[styles.page.panel]
+zones = "off"
+
+[styles.page.report]
+holds = "report"
+zones = "off"
+
+[styles.page.plain]
+zones = "off"
+checks = "off"
+
+[fields.cable]
+cross_section = ""
+material = "cu"
+max_temperature = 70.0
+conductor_class = "5"
+rated_current = ""
+rated_at = 30.0
+core_colours = ""
+part_number = ""
+maker = ""
+description = ""
+cores = ""
+shield = "none"
+gland = ""
+outer_diameter = ""
+
+[fields.ratingtable]
+source = ""
+rows = ""

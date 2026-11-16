@@ -118,7 +118,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
     p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
         let counts = ptype::counts(doc);
-        let project_sheet = if doc.settings.sheet.check().is_ok() { doc.settings.sheet } else { SheetSpec::default() };
+        let project_sheet = if doc.settings.sheet().check().is_ok() { doc.settings.sheet() } else { SheetSpec::default() };
         let rows = ptype::ordered(doc)
             .into_iter()
             .map(|r| {

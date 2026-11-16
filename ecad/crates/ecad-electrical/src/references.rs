@@ -32,7 +32,9 @@ use crate::text_style::fonts::TextMetrics;
 pub const REFERENCE_ACI: u8 = 6;
 /// `ecad.orphan`: ACI 1, red.
 pub const ORPHAN_ACI: u8 = 1;
-/// `ecad.ref-text-height` in millimetres.
+/// `ecad.ref-text-height` in millimetres. Brief 066 (design 066 §2.4) found that it bypasses the
+/// `reference` text style (built-in 2.0 mm); it stays a constant so nothing on a page moves, until
+/// the owner decides which height references take.
 pub const TEXT_HEIGHT_MM: f64 = 2.5;
 /// `ecad.ref-stub-spacing` in millimetres: between continued stubs, and from a reference point to
 /// its text.

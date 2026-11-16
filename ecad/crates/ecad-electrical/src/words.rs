@@ -213,6 +213,8 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
 /// The height the cable look is laid out for (label spacing, box pitch and padding, and the width
 /// [`stroke_label_width`] measures). The texts themselves are drawn at the project's cable text and
 /// reference heights (brief 031, `text_style`), never larger than this by default, so they fit.
+/// A layout size, not a text height (brief 066, design 066 §2.4): the texts already read their
+/// styles; this only spaces the look around them.
 pub const LABEL_HEIGHT: f64 = 2.5;
 
 /// `ecad.wire-weight`: bends, tails, label box frame, reference flag (wire section).

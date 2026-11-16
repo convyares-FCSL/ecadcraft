@@ -504,9 +504,9 @@ fn the_join_default_comes_from_the_registry() {
     for k in ["wire.join", "wiring.label_rule", "wiring.label_min_length"] {
         assert!(keys.contains(&k), "{k} not in {keys:?}");
     }
-    // The label rule's built-ins are ecad-model's constants.
+    // The label rule's built-in is `net` (data since brief 066).
     let rule = &ecad_cadcraft::defaults::wires::WIRING_LABEL_RULE;
-    assert_eq!(rule.builtin, ecad_cadcraft::defaults::Value::Choice(ecad_model::wiring::DEFAULT_LABEL_RULE));
+    assert_eq!(rule.builtin(), ecad_cadcraft::defaults::Value::Choice(ecad_model::wiring::LABEL_RULE_NET));
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {

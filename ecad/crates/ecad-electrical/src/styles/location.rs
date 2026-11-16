@@ -8,32 +8,20 @@
 use ecad_model::{ComponentId, Document, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Scope, Value};
+use crate::defaults::{Kind, Scope, Slot};
 
 /// The line types a box may take, as the field stores them.
 pub const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
 
-static FIELDS: &[Field] = &[
-    Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), builtin: Value::Choice("dashed"), over: None },
-    Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, builtin: Value::Length(0.25), over: None },
-    Field {
-        key: "line_colour",
-        label: "Line colour",
-        kind: Kind::Parsed { max_chars: 16, parse: super::is_colour },
-        builtin: Value::Text("none"),
-        over: None,
-    },
-    Field { key: "label_style", label: "Label style", kind: Kind::Style("text"), builtin: Value::Text("location"), over: None },
-    Field {
-        key: "fill",
-        label: "Fill (reserved)",
-        kind: Kind::Parsed { max_chars: 16, parse: super::is_colour },
-        builtin: Value::Text("none"),
-        over: None,
-    },
+static FIELDS: [Field; 5] = [
+    Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), slot: Slot::new(), over: None },
+    Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
+    Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
+    Field { key: "label_style", label: "Label style", kind: Kind::Style("text"), slot: Slot::new(), over: None },
+    Field { key: "fill", label: "Fill (reserved)", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
 ];
 
-static BUILTINS: &[Builtin] = &[Builtin { id: "box", name: "Location box", values: &[] }];
+static BUILTINS: [Builtin; 1] = [Builtin { id: "box", name: "Location box", slot: Slot::new() }];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
     vec![&crate::defaults::styles::LOCATION]
@@ -44,8 +32,8 @@ pub static CATALOGUE: Catalogue = Catalogue {
     word: "location",
     plural: "Location boxes",
     one: "Location box style",
-    fields: FIELDS,
-    builtins: BUILTINS,
+    fields: &FIELDS,
+    builtins: &BUILTINS,
     choices,
     project_field: None,
 };

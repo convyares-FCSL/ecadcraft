@@ -163,7 +163,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
             ops.retain(|o| !matches!(o, Op::SetProjectSettings { .. }));
             let before = doc.settings.clone();
             let mut after = before.clone();
-            after.wiring.label_height = h.unwrap_or(ecad_model::wiring::DEFAULT_LABEL_HEIGHT);
+            after.wiring.label_height = h;
             if after != before {
                 ops.push(Op::SetProjectSettings { before, after });
             }
@@ -289,7 +289,7 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
             let colour = f("colour").map(|r| r.text());
             let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
-            let builtin = |e: &Entry| Resolved { value: e.builtin, from: Source::Builtin };
+            let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
             let cat = crate::styles::catalogue("text");
             let b = |key: &str| cat.and_then(|c| c.builtin(&k.builtin_style())).and_then(|s| s.value(key));
             json!({
@@ -340,7 +340,7 @@ fn level_word(l: Level) -> &'static str {
 /// One registry entry as `defaults` lists it, resolved at `at`.
 pub fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
     let r = defaults::resolve(doc, e, at);
-    let builtin = Resolved { value: e.builtin, from: Source::Builtin };
+    let builtin = Resolved { value: e.builtin(), from: Source::Builtin };
     let mut m = Map::new();
     m.insert("key".into(), json!(e.key));
     m.insert("label".into(), json!(e.label));

@@ -180,8 +180,7 @@ impl ProjectProps {
         let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
-        let label_height =
-            v.get("label_height").and_then(Value::as_f64).map_or_else(|| ecad_model::wiring::DEFAULT_LABEL_HEIGHT.to_string(), |h| h.to_string());
+        let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(String::new, |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
             .get("tag_prefixes")
             .and_then(Value::as_object)
@@ -1101,8 +1100,8 @@ pub struct WireLabels {
 impl WireLabels {
     /// From `wiresettings {}`.
     pub fn from_json(v: &Value) -> Self {
-        let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::wiring::DEFAULT_LABEL_RULE).to_string();
-        let min = v.get("label_min_length").and_then(Value::as_f64).unwrap_or(ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH).to_string();
+        let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::wiring::LABEL_RULE_NET).to_string();
+        let min = v.get("label_min_length").and_then(Value::as_f64).map_or_else(String::new, |v| v.to_string());
         WireLabels { rule_orig: rule.clone(), rule, min_orig: min.clone(), min_length: min }
     }
 

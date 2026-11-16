@@ -22,7 +22,7 @@ use ecad_model::sheet::{self as msheet, PROJECT_SHEET, SheetSpec};
 use ecad_model::{Document, PageId, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Value};
+use crate::defaults::{Kind, Slot};
 use crate::generated::GenKind;
 
 /// The catalogue word.
@@ -46,38 +46,26 @@ fn is_title_block(s: &str) -> bool {
 /// What generated kinds a type holds: none (drawn pages), the front kinds, the report kinds.
 pub const HOLDS: &[&str] = &["none", "front", "report"];
 
-static FIELDS: &[Field] = &[
-    Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, builtin: Value::Text(PROJECT_SHEET), over: None },
-    Field {
-        key: "frame",
-        label: "Frame style",
-        kind: Kind::Parsed { max_chars: 40, parse: is_frame },
-        builtin: Value::Text(PROJECT_SHEET),
-        over: None,
-    },
-    Field {
-        key: "title_block",
-        label: "Title block",
-        kind: Kind::Parsed { max_chars: 40, parse: is_title_block },
-        builtin: Value::Text(OWN_BLOCK),
-        over: None,
-    },
-    Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
+static FIELDS: [Field; 6] = [
+    Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, slot: Slot::new(), over: None },
+    Field { key: "frame", label: "Frame style", kind: Kind::Parsed { max_chars: 40, parse: is_frame }, slot: Slot::new(), over: None },
+    Field { key: "title_block", label: "Title block", kind: Kind::Parsed { max_chars: 40, parse: is_title_block }, slot: Slot::new(), over: None },
+    Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
     // Design 054 §3.4: off, the type's pages get no electrical checks, cross-references or
     // numbering.
-    Field { key: "checks", label: "Checks and references", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
+    Field { key: "checks", label: "Checks and references", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
     // Not shown: copied with the type, so an own type holds what its source holds.
-    Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), builtin: Value::Choice("none"), over: None },
+    Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), slot: Slot::new(), over: None },
 ];
 
-static BUILTINS: &[Builtin] = &[
-    Builtin { id: "front", name: "Cover sheet", values: &[("holds", Value::Choice("front")), ("zones", Value::Choice("off"))] },
-    Builtin { id: "schematic", name: "Schematic", values: &[] },
-    Builtin { id: "network", name: "Network", values: &[] },
-    Builtin { id: "singleline", name: "Single-line", values: &[] },
-    Builtin { id: "panel", name: "Panel layout", values: &[("zones", Value::Choice("off"))] },
-    Builtin { id: "report", name: "Report", values: &[("holds", Value::Choice("report")), ("zones", Value::Choice("off"))] },
-    Builtin { id: "plain", name: "Plain", values: &[("zones", Value::Choice("off")), ("checks", Value::Choice("off"))] },
+static BUILTINS: [Builtin; 7] = [
+    Builtin { id: "front", name: "Cover sheet", slot: Slot::new() },
+    Builtin { id: "schematic", name: "Schematic", slot: Slot::new() },
+    Builtin { id: "network", name: "Network", slot: Slot::new() },
+    Builtin { id: "singleline", name: "Single-line", slot: Slot::new() },
+    Builtin { id: "panel", name: "Panel layout", slot: Slot::new() },
+    Builtin { id: "report", name: "Report", slot: Slot::new() },
+    Builtin { id: "plain", name: "Plain", slot: Slot::new() },
 ];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
@@ -86,7 +74,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The page type catalogue.
 pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Page types", one: "Page type", fields: FIELDS, builtins: BUILTINS, choices, project_field: None };
+    Catalogue { word: WORD, plural: "Page types", one: "Page type", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
 
 /// The built-in Cover sheet type (ID `front`, kept: old files store it).
 pub const FRONT: &str = "front";

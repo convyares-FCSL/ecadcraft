@@ -249,7 +249,7 @@ pub fn side_names(doc: &Document, c: Option<ComponentId>) -> (String, String, St
     let s = defaults::resolve(doc, &dc::SIDE_SOCKET, scope).text();
     let p = defaults::resolve(doc, &dc::SIDE_PLUG, scope).text();
     if s.eq_ignore_ascii_case(&p) {
-        let b = |e: &defaults::Entry| defaults::Resolved { value: e.builtin, from: defaults::Source::Builtin }.text();
+        let b = |e: &defaults::Entry| defaults::Resolved { value: e.builtin(), from: defaults::Source::Builtin }.text();
         return (sep, b(&dc::SIDE_SOCKET), b(&dc::SIDE_PLUG));
     }
     (sep, s, p)

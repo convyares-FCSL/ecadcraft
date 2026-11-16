@@ -13,6 +13,8 @@ workspace = true
 serde = { workspace = true }
 thiserror = { workspace = true }
 schemars = { workspace = true, optional = true }
+# The built-in project settings are TOML data (brief 066c, `defaults/settings.toml`).
+toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

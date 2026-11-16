@@ -49,7 +49,11 @@ use trace::{Found, How};
 /// The style fields lane 057 adds (design 057 §4.4, FP3 and FP4): wire categories take the five
 /// rating fields, cable types all of them.
 pub mod fields {
-    use crate::defaults::{Kind, Value};
+    // Each catalogue that lists one of these holds its own copy in its static `FIELDS`, whose
+    // slot is filled once there; the constants themselves are never read directly (brief 066).
+    #![allow(clippy::declare_interior_mutable_const, reason = "copied into each catalogue's static field list")]
+
+    use crate::defaults::{Kind, Slot};
     use crate::styles::Field;
 
     fn is_current(s: &str) -> bool {
@@ -64,36 +68,26 @@ pub mod fields {
         key: "rated_current",
         label: "Rated current (A)",
         kind: Kind::Parsed { max_chars: 32, parse: is_current },
-        builtin: Value::Text(""),
+        slot: Slot::new(),
         over: None,
     };
-    pub const RATED_AT: Field = Field {
-        key: "rated_at",
-        label: "Rated at (\u{b0}C)",
-        kind: Kind::Number { min: -40.0, max: 90.0 },
-        builtin: Value::Number(30.0),
-        over: None,
-    };
+    pub const RATED_AT: Field =
+        Field { key: "rated_at", label: "Rated at (\u{b0}C)", kind: Kind::Number { min: -40.0, max: 90.0 }, slot: Slot::new(), over: None };
     pub const MAX_TEMPERATURE: Field = Field {
         key: "max_temperature",
         label: "Max conductor temperature (\u{b0}C)",
         kind: Kind::Number { min: 50.0, max: 250.0 },
-        builtin: Value::Number(70.0),
+        slot: Slot::new(),
         over: None,
     };
-    pub const MATERIAL: Field = Field { key: "material", label: "Material", kind: Kind::Choice(&["cu"]), builtin: Value::Choice("cu"), over: None };
-    pub const CONDUCTOR_CLASS: Field = Field {
-        key: "conductor_class",
-        label: "Conductor class",
-        kind: Kind::Choice(&["1", "2", "5", "6"]),
-        builtin: Value::Choice("5"),
-        over: None,
-    };
+    pub const MATERIAL: Field = Field { key: "material", label: "Material", kind: Kind::Choice(&["cu"]), slot: Slot::new(), over: None };
+    pub const CONDUCTOR_CLASS: Field =
+        Field { key: "conductor_class", label: "Conductor class", kind: Kind::Choice(&["1", "2", "5", "6"]), slot: Slot::new(), over: None };
     pub const CROSS_SECTION: Field = Field {
         key: "cross_section",
         label: "Cross-section (mm\u{b2})",
         kind: Kind::Parsed { max_chars: 32, parse: is_size },
-        builtin: Value::Text(""),
+        slot: Slot::new(),
         over: None,
     };
 }

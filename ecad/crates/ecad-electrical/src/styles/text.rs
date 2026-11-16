@@ -11,53 +11,50 @@
 use ecad_model::{Document, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Value};
+use crate::defaults::{Kind, Slot, Value};
 
 /// A font field's value meaning "the project font" (`text.font`).
 pub const PROJECT_FONT: &str = "project";
 
-static FIELDS: &[Field] = &[
-    Field { key: "font", label: "Font", kind: Kind::Text { max_chars: 64 }, builtin: Value::Text(PROJECT_FONT), over: None },
-    Field { key: "height", label: "Cap height", kind: Kind::Length { min: 0.5, max: 10.0 }, builtin: Value::Length(2.5), over: None },
-    Field { key: "weight", label: "Weight", kind: Kind::Choice(&["regular", "bold"]), builtin: Value::Choice("regular"), over: None },
-    Field { key: "colour", label: "Colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, builtin: Value::Text("none"), over: None },
+static FIELDS: [Field; 4] = [
+    Field { key: "font", label: "Font", kind: Kind::Text { max_chars: 64 }, slot: Slot::new(), over: None },
+    Field { key: "height", label: "Cap height", kind: Kind::Length { min: 0.5, max: 10.0 }, slot: Slot::new(), over: None },
+    Field { key: "weight", label: "Weight", kind: Kind::Choice(&["regular", "bold"]), slot: Slot::new(), over: None },
+    Field { key: "colour", label: "Colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
 ];
 
-const fn style(id: &'static str, name: &'static str, values: &'static [(&'static str, Value<'static>)]) -> Builtin {
-    Builtin { id, name, values }
+const fn style(id: &'static str, name: &'static str) -> Builtin {
+    Builtin { id, name, slot: Slot::new() }
 }
 
-const R: Value<'static> = Value::Choice("regular");
-const B: Value<'static> = Value::Choice("bold");
-
 /// 031 §3.2 and 040: each kind's cap height and weight.
-static BUILTINS: &[Builtin] = &[
-    style("tag", "Tag", &[("height", Value::Length(2.5)), ("weight", B)]),
-    style("point_label", "Connection point label", &[("height", Value::Length(1.5)), ("weight", R)]),
-    style("description", "Description", &[("height", Value::Length(1.6)), ("weight", R)]),
-    style("part_number", "Part number", &[("height", Value::Length(1.6)), ("weight", R)]),
-    style("continuation_name", "Continuation name", &[("height", Value::Length(2.0)), ("weight", R)]),
-    style("reference", "Reference", &[("height", Value::Length(2.0)), ("weight", R)]),
+static BUILTINS: [Builtin; 23] = [
+    style("tag", "Tag"),
+    style("point_label", "Connection point label"),
+    style("description", "Description"),
+    style("part_number", "Part number"),
+    style("continuation_name", "Continuation name"),
+    style("reference", "Reference"),
     // Brief 049 (design 049 §7).
-    style("continuation_caption", "Continuation caption", &[("height", Value::Length(2.5)), ("weight", R)]),
-    style("wire_label", "Wire label", &[("height", Value::Length(ecad_model::wiring::DEFAULT_LABEL_HEIGHT)), ("weight", R)]),
-    style("cable_text", "Cable text", &[("height", Value::Length(1.6)), ("weight", R)]),
-    style("location", "Location label", &[("height", Value::Length(1.6)), ("weight", R)]),
-    style("title_value", "Title block value", &[("height", Value::Length(2.5)), ("weight", R)]),
-    style("title_caption", "Title block caption", &[("height", Value::Length(1.8)), ("weight", R)]),
-    style("title_main", "Title", &[("height", Value::Length(3.5)), ("weight", B)]),
-    style("grid", "Grid label", &[("height", Value::Length(3.0)), ("weight", R)]),
-    style("table", "Table text", &[("height", Value::Length(2.5)), ("weight", R)]),
-    style("table_header", "Table header", &[("height", Value::Length(2.5)), ("weight", B)]),
-    style("free", "Free text", &[("height", Value::Length(2.5)), ("weight", R)]),
-    style("title_page", "Title block page number", &[("height", Value::Length(7.0)), ("weight", R)]),
-    style("title_rev", "Title block revision", &[("height", Value::Length(5.0)), ("weight", R)]),
-    style("table_heading", "Table heading", &[("height", Value::Length(3.5)), ("weight", R)]),
-    style("cover", "Cover title", &[("height", Value::Length(10.0)), ("weight", R)]),
+    style("continuation_caption", "Continuation caption"),
+    style("wire_label", "Wire label"),
+    style("cable_text", "Cable text"),
+    style("location", "Location label"),
+    style("title_value", "Title block value"),
+    style("title_caption", "Title block caption"),
+    style("title_main", "Title"),
+    style("grid", "Grid label"),
+    style("table", "Table text"),
+    style("table_header", "Table header"),
+    style("free", "Free text"),
+    style("title_page", "Title block page number"),
+    style("title_rev", "Title block revision"),
+    style("table_heading", "Table heading"),
+    style("cover", "Cover title"),
     // Brief 051 (design 051 §5, FP1): the pack writes channel functions at about the tag's size
     // and addresses between pin and tag size.
-    style("channel_text", "PLC channel text", &[("height", Value::Length(2.5)), ("weight", R)]),
-    style("address", "PLC address", &[("height", Value::Length(2.0)), ("weight", R)]),
+    style("channel_text", "PLC channel text"),
+    style("address", "PLC address"),
 ];
 
 /// The wire label style's height at project level: `settings.wiring.label_height` (031 §3.4),
@@ -78,8 +75,8 @@ pub static CATALOGUE: Catalogue = Catalogue {
     word: "text",
     plural: "Text styles",
     one: "Text style",
-    fields: FIELDS,
-    builtins: BUILTINS,
+    fields: &FIELDS,
+    builtins: &BUILTINS,
     choices,
     project_field: Some(project_field),
 };

@@ -1,0 +1,16 @@
+# Lane P (brief 033): tags, revisions, print.
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"revisions.columns" = "rev@12, ecr:ECR@18, date@24, description, drawn@22, checked@22, approved@22"
+"revisions.custom_width" = 20.0
+"revisions.pending" = "star"
+"print.continuation_numbers" = "sequence"
+"print.missing_mark" = "boxed"
+"print.missing_box_inset" = 0.5
+"print.contact_table_fallback" = "right_then_lift"
+"print.contact_table_clearance" = 2.0
+"print.colour" = "mono"

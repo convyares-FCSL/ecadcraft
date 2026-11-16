@@ -352,7 +352,7 @@ pub fn cores_shown(doc: &Document, k: CableId) -> Option<(String, Source)> {
 /// The pages cable `k` is drawn on, with the place of its slash (`2/D1`), in book order: its
 /// representations' pages, else its members' route pages.
 pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
-    let style = doc.settings.reference_style;
+    let style = doc.settings.reference_style();
     let mut out: BTreeMap<PageId, String> = BTreeMap::new();
     for (_, r) in doc.representations_of(Subject::Cable(k)) {
         let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {

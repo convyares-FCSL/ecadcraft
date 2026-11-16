@@ -133,21 +133,21 @@ fn content(
     let mut x = l;
     for (c, ((name, _), w)) in cols.iter().zip(&widths).enumerate() {
         if right(c) {
-            d.text((x + w - 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Right, Some(LABEL_ACI), Some(w - 2.0));
+            d.text((x + w - 1.0, y - header_mm() / 2.0), header, name, HAlign::Right, Some(LABEL_ACI), Some(w - 2.0));
         } else {
-            d.text((x + 1.0, y - HEADER_MM / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+            d.text((x + 1.0, y - header_mm() / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
         }
         x += w;
     }
-    y -= HEADER_MM;
+    y -= header_mm();
     d.line((l, y), (r, y));
     // The sheets as the sheet count makes them; a sheet starting inside a location block repeats it
     // as `(continued)`, which takes one of its rows.
     let (start, end, prev_heading) = sheets.get(i).cloned().unwrap_or((0, 0, None));
     let page_rows: Vec<&TRow> = rows.get(start..end).unwrap_or_default().iter().collect();
     if let Some(h) = prev_heading {
-        d.text((l + 1.0, y - ROW_MM / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
-        y -= ROW_MM;
+        d.text((l + 1.0, y - row_mm() / 2.0), heading, &format!("{h} (continued)"), HAlign::Left, None, Some(r - l - 2.0));
+        y -= row_mm();
         d.line((l, y), (r, y));
     }
     let left_of = |c: usize| l + widths.iter().take(c).sum::<f64>();
@@ -159,18 +159,18 @@ fn content(
                 // Brief 052 (tester 052, finding 6): devices with no location head a `?` group,
                 // flagged like a missing cell: the mark in the first column's width.
                 let w = widths.first().copied().unwrap_or(r - l).min(r - l);
-                d.out.extend(missing_mark(doc, d.p(l, y - ROW_MM), d.p(l + w, y), d.k, heading));
+                d.out.extend(missing_mark(doc, d.p(l, y - row_mm()), d.p(l + w, y), d.k, heading));
             } else {
-                d.text((l + 1.0, y - ROW_MM / 2.0), heading, text, HAlign::Left, None, Some(r - l - 2.0));
+                d.text((l + 1.0, y - row_mm() / 2.0), heading, text, HAlign::Left, None, Some(r - l - 2.0));
             }
             last_dot = None;
         } else {
             let mut x = l;
-            let mid = y - ROW_MM / 2.0;
+            let mid = y - row_mm() / 2.0;
             for (c, (cell, w)) in row.cells.iter().zip(&widths).enumerate() {
                 let aci = (cell == MISSING).then_some(FLAGGED_ACI);
                 if cell == MISSING && row.marks.terminal_box != Some(c) {
-                    d.out.extend(missing_mark(doc, d.p(x, y - ROW_MM), d.p(x + w, y), d.k, cell_look));
+                    d.out.extend(missing_mark(doc, d.p(x, y - row_mm()), d.p(x + w, y), d.k, cell_look));
                 } else if row.marks.terminal_box == Some(c) {
                     let cx = x + w / 2.0;
                     d.line((cx - 3.0, mid - 2.0), (cx + 3.0, mid - 2.0));
@@ -198,10 +198,10 @@ fn content(
             if let Some((c, starts)) = row.marks.cable {
                 let x0 = left_of(c) + 0.5;
                 let top = if starts { mid } else { y };
-                d.line((x0, top), (x0, y - ROW_MM));
+                d.line((x0, top), (x0, y - row_mm()));
             }
         }
-        y -= ROW_MM;
+        y -= row_mm();
         if y < b {
             break;
         }

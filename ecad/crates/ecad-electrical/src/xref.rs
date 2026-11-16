@@ -65,7 +65,9 @@ pub const MAX_POLES: usize = 32;
 pub const MAX_LABEL_CHARS: usize = 16;
 /// Most millimetres a moved table may be from its coil, in each direction.
 pub const MAX_OFFSET_MM: f64 = 2_000.0;
-/// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`), 2.5 mm.
+/// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`), 2.5 mm. Brief 066 (design 066 §2.4) found that it
+/// bypasses the `reference` text style (built-in 2.0 mm); it stays a constant so nothing on a page
+/// moves, until the owner decides which height contact tables take.
 pub const XREF_TEXT_MM: f64 = 2.5;
 /// `ecad.xref-spare`: ACI 8.
 pub const SPARE_ACI: u8 = 8;
@@ -512,7 +514,7 @@ impl<'a> Places<'a> {
 
     /// `100-B-3` (or `/100.B`) for `at` on `page`; `?` (`/?`) when it cannot be located.
     pub fn text(&mut self, page: PageId, at: Option<Pt>) -> String {
-        let style = self.doc.settings.reference_style;
+        let style = self.doc.settings.reference_style();
         let unlocated = ecad_model::derive::unlocated(style).to_string();
         let Some(at) = at else { return unlocated };
         let (grid, number, located) = self.page(page);
@@ -532,7 +534,7 @@ impl<'a> Places<'a> {
     /// is built at most once per `Places`.
     pub fn sorted(&mut self, page: PageId, at: Option<Pt>) -> Option<((usize, u32, u32), String)> {
         let at = at?;
-        let style = self.doc.settings.reference_style;
+        let style = self.doc.settings.reference_style();
         let doc = self.doc;
         let position = self.book.get_or_insert_with(|| ecad_model::book::Book::of(doc)).position(page)?;
         let (grid, number, located) = self.page(page);

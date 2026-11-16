@@ -130,7 +130,7 @@ impl App {
             let last = ecad_cadcraft::revisions::issued(doc).last().map(|r| r.rev().to_string()).unwrap_or_default();
             let pending = ecad_cadcraft::revisions::pending_rev(doc);
             let dirty = ecad_cadcraft::revisions::is_pending(&p.ledger);
-            let sheet = page.map(|pg| ecad_model::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings.sheet);
+            let sheet = page.map(|pg| ecad_model::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings.sheet());
             let sheet = sheet.preset_name().map_or_else(|| format!("{}×{}", sheet.width, sheet.height), str::to_string);
             ((last, pending, dirty), sheet)
         });

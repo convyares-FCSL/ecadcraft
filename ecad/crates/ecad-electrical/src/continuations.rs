@@ -231,7 +231,7 @@ pub struct End {
 /// O(m log m).
 pub fn ends_named(doc: &Document, places: &mut Places<'_>, key: &str) -> Vec<End> {
     let Some((_, members)) = group_named(doc, key) else { return Vec::new() };
-    let unlocated = ecad_model::derive::unlocated(doc.settings.reference_style).to_string();
+    let unlocated = ecad_model::derive::unlocated(doc.settings.reference_style()).to_string();
     let mut out: Vec<End> = members
         .into_iter()
         .filter_map(|rid| {

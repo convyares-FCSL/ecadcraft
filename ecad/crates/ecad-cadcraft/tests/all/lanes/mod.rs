@@ -17,4 +17,5 @@ mod lane_059;
 mod lane_059_tester;
 mod lane_060;
 mod lane_062;
+mod lane_066;
 mod lane_070;

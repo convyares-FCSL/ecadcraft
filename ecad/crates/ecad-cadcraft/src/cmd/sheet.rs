@@ -147,7 +147,7 @@ pub fn default_number_from(
         .flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, crate::draw::outputs::kept_of(outputs)))
         .map(|n| n.to_ascii_lowercase())
         .collect();
-    let step = u64::from(doc.settings.page_number_step.max(1));
+    let step = u64::from(doc.settings.page_number_step().max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
     let (mut n, step, width) = match (from_start, digits.as_deref().and_then(|d| d.parse::<u64>().ok().map(|n| (n, d)))) {
@@ -559,10 +559,10 @@ pub fn project_json(doc: &Document) -> Value {
         .collect();
     let mut v = Value::Object(fields);
     v["props"] = Value::Object(free);
-    v["sheet"] = json!(doc.settings.sheet.text());
-    v["sheet_shown"] = json!(doc.settings.sheet.summary());
-    v["page_number_step"] = json!(doc.settings.page_number_step);
-    v["reference_style"] = json!(style_word(doc.settings.reference_style));
+    v["sheet"] = json!(doc.settings.sheet().text());
+    v["sheet_shown"] = json!(doc.settings.sheet().summary());
+    v["page_number_step"] = json!(doc.settings.page_number_step());
+    v["reference_style"] = json!(style_word(doc.settings.reference_style()));
     // Brief 025 (FP3): where contact tables go by default.
     v["contact_mirror"] = json!(doc.settings.contact_mirror.word());
     v["tag_padding"] = json!(crate::devices::padding(doc));
@@ -580,8 +580,8 @@ pub fn project_json(doc: &Document) -> Value {
     });
     v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
-    v["colour_style"] = json!(doc.settings.wiring.colour_style.name());
-    v["label_height"] = json!(doc.settings.wiring.label_height());
+    v["colour_style"] = json!(doc.settings.wiring.colour_style().name());
+    v["label_height"] = json!(wire_label_height(doc));
     // Brief 026: Project settings → Numbering.
     v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
     v["revisions"] = Value::Array(revs);
@@ -981,4 +981,10 @@ impl Command for UndoissueParams {
 /// where there is no clock.
 pub fn today() -> Option<String> {
     revisions::date_of_ms(crate::project::now_ms()?)
+}
+
+/// The wire label cap height the project resolves to, millimetres (its chosen one, its standard's
+/// or the built-in; brief 066).
+pub(crate) fn wire_label_height(doc: &ecad_model::Document) -> f64 {
+    crate::defaults::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, crate::defaults::Scope::project()).number()
 }

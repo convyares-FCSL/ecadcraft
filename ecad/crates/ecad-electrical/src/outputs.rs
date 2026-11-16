@@ -45,8 +45,6 @@ use crate::locations::{self, BoxCache, Located, Source};
 
 pub mod kept;
 
-/// Rows per A3 sheet of a generated table (design 024 §5.2).
-pub const ROWS_PER_SHEET: usize = 44;
 /// Default and largest `limit` of `bom`, `wirelist`, `cablelist`.
 pub const DEFAULT_LIMIT: usize = 500;
 pub const MAX_LIMIT: usize = 5000;
@@ -637,7 +635,7 @@ impl Scope {
                         }
                     }
                     self.sheet |= before.sheet != after.sheet;
-                    self.styles |= before.reference_style != after.reference_style || before.wiring.colour_style != after.wiring.colour_style;
+                    self.styles |= before.reference_style != after.reference_style || before.wiring.colour_style() != after.wiring.colour_style();
                 }
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
                     self.pages.insert(*id);

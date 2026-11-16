@@ -1,0 +1,17 @@
+# Brief 057: wire and cable rating.
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"rating.wire_basis" = "datasheet"
+"rating.cable_basis" = "table"
+"rating.panel_temperature" = 40.0
+"rating.ambient" = 30.0
+"rating.table" = "none"
+"rating.bundling" = "none"
+"rating.method" = "E"
+"rating.voltage" = 400.0
+"rating.system" = "ac3"
+"rating.vd_limit" = 5.0

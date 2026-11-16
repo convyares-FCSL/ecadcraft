@@ -220,7 +220,7 @@ fn where_words(doc: &Document, net: &NetData) -> String {
     let place = net.first_conductor().and_then(|c| {
         doc.representations_of(Subject::Conductor(c)).find_map(|(_, r)| {
             let (a, _) = ecad_model::derive::route_ends_on(doc, c, r.page)?;
-            Some(wiring::place(doc, r.page, a)?.text(doc.settings.reference_style))
+            Some(wiring::place(doc, r.page, a)?.text(doc.settings.reference_style()))
         })
     });
     [point, place].into_iter().flatten().collect::<Vec<_>>().join(", ")
@@ -576,14 +576,14 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
     }
     if let Some(d) = change.digits {
         let d = Some(d).filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d)).ok_or("`digits` must be 1 to 6")?;
-        w.digits = d as u8;
+        w.digits = Some(d as u8);
     }
     if let Some(c) = &change.colour_style {
         w.colour_style =
-            wiring::ColourStyle::parse(c).ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
+            Some(wiring::ColourStyle::parse(c).ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?);
     }
     if let Some(hv) = change.label_height {
-        w.label_height = Some(hv).filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
+        w.label_height = Some(Some(hv).filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?);
     }
     // Brief 032 §4: the label rule and the shortest labelled wire.
     if let Some(r) = &change.label_rule {
@@ -591,10 +591,10 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
         if r != wiring::LABEL_RULE_NET && r != wiring::LABEL_RULE_EACH {
             return Err(CmdError::refused("`label_rule` must be \"net\" (one label per net per page) or \"each\" (every wire)"));
         }
-        w.label_rule = r;
+        w.label_rule = Some(r);
     }
     if let Some(lv) = change.label_min_length {
-        w.label_min_length = Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or("Shortest labelled wire is 0 to 100 mm.")?;
+        w.label_min_length = Some(Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or("Shortest labelled wire is 0 to 100 mm.")?);
     }
     if let Some(u) = &change.unclassified_prefix {
         w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();

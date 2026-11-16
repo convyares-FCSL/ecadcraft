@@ -27,7 +27,7 @@ pub const PROJECT_KEYS: [&str; 6] = [TITLE, DRAWING_NUMBER, CUSTOMER, STATUS, FU
 /// Most characters of a free property key.
 pub const MAX_KEY_CHARS: usize = 40;
 /// The page-number step's range.
-pub const MAX_STEP: u32 = 1000;
+pub const MAX_STEP: u32 = ecad_model::builtins::MAX_PAGE_NUMBER_STEP;
 
 /// A `SetProperty` of `key` on `object` (whose properties are `props`) to `after`, when it changes.
 fn set(object: ObjectRef, props: Option<&Properties>, key: &str, after: Option<String>) -> Option<Op> {
@@ -569,7 +569,7 @@ pub fn tag_settings(
         changes.push((symbol.key, prefix));
     }
     if let Some(n) = padding {
-        settings.tag_padding = n;
+        settings.tag_padding = Some(n);
     }
     for (k, v) in changes {
         match v {
@@ -692,14 +692,15 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {
-        settings.sheet = SheetSpec::parse(t)?;
+        settings.sheet = Some(SheetSpec::parse(t)?);
     }
     if let Some(n) = change.page_number_step {
         let n = u32::try_from(n).ok().filter(|n| (1..=MAX_STEP).contains(n));
-        settings.page_number_step = n.ok_or_else(|| CmdError::refused(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}")))?;
+        settings.page_number_step =
+            Some(n.ok_or_else(|| CmdError::refused(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}")))?);
     }
     if let Some(s) = change.reference_style {
-        settings.reference_style = s;
+        settings.reference_style = Some(s);
     }
     if let Some(w) = &change.contact_mirror {
         settings.contact_mirror =
@@ -708,13 +709,17 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Brief 022 fix round: how label colours are written, and the label height.
     if let Some(w) = &change.colour_style {
-        settings.wiring.colour_style = ecad_model::wiring::ColourStyle::parse(w)
-            .ok_or(CmdError::refused("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?;
+        settings.wiring.colour_style = Some(
+            ecad_model::wiring::ColourStyle::parse(w)
+                .ok_or(CmdError::refused("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?,
+        );
     }
     if let Some(h) = change.label_height {
-        settings.wiring.label_height = Some(h)
-            .filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x))
-            .ok_or(CmdError::refused("`label_height` must be 0.5 to 10 (millimetres)"))?;
+        settings.wiring.label_height = Some(
+            Some(h)
+                .filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x))
+                .ok_or(CmdError::refused("`label_height` must be 0.5 to 10 (millimetres)"))?,
+        );
     }
     if settings != doc.settings {
         ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });

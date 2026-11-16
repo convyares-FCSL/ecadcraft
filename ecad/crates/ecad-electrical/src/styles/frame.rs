@@ -12,7 +12,7 @@ use ecad_model::sheet::{Margins, parse_frame_sheet, parse_margins};
 use ecad_model::{Document, PageId, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Value};
+use crate::defaults::{Kind, Slot};
 
 /// The `sheet` field's word for "the page's own sheet".
 pub const PAGE_SHEET: &str = "page";
@@ -25,39 +25,21 @@ fn margins_ok(s: &str) -> bool {
     parse_margins(s).is_some()
 }
 
-static FIELDS: &[Field] = &[
-    Field { key: "border_weight", label: "Border weight", kind: Kind::Length { min: 0.13, max: 2.11 }, builtin: Value::Length(0.5), over: None },
-    Field { key: "inner_weight", label: "Inner line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, builtin: Value::Length(0.25), over: None },
-    Field {
-        key: "line_colour",
-        label: "Line colour",
-        kind: Kind::Parsed { max_chars: 16, parse: super::is_colour },
-        builtin: Value::Text("none"),
-        over: None,
-    },
-    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
+static FIELDS: [Field; 8] = [
+    Field { key: "border_weight", label: "Border weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
+    Field { key: "inner_weight", label: "Inner line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
+    Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
+    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
     // Brief 055 (FP2): the sheet the frame is drawn for (`page`: the page's own), its margins,
     // its centre marks and where its block sits. 050a's `title_block` choice is retired (FP3): a
     // stored value is listed as unknown.
-    Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 48, parse: sheet_ok }, builtin: Value::Text(PAGE_SHEET), over: None },
-    Field {
-        key: "margins",
-        label: "Margins",
-        kind: Kind::Parsed { max_chars: 48, parse: margins_ok },
-        builtin: Value::Text("10,10,10,7"),
-        over: None,
-    },
-    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Choice(&["on", "off"]), builtin: Value::Choice("on"), over: None },
-    Field {
-        key: "block",
-        label: "Block position",
-        kind: Kind::Choice(&["bottom_full", "bottom_right"]),
-        builtin: Value::Choice("bottom_full"),
-        over: None,
-    },
+    Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 48, parse: sheet_ok }, slot: Slot::new(), over: None },
+    Field { key: "margins", label: "Margins", kind: Kind::Parsed { max_chars: 48, parse: margins_ok }, slot: Slot::new(), over: None },
+    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "block", label: "Block position", kind: Kind::Choice(&["bottom_full", "bottom_right"]), slot: Slot::new(), over: None },
 ];
 
-static BUILTINS: &[Builtin] = &[Builtin { id: "sheet", name: "Schematic sheet", values: &[] }];
+static BUILTINS: [Builtin; 1] = [Builtin { id: "sheet", name: "Schematic sheet", slot: Slot::new() }];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
     vec![&crate::defaults::styles::FRAME]
@@ -65,7 +47,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The frame style catalogue.
 pub static CATALOGUE: Catalogue =
-    Catalogue { word: "frame", plural: "Frames", one: "Frame style", fields: FIELDS, builtins: BUILTINS, choices, project_field: None };
+    Catalogue { word: "frame", plural: "Frames", one: "Frame style", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
 
 /// Where a frame's block sits (design 055 §1.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

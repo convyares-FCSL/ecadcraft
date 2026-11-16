@@ -137,7 +137,7 @@ fn drawn_words(doc: &Document, t: TerminalId) -> String {
     let Some((_, r)) = doc.representations_showing(t).next() else { return "no page".into() };
     let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
     match at.and_then(|a| ecad_model::wiring::place(doc, r.page, a)) {
-        Some(p) => p.text(doc.settings.reference_style),
+        Some(p) => p.text(doc.settings.reference_style()),
         None => crate::references::page_number_words(doc, r.page),
     }
 }
