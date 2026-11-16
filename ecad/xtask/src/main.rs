@@ -306,7 +306,7 @@ const README_SECTIONS: &[&str] = &["## Purpose", "## Contents", "## Must not dep
 /// 2026-11-15 (split lane step 10); lane 068 writes them. The list only shrinks: a member not
 /// listed whose README fails is a violation, and an entry whose README passes (or that is no
 /// longer a member) fails `layers` until it is removed.
-const README_ALLOWLIST: &[&str] = &["ecad-app", "ecad-cadcraft", "ecad-desktop", "ecad-electrical", "ecad-xtask"];
+const README_ALLOWLIST: &[&str] = &[];
 
 /// What a UiKit crate may depend on, besides dev-dependencies (design §2).
 const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens", "ecad-drawing-style"];

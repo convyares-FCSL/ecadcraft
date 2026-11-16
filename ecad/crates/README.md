@@ -45,17 +45,17 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 | [`ecad-store`](ecad-store/README.md) | Core | Bytes under the file: media, the writer lock, atomic replace. The only Core crate that touches the OS. |
 | [`ecad-file`](ecad-file/README.md) | Core | The `.ecad` file: records, integrity chain, read, save, recover. |
 | [`ecad-inspect`](ecad-inspect/README.md) | Core | Read-only snapshots and the runtime event log. |
-| `ecad-electrical` | Core | The electrical rules: devices, wires, cables, strips, checks, reports. *Being created by the split.* |
-| [`ecad-cadcraft`](ecad-cadcraft/README.md) | Engine | Draws pages from the model and runs commands on CADCraft. *README comes after the split.* |
+| [`ecad-electrical`](ecad-electrical/README.md) | Core | The electrical rules: devices, wires, cables, strips, checks, reports. |
+| [`ecad-cadcraft`](ecad-cadcraft/README.md) | Engine | Draws pages from the model and runs commands on CADCraft; commands are in `cmd/`. |
 | [`ecad-ui`](ecad-ui/README.md) | UI kit | Widgets: controls, primitives, panels, tables, dialogs. |
 | [`ecad-tokens`](ecad-tokens/README.md) | UI kit | The screen's look as constants: shell colours, spacing, type, icons. |
 | [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table. |
-| `ecad-desktop` | Programs | The desktop program: command line, window, start-up timing. |
+| [`ecad-desktop`](../apps/ecad-desktop/README.md) | Programs | The desktop program: command line, window, start-up timing. |
 | [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (`ecad upgrade`). |
 | [`ecad-mcp`](../apps/ecad-mcp/README.md) | Programs | ECAD for agents over MCP, with a write gate. |
 | [`ecad-bench`](../dev/ecad-bench/README.md) | Dev | The load benchmark (`cargo xtask bench`). |
 | [`ecad-inspector`](../dev/ecad-inspector/README.md) | Dev | `ecadinspect`: look inside a `.ecad` file, text or web page. |
-| [`xtask`](../xtask/) | Dev | The project's own commands: `ci`, `layers`, `bench`, `test-changed`. |
+| [`ecad-xtask`](../xtask/README.md) (`xtask`) | Dev | The project's own commands: `ci`, `layers`, `bench`, `test-changed`. |
 
 ## The rules `cargo xtask layers` checks
 
