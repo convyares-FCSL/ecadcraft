@@ -537,13 +537,13 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 /// `Err(format!(`. Each crate's two counts only fall as its errors move to its `thiserror` enum.
 /// `ecad-file` and `ecad-store` are left out until lane 069 has rewritten them; `xtask` is a tool.
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
-    ("ecad-app", 58, 8),
+    ("ecad-app", 57, 6),
     ("ecad-bench", 95, 22),
-    ("ecad-cadcraft", 294, 194),
-    ("ecad-cli", 2, 0),
+    ("ecad-cadcraft", 291, 191),
+    ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 142, 135),
-    ("ecad-inspector", 7, 5),
+    ("ecad-inspector", 5, 2),
     ("ecad-mcp", 34, 10),
     ("ecad-model", 6, 7),
 ];
