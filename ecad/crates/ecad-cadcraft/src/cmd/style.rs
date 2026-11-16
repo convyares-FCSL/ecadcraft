@@ -51,7 +51,7 @@ layer?: \"project\"|\"standard\"} (one transaction)",
             .params("{catalogue, id | name} (a project-only style moves to the standard) | {key} (a project value moves to the standard)")
             .noundo(),
         // Brief 050b (design 050 §6.9).
-        CommandSpec::new("category", "Wire Category", crate::cmd::wire::run_category)
+        CommandSpec::new("category", "Wire Category", crate::cmd::input::typed::<crate::cmd::wire::CategoryParams>)
             .params("{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)")
             .noundo(),
         CommandSpec::new("styles", "Styles", run_styles).params("{catalogue?, users?: bool} (read only)").noundo(),

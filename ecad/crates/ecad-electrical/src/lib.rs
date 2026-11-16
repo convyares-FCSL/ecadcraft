@@ -23,6 +23,7 @@ pub mod accessories;
 pub mod bom;
 pub mod cables;
 pub mod checks;
+pub mod cmd;
 
 pub mod connectors;
 pub mod continuations;

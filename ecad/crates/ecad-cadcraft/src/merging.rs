@@ -334,11 +334,11 @@ fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String,
         Obj::Component(c) if crate::cmd::device::is_device_property(ecad_model::ObjectRef::Component(c), key) => {
             crate::devices::property_value(doc, key, Some(value))?
         }
-        Obj::Conductor(c) => match crate::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
+        Obj::Conductor(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },
-        Obj::Cable(c) => match crate::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
+        Obj::Cable(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },
