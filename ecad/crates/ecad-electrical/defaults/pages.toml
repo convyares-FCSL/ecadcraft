@@ -18,3 +18,9 @@
 [layout]
 "page.report.row_height" = 5.0     # ecad.table-row: rows per A3 sheet are computed from these
 "page.report.header_height" = 7.0  # ecad.table-header
+# The cover's lines as fractions of the Cover text style's height (brief 066d): with the built-in
+# 10 mm they keep board 1.16's 5, 3.5, 2.4 and 3.8 mm.
+"front.cover.block_title" = 0.5
+"front.cover.body" = 0.35
+"front.cover.column_head" = 0.24
+"front.cover.customer" = 0.38

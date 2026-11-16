@@ -261,7 +261,8 @@ pub fn caption_text(
     if !at.is_finite() {
         return None;
     }
-    let height = crate::text_style::text_style(doc, crate::text_style::TextKind::Description).height;
+    // Brief 066d: one kind for height and style, the one `TextOf::Caption` draws in.
+    let height = crate::text_style::text_style(doc, crate::devices::kind_of(crate::devices::TextOf::Caption)).height;
     Some(crate::devices::PageText {
         text: crate::devices::DerivedText {
             rep,

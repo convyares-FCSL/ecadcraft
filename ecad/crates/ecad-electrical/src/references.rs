@@ -32,10 +32,6 @@ use crate::text_style::fonts::TextMetrics;
 pub const REFERENCE_ACI: u8 = 6;
 /// `ecad.orphan`: ACI 1, red.
 pub const ORPHAN_ACI: u8 = 1;
-/// `ecad.ref-text-height` in millimetres. Brief 066 (design 066 §2.4) found that it bypasses the
-/// `reference` text style (built-in 2.0 mm); it stays a constant so nothing on a page moves, until
-/// the owner decides which height references take.
-pub const TEXT_HEIGHT_MM: f64 = 2.5;
 /// `ecad.ref-stub-spacing` in millimetres: between continued stubs, and from a reference point to
 /// its text.
 pub const STUB_SPACING_MM: f64 = 5.0;
@@ -60,7 +56,8 @@ pub fn sizes(doc: &Document) -> Sizes {
         LengthUnit::Millimetre => 1.0,
         LengthUnit::Inch => 1.0 / 25.4,
     };
-    Sizes { text_height: TEXT_HEIGHT_MM * k, spacing: STUB_SPACING_MM * k }
+    // Brief 066d: reference text is the `Reference` text style, already in drawing units.
+    Sizes { text_height: crate::text_style::text_style(doc, crate::text_style::TextKind::Reference).height, spacing: STUB_SPACING_MM * k }
 }
 
 /// Whether `r` is a cable reference end.
@@ -200,15 +197,16 @@ pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m
     if let Some((_, r)) = near {
         return Some(r);
     }
-    markers.iter().find(|x| text_box_holds(x, p, radius, m)).map(|x| x.reference)
+    let h = crate::words::label_height(doc);
+    markers.iter().find(|x| text_box_holds(x, p, radius, h, m)).map(|x| x.reference)
 }
 
 /// Whether `p` lies in a marker's box (brief 009's flag) grown by `pad`.
-fn text_box_holds(m: &Marker, p: Pt, pad: f64, metrics: &dyn TextMetrics) -> bool {
+fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics) -> bool {
     // Brief 009 draws the marker: its flag around the text, at the reference point, on the side
     // away from the wires.
-    let w = crate::words::stroke_label_width(&crate::words::shorten(&m.text, 64), metrics);
-    let (lo, hi) = crate::words::flag_box(m.at, w, crate::words::FlagSide::away(m.text_dir));
+    let w = crate::words::stroke_label_width(&crate::words::shorten(&m.text, 64), h, metrics);
+    let (lo, hi) = crate::words::flag_box(m.at, w, crate::words::FlagSide::away(m.text_dir), h);
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 

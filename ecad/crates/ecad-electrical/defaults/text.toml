@@ -51,8 +51,10 @@ weight = "regular"
 height = 2.0
 weight = "regular"
 
+# All reference text: cross-references, contact tables, continuations, cable reference ends
+# (brief 066d, owner 2026-11-16: one default, 2.5 so contact cross-references keep their size).
 [styles.text.reference]
-height = 2.0
+height = 2.5
 weight = "regular"
 
 [styles.text.continuation_caption]

@@ -250,7 +250,7 @@ pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 23] = [
     ("description", 1.6, "regular"),
     ("part_number", 1.6, "regular"),
     ("continuation_name", 2.0, "regular"),
-    ("reference", 2.0, "regular"),
+    ("reference", 2.5, "regular"),
     // Brief 049's continuation caption (merged after 050a).
     ("continuation_caption", 2.5, "regular"),
     ("wire_label", 2.5, "regular"),

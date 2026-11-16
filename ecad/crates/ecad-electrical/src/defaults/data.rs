@@ -58,8 +58,16 @@ pub static FILES: &[(&str, &str)] = &[
 
 /// Built-in layout values no level overrides (brief 066c): `[layout]` keys of the files, with the
 /// check each value must pass. Not registry entries (every entry has a project level).
-pub static LAYOUT: &[(&str, Kind)] =
-    &[("page.report.row_height", Kind::Length { min: 3.0, max: 20.0 }), ("page.report.header_height", Kind::Length { min: 3.0, max: 30.0 })];
+#[rustfmt::skip]
+pub static LAYOUT: &[(&str, Kind)] = &[
+    ("page.report.row_height", Kind::Length { min: 3.0, max: 20.0 }),
+    ("page.report.header_height", Kind::Length { min: 3.0, max: 30.0 }),
+    // Brief 066d (overseer ruling 5): the cover's lines as fractions of the `Cover` style height.
+    ("front.cover.block_title", Kind::Number { min: 0.05, max: 1.0 }),
+    ("front.cover.body", Kind::Number { min: 0.05, max: 1.0 }),
+    ("front.cover.column_head", Kind::Number { min: 0.05, max: 1.0 }),
+    ("front.cover.customer", Kind::Number { min: 0.05, max: 1.0 }),
+];
 
 /// Whether ecad-model holds `key`'s built-in (`ecad_model::builtins::KEYS`; owner, 2026-11-16:
 /// what the lower crate needs lives only in the lower crate). This crate's files never name it.

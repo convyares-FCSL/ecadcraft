@@ -545,10 +545,10 @@ fn ac4_fan_labels_at_the_tail_start_on_both_sides() {
     f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "4"]})).unwrap();
     view(&mut f.h, f.c1, "fan");
     let d = fan(&mut f.h, f.page, f.c1);
-    let (g, lift) = (look::LABEL_GAP, 0.3 * look::LABEL_HEIGHT);
+    let (g, lift) = (look::LABEL_GAP, 0.3 * hh());
     for (i, y) in [0.0, 5.0, 10.0, 15.0].into_iter().enumerate() {
         let (core, wire) = (format!("{}", i + 1), format!("W{}", i + 1));
-        let (wc, ww) = (look::font_width(&core), look::font_width(&wire));
+        let (wc, ww) = ((look::font_width(&core) * hh()), (look::font_width(&wire) * hh()));
         let find = |role: Role, value: &str, left: bool| -> Pt {
             of_role(&d, role)
                 .into_iter()
@@ -559,10 +559,10 @@ fn ac4_fan_labels_at_the_tail_start_on_both_sides() {
         };
         // Left: S = (20, y).
         assert!(near(find(Role::CoreLabel, &core, true), Pt::new(20.0 - g - wc, y + lift)), "left core {core}");
-        assert!(near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - look::LABEL_SPACING - ww, y + lift)), "left {wire}");
+        assert!(near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - look::label_spacing(hh()) - ww, y + lift)), "left {wire}");
         // Right: S = (100, y).
         assert!(near(find(Role::CoreLabel, &core, false), Pt::new(100.0 + g, y + lift)), "right core {core}");
-        assert!(near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + look::LABEL_SPACING, y + lift)), "right {wire}");
+        assert!(near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + look::label_spacing(hh()), y + lift)), "right {wire}");
         // Labels sit on their own wire's tail, never on the spine side of the tail start.
         let tail_end_x = |left: bool| if left { 0.0 } else { 120.0 };
         for left in [true, false] {
@@ -591,7 +591,7 @@ fn ac4_traditional_labels_on_vertical_and_reversed_wires() {
     }
     let r: CableId = id(&h.run("cableslash", json!({"from": [75, -3], "to": [75, 8]})).unwrap(), "cable");
     h.run("cablecore", json!({"cable": r.hex(), "cores": ["C", "D"]})).unwrap();
-    let hh = look::LABEL_HEIGHT;
+    let hh = hh();
     let texts = layer_texts(&mut h, page);
     let want = [
         ("A", Pt::new(0.0 - 0.3 * hh, 20.0 + 0.5 * hh), std::f64::consts::FRAC_PI_2),
@@ -631,11 +631,11 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     // The flag's flat side faces the cable (right); the point is on the left. Fix round 1 of the
     // stack: the whole flag reaches left of the reference point, away from the wires, so M is h/2
     // right of the point.
-    let m = Pt::new(-20.0 + 0.5 * look::LABEL_HEIGHT, 22.5);
+    let m = Pt::new(-20.0 + 0.5 * hh(), 21.25 + 0.5 * hh());
     let flag = path(&of_role(&d, Role::Flag)[0].shape);
     assert!(flag.iter().all(|p| p.x <= m.x + 1e-9), "the flag stays left of M: {flag:?}");
     let min_x = flag.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
-    assert!(min_x < -20.0 - 0.5 * look::LABEL_HEIGHT - 1e-9, "the point is on the left: {flag:?}");
+    assert!(min_x < -20.0 - 0.5 * hh() - 1e-9, "the point is on the left: {flag:?}");
     // The trunk runs from the junction, now the middle of the spine (97.5, 7.5; owner request of
     // 2026-11-07), to M on the flag's flat (right) side, in axis-aligned steps.
     let trunk: Vec<Pt> = of_role(&d, Role::Trunk).into_iter().flat_map(|p| path(&p.shape)).collect();
@@ -745,11 +745,11 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
             let d = fan(&mut f.h, f.page, f.c1);
             assert!(all_finite(&d));
             // The tails are long enough for the longest labels on their side (design §4.2 step 4).
-            let wc = look::font_width(&shown32);
-            let ww = look::font_width(&shown24("T"));
+            let wc = look::font_width(&shown32) * hh();
+            let ww = look::font_width(&shown24("T")) * hh();
             // The gap between core label and wire number is one text height (overseer decision on
             // the brief 009 review); the gaps at either end stay `ecad.label-gap`.
-            let need = 2.0 * look::LABEL_GAP + look::LABEL_SPACING + wc + ww;
+            let need = 2.0 * look::LABEL_GAP + look::label_spacing(hh()) + wc + ww;
             for t in of_role(&d, Role::Tail) {
                 let p = path(&t.shape);
                 assert!((p[0].dist(p[1]) - need).abs() < 1e-6, "tail {} long, want {need}", p[0].dist(p[1]));
@@ -1337,4 +1337,10 @@ fn hover_shows_blank_cores_as_unset() {
     let route = f.h.route_handle(f.page, f.wires[3]);
     let lines = f.h.p(|p| hover_lines(p, uid, route)).unwrap();
     assert!(lines.iter().any(|l| l == "In cable -C01"), "{lines:?}");
+}
+
+/// The cable look's text height in a project with the built-in styles (brief 066d: the
+/// `CableText` text style's).
+fn hh() -> f64 {
+    ecad_cadcraft::look::label_height(&ecad_model::Document::default())
 }

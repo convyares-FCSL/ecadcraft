@@ -395,3 +395,72 @@ fn setdefault_writes_and_clears_a_settings_entry() {
     h.run("setdefault", json!({"key": "print.reference_style", "level": "project", "value": "page-column"})).unwrap();
     assert_eq!(h.doc().settings.reference_style(), ecad_model::ReferenceStyle::PageColumn);
 }
+
+// ---------------------------------------------------------------- 066d: drawn text reads its style
+
+/// The heights of the text entities `value` is drawn with on `page`.
+fn drawn_heights(h: &mut H, page: ecad_model::PageId, value: &str) -> Vec<f64> {
+    h.pv(|p, pg| pg.entities_of(p, page))
+        .iter()
+        .filter_map(|e| match &e.kind {
+            cadcraft_engine::doc::EntityKind::Text(t) if t.value == value => Some(t.height),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A contact's cross-reference is reference text: the `Reference` style's height (2.5 built in),
+/// and editing that style moves it (owner, 2026-11-16).
+#[test]
+fn contact_cross_references_follow_the_reference_style() {
+    let mut h = H::new(0x66_d1);
+    let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
+    let k1 = crate::common::hex(&coil, "component");
+    let p2: ecad_model::PageId = crate::common::id(&h.run("newpage", json!({"title": "Contacts"})).unwrap(), "page");
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1, "page": p2.hex()})).unwrap();
+    let heights = |h: &mut H| -> Vec<f64> {
+        let doc = h.doc();
+        ecad_cadcraft::xref::parts_on_page(&doc, p2)
+            .into_iter()
+            .filter_map(|p| match p.shape {
+                ecad_cadcraft::xref::Shape::Text { kind: ecad_cadcraft::text_style::TextKind::Reference, height, .. } => Some(height),
+                _ => None,
+            })
+            .collect()
+    };
+    let before = heights(&mut h);
+    assert!(!before.is_empty() && before.iter().all(|x| (x - 2.5).abs() < 1e-9), "{before:?}");
+    h.run("setstyle", json!({"catalogue": "text", "id": "reference", "fields": {"height": 3.0}})).unwrap();
+    let after = heights(&mut h);
+    assert!(!after.is_empty() && after.iter().all(|x| (x - 3.0).abs() < 1e-9), "{after:?}");
+}
+
+/// The cable look is laid out from the `CableText` style: editing it moves the layout height.
+#[test]
+fn the_cable_look_follows_the_cable_text_style() {
+    let mut h = H::new(0x66_d2);
+    let before = ecad_cadcraft::look::label_height(&h.doc());
+    assert!((before - 1.6).abs() < 1e-9, "{before}");
+    h.run("setstyle", json!({"catalogue": "text", "id": "cable_text", "fields": {"height": 3.0}})).unwrap();
+    let doc = h.doc();
+    assert!((ecad_cadcraft::look::label_height(&doc) - 3.0).abs() < 1e-9);
+    // A reference flag is laid out around text of that height: its rectangle is two heights tall.
+    let f = ecad_cadcraft::look::flag_shape(ecad_model::Pt::new(0.0, 0.0), 10.0, ecad_cadcraft::look::FlagSide::Right, 3.0);
+    assert!((f.hi.y - f.lo.y - 6.0).abs() < 1e-9, "{:?} {:?}", f.lo, f.hi);
+}
+
+/// Cover lines are the `Cover` style's height times their factors: editing the style moves them.
+#[test]
+fn cover_lines_follow_the_cover_style() {
+    let mut h = H::new(0x66_d3);
+    let cover: ecad_model::PageId = crate::common::id(&h.run("newpage", json!({"generated": "cover"})).unwrap(), "page");
+    h.activate(cover);
+    let before = drawn_heights(&mut h, cover, "No wires yet.");
+    assert!(!before.is_empty(), "the wire colours block says so on a new project");
+    h.run("setstyle", json!({"catalogue": "text", "id": "cover", "fields": {"height": 5.0}})).unwrap();
+    let after = drawn_heights(&mut h, cover, "No wires yet.");
+    assert_eq!(before.len(), after.len());
+    for (b, a) in before.iter().zip(&after) {
+        assert!((a * 2.0 - b).abs() < 1e-9, "the cover halved from 10 to 5 mm: {b} → {a}");
+    }
+}

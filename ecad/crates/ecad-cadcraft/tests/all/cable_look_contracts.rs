@@ -395,7 +395,7 @@ fn f_traditional_core_labels_at_the_slash() {
     // The slash (58,-3)–(62,18) crosses y = 0, 5, 15 at these x.
     for (y, label) in [(0.0, "1"), (5.0, "2"), (15.0, "4")] {
         let x = 58.0 + 4.0 * (y + 3.0) / 21.0;
-        let want = Pt::new(x + 1.25, y + 0.75);
+        let want = Pt::new(x + 0.5 * hh(), y + 0.3 * hh());
         assert!(texts.iter().any(|(at, v)| v == label && at.near(want, 1e-9)), "{label} at {want:?} in {texts:?}");
     }
     f.h.check();
@@ -469,7 +469,7 @@ fn g_fan_is_the_worked_example() {
         })
         .next()
         .unwrap();
-    assert!((one.x + look::font_width("1") - 19.0).abs() < 1e-9 && (one.y - 0.75).abs() < 1e-9, "{one:?}");
+    assert!((one.x + (look::font_width("1") * hh()) - 19.0).abs() < 1e-9 && (one.y - 0.3 * hh()).abs() < 1e-9, "{one:?}");
     let _ = text(Role::WireNumber, "W1");
     // Drawn on the reserved layer, trunk and spines thick, bends, tails and frame thin.
     let ents = f.h.pv(|p, pg| pg.entities_of(p, f.page));
@@ -499,13 +499,13 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     // in axis-aligned steps.
     let trunk: Vec<Pt> = of_role(&fan, Role::Trunk).into_iter().flat_map(path).collect();
     assert!(trunk.iter().any(|p| near(*p, Pt::new(22.5, 7.5))), "{trunk:?}");
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(123.75, 22.5))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(125.0 - 0.5 * hh(), 21.25 + 0.5 * hh()))), "{trunk:?}");
     for piece in of_role(&fan, Role::Trunk).into_iter().map(path) {
         assert!(piece.windows(2).all(|w| (w[0].x - w[1].x).abs() < 1e-9 || (w[0].y - w[1].y).abs() < 1e-9));
     }
     // The flag points right, away from the cable.
     let flag = path(of_role(&fan, Role::Flag)[0]);
-    assert!(flag.iter().any(|p| p.x > 125.0 + look::font_width(look::REFERENCE_PLACEHOLDER) + 1.25 + 1e-9));
+    assert!(flag.iter().any(|p| p.x > 125.0 + (look::font_width(look::REFERENCE_PLACEHOLDER) * hh()) + 0.5 * hh() + 1e-9));
     // No loose-end squares at x = 120.
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let squares: Vec<Vec2> = f.h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Square).map(|m| m.at).collect();
@@ -545,8 +545,8 @@ fn i_both_ends_at_reference_ends() {
     // Each flag points away from the wires (fix round 1 of the stack): the right one reaches right,
     // the left one (wires to its right) reaches left, so both flat sides, where the trunk attaches,
     // face the cable, h/2 from their points.
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(125.0 - 1.25, 22.5))), "{trunk:?}");
-    assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + 1.25, 22.5))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(125.0 - 0.5 * hh(), 21.25 + 0.5 * hh()))), "{trunk:?}");
+    assert!(trunk.iter().any(|p| near(*p, Pt::new(-30.0 + 0.5 * hh(), 21.25 + 0.5 * hh()))), "{trunk:?}");
     assert_eq!(of_role(&fan, Role::Flag).len(), 2);
     f.h.check();
 }
@@ -855,4 +855,10 @@ fn cablefan_interactive_equals_json_and_reference_ends_have_no_spine() {
     assert!(e.contains("End B of cable -C01 stops at a reference; it has no spine."), "{e}");
     c.h.run("cablefan", json!({"cable": c.c1.hex(), "end": "A", "at": 1.0})).unwrap();
     c.h.check();
+}
+
+/// The cable look's text height in a project with the built-in styles (brief 066d: the
+/// `CableText` text style's).
+fn hh() -> f64 {
+    ecad_cadcraft::look::label_height(&ecad_model::Document::default())
 }

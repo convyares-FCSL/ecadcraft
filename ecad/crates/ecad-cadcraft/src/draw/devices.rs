@@ -80,7 +80,7 @@ pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: EHAlign, valig
             rotation: 0.0,
             width_factor: 1.0,
             oblique: 0.0,
-            style: "Standard".into(),
+            style: crate::text_style::PLACEHOLDER_STYLE.into(),
             halign,
             valign,
         }),

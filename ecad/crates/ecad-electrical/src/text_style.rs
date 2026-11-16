@@ -22,6 +22,10 @@ pub mod fonts;
 pub const STYLE_REGULAR: &str = "Standard";
 /// The CADCraft text style of bold ECAD text (the project font, bold).
 pub const STYLE_BOLD: &str = "ECAD-BOLD";
+/// The style name a text entity is built with before its kind's style is applied (brief 066d:
+/// every drawn text then takes its kind's style through `LookApply`; symbol line art, exempt by
+/// the overseer's ruling 1, keeps it).
+pub const PLACEHOLDER_STYLE: &str = STYLE_REGULAR;
 
 /// One row of the style table, resolved for this project.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -253,7 +257,7 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
 pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     let id = style_of(doc, kind, at);
     let f = |k: &str| crate::styles::field_of(doc, "text", &id, k, None);
-    let height = f("height").map_or(2.5, |r| r.length(doc));
+    let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
         _ => Weight::Regular,
@@ -295,7 +299,35 @@ pub fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::
     props.get(e.key).and_then(|v| e.parse_in(doc, v))?;
     let style = text_style_at(doc, kind, at);
     let id = style_of(doc, kind, at);
-    let font = crate::styles::field_of(doc, "text", &id, "font", None).map(|r| r.text()).unwrap_or_default();
+    Some(own_with(doc, style, &id))
+}
+
+/// The text style `id` of the `text` catalogue as drawn (brief 066d): its height, weight and
+/// colour, and the CADCraft style naming its font, as [`own_style`] gives an object's own style.
+/// For a text whose style is chosen by something other than its kind (a location box's label).
+pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
+    let f = |k: &str| crate::styles::field_of(doc, "text", id, k, None);
+    let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
+    let weight = match f("weight").map(|r| r.word()) {
+        Some("bold") => Weight::Bold,
+        _ => Weight::Regular,
+    };
+    let colour = f("colour").and_then(|r| text_colour(&r.text()));
+    own_with(doc, TextStyle { height, weight, style_name: weight.style_name(), colour }, id)
+}
+
+/// The text catalogue's built-in cap height in drawing units (only when a field cannot be read).
+fn builtin_height(doc: &Document) -> f64 {
+    let mm = match crate::styles::text::CATALOGUE.field("height").map(|f| f.builtin()) {
+        Some(defaults::Value::Length(x)) => x,
+        _ => 0.0,
+    };
+    defaults::Resolved { value: defaults::Value::Length(mm), from: defaults::Source::Builtin }.length(doc)
+}
+
+/// [`OwnStyle`] for `style` of text style `id`: its font family when not the project font.
+fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
+    let font = crate::styles::field_of(doc, "text", id, "font", None).map(|r| r.text()).unwrap_or_default();
     let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
         defaults::Value::Text(t) => t.to_string(),
         _ => default_family().to_string(),
@@ -306,7 +338,7 @@ pub fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::
         Some(f) => family_style_name(f, style.weight),
         None => style.weight.style_name().to_string(),
     };
-    Some(OwnStyle { style, name, family })
+    OwnStyle { style, name, family }
 }
 
 /// The text style `kind` uses at `at`.
@@ -1038,7 +1070,7 @@ mod tests {
         (TextKind::Description, 1.6, Weight::Regular),
         (TextKind::PartNumber, 1.6, Weight::Regular),
         (TextKind::ContinuationName, 2.0, Weight::Regular),
-        (TextKind::Reference, 2.0, Weight::Regular),
+        (TextKind::Reference, 2.5, Weight::Regular),
         // Brief 049 (design 049 §7).
         (TextKind::ContinuationCaption, 2.5, Weight::Regular),
         (TextKind::WireLabel, 2.5, Weight::Regular),
