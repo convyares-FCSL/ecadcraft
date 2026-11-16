@@ -1046,16 +1046,16 @@ fn a_project_without_024_opens_unchanged() {
     assert!(!h2.p(|p| p.unsaved()), "showing the reports writes nothing");
 }
 
-/// The golden v1 project file (before 024) opens and its reports build without error.
+/// The golden project file (its records from before 024) opens and its reports build without error.
 #[test]
-fn the_golden_v1_project_opens_and_reports_build() {
+fn the_golden_project_opens_and_reports_build() {
     let d = TempDir::new("golden");
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project-v1.ecad");
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project.ecad");
     let path = d.path("golden.ecad");
     std::fs::copy(&src, &path).unwrap();
     let mut s = cadcraft_engine::Session::empty();
     let opened = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 0x24_7505);
-    let Ok((project, _)) = opened else { return };
+    let (project, _) = opened.unwrap();
     let mut h = H { s, project, trail: Vec::new() };
     let head = h.head();
     keep_models(&mut h);

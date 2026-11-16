@@ -263,7 +263,7 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
         "defaults": {"prefix": "K"}, "slots": [{"text": "tag", "at": [-10, 0]}]});
     let pts: Vec<Value> = coil_def.terminals.iter().map(|t| json!({"key": t.key, "label": t.label, "at": [t.at.x, t.at.y]})).collect();
     p["points"] = json!(pts);
-    let gr: Vec<Value> = coil_def.graphics.iter().map(|g| serde_json::to_value(ecad_file::v1::Primitive::from(g)).unwrap()).collect();
+    let gr: Vec<Value> = coil_def.graphics.iter().map(|g| serde_json::to_value(ecad_file::records::Primitive::from(g)).unwrap()).collect();
     p["graphics"] = json!(gr);
     let v = h.run("symboledit", p.clone()).unwrap();
     assert_eq!(v["updated"], 0, "placed built-ins are left unless asked");

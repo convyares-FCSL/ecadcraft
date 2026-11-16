@@ -1,11 +1,9 @@
-//! Fixtures shared by the inspector's tests: a small history written as a version 1 file and
-//! converted to version 2.
+//! Fixtures shared by the inspector's tests: small histories written as project files.
 #![allow(dead_code)]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use ecad_model::*;
-use ecad_store::{Medium, MemoryMedium};
 
 pub struct TempDir(PathBuf);
 
@@ -58,31 +56,18 @@ pub fn history() -> Ledger {
     l
 }
 
-pub fn v1_bytes(l: &Ledger) -> Vec<u8> {
-    let f = ecad_file::ProjectFile::write_new(MemoryMedium::default(), PROJECT, l, Some(5), "test").unwrap();
-    f.into_medium().read_all().unwrap()
-}
-
 /// `ecadinspect <args>` (the text views): its output, or its error.
 pub fn run(args: &[&str]) -> std::result::Result<String, String> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let mut out = Vec::new();
-    ecad_inspector::cli::ecadinspect_with(&args, &mut out, &mut std::io::sink()).map(|()| String::from_utf8(out).unwrap())
+    ecad_inspector::cli::views(&args, &mut out).map(|()| String::from_utf8(out).unwrap())
 }
 
-/// `history` written as a version 1 file `p.ecad` in `dir` and converted to `p2.ecad`, as
-/// `ecad upgrade` does; the version 2 path.
-pub fn upgraded(dir: &TempDir, l: &Ledger) -> PathBuf {
-    let src = dir.path("p.ecad");
-    std::fs::write(&src, v1_bytes(l)).unwrap();
-    let out = dir.path("p2.ecad");
-    convert(&src, &out);
-    out
-}
-
-/// `ecad upgrade <src> --out <out>`.
-pub fn convert(src: &Path, out: &Path) {
-    ecad_file::v2::convert::convert_file(src, Some(out), "test").unwrap();
+/// `history` written as the project file `p.ecad` in `dir`; its path.
+pub fn written(dir: &TempDir, l: &Ledger) -> PathBuf {
+    let path = dir.path("p.ecad");
+    ecad_file::ProjectV2::create(ecad_file::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
+    path
 }
 
 pub const WRITER: &str = "ecad-inspector tests";
@@ -92,7 +77,7 @@ pub const WRITER: &str = "ecad-inspector tests";
 /// and the tag text `TITLE` in a page title and a property; a branch `Option B` forked from main
 /// with edits of its own. Snapshots every 16 transactions. Returns the file's path.
 pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
-    use ecad_file::v2::{ProjectV2, Store};
+    use ecad_file::{ProjectV2, Store};
     let mut ids = IdAllocator::seeded(0x1A5);
     let mut l = Ledger::new(11);
     let (p1, p2, layer): (PageId, PageId, LayerId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -160,7 +145,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     )
     .unwrap();
     let path = dir.path("rich.v2.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, None, None, Some(1), WRITER, 16).unwrap().0;
+    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();
     let main = proj.branch();
     let (b, _) = proj.create_branch("Option B", main, at, None, None).unwrap();

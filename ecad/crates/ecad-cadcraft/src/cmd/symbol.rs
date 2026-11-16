@@ -157,7 +157,7 @@ pub fn parse_content(params: &Value) -> Result<Content, String> {
             return Err(format!("The symbol is too large ({MAX_SHAPES} shapes at most)."));
         }
         for v in a {
-            let rec: ecad_file::v1::Primitive = serde_json::from_value(v.clone()).map_err(|e| format!("A shape could not be read: {e}"))?;
+            let rec: ecad_file::records::Primitive = serde_json::from_value(v.clone()).map_err(|e| format!("A shape could not be read: {e}"))?;
             let prim = ecad_model::Primitive::from(rec);
             if let Primitive::Polyline { vertices, .. } = &prim
                 && vertices.len() > MAX_VERTICES

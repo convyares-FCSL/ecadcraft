@@ -1397,10 +1397,7 @@ dependencies = [
 name = "ecad-cli"
 version = "0.3.0-dev"
 dependencies = [
- "ecad-file",
  "ecad-model",
- "ecad-store",
- "serde_json",
 ]
 
 [[package]]
@@ -1464,6 +1461,7 @@ dependencies = [
  "ecad-model",
  "ecad-store",
  "redb",
+ "serde",
  "serde_json",
  "sha2",
  "tungstenite",

@@ -47,7 +47,7 @@ fn merge_nodes(c: &mut Client) -> Vec<Value> {
 }
 
 fn verify(path: &str) {
-    let v = ecad_file::v2::verify::verify(&ecad_file::v2::Store::open(std::path::Path::new(path), false).unwrap());
+    let v = ecad_file::verify::verify(&ecad_file::Store::open(std::path::Path::new(path), false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }
 

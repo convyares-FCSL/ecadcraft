@@ -147,12 +147,6 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(o["report"]["ok"], true);
             assert!(o["elapsed_ms"].is_u64());
         }),
-        (json!({"op": "export_jsonl"}), |o| {
-            assert_eq!(o["branch"], "main");
-            let text = o["text"].as_str().unwrap();
-            assert_eq!(text.lines().count() as u64, o["lines"].as_u64().unwrap());
-            assert_eq!(o["left_out"].as_array().unwrap().len(), 1);
-        }),
     ];
     for (i, (req, check)) in rows.iter().enumerate() {
         let mut req = req.clone();
@@ -189,16 +183,6 @@ fn row_is_readable_or_raw_and_raw_is_the_stored_bytes() {
     assert_eq!(ok(&raw)["truncated"], false);
     assert_eq!(what(&ask(s, json!({"op": "row", "table": "transactions", "key": "00"}))), "not-found");
     assert_eq!(what(&ask(s, json!({"op": "rows", "table": "nope"}))), "bad-request");
-}
-
-#[test]
-fn export_jsonl_is_byte_for_byte_the_text_view() {
-    let dir = TempDir::new("export");
-    let f = opened(&dir);
-    let reply = ask(src(&f), json!({"op": "export_jsonl", "branch": "Option B"}));
-    let mut want = Vec::new();
-    ecad_inspector::text::export_branch_jsonl(f.store().unwrap(), false, "Option B", &mut want).unwrap();
-    assert_eq!(ok(&reply)["text"].as_str().unwrap().as_bytes(), want.as_slice());
 }
 
 #[test]
@@ -263,7 +247,7 @@ fn set_meta(path: &std::path::Path, name: &str, value: Value) {
     let db = redb::Database::open(path).unwrap();
     let w = db.begin_write().unwrap();
     {
-        let mut t = w.open_table(ecad_file::v2::schema::META).unwrap();
+        let mut t = w.open_table(ecad_file::schema::META).unwrap();
         t.insert(name, serde_json::to_vec(&value).unwrap().as_slice()).unwrap();
     }
     w.commit().unwrap();
@@ -273,7 +257,6 @@ fn set_meta(path: &std::path::Path, name: &str, value: Value) {
 fn every_mismatch_row_gives_its_what_and_a_way_out() {
     let dir = TempDir::new("mismatch");
     let good = std::fs::read(rich(&dir, "Main")).unwrap();
-    let v1 = v1_bytes(&history());
     let mut redb_junk = b"redb".to_vec();
     redb_junk.extend(std::iter::repeat_n(0xA5u8, 5_000));
     let with_meta = |name: &str, value: Value| {
@@ -286,7 +269,14 @@ fn every_mismatch_row_gives_its_what_and_a_way_out() {
     let rows: Vec<(&str, &str, Vec<u8>, &str, Option<&str>, &str)> = vec![
         ("1 empty", "x.ecad", Vec::new(), "empty", None, "tables"),
         ("1 lock file", "x.ecad.lock", b"pid 7".to_vec(), "empty", None, "tables"),
-        ("2 version 1", "old.ecad", v1.clone(), "version-1", None, "devices"),
+        (
+            "2 JSON Lines (the removed version 1 format)",
+            "old.ecad",
+            br#"{"crc":"00000000","rec":{"type":"header"}}"#.to_vec(),
+            "not-ecad",
+            None,
+            "devices",
+        ),
         ("3 snapshot", "s.json", br#"{"format":"ecad-inspect/2","seq":1}"#.to_vec(), "snapshot", None, "devices"),
         ("4 not ecad", "z.ecad", b"PK\x03\x04 a zip".to_vec(), "not-ecad", None, "tables"),
         ("5 not a project", "lib.ecad", with_meta("format", json!("ecad-library")), "not-project", Some("tables"), "devices"),
@@ -309,11 +299,7 @@ fn every_mismatch_row_gives_its_what_and_a_way_out() {
         }
         f.wait_verified(Duration::from_secs(10));
     }
-    // Row 2 shows the version 1 header line; row 4 the first bytes.
-    let f = FileSource::from_bytes("old.ecad", v1);
-    let s = ask(src(&f), json!({"op": "summary"}));
-    assert!(ok(&s)["v1_header"].as_str().unwrap().starts_with('{'), "{s}");
-    assert!(ok(&s)["problem"]["way_out"].as_str().unwrap().contains("ecad upgrade old.ecad"));
+    // Row 4 shows the first bytes.
     let f = FileSource::from_bytes("z.ecad", b"PK\x03\x04 a zip".to_vec());
     assert_eq!(ok(&ask(src(&f), json!({"op": "summary"})))["head_hex"].as_str().unwrap().get(..8), Some("504b0304"));
 }
@@ -324,14 +310,14 @@ fn a_damaged_history_opens_read_only_at_the_last_good_transaction() {
     // views (chain, Verify) name it.
     let dir = TempDir::new("damage");
     let path = rich(&dir, "Main");
-    let main = ecad_file::v2::schema::BranchId::main_of(PROJECT.0);
-    let last = ecad_file::v2::Store::open(&path, false).unwrap().reader().unwrap().last_seq(main).unwrap().unwrap();
+    let main = ecad_file::schema::BranchId::main_of(PROJECT.0);
+    let last = ecad_file::Store::open(&path, false).unwrap().reader().unwrap().last_seq(main).unwrap().unwrap();
     {
         let db = redb::Database::open(&path).unwrap();
         let w = db.begin_write().unwrap();
         {
-            let mut t = w.open_table(ecad_file::v2::schema::TRANSACTIONS).unwrap();
-            let k = ecad_file::v2::schema::tx_key(main, last);
+            let mut t = w.open_table(ecad_file::schema::TRANSACTIONS).unwrap();
+            let k = ecad_file::schema::tx_key(main, last);
             let mut v = t.get(k).unwrap().unwrap().value().to_vec();
             let end = v.len() - 1;
             v[end] ^= 1;
@@ -417,7 +403,7 @@ fn hostile_files_get_a_reply_never_a_panic() {
         every_op(&FileSource::from_bytes("noise.ecad", b));
     }
     // A flipped byte in one row of each table.
-    for table in ecad_file::v2::store::TABLES {
+    for table in ecad_file::store::TABLES {
         let p = dir.path(&format!("flip-{table}.ecad"));
         std::fs::write(&p, &good).unwrap();
         let db = redb::Database::open(&p).unwrap();
@@ -430,7 +416,7 @@ fn hostile_files_get_a_reply_never_a_panic() {
         };
         let mut flipped = true;
         {
-            use ecad_file::v2::schema::{BRANCHES, CHUNKS, META, TRANSACTIONS, VERSIONS};
+            use ecad_file::schema::{BRANCHES, CHUNKS, META, TRANSACTIONS, VERSIONS};
             match table {
                 "meta" => {
                     let mut t = w.open_table(META).unwrap();

@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
-use ecad_file::v2::schema::{self, BranchId, VersionKind, VersionRecord};
-use ecad_file::v2::verify::{verify, verify_chain};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
+use ecad_file::verify::{verify, verify_chain};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 use redb::ReadableTable;
 
@@ -51,7 +51,7 @@ fn build(name: &str) -> Fx {
     let dir = TempDir::new(&format!("t029-{name}"));
     let mut f = fixture();
     let path = dir.path("p.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, None, None, Some(1), WRITER, EVERY).unwrap().0;
+    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     for i in 0..40 {
         let op = line(&mut f.ids, f.page, f.layer, 10.0 + f64::from(i));
@@ -122,14 +122,14 @@ fn snapshots_of(p: &Path, b: BranchId) -> Vec<VersionRecord> {
 fn rewrite(p: &Path, b: BranchId, from: u64, txs: &[Transaction]) {
     let s = store(p);
     let r = s.reader().unwrap();
-    let mut prev = if from == 1 { ecad_file::v2::project::lineage(&r, PROJECT, b).unwrap()[0].seed } else { r.tx(b, from - 1).unwrap().unwrap().1 };
+    let mut prev = if from == 1 { ecad_file::project::lineage(&r, PROJECT, b).unwrap()[0].seed } else { r.tx(b, from - 1).unwrap().unwrap().1 };
     let mut chains: BTreeMap<u64, Hash> = BTreeMap::new();
     let mut rows = Vec::new();
     for tx in txs {
         let v = ecad_file::record::tx_value(tx, &prev).unwrap();
         let canonical = ecad_file::canonical::canonical(&v).unwrap();
         let h = chain::tx_hash(&canonical);
-        let (flag, body) = ecad_file::v2::pack::pack(&canonical);
+        let (flag, body) = ecad_file::pack::pack(&canonical);
         rows.push((tx.seq, schema::tx_value(flag, &h, &body)));
         chains.insert(tx.seq, h);
         prev = h;
@@ -169,7 +169,7 @@ fn reference(p: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut branches = Vec::new();
     for (id, b) in r.branches().unwrap() {
-        match ecad_file::v2::project::lineage(&r, PROJECT, id) {
+        match ecad_file::project::lineage(&r, PROJECT, id) {
             Ok(l) => branches.push((id, b, l)),
             Err(e) => out.push(format!("{}: {e}", b.name)),
         }
@@ -178,7 +178,7 @@ fn reference(p: &Path) -> Vec<String> {
     for (id, b, line) in branches {
         let name = &b.name;
         let start = match line[0].fork {
-            Some((pi, fseq)) => match ecad_file::v2::project::line_state(&r, &line, pi, fseq) {
+            Some((pi, fseq)) => match ecad_file::project::line_state(&r, &line, pi, fseq) {
                 Ok((d, _)) => d,
                 Err(e) => {
                     out.push(format!("{name}: fork: {e}"));
@@ -198,7 +198,7 @@ fn reference(p: &Path) -> Vec<String> {
                 broken = true;
                 break;
             }
-            let decoded = ecad_file::v2::pack::unpack(flag, &body).and_then(|rec| {
+            let decoded = ecad_file::pack::unpack(flag, &body).and_then(|rec| {
                 if chain::tx_hash(&rec) != stored {
                     return Err("the record does not match its chain value".to_string());
                 }
@@ -246,7 +246,7 @@ fn reference(p: &Path) -> Vec<String> {
                 }
             }
             done = v.point.seq;
-            let set = ecad_file::v2::chunks::ChunkSet::from_record(&v.chunks).unwrap();
+            let set = ecad_file::chunks::ChunkSet::from_record(&v.chunks).unwrap();
             let mut bodies = Vec::new();
             let mut bad = None;
             for (k, h) in &set.chunks {
@@ -259,7 +259,7 @@ fn reference(p: &Path) -> Vec<String> {
                 out.push(format!("{name}: version {:?}: {e}", v.name));
                 continue;
             }
-            let (mut d, _) = ecad_file::v2::chunks::assemble(&set, bodies).unwrap();
+            let (mut d, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
             d.rebuild_index();
             if d != doc {
                 out.push(format!("{name}: snapshot {:?} at {} DIFFERS from the replay", v.name, v.point.seq));
@@ -597,7 +597,7 @@ fn verify_never_panics_on_truncated_or_byte_flipped_files() {
 mod fp1 {
     use super::*;
     use crate::tag_rule_contracts::rule_1;
-    use ecad_file::v2::chunks::{META_KEY, ModelMeta};
+    use ecad_file::chunks::{META_KEY, ModelMeta};
     use ecad_model::tag::{HighWater, TAG_RULE};
 
     fn cable(tag: &str) -> Cable {
@@ -615,7 +615,7 @@ mod fp1 {
         let mut f = fixture();
         let (w1, w2): (CableId, CableId) = (f.ids.fresh(), f.ids.fresh());
         f.commit("Cables", vec![Op::CreateCable { id: w1, cable: cable("-W01") }, Op::CreateCable { id: w2, cable: cable("-W02") }]);
-        let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, None, None, Some(1), WRITER, EVERY).unwrap().0;
+        let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let main = proj.branch();
         let at = f.ledger.head();

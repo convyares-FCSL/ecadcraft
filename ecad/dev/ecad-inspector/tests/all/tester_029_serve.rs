@@ -202,7 +202,7 @@ fn a_second_page_gets_1013_the_first_keeps_working_and_a_new_page_can_connect_af
 fn a_dropped_file_replaces_the_open_one_and_its_verify_is_the_new_files() {
     let dir = TempDir::new("t029-drop");
     let a = rich(&dir, "First file");
-    let b = upgraded(&dir, &history());
+    let b = written(&dir, &history());
     let a_bytes = std::fs::read(&a).unwrap();
     let a_time = std::fs::metadata(&a).unwrap().modified().unwrap();
     let (port, token, _) = start(Some(&a));
@@ -418,7 +418,7 @@ fn hostile_http_never_stops_the_server() {
 /// `ECAD_TESTER029_EXPORT=<folder>` the file is kept there as `escape.v2.ecad`.
 #[test]
 fn hostile_text_comes_back_as_plain_json_strings() {
-    use ecad_file::v2::{ProjectV2, Store};
+    use ecad_file::{ProjectV2, Store};
     use ecad_model::*;
     const X: &str = "<img src=x onerror=alert(1)>";
     let dir = TempDir::new("t029-escape");
@@ -455,7 +455,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
     let at = l.head();
     l.commit(Author::User, "Version", vec![Op::NameVersion { name: X.into(), at, description: Some(X.into()) }]).unwrap();
     let path = dir.path("escape.v2.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, None, None, Some(1), WRITER, 16).unwrap().0;
+    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();
     let main = proj.branch();
     let _ = proj.create_branch(X, main, at, None, None).unwrap();

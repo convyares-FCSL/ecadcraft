@@ -1,5 +1,5 @@
 //! `ecadinspect serve` (brief 029, design 029 §5): the token, `Host` and `Origin` refusals, one
-//! client at a time, size limits, malformed HTTP and frames, `open` by binary frame, export,
+//! client at a time, size limits, malformed HTTP and frames, `open` by binary frame,
 //! 127.0.0.1 only, replies matched by `id`.
 
 use std::io::{Read, Write};
@@ -177,9 +177,8 @@ fn a_dropped_file_replaces_the_source_and_limits_hold() {
     assert_eq!(send(&mut ws, json!("just a string"))["error"]["what"], "bad-request");
     ws.send(Message::text("{not json")).unwrap();
     assert_eq!(read(&mut ws)["error"]["what"], "bad-request");
-    // The dropped source still answers; export comes back as text.
-    let export = send(&mut ws, json!({"op": "export_jsonl"}));
-    assert!(export["ok"]["text"].as_str().unwrap().lines().count() > 20);
+    // The dropped source still answers.
+    assert!(send(&mut ws, json!({"op": "tables"})).get("ok").is_some());
 }
 
 #[test]

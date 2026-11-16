@@ -1,7 +1,6 @@
-//! Canonical form (RFC 8785) and frame checksum contracts (proposal §20.10, §20.11).
+//! Canonical form (RFC 8785), checksum and known-hash contracts (proposal §20.3, §20.10, §20.11).
 
 use ecad_file::canonical::{CanonicalError, MAX_SAFE_INTEGER, canonical, es_number};
-use ecad_file::codec::{Codec, FrameError, JsonLines, PREFIX_LEN};
 use serde_json::{Value, json};
 
 #[test]
@@ -94,33 +93,40 @@ fn keys_sort_by_utf16_and_strings_escape_minimally() {
 }
 
 #[test]
-fn the_crc_covers_exactly_the_payload_bytes() {
+fn the_crc_has_its_known_values() {
     assert_eq!(ecad_file::crc32c(b""), 0);
     assert_eq!(ecad_file::crc32c(b"123456789"), 0xE306_9283);
-    let v = json!({"type": "tx", "n": 1.5});
-    let line = JsonLines.encode(&v).unwrap();
-    assert!(line.ends_with(b"}\n"));
-    assert_eq!(&line[..8], b"{\"crc\":\"");
-    assert_eq!(&line[16..PREFIX_LEN], b"\",\"rec\":");
-    let frame = &line[..line.len() - 1];
-    let payload = JsonLines.payload(frame).unwrap();
-    assert_eq!(payload, canonical(&v).unwrap().as_slice(), "the payload is the canonical form");
-    let crc = u32::from_str_radix(std::str::from_utf8(&line[8..16]).unwrap(), 16).unwrap();
-    assert_eq!(crc, ecad_file::crc32c(payload));
-    // The whole line is valid JSON.
-    let whole: Value = serde_json::from_slice(frame).unwrap();
-    assert_eq!(whole["rec"], v);
-    // Any changed payload byte fails the CRC; any changed frame byte fails the shape or CRC.
-    for i in 0..frame.len() {
-        let mut bad = frame.to_vec();
-        bad[i] ^= 0x01;
-        let r = JsonLines.payload(&bad);
-        assert!(r.is_err(), "byte {i}");
-        if i >= PREFIX_LEN && i < frame.len() - 1 {
-            assert!(matches!(r, Err(FrameError::Crc { .. })), "payload byte {i}");
-        }
+}
+
+/// The record format, the canonical form and the chain, pinned (brief 069: the golden version 1
+/// file used to pin them; these values were checked against it, record for record, when it was
+/// removed). Existing content hashes and chain values must never change: a changed
+/// record needs a schema version and an upcast, not an edit to these values.
+#[test]
+fn record_and_definition_hashes_are_pinned() {
+    use crate::common::*;
+    use ecad_file::chain::{self, ChainKind};
+    let f = fixture();
+    let doc = f.ledger.document();
+    let hex = |h: ecad_model::ContentHash| h.hex();
+    let got = [
+        ("coil", hex(ecad_file::definition_hash(&coil(3.0)).unwrap())),
+        ("d1", hex(ecad_file::definition_hash(&doc.definitions[&f.d1]).unwrap())),
+        ("d2", hex(ecad_file::definition_hash(&doc.definitions[&f.d2]).unwrap())),
+    ];
+    let mut prev = chain::seed(ChainKind::Project, PROJECT.0);
+    for tx in f.ledger.log() {
+        let v = ecad_file::record::tx_value(tx, &prev).unwrap();
+        prev = chain::tx_hash(&canonical(&v).unwrap());
     }
-    for bad in [&b""[..], b"{}", b"{\"crc\":\"0000000G\",\"rec\":{}}", b"{\"crc\":\"00000000\",\"rec\":"] {
-        assert!(matches!(JsonLines.payload(bad), Err(FrameError::Shape(_))));
+    let head = ("head", chain::hex(&prev));
+    let want = [
+        ("coil", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
+        ("d1", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
+        ("d2", "0fcefba53f430d7f0e8467eb0eddb6166605310dee1a02896b16543e6ca99682"),
+        ("head", "bc68b675c9a5001fd9c5ab70d5b8993b7d0c444bdd766282b9a16a2659e28272"),
+    ];
+    for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
+        assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");
     }
 }

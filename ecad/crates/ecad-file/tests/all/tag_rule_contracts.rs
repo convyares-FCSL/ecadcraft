@@ -11,9 +11,9 @@ use std::path::Path;
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::chain;
-use ecad_file::v2::chunks::{META_KEY, ModelMeta};
-use ecad_file::v2::schema::{self, BranchId, VersionKind};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::chunks::{META_KEY, ModelMeta};
+use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::tag::{HighWater, TAG_RULE, note_ops};
 use ecad_model::*;
 
@@ -40,7 +40,7 @@ fn history() -> Ledger {
 
 fn create(path: &Path, ledger: &Ledger) {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, None, None, Some(1), WRITER, 16).unwrap();
+    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, 16).unwrap();
 }
 
 /// The marks as a build before brief 026 counted them (rule 1): no cable tags, no resets.
@@ -151,7 +151,7 @@ fn verify_reports_rule_1_marks_as_recomputed_not_as_a_failure() {
     let l = history();
     create(&p, &l);
     make_rule_1(&p, &l);
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
     assert!(v.lines.iter().any(|x| x.contains("recomputed on open (rule 1 → 2)")), "{:#?}", v.lines);
     // A rule 2 snapshot whose marks differ is still a failure.
@@ -168,7 +168,7 @@ fn verify_reports_rule_1_marks_as_recomputed_not_as_a_failure() {
         }
         w.commit().unwrap();
     }
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(!v.ok && stale.iter().all(|n| v.failures.iter().any(|f| f.contains(n.as_str()) && f.contains("tag numbers"))), "{:#?}", v.lines);
 }
 
@@ -187,7 +187,7 @@ fn a_resave_writes_the_current_rule_and_verifies() {
     let again = snapshots(&p).into_iter().find(|(v, _)| v.name == "Again").unwrap();
     assert_eq!(again.0.tag_rule, Some(TAG_RULE));
     assert_eq!(again.1.tag_high.get("W"), Some(&2), "the new snapshot carries the recomputed marks");
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
     let o = ProjectV2::open(Store::open(&p, false).unwrap(), 1, WRITER).unwrap();
     assert_eq!(o.project.base_tag_high().get("W"), Some(&2));

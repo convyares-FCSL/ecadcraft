@@ -936,7 +936,7 @@ fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
     // the harness checks and only the reopened project is used.
     h.cfg(|p| p.ledger.commit(Author::User, "bulk wires", ops)).unwrap();
     h.s.execute("qsave", &Value::Null).unwrap();
-    let medium = h.p(|p| p.store.medium().clone());
+    let medium = h.p(|p| p.store.bytes());
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "Big", medium, 5).unwrap();
     let mut h = H { s, project, trail: Vec::new() };

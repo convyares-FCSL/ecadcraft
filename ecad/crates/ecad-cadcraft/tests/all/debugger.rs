@@ -111,12 +111,12 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
 
     // → the saved row (brief 021: a row of the version 2 file's transactions table), read from
     // the file, decodes to exactly that transaction.
-    assert_eq!(snap.record_state(wire_seq), RecordState::Saved(None));
+    assert_eq!(snap.record_state(wire_seq), RecordState::Saved);
     let store = snap.store_arc().expect("a version 2 file");
     let rec = read_row(&store, wire_seq, Some(panel.tx(wire_seq))).unwrap();
     assert_eq!(rec.check, Ok(()));
     assert!(!rec.truncated);
-    assert_eq!(rec.span.seq, wire_seq);
+    assert_eq!(rec.seq, wire_seq);
     assert!(rec.shown.starts_with(b"{\""), "the decompressed record");
 
     // Moving the component is pending: in memory only, no row yet.
@@ -127,7 +127,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     let move_seq = snap.head;
     assert_eq!(snap.log_from, move_seq - 1, "only the new transaction is copied");
     assert_eq!(snap.new_transactions.len(), 1);
-    assert_eq!(snap.record_state(move_seq), RecordState::Pending { attempt: None });
+    assert_eq!(snap.record_state(move_seq), RecordState::Pending);
     assert!(!snap.record_state(move_seq).durable());
     assert!(snap.record_state(wire_seq).durable(), "earlier history stays saved");
     assert_eq!(snap.unsaved, 1);
@@ -139,7 +139,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     // Save: the pending transaction becomes saved, a new row after the last.
     h.run("qsave", Value::Null).unwrap();
     assert!(panel.refresh(&mut h).unwrap());
-    assert_eq!(panel.snap().record_state(move_seq), RecordState::Saved(None));
+    assert_eq!(panel.snap().record_state(move_seq), RecordState::Saved);
     let rec = read_row(&store, move_seq, Some(panel.tx(move_seq))).unwrap();
     assert_eq!(rec.check, Ok(()));
     // A row read against the wrong transaction is reported, not trusted.
@@ -152,7 +152,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     assert!(panel.refresh(&mut h).unwrap());
     let undo_seq = panel.snap().head;
     assert_eq!(debug::tx_kind(panel.tx(undo_seq), &panel.log), format!("undo of #{move_seq}"));
-    assert_eq!(panel.snap().record_state(undo_seq), RecordState::Pending { attempt: None });
+    assert_eq!(panel.snap().record_state(undo_seq), RecordState::Pending);
     assert_eq!(panel.snap().file.path.as_deref(), Some(path.as_str()));
     assert!(panel.snap().file.lock_file.is_some(), "the writer lock is held");
 }
@@ -252,7 +252,7 @@ fn saved_and_pending_transactions_are_told_apart() {
     h.cfg(|p| p.persistence = Persistence::File);
     let mut panel = Panel::default();
     panel.refresh(&mut h).unwrap();
-    assert_eq!(panel.snap().record_state(1), RecordState::Pending { attempt: None });
+    assert_eq!(panel.snap().record_state(1), RecordState::Pending);
     assert!(panel.snap().file.path.is_none());
     assert!(panel.snap().file.storage.is_none(), "no file yet");
 
@@ -270,7 +270,7 @@ fn saved_and_pending_transactions_are_told_apart() {
     h.run("newpage", json!({"title": "2"})).unwrap();
     panel.refresh(&mut h).unwrap();
     let seq = panel.snap().head;
-    assert_eq!(panel.snap().record_state(seq), RecordState::Pending { attempt: None });
+    assert_eq!(panel.snap().record_state(seq), RecordState::Pending);
     assert_eq!(panel.snap().state_counts(), StateCounts { saved: seq - 1, unconfirmed: 0, pending: 1 });
     h.run("qsave", Value::Null).unwrap();
     panel.refresh(&mut h).unwrap();

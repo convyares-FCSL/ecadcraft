@@ -1,16 +1,11 @@
-//! Text views of a version 2 file (brief 021 scope 7; moved here from `ecad_file::v2::inspect`
-//! by brief 029): its tables, branches, log, versions and chunks, and `export-jsonl`, the full
-//! history as a version 1 style JSON Lines file that a version 1 reader opens. Reads only; never
-//! changes the file.
-
-use std::io::Write;
+//! Text views of a version 2 file (brief 021 scope 7; moved here from `ecad_file::inspect`
+//! by brief 029): its tables, branches, log, versions and chunks. Reads only; never changes the
+//! file.
 
 use ecad_file::chain;
-use ecad_file::codec::{Codec, JsonLines};
-use ecad_file::record::Header;
-use ecad_file::v2::pack;
-use ecad_file::v2::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
-use ecad_file::v2::{Reader, Store, StoreError};
+use ecad_file::pack;
+use ecad_file::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
+use ecad_file::{Reader, Store, StoreError};
 use serde_json::{Value, json};
 
 /// Lower-case hex of `b`.
@@ -81,7 +76,7 @@ pub fn branch_named(r: &Reader, text: &str) -> Result<BranchId, StoreError> {
     {
         return Ok(id);
     }
-    let named: Vec<&(BranchId, ecad_file::v2::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
+    let named: Vec<&(BranchId, ecad_file::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
     match named.as_slice() {
         [(id, _)] => Ok(*id),
         [] => Err(StoreError::Damaged(format!("there is no branch named {text:?}"))),
@@ -162,81 +157,6 @@ pub fn chunk(store: &Store, hash: &str) -> Result<String, StoreError> {
         .and_then(|v| serde_json::to_string_pretty(&v).ok())
         .unwrap_or_else(|| String::from_utf8_lossy(&body).into_owned());
     Ok(format!("chunk {hash}: {} stored bytes ({}), {} bytes uncompressed, hash verified\n{pretty}\n", stored.len() + 1, flag_name(flag), body.len()))
-}
-
-/// Write the whole history as a version 1 style JSON Lines file to `out` (EEP-0005; brief 021):
-/// a version 1 header, then branch `main`'s records exactly as stored, each framed as version 1
-/// frames them. A version 1 reader opens it, with the same chain values.
-///
-/// With `with_raw`, every row of every table is written instead, one JSON object a line:
-/// `{"table", "key" (hex), "stored" (hex of the stored bytes), "flag", "decoded"}`, read-only
-/// material for the HTML inspector's raw/readable toggle; that form is not a version 1 file.
-/// Returns the number of lines written.
-///
-/// # Errors
-/// The file cannot be read, a row does not decode, or `out` cannot be written.
-pub fn export_jsonl(store: &Store, with_raw: bool, out: &mut dyn Write) -> Result<u64, String> {
-    export_branch_jsonl(store, with_raw, "main", out).map(|(n, _)| n)
-}
-
-/// [`export_jsonl`] of branch `branch` (a name or an ID; see [`branch_named`]). Also returns the
-/// branches left out, as `name (ID)`, for the caller to say so. A branch other than `main` is
-/// its own records only, after its fork point (its chain starts at its branch seed, EEP-0005
-/// §3.3), so it is a record of that branch, not a file a version 1 reader opens on its own.
-///
-/// # Errors
-/// As [`export_jsonl`], and an unknown or ambiguous branch.
-pub fn export_branch_jsonl(store: &Store, with_raw: bool, branch: &str, out: &mut dyn Write) -> Result<(u64, Vec<String>), String> {
-    let r = store.reader().map_err(|e| e.to_string())?;
-    let mut lines = 0u64;
-    if with_raw {
-        r.raw_rows(|table, key, value| {
-            let (flag, decoded) = decode_raw(table, value)?;
-            let line = json!({"table": table, "key": hex(key), "stored": hex(value), "flag": flag, "decoded": decoded});
-            writeln!(out, "{line}").map_err(|e| e.to_string())?;
-            lines += 1;
-            Ok(())
-        })
-        .map_err(|e| e.to_string())?;
-        return Ok((lines, Vec::new()));
-    }
-    let id = branch_named(&r, branch).map_err(|e| e.to_string())?;
-    let left_out: Vec<String> =
-        r.branches().map_err(|e| e.to_string())?.into_iter().filter(|(i, _)| *i != id).map(|(i, b)| format!("{} ({})", b.name, i.hex())).collect();
-    let project = ecad_file::v2::project::project_id(&r).map_err(|e| e.to_string())?;
-    let created = r.meta("created_ms").map_err(|e| e.to_string())?;
-    let created_ms = created.and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.as_u64());
-    let writer = r
-        .meta("writer")
-        .map_err(|e| e.to_string())?
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_default();
-    let header = Header::project(project, created_ms, &format!("{writer} (export-jsonl)"));
-    let codec = JsonLines;
-    let hv = serde_json::to_value(&header).map_err(|e| e.to_string())?;
-    out.write_all(&codec.encode(&hv).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    lines += 1;
-    let head = r.last_seq(id).map_err(|e| e.to_string())?.unwrap_or(0);
-    // In chunks, so a long history never sits in memory at once.
-    let mut from = 1;
-    while from <= head {
-        let to = head.min(from.saturating_add(4_095));
-        let rows = r.tx_range(id, from..=to).map_err(|e| e.to_string())?;
-        // Rows run 1..=head with no gap: a gap is damage, never a walk over empty ranges.
-        if rows.len() as u64 != to.saturating_sub(from).saturating_add(1) {
-            return Err(format!("transactions {from} to {to} are not all stored"));
-        }
-        for (_, flag, _, body) in rows {
-            let record = pack::unpack(flag, &body)?;
-            let v: Value = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
-            out.write_all(&codec.encode(&v).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-            lines += 1;
-        }
-        let Some(next) = to.checked_add(1) else { break };
-        from = next;
-    }
-    Ok((lines, left_out))
 }
 
 /// A stored value's flag and readable form, by table.

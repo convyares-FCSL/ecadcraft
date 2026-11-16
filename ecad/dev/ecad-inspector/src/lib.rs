@@ -11,8 +11,7 @@
 //! - [`text`] and [`cli`]: `ecadinspect <file> <view>`, the text views.
 //!
 //! Excluded: anything that writes a project file; the drawing Checks and derived locations
-//! (`ecad-cadcraft`); version 1 files (a message and `ecad upgrade`); attaching to a running app
-//! session (a later source).
+//! (`ecad-cadcraft`); attaching to a running app session (a later source).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod cli;

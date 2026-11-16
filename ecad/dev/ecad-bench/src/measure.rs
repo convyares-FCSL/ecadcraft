@@ -159,7 +159,7 @@ pub(crate) fn path_text(path: &Path) -> Result<&str, String> {
 }
 
 /// Open `path` as the app's file layer does; refuse a damaged or read-only open.
-fn open(path: &Path) -> Result<ecad_file::v2::disk::OpenedDiskV2, String> {
+fn open(path: &Path) -> Result<ecad_file::disk::OpenedDiskV2, String> {
     crate::v2::open(path)
 }
 
