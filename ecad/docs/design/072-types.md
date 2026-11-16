@@ -1,7 +1,7 @@
 # Design 072: Types for keys, units, kinds and device classes
 
-Status: **Draft** (designer, 2026-11-16), waiting for the owner's answers in §14 and the
-overseer's on the format list in §13. Brief: `docs/briefs/072-types.md`.
+Status: **Draft** (designer, 2026-11-16), waiting for the owner's answers in §14. Format list
+§13 approved by the overseer (2026-11-16). Brief: `docs/briefs/072-types.md`.
 
 **Goal (one sentence).** Property keys, physical units, the words a file stores and the kind of a
 device stop being free strings and bare numbers, so that the compiler finds every place a new key,
@@ -700,8 +700,9 @@ own map; where it compared key strings it now compares `PropKey`s, with the same
 
 ## 13. Format and op changes (for the overseer)
 
-Pre-v1, no compatibility path: fixtures are regenerated (ruling). No new op, no format version
-change.
+**Approved (overseer, 2026-11-16): F1–F7 as written**, including the F3 symbol-role words and the
+F4 on/off → yes/no words. Pre-v1, no compatibility path: fixtures are regenerated and no shims
+are added (ruling). No new op, no format version change.
 
 | # | Change | On disk |
 | --- | --- | --- |

@@ -1,7 +1,7 @@
 # Brief 072: Types for keys, units, kinds and device classes
 
-Status: **Draft** (designer, 2026-11-16). Needs the owner's answers to design 072 §14 and the
-overseer's yes on the format list (§13) before it is approved.
+Status: **Draft** (designer, 2026-11-16). Needs the owner's answers to design 072 §14 before it
+is approved. Format list (design §13, F1–F7) approved by the overseer, 2026-11-16.
 Branch: `feature/types`, from `refactor/0.2.3` **after lanes 070 (errors and typed command
 inputs) and 073 (renames) have landed there**. Phase: 0.2.3 tidy-up; no PRs: the overseer merges
 the lane when it is green.
@@ -40,7 +40,8 @@ Design 072 is the spec; read it whole. In short:
 6. `ComponentClass` / `DeviceClass` kept in the model's index; the predicates deleted (§5).
 7. Guards G1–G9, all at 0 with no allowlist at the end (§6).
 
-Format and op changes F1–F7 (design §13) are part of this lane once the overseer approves them.
+Format and op changes F1–F7 (design §13, approved by the overseer 2026-11-16) are part of this
+lane.
 Fixtures are regenerated, never shimmed (owner, 2026-11-16: no compatibility path).
 
 ## Not in this lane
