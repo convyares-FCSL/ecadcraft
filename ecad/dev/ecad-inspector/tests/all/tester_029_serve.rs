@@ -418,7 +418,7 @@ fn hostile_http_never_stops_the_server() {
 /// `ECAD_TESTER029_EXPORT=<folder>` the file is kept there as `escape.v2.ecad`.
 #[test]
 fn hostile_text_comes_back_as_plain_json_strings() {
-    use ecad_file::v2::{ProjectV2, Store};
+    use ecad_file::{ProjectV2, Store};
     use ecad_model::*;
     const X: &str = "<img src=x onerror=alert(1)>";
     let dir = TempDir::new("t029-escape");

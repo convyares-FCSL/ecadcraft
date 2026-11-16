@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use crate::common;
 
 use common::*;
-use ecad_file::v2::schema::{self, BranchId, VersionKind};
-use ecad_file::v2::{ProjectV2, Store, StoreError};
+use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::{ProjectV2, Store, StoreError};
 use ecad_model::*;
 
 /// A fresh folder under the system temp folder, removed when dropped.
@@ -38,7 +38,7 @@ fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
     ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::v2::OpenedV2 {
+fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
     ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
@@ -130,7 +130,7 @@ fn saves_append_and_snapshots_keep_the_tail_short() {
     assert_eq!(r.tx_count(o.project.branch()).unwrap(), head);
     let autos = r.versions(o.project.branch(), VersionKind::Auto).unwrap();
     assert!(autos.len() >= 3, "{}", autos.len());
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
     assert_eq!(v.transactions, head);
     // Every automatic snapshot equals the replayed state at its point.
@@ -173,15 +173,15 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     drop(proj);
     let o = open(&p);
     assert_eq!(o.ledger.document(), f.ledger.document());
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
     // A version's snapshot is the state at its point.
     let reader = o.project.store().reader().unwrap();
     for (kind, name, seq) in [(VersionKind::User, "Before", at), (VersionKind::Revision, "Rev A", at3)] {
         let v = reader.version(o.project.branch(), kind, name).unwrap().unwrap();
-        let set = ecad_file::v2::chunks::ChunkSet::from_record(&v.chunks).unwrap();
+        let set = ecad_file::chunks::ChunkSet::from_record(&v.chunks).unwrap();
         let bodies = set.chunks.iter().map(|(k, h)| (k.clone(), reader.chunk_body(h).unwrap())).collect::<Vec<_>>();
-        let (mut doc, _) = ecad_file::v2::chunks::assemble(&set, bodies).unwrap();
+        let (mut doc, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
         doc.rebuild_index();
         assert_eq!(doc, f.ledger.state_at(seq).unwrap(), "{name}");
     }
@@ -310,7 +310,7 @@ fn undo_below_the_recorded_stack_top_reads_the_history_once() {
     // Saving now writes a snapshot whose stacks need the whole history at the base: still right.
     o.project.set_snapshot_every(16).unwrap();
     o.project.save(&mut o.ledger).unwrap();
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
     drop(o);
     let again = open(&p);

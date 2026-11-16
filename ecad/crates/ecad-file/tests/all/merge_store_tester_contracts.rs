@@ -5,8 +5,8 @@
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::v2::schema::{VERSIONS, VersionKind, auto_name, version_key};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::schema::{VERSIONS, VersionKind, auto_name, version_key};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 use redb::{ReadableDatabase, ReadableTable};
 
@@ -83,6 +83,6 @@ fn a_merge_row_keeps_a_newer_builds_field_and_an_unknown_version_kind_is_kept() 
     let kept = row(&p, &mkey).expect("the merge row survives the save");
     assert_eq!(kept["future_merge"], serde_json::json!({"kept": [1, 2]}), "{kept}");
     assert_eq!(row(&p, &fkey), Some(serde_json::json!({"anything": true})), "the unknown kind's row is kept");
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }

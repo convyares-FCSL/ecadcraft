@@ -789,7 +789,7 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
 
 /// The whole history a version 2 file holds: every branch's stored rows, in order.
 fn history_of(path: &str) -> Vec<u8> {
-    let store = ecad_file::v2::Store::open(std::path::Path::new(path), false).unwrap();
+    let store = ecad_file::Store::open(std::path::Path::new(path), false).unwrap();
     let r = store.reader().unwrap();
     let mut out = Vec::new();
     for (id, _) in r.branches().unwrap() {

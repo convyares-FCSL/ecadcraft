@@ -1,4 +1,4 @@
-//! Version 2 project files on disk (native only; EEP-0005 §6.4, §7).
+//! Project files on disk (native only; EEP-0005 §6.4, §7).
 //!
 //! - **Open** takes the writer lock (`<file>.lock`); redb's own lock is taken too.
 //!   If another session holds the lock, the file opens read-only and follows nothing: a second

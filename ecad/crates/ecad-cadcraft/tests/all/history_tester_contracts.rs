@@ -58,7 +58,7 @@ fn current(h: &mut H) -> String {
 }
 
 fn verify(path: &str) {
-    let v = ecad_file::v2::verify::verify(&ecad_file::v2::Store::open(std::path::Path::new(path), false).unwrap());
+    let v = ecad_file::verify::verify(&ecad_file::Store::open(std::path::Path::new(path), false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }
 
@@ -207,7 +207,7 @@ fn a_second_opener_sees_a_branch_created_after_it_opened_and_writes_nothing() {
     close_all(&mut h2.s);
     close_all(&mut h.s);
     drop((h, h2));
-    let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(&path), 1, "probe").unwrap();
+    let o = ecad_file::disk::DiskProjectV2::open(std::path::Path::new(&path), 1, "probe").unwrap();
     assert_eq!(o.project.project().branch_record().name, "Late", "the read-only session changed meta.active");
     drop(o);
     verify(&path);
@@ -352,7 +352,7 @@ fn save_as_after_a_read_only_switch_keeps_the_branch() {
     assert_eq!(current(&mut h2), "B");
     close_all(&mut h2.s);
     drop(h2);
-    let o = ecad_file::v2::disk::DiskProjectV2::open(std::path::Path::new(&other), 1, "probe").unwrap();
+    let o = ecad_file::disk::DiskProjectV2::open(std::path::Path::new(&other), 1, "probe").unwrap();
     assert_eq!(o.project.project().branch_record().name, "B");
     let opened_doc = o.ledger.document().clone();
     drop(o);

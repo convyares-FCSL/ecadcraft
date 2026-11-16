@@ -22,7 +22,7 @@ fn save_from_either_page_saves_the_whole_project() {
     let (head, persisted, len) = h.p(|p| (p.ledger.head(), p.ledger.persisted(), p.ledger.log().len()));
     assert_eq!(persisted, head);
     let (stored, id) = h.p(|p| (p.store.bytes(), p.id));
-    let rows = ecad_file::v2::Store::from_bytes(stored).unwrap().reader().unwrap().tx_count(ecad_file::v2::schema::BranchId::main_of(id.0)).unwrap();
+    let rows = ecad_file::Store::from_bytes(stored).unwrap().reader().unwrap().tx_count(ecad_file::schema::BranchId::main_of(id.0)).unwrap();
     assert_eq!(rows, len as u64, "every transaction, including page 1's edit");
     let i = h.page_index(p2).unwrap();
     assert!(!h.s.doc_unsaved(i), "the page window is clean");

@@ -6,8 +6,8 @@
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::v2::schema::{BranchStatus, VersionKind};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::schema::{BranchStatus, VersionKind};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 
 fn create(path: &std::path::Path, ledger: &Ledger) -> ProjectV2 {
@@ -15,7 +15,7 @@ fn create(path: &std::path::Path, ledger: &Ledger) -> ProjectV2 {
     ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, 2_000).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::v2::OpenedV2 {
+fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
     ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
@@ -99,7 +99,7 @@ fn the_merge_index_and_the_merged_status_follow_merge_undo_and_redo() {
         "a redo in a later session finds its merge"
     );
     drop(proj);
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }
 
@@ -139,7 +139,7 @@ fn verify_refuses_a_main_row_that_open_refuses() {
     w.put_branch(main, &rec).unwrap();
     w.commit().unwrap();
     drop(proj);
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(!v.ok && v.lines.iter().any(|l| l.contains("main")), "{:#?}", v.lines);
     assert!(ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).is_err());
 }
@@ -154,10 +154,10 @@ fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
     let main = proj.branch();
     let at = f.ledger.head();
     // A kind 4 row at an ordinary edit (a stale or damaged index row).
-    let rec = ecad_file::v2::schema::VersionRecord {
+    let rec = ecad_file::schema::VersionRecord {
         kind: VersionKind::Merge,
-        name: ecad_file::v2::schema::auto_name(at),
-        point: ecad_file::v2::schema::Point::new(at, &proj.chain_of(main, at).unwrap()),
+        name: ecad_file::schema::auto_name(at),
+        point: ecad_file::schema::Point::new(at, &proj.chain_of(main, at).unwrap()),
         chunks: Default::default(),
         release: None,
         undo: Vec::new(),
@@ -166,7 +166,7 @@ fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
         redo_hidden: 0,
         stack_cap: 0,
         description: None,
-        merge: ecad_file::v2::schema::MergeRow::of(&TxKind::Merge {
+        merge: ecad_file::schema::MergeRow::of(&TxKind::Merge {
             source: [9; 16],
             source_head: StepPoint { seq: 1, chain: [1; 32] },
             ancestor: BranchPoint { branch: main.0, seq: 0, chain: [2; 32] },
@@ -178,6 +178,6 @@ fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
     w.put_version(main, &rec).unwrap();
     w.commit().unwrap();
     drop(proj);
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(!v.ok && v.lines.iter().any(|l| l.contains("names no live merge")), "{:#?}", v.lines);
 }

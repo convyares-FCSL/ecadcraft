@@ -247,7 +247,7 @@ fn set_meta(path: &std::path::Path, name: &str, value: Value) {
     let db = redb::Database::open(path).unwrap();
     let w = db.begin_write().unwrap();
     {
-        let mut t = w.open_table(ecad_file::v2::schema::META).unwrap();
+        let mut t = w.open_table(ecad_file::schema::META).unwrap();
         t.insert(name, serde_json::to_vec(&value).unwrap().as_slice()).unwrap();
     }
     w.commit().unwrap();
@@ -310,14 +310,14 @@ fn a_damaged_history_opens_read_only_at_the_last_good_transaction() {
     // views (chain, Verify) name it.
     let dir = TempDir::new("damage");
     let path = rich(&dir, "Main");
-    let main = ecad_file::v2::schema::BranchId::main_of(PROJECT.0);
-    let last = ecad_file::v2::Store::open(&path, false).unwrap().reader().unwrap().last_seq(main).unwrap().unwrap();
+    let main = ecad_file::schema::BranchId::main_of(PROJECT.0);
+    let last = ecad_file::Store::open(&path, false).unwrap().reader().unwrap().last_seq(main).unwrap().unwrap();
     {
         let db = redb::Database::open(&path).unwrap();
         let w = db.begin_write().unwrap();
         {
-            let mut t = w.open_table(ecad_file::v2::schema::TRANSACTIONS).unwrap();
-            let k = ecad_file::v2::schema::tx_key(main, last);
+            let mut t = w.open_table(ecad_file::schema::TRANSACTIONS).unwrap();
+            let k = ecad_file::schema::tx_key(main, last);
             let mut v = t.get(k).unwrap().unwrap().value().to_vec();
             let end = v.len() - 1;
             v[end] ^= 1;
@@ -403,7 +403,7 @@ fn hostile_files_get_a_reply_never_a_panic() {
         every_op(&FileSource::from_bytes("noise.ecad", b));
     }
     // A flipped byte in one row of each table.
-    for table in ecad_file::v2::store::TABLES {
+    for table in ecad_file::store::TABLES {
         let p = dir.path(&format!("flip-{table}.ecad"));
         std::fs::write(&p, &good).unwrap();
         let db = redb::Database::open(&p).unwrap();
@@ -416,7 +416,7 @@ fn hostile_files_get_a_reply_never_a_panic() {
         };
         let mut flipped = true;
         {
-            use ecad_file::v2::schema::{BRANCHES, CHUNKS, META, TRANSACTIONS, VERSIONS};
+            use ecad_file::schema::{BRANCHES, CHUNKS, META, TRANSACTIONS, VERSIONS};
             match table {
                 "meta" => {
                     let mut t = w.open_table(META).unwrap();

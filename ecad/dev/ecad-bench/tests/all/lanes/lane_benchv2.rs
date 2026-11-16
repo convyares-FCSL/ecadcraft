@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use ecad_bench::generate::{Generated, Tier, Variant, generate};
-use ecad_file::v2::disk::DiskProjectV2;
+use ecad_file::disk::DiskProjectV2;
 use ecad_model::Document;
 
 const TINY: Tier = Tier { name: "tiny", pages: 3, components: 9, wires: 18, cables: 6 };
@@ -77,7 +77,7 @@ fn writing_over_a_stale_file_regenerates_it() {
     let g = generate(TINY, Variant::Lean).unwrap();
     std::fs::write(&path, b"{\"stale\": true}\n").unwrap();
     ecad_bench::v2::write(&g, &path).unwrap();
-    assert!(ecad_file::v2::disk::starts_like_project(&path).unwrap());
+    assert!(ecad_file::disk::starts_like_project(&path).unwrap());
     assert_eq!(shape(&path).history, g.ledger.head());
     let _ = std::fs::remove_dir_all(&d);
 }

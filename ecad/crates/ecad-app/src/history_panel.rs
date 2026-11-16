@@ -27,7 +27,7 @@
 //!   groups are made when the Steps list is read (its update map above), never per frame.
 
 use ecad_cadcraft::history::{self, Graph, NodeKind, Show};
-use ecad_file::v2::schema::{BranchId, BranchStatus};
+use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_model::Op;
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, pos2, vec2};
 use serde_json::{Value, json};

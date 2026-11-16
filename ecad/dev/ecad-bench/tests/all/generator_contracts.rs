@@ -11,7 +11,7 @@ const TINY: Tier = Tier { name: "tiny", pages: 3, components: 9, wires: 18, cabl
 
 fn opened(g: &Generated) -> (Document, u64) {
     let bytes = g.file_bytes().unwrap();
-    let o = ecad_file::v2::ProjectV2::open(ecad_file::v2::Store::from_bytes(bytes).unwrap(), 5, "test").unwrap();
+    let o = ecad_file::ProjectV2::open(ecad_file::Store::from_bytes(bytes).unwrap(), 5, "test").unwrap();
     assert!(o.report.damage.is_none(), "{}", o.report.describe());
     (o.ledger.document().clone(), o.ledger.head())
 }

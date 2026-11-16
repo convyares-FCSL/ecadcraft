@@ -1,11 +1,11 @@
-//! Text views of a version 2 file (brief 021 scope 7; moved here from `ecad_file::v2::inspect`
+//! Text views of a version 2 file (brief 021 scope 7; moved here from `ecad_file::inspect`
 //! by brief 029): its tables, branches, log, versions and chunks. Reads only; never changes the
 //! file.
 
 use ecad_file::chain;
-use ecad_file::v2::pack;
-use ecad_file::v2::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
-use ecad_file::v2::{Reader, Store, StoreError};
+use ecad_file::pack;
+use ecad_file::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
+use ecad_file::{Reader, Store, StoreError};
 use serde_json::{Value, json};
 
 /// Lower-case hex of `b`.
@@ -76,7 +76,7 @@ pub fn branch_named(r: &Reader, text: &str) -> Result<BranchId, StoreError> {
     {
         return Ok(id);
     }
-    let named: Vec<&(BranchId, ecad_file::v2::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
+    let named: Vec<&(BranchId, ecad_file::schema::BranchRecord)> = all.iter().filter(|(_, b)| b.name == text).collect();
     match named.as_slice() {
         [(id, _)] => Ok(*id),
         [] => Err(StoreError::Damaged(format!("there is no branch named {text:?}"))),

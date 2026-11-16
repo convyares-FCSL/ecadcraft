@@ -66,7 +66,7 @@ pub fn run(args: &[&str]) -> std::result::Result<String, String> {
 /// `history` written as the project file `p.ecad` in `dir`; its path.
 pub fn written(dir: &TempDir, l: &Ledger) -> PathBuf {
     let path = dir.path("p.ecad");
-    ecad_file::v2::ProjectV2::create(ecad_file::v2::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
+    ecad_file::ProjectV2::create(ecad_file::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
     path
 }
 
@@ -77,7 +77,7 @@ pub const WRITER: &str = "ecad-inspector tests";
 /// and the tag text `TITLE` in a page title and a property; a branch `Option B` forked from main
 /// with edits of its own. Snapshots every 16 transactions. Returns the file's path.
 pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
-    use ecad_file::v2::{ProjectV2, Store};
+    use ecad_file::{ProjectV2, Store};
     let mut ids = IdAllocator::seeded(0x1A5);
     let mut l = Ledger::new(11);
     let (p1, p2, layer): (PageId, PageId, LayerId) = (ids.fresh(), ids.fresh(), ids.fresh());

@@ -462,7 +462,7 @@ pub struct MemoryStore {
     /// The database's bytes (tests read them, or make the next write fail).
     backend: MemoryBackend,
     /// The project in the database, once written.
-    project: Option<Box<ecad_file::v2::ProjectV2>>,
+    project: Option<Box<ecad_file::ProjectV2>>,
 }
 
 impl MemoryStore {
@@ -484,7 +484,7 @@ impl MemoryStore {
     }
 
     /// The project in the database, once written.
-    pub fn project(&self) -> Option<&ecad_file::v2::ProjectV2> {
+    pub fn project(&self) -> Option<&ecad_file::ProjectV2> {
         self.project.as_deref()
     }
 
@@ -495,8 +495,8 @@ impl MemoryStore {
         match &mut self.project {
             Some(p) => p.save(ledger).map_err(|e| e.to_string()).map(|_| ledger.persisted()),
             None => {
-                let created = ecad_file::v2::Store::with_backend(self.backend.clone()).map_err(|e| e.to_string()).and_then(|store| {
-                    ecad_file::v2::ProjectV2::create(store, project, ledger, now_ms(), writer, ecad_file::v2::schema::DEFAULT_SNAPSHOT_EVERY)
+                let created = ecad_file::Store::with_backend(self.backend.clone()).map_err(|e| e.to_string()).and_then(|store| {
+                    ecad_file::ProjectV2::create(store, project, ledger, now_ms(), writer, ecad_file::schema::DEFAULT_SNAPSHOT_EVERY)
                         .map_err(|e| e.to_string())
                 });
                 match created {
@@ -543,7 +543,7 @@ pub struct Project {
     pub file: crate::file::Binding,
     /// What opening reported, when the project was opened from a file on disk or from the test
     /// store.
-    pub open_report: Option<ecad_file::v2::ReportV2>,
+    pub open_report: Option<ecad_file::ReportV2>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,
@@ -1273,8 +1273,8 @@ impl Project {
     /// The bytes are not a project file this build supports, or the project cannot be shown.
     pub(crate) fn open_from(s: &mut Session, name: &str, bytes: Vec<u8>, seed: u64) -> Result<ProjectHandle, String> {
         let backend = MemoryBackend::from_bytes(bytes);
-        let store = ecad_file::v2::Store::with_backend(backend.clone()).map_err(|e| e.to_string())?;
-        let opened = ecad_file::v2::ProjectV2::open(store, seed, &writer()).map_err(|e| e.to_string())?;
+        let store = ecad_file::Store::with_backend(backend.clone()).map_err(|e| e.to_string())?;
+        let opened = ecad_file::ProjectV2::open(store, seed, &writer()).map_err(|e| e.to_string())?;
         let (file, ledger, report) = (opened.project, opened.ledger, opened.report);
         let id = file.project_id();
         let tag_high = file.base_tag_high().clone();

@@ -14,7 +14,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use ecad_file::v2::disk::DiskProjectV2;
+use ecad_file::disk::DiskProjectV2;
 use ecad_model::{Author, IdAllocator, ObjectRef, Op};
 
 use crate::measure::{HOLDER, median};
@@ -56,7 +56,7 @@ pub struct MeasuredV2 {
 /// # Errors
 /// Creating or writing the file failed; nothing is left at `path` then.
 pub fn write(g: &crate::Generated, path: &Path) -> Result<(), String> {
-    use ecad_file::v2::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
+    use ecad_file::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
     crate::measure::remove(path);
     let written = Store::create(path).map_err(|e| e.to_string()).and_then(|store| {
         ProjectV2::create(store, g.project, &g.ledger, None, crate::generate::WRITER, DEFAULT_SNAPSHOT_EVERY).map(drop).map_err(|e| e.to_string())
@@ -82,15 +82,15 @@ pub fn write_lean(tier: crate::Tier, path: &Path) -> Result<(), String> {
 /// # Errors
 /// The file did not open, or either part failed (the report's failures).
 pub fn verify_timed(path: &Path) -> Result<(f64, f64, usize), String> {
-    let store = ecad_file::v2::Store::open(path, false).map_err(|e| format!("{}: {e}", path.display()))?;
+    let store = ecad_file::Store::open(path, false).map_err(|e| format!("{}: {e}", path.display()))?;
     let t = Instant::now();
-    let chain = ecad_file::v2::verify::verify_chain(&store);
+    let chain = ecad_file::verify::verify_chain(&store);
     let chain_ms = ms(t);
     if !chain.ok {
         return Err(format!("verify_chain failed: {:?}", chain.failures));
     }
     let t = Instant::now();
-    let full = ecad_file::v2::verify::verify(&store);
+    let full = ecad_file::verify::verify(&store);
     let verify_ms = ms(t);
     if !full.ok {
         return Err(format!("verify failed: {:?}", full.failures));
@@ -103,7 +103,7 @@ fn ms(since: Instant) -> f64 {
 }
 
 /// Open `path` as the app's file layer does; refuse a damaged or read-only open.
-pub(crate) fn open(path: &Path) -> Result<ecad_file::v2::disk::OpenedDiskV2, String> {
+pub(crate) fn open(path: &Path) -> Result<ecad_file::disk::OpenedDiskV2, String> {
     let o = DiskProjectV2::open(path, SEED, HOLDER).map_err(|e| e.to_string())?;
     if let Some(d) = &o.report.damage {
         return Err(format!("{} opened damaged: {d:?}", path.display()));
@@ -224,13 +224,13 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, S
         (past, median(&mut each))
     };
     crate::measure::release_lock_file(&copy);
-    let stored_x10 = ecad_file::v2::Store::open(&copy, false)
+    let stored_x10 = ecad_file::Store::open(&copy, false)
         .and_then(|s| s.reader())
         .and_then(|r| r.stats())
         .map(|t| t.iter().map(|t| t.stored_bytes).sum())
         .map_err(|e| e.to_string())?;
     let compacted_x10 = {
-        let mut s = ecad_file::v2::Store::open(&copy, true).map_err(|e| e.to_string())?;
+        let mut s = ecad_file::Store::open(&copy, true).map_err(|e| e.to_string())?;
         s.compact().map_err(|e| e.to_string())?;
         drop(s);
         std::fs::metadata(&copy).map_or(0, |m| m.len())
@@ -298,19 +298,19 @@ pub struct Compression {
 /// # Errors
 /// The file cannot be read, or a codec failed.
 pub fn compression(path: &Path) -> Result<Compression, String> {
-    let store = ecad_file::v2::Store::open(path, false).map_err(|e| e.to_string())?;
+    let store = ecad_file::Store::open(path, false).map_err(|e| e.to_string())?;
     let r = store.reader().map_err(|e| e.to_string())?;
     let mut rows = Vec::new();
     let mut chunks = Vec::new();
     r.raw_rows(|table, _, v| {
         match table {
             "transactions" => {
-                let (flag, _, body) = ecad_file::v2::schema::split_tx_value(v)?;
-                rows.push(ecad_file::v2::pack::unpack(flag, body)?);
+                let (flag, _, body) = ecad_file::schema::split_tx_value(v)?;
+                rows.push(ecad_file::pack::unpack(flag, body)?);
             }
             "chunks" => {
                 let flag = *v.first().ok_or("empty chunk")?;
-                chunks.push(ecad_file::v2::pack::unpack(flag, v.get(1..).unwrap_or_default())?);
+                chunks.push(ecad_file::pack::unpack(flag, v.get(1..).unwrap_or_default())?);
             }
             _ => {}
         }
@@ -328,10 +328,10 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
         (
             "ruzstd (Fastest)",
             |b| Ok(ruzstd::encoding::compress_to_vec(b, ruzstd::encoding::CompressionLevel::Fastest)),
-            |b| ecad_file::v2::pack::decode_ruzstd(b),
+            |b| ecad_file::pack::decode_ruzstd(b),
         ),
-        ("zstd 1", |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()), |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b)),
-        ("zstd 3", |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()), |b| ecad_file::v2::pack::unpack(ecad_file::v2::pack::ZSTD, b)),
+        ("zstd 1", |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()), |b| ecad_file::pack::unpack(ecad_file::pack::ZSTD, b)),
+        ("zstd 3", |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()), |b| ecad_file::pack::unpack(ecad_file::pack::ZSTD, b)),
     ];
     for (name, enc, dec) in all {
         let t = Instant::now();
@@ -401,7 +401,7 @@ pub fn growth(path: &Path, batches: u64) -> Result<(), String> {
         }
     }
     drop(o);
-    let mut st = ecad_file::v2::Store::open(&copy, true).map_err(|e| e.to_string())?;
+    let mut st = ecad_file::Store::open(&copy, true).map_err(|e| e.to_string())?;
     st.compact().map_err(|e| e.to_string())?;
     drop(st);
     eprintln!("compacted: {:.1} MB", mb(size(&copy)));

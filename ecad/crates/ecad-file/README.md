@@ -10,7 +10,7 @@ of its own.
 ## Contents
 - `records`, `record`: the transaction records the file stores, kept apart from `ecad-model` and converted explicitly, so a model change never changes the format silently.
 - `canonical`, `chain`, `crc`: the canonical JSON form (the bytes stored and hashed), the history chain that detects damage and reordering, and CRC-32C.
-- `v2`: the container: tables, snapshots, opening, saving, branches, Verify, and files on disk with the writer lock (Save, Save As).
+- `schema`, `store`, `pack`, `chunks`, `project`, `verify`, `disk`: the container (EEP-0005): tables, the database behind the append-only API, compression, snapshots, opening, saving, branches, Verify, and files on disk with the writer lock (Save, Save As). The format version is the number in the file.
 - `binding`: a project bound to its file, and the checks on a path typed for one.
 
 ## Must not depend on
@@ -19,7 +19,7 @@ before it. It has no OS access except through `ecad-store`. Left out for now: li
 their header (stage 3), checkpoints and other codecs.
 
 ## Key types
-`v2::ProjectV2`, `v2::Store`, `v2::disk::DiskProjectV2`, `binding::Binding`, `ReadOnly`,
+`ProjectV2`, `Store`, `disk::DiskProjectV2`, `binding::Binding`, `ReadOnly`,
 `definition_hash`.
 
 ## How to test

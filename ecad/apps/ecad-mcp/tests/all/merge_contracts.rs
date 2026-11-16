@@ -226,6 +226,6 @@ fn a_merge_over_the_cap_is_taken_back_close_false_undo_and_edit_rules() {
     assert_eq!(description(&mut c, &coil).as_deref(), Some("Pump 9"));
     c.ok("save", json!({}));
     drop(c);
-    let v = ecad_file::v2::verify::verify(&ecad_file::v2::Store::open(std::path::Path::new(&path), false).unwrap());
+    let v = ecad_file::verify::verify(&ecad_file::Store::open(std::path::Path::new(&path), false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }

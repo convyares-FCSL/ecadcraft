@@ -10,9 +10,9 @@ use std::path::Path;
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
-use ecad_file::v2::schema::{self, BranchId, VersionKind, VersionRecord};
-use ecad_file::v2::verify::{VerifyReport, verify, verify_chain};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
+use ecad_file::verify::{VerifyReport, verify, verify_chain};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 use redb::ReadableTable;
 
@@ -101,7 +101,7 @@ fn reference(p: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut branches = Vec::new();
     for (id, b) in r.branches().unwrap() {
-        match ecad_file::v2::project::lineage(&r, PROJECT, id) {
+        match ecad_file::project::lineage(&r, PROJECT, id) {
             Ok(l) => branches.push((id, b, l)),
             Err(e) => out.push(format!("{}: {e}", b.name)),
         }
@@ -110,7 +110,7 @@ fn reference(p: &Path) -> Vec<String> {
     for (id, b, line) in branches {
         let name = &b.name;
         let (start, seed) = match line[0].fork {
-            Some((pi, fseq)) => match ecad_file::v2::project::line_state(&r, &line, pi, fseq) {
+            Some((pi, fseq)) => match ecad_file::project::line_state(&r, &line, pi, fseq) {
                 Ok((d, _)) => (d, line[0].seed),
                 Err(e) => {
                     out.push(format!("{name}: fork: {e}"));
@@ -130,7 +130,7 @@ fn reference(p: &Path) -> Vec<String> {
                 broken = true;
                 break;
             }
-            let decoded = ecad_file::v2::pack::unpack(flag, &body).and_then(|rec| {
+            let decoded = ecad_file::pack::unpack(flag, &body).and_then(|rec| {
                 if chain::tx_hash(&rec) != stored {
                     return Err("the record does not match its chain value".to_string());
                 }
@@ -184,7 +184,7 @@ fn reference(p: &Path) -> Vec<String> {
             }
             done = v.point.seq;
             let mut bodies = Vec::new();
-            let set = ecad_file::v2::chunks::ChunkSet::from_record(&v.chunks).unwrap();
+            let set = ecad_file::chunks::ChunkSet::from_record(&v.chunks).unwrap();
             let mut bad = None;
             for (k, h) in &set.chunks {
                 match r.chunk_body(h) {
@@ -196,7 +196,7 @@ fn reference(p: &Path) -> Vec<String> {
                 out.push(format!("{name}: version {:?}: {e}", v.name));
                 continue;
             }
-            let (mut d, _) = ecad_file::v2::chunks::assemble(&set, bodies).unwrap();
+            let (mut d, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
             d.rebuild_index();
             if d != doc {
                 out.push(format!("{name}: snapshot {:?} at {} DIFFERS from the replay", v.name, v.point.seq));
@@ -252,7 +252,7 @@ fn rewrite_rows(
     let r = s.reader().unwrap();
     let mut prev = match seed {
         Some(seed) => seed,
-        None if from == 1 => ecad_file::v2::project::lineage(&r, PROJECT, branch).unwrap()[0].seed,
+        None if from == 1 => ecad_file::project::lineage(&r, PROJECT, branch).unwrap()[0].seed,
         None => r.tx(branch, from - 1).unwrap().unwrap().1,
     };
     let mut chains: BTreeMap<u64, Hash> = BTreeMap::new();
@@ -261,7 +261,7 @@ fn rewrite_rows(
         let v = ecad_file::record::tx_value(tx, &prev).unwrap();
         let canonical = ecad_file::canonical::canonical(&v).unwrap();
         let h = chain::tx_hash(&canonical);
-        let (flag, body) = ecad_file::v2::pack::pack(&canonical);
+        let (flag, body) = ecad_file::pack::pack(&canonical);
         rows.push((tx.seq, schema::tx_value(flag, &h, &body)));
         chains.insert(tx.seq, h);
         prev = h;
@@ -562,9 +562,9 @@ fn verify_report_lists_its_failures_apart() {
 fn verify_stops_when_asked() {
     let f = build("verify-stop");
     let s = store(&f.path);
-    assert_eq!(ecad_file::v2::verify::verify_stoppable(&s, &|| true), None);
+    assert_eq!(ecad_file::verify::verify_stoppable(&s, &|| true), None);
     let asked = std::cell::Cell::new(0u32);
-    let r = ecad_file::v2::verify::verify_stoppable(&s, &|| {
+    let r = ecad_file::verify::verify_stoppable(&s, &|| {
         asked.set(asked.get() + 1);
         false
     });

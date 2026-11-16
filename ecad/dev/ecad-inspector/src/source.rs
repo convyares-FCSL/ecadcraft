@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
-use ecad_file::v2::verify::{VerifyReport, verify_chain, verify_stoppable};
-use ecad_file::v2::{ProjectV2, ReportV2, Store};
+use ecad_file::verify::{VerifyReport, verify_chain, verify_stoppable};
+use ecad_file::{ProjectV2, ReportV2, Store};
 use ecad_model::Document;
 use serde_json::{Value, json};
 
@@ -149,7 +149,7 @@ fn classify_head(name: &str, size: u64, head: &[u8]) -> Option<Problem> {
             format!("Open `{open}` instead."),
         ));
     }
-    if head.starts_with(ecad_file::v2::disk::MAGIC) {
+    if head.starts_with(ecad_file::disk::MAGIC) {
         return None;
     }
     if head.first() == Some(&b'{') && String::from_utf8_lossy(head).contains("\"ecad-inspect/") {
@@ -252,7 +252,7 @@ impl FileSource {
     /// Open the store, classify its meta, run the chain check, open the project on the same store
     /// (a second handle only when the project does not open, for the raw views), and start
     /// Verify.
-    fn load(&mut self, open: impl Fn() -> Result<Store, ecad_file::v2::StoreError>) {
+    fn load(&mut self, open: impl Fn() -> Result<Store, ecad_file::StoreError>) {
         let first = match open() {
             Ok(s) => s,
             Err(e) => {

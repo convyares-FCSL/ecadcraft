@@ -302,12 +302,12 @@ pub struct DebugSnapshot {
     /// The project file's database (on disk, or the test store's in memory), for on-request reads
     /// (records, Verify file, the Storage and Branches views). Reads only; weak, so a copy never keeps a closed project's
     /// file open.
-    pub store: Option<std::sync::Weak<ecad_file::v2::Store>>,
+    pub store: Option<std::sync::Weak<ecad_file::Store>>,
 }
 
 impl DebugSnapshot {
     /// The bound file's database, while the project still has it open.
-    pub fn store_arc(&self) -> Option<Arc<ecad_file::v2::Store>> {
+    pub fn store_arc(&self) -> Option<Arc<ecad_file::Store>> {
         self.store.as_ref().and_then(std::sync::Weak::upgrade)
     }
 
@@ -379,7 +379,7 @@ impl Project {
     pub fn file_facts(&self) -> FileFacts {
         let mut f = FileFacts {
             persistence: Some(self.persistence),
-            open_report: self.open_report.as_ref().map(ecad_file::v2::ReportV2::describe),
+            open_report: self.open_report.as_ref().map(ecad_file::ReportV2::describe),
             ..FileFacts::default()
         };
         match self.persistence {
@@ -614,9 +614,9 @@ pub fn verify_replay_from(base: u64, history: Option<&Arc<dyn ecad_model::Histor
 /// **Verify file** for a version 2 file (EEP-0005 §5.8): replay the branch from the root with
 /// every check and check every snapshot against the replay, then compare the file's rows with the
 /// copied history (after `base`) up to the saved position. Reads only, on request.
-pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {
+pub fn verify_store(store: &ecad_file::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {
     let at_seq = base + log.len() as u64;
-    let v = ecad_file::v2::verify::verify(store);
+    let v = ecad_file::verify::verify(store);
     let mut ok = v.ok;
     let mut lines = v.lines;
     let rows = store.reader().map_err(|e| e.to_string()).and_then(|r| {
@@ -634,7 +634,7 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
             let mut differ = None;
             for tx in log.iter().filter(|t| t.seq <= head.min(persisted)) {
                 let row = r.tx(branch, tx.seq).ok().flatten();
-                let same = row.and_then(|(flag, _, body)| ecad_file::v2::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
+                let same = row.and_then(|(flag, _, body)| ecad_file::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
                     serde_json::from_slice::<Value>(&rec).ok().and_then(|v| ecad_file::record::decode_tx(&v).ok()).is_some_and(|t| &t == tx)
                 });
                 if !same {
@@ -666,11 +666,11 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
 ///
 /// # Errors
 /// The file cannot be read, or holds no such row.
-pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
+pub fn read_row(store: &ecad_file::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let branch = r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
     let (flag, chain, body) = r.tx(branch, seq).map_err(|e| e.to_string())?.ok_or(format!("no row for {seq}"))?;
-    let record = ecad_file::v2::pack::unpack(flag, &body)?;
+    let record = ecad_file::pack::unpack(flag, &body)?;
     let check = (|| {
         if ecad_file::chain::tx_hash(&record) != chain {
             return Err("the record does not match its chain value".to_string());
@@ -694,7 +694,7 @@ pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transa
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StorageRead {
     pub file_bytes: u64,
-    pub tables: Vec<ecad_file::v2::TableStat>,
+    pub tables: Vec<ecad_file::TableStat>,
     /// Name, ID, status, head, rows, parent and fork point.
     pub branches: Vec<BranchRow>,
     /// Branch name, kind, name, point and chunk count.
@@ -720,7 +720,7 @@ pub struct BranchRow {
 ///
 /// # Errors
 /// The file cannot be read.
-pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, String> {
+pub fn read_branches(store: &ecad_file::Store) -> Result<Vec<BranchRow>, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for (id, b) in r.branches().map_err(|e| e.to_string())? {
@@ -744,13 +744,12 @@ pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, Str
 ///
 /// # Errors
 /// The file cannot be read.
-pub fn read_storage(store: &ecad_file::v2::Store, path: Option<&Path>) -> Result<StorageRead, String> {
+pub fn read_storage(store: &ecad_file::Store, path: Option<&Path>) -> Result<StorageRead, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let tables = r.stats().map_err(|e| e.to_string())?;
     let mut versions = Vec::new();
     for (id, b) in r.branches().map_err(|e| e.to_string())? {
-        for kind in [ecad_file::v2::schema::VersionKind::User, ecad_file::v2::schema::VersionKind::Revision, ecad_file::v2::schema::VersionKind::Auto]
-        {
+        for kind in [ecad_file::schema::VersionKind::User, ecad_file::schema::VersionKind::Revision, ecad_file::schema::VersionKind::Auto] {
             for v in r.versions(id, kind).map_err(|e| e.to_string())? {
                 versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.chunks.len()));
             }

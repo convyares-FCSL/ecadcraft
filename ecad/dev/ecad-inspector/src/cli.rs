@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use ecad_file::v2::Store;
+use ecad_file::Store;
 
 use crate::text;
 
@@ -68,11 +68,11 @@ pub fn views(args: &[String], out: &mut dyn Write) -> Result<(), String> {
     let last = take_opt(&mut args, "--last")?;
     let (Some(file), Some(view)) = (args.first().cloned(), args.get(1).cloned()) else { return Err(USAGE.into()) };
     let path = Path::new(&file);
-    if !ecad_file::v2::disk::starts_like_project(path).map_err(|e| format!("{file}: {e}"))? {
+    if !ecad_file::disk::starts_like_project(path).map_err(|e| format!("{file}: {e}"))? {
         return Err(format!("{file} is not an ECAD project file"));
     }
     let store = Store::open(path, false).map_err(|e| format!("{file}: {e}"))?;
-    let p = |r: Result<String, ecad_file::v2::StoreError>| r.map_err(|e| e.to_string());
+    let p = |r: Result<String, ecad_file::StoreError>| r.map_err(|e| e.to_string());
     let text = match (view.as_str(), args.get(2)) {
         ("tables", None) => {
             let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -89,7 +89,7 @@ pub fn views(args: &[String], out: &mut dyn Write) -> Result<(), String> {
         ("versions", None) => p(text::versions(&store))?,
         ("chunk", Some(hash)) => p(text::chunk(&store, hash))?,
         ("verify", None) => {
-            let v = ecad_file::v2::verify::verify(&store);
+            let v = ecad_file::verify::verify(&store);
             format!("{}\n{}", v.lines.join("\n"), if v.ok { "OK" } else { "FAILED" })
         }
         _ => return Err(USAGE.into()),

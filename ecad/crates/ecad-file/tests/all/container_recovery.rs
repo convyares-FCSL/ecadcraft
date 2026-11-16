@@ -19,8 +19,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::common::*;
-use ecad_file::v2::schema::{self, VersionKind};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::schema::{self, VersionKind};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
 
@@ -84,7 +84,7 @@ fn image(disk: &PowerLoss) -> Vec<u8> {
     disk.crash(&mut Rng::new(7), CrashMode::TornLast)
 }
 
-fn reopen(image: Vec<u8>) -> std::result::Result<ecad_file::v2::OpenedV2, String> {
+fn reopen(image: Vec<u8>) -> std::result::Result<ecad_file::OpenedV2, String> {
     let store = Store::with_backend(PowerLoss::from_image(image)).map_err(|e| format!("store: {e}"))?;
     ProjectV2::open(store, 1, WRITER).map_err(|e| format!("open: {e}"))
 }
@@ -179,7 +179,7 @@ fn cut_sweep(seeds: u64, modes: &[CrashMode]) -> (u64, usize) {
                                 failures.push(format!("{tag}: version row {:?} at head {head}", v.map(|v| v.point)));
                             }
                             drop(r);
-                            let ver = ecad_file::v2::verify::verify(o.project.store());
+                            let ver = ecad_file::verify::verify(o.project.store());
                             if !ver.ok {
                                 failures.push(format!("{tag}: verify {:?}", ver.lines));
                             }
@@ -235,7 +235,7 @@ fn a_second_power_cut_during_recovery_loses_nothing_acknowledged() {
             let recovering = PowerLoss::from_image(first.clone());
             recovering.cut_after(second_cut);
             let opened = Store::with_backend(recovering.clone())
-                .and_then(|s| ProjectV2::open(s, 1, WRITER).map_err(|e| ecad_file::v2::StoreError::Engine(e.to_string())));
+                .and_then(|s| ProjectV2::open(s, 1, WRITER).map_err(|e| ecad_file::StoreError::Engine(e.to_string())));
             let survived = opened.is_ok();
             drop(opened);
             let second = recovering.crash(&mut rng, CrashMode::Reordered);
@@ -391,7 +391,7 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
             Err(e) => {
                 maybe.push(ledger.head());
                 let kind = match e {
-                    ecad_file::v2::SaveErrorV2::ExternalChange(_) => "the retry was refused: the head moved",
+                    ecad_file::SaveErrorV2::ExternalChange(_) => "the retry was refused: the head moved",
                     _ => "the retry was refused: engine error",
                 };
                 *outcomes.entry(kind).or_default() += 1;
@@ -413,7 +413,7 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
                 } else if o.ledger.document() != &ledger.state_at(head).unwrap() {
                     failures.push(format!("fail_at {fail_at}: the document at {head} differs"));
                 } else {
-                    let v = ecad_file::v2::verify::verify(o.project.store());
+                    let v = ecad_file::verify::verify(o.project.store());
                     if !v.ok {
                         failures.push(format!("fail_at {fail_at}: verify {:?}", v.lines));
                     }
@@ -432,7 +432,7 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
 /// save; once the first commits, a new opener sees the new head.
 #[test]
 fn a_second_opener_mid_save_reads_the_last_commit_read_only() {
-    use ecad_file::v2::disk::DiskProjectV2;
+    use ecad_file::disk::DiskProjectV2;
     let dir = TempDir::new("second-opener");
     let p = dir.path("p.ecad");
     let mut f = fixture();
@@ -472,7 +472,7 @@ fn a_second_opener_mid_save_reads_the_last_commit_read_only() {
 #[test]
 #[ignore = "slow: forty opens while another thread saves 150 times"]
 fn second_openers_during_a_stream_of_saves_always_see_a_committed_state() {
-    use ecad_file::v2::disk::DiskProjectV2;
+    use ecad_file::disk::DiskProjectV2;
     use std::sync::mpsc;
     let dir = TempDir::new("second-stream");
     let p = dir.path("p.ecad");

@@ -32,7 +32,7 @@ fn ecadinspect_shows_every_table() {
     assert!(log.contains("\"type\":\"tx\""), "{log}");
     let versions = run(&[o, "versions"]).unwrap();
     assert!(versions.contains("\"Ten\"") && versions.contains("Auto"), "{versions}");
-    let r = ecad_file::v2::Store::open(&out, false).unwrap();
+    let r = ecad_file::Store::open(&out, false).unwrap();
     let (hash, _, _) = r.reader().unwrap().chunk_list().unwrap()[0];
     drop(r);
     let chunk = run(&[o, "chunk", &ecad_file::chain::hex(&hash)]).unwrap();
@@ -46,7 +46,7 @@ fn ecadinspect_shows_every_table() {
 /// branch by name and `versions` lists a branch's own version.
 #[test]
 fn ecadinspect_verifies_and_shows_a_file_with_branches() {
-    use ecad_file::v2::{ProjectV2, Store};
+    use ecad_file::{ProjectV2, Store};
     let dir = TempDir::new("inspect-branches");
     let mut l = history();
     let out = written(&dir, &l);
@@ -120,7 +120,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
 /// `main`'s ID of a project.
 struct BranchIdOf;
 impl BranchIdOf {
-    fn main(p: &ecad_file::v2::ProjectV2) -> ecad_file::v2::schema::BranchId {
-        ecad_file::v2::schema::BranchId::main_of(p.project_id().0)
+    fn main(p: &ecad_file::ProjectV2) -> ecad_file::schema::BranchId {
+        ecad_file::schema::BranchId::main_of(p.project_id().0)
     }
 }

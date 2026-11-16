@@ -326,10 +326,10 @@ fn a_damaged_file_opens_its_verified_prefix_read_only() {
     let (mut bytes, id, last) = h.p(|p| (p.store.bytes(), p.id, p.ledger.head()));
     // Damage the last transaction's stored row at rest: one byte of its record.
     let row = {
-        let store = ecad_file::v2::Store::from_bytes(bytes.clone()).unwrap();
+        let store = ecad_file::Store::from_bytes(bytes.clone()).unwrap();
         let r = store.reader().unwrap();
-        let (flag, chain, body) = r.tx(ecad_file::v2::schema::BranchId::main_of(id.0), last).unwrap().unwrap();
-        ecad_file::v2::schema::tx_value(flag, &chain, &body)
+        let (flag, chain, body) = r.tx(ecad_file::schema::BranchId::main_of(id.0), last).unwrap().unwrap();
+        ecad_file::schema::tx_value(flag, &chain, &body)
     };
     let at: Vec<usize> = bytes.windows(row.len()).enumerate().filter(|(_, w)| *w == row.as_slice()).map(|(i, _)| i).collect();
     let [start] = at.as_slice() else { panic!("the row is stored once: {at:?}") };

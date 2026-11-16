@@ -16,10 +16,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_file::v2::Store;
-use ecad_file::v2::schema::VersionKind;
-use ecad_file::v2::store::TABLES as TABLES_ORDER;
-use ecad_file::v2::verify::VerifyReport;
+use ecad_file::Store;
+use ecad_file::schema::VersionKind;
+use ecad_file::store::TABLES as TABLES_ORDER;
+use ecad_file::verify::VerifyReport;
 use ecad_model::{ComponentId, ConductorId, Document, Subject, TerminalId};
 use serde_json::{Map, Value, json};
 
@@ -681,7 +681,7 @@ fn log(st: &Store, s: &dyn Source, req: &Request) -> Result<Value, Problem> {
     let mut rows = Vec::new();
     if hi >= 1 && count > 0 {
         for (seq, flag, chain, body) in r.tx_range(id, lo..=hi).map_err(engine)?.into_iter().rev() {
-            let record = ecad_file::v2::pack::unpack(flag, &body);
+            let record = ecad_file::pack::unpack(flag, &body);
             let value = record.as_ref().ok().and_then(|b| serde_json::from_slice::<Value>(b).ok());
             let v = value.clone().unwrap_or(Value::Null);
             let mut row = json!({

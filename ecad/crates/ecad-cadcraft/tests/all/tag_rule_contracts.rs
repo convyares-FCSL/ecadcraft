@@ -3,9 +3,9 @@
 
 use ecad_cadcraft::devices::{TagHigh, new_cable_tag};
 use ecad_file::chain;
-use ecad_file::v2::chunks::{META_KEY, ModelMeta};
-use ecad_file::v2::schema::{self, BranchId, VersionKind};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::chunks::{META_KEY, ModelMeta};
+use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::tag::HighWater;
 use ecad_model::*;
 

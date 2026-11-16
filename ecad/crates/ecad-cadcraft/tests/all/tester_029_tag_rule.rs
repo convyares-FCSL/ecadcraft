@@ -4,9 +4,9 @@
 //! the number of a cable deleted before that snapshot.
 
 use ecad_file::chain;
-use ecad_file::v2::chunks::{META_KEY, ModelMeta};
-use ecad_file::v2::schema::{self, BranchId, VersionKind};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::chunks::{META_KEY, ModelMeta};
+use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::tag::HighWater;
 use ecad_model::*;
 use serde_json::json;

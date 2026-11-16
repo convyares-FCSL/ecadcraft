@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_file::v2::schema::{BranchId, BranchRecord, BranchStatus, VersionKind};
+use ecad_file::schema::{BranchId, BranchRecord, BranchStatus, VersionKind};
 use ecad_model::{Document, Op, Transaction, TxKind};
 use serde_json::{Value, json};
 
@@ -182,7 +182,7 @@ pub fn main_of(p: &Project) -> BranchId {
 
 /// The branch shown.
 pub fn current(p: &Project) -> BranchId {
-    p.file.v2().map_or_else(|| main_of(p), ecad_file::v2::ProjectV2::branch)
+    p.file.v2().map_or_else(|| main_of(p), ecad_file::ProjectV2::branch)
 }
 
 /// The branch shown's name.
@@ -199,7 +199,7 @@ pub fn branch_rows(p: &Project) -> Result<Vec<(BranchId, BranchRecord)>, String>
     match p.file.v2() {
         Some(v) => v.branches().map_err(|e| e.to_string()),
         None => {
-            let head = ecad_file::v2::schema::Point { seq: p.ledger.head(), chain: String::new() };
+            let head = ecad_file::schema::Point { seq: p.ledger.head(), chain: String::new() };
             Ok(vec![(main_of(p), BranchRecord::main(head))])
         }
     }
@@ -220,13 +220,13 @@ fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64
         v.lineage().clone()
     } else {
         let r = v.store().reader().map_err(|e| e.to_string())?;
-        ecad_file::v2::project::lineage(&r, p.id, branch)?
+        ecad_file::project::lineage(&r, p.id, branch)?
     };
     Ok(line.iter().map(|l| (l.branch, l.fork.map(|f| f.1))).collect())
 }
 
 /// The version rows (user and revision) of `branch` in the file.
-fn rows(p: &Project, branch: BranchId, kinds: &[VersionKind]) -> Result<Vec<ecad_file::v2::schema::VersionRecord>, String> {
+fn rows(p: &Project, branch: BranchId, kinds: &[VersionKind]) -> Result<Vec<ecad_file::schema::VersionRecord>, String> {
     let Some(v) = p.file.v2() else { return Ok(Vec::new()) };
     let r = v.store().reader().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -603,7 +603,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
                 Some(_) => "Converted from a version 1 file".to_string(),
                 None => "Project created".to_string(),
             };
-            let created = p.file.v2().and_then(ecad_file::v2::ProjectV2::created_ms);
+            let created = p.file.v2().and_then(ecad_file::ProjectV2::created_ms);
             nodes.push(Node {
                 branch: main,
                 seq: 0,
@@ -1112,7 +1112,7 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
     let find = |b: BranchId, name: &str| [VersionKind::User, VersionKind::Revision].iter().find_map(|k| r.version(b, *k, name).ok().flatten());
     let (Some(name), Some(a)) = (title_name(pt), find(prev.branch, &prev.name)) else { return Vec::new() };
     let Some(b) = find(pt.branch, &name) else { return Vec::new() };
-    let pages = |v: &ecad_file::v2::schema::VersionRecord| -> BTreeMap<String, String> {
+    let pages = |v: &ecad_file::schema::VersionRecord| -> BTreeMap<String, String> {
         v.chunks.iter().filter(|(k, _)| k.starts_with("page:")).map(|(k, h)| (k.clone(), h.clone())).collect()
     };
     let (pa, pb) = (pages(&a), pages(&b));
@@ -1156,10 +1156,10 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
 /// The devices added, removed and changed between two snapshots, read from their differing
 /// component chunks only: `-K05 added`, at most three named, then how many more.
 fn device_changes(
-    r: &ecad_file::v2::Reader, a: &ecad_file::v2::schema::VersionRecord, b: &ecad_file::v2::schema::VersionRecord, keys: &[&String],
+    r: &ecad_file::Reader, a: &ecad_file::schema::VersionRecord, b: &ecad_file::schema::VersionRecord, keys: &[&String],
 ) -> Option<Vec<String>> {
-    use ecad_file::v2::chunks::{ChunkSet, components_of};
-    let load = |v: &ecad_file::v2::schema::VersionRecord| -> Option<BTreeMap<ecad_model::ComponentId, ecad_model::Component>> {
+    use ecad_file::chunks::{ChunkSet, components_of};
+    let load = |v: &ecad_file::schema::VersionRecord| -> Option<BTreeMap<ecad_model::ComponentId, ecad_model::Component>> {
         let set = ChunkSet::from_record(&v.chunks).ok()?;
         let mut out = BTreeMap::new();
         for k in keys {
@@ -1481,7 +1481,7 @@ fn run_branch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value>
     with_any_page(s, |p, pg| {
         branch_file(p)?;
         let from = fork_of(p, params)?;
-        ecad_file::v2::project::check_branch_name(&name).map_err(|e| e.to_string())?;
+        ecad_file::project::check_branch_name(&name).map_err(|e| e.to_string())?;
         // Saved first (owner answer 3): the fork point and the branch row are in the file.
         p.save_pending(pg)?;
         let by = Some(author_text(&p.author));
@@ -1650,7 +1650,7 @@ fn run_reopenbranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         };
         let rec2 = match reopened {
             Ok(r) => r,
-            Err(ecad_file::v2::BranchError::NameTaken(other)) => {
+            Err(ecad_file::BranchError::NameTaken(other)) => {
                 return Err(format!(
                     "Another open branch is called \"{other}\"; reopen this one under a new name, for example {{\"branch\": \"{}\", \"name\": \"{free}\"}}.",
                     id.hex()
