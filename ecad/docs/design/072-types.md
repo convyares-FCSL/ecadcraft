@@ -1,896 +1,821 @@
-# Design 072: Types for keys, units, words and device kinds
+# Design 072: The typed object model
 
-Status: **Draft** (designer, 2026-11-16; revised the same day after the owner's answers). Waiting
-for the owner's calls in §14. Format and op changes §13 (F1–F12 with F3′) approved by the
-overseer, 2026-11-16. Brief: `docs/briefs/072-types.md`.
+Status: **Draft** (designer, 2026-11-16; widened the same day by the owner from "types for keys,
+units and device kinds" to the typed object model for all of ECAD). The spec below is the owner's
+and is decided; this design turns it into types, lanes and steps. Waiting for: the owner's calls in
+§16 and the overseer's batch approval of the format and op changes F13–F30 (§10). F1–F12 approved
+2026-11-16 (F12 is superseded by F13, §10). Brief: `docs/briefs/072-types.md`.
 
-**Goal (one sentence).** Property keys, physical units, the words a file stores and the kind of a
-device stop being free strings and bare numbers, so that the compiler finds every place a new key,
-unit, catalogue or device kind must be handled.
+**Goal (one sentence).** What every stored object is, and how it relates to other objects, is held
+in its own typed struct, never worked out from names, symbols, strings or positions, so the
+compiler finds every place a new object, field, kind or unit must be handled.
 
-Source: code review 2026-11 (`C:\dev\ecad-features\_tmp\code-review-2026-11.md`), findings 4
-(property keys), 6 (strings that should be enums), 7 (a device class) and 10 (units and page
-places): lanes R4, R5 and R8 of that review.
+Sources: code review 2026-11 (`C:\dev\ecad-features\_tmp\code-review-2026-11.md`), findings 4, 6,
+7 and 10 (lanes R4, R5, R8); the owner's answers and spec of 2026-11-16.
 
-**Names.** This design uses today's crate names. Lane 073 renames `ecad-cadcraft` to
-`ecad-engine` and moves `xtask` to `dev/xtask` before this lane's worker starts; read "Engine
-(`ecad-cadcraft`)" as whatever the tree calls it then. "Device" is the person's word (052) for what
-the code calls `Component`; the struct keeps its code name (glossary rule for code names).
+**Names.** "Device" is the person's word (052) for what the code calls `Component`; this design
+proposes renaming the struct to `Device` and `Conductor` to `Wire` (F14, F20). That changes a
+recorded decision (owner, 2026-11-08: code, op and command names stay until the next major format
+version), so it is listed for the overseer; if it is refused, read `Device` as `Component` and
+`Wire` as `Conductor` throughout, and nothing else changes. `Terminal` keeps its name either way. `ecad-cadcraft` becomes `ecad-engine` in lane 073, right after 070: read "Engine" as
+that crate. Paths below are today's.
 
-**Rulings (not reopened here).**
-- strum is approved (design 061) for `word()` / `parse()` on enums.
-- Booleans are written `yes` / `no`. Reading also accepts `true` / `1` / `on` (and `false` / `0` /
-  `off`). One rule, in one place.
-- **Unknown words are a read error** (owner, 2026-11-16, replacing "keep as `Unknown(String)`"):
-  pre-v1, ECAD does not read files from newer builds or other tools. A file with a word this build
-  doesn't know opens **read-only** with a message naming the word, the setting and where it is (the
-  damaged-records path), and the file is never changed. Enums are strict: parse or fail. Files from
-  other tools come in later through an explicit import step. Forward compatibility is revisited at
-  the v1 format freeze (`docs/deferred-work.md`).
-- **A device's kind is data** (owner, 2026-11-16): `Component.kind: DeviceKind`, saved in the
-  file, set from the kind the library symbol declares; kind-specific fields live in the variant,
-  not in the property bag. No derived class, no index cache, no update map for it, and the built-in
-  symbol name list does **not** move into the core. A cable is not a device.
-- Pre-v1: **no compatibility path and no legacy debt** (owner, 2026-11-16). Stored words may change
-  when that makes them consistent. Fixtures are regenerated, never shimmed. Every on-disk change is
-  in §13.
-- **One source per value** (owner). Shared vocabulary goes in ecad-model, the lowest crate that
-  needs it.
-- Ratchets end the lane **at 0** and become plain bans (owner): no counts left counting down.
+---
+
+## Part I. Principles and rulings (decided)
+
+**The owner's principles (2026-11-16), for every object type.**
+1. **Data, not inference.** What something is, and how it relates to other things, is stored in
+   its type. No predicate walks to a symbol, no name is matched, no cache keeps a guess.
+2. **One struct per object type** with its own fields. Kind-specific data lives in enum variants,
+   so a wrong combination can't be built.
+3. **Shared behaviour is traits**, implemented by the types. Each type owns its calculations as
+   methods (`psu.available_power()`, a protective device's trip check); checks, power generation
+   and reports call them and never recalculate.
+4. **Relationships are stored explicitly** as IDs, at the level they belong.
+5. **Strict words.** An unknown word in a file is a read error and the project opens read-only
+   with a message naming the word, the setting and where it is (the damaged-records path); the
+   file is never changed. No `Unknown(String)`, no `Stored<E>`. Forward compatibility waits for
+   the v1 format freeze (`docs/deferred-work.md`); other tools' files come in through a later
+   explicit import step.
+6. **No compatibility code.** Test files and fixtures are regenerated; no shims, no converting
+   reader.
+
+**Earlier rulings that stand.** strum (design 061) for `word()`/`parse()`. Booleans written
+`yes`/`no`, read also as `true`/`1`/`on` (`false`/`0`/`off`), one rule in one place. One source
+per value, shared vocabulary in ecad-model. Every guard ends the lane **at 0** as a plain ban. The
+built-in symbol name list stays out of the core. A cable is not a device.
+
+**Where the types live.** Every stored struct and enum is in **ecad-model** (it is what the file
+holds). Calculations that need the electrical rules or tables (rating datasets, trip curves) are
+trait methods defined and implemented in **ecad-electrical** on the model types (a local trait on a
+foreign type is allowed), so `use ecad_electrical::Supply; psu.available_power(..)` reads as the
+type's own method while Core stays layered. Pure accessors (a PSU's rated output) are inherent
+methods in ecad-model.
 
 ---
 
 ## 0. What the code says (recounted at `d323677a`)
 
-Counts are for product code: `tests/` folders and `#[cfg(test)]` blocks are left out. They come
-from grep and small scripts, so read them as ±10%. The review counted on `dev` at `c73f820b`,
-before the crate split.
+Counts are for product code (no `tests/`, no `#[cfg(test)]`), from grep and small scripts: ±10%.
 
-| Finding | Review | Now | Where now |
+### 0.1 The store
+
+`Document` (`ecad-model/src/doc.rs:576`) holds: `pages`, `page_order`, `layers`, `items`
+(drawing primitives and symbol instances), `components` (devices **and** junctions,
+continuations, location boxes, BOM-only items), `terminals` (connection points), `representations`,
+`conductors` (wires), `cables` (+ `CableMember`), `definitions` (symbols), `settings`
+(`ProjectSettings`), `versions`, `properties` (the project's own), `folders`, `folder_order`,
+`standard`, `styles` (style records). Derived and never stored: the reverse `index` and the nets
+(`connectivity`).
+
+Five of these are a typed shell around a **property bag** (`BTreeMap<String, String>`): `Page`
+(title + bag), `Component` (bag + definition), `Conductor` (bag + ends), `Cable` (bag + members),
+and the project (`Document.properties`). Style records are a second bag per catalogue
+(`StyleRecord.fields`).
+
+### 0.2 Strings and inference (the review's findings, recounted)
+
+| Finding | Now |
+| --- | --- |
+| Property-key string constants | **~105** in 27 files; 42 literal `"tag"` keys; `description` 37, `part_number` 20, `maker` 12, `type` 12 literal uses |
+| Keys built with `format!` / split by `starts_with`, `split_once` | **37** / **151** sites |
+| Boolean readers | 3 word sets at ~13 sites |
+| Digit checks | ~30 sites; 6 copies of one bounded-number reader |
+| `Kind::Choice` lists | 56 uses, 31 literal lists, 25 of them on/off |
+| String-literal `match` arms | **595** |
+| Starter symbols / `match key` blocks | 113 / 11 (biggest 46 and 55 arms) |
+| Style catalogues | 7, as `String` in 23 signatures |
+| `Representation.role` | free text: 8 fixed words plus a symbol's starter or project key |
+| Device predicates | **10**, 151 calls in ~45 files |
+| Angles | stored radians, commands degrees, except symbol content `slots[].rotation` (radians) |
+| Ratings parsers | 8 return bare `f64` |
+| Page places | `Place { page: String, column: u32, row: u32 }` |
+
+### 0.3 What is worked out today instead of stored
+
+| # | Inferred today | From | Becomes |
 | --- | --- | --- | --- |
-| Property-key string constants | ~50 in ~20 modules | **~105** in 27 files (the review counted only `*_KEY` names; many are called `PREFIX`, `CROSS_SECTION`, `RACK_KEY`, …) | ecad-model 8 files (`tag`, `book`, `sheet`, `wiring`, `connectivity`, `links`, `derive`, `builtins`), ecad-electrical 19 files |
-| `TAG_KEY` uses / `"tag"` as a literal key | 80 / ~30 | 83 / **42** in 21 files | half in ecad-cadcraft (`cmd/*`, `interact/*`, `props.rs`, `look.rs`), 5 in ecad-app |
-| Keys with no constant: `description`, `part_number`, `maker`, `type` | yes | 37 / 20 / 12 / 12 literal uses | ecad-electrical (`bom`, `devices`, `strips`, `connectors`, `outputs/kept`, `plc/*`, `styles/*`), Engine `cmd/bom`, `interact/bom_item` |
-| Keys built with `format!` | — | **37** sites in 27 files | `designations`, `locations`, `connectors`, `accessories`, `plc/*`, `terminal_types`, `text_style`, `revisions`, `page_types`, … |
-| `starts_with` / `strip_prefix` / `split_once` on keys | 74 in 33 files | **151** in 52 files | everywhere a key family is read |
-| Boolean readers that disagree | 3 word sets | **3 word sets, ~13 sites**: `"yes"\|"y"\|"true"` (`props.rs:1102`), `"yes"\|"true"` (`cmd/numbering.rs:793`), `== "yes"` (`connectivity.rs:109`, `numbering.rs:417,423`, app `shell/right/device.rs:167`), `== "on"` on defaults words (`plc/mod.rs:240,420`, `plc/look.rs:80`, `bom.rs:709`, `cmd/wire.rs:668`) | |
-| Digit checks (`.all(is_ascii_digit)`) | 4 copies | **~30 sites**, of which **6** are the same "bounded whole number" reader (`plc/address.rs:70`, `plc/mod.rs:515`, `plc/rack.rs:200,206`, `rating/dataset.rs:89`, `rating/parse.rs:114`) | |
-| `Kind::Choice` word lists in defaults | 3 examples | **56** uses, **31** literal lists, **25** of them on/off switches | `defaults/*.rs`, `styles/*.rs`, `rating/mod.rs` |
-| `resolve(..).word() == "…"` | — | **10** | `plc/*`, `bom.rs`, `styles/frame.rs`, `front.rs`, `cmd/wire.rs` |
-| String-literal `match` arms | 615 | **595** (electrical 230, cadcraft 131, app 122, file 28, inspector 28, mcp 20, bench 15, model 15) | |
-| Starter symbols / `match key` blocks on them | 14 blocks | **113 starters**; **11 blocks**, biggest `symbols.rs:1377` (46 arms) and `:1589` (55); `symbols.rs:475,520` repeat the 6 channel keys; `devices.rs:353` (9) | ecad-electrical `symbols.rs`, `devices.rs`, `rating/trace.rs`, `connectors.rs`, `xref.rs` |
-| `tag_prefixes` with a fake `"cable"` key | yes | yes: `devices.rs:318`; the map also holds **project symbol keys** (`cmd/symbol.rs:1358`), so a project symbol called `cable` collides | |
-| Style catalogue words | 4 words, ~58 lines | **7 catalogues** (text, location, frame, wire, page, cable, ratingtable); `catalogue: &str`/`String` in 23 signatures; 41 literal catalogue words at call sites | `ecad-model/src/{op,style,merge}.rs`, `ecad-electrical/src/styles/*`, `text_style.rs`, `cmd/wire.rs`, Engine `cmd/text.rs`, `props.rs` |
-| `Representation.role: String` | 7 words | 9 fixed words (`route`, `slash`, `reference`, `box`, `fan-anchor`, `termfuse`, `drawn`, `symbol`) plus a symbol's **starter key or project symbol key** as its role, in 18 files; read back as a starter key in `xref.rs:342` | |
-| Connector side parsed | 3 times | 3 (`cmd/connector.rs:102`, `interact/connectors.rs:26,163`) though `symbols::Side` has `word()`; `locations.rs:457,485`, `proposals.rs:474` build `location.socket`/`plug` by hand | |
-| Text kinds as strings | `styles/text.rs:97` | `styles/text.rs:94` `noun()` matches 7 words of `TextKind`; `props.rs:1037` matches `shown`/`on`/… by hand | |
-| Device predicates | 9 | **10**: `strips::is_strip`, `connectors::is_connector`, `plc::rack::is_rack`, `locations::is_box`, `locations::is_device`, `continuations::is_continuation`, `bom::is_item`, `bom::is_fuse_terminal`, `strips::is_fuse_device` (two answers to one question), plus the `kind` word reader `wires::kind_of`. **151 calls in ~45 files**. `is_rack` walks the device's representations | |
-| Kind-specific fields in the property bag | — | about 30 keys and 8 key families on components (§5.3) | `plc/*`, `strips.rs`, `terminal_types.rs`, `accessories.rs`, `connectors.rs`, `symbols.rs`, `xref.rs`, `continuations.rs`, `connectivity.rs`, `locations.rs`, `bom.rs`, `rating/mod.rs` |
-| Angles | mixed | stored radians: `Placement.rotation`, `TextSlot.rotation`, `Primitive::Text.rotation`; commands take **degrees**, except the symbol content's `slots[].rotation` (**radians**, `cmd/symbol.rs:204`); `to_radians`/`to_degrees` at **21** sites; 21 fields/params named `rotation`/`degrees`/`angle` typed `f64` | |
-| Ratings parsers | 5 return `Option<f64>` | **8**: `current`, `amps`, `voltage`, `cross_section`, `temperature`, `ambient`, `percent`, `length_m` (`rating/parse.rs`) | |
-| Page places | `Place`, `zone_text` | unchanged: `Place { page: String, column: u32, row: u32, … }` (`derive.rs:248`), `Grid::column_of/row_of -> u32` (`sheet.rs:648`), `page_number: String` in `derive.rs:288`, `device_list.rs:26`, app `library/*` | |
-
-What is already right and stays: `Properties` stays `BTreeMap<String, String>` for the keys that
-are not kind-specific; `Op::SetProperty { key: String }` stays a string (a person may add any key);
-the defaults registry (066) already reads through `resolve(&Entry)`; the damaged-records open path
-(`ecad_file::disk::ReadOnly::Damaged` and the open report) already opens a project read-only and
-keeps the file as it is.
+| I1 | What a device is (strip, connector, rack, fuse terminal, item…) | ten predicates walking device → definition → starter key, or the `kind` property word | `Device.device_type` (§2) |
+| I2 | A PLC card's type and whether it is a rack | its head symbol's starter key (`plc::rack::body_type`, `CardType::of_body`) | `PlcModule.function`, `PlcRack` (§3) |
+| I3 | A connection point's side, channel, level and position | the terminal key text: `.s`/`.p`, `.<i>.<role>`, `<n>.<level>`, `.ni`/`.no` (`connectors.rs`, `plc/channels.rs:52`, `links.rs`) | `PointKey` enum on `Terminal` (§2.6) |
+| I4 | A symbol's part in its device (head, contact, pole…) | `reps::rep_type` from the definition each time | `PartRole` on the representation (F3′) |
+| I5 | A fuse bank's outputs | the digit-only labels of its starter (`symbols.rs:829`) | `Protection.outputs` (§2.3) |
+| I6 | A protective device's rated current and curve | parsed from the free `rating` text (`rating/parse.rs::amps`) | typed `Protection` fields, the text kept only as what a person typed (§2.3) |
+| I7 | A contact arrangement (3P, change-over) | `match` on starter keys (`symbols.rs:1377,1589`) | `Switching.contacts` (§2.4) |
+| I8 | Junctions | a component with `kind = junction` | not stored: drawn where wires share a net (§6.1) |
+| I9 | A continuation and its name | `kind = continuation` + `name` properties | `Aid::Continuation` (§6.2) |
+| I10 | A device's location and function from boxes | proposed from box geometry when asked (`locations::context_in`) | stored on the device, set by the box on an explicit edit (§6.3) |
+| I11 | What a page is | `generated` word + `strip` hex id + `page.type` properties | `Page.kind: PageKind` (§5.1) |
+| I12 | A revision row and its columns | `rev.<n>.<field>` and `revisions.columns` text | `Project.revisions` (§5.3) |
+| I13 | Function and location lists | `designation.<aspect>.<entry>.{code,description}` | `Project.designations` (§5.3) |
+| I14 | A strip's jumpers | `link.<n>` range text, parsed on every read | `TerminalStrip.links` (§2.5) |
+| I15 | A cable's ends, glands, rating inputs | `end.from.location`, `gland.to`, `rating.*` … | `Cable` fields (§4.1) |
+| I16 | Part lines | `part.<n>.<field>` | `Device.parts: Vec<PartLine>` (§2.1) |
+| I17 | Which device text a symbol slot places | `TextSlot.text` words `tag`, `rating.<label>` … | `SlotText` enum (§7.1) |
+| I18 | Title block bindings and unknown items | `Binding` text, `BlockItem::Unknown`, `StyleBody::Raw` kept as read | strict typed elements (§5.4) |
+| I19 | Style record fields | `StyleRecord.fields: BTreeMap<String, String>` per catalogue | one struct per catalogue (§8, lane G) |
 
 ---
 
-## 1. Where things live (one source per value)
+## 1. The object map
 
-| Piece | Crate / module | Why there |
-| --- | --- | --- |
-| `words`: the one boolean rule, whole-number and digit readers, the `Word` trait | `ecad-model/src/words.rs` | every crate reads stored words |
-| `PropKey`, `Area`, `KEYS`, `FAMILIES`, `RESERVED`, `PropsExt`, built-key constructors | `ecad-model/src/keys.rs` (one file per area under `keys/` if it passes ~600 lines) | keys are shared vocabulary |
-| Units: `Mm`, `Metres`, `Degrees`, `Radians`, `Amps`, `Volts`, `Mm2`, `Celsius`, `Percent` | `ecad-model/src/units.rs` | `Placement` (model) is the first user |
-| `PageColumn`, `PageRow` | `ecad-model/src/sheet.rs` beside `Grid` | `Grid` makes them |
-| `PageNo` | `ecad-model/src/book.rs` beside the page-number key | the book owns page numbers |
-| `DeviceKind` and its variant data types; `CardType`, `Side`, `SafeState`, `ItemUnit` (stored in a variant) | `ecad-model/src/kind.rs` | stored on `Component` and `Definition` |
-| `PartRole` (a symbol's role in its device) and `Role` | `ecad-model/src/doc.rs` beside `Representation` | stored field |
-| `StyleCatalogue` | `ecad-model/src/style.rs` | `Op::SetStyle` and `StyleCatalogues` are model types |
-| `SymbolName` (a symbol key's shape: a starter's word or a project symbol's key) | `ecad-model/src/doc.rs` | `ProjectSettings.tag_prefixes` is keyed by it |
-| `StarterKey`, `SymbolKey` (`Starter(StarterKey) \| Project(String)`), the starter table | stay in `ecad-electrical/src/symbols.rs` | owner: the built-in symbol list stays out of the core |
-| `TextKind`, `Shown` | stay `ecad-electrical/src/text_style.rs` | |
-| The open-time word check (§4.1) | `ecad-electrical/src/words_check.rs` | it needs the electrical enums |
-| The choice enums of the defaults and style fields (§4.8) | next to their entries in `ecad-electrical/src/defaults/*`, `styles/*`, `rating/*`; those ecad-model already has (`ReferenceStyle`, colour style, tag dash and case) stay there | |
+Every stored object type, what it becomes, and its lane (§12). "Bag" = what leaves the property bag.
 
-`strum` becomes a workspace dependency of ecad-model and ecad-electrical. JSON Schema for the new
-enums, units and `DeviceKind` comes behind ecad-model's existing `schema` feature (070's pattern
-for ids), so 070's params structs can use them.
+| Object | Struct (ecad-model) | Enums with data | Traits | Stored relationships | Bag → fields | Lane |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Device** (`Component`) | `Device` (§2.1) | `DeviceType` (§2.2) | `Supply`, `Load`, `Protects`, `Switching`, `Connects`, `Addressed` (§2.4) | its symbols (representations, `Subject::Device`); its connection points (`Terminal.owner`); `PlcModule.rack`; `DeviceLink` siblings (§2.7) | common fields, part lines, user fields, all kind-only keys | B, C |
+| **PLC rack / module / channel** | `PlcRack`, `PlcModule`, `ChannelGroup`, `Channel` (§3) | `ModuleFunction`, `ChannelFunction` | `Addressed`, `Load` | module → rack (`rack: DeviceId`), channel → module (inside it), channel → connection points (`PointKey::Channel`) | `plc.*` | C |
+| **Wire** (`Conductor`) | `Wire` (§4.2) | `WireSize`, `WireColour` | `Circuit` | ends → connection points or another wire (§6.1); cable membership | `wire_number*`, `potential`, `cross_section`, `colour`, `wire.category`, `load`, `protected_by`, `rating.*` | D |
+| **Net** | derived (`connectivity`), not stored | — | — | from wires and connection points | — | D |
+| **Cable** | `Cable` (§4.1) | `Shield`, `CableEnd` | `Circuit` | cores → wires (`Core.wire`), ends → location/function entries | every `CableField`, `cores`, `unused.*`, `rating.*`, `load`, `protected_by` | D |
+| **Page** | `Page` (§5.1) | `PageKind` | — | folder, page type, frame and title block styles | `number`, `folder`, `function`, `location`, `sheet`, `title_block`, `page.type`, `generated`, `strip`, `print.frame.style`, `description` | E |
+| **Folder** | `Folder` (unchanged) | — | — | parent | `folder.<id>.start` (on the project) → `Folder.start` | E |
+| **Project** (`Document.properties`) | `Project` (§5.3) | `RevisionColumn` | — | — | identity, revisions, designations, user field definitions, loose parts | E |
+| **Title block** | per 055c (§5.4) | `Element`, `Binding` | — | inside a frame style | strictness only | E |
+| **Drawing aid** | `Aid` (§6.2) | `Aid { Continuation, Box }` | — | its drawing (representation, `Subject::Aid`); a continuation's connection point | `kind`, `name`, `caption`, `location`, `function`, `rating.temperature` | F |
+| **Loose part** (BOM-only item) | per the owner's call (§6.4) | — | — | — | `kind=bom_item`, `qty`, `unit`, … | F |
+| **Connection point** (`Terminal`) | `Terminal { owner, label, key: PointKey }` | `PointKey`, `TerminalOwner` | — | owner device or aid | key text → `PointKey` | B (C, F extend) |
+| **Representation** | unchanged + `role: Role` | `Role`, `PartRole` | — | subject, page, items | F3′ | B |
+| **Symbol** (`Definition`) | `Definition` + `device_type`, typed slots and defaults (§7.1) | `SlotText`, `SymbolDefault` | — | origin, derived_from | slot words, default keys | B |
+| **Item** (drawing primitive, symbol instance) | unchanged | `Primitive` | — | page, layer, definition | none | — |
+| **Layer**, **version**, **standard header** | unchanged | — | — | — | none | — |
+| **Style record** | one struct per catalogue (§8) | `StyleBody` | — | catalogue, layer | `fields` map | G (owner call) |
+| **Project settings** | `ProjectSettings` + `cable_prefix` (F5) | existing | — | — | `tag_prefixes` keyed by `SymbolName` | A |
 
 ---
 
-## 2. Property keys
+## 2. Device
 
-### 2.1 `PropKey` and the registry
-
-```rust
-// ecad-model/src/keys.rs
-/// A property key the code knows. `Copy`, compares with `&str`.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct PropKey(&'static str);
-impl PropKey {
-    pub const fn new(k: &'static str) -> Self;   // const: used in statics and match guards
-    pub const fn as_str(self) -> &'static str;
-}
-impl PartialEq<str> for PropKey { /* … */ }
-impl std::fmt::Display for PropKey { /* the key itself */ }
-
-/// Which objects a key sits on.
-pub enum Holder { Project, Page, Folder, Component, Conductor, Cable, Representation }
-
-/// What a key's value is, for the typed readers, the debugger's key list and the inspector.
-pub enum ValueSpec {
-    Text { max_chars: usize },
-    Flag,                                   // words::flag
-    Uint { max: u32 },                      // words::uint
-    Words(&'static [&'static str]),         // a Word enum's WORDS
-    Id(Noun),                               // a hex id of a page, cable, …
-    Length,                                 // a number in mm
-}
-
-pub struct KeyInfo { pub key: PropKey, pub area: Area, pub on: &'static [Holder], pub value: ValueSpec, pub label: &'static str }
-
-/// A family of built keys: a prefix and the parts after it.
-pub struct Family { pub prefix: &'static str, pub area: Area, pub parts: &'static [Part], pub on: &'static [Holder] }
-pub enum Part { Uint { max: u32 }, Word(&'static [&'static str]), Name { max_chars: usize }, Hex }
-
-pub static KEYS: &[KeyInfo];       // every fixed key outside the defaults registry
-pub static FAMILIES: &[Family];    // every built-key family
-/// Keys that moved into a `DeviceKind` variant (§5.3): a component holding one is a read error.
-pub static RESERVED: &[(&str, &str)];   // (key or family prefix, "the PLC card's slot")
-
-pub fn info(key: &str) -> Option<&'static KeyInfo>;
-pub fn family_of(key: &str) -> Option<(&'static Family, Parts<'_>)>;   // the one place a key is split
-pub fn area_of(key: &str) -> Area;                                     // 064's `Area::of`
-```
-
-The constants and `KEYS` are made by one macro, so a key is written once (holders, lengths and
-labels below are illustrative; the worker takes them from today's code):
+### 2.1 The struct and its common fields
 
 ```rust
-prop_keys! {
-    Identity {
-        TAG = "tag", [Component, Cable], Text { max_chars: tag::MAX_CHARS }, "Tag";
-        TAG_FIXED = "tag_fixed", [Component, Cable], Flag, "Tag fixed";
-        DESCRIPTION = "description", [Component, Page, Cable], Text { max_chars: 256 }, "Description";
-    }
-    BomItem {
-        PART_NUMBER = "part_number", [Component, Cable], Text { max_chars: 64 }, "Part number";
-        MAKER = "maker", … ; ARTICLE_NUMBER = "article_number", … ; TYPE = "type", … ;
-    }
-    // …
+pub struct Device {
+    pub definition: Option<DefinitionId>,          // the symbol it was made from (as today)
+    pub tag: Option<Tag>,                           // `Tag` validates the tag rules (tag.rs)
+    pub tag_fixed: bool,
+    pub function: Option<EntryId>,                  // an entry of Project.designations (§5.3)
+    pub location: Option<EntryId>,
+    pub placed_in: Option<AidId>,                   // the box that set function/location (§6.3)
+    pub description: Option<String>,
+    pub part_number: Option<String>,                // line 0, the main part (047 §2.2)
+    pub manufacturer: Option<String>,               // today's `maker`
+    pub article_number: Option<String>,
+    pub type_text: Option<String>,                  // today's free `type`
+    pub rated_voltage: Option<RatedVoltage>,        // Volts + Ac | Dc
+    pub parts: Vec<PartLine>,                       // 047's lines 1…99 (I16)
+    pub user: BTreeMap<UserFieldId, UserValue>,     // project-defined fields (§2.8)
+    pub device_type: DeviceType,                    // §2.2
+    pub display: Properties,                        // what stays a property (§9.2)
+}
+pub struct PartLine { pub n: u8, pub part_number, pub manufacturer, pub description, pub article_number: Option<String>,
+                      pub qty: Qty, pub unit: ItemUnit, pub kit: Option<String>, pub serves: Vec<String> }
+```
+
+Every device has these. A field that only some types have lives in the type (§2.3). Free text a
+person types stays `String`; anything ECAD calculates with is typed (`RatedVoltage`, `Qty`).
+
+### 2.2 `DeviceType`: the groups
+
+`DeviceType` is fixed at compile time, one variant per group, each holding its own struct. Groups
+start from IEC 81346-2's top-level classes, the letters ECAD's built-in tag prefixes already use
+(`defaults/symbols.toml`), and merge classes that need the same data and behaviour; a class is split
+only where its data or calculations differ. **General** covers the rest until it earns a type.
+
+| # | Group (`DeviceType::`) | IEC 81346-2 classes it covers | Starters today | Data (its struct) | Traits |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `Psu(Psu)` | G (generating: power supplies, batteries) and T (converting: transformers) | `psu`, `trafo` | input `RatedVoltage`, output `RatedVoltage`, output current `Amps` or power `Watts`, transformer ratio when T | `Supply`, `Load` |
+| 2 | `Protection(Protection)` | F (protecting: fuses, surge) and Q's protective switches (QA/QB: MCB, RCD, RCBO, fuse switch) | `fuse`, `mcb1`, `mcb2`, `rcbo2`, `rcd2`, `rcd4`, `fuseterm`, `fusebank4…12` | `device: ProtectionKind` (Fuse, Mcb, Rcd, Rcbo, FuseBank), `rated_current: Option<Amps>`, `curve: Option<Curve>`, `residual: Option<MilliAmps>`, `breaking: Option<KiloAmps>`, `poles: u8`, `outputs: Vec<Output { label, rating }>` (fuse banks), `rating_text` (what was typed) | `Protects`, `Switching` (aux contacts) |
+| 3 | `Relay(Relay)` | K (relays, contactors, SSR, timers) and QA contactors | `coil`, `power3`, `power4`, `co`, `ssrin`, `ssrout` | `coil: Option<Coil { voltage: RatedVoltage, power: Option<Watts> }>`, `contacts: ContactSet` (§2.4), `contact_table: TablePosition` | `Switching`, `Load` (coil) |
+| 4 | `Switch(ManualSwitch)` | S (manual control: push buttons, selectors, switch-disconnectors operated by hand) | `pbno`, `pbnc`, `sel`, `swco` | `actuator: Actuator` (Push, Selector{positions}, Key, Mushroom…), `contacts: ContactSet` | `Switching` |
+| 5 | `Sensor(Sensor)` | B (converting a variable to a signal) | `prox3`, `floatno`, `floatnc`, `rollerno`, `rollernc`, `interlockno`, `interlocknc`, `tc` | `sensing: Sensing` (Proximity, Float, Limit, Interlock, Thermocouple…), `output: SensorOutput` (contact, PNP, NPN, analogue range), supply `RatedVoltage` | `Switching` (contact sensors), `Load` |
+| 6 | `Motor(Motor)` | M (providing mechanical energy: motors) | `motor1`, `motor3` | `phases`, `rated_power: Watts`, `rated_current: Option<Amps>`, `power_factor`, `starting: Starting` | `Load` (`full_load_current()`) |
+| 7 | `Solenoid(Solenoid)` | MB (valves, solenoids, brakes: M sub-classes with a coil, not a shaft) | `valve`, `valve2` | `coil: Coil`, `positions: u8` | `Load` |
+| 8 | `Indicator(Indicator)` | P and H (presenting information: lamps, beacons, meters) | `lamp` | `colour: Option<IecColour>`, `power: Option<Watts>` | `Load` |
+| 9 | `Heater(Heater)` | E (providing heat or light as energy: heaters, lighting) | `heater` | `power: Watts`, `thermostat: bool` | `Load` |
+| 10 | `TerminalStrip(TerminalStrip)` | X terminals (connecting, DIN-rail terminals) | `terminal`, `terminalpe`, `term2…`, `term3…`, `termlnpe…`, `termsensor…`, `termdisc`, `termfuse` | §2.5 | `Connects` |
+| 11 | `Connector(Connector)` | X plugs, sockets, bulkheads | `socket*`, `plug*`, `dsub*`, `m12*`, `rj45`, `usba`, `usbb`, `pinpair`, `pins`, `pinp` | `family: ConnectorFamily`, `pins: u16`, `pin_names: Vec<String>`, `halves: BTreeMap<Side, HalfPart>`, `mating: bool` (a bulkhead is not), `ignored: BTreeSet<ConnectorCheck>` | `Connects` |
+| 12 | `PlcRack(PlcRack)` | A/K: a PLC node (station) | (new: today the CPU card is the rack) | §3 | `Addressed` |
+| 13 | `PlcModule(PlcModule)` | A/K: a module in a rack (CPU, I/O, power, communication) | `plccpu`, `plcps`, `plcdi`, `plcdq`, `plcai`, `plcao`, `plcrtd`, `plciol`, `plcim`, `plcpm`, `plccm`, `di`, `do` | §3 | `Addressed`, `Load` |
+| 14 | `General(General)` | everything else (R, C, U, V, W-as-device, A not PLC…) | project symbols with no type, other converts | nothing kind-specific | — |
+
+Notes.
+- **QA and QB become Protection** (owner): fuses, MCBs, RCDs and fuse terminal devices share the
+  rating, curve and trip data. A fuse *position* inside a terminal strip (`termfuse`) stays part of
+  the strip (§2.5) with its own rating there.
+- **Contactors are Relay**, not Protection: they switch but don't protect (the IEC 2019 letter QA
+  covers both; ECAD splits by data, as the owner asked).
+- **Catalogue products** (an IVP4 versus an IVP6) are part-library data, never variants.
+- Fourteen groups; a new group is added only when a symbol needs data or a calculation that no
+  group has.
+
+### 2.3 Where a device's type comes from
+
+- **The symbol declares it.** `Definition.device_type` (F8, renamed from `kind`) holds the type
+  with its default data (`Protection { device: Mcb, curve: Some(C), .. }`). A starter's comes from
+  its `STARTERS` row; a project symbol's (048) is chosen in the symbol builder, defaulting to its
+  `derived_from` starter's, else `General`.
+- **Placing a symbol as a new device** creates the device with that type; only values are filled in
+  at runtime.
+- **Adding a symbol to an existing device** (a contact to a relay, a channel to a module, a level
+  to a strip) never changes the type. Whether it may join stays the join rule (`symbols::Kind`,
+  renamed `JoinRule`).
+- **Changing the type** is one explicit edit; swapping the symbol re-reads the type from the new
+  symbol, keeping the fields both variants share. `setprop` on a key that moved (`plc.slot`,
+  `rating`) keeps working for people and agents through 070's `PROP_RULES` (§13).
+
+### 2.4 Traits and methods
+
+```rust
+// ecad-electrical/src/behaviour.rs (definitions); implemented in the group's module
+pub trait Supply   { fn output(&self) -> RatedVoltage; fn available_power(&self) -> Option<Watts>; fn available_current(&self) -> Option<Amps>; }
+pub trait Load     { fn demand(&self, at: RatedVoltage) -> Option<Demand>; }          // Demand { current: Amps, power: Watts }
+pub trait Protects { fn rated_current(&self) -> Option<Amps>; fn trips(&self, current: Amps, for_s: Seconds) -> Trip;
+                     fn protects(&self, circuit: &dyn Circuit) -> Verdict; }           // the 057 coordination check
+pub trait Switching { fn contacts(&self) -> &ContactSet; fn contact_table(&self) -> TablePosition; }
+pub trait Connects  { fn points(&self, d: &Device) -> Vec<PointKey>; }
+pub trait Addressed { fn address_block(&self, doc: &Document) -> Option<AddressBlock>; }
+pub trait Circuit   { fn load(&self) -> Option<Amps>; fn protected_by(&self) -> Option<DeviceId>;
+                      fn rating(&self, doc: &Document) -> Rating; fn volt_drop(&self, doc: &Document) -> Option<Percent>; }
+```
+
+- `ContactSet` replaces I7: a list of `Contact { kind: Make | Break | ChangeOver | Power, label }`,
+  declared by the symbol and extended by the offer text a person types (`3P+1NO+1NC`, today's
+  `contacts` property), which is parsed once on input into the set.
+- A type that does two things implements both (`Psu: Supply + Load`, `Relay: Switching + Load`).
+- `DeviceType` offers `as_supply()`, `as_load()`, `as_protects()`, `as_switching()` (each an
+  exhaustive `match`, no `_`), so a check asks `device.device_type.as_protects()` and never names a
+  group it doesn't care about.
+- Checks, the power summary and reports call these methods; the rating code in
+  `ecad-electrical/src/rating/` becomes their implementation, not a parallel calculation.
+
+### 2.5 Terminal strips
+
+```rust
+pub struct TerminalStrip {
+    pub offer: Option<String>,                       // positions offered (FP1), as typed
+    pub pe_part: Option<Part>,                       // part_number.pe, maker.pe
+    pub levels: BTreeMap<(Position, Level), LevelData { label: Option<String>, fuse_rating: Option<String> }>,
+    pub links: Vec<Jumper { from: PointRef, to: PointRef }>,   // today's `link.<n>` ranges, expanded once on input (I14)
+    pub accessories: Accessories { start, end, after: BTreeMap<Position, String>, on: BTreeMap<Position, String>,
+                                   marker_per_card: Option<u32>, jumper_bar: Option<u32> },
 }
 ```
 
-The constants are grouped by area (`keys::identity::TAG`) and re-exported flat (`keys::TAG`) when
-the name is unique. The worker takes `max_chars` and ranges from today's checks, never inventing
-new ones.
+Parent/child: the strip is the parent; its terminals are its connection points
+(`Terminal.owner = strip`, `PointKey::Level { position, level, side }`). Device-level data (tag,
+part set) lives on the strip.
 
-**`Area`** is the enum design 064 §3.3 drew, defined **here** (not in 064's `effect.rs`), so the
-registry and the views share one list: the 17 registry areas (`Text`, `Wiring`, `Wire`, `Tags`,
-`Revisions`, `Print`, `Symbol`, `Terminal`, `Connector`, `StripPage`, `Bom`, `Location`,
-`Continuation`, `Plc`, `Page`, `Front`, `Rating`) and the stored areas outside the registry
-(`Identity`, `BomItem`, `Designation`, `Book`, `RevisionRow`, `Link`, `TagHighWater`,
-`CableCores`, `Generated`, `Connectivity` for `wire_number`/`potential`) and `Free` for a person's
-own key. 064's `StripAccessory` and `ContinuationId` areas are not needed: those keys move into
-device kinds (§5.3). `defaults::AREAS` becomes `Area::REGISTRY`'s words (064 step 2 then only
-consumes it). `area_of` reads `KEYS`, then `FAMILIES`, then a registry area word before the first
-`.`, else `Free`.
-
-**What the registry does not hold.** The defaults registry's entries (`text.font`,
-`plc.slot.first`, …) stay in `ecad-electrical/src/defaults/*` as today (066): they are the source
-of their keys. `Entry.key` becomes a `PropKey` (built with `PropKey::new` in the entry), so a
-defaults key is greppable and typed, but is not repeated in `KEYS`. Style **field** keys
-(`grid_labels`, `line_type`) are a catalogue's fields and stay in `styles/*` (`Field.key`).
-
-### 2.2 One rule for words: `ecad_model::words`
+### 2.6 Connection points: `PointKey` (I3)
 
 ```rust
-pub const YES: &str = "yes";
-pub const NO: &str = "no";
-/// `yes|true|1|on` → true, `no|false|0|off` → false (trimmed, any case); anything else None.
-pub fn flag(text: &str) -> Option<bool>;
-pub fn flag_word(b: bool) -> &'static str;                    // YES / NO
-/// ASCII digits only (no sign, no space).
-pub fn is_digits(text: &str) -> bool;
-/// A whole number 0..=max: digits only, at most as many digits as `max` has. Leading zeros allowed.
-pub fn uint(text: &str, max: u32) -> Option<u32>;
-/// The same without leading zeros (`07` refused): link core numbers, BOM sub-numbers, sheet steps.
-pub fn uint_canonical(text: &str, max: u32) -> Option<u32>;
-```
-
-Every copy found in §0 goes through these: the boolean sites, the 6 bounded-number readers and the
-remaining digit checks (`tag.rs`, `links.rs`, `bom.rs`, `channels.rs`, `strips.rs`, `symbols.rs`,
-`trace.rs`, `tagtable.rs`, app `project_panel.rs`, `status_bar.rs`). `y` stops being read as yes
-(`props.rs:1102`), which the ruling's word list leaves out. A prompt's "yes / cancel" answer
-(`interact/devices.rs:29`) is a keyword typed at a prompt, not a stored word: it stays.
-
-**Writing a flag.** A flag property that is false is removed when absence means false for that key
-(`tag_fixed`, `wire_number_fixed`); a defaults entry level that overrides an inherited "yes" writes
-`no`. The rule sits in `PropsExt::set_flag` and the defaults writer, nowhere else.
-
-### 2.3 Typed readers
-
-```rust
-pub trait PropsExt {
-    fn get_key(&self, k: PropKey) -> Option<&str>;
-    fn has(&self, k: PropKey) -> bool;
-    fn flag(&self, k: PropKey) -> bool;                     // absent = false
-    fn uint(&self, k: PropKey) -> Option<u32>;              // max from the key's ValueSpec
-    fn word<E: Word>(&self, k: PropKey) -> Option<E>;
-    fn text(&self, k: PropKey) -> Option<&str>;             // trimmed, non-empty
+pub enum TerminalOwner { Device(DeviceId), Aid(AidId) }          // F moves continuations out (§6)
+pub enum PointKey {
+    Def(String),                                                 // a definition terminal's key (`A1`, `13`)
+    Side(Side),                                                  // a connector pin's half
+    Channel { index: u16, role: ChannelRole },                   // a PLC channel point
+    Level { position: String, level: u8, io: Option<InOut> },    // a strip position level
 }
-impl PropsExt for Properties { /* … */ }
-
-/// The op that sets `k` on `object`, the value written by the key's ValueSpec rule.
-pub fn set(object: ObjectRef, k: PropKey, before: Option<String>, after: Option<String>) -> Op;
 ```
 
-A stored value that doesn't read (a flag `maybe`, a word not in its enum) is caught when the file
-is opened (§4.1), so the readers can treat it as absent without hiding anything.
+Today's key text (`.s`, `.3.in`, `4.2`, `7.1o`) is parsed in five places; it becomes data.
 
-### 2.4 Built keys
+### 2.7 Relationships
 
-Every `format!`-built key and every `strip_prefix` that reads one goes through its family. A
-family's constructor takes typed parts:
+- **Parent → children, stored on the child or inside the parent:** device → its symbols
+  (representation `subject`; coil → contacts are one device's representations with `PartRole`
+  Head and Contact, so the contact table lives on the device); strip → terminals
+  (`Terminal.owner`); rack → modules (`PlcModule.rack`); module → channels (inside the module, §3).
+- **Typed sibling links**, stored once at the project level because they belong to the pair:
+  `Document.device_links: BTreeMap<LinkId, DeviceLink { kind: LinkKind, a: DeviceId, b: DeviceId }>`,
+  `LinkKind { MechanicalInterlock, AuxiliaryBlock, … }`. Today the interlock starters
+  (`interlockno`/`interlocknc`) only draw; the link is new data (F22).
+- **Schematic versus panel** is one device with two representations (symbol and, from 0.2.4,
+  footprint): no relationship object.
 
-| Family (prefix) | Parts | Constructor | Lives in |
+### 2.8 Project-defined user fields
+
+`Project.user_fields: Vec<UserFieldDef { id: UserFieldId, name: String, kind: UserFieldKind }>`,
+`UserFieldKind { Text { max }, Number { unit: Option<Unit> }, Flag, Choice(Vec<String>) }`, like
+the custom revision columns. A device stores values by id; a value of the wrong kind, or an id the
+project doesn't define, is a read error. Today free keys on devices exist only by hand: they stay
+in `display` until a project defines the field (§9.2).
+
+---
+
+## 3. PLC: three levels, all stored
+
+```rust
+pub struct PlcRack {                    // a node: the rack or station, its own device with its own tag
+    pub network: Option<NetworkId>,     // name or address on the network (the owner's "network identity")
+    pub address: Option<String>,        // IP or bus address, as typed
+    pub address_style: AddressStyle,    // byte.bit, iec, percent, slot (today a project default)
+}
+pub struct PlcModule {
+    pub rack: Option<DeviceId>,         // parent (today `plc.rack`)
+    pub slot: Option<u16>,              // today `plc.slot`
+    pub function: ModuleFunction,       // Cpu | Psu | Comm | Accessory | Io(Vec<ChannelGroup>)  (mixed = several groups)
+    pub address: AddressPin { start: Option<String>, size: Option<u32> },   // plc.addr.*
+    pub supply: Option<RatedVoltage>,   // today `plc.kind` words (`24 V`, `relay`) split into supply and output kind
+    pub accessories: Vec<Part>,
+}
+pub struct ChannelGroup { pub function: ChannelFunction, pub count: u16, pub channels: BTreeMap<u16, Channel> }
+pub enum ChannelFunction { Di, Dq, Ai, Aq, Rtd, IoLink, Supply24V, Ethernet, … }
+pub struct Channel { pub text: Option<String>, pub address: Option<String>, pub tag: Option<String>, pub safe: Option<SafeState> }
+```
+
+- The 056 card fields move: rack, slot, ID (the tag), description, manufacturer, part number,
+  accessories. ID, description, manufacturer and part number are the device's common fields; rack,
+  slot and accessories are the module's.
+- **Today's rack is the CPU or head module.** Each becomes a `PlcRack` device (its tag is today's
+  card tag) plus a `PlcModule { function: Cpu }` in slot 0 or 1, both regenerated in fixtures.
+  `plc::rack::is_rack`, `body_type` and `CardType::of_body` go.
+- The address, the I/O list and the rack overview are methods: `PlcModule::address_block`,
+  `PlcRack::modules(doc)` (through the index's `rack → modules` map), never a scan.
+- A channel symbol is a representation of its module with `PartRole::Channel` and its points keyed
+  `PointKey::Channel { index, role }`.
+
+---
+
+## 4. Cable, wire and net
+
+### 4.1 Cable
+
+```rust
+pub struct Cable {
+    pub tag: Option<Tag>, pub tag_fixed: bool,
+    pub cable_type: Option<StyleRef>,              // a `cable` style (059)
+    pub type_text: Option<String>, pub manufacturer, pub part_number, pub description: Option<String>,
+    pub cores: Vec<Core { label: String, colour: Option<WireColour>, wire: Option<WireId>, unused: bool }>,
+    pub shield: Shield,                            // None | Overall | Pairs | OverallPairs
+    pub length: Option<Metres>,
+    pub ends: [CableEnd { function: Option<EntryId>, location: Option<EntryId>, gland: Option<String> }; 2],
+    pub rating: CircuitInputs,                     // basis, manual, method, ambient, grouped, voltage, system, vd_limit
+    pub load: Option<Amps>, pub protected_by: Option<DeviceId>,
+}
+```
+
+`members: Vec<CableMember>` folds into `cores` (a core names its wire). Methods (`Circuit`):
+`cable.rating(doc)`, `cable.volt_drop(doc)`; the rating checks and the cable schedule call them.
+
+### 4.2 Wire
+
+```rust
+pub struct Wire {                                   // today `Conductor`
+    pub ends: [Option<Attach>; 2],                  // §6.1
+    pub number: Option<WireNumber { value: String, fixed: bool }>,
+    pub potential: Option<String>,
+    pub size: Option<WireSize>,                     // Mm2(Mm2) | Awg(u8)
+    pub colour: Option<WireColour>,                 // §16 call 5
+    pub category: Option<StyleRef>,                 // a `wire` style
+    pub rating: CircuitInputs, pub load: Option<Amps>, pub protected_by: Option<DeviceId>,
+}
+```
+
+### 4.3 Net
+
+A net is derived from the wires and connection points (graph structure, not inference): it is
+never stored, as today (`connectivity`). Wire numbering stays typed (`WireNumber`, `Scheme`). The
+junction component goes (§6.1).
+
+---
+
+## 5. Page, folder, project, title block
+
+### 5.1 Page (I11)
+
+```rust
+pub struct Page {
+    pub title: String,
+    pub number: PageNo,
+    pub folder: Option<FolderId>,
+    pub kind: PageKind,
+    pub page_type: Option<StyleRef>,       // a `page` style (054): sheet, frame, title block, zones presets
+    pub sheet: Option<SheetSpec>, pub frame: Option<StyleRef>, pub title_block: Option<StyleRef>,
+    pub function: Option<EntryId>, pub location: Option<EntryId>,
+    pub description: Option<String>,
+    pub display: Properties,
+}
+pub enum PageKind {
+    Schematic,
+    Panel,                                  // 0.2.4
+    Generated(Generated { what: GenKind, strip: Option<DeviceId> }),   // cover, contents, revisions, BOM, terminals, cables, rack, I/O list
+    StripPage { strip: DeviceId, form: StripPageForm },
+    PlcDetail { module: DeviceId },
+}
+```
+
+Position and numbering: the page's place in the book is `page_order` plus `folder`; its number is
+`PageNo`; a point on it is `Place { page: PageNo, column: PageColumn, row: PageRow }`.
+
+### 5.2 Folder
+
+`Folder { name, parent, start: Option<PageNo> }` (today `folder.<id>.start` on the project).
+
+### 5.3 Project (I12, I13)
+
+```rust
+pub struct Project {                                         // today `Document.properties`
+    pub info: ProjectInfo { title, drawing_number, customer, site, status, notes… : Option<String> },
+    pub revisions: Revisions { columns: Vec<RevisionColumn>, rows: Vec<Revision>, pending: RevisionMark },
+    pub designations: Designations { functions: Vec<Entry>, locations: Vec<Entry> },   // Entry { id, code, description }
+    pub user_fields: Vec<UserFieldDef>,
+    pub loose_parts: …,                                      // §6.4, owner call
+    pub display: Properties,                                 // registry project values (066) stay here
+}
+pub enum RevisionColumn { Rev, Date, Description, Drawn, Checked, Approved, Custom { name: String, width: Mm } }
+pub struct Revision { pub values: BTreeMap<ColumnRef, String>, pub issued: Option<String>, pub released: Option<String> }
+```
+
+Device and page `function`/`location` become `EntryId`s into the designations list instead of
+code text, so renaming an entry's code is one edit.
+
+### 5.4 Title block
+
+055c's element-built blocks are already typed (`title_block.rs`: `TitleBlockLayout`, `BlockItem`,
+`Binding`, `TextLook`). What changes is strictness: `Binding` parses to an enum (`Project(Field)`,
+`Page(Field)`, `Revision(ColumnRef)`, `Print(Field)`) instead of text kept as written;
+`BlockItem::Unknown` and `StyleBody::Raw` go (an unknown element or body is a read error); revision
+columns bind to `RevisionColumn` (§5.3). Whatever element types 055c has landed when lane E runs
+are the ones typed; E adds none.
+
+---
+
+## 6. Not devices (lane F)
+
+Moving these out of the device store is its own lane within the refactor, before the end gate.
+
+### 6.1 Junctions are not stored (I8)
+
+A junction today is a component with one connection point that wires end on. Without it, a T-joint
+needs somewhere to attach. `Wire.ends: [Option<Attach>; 2]`:
+
+```rust
+pub enum Attach { Point(TerminalId), Wire { wire: WireId, at: Pt } }
+```
+
+A wire end on another wire joins its net; the junction dot is drawn where three or more wire ends
+meet a wire or each other on one net (§16 call 1). `AttachEnd` carries `Attach` (F25).
+
+### 6.2 Drawing aids (I9)
+
+```rust
+pub enum Aid {
+    Continuation { name: String, caption: Option<String> },
+    Box { function: Option<EntryId>, location: Option<EntryId>, panel_temperature: Option<Celsius> },
+}
+// Document.aids: BTreeMap<AidId, Aid>; Subject::Aid(AidId); TerminalOwner::Aid for a continuation's point
+```
+
+### 6.3 Boxes set location and function on the devices inside (I10)
+
+- A box's location and function are **stored on each device inside it** (`Device.function`,
+  `location`, `placed_in: Some(box)`), not worked out when drawn.
+- Every edit that changes what is inside a box records the devices' new values in the **same
+  transaction**: moving or placing a device's head symbol into or out of a box, moving, reshaping
+  or deleting a box, or changing a box's location or function. The device's head symbol
+  (`PartRole::Head`, else its first symbol) decides which box it is in; innermost box wins, as
+  today.
+- Moving out of every box sets the values the box had set back to none (`placed_in = None`), and
+  leaves a value a person typed by hand (§16 call 2).
+- Page and project values stay what a new device is offered, as 052 had it.
+
+### 6.4 Parts-list-only items: what the list holds today (for the owner)
+
+Today (brief 047 §3): an **item** is a tagless component with `kind = bom_item` and **no symbol on
+any page**, counted in the BOM and nowhere else. It holds `description` (required),
+`part_number`, `maker`, `article_number`, `qty` (a number ≤ 9 999, decimals only with metres),
+`unit` (`pcs` or `m`), and a `location` and `function`; it can't take a tag, part lines or a
+symbol. Examples from 047: trunking, DIN rail, cable ties, crimps bought loose. Accessories are
+already attached to their owner (strip accessories, 030 §4; cable glands, 059); a device's extra
+parts are its part lines. So the list holds only **panel items with no device to belong to**,
+which the owner has set to wait for the 0.2.4 layout. §16 call 3 says where they go until then.
+
+---
+
+## 7. Symbol and representation
+
+### 7.1 Symbol (`Definition`) (I17)
+
+`Definition` gains `device_type: DeviceType` (F8) and `part_role: PartRole` (what its placements
+are in a device). `TextSlot.text: String` → `SlotText { Tag, Description, Rating, RatingOf(String),
+PartNumber, Manufacturer, ArticleNumber, Function, Location }`; `defaults: BTreeMap<String,
+String>` keyed by `DEFINITION_DEFAULT_KEYS` → `SymbolDefaults { key, prefix, description, rating,
+join, aliases, family }` as a struct; `bridges: Vec<Vec<String>>` → `Vec<Vec<PointKey>>`.
+
+### 7.2 Representation
+
+`role: Role` with `Role::Part(PartRole)` for a device's symbol (F3′, approved); the subject gains
+`Subject::Aid(AidId)` (F) and `Subject::Device` is today's `Component` renamed.
+
+---
+
+## 8. Style records (found in the store, lane G)
+
+`StyleRecord { name, fields: BTreeMap<String, String> }` is a property bag per catalogue whose
+fields are described by each catalogue's `Field` table (`styles/*`). Under the principles each
+catalogue gets its struct (`TextStyle { font, height: Mm, weight: Weight, … }`, `WireStyle`,
+`CableType`, `PageType`, `FrameStyle`, `LocationStyle`, `RatingTable`) in a `StyleBody` enum keyed
+by `StyleCatalogue`, with "inherit" as `Option`. It is the same pattern as devices; it is not in
+the owner's list, so its timing is §16 call 4.
+
+---
+
+## 9. Foundation (lane A): words, keys, units, strict reading
+
+### 9.1 Words and enums
+
+- `ecad_model::words`: `flag(text) -> Option<bool>` (yes/true/1/on, no/false/0/off; `y` no longer
+  read), `flag_word(bool)`, `is_digits`, `uint(text, max)`, `uint_canonical(text, max)`; every copy
+  goes through them.
+- `trait Word { const ALL; const WORDS; fn word(self); fn parse(text) -> Option<Self> }`, derived
+  through strum (`IntoStaticStr`, `EnumString`, `VariantArray`, `serialize_all = "snake_case"`,
+  `ascii_case_insensitive`); a non-snake word (`byte.bit`, `fan-anchor`, `0`, `90`) has its own
+  `#[strum(serialize)]`. A small macro adds `Serialize`/`Deserialize` (as the word; an unknown word
+  is an error naming it and the allowed words) and `JsonSchema` (behind ecad-model's `schema`
+  feature) from the strum attribute, the only place a word is written.
+- Every `Kind::Choice` list becomes an enum, the 25 on/off switches `Kind::Flag` (F4); typed
+  `Choice<E>` entries replace `.word() == "…"`. `StyleCatalogue` (F1, F2), `Side`, `TextKind`,
+  `Shown` (`yes`/`no`/`first`), `StarterKey` (stays in electrical, flat, 113 variants), `SymbolKey`,
+  `SymbolName`, `cable_prefix` (F5).
+
+### 9.2 What stays a property, and `PropKey`
+
+After lanes B–F the property bags hold only: presentation choices (`text.<kind>.style`,
+`text.<rep>.<kind>.show`), defaults-registry values stored per object (066, `ProjectSource::Property`
+and object levels), and keys a person adds by hand. For these:
+
+- `ecad-model/src/keys.rs`: `PropKey(&'static str)`, `KEYS` (with `Area`, holder, `ValueSpec`),
+  `FAMILIES` (`text.<kind>.style` and similar, one `build`/`parse` pair each), `RESERVED` (every key
+  that moved into a struct field: a bag holding one is a read error), `PropsExt` typed readers
+  (`flag`, `uint`, `word::<E>`, `text`), `area_of(key)`.
+- `Area` is defined here and imported by R9 (design 064 §3.3), trimmed to what stays a property:
+  the 17 registry areas, `Text` display choices and `Free`.
+- During lanes B–F, `KEYS` also holds each not-yet-moved key, so G1 can reach 0 for literals while
+  the move is under way; each lane deletes its keys from `KEYS` and adds them to `RESERVED`.
+
+### 9.3 Units
+
+`ecad-model/src/units.rs`, each `#[serde(transparent)]`: `Mm`, `Metres`, `Radians`, `Degrees`,
+`Amps`, `MilliAmps`, `KiloAmps`, `Volts`, `Watts`, `Mm2`, `Celsius`, `Percent`, `Seconds`.
+Arithmetic only where it means something (`Mm ± Mm`, `Mm * f64`, `Degrees ⇄ Radians` by `From`, the
+only `to_radians` left); the electrical ones get `PartialOrd`, `Display` (`10 A`) and no operators
+(calculations are the traits' methods). `RatedVoltage { volts: Volts, current: Ac | Dc }`. A page
+point (`Pt`) stays in drawing units; `Mm::to_units(LengthUnit)` is where they meet. Commands take
+`Degrees`; the symbol content's `slots[].rotation` changes from radians to degrees (F6). Page
+places: `PageColumn`, `PageRow` (`Grid`), `PageNo` (`book.rs`).
+
+### 9.4 Strict reading (F11, approved)
+
+- A typed field with an unknown word or shape (an enum, a `DeviceType` variant or field, a
+  `PointKey`, a `Binding`) makes its record fail to decode: reported as damage with the word, the
+  field and the record; the project opens read-only (`ReadOnly::Damaged`); the file is kept.
+- A word inside a value that stays text (a defaults choice, `Shown`, a `tag_prefixes` key, a
+  `RESERVED` key in a bag): `ecad_electrical::words_check::check(doc)` runs once on open; a fault
+  opens read-only through `ReadOnly::UnknownWords`, naming the word, its setting and where it is.
+- The inspector's Raw and Readable views keep working on such a project (hard rule, A15).
+
+---
+
+## 10. Format and op changes (for the overseer's batch approval)
+
+Pre-v1: fixtures are regenerated, no shims, no format version change.
+
+**Approved 2026-11-16: F1–F12.** F1 `SetStyle.catalogue` typed; F2 `StyleCatalogues` typed; F3′
+`Representation.role` = part in the device; F4 on/off → yes/no; F5 `cable_prefix`; F6
+`slots[].rotation` in degrees; F7 stored angles `Radians`; F8 `Definition.kind`; F9
+`Component.kind`; F10 kind-only keys out of the bag; F11 unknown words are a read error; F12
+`SetDeviceKind`.
+
+**Changed by the widened spec:** F8 and F9 are renamed `device_type: DeviceType` with the §2.2
+groups; F12 is **superseded** by F13: once every device field is typed, a type change is one field
+edit like the others.
+
+**For approval:**
+
+| # | Change | Op or on disk | Lane |
 | --- | --- | --- | --- |
-| `rev.<n>.<column>` | `Uint`, `Word` | `keys::rev(n, col)` | model |
-| `designation.<aspect>.<entry>.{code,description}` | `Word`, `Name`, `Word` | `keys::designation(..)` | model |
-| `link.<…>` | as `links.rs` | `keys::link(..)` | model |
-| `numbering.high.<prefix>` | `Name` | `keys::tag_high(prefix)` | model |
-| `unused.<core>` (cables) | `Name` | `keys::unused_core(core)` | model |
-| `location.<side>` | `Word(Side::WORDS)` | `keys::location_side(side)` | model |
-| `folder.<id>.start` | `Hex` | `keys::folder_start(id)` | model |
-| `text.<kind>.style`, `text.<kind>.show`, `text.<rep>.<kind>.show` | `Word(TextKind::WORDS)`, `Hex` | `TextKind::style_key(self)`, `show_key(self, rep: Option<RepresentationId>)` in electrical, through `keys::TEXT_STYLE.build(..)` | family in model, typed method in electrical |
-| `symbol.<key>.<field>` | `Name`, `Word` | `defaults::symbols::family_key(SymbolKey, Field)` through `keys::SYMBOL_FAMILY` | same |
+| F13 | **`ModifyDevice { id, before: Device, after: Device }`** replaces `SetDeviceKind` (F12) and `SetProperty` for every typed device field. Same pattern as `ModifyItem`, `ModifyRepresentation`, `ModifyFolder`: the whole struct before and after, inverse by swap | new op; `SetDeviceKind` never ships | B |
+| F14 | The device struct with the common fields (§2.1), `device_type`, `parts`, `user`, `display`. **Renaming** `Component` → `Device` and its ops (`CreateDevice`, `DeleteDevice`, `SetDeviceDefinition`) changes the 2026-11-08 rule that code and op names stay until the next major format version: approve the fields and the rename separately | record shape; op names if the rename is approved | B |
+| F15 | `DeviceType` groups and their structs (§2.2, §2.5); the starters' and project symbols' `device_type` | new data | B |
+| F16 | `Terminal { owner: TerminalOwner, label, key: PointKey }` (§2.6) | record shape | B |
+| F17 | `Definition`: `part_role`, `SlotText`, `SymbolDefaults`, typed `bridges` (§7.1) | record shape | B |
+| F18 | `Project.user_fields` and `Device.user` (§2.8) | new data | B |
+| F19 | PLC: `PlcRack`, `PlcModule`, `ChannelGroup`, `Channel` (§3); today's CPU/head-module cards become a rack device plus a CPU module | new data; regenerated fixtures | C |
+| F20 | The wire struct with typed fields (§4.2); **`ModifyWire { id, before, after }`** replaces `SetProperty` on wires. Renaming `Conductor` → `Wire` (and its ops) falls under the same rule as F14's rename | new op, record shape | D |
+| F21 | `Cable` typed (§4.1), cores fold `members`; **`ModifyCable { id, before, after }`** replaces `SetProperty` and `AddCableMember`/`RemoveCableMember` | new op; two ops removed | D |
+| F22 | `Document.device_links` and **`AddDeviceLink` / `RemoveDeviceLink`** (§2.7) | new ops, new data | B |
+| F23 | `Page` typed with `PageKind` (§5.1); **`ModifyPage { id, before, after }`** for page edits and renames/moves (design 064 §13 item 2's wish, so `Effects::of` no longer folds `RemovePage` + `AddPage`) | new op, record shape | E |
+| F24 | `Project` typed (§5.3): info, revisions, designations; **`ModifyProject { before, after }`** replaces `SetProperty` on the project for typed fields; `Folder.start`; function/location as `EntryId` on devices and pages | new op, record shape | E |
+| F25 | `Wire.ends: [Option<Attach>; 2]` with `Attach::Wire` (§6.1); `AttachEnd` carries `Attach`; junction components removed | op shape, records removed | F |
+| F26 | `Document.aids`, `Aid`, `Subject::Aid`, `TerminalOwner::Aid`; **`AddAid` / `RemoveAid` / `ModifyAid`** (§6.2) | new ops, new data | F |
+| F27 | Boxes write `function`, `location`, `placed_in` on devices in the same transaction (§6.3): no new op, `ModifyDevice` | behaviour | F |
+| F28 | Loose parts out of the device store (§6.4, per the owner's call) | new data | F |
+| F29 | Title block strictness: `Binding` enum, no `BlockItem::Unknown`, no `StyleBody::Raw` (§5.4) | record shape | E |
+| F30 | Typed style records per catalogue (§8), if the owner says now | record shape | G |
 
-The component families `plc.ch.<i>.*`, `half.*`, `ignore.*`, `acc.*`, `term_label.*`, `rating.<n>`
-are not families any more: they move into device kinds (§5.3) and their prefixes go to
-`RESERVED`. A family's `build` and `parse` are one pair, so a key is never split by a different
-rule than the one that made it. `TextKind` stays in electrical; the family records its words through
-a `Part::Word` checked by a test (`families_name_their_words`) rather than by moving the enum.
-
-### 2.5 Defaults entries
-
-- `Entry.key: PropKey`.
-- `Kind::Flag` for the 25 on/off switches (§13 F4): `Value::Flag(bool)`; the Standards screen
-  shows a `control::Toggle` for them (components rule, owner 2026-11-15); the TOML writes `yes`/`no`.
-- `Kind::Choice(&'static [&'static str])` stays the registry's data shape but is built only from an
-  enum: `Kind::choice::<E: Word>()` (a `const fn` over `E::WORDS`). A choice entry is a typed static,
-  `pub static SLOT_FIRST: Choice<FirstNumber> = Choice::new(Entry { … })`, whose
-  `resolve(doc, at) -> FirstNumber` replaces `.word() == "…"`. Every `Kind::Choice(&[…])` literal
-  goes (31 now).
-
-### 2.6 Inventory: what moves
-
-| From | Keys | To |
-| --- | --- | --- |
-| `ecad-model/src/tag.rs` | `TAG_KEY`, `FIXED_KEY`, `PROVISIONAL_SETTING`, `HIGH_RESET_PREFIX`, `DASH_KEY`, `CASE_KEY` | `keys::{TAG, TAG_FIXED}`; `HIGH_RESET_PREFIX` → family; the registry ones stay entries |
-| `book.rs`, `sheet.rs` | `folder`, `number`, `function`, `location`, `sheet`, `title_block`, `page.type`, `generated`, `print.frame.style` | `keys::book::*`, `keys::page::*` |
-| `connectivity.rs`, `wiring.rs` | `wire_number`, `wire_number_fixed`, `potential`, `cross_section`, `colour`, `wire.category` | `keys::connectivity::*`, `keys::wiring::*` |
-| `connectivity.rs` | `kind`, `continuation`, `junction`, `name` | into `DeviceKind` (§5.3); `kind`, `name` reserved on components |
-| `links.rs`, `derive.rs`, `builtins.rs` | `link.` prefix; `REFERENCE_ROLE` (a role, §4.4); the 6 settings words in `builtins.rs` are TOML field names (066), not keys | family; `Role::Reference` |
-| electrical `bom`, `designations`, `frames`, `front`, `generated`, `page_types`, `rating/mod` (circuit keys), `revisions`, `styles/cable` | their constants | `keys::<area>::*` |
-| electrical `plc/*`, `strips`, `terminal_types`, `accessories`, `connectors`, `symbols` (`rating`), `xref` (`contacts`, `mirror`), `continuations` (`caption`), `locations`, `bom` (`qty`, `unit`) | kind-specific | into `DeviceKind` (§5.3) |
-| every crate | the 42 `"tag"`, 37 `"description"`, 20 `"part_number"`, 12 `"maker"`, 12 `"type"`, 1 `"article_number"` literal keys | constants |
-
-Non-key strings with a `_KEY` look (`styles/*::WORD`, `ROLE`, `BUILTIN_FRAME`, `PLAIN_TYPE`,
-`METRES`) are words of an enum and go with §4, not here.
+`SetProperty` stays, for the keys of §9.2 only. `Op::ALL` and the contract tests list every op;
+`Effects::of` (064) maps every new op (§13).
 
 ---
 
-## 3. Units
+## 11. Guards (all at 0, no allowlist, at the end of the last lane)
 
-### 3.1 The types
+Each starts as a ratchet in the lane that adds it; the end gate checks them all at 0. Textual ones
+in `cargo xtask layers`; those needing the registry or the enums' words are tests in
+ecad-electrical. "Today" is an estimate; the lane records the exact start.
 
-```rust
-// ecad-model/src/units.rs — each `#[serde(transparent)]`, so stored bytes do not change.
-pub struct Mm(pub f64);       // a length defined in millimetres (styles, defaults, sheet margins, text heights)
-pub struct Metres(pub f64);   // a cable or route length
-pub struct Radians(pub f64);  // stored angles (counter-clockwise)
-pub struct Degrees(pub f64);  // angles a person or agent types
-pub struct Amps(pub f64);
-pub struct Volts(pub f64);
-pub struct Mm2(pub f64);      // cross-section
-pub struct Celsius(pub f64);
-pub struct Percent(pub f64);
-```
-
-- Arithmetic only where it means something: `Mm ± Mm`, `Mm * f64`, `Mm / f64`, `Mm / Mm -> f64`,
-  `-Mm`, the same for `Metres`; `Degrees ⇄ Radians` by `From` (the only `to_radians` /
-  `to_degrees` calls left in the workspace); `Amps`, `Volts`, `Mm2`, `Celsius`, `Percent` get
-  `PartialOrd`, `get()`, `Display` (`10 A`, `2.5 mm²`, `35 °C`, `5 %`) and no operators: the ratings
-  maths is written as functions of the standard (`volt_drop(mv_per_a_m, Amps, Metres) -> Volts`).
-- `finite(x) -> Option<Self>` on each; the parsers use it.
-- **Drawing units are not `Mm`.** A page point (`Pt`) is in the project's drawing unit (mm or inch,
-  `Grid.k`). `Mm` is only for values defined in millimetres whatever the project unit. They meet
-  at one function, `Mm::to_units(self, unit: LengthUnit) -> f64`. `Pt`, and the 80 `(f64, f64)`
-  pairs, are out of scope (§12).
-- `JsonSchema` behind ecad-model's `schema` feature: a number, with the unit in its description.
-
-### 3.2 Where they enter first
-
-| Type | Enters at (the boundary) | What the compiler then pulls in |
-| --- | --- | --- |
-| `Amps`, `Volts`, `Mm2`, `Celsius`, `Percent`, `Metres` | `rating/parse.rs`: `current`/`amps → Amps`, `voltage → Volts`, `cross_section → Mm2`, `temperature`/`ambient → Celsius`, `percent → Percent`, `length_m → Metres` | `rating/{mod,dataset,trace}.rs`, the rating checks rows, `lists/rating.rs` (app). The free text a person typed (`"10 A"`, `"18 AWG"`) stays text: the types are what a parse gives, not what is stored |
-| `Radians` | `Placement.rotation`, `TextSlot.rotation`, `Primitive::Text.rotation` (all stored radians today; the worker confirms the last with a round-trip test before typing it) | `translate.rs` (Engine → CADCraft), `look.rs` `Text { rotation }`, the layout code in electrical |
-| `Degrees` | every command parameter named `rotation` (070's params structs: `place`, connector place, `placesymbol`, channel place, symbol content `slots[].rotation`); interactive prompts; the plc text-angle choice `"90"`/`"0"` (§4.8) | `Radians::from(Degrees)` at the one place a command builds a `Placement` |
-| `Mm` | `defaults::Value::Length` and `Resolved::length`, style `Length` fields, `TextLook.height`, sheet `Margins`, ecad-drawing-style line weights | electrical layout (`text_style`, `frames`, `title_block`, `plc/look`) |
-| `PageColumn(u32)`, `PageRow(u32)` | `Grid::column_of`, `row_of`, `column_label`, `row_label`; `Place.column`, `Place.row` | `zone_text(column: &str, row: &str)` becomes `zone_text(&Place)`; xref, continuations, reference texts |
-| `PageNo(String)` | `Place.page`, `CableReference.page_number` (`derive.rs:288`), `device_list::Row.page_number`, the book's page-number reader | sorting (one `Ord` for page numbers) and the app's `library/*` rows |
-
-**Symbol content `slots[].rotation`** is the one command parameter that takes radians today. With
-`Degrees` in its params struct it takes degrees like every other command (§13 F6).
-
----
-
-## 4. Enums
-
-### 4.1 One pattern: `Word`, strict, and the open-time word check
-
-```rust
-// ecad-model/src/words.rs
-pub trait Word: Copy + Eq + 'static {
-    const ALL: &'static [Self];
-    const WORDS: &'static [&'static str];
-    fn word(self) -> &'static str;
-    fn parse(text: &str) -> Option<Self>;   // trimmed, any case
-}
-```
-
-- Each enum derives strum's `IntoStaticStr`, `EnumString`, `VariantArray` with
-  `#[strum(serialize_all = "snake_case", ascii_case_insensitive)]`; a word that is not snake case
-  (`byte.bit`, `fan-anchor`, `0`, `90`) gets its own `#[strum(serialize = "…")]`. The strum
-  attribute is the only place a word is written. A small macro implements `Word`,
-  `Serialize`/`Deserialize` (as the word; an unknown word is a deserialise error naming the word
-  and the allowed ones) and `JsonSchema` (an enum of `WORDS`) from it.
-- There is **no `Unknown` variant and no `Stored<E>`**. Enums are exhaustive and `Copy`.
-- **Commands** read `E` through 070's params structs: an unknown word is refused with 070's
-  uniform input error, which lists the allowed words from the schema.
-- **Files.** An unknown word is a read error, reported on the damaged-records path:
-  1. *Typed fields* (a model enum in a record: `Op::SetStyle.catalogue`, a style catalogue map key,
-     `Representation.role`, `Component.kind`, `Definition.kind`): the record does not decode. It is
-     reported as damage with the word, the field and the record, exactly as a damaged record is
-     today: the project opens read-only (`ReadOnly::Damaged`), the record is left out of the
-     in-memory document, and the file is kept as it is.
-  2. *Words inside text values* (a property or setting whose value is a word of an electrical
-     enum: defaults choices, `Shown`, `tag_prefixes` keys, a component holding a `RESERVED` key):
-     `ecad_electrical::words_check::check(doc) -> Vec<WordFault>` runs once when a project opens.
-     A fault opens the project read-only through the same report, with a new reason
-     `ReadOnly::UnknownWords` whose text names each word, its setting and where it is ("`plc.frame.show`
-     on page 5 is `maybe`, which this build doesn't read"). Nothing is left out: the document is
-     whole, only saving is refused.
-- The open report lists both kinds in one list; the inspector shows them.
-
-### 4.2 `StarterKey`, `SymbolKey`, the tag prefixes
-
-```rust
-// ecad-electrical/src/symbols.rs (the built-in list stays out of the core)
-pub enum StarterKey { Coil, No, Nc, Power3, Mcb1, Mcb2, Fuse, Psu, /* … all 113, flat … */ Chiol }
-pub enum SymbolKey { Starter(StarterKey), Project(String) }   // a project symbol's key (048)
-```
-
-- **Flat**, one variant per starter: the starter list is a flat catalogue, the words are what a
-  person types, and families are answered by exhaustive methods (`card_type`, `channel_type`,
-  `side`, `levels`). `STARTERS` rows carry `key: StarterKey` and `kind: DeviceKind` (the kind the
-  starter declares, §5.2); a test checks one row per key in `StarterKey::ALL` order. `by_key(&str)`
-  becomes `StarterKey::parse` + `starter(k)`.
-- The 11 `match key` blocks match on `StarterKey`, with no `_` (§6 G5): a new starter does not
-  compile until each table answers for it. Grouped arms (`A | B | C =>`) keep them short.
-- **Tag prefixes.** `tag_prefixes` is keyed by `SymbolName` (model: a key's shape, 1–16
-  characters); the open-time check makes a key that names neither a starter nor a project symbol a
-  read error. The fake `"cable"` entry becomes its own setting, `ProjectSettings.cable_prefix:
-  Option<String>` (absent = `W`), so a project symbol called `cable` can't collide (§13 F5).
-
-### 4.3 `StyleCatalogue`
-
-```rust
-pub enum StyleCatalogue { Text, Location, Frame, Wire, Page, Cable, Ratingtable }
-```
-
-Includes 057's `cable` and `ratingtable` and the `page` catalogue. `Op::SetStyle.catalogue:
-StyleCatalogue`; `StyleCatalogues = BTreeMap<StyleCatalogue, …>`; `styles::catalogue` takes the
-enum and its `CATALOGUES` table is an exhaustive `match`; `defaults::Kind::Style(StyleCatalogue)`.
-The 23 `catalogue: &str` signatures and the 41 literal words go. Words do not change.
-
-### 4.4 `Role`: a symbol's role in its device
-
-The owner's shape: a symbol on a page carries only its role in the device; what the device is lives
-on the device (§5).
-
-```rust
-/// A symbol's part in its device: today's `reps::RepType`, now stored.
-pub enum PartRole { Head, Contact, Pole, Terminal, Channel, Half, Pin, Other }
-pub enum Role {
-    Part(PartRole),      // a device's symbol: words `head`, `contact`, `pole`, `terminal`, …
-    Route, Slash, Reference, LocationBox, FanAnchor, FuseTerm, Drawn,
-}
-```
-
-Today a symbol's role is its starter key (`coil`) or a project symbol's key, and `reps::rep_type`
-derives the part from the definition each time. `PartRole` is set when the symbol is placed (from
-the declaring symbol: the starter row or the project symbol) and stored. Which symbol it is comes
-from the definition, never from the role. The fixed words stay (`route`, `slash`, `reference`,
-`box`, `fan-anchor`, `termfuse`, `drawn`). `look::ANCHOR_ROLE`, `locations::ROLE`,
-`derive::REFERENCE_ROLE`, every `r.role == "slash"` (12 sites) and `reps::rep_type`'s derivation go.
-**A drawn form** (`Form::Drawn`, a converted drawing) has no definition, and `xref.rs:342` reads its
-starter from the role today to find its contact table. The worker checks whether any drawn form
-needs that; if so it is an open question for the overseer, not a role word (§13 F3′).
-
-### 4.5 Connector `Side`
-
-`Side` (`socket`, `plug`, `both`) moves to `ecad-model/src/kind.rs`, because the connector variant
-stores it (§5.3). Its 3 hand parsers go; the short forms `s`/`p` stay as strum aliases for typed
-input (`word()` gives the full word, which is what is stored). `location.socket` / `location.plug`
-come from `keys::location_side`. The defaults choice becomes `Choice<Side>`.
-
-### 4.6 `TextKind`
-
-`styles/text.rs::noun()` matches on `TextKind` from `keys::TEXT_STYLE.parse(key)` instead of 7
-words; `props.rs:1037` reads `Shown` through `Shown::parse` (strum aliases `shown` / `hidden` /
-`once per run` for what a person types in the Texts row). `TextKind` and `Shown` gain `Word`;
-their hand-written `word()` / `from_word()` go.
-
-### 4.7 The `kind` property
-
-Goes: junctions, continuations, location boxes and items are device kinds (§5), and `kind` is a
-`RESERVED` key on components.
-
-### 4.8 Defaults and style-field choices
-
-Every `Kind::Choice` gets an enum (or becomes `Kind::Flag`):
-
-| Entry / field | Today's words | Becomes |
-| --- | --- | --- |
-| 25 switches (§13 F4) | `on`, `off` | `Kind::Flag`, `yes` / `no` |
-| `text.tag.show*` (3) | `on`, `off`, `first` | `Shown { Yes, No, First }`, words `yes` / `no` / `first` (§13 F4) |
-| `plc.slot.first`, `plc.channel.first` | `0`, `1` | `FirstNumber { Zero = "0", One = "1" }` |
-| plc channel naming | `role`, `channel` | `ChannelName` |
-| plc address style | `byte.bit`, `iec`, `percent`, `slot`, `none` | `AddressStyle` |
-| plc text angle | `90`, `0` | `TextAngle { Upright = "0", Turned = "90" }` (→ `Degrees` when used) |
-| plc output safe state | `off`, `on`, `hold` | `SafeState` (three states, not a flag: words stay; model, §5.3) |
-| connector side, family, pin names, layout | `socket…`, `plain…usbb`, `numbers…`, `row`/`pins` | `Side`, `ConnectorFamily`, `PinNames`, `PinLayout` |
-| wiring label rule; wire style label rule | `net`/`each`; `project`/`net`/`each`/`none` | `LabelRule`; `StyleLabelRule` |
-| line types (wire, location) | `continuous`, `dashed`, `dashdot`; `LINE_TYPES` | `LineType` (one enum if the two lists agree, else two) |
-| text weight; frame block | `regular`/`bold`; `bottom_full`/`bottom_right` | `Weight`; `BlockPosition` |
-| print colour; revision mark | `mono`/`colour`; `star`/`draft`/`off` | `PrintColour`; `RevisionMark` |
-| strip page form; page `holds` | `table`/`graphic`; `HOLDS` | `StripPageForm`; `Holds` |
-| BOM lines; item unit | `flat`/`nested`; `pcs`/`m` | `BomLines`; `ItemUnit` (model, §5.3) |
-| rating basis, method, system, conductor class, material | `BASES`, `METHODS`, `ac1`/`ac3`/`dc`, `1/2/5/6`, `cu` | `RatingBasis`, `InstallMethod`, `SupplySystem`, `ConductorClass`, `Material` |
-| one-word choices | `sequence`, `boxed`, `right_then_lift` | `ContinuationNumbers`, `MissingMark`, `ContactTableFallback` (one variant each, ready for the next) |
-| model's own | `ReferenceStyle::WORDS`, `COLOUR_STYLE_WORDS`, `DASH_WORDS`, `CASE_WORDS` | `Word` impls on the existing types |
-
-The worker may rename an enum; the words do not change except where §13 says.
-
----
-
-## 5. Device kinds are data
-
-### 5.1 The shape
-
-Top-level objects stay their own structs: device (`Component`), cable, wire (`Conductor`), page,
-folder. A cable is not a device and gets no kind.
-
-```rust
-// ecad-model/src/doc.rs
-pub struct Component {
-    pub properties: Properties,          // the generic fields only (§5.4)
-    pub definition: Option<DefinitionId>,
-    pub kind: DeviceKind,                // new, saved
-}
-pub struct Definition { /* … as today … */ pub kind: DeviceKind }   // the kind a new device from it gets
-
-// ecad-model/src/kind.rs
-pub enum DeviceKind {
-    General,                               // coils, contacts, motors, lamps, sensors, valves, PSUs, …
-    Relay(Relay),                          // see §14 call 4
-    Protective(Protective),                // see §14 call 1
-    TerminalStrip(TerminalStrip),
-    PlcCard(PlcCard),                      // a rack is a card whose type is CPU or head module (§14 call 2)
-    Connector(Connector),
-    Continuation(Continuation),            // see §14 call 3 for these four
-    Junction,
-    LocationBox(LocationBox),
-    Item(Item),
-}
-```
-
-Every variant's struct holds only what that kind has (§5.3), so a terminal strip can't have a PLC
-slot. `DeviceKind` has `Word` for its variant word (`general`, `relay`, `protective`,
-`terminal_strip`, `plc_card`, `connector`, `continuation`, `junction`, `location_box`, `item`) via
-strum's `EnumDiscriminants`, and serialises as `{ "kind": "<word>", …fields }`; unknown word or
-unknown field → the record doesn't decode (§4.1). Default fields are left out of the file
-(`skip_serializing_if` on each), so a plain device stays small.
-
-Capability questions are `match`es on the kind, with no `_`: `kind.is_strip()`, `plc_card()`,
-`connector()`… are one-line methods on `DeviceKind` in `kind.rs`, and checks and views read
-`component.kind` directly. Nothing is derived and nothing is cached.
-
-### 5.2 Where a kind comes from
-
-- **The library symbol declares it.** `Definition.kind` holds the kind (with its default data, e.g.
-  `PlcCard { card_type: Dq, .. }`) a device made from it gets. A starter's comes from its
-  `STARTERS` row; a project symbol's (048) is chosen in the symbol builder, defaulting to its
-  `derived_from` starter's kind, else `General`.
-- **Placing a symbol as a new device** creates the component with `kind = definition.kind.clone()`.
-- **Adding a symbol to an existing device** (a contact to a relay, a channel to a card, a level to
-  a strip) never changes the kind. Whether the symbol may join that kind stays the join rule it is
-  today (`symbols::Kind`, renamed `JoinRule` so the two words don't collide).
-- **Changing the kind is one explicit edit**: `SetDeviceKind` (§5.5). Swapping a device's symbol
-  (`plccardtype`, the symbol swap in the inspector) records `SetComponentDefinition` and
-  `SetDeviceKind` in one transaction: the kind is re-read from the new symbol, keeping the fields the
-  old and new variant share (a card type change keeps rack, slot, address and channel data; the
-  existing "fewer channels than signals" refusal stays).
-- `setprop` on a key that moved into a kind (`plc.slot`, `pins`, `rating`, …) keeps working for
-  people and agents: 070's `PROP_RULES` routes it to an edit of the variant field and records
-  `SetDeviceKind`. Command names and their JSON do not change.
-
-### 5.3 What moves into each variant
-
-Every component property today that only one kind has. Types are the stored types; free text a
-person types stays `String`.
-
-| Variant | Field | From today's key | Today's reader |
+| # | Guard | Lane | Today |
 | --- | --- | --- | --- |
-| **PlcCard** | `card_type: CardType` | (today derived from the head symbol, `plc::rack::body_type`) | `plc/rack.rs:188` |
-| | `rack: Option<ComponentId>` | `plc.rack` | `plc/rack.rs:23` |
-| | `slot: Option<u32>` | `plc.slot` | `plc/rack.rs:25` |
-| | `channels: Option<u16>` | `plc.channels` | `plc/rack.rs:27` |
-| | `address: AddressPin { start: Option<String>, size: Option<u32> }` | `plc.addr.start`, `plc.addr.size` | `plc/address.rs:24,26` |
-| | `rating_words: Option<String>` (`24 V`, `relay`) | `plc.kind` | `plc/overview.rs:215` |
-| | `channel_data: BTreeMap<u16, Channel { text, address, tag, safe: Option<SafeState> }>` | `plc.ch.<i>.text`, `.address`, `.tag`, `.safe` | `plc/channels.rs:30`, `plc/signals.rs:31` |
-| **TerminalStrip** | `offer: Option<String>` (positions offered) | `terminals` | `strips.rs:55` |
-| | `pe_part: Option<Part { part_number, maker }>` | `part_number.pe`, `maker.pe` | `strips.rs:59,60` |
-| | `level_labels: BTreeMap<(String, u8), String>` | `term_label.<position>.<level>` | `terminal_types.rs:26` |
-| | `fuse_ratings: BTreeMap<String, String>` (fuse positions) | `rating.<position>` | `terminal_types.rs:28` |
-| | `accessories: Accessories { start, end, after: BTreeMap<String, String>, on: BTreeMap<String, String>, marker_per_card: Option<u32>, jumper_bar: Option<u32> }` | `acc.start`, `acc.end`, `acc.after.<p>`, `acc.on.<p>`, `marker.per_card`, `jumper.bar` | `accessories.rs:26–39` |
-| **Connector** | `pins: Option<u16>` | `pins` | `connectors.rs:43` |
-| | `pin_names: Option<String>` | `pin_names` | `connectors.rs:46` |
-| | `halves: BTreeMap<Side, HalfPart { description, maker, part_number }>` | `half.<side>.{description,maker,part_number}` | `connectors.rs:48–51` |
-| | `ignored: BTreeSet<ConnectorCheck>` | `ignore.<check>` | `connectors.rs:54` (only connector checks use it) |
-| **Protective** | `rating: Option<String>` (`13A C 30mA`) | `rating` | `symbols.rs:836` |
-| | `outputs: BTreeMap<String, String>` (a fuse bank's per-output rating) | `rating.<n>` | `symbols.rs:839` |
-| **Relay** | `contacts: Option<String>` (`3P+1NO+1NC`) | `contacts` | `xref.rs:67` |
-| | `mirror: Option<String>` (where its contact table goes) | `mirror` | `xref.rs:69` |
-| **Continuation** | `name: String`, `caption: Option<String>` | `kind=continuation`, `name`, `caption` | `connectivity.rs:50–56`, `continuations.rs:40` |
-| **Junction** | — | `kind=junction` | `connectivity.rs:54` |
-| **LocationBox** | `panel_temperature: Option<String>` | `rating.temperature` | `rating/mod.rs:190` |
-| **Item** | `qty: Option<String>`, `unit: ItemUnit` | `kind=bom_item`, `qty`, `unit` | `bom.rs:29–36` |
+| G1 | A string literal in key position that is a registered or reserved key | A (B–F lower it) | ~170 |
+| G2 | Boolean words compared or matched outside `words.rs` | A | 13 |
+| G3 | `.all(…is_ascii_digit…)` outside `words.rs` | A | ~30 |
+| G4 | A string-literal match, `matches!` or `==` on a word of any `Word` enum | A (B–G lower it) | ~180 |
+| G5 | `#![deny(clippy::wildcard_enum_match_arm)]` on the type modules (`words`, `keys`, `units`, `device`, `plc`, `wire`, `cable`, `page`, `aid`) and on `symbols.rs`, `behaviour.rs` | A–F | — |
+| G6 | The ten predicates, `body_type`, `of_body`, `kind_of` on a device, `rep_type` defined anywhere | B, C, F | 13 |
+| G7 | `to_radians`/`to_degrees` outside `units.rs`; `rotation`/`degrees`/`angle` typed `f64`; `_mm: f64`; `Option<f64>` from `rating/parse.rs` | A | 21/21/3/8 |
+| G8 | `Kind::Choice(&[`; `.word() == "` | A | 31/10 |
+| G9 | `catalogue`/`role` typed `&str`/`String` | A, B | 24 |
+| G10 | `Unknown(`, `Stored<`, `Raw` bodies, lenient `_ =>` in a `Word` deserialiser | A, E | 3 (title block) |
+| G11 | `properties.get(`/`.insert(`/`SetProperty` on a device, wire, cable, page or the project for a key that is not in `KEYS` (the bag holds only §9.2) | B–F | ~400 |
+| G12 | Parsing a terminal key text (`strip_prefix('.')`, `split_once('.')` on `Terminal.key`) | B, C | ~12 |
 
-The worker confirms each holder against the code (some readers accept more than one holder) and
-stops if a key turns out to sit on more than one kind (§9 step 7).
+---
 
-### 5.4 What stays generic on every device
+## 12. Lanes, dependencies and order
 
-`tag`, `tag_fixed`, `description`, `function`, `location`, `part_number`, `maker`,
-`article_number`, `type`, the part lines `part.<n>.*` (devices, strips and items all have them),
-the per-object text choices `text.<rep>.<kind>.show` and `text.<kind>.style`, `link.*`, and any
-free key a person adds. Wire and cable keys (`wire_number`, `potential`, `cross_section`, `colour`,
-`load`, `protected_by`, `rating.basis` and the other circuit `rating.*` keys, `cores`, `unused.*`)
-stay on wires and cables: they are not devices.
+### 12.1 The lanes
 
-### 5.5 The op
+| Lane | Content | Main files | Needs first | Tester |
+| --- | --- | --- | --- | --- |
+| **A1** Foundation types | `words.rs`, `units.rs`, `keys.rs` skeleton, `Word` + strum, `StyleCatalogue`, `Side`, page places, `ReadOnly::UnknownWords` + the damaged-record path for typed words, guards G2, G3, G8, G10 as ratchets | ecad-model (new files), ecad-file open report, xtask | nothing: additive, **can start now**, before 070 | yes (the read path) |
+| **A2** Foundation adoption | every caller onto `words`, `PropKey`, units, `Choice<E>`/`Kind::Flag` (F4), `StyleCatalogue` in ops (F1, F2), `TextKind`/`Shown`, `StarterKey`, `SymbolKey`, `cable_prefix` (F5), F6, F7 | every crate, `cmd/*` | A1, **070 and 073 landed** (rewrites the shims 070 just wrote) | no |
+| **B** Device | `Device` and its common fields, `DeviceType` (groups 1–11, 14), traits, `PointKey`, `PartRole`/`Role` (F3′), symbol type and defaults, part lines, user fields, device links, the predicates gone; F13–F18, F22 | `doc.rs`, new `device/`, `symbols.rs`, `devices.rs`, `strips.rs`, `connectors.rs`, `bom.rs` (part lines), `xref.rs`, `rating/` (protection side), `cmd/device.rs`, `symbol.rs`, `terminal.rs`, `connector.rs`, `level.rs` | A2 | yes |
+| **C** PLC | `PlcRack`, `PlcModule`, channels (F19) | `plc/*`, `cmd/plc/*`, app `lists/plc.rs`, `card_editor.rs` | B step 1 (the `Device`/`DeviceType` skeleton) | yes |
+| **D** Wire, cable, net | `Wire`, `Cable`, `Circuit` (F20, F21) | `wires.rs`, `cables.rs`, `connectivity.rs`, `wiring.rs`, `rating/` (circuit side), `cmd/wire.rs`, `cmd/cable.rs` | A2 | yes |
+| **E** Page, project, title block | `Page`/`PageKind`, `Folder.start`, `Project`, revisions, designations, title block strictness (F23, F24, F29) | `book.rs`, `sheet.rs`, `page_types.rs`, `generated.rs`, `revisions.rs`, `designations.rs`, `front.rs`, `title_block/*`, `cmd/sheet.rs` | A2 | yes |
+| **F** Not devices out | junctions not stored, `Attach::Wire`, drawing aids, boxes set location, loose parts (F25–F28) | `connectivity.rs`, `wires.rs` (ends), `continuations.rs`, `locations.rs`, `bom.rs` (items), `translate.rs`, `cmd/wire.rs` (joins) | B and D landed (it changes `Wire.ends` and the device store) | yes (movement and `translate.rs`) |
+| **G** Style records | one struct per catalogue (F30) | `style.rs`, `styles/*`, `defaults/styles.rs` | A2; owner call 4 | no |
 
-**One new op, for the overseer:**
+### 12.2 Order and parallel work
 
-```rust
-Op::SetDeviceKind { id: ComponentId, before: DeviceKind, after: DeviceKind }
+```
+070 ──► 073 ──► A2 ──┬──► B ──┬──► F ──► (end gate)
+A1 (now) ────────────┘        ├──► C (after B step 1)
+                     ├──► D ──┘ (F also waits for D)
+                     ├──► E
+                     └──► G (if now)
 ```
 
-- Records a kind change and every edit of a variant field (a card's slot, a strip's accessory),
-  carrying the whole kind before and after, the way `SetProjectSettings` carries the whole
-  settings struct. Its inverse swaps them; it is atomic and checked like every op (it joins
-  `Op::ALL`, the contract tests' list, and design 064's `Effects::of`).
-- Why not an existing op: `SetProperty` holds a key and a text, which is what this change takes
-  the fields away from; `SetComponentDefinition` changes the symbol, not the kind, and a kind field
-  edit (a slot) changes no symbol. `CreateComponent` and `DeleteComponent` carry the kind inside
-  the `Component` they already carry.
-- Invariants it adds: a card's `rack` names a component whose kind is a rack card; the index keeps
-  a `rack → cards` reverse map (like `definition_components`) so the invariant check and the rack
-  views don't scan.
+- **A1 starts now**, alongside 070: new files in ecad-model and the open report in ecad-file; it
+  touches no command shim. Its one shared edit is ecad-file's open report, which 070's batch 8
+  also changes: A1 takes that step after 070's ecad-file batch, or rebases on it.
+- **A2 waits for 070 and 073**: it rewrites the command shims 070 just wrote, and 073 moves the
+  crate they live in.
+- **B, D and E run in parallel** after A2: their files don't overlap except `rating/` (B owns the
+  protection side, D the circuit side; the split is by module before they start) and `cmd/mod.rs`'s
+  setprop table (`PROP_RULES`): each lane adds its own rows in its own file
+  (`cmd/props/<lane>.rs`), registered like `lanes.rs`.
+- **C** starts once B's first step (the `Device` struct and the `DeviceType` skeleton with its
+  variants empty) has merged into `refactor/0.2.3`.
+- **F** waits for B and D (it changes `Wire.ends` and moves components out of the device store).
+- Each lane merges into `refactor/0.2.3` when green (the 0.2.3 process: no lane PRs).
 
-### 5.6 The predicates go
+### 12.3 What R9 needs
 
-The ten predicates (§0) and `wires::kind_of` are deleted; their 151 callers read `component.kind`.
-`strips::is_fuse_device` and `bom::is_fuse_terminal` (one asks the definition, one the head symbol)
-become the one kind the owner picks (§14 call 1). The name-matching on starter keys that decided
-what a device is (`devices.rs:353`, `rating/trace.rs:67`, `symbols.rs:851` `is_fuse_bank`,
-`plc::rack::body_type`, `CardType::of_body`) goes: the kind says it.
+R9's views read the typed fields and `DeviceType` directly, so each view can only be built once the
+types it reads have landed. R9's own steps (design 064 §9) then map onto the lanes:
 
-### 5.7 Adding a device kind
+| R9 step | Needs |
+| --- | --- |
+| 1 split `project.rs`; 2 `Effect`, `Effects::of`, `Area`, the trait | **A1 + A2** |
+| 3 feeds (tree, devices, props) | **B** |
+| 4 `FrameView` | **E** |
+| 5 `ConnectorsView`, `RefsView` | **B**, **D** (cables); continuation names follow **F** |
+| 6 `PagesView` | **E** |
+| 7 `OutputsView` (PLC, strips, strip pages) | **B**, **C**, **D** |
+| 8 `ChecksView` | **B**, **C**, **D**, **E** (and **F** for boxes and continuations) |
+| 9 `GeneratedView` | **E** |
 
-1. A `DeviceKind` variant and its data struct in `kind.rs`; the compiler asks for its arms in the
-   capability methods.
-2. The starters (or project symbols) that declare it.
-3. The rules that read its fields.
-
-A new **symbol** of an existing kind is one `StarterKey` variant and its `STARTERS` row; the
-exhaustive symbol tables ask for their arms.
-
-### 5.8 Test files and fixtures
-
-No shims and no converting reader: every fixture is regenerated by the code that made it.
-- `crates/ecad-file/tests/golden/project.ecad`: re-made by the test that writes it (or a `child_`
-  helper behind `ECAD_TEST_CHILD`, if none exists), committed with the regenerated file.
-- Projects built in tests through `ProjectBuilder` (062) and commands get their kinds from the
-  symbols they place: nothing to do beyond the builder setting `kind` from `Definition.kind`.
-- Tests that build a `Component` literal by hand get `kind:` (usually `DeviceKind::General`); a
-  test that wrote a moved key into the property bag writes the variant field instead.
-- ecad-bench's generated tiers (`generate.rs` writes a role `coil` and the moved keys today) are
-  generated with kinds; the quick-start's example projects are re-made by their scripts.
-- `tests/fixtures/plc/*.csv` are tag-table imports, not projects: unchanged.
+So **R9 can start after A1 + A2**, build its skeleton and step 3 after B, and take each later view
+as its lanes land. R9 must not build a view on property routing that a lane is about to remove:
+its worker checks the lane table before each view step.
 
 ---
 
-## 6. Guards (all at 0 at the end of the lane)
+## 13. With lane 070 and with R9
 
-Each guard starts as a ratchet at today's count in the step that adds it and is **at 0 with no
-allowlist** by the lane's last step. Textual guards go in `cargo xtask layers`; guards that need
-the enums' word lists or the key registry are tests in ecad-electrical
-(`tests/all/lanes/lane_072.rs`, moved to `tests/all/` at the phase-end tidy-up), scanning the
-workspace's product sources. "Today" is this design's estimate; the step that adds a guard records
-its exact starting count.
+**070.** Its params structs are where command inputs are typed; lanes A2–F change their fields:
+`rotation: Degrees`; `catalogue: StyleCatalogue`; `symbol: SymbolKey`; connector `halves: Side`,
+`family`, `layout`; `showtext` `kind: TextKind`, `show: Shown`; lengths `Mm`; cable `length:
+Metres`; PLC commands build `ModifyDevice`; cable and wire commands build `ModifyCable` /
+`ModifyWire`; page and project commands `ModifyPage` / `ModifyProject`. `setprop`'s `key` stays a
+string, and `PROP_RULES` routes a moved key to its struct field and the `Modify*` op, so `setprop
+{key: "plc.slot"}` still works for people and agents. 070's lenient JSON readers are left to the
+end-gate review.
 
-| # | Guard | Kind | Today |
-| --- | --- | --- | --- |
-| G1 | A string literal in key position (`.get("…")`, `.contains_key("…")`, `.remove("…")`, `.insert("…"`, `key: "…"`, `key == "…"`) whose text is a registered or reserved key or family prefix, outside `keys.rs`, `defaults/*` entry declarations and the TOML | test | ~170 |
-| G2 | Boolean words compared or matched (`== "yes"`, `"on" =>`, `Some("true"`, …) outside `words.rs` | xtask | 13 |
-| G3 | `.all(…is_ascii_digit…)` outside `words.rs` | xtask | ~30 |
-| G4 | A string-literal match arm, `matches!` or `==` on a word of `StarterKey`, `StyleCatalogue`, `Role`, `PartRole`, `Side`, `TextKind`, `Shown`, `CardType`, `DeviceKind` outside the enum's strum attributes | test | ~180 |
-| G5 | `#![deny(clippy::wildcard_enum_match_arm)]` on `ecad-model/src/{words,keys,kind,units}.rs`, `ecad-electrical/src/symbols.rs`, `styles/mod.rs` | clippy | — |
-| G6 | `fn is_(strip\|connector\|rack\|box\|device\|continuation\|item\|fuse_terminal\|fuse_device)` defined anywhere; `body_type(`, `of_body(`, `kind_of(` on a component | xtask | 10 / ~12 |
-| G7 | `to_radians()` / `to_degrees()` outside `units.rs`; a field or parameter named `rotation`, `degrees`, `radians` or `angle` typed `f64`; a name ending `_mm` typed `f64`; a `pub fn` in `rating/parse.rs` returning `Option<f64>` | xtask | 21 / 21 / 3 / 8 |
-| G8 | `Kind::Choice(&[`; `.word() == "` / `.word() != "` | xtask | 31 / 10 |
-| G9 | `catalogue: &str` / `catalogue: String` / `role: String` in a signature or field | xtask | 23 / 1 |
-| G10 | `Unknown(` variants, `Stored<`, and `_ =>` arms in a `Word` deserialiser (no lenient reading of stored words) | xtask | 0 (keeps it there) |
-
-What the guards deliberately allow: CLI and MCP protocol words (`ui.*` command names, JSON-RPC
-method names), search aliases (`actions.rs` keyword lists), UI element ids (`"plc.page"` section
-ids), test code.
+**R9 (design 064).** What changes in `Effect`:
+- `Effect::Device { id, before: Option<&Device>, after: Option<&Device> }` (renamed from
+  `Component`), produced by `CreateDevice`, `DeleteDevice` and `ModifyDevice`; a type change is an
+  ordinary `ModifyDevice` (no `Effect::Kind`).
+- `Effect::Wire`, `Effect::Cable` gain the `Modify*` ops; `Effect::Member` goes (cores are inside
+  `Cable`).
+- `Effect::Page` comes from `ModifyPage` directly; 064's pair folding for pages goes.
+- New: `Effect::Project { before, after }`, `Effect::Aid { id, before, after }`,
+  `Effect::DeviceLink { id, before, after }`.
+- `Effect::Prop` remains only for §9.2's keys, with `Key { raw, area, known: Option<PropKey> }`.
+- Views route by matching the struct fields and `DeviceType` variants (`before`/`after`) with no
+  `_`; 064's `Area` routing shrinks to the display keys. 064 C1 (`every_op_has_an_effect`) covers
+  the new ops.
 
 ---
 
-## 7. With lane 070 (typed command inputs)
+## 14. Acceptance (each lane takes its rows; tester for every lane but A2 and G)
 
-070 lands first: both lanes change command signatures, and 070's params structs are where a
-command's input types are declared. This lane changes those fields' types; the JSON a caller sends
-stays the same except where §13 says.
-
-| Params field (070's structs) | Today | Becomes |
+| # | Test | Lane |
 | --- | --- | --- |
-| `rotation` (`place`, connector place, `placesymbol`, channel place, level place) | `Option<f64>` degrees | `Option<Degrees>` |
-| symbol content `slots[].rotation` | `f64` **radians** | `Degrees` (§13 F6) |
-| `catalogue` (style commands, `styles`) | `String` / `Option<String>` | `StyleCatalogue` / `Option<StyleCatalogue>` |
-| `symbol` / `key` of `place`, `setdefault symbol.*` | `String` | `SymbolKey` |
-| `tag_prefixes` of `projectprops` | `BTreeMap<String, Option<String>>` | `BTreeMap<SymbolKey, Option<String>>`, plus `cable_prefix: Option<Option<String>>` |
-| connector `halves`, `family`, `layout`, `pin_names` | `String` | `Side`, `ConnectorFamily`, `PinLayout`, `PinNames` |
-| `plcslot`, `plcaddress`, `plccardtype`, `plcchannel`, connector pins, `partline` on strips, accessory commands | build `SetProperty` ops | build `SetDeviceKind` from the edited variant |
-| symbol builder (048) | — | `kind` the new symbol declares (`DeviceKind` word plus its defaults) |
-| `showtext` `kind`, `show` | `String` | `TextKind`, `Shown` |
-| lengths in mm (`label_height`, margins, sizes) | `f64` | `Mm` |
-| cable `length` | `f64` | `Metres` |
-| `setprop` `key` | `String` | stays `String`: a person may set any key. `PROP_RULES` is keyed by `PropKey`, family, and the moved keys (routed to `SetDeviceKind`, §5.2) |
+| A1 | `one_boolean_rule`, `whole_numbers`: the word readers on tables | A1 |
+| A2 | `words_round_trip`: every `Word` enum and every struct-enum (`DeviceType`, `PageKind`, `Aid`, `PointKey`): `parse(word(x)) == x`, serde writes the word, schema equals `WORDS` | A1, each lane for its enums |
+| A3 | `keys_are_registered`: `KEYS`, `FAMILIES`, `RESERVED` disjoint and classified | A1, then each lane |
+| A4 | `unknown_words_open_read_only`: an unknown word or field in each typed record and in each text value opens read-only, names the word, setting and place; saving refused; bytes unchanged | A1, each lane for its records |
+| A5 | `commands_refuse_unknown_words` and their MCP contract tests (brief 011) | A2, each lane for its commands |
+| A6 | `degrees_in_radians_stored`, `ratings_typed` | A2 |
+| A7 | `types_match_the_old_predicates`: before deleting the predicates, every device of the test projects and the medium bench project gets the group the predicates implied | B, C |
+| A8 | `type_comes_from_the_symbol`: placing each starter gives its group; joining doesn't change it; a symbol swap re-reads it in one transaction | B, C |
+| A9 | `modify_ops`: every new op is in `Op::ALL`, inverse, atomic, invariant-checked; `setprop` on a moved key records the `Modify*` op, also through MCP | B–F |
+| A10 | `methods_not_recalculated`: the 057 ratings, the PLC address blocks, the power demand give today's results through the traits; no check computes them itself (a guard test greps the checks for the formulas' helpers) | B, C, D |
+| A11 | `rack_module_channel`: a CPU card becomes rack + CPU module; addresses, I/O list and rack overview unchanged | C |
+| A12 | `junctionless_nets`: a T-joint by `Attach::Wire` gives the same nets and wire numbers as the old junction; the dot is drawn where it was | F |
+| A13 | `boxes_set_location`: placing, moving, reshaping and deleting a box or a device writes the devices' values in the same transaction; undo restores them | F |
+| A14 | `format_shapes`: a project saved by each lane has its §10 shapes; fixtures regenerated, not shimmed | each lane |
+| A15 | `inspector_shows_everything` (hard rule): the inspector's Raw and Readable views show every new struct, field and op, and a read-only project's offending record or value with its reason | each lane |
+| A16 | guards at 0 | end of F (and G) |
 
-070's lenient readers (`lenient`, a non-bool read as "not given") read JSON input, not stored
-words, and are outside this lane; the end-gate re-review decides them.
-
----
-
-## 8. With R9 (design 064, views)
-
-064 §2 already has this lane landing before it. Re-checked against the owner's answers:
-
-- **Views read `device.kind`**, not a derived class. There is no class index and no update map for
-  kinds; a kind is stored data like a property.
-- **A kind change is an edit like any other.** `Effects::of` maps the new op:
-  `SetDeviceKind` → `Effect::Kind { id: ComponentId, before: &'a DeviceKind, after: &'a DeviceKind }`
-  (a new `EffectKind`). `CreateComponent` / `DeleteComponent` already carry the whole `Component`,
-  kind included, in `Effect::Component`.
-- **Routing by kind.** A view that cares about one kind (`OutputsView` for PLC cards and strips,
-  `ConnectorsView`, `ChecksView`'s strip, connector and protective rows) matches the variant on
-  `Effect::Kind` and `Effect::Component` (`before`/`after`), with no `_`. 064's `Prop` routing for
-  the moved keys goes: `SetProperty(card, plc.channels | plc.addr.* | plc.ch.<i>.*)` rows in the
-  PLC update map (the `SetProperty(card, …)` rows of `docs/design/045.md`'s update-map table)
-  become `Kind` rows; the
-  `StripAccessory`, `ContinuationId` and component `Connector` areas leave 064's `Area` list.
-- `Effect::Style { catalogue: StyleCatalogue, … }` as 064 drew it (strict now: no unknown).
-- `Effect::Prop { object, key: Key<'a>, … }` with `Key { raw: &'a str, area: Area, known:
-  Option<PropKey> }`: `area` from `keys::area_of`, `known` from `keys::info`. A view matches
-  `key.known == Some(keys::TAG)` or routes on `key.area`; it never compares `raw`.
-- `Area`, `AreaSet` come from `keys.rs` (§2.1). 064's test C3 (`areas_cover_the_keys`) walks
-  `keys::KEYS`, `keys::FAMILIES` and the defaults registry; C1 (`every_op_has_an_effect`) gains the
-  `SetDeviceKind` sample.
-- `Effect::Rep` carries `Representation`, whose `role` is now `Role` (§4.4); views that used
-  `rep_type` read `role` directly.
-- 064 §13 item 3 (`SetStyle.catalogue`) is done here; item 4 (`SetProperty.key`) stays a string.
+**Bench** (medium while building, large once per lane): `views.setprop_tag`, `views.move_symbol`
+no worse than `refactor/0.2.3` + 10%; a PLC slot edit and a box move no worse than + 10%; project
+open no worse than + 5%; the op log of the medium tier no more than + 10% larger (whole-struct
+`Modify*` ops).
 
 ---
 
-## 9. Step order
+## 15. Out of scope
 
-Every step builds, passes clippy and the tests of the crates it touches, and keeps each guard at
-or under its count. The overseer may merge the lane into `refactor/0.2.3` after step 5 if R9 is
-ready to start, since R9 needs `keys.rs`, `Area` and `StyleCatalogue`; R9 then also waits for step
-7's `SetDeviceKind` before its `Effects::of` is complete, or adds the arm itself when it merges.
-
-0. **Preconditions.** 070 has landed (typed params everywhere) and 073's renames have landed.
-   Branch `feature/types` from `refactor/0.2.3`.
-1. **Vocabulary, additive.** strum in the workspace. ecad-model `words.rs`, `units.rs`, `keys.rs`
-   (`PropKey`, `Area`, `KEYS`, `FAMILIES`, `PropsExt`, the family constructors). Guards G2, G3, G8,
-   G10 as ratchets at today's counts. Nothing else changes yet.
-2. **Property keys, area by area** (identity and tag; book and page; connectivity and wiring;
-   BOM; rating circuit keys; revisions and designations; front; text and symbol families). The
-   kind-specific keys are **not** moved here; step 7 takes them out of the bag. Each commit moves
-   an area's constants into `keys.rs`, puts its readers on `PropsExt` / `words`, and lowers G1–G3.
-   Ends with G1 (for the generic keys), G2, G3 at 0.
-3. **Defaults.** `Entry.key: PropKey`; `Kind::Flag`; `Choice<E>` with the §4.8 enums; the TOML
-   regenerated with `yes`/`no`; the Standards screen's switches. G8 at 0.
-4. **Units.** `rating/parse.rs` typed; then `Placement`, `TextSlot`, `Primitive::Text` →
-   `Radians`; 070's params → `Degrees`, `Mm`, `Metres`; `Value::Length` → `Mm`; `Grid`/`Place` →
-   `PageColumn`/`PageRow`/`PageNo`. G7 at 0.
-5. **Small enums and the open-time check.** `StyleCatalogue` (F1, F2), `Side` into the model,
-   `TextKind` and `Shown`; `words_check` and `ReadOnly::UnknownWords` on the open path (F11).
-6. **Starters and roles.** `StarterKey` (stays in electrical) with `STARTERS` keyed by it; the 11
-   match blocks exhaustive (G5); `SymbolKey`, `SymbolName`, `cable_prefix` (F5); `PartRole` and
-   `Role` (F3′). G4 (except `DeviceKind`), G9 at 0.
-7. **Device kinds.** (a) `kind.rs`, `Component.kind` and `Definition.kind` (all `General` at
-   first), `SetDeviceKind` with its contract tests, starters declaring their kinds, placement
-   setting the kind (F8, F9). (b) One kind per commit, in this order: Junction and Continuation,
-   LocationBox, Item, Relay, Protective, Connector, TerminalStrip, PlcCard: its fields move out of
-   the bag into the variant (§5.3), its readers and commands follow, its keys join `RESERVED`, its
-   predicate goes, fixtures regenerated (F10). Before the first, the oracle test A9 records today's
-   predicate answers on the test projects and the medium bench project; each commit keeps A9
-   green until its predicate is gone. (c) G6 and G4 (all words) at 0.
-8. **Close.** Every guard is a ban with no allowlist entry; `docs/quick-start/072-types.md`;
-   any remaining fixtures regenerated; the bench rows of §10 (medium while building, large once
-   now).
+`Pt` and drawing-unit coordinates; footprints and panel layout (0.2.4); the import step for other
+tools' files; the check-kinds table (R7) and R9 itself; CADCraft (no file outside `ecad/`).
 
 ---
 
-## 10. Acceptance (tester required: op and format changes)
-
-| # | Test | Checks |
-| --- | --- | --- |
-| A1 | `one_boolean_rule` | `words::flag` on a table: `yes`, `YES`, ` yes `, `true`, `1`, `on` → true; `no`, `false`, `0`, `off` → false; `y`, `ja`, `` → None. Every flag the app writes is `yes`/`no`. |
-| A2 | `whole_numbers` | `uint` / `uint_canonical` at 0, max, max+1, leading zeros, signs, spaces, 20 digits. |
-| A3 | `keys_are_registered` | `KEYS` unique; family prefixes unique and not prefixes of each other; `RESERVED` disjoint from `KEYS`; every `KEYS` entry and defaults entry has `area_of` ≠ `Free`; each family's `build` then `parse` gives the parts back. |
-| A4 | `words_round_trip` | For every `Word` enum and `DeviceKind`: `parse(word(x)) == x`; serde writes `word()`; the JSON Schema's enum equals `WORDS`. |
-| A5 | `unknown_words_open_read_only` | Files with (a) an unknown catalogue, role, kind or kind field in a record; (b) an unknown choice word, a `maybe` flag, a reserved key on a component, a tag prefix for no symbol. Each opens read-only with a message naming the word, the setting and where it is; saving is refused; the file's bytes are unchanged after open and close; in (a) the record is reported as damage. |
-| A6 | `commands_refuse_unknown_words` | `styles {catalogue: "nope"}`, connector `halves: "x"`, `place {symbol: "nope"}` refused with the uniform input error naming the allowed words. Through `ecad-mcp`'s `execute` too (brief 011 rule): the transaction and `Author::Agent(..)` for one accepted call per changed command family, and refused with writes off. |
-| A7 | `degrees_in_radians_stored` | `place {rotation: 90}` stores `Placement.rotation` = π/2; symbol content `slots[].rotation: 90` stores π/2. A file's stored angles read and save byte-equal. |
-| A8 | `ratings_typed` | `rating/parse.rs` table tests return the units; the 057 ratings tests are unchanged in outcome. |
-| A9 | `kinds_match_the_old_predicates` | (step 7, while the predicates still exist) for one device per starter, and every device of the test projects and the medium bench project: each kind agrees with the old predicates; where the two fuse predicates disagree, the test records which one the owner's answer (§14 call 1) follows. |
-| A10 | `kind_comes_from_the_symbol` | Placing each starter as a new device gives its declared kind; adding a contact to a relay, a channel to a card, a level to a strip leaves the kind; `plccardtype` and a symbol swap re-read the kind in one transaction and keep the shared fields; undo and redo restore it. |
-| A11 | `set_device_kind_op` | `SetDeviceKind` is in `Op::ALL`; inverse, atomic-on-failure and invariant contracts (a card's rack must be a rack card); `setprop {key: "plc.slot"}` records `SetDeviceKind`, also through MCP with `Author::Agent(..)`. |
-| A12 | `format_words` | A project saved by this build has the §13 shapes: `yes`/`no` switches, part-role words, `cable_prefix`, `kind` on devices and definitions, no moved keys in any property bag. The inspector's Raw and Readable views show them (`.ecad` never a black box). Fixtures regenerated, not shimmed. |
-| A13 | guards | `cargo xtask layers` passes with no allowlist entries for G2, G3, G6–G10; the G1/G4 tests pass at 0; clippy passes with G5's denies. |
-| A14 | existing suites | fast tests of ecad-model, ecad-electrical, Engine, ecad-app, ecad-mcp, ecad-file unchanged in outcome except where a test asserted a changed word or a moved key. |
-| A15 | `inspector_shows_kinds_and_words` | (hard rule, F11's condition) The inspector's Raw and Readable views show: a `SetDeviceKind` op with its before and after kinds; `Component.kind` and `Definition.kind` with every variant's fields (one device per variant); the part-role words; and, for a project opened read-only for an unknown word, the record or value with that word and the open report's reason. Neither view fails or hides a record because of a kind or an unknown word. |
-
-**Bench** (medium while building, large once at the end): `views.setprop_tag` and
-`views.move_symbol` no worse than `refactor/0.2.3` + 10%; `plc.slot_edit` (a slot change through
-`SetDeviceKind`) no worse than today's `setprop` of `plc.slot` + 10%; project open (with the word
-check) no worse than + 5%.
-
-**Quick start.** `docs/quick-start/072-types.md`: what a person can notice. The Standards screen's
-on/off settings are switches; where the project's tag prefixes are edited (`sheets_ui.rs`), the
-cable prefix is its own line; the symbol builder asks what kind of device a new symbol makes; a
-file with a word this build doesn't know opens read-only and says which word; nothing else looks
-different.
-
----
-
-## 11. Update maps
-
-No new derived view. The kind is stored data, so there is no class index and no update map for it.
-Views that read moved keys change their maps in the same commit as the key moves: their
-`SetProperty(component, <moved key>)` rows become `SetDeviceKind(component)` rows with the same
-reaction (045's PLC table, 044's connector rows, 036/057's strip and fuse rows, 049's continuation
-rows). Every other row is unchanged.
-
----
-
-## 12. Out of scope
-
-- `Pt` and drawing-unit lengths; the 80 `(f64, f64)` pairs and 11 `[f64; 2]`; `history.rs`'s own
-  `Point` (a later tidy-up, or R10).
-- `Op::SetProperty.key`, and what a person may type as a key.
-- Kinds for cables, wires, pages or folders.
-- An import step for files from other tools (later, with the v1 format freeze).
-- The check-kinds table (R7) and the views pipeline (R9).
-- Free-text values a person types (`"10 A"`, `"18 AWG"`, a colour, a rating): they stay text.
-- CADCraft: no file outside `ecad/` changes.
-
----
-
-## 13. Format and op changes (for the overseer)
-
-Pre-v1, no compatibility path: fixtures are regenerated and no shims are added (ruling). No format
-version change.
-
-**Approved (overseer, 2026-11-16): F1, F2, F4, F5, F6, F7 as written; then F3′ and F8–F12 as
-written**, including the new op `SetDeviceKind` (a kind change and its variant edits need their
-own undoable record). F3 was first approved as `symbol.<key>` roles; the owner's answer replaced
-it with F3′. Condition on F11 (hard rule): the inspector's Raw and Readable views keep working for
-the new op and fields, including on a project opened read-only for an unknown word (A15).
-
-| # | Change | On disk | State |
-| --- | --- | --- | --- |
-| F1 | `Op::SetStyle.catalogue`: `String` → `StyleCatalogue` | same words (`text`, `location`, `frame`, `wire`, `page`, `cable`, `ratingtable`); an unknown one is now a damaged record | approved |
-| F2 | `StyleCatalogues` keyed by `StyleCatalogue` | same words | approved |
-| F3′ | `Representation.role`: `String` → `Role`; a symbol's role is its **part in the device** | **symbol roles change**: `coil`, `no`, a project symbol's key → `head`, `contact`, `pole`, `terminal`, `channel`, `half`, `pin`, `other`; the fixed words stay | approved |
-| F4 | On/off switches → `yes` / `no`; text show → `yes` / `no` / `first` | words change in the defaults TOML, in project, page and component properties, and in style fields: `front.cover.{notes,wire_colours,symbol_legend,revisions,structure_codes,customer_site}`, `text.{point_label,description,part_number,continuation_name,reference,continuation_caption,location,wire_label}.show`, the 5 plc switches (`ON_OFF` in `defaults/plc.rs`), `wire.join`, `bom.column.article`, frame fields `grid_labels`, `centre_marks`, page fields `zones`, `checks`; `text.tag.show`, `.strip`, `.plc` and per-object `text.<rep>.<kind>.show` | approved |
-| F5 | `ProjectSettings.cable_prefix: Option<String>`; `tag_prefixes` keyed by `SymbolName`, no `"cable"` entry | new settings field | approved |
-| F6 | Symbol content command: `slots[].rotation` in degrees | command input only; stored stays radians | approved |
-| F7 | `Placement.rotation`, `TextSlot.rotation`, `Primitive::Text.rotation` typed `Radians` | bytes unchanged (`serde(transparent)`) | approved |
-| F8 | `Definition.kind: DeviceKind`: the kind a symbol declares, with its default data | **new field** on every definition record (starters' embedded copies and project symbols) | approved |
-| F9 | `Component.kind: DeviceKind` with its variant data (§5.1, §5.3) | **new field** on every component record; `{ "kind": "<word>", …fields }`, default fields left out | approved |
-| F10 | The kind-specific keys of §5.3 leave the property bag and are `RESERVED` on components | **keys removed**: `plc.rack`, `plc.slot`, `plc.channels`, `plc.addr.*`, `plc.kind`, `plc.ch.<i>.*`, `terminals`, `part_number.pe`, `maker.pe`, `term_label.*`, `acc.*`, `marker.per_card`, `jumper.bar`, `pins`, `pin_names`, `half.*`, `ignore.*`, `rating` and `rating.<n>` on devices, `contacts`, `mirror`, `kind`, `name` and `caption` on components, `rating.temperature` on boxes, `qty`, `unit` on items | approved |
-| F11 | Unknown words are a read error: a damaged record for typed fields, `ReadOnly::UnknownWords` for words in values (§4.1) | no change to the bytes; a new read-only reason | approved |
-| F12 | **New op `Op::SetDeviceKind { id, before, after }`** (§5.5): records a kind change and every variant-field edit | new op in the log | approved |
-
----
-
-## 14. Owner decisions
+## 16. Owner decisions
 
 ### Answered (owner, 2026-11-16)
 
-- **Unknown words** in a file are a read error: the project opens read-only with a message naming
-  the word, the setting and where it is, and the file is never changed. No keep-and-warn. Forward
-  compatibility waits for the v1 format freeze; files from other tools come in through a later
-  import step.
-- **Device kinds are data**, declared by the symbol and saved on the device, with kind-only fields
-  in the kind. Not derived, not cached; the built-in symbol list stays out of the core.
+Everything in Part I and the spec: unknown words are a read error; data, not inference; one struct
+per object with typed variants; traits and methods own the calculations; stored relationships;
+device common fields and user fields; `DeviceType` from IEC 81346 classes (QA and QB → Protection);
+the symbol carries the type; PLC in three levels; sibling links; junctions not stored; drawing aids
+and boxes that set location on devices; cable, wire, page and title block typed; the lanes. This
+settles the five earlier calls: fuse terminals are Protection; a rack is its own level above the
+modules; junctions, continuations and boxes leave the device store; contact data lives in
+`Switching` (Relay and Switch); empty kinds stay General until they earn a type.
 
 ### Going ahead unless you object
 
-This follows your rulings: one yes/no rule for every switch (the about 25 on/off settings become
-switches, saved as yes/no, and "y" stops counting as yes); strict words everywhere, with a file
-holding one this build doesn't know opening read-only; no compatibility code; each value defined
-once. Property keys get one list in the core with typed readers; lengths, angles, currents,
-voltages, cross-sections, temperatures and percentages get their own types where they are parsed;
-the text a person types (like "10 A") stays as typed. Every command takes angles in degrees. The
-cable tag prefix becomes its own setting. A symbol on a page records its part in the device (head,
-contact, terminal…) instead of the symbol's name. Each device records its kind, taken from the
-symbol that created it; a card's rack and slot, a strip's accessories, a connector's pins and a
-fuse's rating move off the free list of properties into that kind, so a terminal strip can't have a
-PLC slot. Changing the kind is one edit (swapping the symbol does it), and `setprop` on those
-settings still works. The symbol builder asks which kind of device a new symbol makes. Every guard
-ends at zero. We are **not** giving cables or wires a kind, not changing how points are stored,
-and not touching the check list (R7) or the views (R9) beyond what they read.
+Every stored thing becomes its own typed object: devices, PLC racks and modules, wires, cables,
+pages, the project's own data (title, revisions, function and location lists), folders and symbols.
+Devices fall into fourteen groups (table in §2.2), from power supplies and protection through
+relays, switches, sensors, motors, valves, lamps, heaters, terminal strips, connectors and the two
+PLC levels, with General for the rest. Today's CPU or head-module card becomes a rack with its CPU
+module in it. Function and location become picks from the project's lists, so renaming a code is
+one edit. Each kind of object gets one "change" record in the history (a device, a wire, a cable, a
+page, the project), so undo and agents see a type change like any other edit; a free-text `setprop`
+still works. The work runs as seven lanes: A1 can start today, A2 after 070 and the rename, then
+devices, wires and cables, and pages in parallel, PLC once devices have started, and the
+not-devices lane last. The views lane (R9) starts after A1 and A2 and takes each view as the types
+it reads land.
 
 ### Needs your call
 
-Where it is unclear which kind a device is, or whether a field belongs to a kind:
-
-1. **Fuses, breakers and fuse terminals.** Today a fuse, a breaker, an RCD, a fuse bank and the
-   stand-alone fuse terminal all keep a free-text rating (`13A C 30mA`), and a fuse bank keeps one
-   per output. (a) One **Protective** kind for all of them, holding the rating and the per-output
-   ratings; the stand-alone fuse terminal is Protective too, while a fuse *position* in a terminal
-   strip stays part of the strip. (b) Separate Fuse, Breaker, RCD and Fuse bank kinds, each with
-   the same rating field. *Recommended: (a)*, because the ratings checks treat them alike; a later
-   rule that only breakers have can split it then.
-2. **PLC rack versus card.** Today a rack is just the CPU or head-module card that other cards
-   point at. (a) One **PLC card** kind with its card type; a rack is a card whose type is CPU or
-   head module. (b) A separate **PLC rack** kind. *Recommended: (a)*: changing a CPU to a head
-   module stays one edit, and a card's "rack" can only point at a card of a rack type.
-3. **Junctions, continuations, location boxes and BOM-only items.** Today they are stored with the
-   devices but are not devices in your sense (no part on a page, no wiring role, or no symbol at
-   all). (a) Keep them where they are, as kinds of their own (Junction, Continuation, Location
-   box, Item). (b) Make each its own top-level object like cables. *Recommended: (a) now*, since
-   (b) touches every place that walks devices and their symbols; (b) can follow as its own lane if
-   you want them out of the device lists' code.
-4. **Relays and contact tables.** A coil device keeps what contacts its part offers
-   (`3P+1NO+1NC`) and where its contact table goes. (a) A **Relay** kind for coil devices
-   (contactors and relays) holding both. (b) Keep both on every device, since a push button or a
-   breaker with auxiliary contacts may want a table later. *Recommended: (a)*; the worker first
-   checks that no non-coil device stores these today.
-5. **Kinds with no data yet** (motor, lamp, sensor, valve…). (a) Add a kind only when it has its
-   own fields or rules; these stay **General** (the symbol library's families still group them
-   for finding). (b) Add them now as empty kinds. *Recommended: (a)*: an empty kind is a word to
-   keep in step with nothing behind it.
+1. **T-joints without junctions.** Junctions are no longer stored, but a wire that tees into
+   another still has to end somewhere. (a) A wire end can attach to another wire at a point; the
+   dot is drawn where three or more meet. (b) Keep a tiny "node" object that wires end on, with no
+   device data. *Recommended: (a)*: (b) is a junction under another name.
+2. **A location typed by hand versus a box.** Boxes now set function and location on the devices
+   inside them. If a person types a different location on a device inside a box: (a) the last edit
+   wins: the typed value stays until the device next moves into or out of a box, which resets it to
+   the box's; (b) a typed value always wins and the box never overwrites it, with a Checks row when
+   they differ. *Recommended: (a)*: simple and visible; (b) needs a "set by hand" flag on every
+   device.
+3. **Parts-list-only items until 0.2.4.** The list holds only panel items with no device (trunking,
+   DIN rail, cable ties, loose crimps: description, part number, manufacturer, quantity and unit,
+   location). (a) Keep them as a plain list of loose parts on the project, out of the device store,
+   until the 0.2.4 layout places them. (b) Drop the feature until 0.2.4. *Recommended: (a)*: the
+   BOM keeps working and nothing is lost.
+4. **Styles typed now or later.** Text, wire, cable, page and frame styles are still a free list of
+   fields per style. (a) Type them in this refactor as lane G, in parallel. (b) After 0.3.0.
+   *Recommended: (a)*, so 0.3.0 has no property bags left except display choices; it is a medium
+   lane and touches only the style files.
+5. **Wire and core colours.** Today a colour is free text up to 24 characters. (a) Only IEC 60757
+   codes (`BU`, `BN`, `GNYE`, combinations like `BU/WH`); anything else is refused, and core
+   *numbers* are core labels, not colours. (b) Keep free text. *Recommended: (a)*, which lets
+   checks and reports read colours; a project with a non-IEC colour gets a read error and is
+   regenerated (pre-v1).
