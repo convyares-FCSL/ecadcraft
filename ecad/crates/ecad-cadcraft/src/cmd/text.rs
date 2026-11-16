@@ -293,7 +293,7 @@ pub(crate) struct ShowtextParams {
     kind: String,
     /// "on", "off" or "first" (tag only), or null to inherit.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, extend("type" = ["string", "null"]))]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
     show: Option<Option<String>>,
     /// A symbol of a device.
     #[serde(default)]

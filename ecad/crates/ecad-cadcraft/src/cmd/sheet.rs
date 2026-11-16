@@ -243,7 +243,7 @@ pub(crate) struct MovefolderParams {
     folder: FolderId,
     /// The folder it goes in, or null for the top level.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required)]
+    #[schemars(required, with = "crate::cmd::input::OrNull<FolderId>")]
     parent: Option<Option<FolderId>>,
     /// Its place among its new siblings, 1 = first (default last).
     #[serde(default)]

@@ -268,7 +268,7 @@ pub(crate) struct PotentialParams {
     conductor: ConductorId,
     /// The potential (24V, L1…), or null to clear it.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required)]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 
@@ -308,7 +308,7 @@ pub(crate) struct CategoryParams {
     conductors: Option<Bounded<ConductorId, 0, { MAX_HANDLES }>>,
     /// The wire category (its ID or name), or null to clear the wires' own.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required)]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 

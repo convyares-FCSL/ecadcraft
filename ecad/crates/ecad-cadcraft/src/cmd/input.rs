@@ -90,7 +90,7 @@ fn kind(schema: &Value, name: &str) -> (String, String) {
     let field = resolve(schema, &schema["properties"][name]);
     let (k, nullable) = describe(schema, field);
     match nullable {
-        true => (k.0, format!("{}, or null", k.1)),
+        true => (format!("{}, or null", k.0), format!("{}, or null", k.1)),
         false => k,
     }
 }
@@ -227,6 +227,26 @@ impl<T: JsonSchema, const MIN: usize, const MAX: usize> JsonSchema for Bounded<T
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let items = generator.subschema_for::<T>();
         schemars::json_schema!({"type": "array", "items": items, "minItems": MIN, "maxItems": MAX})
+    }
+}
+
+/// The schema of a parameter that must be given and may be `null`: `T`, or null. Use it as
+/// `#[schemars(required, with = "OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
+/// a required `Option`).
+pub struct OrNull<T>(std::marker::PhantomData<T>);
+
+impl<T: JsonSchema> JsonSchema for OrNull<T> {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("OrNull_{}", T::schema_name()).into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let inner = generator.subschema_for::<T>();
+        schemars::json_schema!({"anyOf": [inner, {"type": "null"}]})
     }
 }
 
