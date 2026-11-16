@@ -4,41 +4,35 @@
 //! The tag style's defaults are `pub const` in `ecad_model::tag` (overseer ruling 2), which
 //! `ecad-model`'s numbering and merge read without the registry; these entries name them.
 
-use super::{Entry, Kind, Level, ProjectSource, Value};
+use super::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Print";
 const BRIEF: &str = "033";
 /// Standard and project (no command writes these project keys in v0.15).
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
-const fn entry(key: &'static str, label: &'static str, kind: Kind, builtin: Value<'static>) -> Entry {
-    Entry { key, label, group: GROUP, brief: BRIEF, kind, builtin, levels: SP, project: ProjectSource::Property }
+const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
+    Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
 /// How a generated page's continuation sheets are numbered (design 033 §5.1): `sequence` is the
 /// trailing digits plus one (`400, 401`), else `N2`, `N3`.
-pub static CONTINUATION_NUMBERS: Entry =
-    entry("print.continuation_numbers", "Continuation sheet numbers", Kind::Choice(&["sequence"]), Value::Choice("sequence"));
+pub static CONTINUATION_NUMBERS: Entry = entry("print.continuation_numbers", "Continuation sheet numbers", Kind::Choice(&["sequence"]));
 
 /// How a missing value in a generated table is marked (design 033 §3.1): `boxed` is `?` in a box.
-pub static MISSING_MARK: Entry = entry("print.missing_mark", "Missing value mark", Kind::Choice(&["boxed"]), Value::Choice("boxed"));
+pub static MISSING_MARK: Entry = entry("print.missing_mark", "Missing value mark", Kind::Choice(&["boxed"]));
 
 /// `ecad.missing-box`: how far the box round a missing value is inset into its cell.
-pub static MISSING_BOX_INSET: Entry =
-    entry("print.missing_box_inset", "Missing value box inset", Kind::Length { min: 0.0, max: 2.0 }, Value::Length(0.5));
+pub static MISSING_BOX_INSET: Entry = entry("print.missing_box_inset", "Missing value box inset", Kind::Length { min: 0.0, max: 2.0 });
 
 /// Where an automatic contact table goes when it would meet the title block (design 033 §4.1):
 /// right of its head, else lifted.
-pub static CONTACT_TABLE_FALLBACK: Entry = entry(
-    "print.contact_table_fallback",
-    "Contact table clear of the title block",
-    Kind::Choice(&["right_then_lift"]),
-    Value::Choice("right_then_lift"),
-);
+pub static CONTACT_TABLE_FALLBACK: Entry =
+    entry("print.contact_table_fallback", "Contact table clear of the title block", Kind::Choice(&["right_then_lift"]));
 
 /// The room kept between an automatic contact table and the title block's top line.
 pub static CONTACT_TABLE_CLEARANCE: Entry =
-    entry("print.contact_table_clearance", "Contact table gap above the title block", Kind::Length { min: 0.0, max: 20.0 }, Value::Length(2.0));
+    entry("print.contact_table_clearance", "Contact table gap above the title block", Kind::Length { min: 0.0, max: 20.0 });
 
 /// Tags are written with a leading `-` (design 033 §8.1, FP1).
 pub static TAG_DASH: Entry = Entry {
@@ -47,7 +41,7 @@ pub static TAG_DASH: Entry = Entry {
     group: "Tags",
     brief: BRIEF,
     kind: Kind::Choice(ecad_model::tag::DASH_WORDS),
-    builtin: Value::Choice(ecad_model::tag::DEFAULT_DASH),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -59,7 +53,7 @@ pub static TAG_CASE: Entry = Entry {
     group: "Tags",
     brief: BRIEF,
     kind: Kind::Choice(ecad_model::tag::CASE_WORDS),
-    builtin: Value::Choice(ecad_model::tag::DEFAULT_CASE),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -72,7 +66,7 @@ pub static REVISION_COLUMNS: Entry = Entry {
     group: "Revisions",
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: crate::revisions::MAX_COLUMNS_CHARS, parse: crate::revisions::columns_ok },
-    builtin: Value::Text("rev@12, ecr:ECR@18, date@24, description, drawn@22, checked@22, approved@22"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -84,7 +78,7 @@ pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
     group: "Revisions",
     brief: BRIEF,
     kind: Kind::Length { min: crate::revisions::MIN_WIDTH_MM, max: crate::revisions::MAX_WIDTH_MM },
-    builtin: Value::Length(20.0),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -96,7 +90,7 @@ pub static REVISION_PENDING: Entry = Entry {
     group: "Revisions",
     brief: BRIEF,
     kind: Kind::Choice(&["star", "draft", "off"]),
-    builtin: Value::Choice("star"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -123,7 +117,7 @@ pub static COLOUR: Entry = Entry {
     group: GROUP,
     brief: "040",
     kind: Kind::Choice(&["mono", "colour"]),
-    builtin: Value::Choice("mono"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };

@@ -28,7 +28,7 @@ use std::collections::BTreeSet;
 use ecad_model::style::{self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject};
 
-use crate::defaults::{self, Kind, Resolved, Scope, Source, Value};
+use crate::defaults::{self, Kind, Resolved, Scope, Slot, Source, Value};
 
 pub mod cable;
 pub mod checks;
@@ -47,8 +47,9 @@ pub struct Field {
     /// Words for tables and messages: `Cap height`.
     pub label: &'static str,
     pub kind: Kind,
-    /// The value when no level sets one (step 5 of design 050 §2.4).
-    pub builtin: Value<'static>,
+    /// The value when no level sets one (step 5 of design 050 §2.4), read from the data files'
+    /// `[fields.<catalogue>]` on first use ([`Field::builtin`], brief 066).
+    pub slot: Slot<Value<'static>>,
     /// The object property that overrides it (050b: a conductor's own `colour`), if any.
     pub over: Option<&'static str>,
 }
@@ -58,13 +59,28 @@ pub struct Field {
 pub struct Builtin {
     pub id: &'static str,
     pub name: &'static str,
-    pub values: &'static [(&'static str, Value<'static>)],
+    /// The field values it sets, read from the data files' `[styles.<catalogue>.<id>]` on first
+    /// use ([`Builtin::values`], brief 066).
+    pub slot: Slot<Vec<(&'static str, Value<'static>)>>,
 }
 
 impl Builtin {
+    /// The field values it sets, from the data, in its catalogue's field order.
+    pub fn values(&self) -> &[(&'static str, Value<'static>)] {
+        self.slot.get_or_init(|| defaults::data::style_values(self))
+    }
+
     /// Its value of field `key`, if it sets one.
     pub fn value(&self, key: &str) -> Option<Value<'static>> {
-        self.values.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+        self.values().iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+    }
+}
+
+impl Field {
+    /// The field's built-in value, from the data (brief 066): read once, then a field read. A
+    /// missing or damaged one gives the kind's safe value, never a crash.
+    pub fn builtin(&self) -> Value<'static> {
+        *self.slot.get_or_init(|| defaults::data::field_builtin(self))
     }
 }
 
@@ -189,7 +205,7 @@ pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, o
     if let Some(value) = cat.builtin(id).and_then(|b| b.value(f.key)) {
         return Resolved { value, from: Source::Builtin };
     }
-    Resolved { value: f.builtin, from: Source::Builtin }
+    Resolved { value: f.builtin(), from: Source::Builtin }
 }
 
 /// [`field`] by catalogue word and field key; the field's built-in for an unknown one.
@@ -207,7 +223,7 @@ pub fn chosen(doc: &Document, entry: &defaults::Entry, at: Scope) -> StyleRef {
 }
 
 fn builtin_word(entry: &defaults::Entry) -> String {
-    match entry.builtin {
+    match entry.builtin() {
         Value::Text(t) => t.to_string(),
         _ => String::new(),
     }
@@ -526,12 +542,12 @@ mod tests {
             assert!(ms::is_word(c.word), "{}", c.word);
             for f in c.fields {
                 // 050b (design 050 §5.3): an empty built-in is "no value" (potential, part number).
-                let empty = matches!(f.builtin, Value::Text(""));
-                assert!(empty || defaults::accepts(f.kind, &f.builtin), "{}.{} built-in", c.word, f.key);
+                let empty = matches!(f.builtin(), Value::Text(""));
+                assert!(empty || defaults::accepts(f.kind, &f.builtin()), "{}.{} built-in", c.word, f.key);
             }
             for b in c.builtins {
                 assert!(ms::is_word(b.id), "{}", b.id);
-                for (k, v) in b.values {
+                for (k, v) in b.values() {
                     let f = c.field(k);
                     assert!(f.is_some(), "{}.{} names no field {k}", c.word, b.id);
                     assert!(f.is_some_and(|f| defaults::accepts(f.kind, v)), "{}.{}.{k}", c.word, b.id);

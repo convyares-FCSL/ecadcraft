@@ -1,0 +1,42 @@
+# Brief 045: PLC.
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"plc.slots" = 32.0
+"plc.slot.first" = "1"
+"plc.di.channels" = 16.0
+"plc.dq.channels" = 16.0
+"plc.ai.channels" = 4.0
+"plc.ao.channels" = 4.0
+"plc.rtd.channels" = 4.0
+"plc.iol.channels" = 4.0
+"plc.card.caption" = "{rack} slot {slot}"
+"plc.text.caption.show" = "on"
+"plc.plcim.prefix" = "A"
+"plc.plcpm.prefix" = "A"
+"plc.plccm.prefix" = "A"
+"plc.channel.first" = "0"
+"plc.pins" = "role"
+"plc.address.style" = "byte.bit"
+"plc.address.start.input" = 0.0
+"plc.address.start.output" = 0.0
+"plc.address.analog.bytes" = 2.0
+"plc.address.iol.bytes" = 2.0
+"plc.spare.text" = "Spare"
+"plc.text.channel.show" = "on"
+"plc.text.address.show" = "on"
+"plc.text.channel.rotation" = "90"
+"plc.xref.table" = "off"
+"plc.chdi.prefix" = "A"
+"plc.chdq.prefix" = "A"
+"plc.chai.prefix" = "A"
+"plc.chao.prefix" = "A"
+"plc.chrtd.prefix" = "A"
+"plc.chiol.prefix" = "A"
+"plc.frame.show" = "on"
+"plc.page.title" = "{tag} {type} {channels}"
+"plc.safe.dq" = "off"
+"plc.safe.ao" = "hold"

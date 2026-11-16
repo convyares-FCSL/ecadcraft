@@ -10,7 +10,7 @@
 use ecad_model::{CableId, Document, StyleRef};
 
 use super::{Catalogue, Field};
-use crate::defaults::{Kind, Value};
+use crate::defaults::{Kind, Slot};
 use crate::rating::fields;
 
 /// The catalogue word.
@@ -39,38 +39,26 @@ fn is_colour_list(s: &str) -> bool {
     colour_list(s).is_some()
 }
 
-static FIELDS: &[Field] = &[
+static FIELDS: [Field; 14] = [
     fields::CROSS_SECTION,
     fields::MATERIAL,
     fields::MAX_TEMPERATURE,
     fields::CONDUCTOR_CLASS,
     fields::RATED_CURRENT,
     fields::RATED_AT,
-    Field {
-        key: CORE_COLOURS,
-        label: "Core colours",
-        kind: Kind::Parsed { max_chars: 256, parse: is_colour_list },
-        builtin: Value::Text(""),
-        over: None,
-    },
-    Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(""), over: None },
-    Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(""), over: None },
-    Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(""), over: None },
+    Field { key: CORE_COLOURS, label: "Core colours", kind: Kind::Parsed { max_chars: 256, parse: is_colour_list }, slot: Slot::new(), over: None },
+    Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
+    Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
+    Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
     // Brief 059 (design 059 §2.2, FD3): the cable's defaults.
-    Field { key: TYPE_CORES, label: "Cores", kind: Kind::Parsed { max_chars: 256, parse: is_offer }, builtin: Value::Text(""), over: None },
-    Field { key: TYPE_SHIELD, label: "Shield", kind: Kind::Parsed { max_chars: 16, parse: is_shield }, builtin: Value::Text("none"), over: None },
-    Field {
-        key: TYPE_GLAND,
-        label: "Gland",
-        kind: Kind::Parsed { max_chars: MAX_GLAND_CHARS, parse: is_gland },
-        builtin: Value::Text(""),
-        over: None,
-    },
+    Field { key: TYPE_CORES, label: "Cores", kind: Kind::Parsed { max_chars: 256, parse: is_offer }, slot: Slot::new(), over: None },
+    Field { key: TYPE_SHIELD, label: "Shield", kind: Kind::Parsed { max_chars: 16, parse: is_shield }, slot: Slot::new(), over: None },
+    Field { key: TYPE_GLAND, label: "Gland", kind: Kind::Parsed { max_chars: MAX_GLAND_CHARS, parse: is_gland }, slot: Slot::new(), over: None },
     Field {
         key: TYPE_OUTER_DIAMETER,
         label: "Outer diameter (mm)",
         kind: Kind::Parsed { max_chars: 16, parse: is_outer_diameter },
-        builtin: Value::Text(""),
+        slot: Slot::new(),
         over: None,
     },
 ];
@@ -119,7 +107,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The cable type catalogue: no built-in entries.
 pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Cable types", one: "Cable type", fields: FIELDS, builtins: &[], choices, project_field: None };
+    Catalogue { word: WORD, plural: "Cable types", one: "Cable type", fields: &FIELDS, builtins: &[], choices, project_field: None };
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {

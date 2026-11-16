@@ -17,6 +17,9 @@ ecad-drawing-style = { workspace = true }
 ecad-file = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
+# The built-in defaults are TOML data (brief 066, design 066 §3.1); parsing only, spans kept.
+toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
 # Revision dates (calendar only; no clock: the time is passed in).
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 

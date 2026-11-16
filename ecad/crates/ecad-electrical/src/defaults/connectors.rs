@@ -14,7 +14,7 @@
 //!
 //! Families, sizes and side keys are catalogue code ([`crate::connectors`], [`crate::symbols`]).
 
-use super::{Entry, Kind, Level, ProjectSource, Value};
+use super::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Connectors";
 const BRIEF: &str = "044";
@@ -46,7 +46,7 @@ pub static SEPARATOR: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: 3, parse: separator_ok },
-    builtin: Value::Text("."),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -57,7 +57,7 @@ pub static SIDE_SOCKET: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: 4, parse: side_ok },
-    builtin: Value::Text("S"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -68,7 +68,7 @@ pub static SIDE_PLUG: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Parsed { max_chars: 4, parse: side_ok },
-    builtin: Value::Text("P"),
+    slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -79,7 +79,7 @@ pub static DESCRIPTION: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Text { max_chars: 64 },
-    builtin: Value::Text("Connector"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -93,7 +93,7 @@ macro_rules! descriptions {
                 group: GROUP,
                 brief: BRIEF,
                 kind: Kind::Parsed { max_chars: 64, parse: description_ok },
-                builtin: Value::Text($builtin),
+                slot: Slot::new(),
                 levels: SP,
                 project: ProjectSource::Property,
             };
@@ -125,7 +125,7 @@ pub static MAKER_HALVES: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Choice(&["socket", "plug", "both"]),
-    builtin: Value::Choice("both"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -136,7 +136,7 @@ pub static MAKER_FAMILY: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Choice(&["plain", "dsub", "m12", "rj45", "usba", "usbb"]),
-    builtin: Value::Choice("plain"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -147,7 +147,7 @@ pub static MAKER_PINS: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Number { min: 1.0, max: 64.0 },
-    builtin: Value::Number(4.0),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -158,7 +158,7 @@ pub static MAKER_NAMES: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Choice(&["numbers", "letters", "list"]),
-    builtin: Value::Choice("numbers"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -169,7 +169,7 @@ pub static MAKER_LAYOUT: Entry = Entry {
     group: GROUP,
     brief: BRIEF,
     kind: Kind::Choice(&["row", "pins"]),
-    builtin: Value::Choice("row"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -221,6 +221,7 @@ pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::defaults::Value;
 
     #[test]
     fn entries_parse_as_designed() {

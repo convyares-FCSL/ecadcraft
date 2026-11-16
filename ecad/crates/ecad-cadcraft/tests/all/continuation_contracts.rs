@@ -368,7 +368,7 @@ fn registry_defaults_apply() {
     assert!(t.ends_with(" +1") && t.split(' ').count() == 2, "{t}");
     // Brief 050a: the caption is a built-in text style, 2.5 mm regular.
     let entry = ecad_cadcraft::defaults::find("text.continuation_caption.style").unwrap();
-    assert_eq!(entry.builtin, ecad_cadcraft::defaults::Value::Text("continuation_caption"));
+    assert_eq!(entry.builtin(), ecad_cadcraft::defaults::Value::Text("continuation_caption"));
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
     assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");

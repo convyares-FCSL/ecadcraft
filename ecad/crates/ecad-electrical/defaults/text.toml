@@ -1,0 +1,124 @@
+# Lane T (brief 031): text shown, runs, placement; text styles (brief 050a).
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"text.font" = "Barlow Semi Condensed"
+"text.wire_label.height" = 1.6
+"text.tag.show" = "on"
+"text.tag.show.strip" = "first"
+"text.tag.show.plc" = "first"
+"text.point_label.show" = "on"
+"text.description.show" = "off"
+"text.part_number.show" = "off"
+"text.continuation_name.show" = "off"
+"text.reference.show" = "on"
+"text.continuation_caption.show" = "on"
+"text.location.show" = "on"
+"text.wire_label.show" = "on"
+"text.run.align" = 1.0
+"text.run.gap" = 15.0
+"text.tag.gap" = 0.6
+"text.line_pitch" = 1.25
+"text.wire_clearance" = 0.3
+"text.bold_stroke_weight" = 0.35
+
+[fields.text]
+font = "project"
+height = 2.5
+weight = "regular"
+colour = "none"
+
+[styles.text.tag]
+height = 2.5
+weight = "bold"
+
+[styles.text.point_label]
+height = 1.5
+weight = "regular"
+
+[styles.text.description]
+height = 1.6
+weight = "regular"
+
+[styles.text.part_number]
+height = 1.6
+weight = "regular"
+
+[styles.text.continuation_name]
+height = 2.0
+weight = "regular"
+
+[styles.text.reference]
+height = 2.0
+weight = "regular"
+
+[styles.text.continuation_caption]
+height = 2.5
+weight = "regular"
+
+# Its height is "text.wire_label.height" above (one value, one place).
+[styles.text.wire_label]
+weight = "regular"
+
+[styles.text.cable_text]
+height = 1.6
+weight = "regular"
+
+[styles.text.location]
+height = 1.6
+weight = "regular"
+
+[styles.text.title_value]
+height = 2.5
+weight = "regular"
+
+[styles.text.title_caption]
+height = 1.8
+weight = "regular"
+
+[styles.text.title_main]
+height = 3.5
+weight = "bold"
+
+[styles.text.grid]
+height = 3.0
+weight = "regular"
+
+[styles.text.table]
+height = 2.5
+weight = "regular"
+
+[styles.text.table_header]
+height = 2.5
+weight = "bold"
+
+[styles.text.free]
+height = 2.5
+weight = "regular"
+
+[styles.text.title_page]
+height = 7.0
+weight = "regular"
+
+[styles.text.title_rev]
+height = 5.0
+weight = "regular"
+
+[styles.text.table_heading]
+height = 3.5
+weight = "regular"
+
+[styles.text.cover]
+height = 10.0
+weight = "regular"
+
+[styles.text.channel_text]
+height = 2.5
+weight = "regular"
+
+[styles.text.address]
+height = 2.0
+weight = "regular"

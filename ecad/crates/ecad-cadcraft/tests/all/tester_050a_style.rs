@@ -415,7 +415,7 @@ fn a02_registry_choice_entries_and_their_levels() {
     })) {
         let e = defaults::find(key).unwrap_or_else(|| panic!("choice entry {key}"));
         assert!(matches!(&e.kind, Kind::Style(c) if *c == cat), "{key} is Kind::Style({cat})");
-        let b = defaults::Resolved { value: e.builtin, from: Source::Builtin }.text();
+        let b = defaults::Resolved { value: e.builtin(), from: Source::Builtin }.text();
         assert!(ids.contains(&b), "{key}: built-in {b} names a built-in style of {cat} ({ids:?})");
         for l in allowed {
             assert!(e.allows(l), "{key} allows {l:?}");

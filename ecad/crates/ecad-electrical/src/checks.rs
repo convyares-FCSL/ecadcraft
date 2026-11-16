@@ -342,6 +342,9 @@ check_kinds! {
     PlcTagTwice = "plc-tag-twice", Error, "PLC tag given twice in one PLC";
     /// A tag an export leaves out (a control character, too long).
     PlcTagChars = "plc-tag-chars", Warning, "PLC tag an export leaves out";
+    /// Brief 066 (design 066 §7): a built-in default failed to load (not reachable in a tested
+    /// build); the affected entries use their kind's safe value.
+    DefaultsDamaged = "defaults-damaged", Warning, "Built-in defaults damaged: safe values used";
 }
 
 impl Kind {
@@ -524,6 +527,7 @@ impl Check {
             | Kind::CableEndOffPlan
             | Kind::NoGland
             | Kind::CableBadValue
+            | Kind::DefaultsDamaged
                 if !self.which.is_empty() =>
             {
                 self.which.clone()

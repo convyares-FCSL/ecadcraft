@@ -12,7 +12,7 @@
 
 use ecad_model::{Document, ProjectSettings};
 
-use super::{Entry, Kind, Level, ProjectSource, Scope, Value};
+use super::{Entry, Kind, Level, ProjectSource, Scope, Slot, Value};
 
 const GROUP: &str = "Tag prefixes";
 const BRIEF: &str = "034";
@@ -30,7 +30,7 @@ const PREFIX: Kind = Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTER
 /// One prefix entry per symbol key: `NAME = "key", "built-in prefix", "symbol name";`. Each entry
 /// reads its project level from `settings.tag_prefixes[key]`.
 macro_rules! prefixes {
-    ($($name:ident = $key:literal, $prefix:literal, $symbol:literal;)*) => {
+    ($($name:ident = $key:literal, $symbol:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("symbol.", $key, ".prefix"),
@@ -38,7 +38,7 @@ macro_rules! prefixes {
                 group: GROUP,
                 brief: BRIEF,
                 kind: PREFIX,
-                builtin: Value::Text($prefix),
+                slot: Slot::new(),
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -65,89 +65,89 @@ macro_rules! prefixes {
 }
 
 prefixes! {
-    COIL = "coil", "K", "Contactor / relay coil";
-    NO = "no", "K", "NO contact";
-    NC = "nc", "K", "NC contact";
-    POWER3 = "power3", "K", "Power contacts, 3-pole";
-    MCB1 = "mcb1", "Q", "MCB 1-pole";
-    MCB2 = "mcb2", "Q", "MCB 2-pole";
-    FUSE = "fuse", "F", "Fuse";
-    PSU = "psu", "G", "Power supply";
-    PBNO = "pbno", "S", "Push button, NO";
-    PBNC = "pbnc", "S", "Push button, NC";
-    SEL = "sel", "S", "Selector switch, 2-position";
-    LAMP = "lamp", "H", "Indicator lamp";
-    MOTOR3 = "motor3", "M", "Motor, 3-phase";
-    MOTOR1 = "motor1", "M", "Motor, single-phase";
-    TRAFO = "trafo", "T", "Transformer";
-    TERMINAL = "terminal", "X", "Terminal";
-    TERMINALPE = "terminalpe", "X", "PE terminal";
-    DI = "di", "A", "PLC digital input";
-    DO = "do", "A", "PLC digital output";
-    CO = "co", "K", "Change-over contact";
-    SWCO = "swco", "S", "Switch, change-over";
-    POWER4 = "power4", "K", "Power contacts, 4-pole";
-    RCBO2 = "rcbo2", "Q", "RCBO, 1P+N";
-    RCD2 = "rcd2", "Q", "RCD, 2-pole";
-    RCD4 = "rcd4", "Q", "RCD, 4-pole";
-    SSRIN = "ssrin", "K", "SSR input";
-    SSROUT = "ssrout", "K", "SSR output";
-    FUSETERM = "fuseterm", "F", "Fuse terminal";
-    FUSEBANK4 = "fusebank4", "F", "Fuse bank, 4-way";
-    FUSEBANK6 = "fusebank6", "F", "Fuse bank, 6-way";
-    FUSEBANK8 = "fusebank8", "F", "Fuse bank, 8-way";
-    FUSEBANK10 = "fusebank10", "F", "Fuse bank, 10-way";
-    FUSEBANK12 = "fusebank12", "F", "Fuse bank, 12-way";
-    PROX3 = "prox3", "B", "Proximity switch, 3-wire PNP";
-    FLOATNO = "floatno", "B", "Float switch, NO";
-    FLOATNC = "floatnc", "B", "Float switch, NC";
-    ROLLERNO = "rollerno", "B", "Position switch with roller, NO";
-    ROLLERNC = "rollernc", "B", "Position switch with roller, NC";
-    INTERLOCKNC = "interlocknc", "B", "Interlock switch, NC";
-    INTERLOCKNO = "interlockno", "B", "Interlock switch, NO";
-    VALVE = "valve", "MB", "Solenoid valve";
-    VALVE2 = "valve2", "MB", "Dual solenoid valve";
-    TC = "tc", "B", "Thermocouple";
-    HEATER = "heater", "E", "Heater";
-    SOCKET2 = "socket2", "X", "Socket, 2-pin";
-    SOCKET3 = "socket3", "X", "Socket, 3-pin";
-    SOCKET4 = "socket4", "X", "Socket, 4-pin";
-    SOCKET6 = "socket6", "X", "Socket, 6-pin";
-    SOCKET8 = "socket8", "X", "Socket, 8-pin";
-    SOCKET12 = "socket12", "X", "Socket, 12-pin";
-    PLUG2 = "plug2", "X", "Plug, 2-pin";
-    PLUG3 = "plug3", "X", "Plug, 3-pin";
-    PLUG4 = "plug4", "X", "Plug, 4-pin";
-    PLUG6 = "plug6", "X", "Plug, 6-pin";
-    PLUG8 = "plug8", "X", "Plug, 8-pin";
-    PLUG12 = "plug12", "X", "Plug, 12-pin";
-    DSUB9S = "dsub9s", "X", "D-sub socket, 9-way";
-    DSUB15S = "dsub15s", "X", "D-sub socket, 15-way";
-    DSUB25S = "dsub25s", "X", "D-sub socket, 25-way";
-    DSUB9P = "dsub9p", "X", "D-sub plug, 9-way";
-    DSUB15P = "dsub15p", "X", "D-sub plug, 15-way";
-    DSUB25P = "dsub25p", "X", "D-sub plug, 25-way";
-    M12S4 = "m12s4", "X", "M12 socket, 4-pin";
-    M12S5 = "m12s5", "X", "M12 socket, 5-pin";
-    M12S8 = "m12s8", "X", "M12 socket, 8-pin";
-    M12P4 = "m12p4", "X", "M12 plug, 4-pin";
-    M12P5 = "m12p5", "X", "M12 plug, 5-pin";
-    M12P8 = "m12p8", "X", "M12 plug, 8-pin";
-    RJ45 = "rj45", "X", "RJ45 bulkhead";
-    USBA = "usba", "X", "USB-A bulkhead";
-    USBB = "usbb", "X", "USB-B bulkhead";
+    COIL = "coil", "Contactor / relay coil";
+    NO = "no", "NO contact";
+    NC = "nc", "NC contact";
+    POWER3 = "power3", "Power contacts, 3-pole";
+    MCB1 = "mcb1", "MCB 1-pole";
+    MCB2 = "mcb2", "MCB 2-pole";
+    FUSE = "fuse", "Fuse";
+    PSU = "psu", "Power supply";
+    PBNO = "pbno", "Push button, NO";
+    PBNC = "pbnc", "Push button, NC";
+    SEL = "sel", "Selector switch, 2-position";
+    LAMP = "lamp", "Indicator lamp";
+    MOTOR3 = "motor3", "Motor, 3-phase";
+    MOTOR1 = "motor1", "Motor, single-phase";
+    TRAFO = "trafo", "Transformer";
+    TERMINAL = "terminal", "Terminal";
+    TERMINALPE = "terminalpe", "PE terminal";
+    DI = "di", "PLC digital input";
+    DO = "do", "PLC digital output";
+    CO = "co", "Change-over contact";
+    SWCO = "swco", "Switch, change-over";
+    POWER4 = "power4", "Power contacts, 4-pole";
+    RCBO2 = "rcbo2", "RCBO, 1P+N";
+    RCD2 = "rcd2", "RCD, 2-pole";
+    RCD4 = "rcd4", "RCD, 4-pole";
+    SSRIN = "ssrin", "SSR input";
+    SSROUT = "ssrout", "SSR output";
+    FUSETERM = "fuseterm", "Fuse terminal";
+    FUSEBANK4 = "fusebank4", "Fuse bank, 4-way";
+    FUSEBANK6 = "fusebank6", "Fuse bank, 6-way";
+    FUSEBANK8 = "fusebank8", "Fuse bank, 8-way";
+    FUSEBANK10 = "fusebank10", "Fuse bank, 10-way";
+    FUSEBANK12 = "fusebank12", "Fuse bank, 12-way";
+    PROX3 = "prox3", "Proximity switch, 3-wire PNP";
+    FLOATNO = "floatno", "Float switch, NO";
+    FLOATNC = "floatnc", "Float switch, NC";
+    ROLLERNO = "rollerno", "Position switch with roller, NO";
+    ROLLERNC = "rollernc", "Position switch with roller, NC";
+    INTERLOCKNC = "interlocknc", "Interlock switch, NC";
+    INTERLOCKNO = "interlockno", "Interlock switch, NO";
+    VALVE = "valve", "Solenoid valve";
+    VALVE2 = "valve2", "Dual solenoid valve";
+    TC = "tc", "Thermocouple";
+    HEATER = "heater", "Heater";
+    SOCKET2 = "socket2", "Socket, 2-pin";
+    SOCKET3 = "socket3", "Socket, 3-pin";
+    SOCKET4 = "socket4", "Socket, 4-pin";
+    SOCKET6 = "socket6", "Socket, 6-pin";
+    SOCKET8 = "socket8", "Socket, 8-pin";
+    SOCKET12 = "socket12", "Socket, 12-pin";
+    PLUG2 = "plug2", "Plug, 2-pin";
+    PLUG3 = "plug3", "Plug, 3-pin";
+    PLUG4 = "plug4", "Plug, 4-pin";
+    PLUG6 = "plug6", "Plug, 6-pin";
+    PLUG8 = "plug8", "Plug, 8-pin";
+    PLUG12 = "plug12", "Plug, 12-pin";
+    DSUB9S = "dsub9s", "D-sub socket, 9-way";
+    DSUB15S = "dsub15s", "D-sub socket, 15-way";
+    DSUB25S = "dsub25s", "D-sub socket, 25-way";
+    DSUB9P = "dsub9p", "D-sub plug, 9-way";
+    DSUB15P = "dsub15p", "D-sub plug, 15-way";
+    DSUB25P = "dsub25p", "D-sub plug, 25-way";
+    M12S4 = "m12s4", "M12 socket, 4-pin";
+    M12S5 = "m12s5", "M12 socket, 5-pin";
+    M12S8 = "m12s8", "M12 socket, 8-pin";
+    M12P4 = "m12p4", "M12 plug, 4-pin";
+    M12P5 = "m12p5", "M12 plug, 5-pin";
+    M12P8 = "m12p8", "M12 plug, 8-pin";
+    RJ45 = "rj45", "RJ45 bulkhead";
+    USBA = "usba", "USB-A bulkhead";
+    USBB = "usbb", "USB-B bulkhead";
     // Brief 044 (design 044 §10): the connector pins, 034's pattern.
-    PINPAIR = "pinpair", "X", "Connector pin pair";
-    PINS = "pins", "X", "Connector socket pin";
-    PINP = "pinp", "X", "Connector plug pin";
-    PLCCPU = "plccpu", "A", "PLC CPU";
-    PLCPS = "plcps", "A", "PLC power supply";
-    PLCDI = "plcdi", "A", "PLC digital input card";
-    PLCDQ = "plcdq", "A", "PLC digital output card";
-    PLCAI = "plcai", "A", "PLC analogue input card";
-    PLCAO = "plcao", "A", "PLC analogue output card";
-    PLCRTD = "plcrtd", "A", "PLC RTD card";
-    PLCIOL = "plciol", "A", "PLC IO-Link master";
+    PINPAIR = "pinpair", "Connector pin pair";
+    PINS = "pins", "Connector socket pin";
+    PINP = "pinp", "Connector plug pin";
+    PLCCPU = "plccpu", "PLC CPU";
+    PLCPS = "plcps", "PLC power supply";
+    PLCDI = "plcdi", "PLC digital input card";
+    PLCDQ = "plcdq", "PLC digital output card";
+    PLCAI = "plcai", "PLC analogue input card";
+    PLCAO = "plcao", "PLC analogue output card";
+    PLCRTD = "plcrtd", "PLC RTD card";
+    PLCIOL = "plciol", "PLC IO-Link master";
 }
 
 // ---------------------------------------------------------------- the builder (brief 048)
@@ -160,7 +160,7 @@ pub static POINT_GRID: Entry = Entry {
     group: "Symbols",
     brief: "048",
     kind: Kind::Length { min: 1.0, max: 10.0 },
-    builtin: Value::Length(crate::symbols::POINT_GRID_MM),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -352,7 +352,7 @@ pub fn prefix(doc: &Document, key: &str) -> String {
 
 /// The built-in prefix of an entry of this file (empty for any other entry).
 pub fn builtin_prefix(entry: &Entry) -> &'static str {
-    match entry.builtin {
+    match entry.builtin() {
         Value::Text(t) => t,
         _ => "",
     }

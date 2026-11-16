@@ -23,6 +23,7 @@
 //! range. A style choice ([`Kind::Style`]) also counts as absent when no style of that ID exists
 //! in its catalogue.
 
+pub use data::{DefaultsError, Slot};
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
@@ -56,6 +57,7 @@ pub const AREAS: &[&str] = &[
 pub mod bom;
 pub mod connectors;
 pub mod continuations;
+pub mod data;
 pub mod pages;
 pub mod plc;
 pub mod print;
@@ -80,8 +82,9 @@ pub struct Entry {
     /// The brief that added it: `"031"`.
     pub brief: &'static str,
     pub kind: Kind,
-    /// The built-in value; valid for `kind` (a test proves it).
-    pub builtin: Value<'static>,
+    /// Its built-in value, read from the data files on first use ([`Entry::builtin`], brief 066):
+    /// the value itself is never written in Rust.
+    pub slot: Slot<Value<'static>>,
     /// The levels that may override it.
     pub levels: &'static [Level],
     /// Where the project level is stored, when it is not the project property `key`.
@@ -267,6 +270,13 @@ impl Resolved<'_> {
 }
 
 impl Entry {
+    /// The built-in value, from the data files (brief 066, design 066 §3): read once, then a
+    /// field read. A missing or damaged built-in gives the kind's safe value
+    /// ([`data::safe_value`]), never a crash.
+    pub fn builtin(&self) -> Value<'static> {
+        *self.slot.get_or_init(|| data::builtin_value(self))
+    }
+
     /// Parse a stored value for this entry. Anything that does not parse, is not finite, is out of
     /// range, is an unknown word, is empty or too long, or holds a control character is `None`.
     pub fn parse<'a>(&self, stored: &'a str) -> Option<Value<'a>> {
@@ -424,7 +434,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
     {
         return Resolved { value, from: Source::Standard };
     }
-    Resolved { value: entry.builtin, from: Source::Builtin }
+    Resolved { value: entry.builtin(), from: Source::Builtin }
 }
 
 /// The standard's valid value of `entry`, if the project has a standard that sets one (brief
@@ -442,7 +452,7 @@ pub fn standard_value<'a>(doc: &'a Document, entry: &Entry) -> Option<Value<'a>>
 /// Read only; allocates the list and at most one symbol key.
 pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Option<Value<'a>>)> {
     let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
-    let mut out = vec![(Source::Builtin, Some(entry.builtin))];
+    let mut out = vec![(Source::Builtin, Some(entry.builtin()))];
     if entry.allows(Level::Standard) {
         out.push((Source::Standard, standard_value(doc, entry)));
     }
@@ -545,10 +555,10 @@ mod tests {
     fn every_builtin_is_valid_for_its_kind() {
         // Levels are per entry (an entry may declare fewer); only the built-in is always there.
         for e in all() {
-            assert!(e.accepts(&e.builtin), "{}: built-in {:?} is not a valid {:?}", e.key, e.builtin, e.kind);
+            assert!(e.accepts(&e.builtin()), "{}: built-in {:?} is not a valid {:?}", e.key, e.builtin(), e.kind);
             // The built-in, written as text, parses back to itself.
-            let r = Resolved { value: e.builtin, from: Source::Builtin };
-            assert_eq!(e.parse(&r.text()), Some(e.builtin), "{}", e.key);
+            let r = Resolved { value: e.builtin(), from: Source::Builtin };
+            assert_eq!(e.parse(&r.text()), Some(e.builtin()), "{}", e.key);
         }
     }
 
@@ -562,7 +572,7 @@ mod tests {
             assert_eq!(tag.parse(bad), None, "height {bad:?}");
             let mut doc = Document::default();
             doc.properties.insert(tag.key.into(), bad.into());
-            assert_eq!(resolve(&doc, tag, Scope::project()), Resolved { value: tag.builtin, from: Source::Builtin });
+            assert_eq!(resolve(&doc, tag, Scope::project()), Resolved { value: tag.builtin(), from: Source::Builtin });
         }
         for bad in ["", "a\u{7}b", "line\nbreak", &"f".repeat(65), long.as_str()] {
             assert_eq!(font.parse(bad), None, "font {bad:?}");
@@ -645,7 +655,7 @@ mod kind_tests {
         group: "Test",
         brief: "031",
         kind: Kind::Parsed { max_chars: 3, parse: prefix },
-        builtin: Value::Text("K"),
+        slot: Slot::new(),
         levels: &[Level::Project],
         project: ProjectSource::Property,
     };
@@ -660,7 +670,7 @@ mod kind_tests {
         group: "Test",
         brief: "031",
         kind: Kind::Choice(&["net", "each"]),
-        builtin: Value::Choice("net"),
+        slot: Slot::new(),
         levels: &[Level::Standard, Level::Project],
         project: ProjectSource::Settings(rule),
     };
@@ -672,7 +682,7 @@ mod kind_tests {
         group: "Test",
         brief: "031",
         kind: Kind::Length { min: 0.0, max: 10.0 },
-        builtin: Value::Length(1.0),
+        slot: Slot::new(),
         levels: &[Level::Page],
         project: ProjectSource::Property,
     };
@@ -682,7 +692,6 @@ mod kind_tests {
         assert_eq!(PARSED.parse("KA"), Some(Value::Text("KA")));
         assert_eq!(PARSED.parse("ka"), None);
         assert_eq!(PARSED.parse("KAAA"), None);
-        assert!(PARSED.accepts(&PARSED.builtin));
         let mut doc = Document::default();
         doc.properties.insert(PARSED.key.into(), "x1".into());
         assert_eq!(resolve(&doc, &PARSED, Scope::project()).from, Source::Builtin);
@@ -712,6 +721,13 @@ mod kind_tests {
 
     #[test]
     fn a_default_used_below_this_crate_is_its_model_constant() {
-        assert_eq!(text::WIRE_LABEL_HEIGHT.builtin, Value::Length(ecad_model::wiring::DEFAULT_LABEL_HEIGHT));
+        assert_eq!(text::WIRE_LABEL_HEIGHT.builtin(), Value::Length(ecad_model::wiring::DEFAULT_LABEL_HEIGHT));
+    }
+
+    #[test]
+    fn an_entry_with_no_data_takes_its_safe_value() {
+        // Not in any file: the kind's safe value, never a crash (design 066 §7).
+        assert_eq!(CHOICE.builtin(), Value::Choice("net"));
+        assert_eq!(PAGE_ONLY.builtin(), Value::Length(0.0));
     }
 }

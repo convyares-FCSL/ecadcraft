@@ -5,6 +5,7 @@
 //! - `ignored-old-setting` (Info, overseer ruling on FP4): one row per kind of 031 key
 //!   (`text.<kind>.height`, `.weight`, `.font`) still in the project's properties.
 //! - `style-limits` (Info): style records past the bounds, which are ignored.
+//! - `defaults-damaged` (Warning, brief 066): a built-in default failed to load.
 //!
 //! # Update map
 //! The rows are worked out on open, reload or first show, and again only after an op
@@ -120,6 +121,17 @@ pub fn rows(doc: &Document) -> Vec<Check> {
                 fix: Some(Fix::OpenStandards("text")),
             });
         }
+    }
+    // Brief 066 (design 066 §7): a built-in default that failed to load. Never in a tested build.
+    if let Some(first) = crate::defaults::data::builtin_problems().first() {
+        out.push(Check {
+            kind: Kind::DefaultsDamaged,
+            page: None,
+            at: None,
+            object: Object::None,
+            which: format!("Built-in defaults damaged ({first}): safe values used"),
+            fix: None,
+        });
     }
     // 050b (FP6 ruling): potential colours or cross-sections an older build stored.
     if doc.settings.wiring.potentials.iter().any(|p| p.legacy_colour.is_some() || p.legacy_cross_section.is_some()) {

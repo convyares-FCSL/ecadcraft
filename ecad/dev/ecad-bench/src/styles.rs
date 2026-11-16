@@ -135,7 +135,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         let mut values = 0;
         for k in &keys {
             let e = ecad_cadcraft::defaults::find(k).ok_or("a registry key")?;
-            let v = ecad_cadcraft::defaults::Resolved { value: e.builtin, from: ecad_cadcraft::defaults::Source::Builtin }.text();
+            let v = ecad_cadcraft::defaults::Resolved { value: e.builtin(), from: ecad_cadcraft::defaults::Source::Builtin }.text();
             if s.execute("setdefault", &json!({"key": k, "level": "standard", "value": v})).is_ok() {
                 values += 1;
             }
@@ -149,7 +149,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         exec(&mut s, "standard", json!({"new": "Bench"}))?;
         for k in &keys {
             if let Some(e) = ecad_cadcraft::defaults::find(k) {
-                let v = ecad_cadcraft::defaults::Resolved { value: e.builtin, from: ecad_cadcraft::defaults::Source::Builtin }.text();
+                let v = ecad_cadcraft::defaults::Resolved { value: e.builtin(), from: ecad_cadcraft::defaults::Source::Builtin }.text();
                 let _ = s.execute("setdefault", &json!({"key": k, "level": "standard", "value": v}));
             }
         }

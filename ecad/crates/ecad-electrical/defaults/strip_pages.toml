@@ -1,0 +1,16 @@
+# Brief 046: terminal strip pages.
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"terminal.plan.style" = "table"
+"strippage.pitch" = 9.0
+"strippage.body" = 22.0
+"strippage.lead" = 25.0
+"strippage.band_y" = 110.0
+"strippage.tagbox" = 18.0
+"strippage.bar" = 6.0
+"strippage.margin" = 10.0
+"strippage.tag_scale" = 2.0

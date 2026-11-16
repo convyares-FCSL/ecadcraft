@@ -179,7 +179,7 @@ pub struct Column {
 /// field, `revisions.custom_width` for a custom one).
 pub fn columns(doc: &Document) -> Vec<Column> {
     use crate::defaults::{Scope, Value, print, resolve};
-    let builtin: Vec<ColumnSpec> = match print::REVISION_COLUMNS.builtin {
+    let builtin: Vec<ColumnSpec> = match print::REVISION_COLUMNS.builtin() {
         Value::Text(t) => parse_columns(t).unwrap_or_default(),
         _ => Vec::new(),
     };

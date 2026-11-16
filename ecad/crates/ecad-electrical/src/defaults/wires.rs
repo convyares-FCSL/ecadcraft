@@ -5,7 +5,7 @@
 //! `wires::label_min_length`, not by key. The label rule's built-ins are `ecad-model`'s constants
 //! (`wiring::DEFAULT_LABEL_RULE`, `DEFAULT_LABEL_MIN_LENGTH`), referenced here, never copied.
 
-use super::{Entry, Kind, Level, ProjectSource, Value};
+use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 /// Standard and project.
 const SP: &[Level] = &[Level::Standard, Level::Project];
@@ -18,7 +18,7 @@ pub static WIRE_JOIN: Entry = Entry {
     group: "Wires",
     brief: "032",
     kind: Kind::Choice(&["on", "off"]),
-    builtin: Value::Choice("on"),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -44,7 +44,7 @@ pub static WIRING_LABEL_RULE: Entry = Entry {
     group: "Wire labels",
     brief: "032",
     kind: Kind::Choice(LABEL_RULES),
-    builtin: Value::Choice(ecad_model::wiring::DEFAULT_LABEL_RULE),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Settings(label_rule_setting),
 };
@@ -63,7 +63,7 @@ pub static WIRING_LABEL_MIN_LENGTH: Entry = Entry {
     group: "Wire labels",
     brief: "032",
     kind: Kind::Length { min: *ecad_model::wiring::LABEL_MIN_LENGTHS.start(), max: *ecad_model::wiring::LABEL_MIN_LENGTHS.end() },
-    builtin: Value::Length(ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH),
+    slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Settings(label_min_length_setting),
 };

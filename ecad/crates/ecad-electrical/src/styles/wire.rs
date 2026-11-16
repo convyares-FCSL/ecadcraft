@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use ecad_model::{ConductorId, Document, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Resolved, Scope, Source, Value};
+use crate::defaults::{Kind, Resolved, Scope, Slot, Source};
 
 /// The registry's built-in category choice: no category.
 pub const NONE: &str = "none";
@@ -36,38 +36,20 @@ pub fn is_line_colour(s: &str) -> bool {
 const TEXT24: Kind = Kind::Parsed { max_chars: 24, parse: any_text };
 const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
-static FIELDS: &[Field] = &[
+static FIELDS: [Field; 16] = [
     // Design 050 §5.3: potential and the BOM texts are empty by default (only colour and
     // cross-section default to `none`), so a potential named "none" is a name like any other.
-    Field { key: "potential", label: "Potential", kind: TEXT24, builtin: Value::Text(""), over: None },
-    Field { key: "colour", label: "Colour", kind: TEXT24, builtin: Value::Text(NONE), over: Some(ecad_model::wiring::COLOUR) },
-    Field { key: "cross_section", label: "Cross-section", kind: TEXT24, builtin: Value::Text(NONE), over: Some(ecad_model::wiring::CROSS_SECTION) },
-    Field {
-        key: "line_colour",
-        label: "Line colour",
-        kind: Kind::Parsed { max_chars: 16, parse: is_line_colour },
-        builtin: Value::Text("wire"),
-        over: None,
-    },
-    Field {
-        key: "line_type",
-        label: "Line type",
-        kind: Kind::Choice(&["continuous", "dashed", "dashdot"]),
-        builtin: Value::Choice("continuous"),
-        over: None,
-    },
-    Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, builtin: Value::Length(0.25), over: None },
-    Field {
-        key: "label_rule",
-        label: "Label rule",
-        kind: Kind::Choice(&["project", "net", "each", "none"]),
-        builtin: Value::Choice("project"),
-        over: None,
-    },
-    Field { key: "part_number", label: "Part number", kind: TEXT64, builtin: Value::Text(""), over: None },
-    Field { key: "maker", label: "Maker", kind: TEXT64, builtin: Value::Text(""), over: None },
-    Field { key: "description", label: "Description", kind: TEXT64, builtin: Value::Text(""), over: None },
-    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, builtin: Value::Number(0.0), over: None }, // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the category's wires.
+    Field { key: "potential", label: "Potential", kind: TEXT24, slot: Slot::new(), over: None },
+    Field { key: "colour", label: "Colour", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::COLOUR) },
+    Field { key: "cross_section", label: "Cross-section", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::CROSS_SECTION) },
+    Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: is_line_colour }, slot: Slot::new(), over: None },
+    Field { key: "line_type", label: "Line type", kind: Kind::Choice(&["continuous", "dashed", "dashdot"]), slot: Slot::new(), over: None },
+    Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
+    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(&["project", "net", "each", "none"]), slot: Slot::new(), over: None },
+    Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
+    Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
+    Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
+    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, slot: Slot::new(), over: None }, // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the category's wires.
     crate::rating::fields::RATED_CURRENT,
     crate::rating::fields::RATED_AT,
     crate::rating::fields::MAX_TEMPERATURE,
@@ -75,107 +57,22 @@ static FIELDS: &[Field] = &[
     crate::rating::fields::CONDUCTOR_CLASS,
 ];
 
-const fn cat(id: &'static str, name: &'static str, values: &'static [(&'static str, Value<'static>)]) -> Builtin {
-    Builtin { id, name, values }
+const fn cat(id: &'static str, name: &'static str) -> Builtin {
+    Builtin { id, name, slot: Slot::new() }
 }
 
-const INK: Value<'static> = Value::Text("ink");
-const WIRE: Value<'static> = Value::Text("wire");
-const HEAVY: Value<'static> = Value::Length(0.6);
-const THIN: Value<'static> = Value::Length(0.25);
-
 /// Design 050 §5.2: from 022's default potentials and the UI spec's default category colours.
-static BUILTINS: &[Builtin] = &[
-    cat(
-        "l",
-        "Power L",
-        &[
-            ("potential", Value::Text("L")),
-            ("colour", Value::Text("BN")),
-            ("cross_section", Value::Text("2.5")),
-            ("line_colour", INK),
-            ("line_weight", HEAVY),
-        ],
-    ),
-    cat(
-        "l1",
-        "Power L1",
-        &[
-            ("potential", Value::Text("L1")),
-            ("colour", Value::Text("BN")),
-            ("cross_section", Value::Text("2.5")),
-            ("line_colour", INK),
-            ("line_weight", HEAVY),
-        ],
-    ),
-    cat(
-        "l2",
-        "Power L2",
-        &[
-            ("potential", Value::Text("L2")),
-            ("colour", Value::Text("BK")),
-            ("cross_section", Value::Text("2.5")),
-            ("line_colour", INK),
-            ("line_weight", HEAVY),
-        ],
-    ),
-    cat(
-        "l3",
-        "Power L3",
-        &[
-            ("potential", Value::Text("L3")),
-            ("colour", Value::Text("GY")),
-            ("cross_section", Value::Text("2.5")),
-            ("line_colour", INK),
-            ("line_weight", HEAVY),
-        ],
-    ),
-    cat(
-        "n",
-        "Neutral",
-        &[
-            ("potential", Value::Text("N")),
-            ("colour", Value::Text("BU")),
-            ("cross_section", Value::Text("2.5")),
-            ("line_colour", INK),
-            ("line_weight", HEAVY),
-        ],
-    ),
-    cat(
-        "pe",
-        "Protective earth",
-        &[
-            ("potential", Value::Text("PE")),
-            ("colour", Value::Text("GNYE")),
-            ("cross_section", Value::Text("2.5")),
-            ("line_colour", WIRE),
-            ("line_weight", THIN),
-        ],
-    ),
-    cat(
-        "dc24",
-        "24 V DC",
-        &[
-            ("potential", Value::Text("24V")),
-            ("colour", Value::Text("BU")),
-            ("cross_section", Value::Text("0.5")),
-            ("line_colour", WIRE),
-            ("line_weight", THIN),
-        ],
-    ),
-    cat(
-        "dc0",
-        "0 V DC",
-        &[
-            ("potential", Value::Text("0V")),
-            ("colour", Value::Text("BU")),
-            ("cross_section", Value::Text("0.5")),
-            ("line_colour", WIRE),
-            ("line_weight", THIN),
-        ],
-    ),
-    cat("signal", "Signal", &[("cross_section", Value::Text("0.5")), ("line_colour", INK), ("line_weight", THIN)]),
-    cat("analogue", "Analogue", &[("cross_section", Value::Text("0.5")), ("line_colour", INK), ("line_weight", THIN)]),
+static BUILTINS: [Builtin; 10] = [
+    cat("l", "Power L"),
+    cat("l1", "Power L1"),
+    cat("l2", "Power L2"),
+    cat("l3", "Power L3"),
+    cat("n", "Neutral"),
+    cat("pe", "Protective earth"),
+    cat("dc24", "24 V DC"),
+    cat("dc0", "0 V DC"),
+    cat("signal", "Signal"),
+    cat("analogue", "Analogue"),
 ];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
@@ -184,7 +81,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The wire category catalogue.
 pub static CATALOGUE: Catalogue =
-    Catalogue { word: "wire", plural: "Wire categories", one: "Wire category", fields: FIELDS, builtins: BUILTINS, choices, project_field: None };
+    Catalogue { word: "wire", plural: "Wire categories", one: "Wire category", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
 
 /// Where a conductor's category came from (the inspector's badge, design 050 §7.5).
 #[derive(Debug, Clone, PartialEq, Eq)]

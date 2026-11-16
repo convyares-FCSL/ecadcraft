@@ -474,7 +474,7 @@ pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
 /// The family CADCraft's resolver looks for when the project's family is missing: the built-in of
 /// `text.font` (§2.2 step 3).
 pub(crate) fn default_family() -> &'static str {
-    match d::FONT.builtin {
+    match d::FONT.builtin() {
         defaults::Value::Text(t) => t,
         _ => "",
     }

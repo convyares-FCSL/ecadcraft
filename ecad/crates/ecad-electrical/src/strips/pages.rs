@@ -75,7 +75,7 @@ pub struct Geometry {
 impl Default for Geometry {
     /// The built-ins.
     fn default() -> Self {
-        let n = |e: &crate::defaults::Entry| match e.builtin {
+        let n = |e: &crate::defaults::Entry| match e.builtin() {
             crate::defaults::Value::Length(x) | crate::defaults::Value::Number(x) => x,
             _ => 0.0,
         };

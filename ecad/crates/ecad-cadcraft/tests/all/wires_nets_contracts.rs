@@ -506,7 +506,7 @@ fn the_join_default_comes_from_the_registry() {
     }
     // The label rule's built-ins are ecad-model's constants.
     let rule = &ecad_cadcraft::defaults::wires::WIRING_LABEL_RULE;
-    assert_eq!(rule.builtin, ecad_cadcraft::defaults::Value::Choice(ecad_model::wiring::DEFAULT_LABEL_RULE));
+    assert_eq!(rule.builtin(), ecad_cadcraft::defaults::Value::Choice(ecad_model::wiring::DEFAULT_LABEL_RULE));
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {

@@ -35,10 +35,6 @@ use crate::text_style::fonts::TextMetrics;
 pub const TAG_LAYER: &str = "ECAD-TAGS";
 /// `ecad.provisional` (design 026 §10): ACI 30, orange, for provisional tags and wire numbers.
 pub const PROVISIONAL_ACI: u8 = 30;
-/// The tag height before brief 031, millimetres. **Not used for drawing**: a derived text's height
-/// comes from [`crate::text_style::text_style`] (`texts_on_page` restyles every text it returns).
-/// Kept only because `wires::continuation_texts` (lane W's file) still names it.
-pub const TAG_HEIGHT: f64 = 3.5;
 /// Tag numbers are padded to this many digits unless the project says otherwise (owner, 2026-11-08).
 pub const DEFAULT_PADDING: u8 = ecad_model::DEFAULT_TAG_PADDING;
 /// Most letters in a tag prefix a project may set.
