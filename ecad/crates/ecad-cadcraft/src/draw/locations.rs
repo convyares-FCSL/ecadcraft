@@ -34,18 +34,25 @@ pub fn styled_label_entity(
     if label == crate::text_style::style_of(doc, TextKind::LocationLabel, crate::defaults::Scope::project()) {
         return e;
     }
-    let f = |k: &str| crate::styles::field_of(doc, "text", &label, k, None);
-    if let (Some(h), cadcraft_engine::doc::EntityKind::Text(t)) = (f("height"), &mut e.kind) {
-        t.height = h.length(doc);
-        t.style = match f("weight").map(|r| r.word()) {
-            Some("bold") => crate::text_style::STYLE_BOLD.into(),
-            _ => crate::text_style::STYLE_REGULAR.into(),
-        };
+    // Brief 066d: the label style as a whole (height, weight, font, colour), never a literal
+    // style name; a font of its own is installed by the page (`install_family`).
+    let own = crate::text_style::own_style_of(doc, &label);
+    if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
+        t.height = own.style.height;
     }
-    if let Some(rgb) = f("colour").and_then(|r| crate::look::colour_rgb(&r.text(), crate::look::projection_sheet())) {
-        e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
-    }
+    look.apply_own(&mut e, TextKind::LocationLabel, &own);
     e
+}
+
+/// The font family a box's label style draws in when it is not the project font (brief 066d), for
+/// the page to install (`install_family`).
+pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
+    let c = doc.representations.get(&rep).and_then(|r| match r.subject {
+        Subject::Component(c) => Some(c),
+        _ => None,
+    })?;
+    let label = crate::styles::location::box_look(doc, c).label_style;
+    crate::text_style::own_style_of(doc, &label).family
 }
 
 /// Brief 050a (design 050 §4.2): draw the outlines of `page`'s boxes in their location style

@@ -157,10 +157,15 @@ fn kind_for_symbol(s: &SymbolInstance) -> EntityKind {
 /// The entity for an item, with the given handle.
 pub fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity> {
     let layer = doc.layers.get(&item.style.layer)?;
-    let kind = match &item.kind {
+    let mut kind = match &item.kind {
         ItemKind::Primitive(p) => kind_for_primitive(p),
         ItemKind::Symbol(s) => kind_for_symbol(s),
     };
+    // Brief 066d: a free text on a page is drawn in the `Free` text style's font and weight (its
+    // height and colour are the user's own).
+    if let EntityKind::Text(t) = &mut kind {
+        t.style = crate::text_style::text_style(doc, crate::text_style::TextKind::Free).style_name.to_string();
+    }
     Some(Entity { handle, common: common_for(&item.style, &layer.name), kind })
 }
 

@@ -105,6 +105,12 @@ pub struct FrameText {
 }
 
 impl TextLook {
+    /// Whether its style is bold (the CADCraft style name of a bold weight; brief 066d: a block
+    /// item's `bold` comes from its kind's style, never a literal).
+    pub fn bold(&self) -> bool {
+        self.style.ends_with("BOLD")
+    }
+
     /// `kind`'s look in a project of length unit `unit`, from its resolved `look`.
     pub fn of(look: &Look, kind: TextKind, unit: LengthUnit) -> TextLook {
         let s = look.style(kind);

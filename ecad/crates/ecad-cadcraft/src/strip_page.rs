@@ -175,6 +175,10 @@ impl Pen {
 struct Looks {
     tag: TextLook,
     table: TextLook,
+    /// A terminal's number or label (brief 066d: its own kind, `PointLabel`).
+    point: TextLook,
+    /// The strip's location in the tag box (brief 066d: `LocationLabel`).
+    location: TextLook,
     reference: TextLook,
     wire: TextLook,
     cable: TextLook,
@@ -193,6 +197,8 @@ pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f
     let lk = Looks {
         tag: TextLook { mm: heading.mm * g.tag_scale, ..heading },
         table: look(TextKind::Table),
+        point: look(TextKind::PointLabel),
+        location: look(TextKind::LocationLabel),
         reference: look(TextKind::Reference),
         wire: look(TextKind::WireLabel),
         cable: look(TextKind::CableText),
@@ -300,7 +306,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
                     _ => r.shown.clone(),
                 };
                 let mid = if r.breaks() { yc + up + g.body * 0.2 } else { yc + up };
-                pen.text((cx - 1.2, mid), lk.table, &label, HAlign::Center, true, Some(g.body * if r.breaks() { 0.55 } else { 0.9 }));
+                pen.text((cx - 1.2, mid), lk.point, &label, HAlign::Center, true, Some(g.body * if r.breaks() { 0.55 } else { 0.9 }));
                 if let Some(place) = &r.place {
                     pen.text((cx + 2.0, mid), lk.reference, &place.text(style), HAlign::Center, true, Some(g.body * 0.55));
                 }
@@ -357,7 +363,7 @@ fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Looks) {
     let room = Some(y1 - y0 - 2.0);
     pen.text((x0 + g.tagbox * 0.3, fr.yc), lk.tag, &s.tag, HAlign::Center, true, room);
     let loc = s.location.clone().unwrap_or_else(|| MISSING.into());
-    pen.text((x0 + g.tagbox * 0.62, fr.yc), lk.table, &loc, HAlign::Center, true, room);
+    pen.text((x0 + g.tagbox * 0.62, fr.yc), lk.location, &loc, HAlign::Center, true, room);
     pen.text((x0 + g.tagbox * 0.85, fr.yc), lk.description, &s.counts_text(), HAlign::Center, true, room);
     // The lanes the band uses: links in its upper half, wire bridges in its lower half.
     if !s.acc.links.is_empty() {

@@ -850,15 +850,17 @@ pub const UNAVAILABLE_SUFFIX: &str = " [unavailable]";
 fn placeholder_drawing() -> Drawing {
     let mut d = base_drawing();
     let handle = d.new_handle();
+    // Brief 066d (overseer ruling 3): the built-in `Free` text style; the page could not be read.
+    let free = crate::text_style::text_style(&ecad_model::Document::default(), crate::text_style::TextKind::Free);
     let text = Text {
         insert: cadcraft_engine::geom::Vec3::new(0.0, 0.0, 0.0),
         align_pt: None,
-        height: 5.0,
+        height: free.height,
         value: PLACEHOLDER_TEXT.into(),
         rotation: 0.0,
         width_factor: 1.0,
         oblique: 0.0,
-        style: "Standard".into(),
+        style: free.style_name.into(),
         halign: Default::default(),
         valign: Default::default(),
     };
@@ -1111,6 +1113,9 @@ pub fn project_page_kept(
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
+        if let Some(f) = crate::locations::label_family(doc, rep) {
+            crate::text_style::install_family(&mut d, doc, &f);
+        }
         ents.push(crate::locations::styled_label_entity(doc, &look, rep, &value, at, h));
         map.insert_tag_text(rep, crate::devices::TextOf::Tag, h);
     }
