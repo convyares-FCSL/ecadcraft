@@ -10,3 +10,4 @@ pub mod style;
 pub mod symbol;
 pub mod text;
 pub mod wire;
+pub mod xref;

@@ -54,10 +54,6 @@ const UNTYPED: &[&str] = &[
     "renumber",
     "finalise",
     "numbering",
-    "xrefs",
-    "contacts",
-    "refgoto",
-    "mirrormove",
     "terminals",
     "bridge",
     "stripplan",
@@ -662,4 +658,61 @@ fn the_typed_symbol_commands_still_work() {
     assert_eq!((&v2["version"], &v2["lineage"], &v2["updated"], &v2["left"]), (&json!(2), &json!(lineage), &json!(0), &json!(0)), "{v2}");
     let none = h.run("symbolupdate", json!({"lineage": lineage})).err().unwrap_or_default();
     assert_eq!(none, "Nothing to update: every copy shows this version.");
+}
+
+/// Input refusals of the cross-reference commands: one wording.
+#[test]
+fn the_xref_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("xrefs", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("xrefs", json!({"after": -1}), "`after` must be a whole number, or null"),
+        ("xrefs", json!({"cable": "zz"}), "`cable` must be a hex id, or null"),
+        ("contacts", json!({}), "`component` (hex id) is required"),
+        ("refgoto", json!({"target": "1"}), "`source` (hex id) is required"),
+        ("mirrormove", json!({"component": "1", "at": [1]}), "`at` must be a point [x, y], or null"),
+        ("mirrormove", json!({"component": "1", "placement": 5}), "`placement` must be text, or null"),
+        (
+            "mirrormove",
+            json!({"component": "1", "side": "left"}),
+            "`side` is not a parameter of this command; it takes `at`, `component`, `placement`",
+        ),
+    ];
+    let mut h = H::new(7023);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the cross-reference commands keep their words.
+#[test]
+fn the_xref_commands_keep_their_rule_words() {
+    let mut h = H::new(7024);
+    let k = h.run("place", json!({"symbol": "coil", "at": [50, 50]})).unwrap_or(Value::Null);
+    let c = k["component"].as_str().unwrap_or_default().to_string();
+    let rows: &[(&str, Value, &str)] = &[
+        ("refgoto", json!({"source": "1"}), "no such reference"),
+        ("mirrormove", json!({"component": "1", "placement": "below"}), "no such component"),
+        ("mirrormove", json!({"component": c, "at": [1, 1], "placement": "below"}), "give `at` or `placement`, not both"),
+        ("mirrormove", json!({"component": c}), "`at` ([x, y]) or `placement` (auto, below, right, off) is required"),
+        ("mirrormove", json!({"component": c, "at": [99999, 0]}), "Put the table within 2000 mm of its coil."),
+    ];
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// The typed cross-reference commands still work, and answer as before.
+#[test]
+fn the_typed_xref_commands_still_work() {
+    let mut h = H::new(7025);
+    let k = h.run("place", json!({"symbol": "coil", "at": [50, 50]})).unwrap_or(Value::Null);
+    let c = k["component"].as_str().unwrap_or_default().to_string();
+    let list = h.run("xrefs", json!({"component": c, "limit": 5, "after": 0})).unwrap_or(Value::Null);
+    assert!(list.is_object(), "{list}");
+    let t = h.run("contacts", json!({"component": c})).unwrap_or(Value::Null);
+    assert!(t.is_object(), "{t}");
+    let off = h.run("mirrormove", json!({"component": c, "placement": "off"})).unwrap_or(Value::Null);
+    assert_eq!((&off["changed"], &off["mirror"]), (&json!(true), &json!("off")), "{off}");
+    let again = h.run("mirrormove", json!({"component": c, "placement": "off"})).unwrap_or(Value::Null);
+    assert_eq!(again, json!({"changed": false, "mirror": "off"}));
 }
