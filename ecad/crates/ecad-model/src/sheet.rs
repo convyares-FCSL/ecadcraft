@@ -130,15 +130,15 @@ impl SheetSpec {
     ///
     /// # Errors
     /// The limit broken, in words.
-    pub fn check(&self) -> Result<(), String> {
+    pub fn check(&self) -> Result<(), crate::ParseError> {
         if !(MIN_WIDTH_MM..=MAX_WIDTH_MM).contains(&self.width) {
-            return Err(format!("The width must be {MIN_WIDTH_MM} to {MAX_WIDTH_MM} mm."));
+            return Err(crate::ParseError::invalid(crate::Parsed::Sheet, format!("The width must be {MIN_WIDTH_MM} to {MAX_WIDTH_MM} mm.")));
         }
         if !(MIN_HEIGHT_MM..=MAX_HEIGHT_MM).contains(&self.height) {
-            return Err(format!("The height must be {MIN_HEIGHT_MM} to {MAX_HEIGHT_MM} mm."));
+            return Err(crate::ParseError::invalid(crate::Parsed::Sheet, format!("The height must be {MIN_HEIGHT_MM} to {MAX_HEIGHT_MM} mm.")));
         }
         if !(1..=MAX_GRID).contains(&self.columns) || !(1..=MAX_GRID).contains(&self.rows) {
-            return Err(format!("Columns and rows must be 1 to {MAX_GRID}."));
+            return Err(crate::ParseError::invalid(crate::Parsed::Sheet, format!("Columns and rows must be 1 to {MAX_GRID}.")));
         }
         Ok(())
     }
@@ -149,8 +149,8 @@ impl SheetSpec {
     ///
     /// # Errors
     /// [`unknown_sheet`] for text that does not read so, or a size or grid out of range.
-    pub fn parse(text: &str) -> Result<SheetSpec, String> {
-        let bad = || unknown_sheet(text.trim());
+    pub fn parse(text: &str) -> Result<SheetSpec, crate::ParseError> {
+        let bad = || crate::ParseError::invalid(crate::Parsed::Sheet, unknown_sheet(text.trim()));
         let lower = text.trim().to_ascii_lowercase().replace('×', "x");
         let mut words = lower.split_whitespace();
         let first = words.next().ok_or_else(bad)?;
@@ -701,7 +701,7 @@ mod tests {
         for bad in ["", "A5", "A3 x", "100x100", "A3 30x6", "A3 letters numbers letters", "A3 letters 8x6"] {
             assert!(SheetSpec::parse(bad).is_err(), "{bad}");
         }
-        assert_eq!(SheetSpec::parse("A5").unwrap_err(), unknown_sheet("A5"));
+        assert_eq!(SheetSpec::parse("A5").unwrap_err().to_string(), unknown_sheet("A5"));
     }
 
     #[test]

@@ -467,7 +467,7 @@ struct Tagged {
 ///
 /// # Errors
 /// [`BAD_START`] or [`BAD_DIGITS`] for values out of range; an unknown folder.
-pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, String> {
+pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, crate::ParseError> {
     plan_ranked(doc, req, high, &|_| 0)
 }
 
@@ -481,22 +481,22 @@ pub type Rank<'a> = &'a dyn Fn(&Representation) -> u8;
 ///
 /// # Errors
 /// As [`plan`].
-pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'_>) -> Result<Plan, String> {
+pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'_>) -> Result<Plan, crate::ParseError> {
     if let Some(s) = req.start
         && !(1..=tag::MAX_TAG_NUMBER).contains(&s)
     {
-        return Err(BAD_START.into());
+        return Err(crate::ParseError::invalid(crate::Parsed::Numbering, BAD_START));
     }
     if let Some(d) = req.digits
         && !(1..=tag::MAX_PADDING).contains(&d)
     {
-        return Err(BAD_DIGITS.into());
+        return Err(crate::ParseError::invalid(crate::Parsed::Numbering, BAD_DIGITS));
     }
     let mut places = Places::new(doc);
     let pages: Option<BTreeSet<PageId>> = match &req.scope {
         Scope::Folder(f) => {
             if !doc.folders.contains_key(f) {
-                return Err("No such folder.".into());
+                return Err(crate::ParseError::NotFound(crate::Noun::Folder));
             }
             Some(places.pages_of_folder(*f))
         }

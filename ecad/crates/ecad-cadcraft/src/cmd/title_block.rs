@@ -68,7 +68,7 @@ pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
 /// The sheet a call names (`sheet`), else the project's.
 fn sheet_param(doc: &Document, params: &Value) -> Result<SheetSpec, String> {
     match text_param(params, "sheet") {
-        Some(t) => SheetSpec::parse(t),
+        Some(t) => SheetSpec::parse(t).map_err(String::from),
         None => Ok(doc.settings.sheet.check().map(|()| doc.settings.sheet).unwrap_or_default()),
     }
 }

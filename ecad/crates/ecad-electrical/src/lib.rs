@@ -17,16 +17,20 @@
 //! [`text_style::fonts::TextMetrics`], which the caller supplies.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub use error::{CmdError, msg};
+
 pub mod accessories;
 pub mod bom;
 pub mod cables;
 pub mod checks;
+
 pub mod connectors;
 pub mod continuations;
 pub mod defaults;
 pub mod designations;
 pub mod device_list;
 pub mod devices;
+pub mod error;
 pub mod frames;
 pub mod front;
 pub mod generated;

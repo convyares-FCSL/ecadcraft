@@ -22,6 +22,7 @@
 use std::cmp::Ordering;
 
 use crate::doc::{Document, Properties};
+use crate::error::{ParseError, Parsed};
 use crate::id::{ComponentId, TerminalId};
 
 /// What every link key starts with.
@@ -131,25 +132,29 @@ pub enum Item {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Positions(pub Vec<Item>);
 
-fn refusal(text: &str) -> String {
+fn refusal(text: &str) -> ParseError {
     let shown: String = text.chars().take(24).collect();
     let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    format!("\"{shown}{more}\" is not a link. Write positions like 1-4 or 7, 9, 11.")
+    link(format!("\"{shown}{more}\" is not a link. Write positions like 1-4 or 7, 9, 11."))
 }
 
-fn label(s: &str, text: &str) -> Result<String, String> {
+fn link(why: impl Into<std::borrow::Cow<'static, str>>) -> ParseError {
+    ParseError::invalid(Parsed::Link, why)
+}
+
+fn label(s: &str, text: &str) -> Result<String, ParseError> {
     let l = s.trim();
     if l.is_empty() || l.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(refusal(text));
     }
     if l.chars().count() > MAX_LABEL_CHARS {
-        return Err(format!("A position label has at most {MAX_LABEL_CHARS} characters."));
+        return Err(link(format!("A position label has at most {MAX_LABEL_CHARS} characters.")));
     }
     Ok(l.to_string())
 }
 
-fn level_refusal(end: &str) -> String {
-    format!("\"{end}\" names no level. Levels are 1 to {MAX_LEVEL}: write 4.2 for position 4, level 2.")
+fn level_refusal(end: &str) -> ParseError {
+    link(format!("\"{end}\" names no level. Levels are 1 to {MAX_LEVEL}: write 4.2 for position 4, level 2."))
 }
 
 /// Read a link's positions (spaces ignored).
@@ -157,14 +162,14 @@ fn level_refusal(end: &str) -> String {
 /// # Errors
 /// Unreadable text, an empty item, a label longer than [`MAX_LABEL_CHARS`], more than
 /// [`MAX_ITEMS`] items, in words with the way forward.
-pub fn parse(text: &str) -> Result<Positions, String> {
+pub fn parse(text: &str) -> Result<Positions, ParseError> {
     if text.chars().count() > MAX_TEXT_CHARS {
-        return Err(format!("A link names at most {MAX_ITEMS} positions."));
+        return Err(link(format!("A link names at most {MAX_ITEMS} positions.")));
     }
     let mut items = Vec::new();
     for part in text.split(',') {
         if items.len() >= MAX_ITEMS {
-            return Err(format!("A link names at most {MAX_ITEMS} positions."));
+            return Err(link(format!("A link names at most {MAX_ITEMS} positions.")));
         }
         let part = part.trim();
         match part.split_once('-') {
@@ -176,9 +181,9 @@ pub fn parse(text: &str) -> Result<Positions, String> {
                 let (pa, la) = split_level(&a).map_err(|_| level_refusal(&a))?;
                 let (pb, lb) = split_level(&b).map_err(|_| level_refusal(&b))?;
                 if pa != pb && la.unwrap_or((1, None)).0 != lb.unwrap_or((1, None)).0 {
-                    return Err(format!(
+                    return Err(link(format!(
                         "\"{a}-{b}\" joins different levels at different positions. Write {pa}.1-{pb}.1, or {pa}.1-{pa}.2 for levels of one position."
-                    ));
+                    )));
                 }
                 let ord = if pa == pb { la.unwrap_or((1, None)).cmp(&lb.unwrap_or((1, None))) } else { cmp_labels(pa, pb) };
                 items.push(match ord {

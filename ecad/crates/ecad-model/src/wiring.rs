@@ -682,16 +682,16 @@ pub fn unnumbered_nets(doc: &Document) -> usize {
 ///
 /// # Errors
 /// The rule it breaks, in words.
-pub fn valid_number(text: &str) -> Result<String, String> {
+pub fn valid_number(text: &str) -> Result<String, crate::ParseError> {
     let t = text.trim();
     if t.is_empty() {
-        return Err("A wire number needs at least one character.".into());
+        return Err(crate::ParseError::invalid(crate::Parsed::WireNumber, "A wire number needs at least one character."));
     }
     if t.chars().count() > MAX_VALUE_CHARS {
-        return Err(format!("A wire number is at most {MAX_VALUE_CHARS} characters."));
+        return Err(crate::ParseError::invalid(crate::Parsed::WireNumber, format!("A wire number is at most {MAX_VALUE_CHARS} characters.")));
     }
     if t.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        return Err("A wire number has no spaces or control characters.".into());
+        return Err(crate::ParseError::invalid(crate::Parsed::WireNumber, "A wire number has no spaces or control characters."));
     }
     Ok(t.to_string())
 }
