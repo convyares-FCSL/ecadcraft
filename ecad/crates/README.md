@@ -51,7 +51,7 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 | [`ecad-tokens`](ecad-tokens/README.md) | UI kit | The screen's look as constants: shell colours, spacing, type, icons. |
 | [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table. |
 | [`ecad-desktop`](../apps/ecad-desktop/README.md) | Programs | The desktop program: command line, window, start-up timing. |
-| [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (`ecad upgrade`). |
+| [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (no commands in this version). |
 | [`ecad-mcp`](../apps/ecad-mcp/README.md) | Programs | ECAD for agents over MCP, with a write gate. |
 | [`ecad-bench`](../dev/ecad-bench/README.md) | Dev | The load benchmark (`cargo xtask bench`). |
 | [`ecad-inspector`](../dev/ecad-inspector/README.md) | Dev | `ecadinspect`: look inside a `.ecad` file, text or web page. |
