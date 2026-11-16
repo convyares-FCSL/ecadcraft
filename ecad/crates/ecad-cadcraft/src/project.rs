@@ -772,9 +772,11 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
 
 /// One part of a device cross-reference (brief 025) as an entity on the tags layer: a text, or a
 /// line (the table's bar at the wire lineweight).
-pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
+/// Brief 066d: a text part is drawn in its kind's text style (font, weight, colour), as every
+/// other derived text is.
+pub(crate) fn xref_entity(look: &crate::text_style::Look, part: &crate::xref::Part, handle: Handle) -> Entity {
     let mut e = match &part.shape {
-        crate::xref::Shape::Text { at, value, height, halign, valign, rotation } => {
+        crate::xref::Shape::Text { kind, at, value, height, halign, valign, rotation } => {
             let mut e = crate::devices::text_entity_with(
                 value,
                 *at,
@@ -789,6 +791,7 @@ pub(crate) fn xref_entity(part: &crate::xref::Part, handle: Handle) -> Entity {
             if let EntityKind::Text(t) = &mut e.kind {
                 t.rotation = *rotation;
             }
+            look.apply(&mut e, *kind);
             e
         }
         crate::xref::Shape::Line(a, b) => Entity {
@@ -1084,7 +1087,7 @@ pub fn project_page_kept(
     // on every draw of the page, never stored.
     for part in crate::xref::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
-        let mut e = xref_entity(&part, h);
+        let mut e = xref_entity(&look, &part, h);
         // Brief 049 (review of #85, 3): a continuation's other-end text in the sheet's Ink 2.
         crate::continuations::colour(doc, &part, &mut e);
         ents.push(e);
@@ -1093,7 +1096,7 @@ pub fn project_page_kept(
     // PLC card frames (brief 051): derived on every draw, never stored; mapped like 025's parts.
     for part in crate::plc::look::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
-        ents.push(xref_entity(&part, h));
+        ents.push(xref_entity(&look, &part, h));
         map.insert_xref(part.rep, part.index, h);
     }
     // Link lines (brief 030): derived on every draw, never stored.

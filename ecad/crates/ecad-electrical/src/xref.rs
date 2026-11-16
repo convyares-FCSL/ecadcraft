@@ -55,6 +55,14 @@ use serde_json::{Value, json};
 use crate::symbols::{Kind, Starter};
 use crate::text_style::fonts::TextMetrics;
 
+/// The text style of a contact's or a connector member's reference (brief 066d).
+const REF: crate::text_style::TextKind = crate::text_style::TextKind::Reference;
+
+/// The height of reference text in drawing units: the `Reference` text style's.
+fn ref_height(doc: &Document) -> f64 {
+    crate::text_style::text_style(doc, REF).height
+}
+
 /// The component property that says what contacts the part offers (FP1): `3P+1NO+1NC`.
 pub const CONTACTS_KEY: &str = "contacts";
 /// The component property that says where the device's contact table goes (FP2).
@@ -65,10 +73,8 @@ pub const MAX_POLES: usize = 32;
 pub const MAX_LABEL_CHARS: usize = 16;
 /// Most millimetres a moved table may be from its coil, in each direction.
 pub const MAX_OFFSET_MM: f64 = 2_000.0;
-/// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`), 2.5 mm. Brief 066 (design 066 §2.4) found that it
-/// bypasses the `reference` text style (built-in 2.0 mm); it stays a constant so nothing on a page
-/// moves, until the owner decides which height contact tables take.
-pub const XREF_TEXT_MM: f64 = 2.5;
+/// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
+/// style (brief 066d), never a size of its own.
 /// `ecad.xref-spare`: ACI 8.
 pub const SPARE_ACI: u8 = 8;
 /// `ecad.orphan`: ACI 1, for rows drawn beyond the offer.
@@ -735,7 +741,10 @@ pub enum VAlign {
 pub enum Shape {
     Line(Pt, Pt),
     /// `rotation` in radians (brief 049, FP3): 0 for every text but a continuation's reference.
+    /// `kind` is the text style it is drawn in (brief 066d): its height is that style's, and the
+    /// engine applies the style's font, weight and colour.
     Text {
+        kind: crate::text_style::TextKind,
         at: Pt,
         value: String,
         height: f64,
@@ -802,7 +811,7 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     at.is_finite().then_some(Part {
         rep,
         index: 0,
-        shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign, valign: VAlign::Top, rotation: 0.0 },
+        shape: Shape::Text { kind: REF, at, value, height: ref_height(doc), halign, valign: VAlign::Top, rotation: 0.0 },
         aci: None,
         row: None,
         bar: false,
@@ -1026,6 +1035,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
             State::Over => Some(OVER_ACI),
         };
         let text = |x: f64, value: &str, halign: HAlign| Shape::Text {
+            kind: crate::text_style::TextKind::Table,
             at: at(x, y),
             value: value.to_string(),
             height: h,
@@ -1091,7 +1101,7 @@ pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) 
             Part {
                 rep: rid,
                 index: 0,
-                shape: Shape::Text { at, value, height: XREF_TEXT_MM * k, halign: HAlign::Center, valign: VAlign::Top, rotation: 0.0 },
+                shape: Shape::Text { kind: REF, at, value, height: ref_height(doc), halign: HAlign::Center, valign: VAlign::Top, rotation: 0.0 },
                 aci: None,
                 row: None,
                 bar: false,

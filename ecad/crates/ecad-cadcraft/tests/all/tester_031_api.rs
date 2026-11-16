@@ -13,7 +13,7 @@ const KINDS: &[(TextKind, f64, Weight)] = &[
     (TextKind::Description, 1.6, Weight::Regular),
     (TextKind::PartNumber, 1.6, Weight::Regular),
     (TextKind::ContinuationName, 2.0, Weight::Regular),
-    (TextKind::Reference, 2.0, Weight::Regular),
+    (TextKind::Reference, 2.5, Weight::Regular),
     (TextKind::WireLabel, 2.5, Weight::Regular),
     (TextKind::CableText, 1.6, Weight::Regular),
     (TextKind::LocationLabel, 1.6, Weight::Regular),

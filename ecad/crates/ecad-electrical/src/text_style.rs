@@ -1038,7 +1038,7 @@ mod tests {
         (TextKind::Description, 1.6, Weight::Regular),
         (TextKind::PartNumber, 1.6, Weight::Regular),
         (TextKind::ContinuationName, 2.0, Weight::Regular),
-        (TextKind::Reference, 2.0, Weight::Regular),
+        (TextKind::Reference, 2.5, Weight::Regular),
         // Brief 049 (design 049 §7).
         (TextKind::ContinuationCaption, 2.5, Weight::Regular),
         (TextKind::WireLabel, 2.5, Weight::Regular),
