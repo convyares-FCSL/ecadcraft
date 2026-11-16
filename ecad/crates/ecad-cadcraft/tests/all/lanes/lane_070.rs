@@ -58,13 +58,6 @@ const UNTYPED: &[&str] = &[
     "contacts",
     "refgoto",
     "mirrormove",
-    "locationbox",
-    "functionbox",
-    "bom",
-    "wirelist",
-    "cablelist",
-    "printbook",
-    "reports",
     "terminals",
     "bridge",
     "stripplan",
@@ -337,4 +330,66 @@ fn the_typed_sheet_commands_still_work() {
     assert_eq!(undone, json!({"rev": rev, "undone": true}));
     let d = h.run("deletefolder", json!({"folder": folder})).unwrap_or(Value::Null);
     assert_eq!(d["pages_moved"], json!(0));
+}
+
+/// Input refusals of the box and report commands: one wording.
+#[test]
+fn the_output_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("locationbox", json!({}), "`location` (text) is required"),
+        ("locationbox", json!({"location": "+CP1", "corners": [[0, 0]]}), "`corners` needs at least 2 entries"),
+        ("functionbox", json!({"function": 5}), "`function` must be text"),
+        ("bom", json!({"lines": "x"}), "`lines` must be one of \"flat\", \"nested\", or null"),
+        ("bom", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("cablelist", json!({"include_not_drawn": 1}), "`include_not_drawn` must be true or false, or null"),
+        ("printbook", json!({"lineweights": "x"}), "`lineweights` must be true or false, or null"),
+        ("reports", json!({"x": 1}), "`x` is not a parameter of this command; it takes none"),
+    ];
+    let mut h = H::new(7008);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the box and report commands keep their words.
+#[test]
+fn the_output_commands_keep_their_rule_words() {
+    let scope = "`scope` is \"all\", {folder: id} or {pages: \"100, 105-110\"}";
+    let rows: &[(&str, Value, &str)] = &[
+        (
+            "locationbox",
+            json!({"location": "+CP1"}),
+            "give exactly one of `corners` (two corners), `points` (a closed outline) or `item` (a closed polyline)",
+        ),
+        ("locationbox", json!({"location": "+CP1", "corners": [[0, 0], [50, 50]], "proposal": "x"}), ecad_electrical::msg::PROPOSAL_WORDS),
+        ("bom", json!({"group": "x"}), "`group` is \"location\" or \"part\""),
+        ("bom", json!({"columns": ["x"]}), "`columns` lists optional columns: [\"article\"]"),
+        ("printbook", json!({"scope": "some"}), scope),
+        ("printbook", json!({"scope": {}}), scope),
+        ("printbook", json!({"colour": "pink"}), "`colour` is \"mono\" (black, the colour code in the wire label) or \"colour\" (wire colours)"),
+    ];
+    let mut h = H::new(7009);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// The typed box and report commands still work, and answer as before.
+#[test]
+fn the_typed_output_commands_still_work() {
+    let mut h = H::new(7010);
+    let b = h.run("locationbox", json!({"location": "+CP1", "corners": [[10, 10], [60, 60]]})).unwrap_or(Value::Null);
+    assert_eq!(
+        (&b["inside"], &b["message"]),
+        (&json!(0), &json!("Location box +CP1: 0 devices inside. New location +CP1 added to the project's list."))
+    );
+    let f = h.run("functionbox", json!({"function": "=F1", "points": [[100, 10], [150, 10], [150, 60], [100, 60]]})).unwrap_or(Value::Null);
+    assert!(f["message"].as_str().is_some_and(|m| m.starts_with("Function box =F1")), "{f}");
+    let bom = h.run("bom", json!({"group": "part", "columns": ["article"], "lines": "flat"})).unwrap_or(Value::Null);
+    assert!(bom["rows"].is_array() && bom["total"].is_number(), "{bom}");
+    let wires = h.run("wirelist", json!({"limit": 1})).unwrap_or(Value::Null);
+    assert!(wires["rows"].is_array(), "{wires}");
+    let cables = h.run("cablelist", json!({"include_not_drawn": false})).unwrap_or(Value::Null);
+    assert!(cables["rows"].is_array(), "{cables}");
+    assert_eq!(h.run("reports", json!({})).unwrap_or(Value::Null), json!({"open": "reports"}));
 }
