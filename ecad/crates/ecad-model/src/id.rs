@@ -29,6 +29,22 @@ macro_rules! typed_id {
             }
         }
 
+        /// A hex string in a command's parameters (brief 070).
+        #[cfg(feature = "schema")]
+        impl schemars::JsonSchema for $name {
+            fn inline_schema() -> bool {
+                true
+            }
+
+            fn schema_name() -> std::borrow::Cow<'static, str> {
+                stringify!($name).into()
+            }
+
+            fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                schemars::json_schema!({"type": "string", "format": "hex-id", "pattern": "^[0-9a-fA-F]{1,32}$"})
+            }
+        }
+
         impl $name {
             /// Parse the 32-hex-digit form.
             pub fn parse(text: &str) -> Option<Self> {

@@ -47,7 +47,7 @@ pub use doc::{
     Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
     SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign,
 };
-pub use error::{ModelError, Result};
+pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
     CableId, ComponentId, ConductorId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId,

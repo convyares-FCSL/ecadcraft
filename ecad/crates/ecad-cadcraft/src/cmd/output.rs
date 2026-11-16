@@ -1,185 +1,191 @@
 //! The commands of brief 024 (design 024 §3.5, §6.4): `locationbox` (writes), and `bom`,
 //! `wirelist`, `cablelist`, `printbook` and `reports`, which read the project and record nothing.
+//!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::output`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::{FolderId, ItemId, PageId, Pt};
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::output as rules;
+use ecad_model::{FolderId, ItemId, PageId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, opt_id, opt_typed, point, with_any_page, with_project};
+use crate::cmd::input::{Bounded, Command, Point, Typed};
+use crate::cmd::{err, on_any_page, on_project};
 use crate::outputs::{self, Group, Table};
 use crate::printbook::{self, Options, Scope};
 use crate::project::Project;
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<LocationboxParams>("locationbox"),
+    Typed::of::<FunctionboxParams>("functionbox"),
+    Typed::of::<BomParams>("bom"),
+    Typed::of::<WirelistParams>("wirelist"),
+    Typed::of::<CablelistParams>("cablelist"),
+    Typed::of::<PrintbookParams>("printbook"),
+    Typed::of::<ReportsParams>("reports"),
+];
+
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("locationbox", "Location Box", run_locationbox)
+        CommandSpec::new("locationbox", "Location Box", crate::cmd::input::typed::<LocationboxParams>)
             .params(
                 "{location: \"+CP1\", function?: \"=F1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id (a closed polyline), page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (exactly one of corners, points, item; default the active page; brief 052: it proposes its values for the devices inside)",
             )
             .interactive(crate::interact::locationbox)
             .noundo(),
-        CommandSpec::new("functionbox", "Function Box", run_functionbox)
+        CommandSpec::new("functionbox", "Function Box", crate::cmd::input::typed::<FunctionboxParams>)
             .params(
                 "{function: \"=F1\", location?: \"+CP1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id, page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (brief 052: drawn dash-dot; it proposes its values for the devices inside)",
             )
             .interactive(crate::interact::functionbox)
             .noundo(),
-        CommandSpec::new("bom", "Bill of Materials", run_bom)
+        CommandSpec::new("bom", "Bill of Materials", crate::cmd::input::typed::<BomParams>)
             .params(
                 "{group?: \"location\"|\"part\", columns?: [\"article\"], lines?: \"flat\"|\"nested\", path?: csv file, excel_safe?: bool (true), \
 limit?: n (500, max 5000), after?: n} (columns and lines override the project's report settings for this call; nothing written)",
             )
             .noundo(),
-        CommandSpec::new("wirelist", "Wire Report", run_wirelist)
+        CommandSpec::new("wirelist", "Wire Report", crate::cmd::input::typed::<WirelistParams>)
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
             .noundo(),
-        CommandSpec::new("cablelist", "Cable Report", run_cablelist)
+        CommandSpec::new("cablelist", "Cable Report", crate::cmd::input::typed::<CablelistParams>)
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n, include_not_drawn?: bool (true; brief 059)}")
             .noundo(),
-        CommandSpec::new("printbook", "Print Book", run_printbook)
+        CommandSpec::new("printbook", "Print Book", crate::cmd::input::typed::<PrintbookParams>)
             .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"colour\", lineweights?: bool}")
             .noundo(),
-        CommandSpec::new("reports", "Reports", run_reports).params("{} (opens the Reports window)").noundo(),
+        CommandSpec::new("reports", "Reports", crate::cmd::input::typed::<ReportsParams>).params("{} (opens the Reports window)").noundo(),
     ]
 }
 
-fn points(v: &Value, key: &str) -> Result<Vec<Pt>, String> {
-    let a = v.as_array().ok_or_else(|| format!("`{key}` must be a list of [x, y]"))?;
-    if a.len() > crate::locations::MAX_VERTICES {
-        return Err(format!("at most {} points in `{key}`", crate::locations::MAX_VERTICES));
-    }
-    a.iter().map(|p| point(p).ok_or_else(|| format!("each entry of `{key}` must be a finite [x, y]"))).collect()
+pub use ecad_electrical::cmd::output::{box_words, rectangle};
+
+/// The outline and the proposal of a box command.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LocationboxParams {
+    /// The box's location: "+CP1".
+    location: String,
+    /// The box's function: "=F1".
+    #[serde(default)]
+    function: Option<String>,
+    /// Two opposite corners [[x, y], [x, y]].
+    #[serde(default)]
+    corners: Option<Bounded<Point, 2, 2>>,
+    /// A closed outline [[x, y], …].
+    #[serde(default)]
+    points: Option<Bounded<Point, 0, { crate::locations::MAX_VERTICES }>>,
+    /// A closed polyline to take the outline from.
+    #[serde(default)]
+    item: Option<ItemId>,
+    /// The page (default: the active page).
+    #[serde(default)]
+    page: Option<PageId>,
+    /// What the box does to the devices inside: "propose" (default), "move" or "keep".
+    #[serde(default)]
+    proposal: Option<String>,
 }
 
-/// A rectangle's four corners from two opposite ones.
-pub fn rectangle(a: Pt, b: Pt) -> Vec<Pt> {
-    vec![
-        Pt::new(a.x.min(b.x), a.y.min(b.y)),
-        Pt::new(a.x.max(b.x), a.y.min(b.y)),
-        Pt::new(a.x.max(b.x), a.y.max(b.y)),
-        Pt::new(a.x.min(b.x), a.y.max(b.y)),
-    ]
-}
-
-/// The echo of a new box: `Location box +CP1: 4 devices inside, 3 now in +CP1 (1 keeps its own +CP2).`
-pub fn box_words(location: &str, inside: usize, keeps: usize) -> String {
-    let devices = if inside == 1 { "1 device".to_string() } else { format!("{inside} devices") };
-    // Brief 052: a box proposes; it never changes a device's stored location by itself.
-    if keeps == 0 {
-        format!("Location box {location}: {devices} inside.")
-    } else {
-        format!("Location box {location}: {devices} inside ({keeps} with another location).")
+impl Command for LocationboxParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let b = BoxInput { function: self.function, location: Some(self.location), corners: self.corners, points: self.points, item: self.item };
+        b.run(s, self.page, self.proposal, "locationbox")
     }
-}
-
-fn run_locationbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("location").and_then(Value::as_str).is_none() {
-        return Err(err("`location` is required, such as \"+CP1\""));
-    }
-    run_box(s, params, "locationbox")
 }
 
 /// `functionbox {function, location?, corners | points | item, page?, proposal?}` (brief 052d,
 /// design 052 §5.8): a box carrying a function (and a location, when given), drawn dash-dot.
-fn run_functionbox(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("function").and_then(Value::as_str).is_none() {
-        return Err(err("`function` is required, such as \"=F1\""));
-    }
-    run_box(s, params, "functionbox")
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FunctionboxParams {
+    /// The box's function: "=F1".
+    function: String,
+    /// The box's location: "+CP1".
+    #[serde(default)]
+    location: Option<String>,
+    /// Two opposite corners [[x, y], [x, y]].
+    #[serde(default)]
+    corners: Option<Bounded<Point, 2, 2>>,
+    /// A closed outline [[x, y], …].
+    #[serde(default)]
+    points: Option<Bounded<Point, 0, { crate::locations::MAX_VERTICES }>>,
+    /// A closed polyline to take the outline from.
+    #[serde(default)]
+    item: Option<ItemId>,
+    /// The page (default: the active page).
+    #[serde(default)]
+    page: Option<PageId>,
+    /// What the box does to the devices inside: "propose" (default), "move" or "keep".
+    #[serde(default)]
+    proposal: Option<String>,
 }
 
-/// A box (design 024 §7, design 052 §5.6, §5.8): its values, outline, and the proposal it makes
-/// for the device symbols inside. Unset devices take its values in the same transaction; devices
-/// with another value are listed as conflicts (`proposal`: "propose" (default), "move" or
-/// "keep").
-fn run_box(s: &mut Session, params: &Value, command: &str) -> cadcraft_engine::Result<Value> {
-    use crate::designations::Aspect;
-    let text = |k: &str| params.get(k).and_then(Value::as_str).map(str::to_string);
-    let (location, function) = (text("location"), text("function"));
-    let mode = crate::proposals::proposal_param(params).map_err(err)?;
-    let corners = params.get("corners").filter(|v| !v.is_null()).map(|v| points(v, "corners")).transpose().map_err(err)?;
-    let pts = params.get("points").filter(|v| !v.is_null()).map(|v| points(v, "points")).transpose().map_err(err)?;
-    let item: Option<ItemId> = opt_id(params, "item").map_err(err)?;
-    let page: Option<PageId> = opt_id(params, "page").map_err(err)?;
-    let given = [corners.is_some(), pts.is_some(), item.is_some()].iter().filter(|x| **x).count();
-    if given != 1 {
-        return Err(err("give exactly one of `corners` (two corners), `points` (a closed outline) or `item` (a closed polyline)"));
+impl Command for FunctionboxParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let b = BoxInput { function: Some(self.function), location: self.location, corners: self.corners, points: self.points, item: self.item };
+        b.run(s, self.page, self.proposal, "functionbox")
     }
-    with_project(s, |p, pg, active| {
-        let page = page.unwrap_or(active);
-        let doc = p.ledger.document();
-        let mut values: Vec<(Aspect, &str)> = Vec::new();
-        if let Some(f) = &function {
-            values.push((Aspect::Function, f));
-        }
-        if let Some(l) = &location {
-            values.push((Aspect::Location, l));
-        }
-        let planned = match (corners, pts, item) {
-            (Some(c), _, _) => match c.as_slice() {
-                [a, b] => crate::locations::plan_box_with(doc, &mut p.ids, page, &values, rectangle(*a, *b))?,
-                _ => return Err("`corners` must hold two points".into()),
-            },
-            (_, Some(v), _) => crate::locations::plan_box_with(doc, &mut p.ids, page, &values, v)?,
-            (_, _, Some(i)) => crate::locations::plan_from_item_with(doc, &mut p.ids, i, &values)?,
-            _ => return Err("nothing to draw".into()),
-        };
-        let b = crate::locations::planned_box(doc, &planned).ok_or("the box could not be read back")?;
-        let shown = crate::locations::label_of(&b).0;
-        // Brief 052d: the box proposes its values for the device symbols inside it.
-        let spots = crate::proposals::spots_inside(doc, &b);
-        let modes = [
-            if b.function_key.is_some() { mode.clone() } else { crate::proposals::Mode::Keep },
-            if b.location_key.is_some() { mode.clone() } else { crate::proposals::Mode::Keep },
-        ];
-        let mut pending = crate::designations::Pending::default();
-        let proposed = crate::proposals::plan(doc, &mut p.ids, &spots, &modes, std::slice::from_ref(&b), &mut pending)?;
-        let inside: std::collections::BTreeSet<_> = spots.iter().map(|s| s.device).collect();
-        let mut ops = planned.ops.clone();
-        ops.extend(proposed.ops.iter().cloned());
-        let added = planned.added.clone();
-        let kind = if b.function_key.is_some() { "Function box" } else { "Location box" };
-        p.apply_edit(pg, command, &format!("{kind} {shown}"), ops)?;
-        if proposed.moved == 0 {
-            p.conflicts = proposed.conflicts.clone();
-        }
-        let doc = p.ledger.document();
-        let set: std::collections::BTreeSet<_> = proposed.set.iter().map(|(c, _, _)| *c).collect();
-        let keeps: std::collections::BTreeSet<_> = proposed.conflicts.iter().map(|c| c.component).collect();
-        let n = inside.len();
-        let devices = if n == 1 { "1 device".to_string() } else { format!("{n} devices") };
-        let mut message = format!("{kind} {shown}: {devices} inside");
-        if !set.is_empty() || !keeps.is_empty() {
-            let same = n.saturating_sub(set.len() + keeps.len());
-            message.push_str(&format!("; {} set to {shown}, {same} already {shown}, {} kept", set.len(), keeps.len()));
-        }
-        message.push('.');
-        if let Some(a) = added {
-            message = format!("{message} {a}");
-        }
-        pg.echo(message.clone());
-        for l in crate::proposals::conflict_words(doc, &proposed.conflicts) {
-            pg.echo(l);
-        }
-        let mut v = json!({
-            "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
-            "inside": n, "keeps_own": keeps.len(), "message": message,
+}
+
+/// What both box commands take.
+struct BoxInput {
+    function: Option<String>,
+    location: Option<String>,
+    corners: Option<Bounded<Point, 2, 2>>,
+    points: Option<Bounded<Point, 0, { crate::locations::MAX_VERTICES }>>,
+    item: Option<ItemId>,
+}
+
+impl BoxInput {
+    /// A box (design 024 §7, design 052 §5.6, §5.8): its values, outline, and the proposal it
+    /// makes for the device symbols inside.
+    fn run(self, s: &mut Session, page: Option<PageId>, proposal: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
+        let mode = ecad_electrical::cmd::sheet::proposal_mode(proposal.as_deref()).map_err(|e| err(e.to_string()))?;
+        let corners = self.corners.and_then(|c| match c.0.as_slice() {
+            [a, b] => Some((a.0, b.0)),
+            _ => None,
         });
-        if let (Some(o), Some(x)) = (v.as_object_mut(), crate::proposals::json(doc, &proposed).as_object()) {
-            o.extend(x.clone());
-        }
-        let conflicts: Vec<Value> = proposed
-            .conflicts
-            .iter()
-            .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
-            .collect();
-        v["conflicts"] = json!(conflicts);
-        Ok(v)
-    })
+        let points = self.points.map(|v| v.0.into_iter().map(|p| p.0).collect());
+        let shape = rules::Shape::one_of(corners, points, self.item).map_err(|e| err(e.to_string()))?;
+        let (function, location) = (self.function, self.location);
+        on_project(s, |p, pg, active| {
+            let page = page.unwrap_or(active);
+            let plan = rules::plan_box(p.ledger.document(), &mut p.ids, page, function.as_deref(), location.as_deref(), shape, &mode)?;
+            p.apply_edit(pg, command, &plan.label, plan.ops)?;
+            let proposed = plan.proposed;
+            if proposed.moved == 0 {
+                p.conflicts = proposed.conflicts.clone();
+            }
+            let doc = p.ledger.document();
+            pg.echo(plan.message.clone());
+            for l in crate::proposals::conflict_words(doc, &proposed.conflicts) {
+                pg.echo(l);
+            }
+            let planned = plan.planned;
+            let mut v = json!({
+                "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
+                "inside": plan.inside, "keeps_own": plan.keeps, "message": plan.message,
+            });
+            if let (Some(o), Some(x)) = (v.as_object_mut(), crate::proposals::json(doc, &proposed).as_object()) {
+                o.extend(x.clone());
+            }
+            let conflicts: Vec<Value> = proposed
+                .conflicts
+                .iter()
+                .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
+                .collect();
+            v["conflicts"] = json!(conflicts);
+            Ok(v)
+        })
+    }
 }
 
-/// `limit`, `after`, `excel_safe` and `path` of a report command.
+/// `limit`, `after`, `excel_safe` and `path` of a report command, read.
 struct Paging {
     limit: usize,
     after: usize,
@@ -187,17 +193,19 @@ struct Paging {
     path: Option<String>,
 }
 
-fn paging(params: &Value) -> Result<Paging, String> {
-    let limit =
-        opt_typed(params, "limit", "a whole number", Value::as_u64)?.map_or(outputs::DEFAULT_LIMIT, |n| n as usize).clamp(1, outputs::MAX_LIMIT);
-    let after = opt_typed(params, "after", "a whole number", Value::as_u64)?.unwrap_or(0) as usize;
-    let excel_safe = opt_typed(params, "excel_safe", "true or false", Value::as_bool)?.unwrap_or(true);
-    let path = opt_typed(params, "path", "a file path", |v| v.as_str().map(str::to_string))?;
-    Ok(Paging { limit, after, excel_safe, path })
+impl Paging {
+    fn of(limit: Option<u64>, after: Option<u64>, excel_safe: Option<bool>, path: Option<String>) -> Paging {
+        Paging {
+            limit: limit.map_or(outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, outputs::MAX_LIMIT),
+            after: after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX)),
+            excel_safe: excel_safe.unwrap_or(true),
+            path,
+        }
+    }
 }
 
 /// A report's result: the page of rows asked for, or with `path` the CSV written.
-fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: &Paging, what: &str) -> Result<Value, String> {
+fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: &Paging, what: &str) -> Result<Value, CmdError> {
     let flagged = t.flagged();
     if let Some(path) = &pg.path {
         let text = outputs::csv(t, pg.excel_safe);
@@ -210,166 +218,236 @@ fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: &Paging, what: &st
     let total = all.len();
     let rows: Vec<Value> = all.into_iter().skip(pg.after).take(pg.limit).collect();
     let mut v = json!({ "rows": rows, "total": total, "flagged": flagged });
-    if pg.after + pg.limit < total {
+    if pg.after.saturating_add(pg.limit) < total {
         v["next"] = json!(pg.after + pg.limit);
     }
     Ok(v)
 }
 
-fn run_bom(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let group = match params.get("group").and_then(Value::as_str) {
-        None => Group::Location,
-        Some(t) => Group::parse(t).ok_or_else(|| err("`group` is \"location\" or \"part\""))?,
-    };
-    // Brief 047 (design 047 §7.4): the report settings for this call only.
-    let columns = match params.get("columns") {
-        None | Some(Value::Null) => None,
-        Some(Value::Array(a)) => {
-            let mut article = false;
-            for c in a {
-                match c.as_str() {
-                    Some("article") => article = true,
-                    _ => return Err(err("`columns` lists optional columns: [\"article\"]")),
-                }
+/// How `bom` lists a kit's lines (brief 047).
+#[derive(Deserialize, JsonSchema, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Lines {
+    /// One row per part.
+    Flat,
+    /// A kit's parts under its row.
+    Nested,
+}
+
+/// `bom {group?, columns?, lines?, path?, excel_safe?, limit?, after?}` (read only): the bill of
+/// materials, a page at a time, or written to a CSV file.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BomParams {
+    /// "location" (default) or "part".
+    #[serde(default)]
+    group: Option<String>,
+    /// Optional columns for this call: ["article"].
+    #[serde(default)]
+    columns: Option<Vec<String>>,
+    /// "flat" or "nested" for this call.
+    #[serde(default)]
+    lines: Option<Lines>,
+    /// Write the CSV to this file instead.
+    #[serde(default)]
+    path: Option<String>,
+    /// Guard cells a spreadsheet would read as a formula (default true).
+    #[serde(default)]
+    excel_safe: Option<bool>,
+    /// At most this many rows (default 500, at most 5000).
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Skip this many rows (the `next` a previous call gave).
+    #[serde(default)]
+    after: Option<u64>,
+}
+
+impl Command for BomParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let group = rules::bom_group(self.group.as_deref()).map_err(|e| err(e.to_string()))?;
+        // Brief 047 (design 047 §7.4): the report settings for this call only.
+        let columns = rules::bom_columns(self.columns.as_deref()).map_err(|e| err(e.to_string()))?;
+        let lines = self.lines.map(|l| l == Lines::Nested);
+        let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
+        on_any_page(s, |p, _| {
+            let o = p.outputs();
+            let view = outputs::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
+            let nested = view.nested && group == Group::Location;
+            let t = o.bom_table_with(group, view, true);
+            let ids: Vec<Value> = o
+                .bom_with(group, nested)
+                .iter()
+                .map(|r| {
+                    let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
+                    // Brief 030 (design 030 §10): an accessory row names its item and its strip.
+                    if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
+                        v["accessory"] = json!(a);
+                        v["strip"] = json!(c.hex());
+                    }
+                    // Brief 047: what the row counts.
+                    let entries: Vec<Value> = r
+                        .entries
+                        .iter()
+                        .filter_map(|(c, n)| o.entry(*c, *n))
+                        .map(|e| {
+                            let mut x = json!({"component": e.component.hex(), "line": e.line});
+                            if e.item {
+                                x["item"] = json!(true);
+                            }
+                            if !e.subs.is_empty() || !e.missing.is_empty() {
+                                x["sub"] = json!(e.subs);
+                            }
+                            x
+                        })
+                        .collect();
+                    v["entries"] = json!(entries);
+                    if nested && let Some(k) = &r.kit {
+                        v["kit"] = json!(k);
+                    }
+                    v
+                })
+                .collect();
+            let mut keys = vec!["location", "qty", "unit", "tags"];
+            if nested {
+                keys.push("line");
             }
-            Some(article)
-        }
-        Some(_) => return Err(err("`columns` lists optional columns: [\"article\"]")),
-    };
-    let lines = match params.get("lines").and_then(Value::as_str) {
-        None => None,
-        Some("flat") => Some(false),
-        Some("nested") => Some(true),
-        Some(_) => return Err(err("`lines` is \"flat\" or \"nested\"")),
-    };
-    let pg = paging(params).map_err(err)?;
-    with_any_page(s, |p, _| {
-        let o = p.outputs();
-        let view = outputs::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
-        let nested = view.nested && group == Group::Location;
-        let t = o.bom_table_with(group, view, true);
-        let ids: Vec<Value> = o
-            .bom_with(group, nested)
-            .iter()
-            .map(|r| {
-                let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
-                // Brief 030 (design 030 §10): an accessory row names its item and its strip.
-                if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
-                    v["accessory"] = json!(a);
-                    v["strip"] = json!(c.hex());
-                }
-                // Brief 047: what the row counts.
-                let entries: Vec<Value> = r
-                    .entries
-                    .iter()
-                    .filter_map(|(c, n)| o.entry(*c, *n))
-                    .map(|e| {
-                        let mut x = json!({"component": e.component.hex(), "line": e.line});
-                        if e.item {
-                            x["item"] = json!(true);
-                        }
-                        if !e.subs.is_empty() || !e.missing.is_empty() {
-                            x["sub"] = json!(e.subs);
-                        }
-                        x
-                    })
-                    .collect();
-                v["entries"] = json!(entries);
-                if nested && let Some(k) = &r.kit {
-                    v["kit"] = json!(k);
-                }
-                v
-            })
-            .collect();
-        let mut keys = vec!["location", "qty", "unit", "tags"];
-        if nested {
-            keys.push("line");
-        }
-        keys.extend(["description", "maker", "part_number"]);
-        if view.article {
-            keys.push("article_number");
-        }
-        report_result(&t, &keys, &ids, &pg, "BOM")
-    })
+            keys.extend(["description", "maker", "part_number"]);
+            if view.article {
+                keys.push("article_number");
+            }
+            report_result(&t, &keys, &ids, &pg, "BOM")
+        })
+    }
 }
 
-fn run_wirelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let pg = paging(params).map_err(err)?;
-    with_any_page(s, |p, _| {
-        let o = p.outputs();
-        let t = o.wire_table();
-        let ids: Vec<Value> = o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect();
-        report_result(
-            &t,
-            &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"],
-            &ids,
-            &pg,
-            "wire",
-        )
-    })
+/// `wirelist {path?, excel_safe?, limit?, after?}` (read only): the wire report.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WirelistParams {
+    /// Write the CSV to this file instead.
+    #[serde(default)]
+    path: Option<String>,
+    /// Guard cells a spreadsheet would read as a formula (default true).
+    #[serde(default)]
+    excel_safe: Option<bool>,
+    /// At most this many rows (default 500, at most 5000).
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Skip this many rows (the `next` a previous call gave).
+    #[serde(default)]
+    after: Option<u64>,
 }
 
-fn run_cablelist(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let pg = paging(params).map_err(err)?;
-    // Brief 059 (design 059 §4.5, Q3): the cables not drawn are listed unless this run says not.
-    let include = match params.get("include_not_drawn") {
-        None | Some(Value::Null) => true,
-        Some(Value::Bool(b)) => *b,
-        Some(_) => return Err(err("`include_not_drawn` is true or false")),
-    };
-    with_any_page(s, |p, _| {
-        let o = p.outputs();
-        let t = o.cable_table_with(include);
-        // Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the
-        // offer is unknown) and the devices at each end; these keys are 027's CSV columns.
-        let ids: Vec<Value> = o
-            .cables()
-            .iter()
-            .filter(|r| include || r.drawn)
-            .map(|r| {
-                let mut v = json!({
-                    "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
-                    "from_devices": r.from_devices, "to_devices": r.to_devices,
+impl Command for WirelistParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
+        on_any_page(s, |p, _| {
+            let o = p.outputs();
+            let t = o.wire_table();
+            let ids: Vec<Value> = o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect();
+            report_result(
+                &t,
+                &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"],
+                &ids,
+                &pg,
+                "wire",
+            )
+        })
+    }
+}
+
+/// `cablelist {path?, excel_safe?, limit?, after?, include_not_drawn?}` (read only): the cable
+/// report.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CablelistParams {
+    /// Write the CSV to this file instead.
+    #[serde(default)]
+    path: Option<String>,
+    /// Guard cells a spreadsheet would read as a formula (default true).
+    #[serde(default)]
+    excel_safe: Option<bool>,
+    /// At most this many rows (default 500, at most 5000).
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Skip this many rows (the `next` a previous call gave).
+    #[serde(default)]
+    after: Option<u64>,
+    /// Also the cables not drawn (default true; brief 059).
+    #[serde(default)]
+    include_not_drawn: Option<bool>,
+}
+
+impl Command for CablelistParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
+        // Brief 059 (design 059 §4.5, Q3): the cables not drawn are listed unless this run says not.
+        let include = self.include_not_drawn.unwrap_or(true);
+        on_any_page(s, |p, _| {
+            let o = p.outputs();
+            let t = o.cable_table_with(include);
+            // Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the
+            // offer is unknown) and the devices at each end; these keys are 027's CSV columns.
+            let ids: Vec<Value> = o
+                .cables()
+                .iter()
+                .filter(|r| include || r.drawn)
+                .map(|r| {
+                    let mut v = json!({
+                        "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
+                        "from_devices": r.from_devices, "to_devices": r.to_devices,
+                    });
+                    // `spare` only when the offer is known (absent keys are left out, not null).
+                    if r.count.offer.is_some() {
+                        v["spare"] = json!(r.count.spare);
+                    }
+                    v
+                })
+                .collect();
+            let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];
+            for h in t.headers.iter().skip(9) {
+                keys.push(match *h {
+                    "Maker" => "maker",
+                    "Length" => "length",
+                    "Glands" => "glands",
+                    "Shield" => "shield",
+                    "Planned from" => "planned_from",
+                    "Planned to" => "planned_to",
+                    "Drawn" => "drawn",
+                    _ => "designation",
                 });
-                // `spare` only when the offer is known (absent keys are left out, not null).
-                if r.count.offer.is_some() {
-                    v["spare"] = json!(r.count.spare);
-                }
-                v
-            })
-            .collect();
-        let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];
-        for h in t.headers.iter().skip(9) {
-            keys.push(match *h {
-                "Maker" => "maker",
-                "Length" => "length",
-                "Glands" => "glands",
-                "Shield" => "shield",
-                "Planned from" => "planned_from",
-                "Planned to" => "planned_to",
-                "Drawn" => "drawn",
-                _ => "designation",
-            });
-        }
-        report_result(&t, &keys, &ids, &pg, "cable")
-    })
+            }
+            report_result(&t, &keys, &ids, &pg, "cable")
+        })
+    }
 }
 
-/// The scope parameter of `printbook`.
-pub fn scope_param(params: &Value) -> Result<Scope, String> {
-    match params.get("scope") {
-        None | Some(Value::Null) => Ok(Scope::All),
-        Some(Value::String(t)) if t.trim() == "all" => Ok(Scope::All),
-        Some(v @ Value::Object(_)) => {
-            if let Some(f) = opt_id::<FolderId>(v, "folder")? {
-                Ok(Scope::Folder(f))
-            } else if let Some(t) = v.get("pages").and_then(Value::as_str) {
-                Ok(Scope::Pages(t.to_string()))
-            } else {
-                Err("`scope` is \"all\", {folder: id} or {pages: \"100, 105-110\"}".into())
-            }
-        }
-        Some(_) => Err("`scope` is \"all\", {folder: id} or {pages: \"100, 105-110\"}".into()),
+/// What `printbook` prints: "all", a folder or pages.
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+enum ScopeParam {
+    /// "all".
+    Word(String),
+    /// {folder: id} or {pages: "100, 105-110"}.
+    Pick {
+        /// A folder's pages.
+        #[serde(default)]
+        folder: Option<FolderId>,
+        /// Page numbers and ranges.
+        #[serde(default)]
+        pages: Option<String>,
+    },
+}
+
+/// The scope `printbook` prints.
+fn scope_of(v: Option<ScopeParam>) -> Result<Scope, CmdError> {
+    const WORDS: &str = "`scope` is \"all\", {folder: id} or {pages: \"100, 105-110\"}";
+    match v {
+        None => Ok(Scope::All),
+        Some(ScopeParam::Word(t)) if t.trim() == "all" => Ok(Scope::All),
+        Some(ScopeParam::Pick { folder: Some(f), .. }) => Ok(Scope::Folder(f)),
+        Some(ScopeParam::Pick { folder: None, pages: Some(t) }) => Ok(Scope::Pages(t)),
+        Some(_) => Err(CmdError::refused(WORDS)),
     }
 }
 
@@ -417,27 +495,58 @@ pub fn print_project(
     }))
 }
 
-fn run_printbook(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let scope = scope_param(params).map_err(err)?;
-    let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
-    let path = opt_typed(params, "path", "a file path", |v| v.as_str().map(str::to_string)).map_err(err)?;
-    // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
-    let v = with_any_page(s, |p, _| {
-        let mono = crate::defaults::print::mono_param(p.ledger.document(), params)?;
-        print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)
-    })?;
-    if let Some(m) = v.get("message").and_then(Value::as_str) {
-        s.echo(m.to_string());
-    }
-    for n in v.get("notes").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
-        s.echo(n.to_string());
-    }
-    Ok(v)
+/// `printbook {scope?, path?, colour?, lineweights?}`: the project's pages as a PDF.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PrintbookParams {
+    /// "all" (default), {folder: id} or {pages: "100, 105-110"}.
+    #[serde(default)]
+    scope: Option<ScopeParam>,
+    /// The PDF file to write.
+    #[serde(default)]
+    path: Option<String>,
+    /// "mono" (black, the colour code in the wire label) or "colour" (wire colours); default the
+    /// project's `print.colour`.
+    #[serde(default)]
+    colour: Option<String>,
+    /// Print lineweights (default true).
+    #[serde(default)]
+    lineweights: Option<bool>,
 }
 
-fn run_reports(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| {
-        p.open_reports = true;
-        Ok(json!({"open": "reports"}))
-    })
+impl Command for PrintbookParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let scope = scope_of(self.scope).map_err(|e| err(e.to_string()))?;
+        let lineweights = self.lineweights.unwrap_or(true);
+        let path = self.path;
+        // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by
+        // default).
+        let colour = json!({"colour": self.colour});
+        let v = on_any_page(s, |p, _| {
+            let mono = crate::defaults::print::mono_param(p.ledger.document(), &colour)?;
+            Ok(print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)?)
+        })?;
+        if let Some(m) = v.get("message").and_then(Value::as_str) {
+            s.echo(m.to_string());
+        }
+        for n in v.get("notes").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+            s.echo(n.to_string());
+        }
+        Ok(v)
+    }
+}
+
+/// `reports {}`: opens the Reports window.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct ReportsParams {}
+
+impl Command for ReportsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| {
+            p.open_reports = true;
+            Ok(json!({"open": "reports"}))
+        })
+    }
 }

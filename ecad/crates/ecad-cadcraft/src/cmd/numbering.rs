@@ -298,7 +298,7 @@ pub fn plan_for(p: &mut Project, req: &Request) -> Result<Plan, String> {
     p.tag_high.catch_up(&p.ledger);
     // Design 052 §4: a device is numbered at its head, else its first symbol in drawing order.
     let doc = p.ledger.document();
-    numbering::plan_ranked(doc, req, p.tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r))
+    numbering::plan_ranked(doc, req, p.tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r)).map_err(String::from)
 }
 
 fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_engine::Result<Value> {
@@ -781,7 +781,7 @@ fn h_object(o: ObjectRef) -> Value {
 /// A missing cable.
 pub fn join_cable_ops(doc: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, String> {
     // One join for the merge and for setprop (reviewer 026, 2).
-    ecad_model::merge::join_cables(doc, from, into)
+    ecad_model::merge::join_cables(doc, from, into).map_err(String::from)
 }
 
 /// `setprop {component|cable, key: "tag_fixed", value: "yes"|null}` (design §4, FP1).

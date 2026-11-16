@@ -237,6 +237,7 @@ impl ProjectProps {
         let words = |b: bool| if b { "letters" } else { "numbers" };
         let size = if self.size.starts_with("Custom") { format!("{}x{}", self.width.trim(), self.height.trim()) } else { self.size.clone() };
         SheetSpec::parse(&format!("{size} {}x{} {} {}", self.columns.trim(), self.rows.trim(), words(self.column_letters), words(self.row_letters)))
+            .map_err(|e| e.to_string())
             .map_err(|e| if e.starts_with("Sheet") { "Width 420 to 2400 mm, height 250 to 2400 mm, 1 to 26 columns and rows.".into() } else { e })
     }
 

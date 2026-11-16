@@ -1444,7 +1444,7 @@ pub fn starter(key: &str) -> Result<&'static Starter, String> {
 pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if key == TAG_KEY {
-        return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some);
+        return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some).map_err(String::from);
     }
     if v.chars().count() > MAX_PROPERTY_CHARS || v.chars().any(char::is_control) {
         return Err(format!("`{key}` can be at most {MAX_PROPERTY_CHARS} characters, with no control characters"));

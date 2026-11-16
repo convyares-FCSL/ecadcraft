@@ -1491,7 +1491,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
                     x.rebuild_index();
                     x
                 });
-                join_cables(d, a, b)
+                join_cables(d, a, b).map_err(String::from)
             }
             _ => Err(format!("{tag_text} is a cable on one side and a device on the other.")),
         };
@@ -1560,12 +1560,12 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
 ///
 /// # Errors
 /// A missing cable, or `from == into`.
-pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, String> {
+pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<Op>, crate::ParseError> {
     if from == into {
-        return Err("A cable cannot be merged with itself.".into());
+        return Err(crate::ParseError::invalid(crate::Parsed::CableJoin, "A cable cannot be merged with itself."));
     }
-    let a = doc.cables.get(&from).ok_or("No such cable.")?;
-    let b = doc.cables.get(&into).ok_or("No such cable.")?;
+    let a = doc.cables.get(&from).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
+    let b = doc.cables.get(&into).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let mut ops = Vec::new();
     for (i, mem) in a.members.iter().enumerate().rev() {
         ops.push(Op::RemoveCableMember { cable: from, index: i, member: mem.clone() });

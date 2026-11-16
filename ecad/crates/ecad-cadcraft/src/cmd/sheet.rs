@@ -6,21 +6,29 @@
 //! Page number, `=`/`+` overrides, sheet and folder are page properties; title, drawing number,
 //! customer, status, defaults and revisions are project properties (decision FP1, FP4); folders
 //! are typed (FP3); the sheet and page-number step are project settings (FP2).
+//!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::sheet`] decide, and the shim commits the ops and answers in JSON.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::book::{self, Book, FOLDER_KEY, FUNCTION_KEY, LOCATION_KEY, MAX_FOLDER_DEPTH, NUMBER_KEY, Node};
-use ecad_model::sheet::{SHEET_KEY, SheetSpec};
-use ecad_model::{Document, Folder, FolderId, ObjectRef, Op, Page, PageId, ReferenceStyle};
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::sheet::{self as rules, PageChange, ProjectChange, PropsPlan, RevisionFields};
+use ecad_model::book::{self, Book, FOLDER_KEY, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY, Node};
+use ecad_model::sheet::SHEET_KEY;
+use ecad_model::{Document, FolderId, Op, Page, PageId, ReferenceStyle};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::cmd::{err, id, opt_id, with_any_page, with_project};
-use crate::frame::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
+use crate::cmd::input::{Command, Typed, nullable};
+use crate::cmd::{err, id, on_any_page, on_project, opt_id, with_project};
 use crate::project::Project;
 pub use crate::revisions::folder_path;
 use crate::revisions::{self, FIELDS};
+pub use ecad_electrical::cmd::sheet::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
 
 /// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
 /// issued, built once on request. Session only; dropped by `closerevision`.
@@ -50,16 +58,32 @@ pub fn issue_undo_question(rev: &str, date: &str) -> String {
     format!("Rev {rev} was issued{on}. Undo the issue? This removes the release mark.")
 }
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<PagepropsParams>("pageprops"),
+    Typed::of::<ProjectpropsParams>("projectprops"),
+    Typed::of::<NewfolderParams>("newfolder"),
+    Typed::of::<RenamefolderParams>("renamefolder"),
+    Typed::of::<MovefolderParams>("movefolder"),
+    Typed::of::<DeletefolderParams>("deletefolder"),
+    Typed::of::<RevisionParams>("revision"),
+    Typed::of::<IssuerevisionParams>("issuerevision"),
+    Typed::of::<OpenrevisionParams>("openrevision"),
+    Typed::of::<CloserevisionParams>("closerevision"),
+    Typed::of::<UndoissueParams>("undoissue"),
+];
+
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
+    use crate::cmd::input::typed;
     vec![
-        CommandSpec::new("pageprops", "Page Properties", run_pageprops)
+        CommandSpec::new("pageprops", "Page Properties", typed::<PagepropsParams>)
             .params(
                 "{page?: id (default: the active page), number?, title?, function?, location?, sheet?} (each null \
 clears; no fields: the current values, read only)",
             )
             .noundo(),
-        CommandSpec::new("projectprops", "Project Properties", run_projectprops)
+        CommandSpec::new("projectprops", "Project Properties", typed::<ProjectpropsParams>)
             .params(
                 "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
 page_number_step?: n, reference_style?: \"page-zone\"|\"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
@@ -68,95 +92,40 @@ tag_dash?: bool, tag_case?: \"upper\"|\"typed\", revision_columns?: \"rev, date,
 revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             )
             .noundo(),
-        CommandSpec::new("newfolder", "New Folder", run_newfolder).params("{name, parent?: id|null}").noundo(),
-        CommandSpec::new("renamefolder", "Rename Folder", run_renamefolder).params("{folder: id, name}").noundo(),
-        CommandSpec::new("movefolder", "Move Folder", run_movefolder)
+        CommandSpec::new("newfolder", "New Folder", typed::<NewfolderParams>).params("{name, parent?: id|null}").noundo(),
+        CommandSpec::new("renamefolder", "Rename Folder", typed::<RenamefolderParams>).params("{folder: id, name}").noundo(),
+        CommandSpec::new("movefolder", "Move Folder", typed::<MovefolderParams>)
             .params("{folder: id, parent: id|null, index?: n} (1 = first among its new siblings; default last)")
             .noundo(),
-        CommandSpec::new("deletefolder", "Delete Folder", run_deletefolder)
+        CommandSpec::new("deletefolder", "Delete Folder", typed::<DeletefolderParams>)
             .params("{folder: id} (its pages and sub-folders move to its parent)")
             .noundo(),
-        CommandSpec::new("revision", "Revision", run_revision)
+        CommandSpec::new("revision", "Revision", typed::<RevisionParams>)
             .params(
                 "{rev?, date?, description?, drawn?, checked?, approved?, fields?: {field: text|null}, n?} (the pending revision's \
 fields, custom fields by name; an issued row is refused)",
             )
             .noundo(),
-        CommandSpec::new("issuerevision", "Issue Revision", run_issuerevision)
+        CommandSpec::new("issuerevision", "Issue Revision", typed::<IssuerevisionParams>)
             .params(
                 "{rev?, date?, description?, drawn?, checked?, approved?, provisional?: \"finalise\"|\"issue\"} (issues the \
 pending revision: needs Rev, Description and Drawn; names the log point \"Rev <rev>\"; with provisional tags or wire numbers \
 present, `provisional` says whether to finalise them first or issue them as they are)",
             )
             .noundo(),
-        CommandSpec::new("openrevision", "Reopen Revision", run_openrevision)
+        CommandSpec::new("openrevision", "Reopen Revision", typed::<OpenrevisionParams>)
             .params("{rev} (the project as issued, read only; records nothing)")
             .noundo(),
-        CommandSpec::new("closerevision", "Back to Current", run_closerevision).params("{}").noundo(),
-        CommandSpec::new("undoissue", "Undo Issue", run_undoissue)
+        CommandSpec::new("closerevision", "Back to Current", typed::<CloserevisionParams>).params("{}").noundo(),
+        CommandSpec::new("undoissue", "Undo Issue", typed::<UndoissueParams>)
             .params("{} (undoes the last step when it issued a revision: removes its release mark)")
             .noundo(),
     ]
 }
 
-// ---------------------------------------------------------------- parameters
-
-/// A text field: absent `None`; `null` `Some(None)`; a string `Some(Some(_))`.
-fn text_field(p: &Value, key: &str) -> Result<Option<Option<String>>, String> {
-    match p.get(key) {
-        None => Ok(None),
-        Some(Value::Null) => Ok(Some(None)),
-        Some(Value::String(s)) => Ok(Some(Some(s.clone()))),
-        Some(_) => Err(format!("`{key}` must be a string, or null to clear it")),
-    }
-}
-
-/// A value under the 018 §6.1 rules (trimmed, 200 characters, no control characters; `function`
-/// starts with `=`, `location` with `+`; empty clears).
-/// A page's or the project's `proposal` parameter (brief 052d): "propose" (default), "move" or
-/// "keep".
-fn proposal_mode(params: &Value) -> Result<crate::proposals::Mode, String> {
-    crate::proposals::proposal_param(params)
-}
-
-fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, String> {
-    crate::devices::property_value(doc, key, v)
-}
-
-fn set(object: ObjectRef, props: Option<&ecad_model::Properties>, key: &str, after: Option<String>) -> Option<Op> {
-    let before = props.and_then(|p| p.get(key)).cloned();
-    (before != after).then(|| Op::SetProperty { object, key: key.to_string(), before, after })
-}
-
 // ---------------------------------------------------------------- page numbers
 
 pub use crate::page_types::MAX_NUMBER_CHARS;
-
-/// Check a page number (design 019 §6.1) against every other page's shown number.
-///
-/// # Errors
-/// In words.
-pub fn check_number(
-    doc: &Document, book: &Book, page: Option<PageId>, number: &str, outputs: Option<&crate::outputs::Outputs>,
-) -> Result<(), String> {
-    let n = number.chars().count();
-    if !(1..=MAX_NUMBER_CHARS).contains(&n) || !number.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err("A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`).".into());
-    }
-    for p in &book.order {
-        if Some(*p) != page && book.number(doc, *p).eq_ignore_ascii_case(number) {
-            let title = doc.pages.get(p).map(|x| x.title.as_str()).unwrap_or_default();
-            return Err(format!("Page {number} already exists (\"{title}\")."));
-        }
-    }
-    // Brief 033 (design 033 §5.3): a generated page's continuation numbers are taken too.
-    if let Some((owner, i)) = crate::generated::continuation_of(doc, book, number, crate::draw::outputs::kept_of(outputs))
-        && Some(owner) != page
-    {
-        return Err(crate::generated::continuation_taken(doc, number, owner, i));
-    }
-    Ok(())
-}
 
 /// The number a new page gets after the page shown as `before` (design 019 §6.1): its leading
 /// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
@@ -220,233 +189,111 @@ fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Opt
 
 // ---------------------------------------------------------------- folders
 
-/// Most characters of a folder name.
-pub const MAX_FOLDER_NAME: usize = 100;
-
-fn folder_name(p: &Value) -> Result<String, String> {
-    const BAD: &str = "A folder name is 1 to 100 characters, with no control characters.";
-    let t = p.get("name").and_then(Value::as_str).ok_or(BAD)?.trim();
-    let n = t.chars().count();
-    if !(1..=MAX_FOLDER_NAME).contains(&n) || t.chars().any(char::is_control) {
-        return Err(BAD.into());
-    }
-    Ok(t.to_string())
+/// `newfolder {name, parent?}`: a folder, last among its siblings.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NewfolderParams {
+    /// The folder's name: 1 to 100 characters.
+    name: String,
+    /// The folder it goes in (absent or null: the top level).
+    #[serde(default)]
+    parent: Option<FolderId>,
 }
 
-/// The folders whose parent is `parent`, in folder order.
-fn siblings(doc: &Document, parent: Option<FolderId>) -> Vec<FolderId> {
-    doc.folder_order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect()
-}
-
-fn check_sibling_name(doc: &Document, parent: Option<FolderId>, name: &str, except: Option<FolderId>) -> Result<(), String> {
-    let clash = siblings(doc, parent)
-        .into_iter()
-        .filter(|f| Some(*f) != except)
-        .any(|f| doc.folders.get(&f).is_some_and(|x| x.name.eq_ignore_ascii_case(name)));
-    if clash {
-        return Err(format!("There is already a folder \"{name}\" here."));
-    }
-    Ok(())
-}
-
-fn depth_of(doc: &Document, parent: Option<FolderId>) -> usize {
-    parent.and_then(|p| book::folder_depth(doc, p)).unwrap_or(0)
-}
-
-/// How many levels `folder` and its sub-folders take (1 for a folder with none).
-fn height(doc: &Document, folder: FolderId) -> usize {
-    let mut best = 1;
-    let mut todo = vec![(folder, 1usize)];
-    let mut seen = BTreeSet::new();
-    while let Some((f, h)) = todo.pop() {
-        if !seen.insert(f) || h > MAX_FOLDER_DEPTH + 1 {
-            continue;
-        }
-        best = best.max(h);
-        todo.extend(doc.subfolders(f).into_iter().map(|c| (c, h + 1)));
-    }
-    best
-}
-
-fn opt_folder(p: &Value, key: &str) -> Result<Option<FolderId>, String> {
-    opt_id(p, key)
-}
-
-fn existing(doc: &Document, f: Option<FolderId>) -> Result<(), String> {
-    match f {
-        Some(f) if !doc.folders.contains_key(&f) => Err("no such folder".into()),
-        _ => Ok(()),
+impl Command for NewfolderParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let name = rules::folder_name(&self.name).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
+            let (id, op) = rules::new_folder(p.ledger.document(), &mut p.ids, &name, self.parent)?;
+            p.apply_edit(pg, "newfolder", "New folder", vec![op])?;
+            Ok(json!({"folder": id.hex(), "name": name}))
+        })
     }
 }
 
-fn run_newfolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let name = folder_name(params).map_err(err)?;
-    let parent = opt_folder(params, "parent").map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        existing(doc, parent)?;
-        check_sibling_name(doc, parent, &name, None)?;
-        if depth_of(doc, parent) + 1 > MAX_FOLDER_DEPTH {
-            return Err(format!("Folders nest at most {MAX_FOLDER_DEPTH} deep."));
-        }
-        let id: FolderId = p.ids.fresh();
-        let index = doc.folder_order.len();
-        let op = Op::AddFolder { id, folder: Folder { name: name.clone(), parent }, index };
-        p.apply_edit(pg, "newfolder", "New folder", vec![op])?;
-        Ok(json!({"folder": id.hex(), "name": name}))
-    })
+/// `renamefolder {folder, name}`: the same name changes nothing.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenamefolderParams {
+    /// The folder.
+    folder: FolderId,
+    /// Its new name: 1 to 100 characters.
+    name: String,
 }
 
-fn run_renamefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let folder: FolderId = id(params, "folder").map_err(err)?;
-    let name = folder_name(params).map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let old = doc.folders.get(&folder).cloned().ok_or("no such folder")?;
-        if old.name == name {
-            return Ok(json!({"folder": folder.hex(), "name": name, "changed": false}));
-        }
-        check_sibling_name(doc, old.parent, &name, Some(folder))?;
-        let after = Folder { name: name.clone(), parent: old.parent };
-        p.apply_edit(pg, "renamefolder", "Rename folder", vec![Op::ModifyFolder { id: folder, before: old, after }])?;
-        Ok(json!({"folder": folder.hex(), "name": name, "changed": true}))
-    })
-}
-
-/// The index in the folder order that puts `folder` at 1-based `index` among `parent`'s other
-/// sub-folders (default last), in the order with `folder` removed.
-fn folder_slot(doc: &Document, folder: FolderId, parent: Option<FolderId>, index: Option<usize>) -> usize {
-    let order: Vec<FolderId> = doc.folder_order.iter().copied().filter(|f| *f != folder).collect();
-    let sibs: Vec<FolderId> = order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect();
-    let pos = |f: &FolderId| order.iter().position(|x| x == f).unwrap_or(order.len());
-    match index.and_then(|i| i.checked_sub(1)).and_then(|i| sibs.get(i)) {
-        Some(f) => pos(f),
-        None => sibs.last().map_or(order.len(), |f| pos(f) + 1),
+impl Command for RenamefolderParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let folder = self.folder;
+        let name = rules::folder_name(&self.name).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
+            let Some(op) = rules::rename_folder(p.ledger.document(), folder, &name)? else {
+                return Ok(json!({"folder": folder.hex(), "name": name, "changed": false}));
+            };
+            p.apply_edit(pg, "renamefolder", "Rename folder", vec![op])?;
+            Ok(json!({"folder": folder.hex(), "name": name, "changed": true}))
+        })
     }
 }
 
-fn run_movefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let folder: FolderId = id(params, "folder").map_err(err)?;
-    if params.get("parent").is_none() {
-        return Err(err("`parent` (hex id, or null for the top level) is required"));
-    }
-    let parent = opt_folder(params, "parent").map_err(err)?;
-    let index = params.get("index").and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok());
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let old = doc.folders.get(&folder).cloned().ok_or("no such folder")?;
-        existing(doc, parent)?;
-        // Onto itself or one of its own sub-folders.
-        let mut at = parent;
-        let mut steps = 0;
-        while let Some(f) = at {
-            if f == folder {
-                return Err("A folder cannot go inside itself.".into());
+/// `movefolder {folder, parent, index?}`: into another folder or the top level.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MovefolderParams {
+    /// The folder.
+    folder: FolderId,
+    /// The folder it goes in, or null for the top level.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required)]
+    parent: Option<Option<FolderId>>,
+    /// Its place among its new siblings, 1 = first (default last).
+    #[serde(default)]
+    index: Option<usize>,
+}
+
+impl Command for MovefolderParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let (folder, parent, index) = (self.folder, self.parent.flatten(), self.index);
+        on_project(s, |p, pg, _| {
+            let ops = rules::move_folder(p.ledger.document(), folder, parent, index)?;
+            if ops.is_empty() {
+                return Ok(json!({"folder": folder.hex(), "changed": false}));
             }
-            at = doc.folders.get(&f).and_then(|x| x.parent);
-            steps += 1;
-            if steps > MAX_FOLDER_DEPTH + 1 {
-                break;
-            }
-        }
-        if parent != old.parent {
-            check_sibling_name(doc, parent, &old.name, Some(folder))?;
-        }
-        if depth_of(doc, parent) + height(doc, folder) > MAX_FOLDER_DEPTH {
-            return Err(format!("Folders nest at most {MAX_FOLDER_DEPTH} deep."));
-        }
-        let from = doc.folder_order.iter().position(|f| *f == folder).ok_or("no such folder")?;
-        let to = folder_slot(doc, folder, parent, index);
-        let after = Folder { name: old.name.clone(), parent };
-        if to == from && parent == old.parent {
-            return Ok(json!({"folder": folder.hex(), "changed": false}));
-        }
-        let ops = vec![Op::RemoveFolder { id: folder, folder: old, index: from }, Op::AddFolder { id: folder, folder: after, index: to }];
-        p.apply_edit(pg, "movefolder", "Move folder", ops)?;
-        Ok(json!({"folder": folder.hex(), "changed": true}))
-    })
+            p.apply_edit(pg, "movefolder", "Move folder", ops)?;
+            Ok(json!({"folder": folder.hex(), "changed": true}))
+        })
+    }
 }
 
-fn run_deletefolder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let folder: FolderId = id(params, "folder").map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let old = doc.folders.get(&folder).cloned().ok_or("no such folder")?;
-        let up = old.parent.map(FolderId::hex);
-        let mut ops = Vec::new();
-        let pages = doc.pages_in_folder(folder);
-        for page in &pages {
-            let props = doc.pages.get(page).map(|x| &x.properties);
-            ops.extend(set(ObjectRef::Page(*page), props, FOLDER_KEY, up.clone()));
-        }
-        for sub in doc.subfolders(folder) {
-            let before = doc.folders.get(&sub).cloned().ok_or("no such folder")?;
-            if check_sibling_name(doc, old.parent, &before.name, Some(folder)).is_err() {
-                return Err(format!("Rename sub-folder \"{}\" first: its new place already has a folder of that name.", before.name));
-            }
-            let after = Folder { name: before.name.clone(), parent: old.parent };
-            ops.push(Op::ModifyFolder { id: sub, before, after });
-        }
-        let index = doc.folder_order.iter().position(|f| *f == folder).ok_or("no such folder")?;
-        ops.push(Op::RemoveFolder { id: folder, folder: old.clone(), index });
-        // Brief 054 (design 054 §4.3): its start number goes with it.
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &crate::page_types::start_key(folder), None));
-        let to = match old.parent.and_then(|f| doc.folders.get(&f)) {
-            Some(f) => format!("\"{}\"", f.name),
-            None => "the top level".into(),
-        };
-        p.apply_edit(pg, "deletefolder", "Delete folder", ops)?;
-        let n = pages.len();
-        let line = format!("Folder \"{}\" deleted; its {n} page{} moved to {to}.", old.name, if n == 1 { "" } else { "s" });
-        pg.echo(line.clone());
-        Ok(json!({"folder": folder.hex(), "pages_moved": n, "message": line}))
-    })
+/// `deletefolder {folder}`: its pages and sub-folders move to its parent.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeletefolderParams {
+    /// The folder.
+    folder: FolderId,
+}
+
+impl Command for DeletefolderParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let folder = self.folder;
+        on_project(s, |p, pg, _| {
+            let done = rules::delete_folder(p.ledger.document(), folder)?;
+            p.apply_edit(pg, "deletefolder", "Delete folder", done.ops)?;
+            pg.echo(done.message.clone());
+            Ok(json!({"folder": folder.hex(), "pages_moved": done.pages, "message": done.message}))
+        })
+    }
 }
 
 // ---------------------------------------------------------------- pages
 
-/// The ops that move `page` into `folder` (None: the top level) at 1-based `index` among that
-/// folder's pages (default last): its `folder` property, then a RemovePage + AddPage pair when its
-/// place in the page order changes.
-pub(crate) fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, String> {
-    existing(doc, folder)?;
-    let old = doc.pages.get(&page).cloned().ok_or("no such page")?;
-    let mut ops = Vec::new();
-    let mut now = old.clone();
-    let want = folder.map(FolderId::hex);
-    if now.properties.get(FOLDER_KEY) != want.as_ref() {
-        ops.extend(set(ObjectRef::Page(page), Some(&old.properties), FOLDER_KEY, want.clone()));
-        match &want {
-            Some(w) => now.properties.insert(FOLDER_KEY.into(), w.clone()),
-            None => now.properties.remove(FOLDER_KEY),
-        };
-    }
-    let from = doc.page_order.iter().position(|p| *p == page).ok_or("no such page")?;
-    let order: Vec<PageId> = doc.page_order.iter().copied().filter(|p| *p != page).collect();
-    let in_folder: Vec<PageId> =
-        order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
-    let pos = |p: &PageId| order.iter().position(|x| x == p).unwrap_or(order.len());
-    let to = match index.and_then(|i| i.checked_sub(1)).and_then(|i| in_folder.get(i)) {
-        Some(p) => pos(p),
-        None => match in_folder.last() {
-            Some(p) => pos(p) + 1,
-            None => from.min(order.len()),
-        },
-    };
-    if to != from {
-        ops.push(Op::RemovePage { id: page, page: now.clone(), index: from });
-        ops.push(Op::AddPage { id: page, page: now, index: to });
-    }
-    Ok(ops)
-}
-
-/// `movepage {page, folder, index?}` (design 019 §5.3).
+/// `movepage {page, folder, index?}` (design 019 §5.3). Part of `movepage`, which moves to a typed
+/// input with `cmd/mod.rs`.
 pub(crate) fn run_movepage_folder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let page: PageId = id(params, "page").map_err(err)?;
-    let folder = opt_folder(params, "folder").map_err(err)?;
+    let folder = opt_id::<FolderId>(params, "folder").map_err(err)?;
     let index = params.get("index").and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok());
     with_project(s, |p, pg, _| {
-        let ops = move_page_ops(p.ledger.document(), page, folder, index)?;
+        let ops = rules::move_page_ops(p.ledger.document(), page, folder, index)?;
         if ops.is_empty() {
             return Ok(json!({"page": page.hex(), "changed": false}));
         }
@@ -497,12 +344,12 @@ pub(crate) fn new_page_ops_at(
     }
     let doc = p.ledger.document();
     let outputs = p.outputs.as_ref();
-    existing(doc, folder)?;
+    rules::check_folder(doc, folder)?;
     let book = Book::of(doc);
     let (folder, index, place) = new_page_at(doc, &book, folder, after)?;
     let number = match number.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(n) => {
-            check_number(doc, &book, None, &n, outputs)?;
+            rules::check_number(doc, &book, None, &n, crate::draw::outputs::kept_of(outputs))?;
             n
         }
         None => next_number(doc, &book, folder, place, outputs),
@@ -547,195 +394,121 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&cra
     })
 }
 
-fn run_pageprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get(crate::generated::KEY).is_some() {
-        return Err(err(crate::generated::KIND_FIXED));
+/// Commit `plan` (with `label`), keep its conflicts when it moved nothing, echo them, and answer
+/// with `json` of the document after it.
+fn commit_props(p: &mut Project, pg: &mut crate::access::Pages<'_>, id: &str, label: &str, plan: PropsPlan) -> Result<(), CmdError> {
+    p.apply_edit(pg, id, label, plan.ops)?;
+    if plan.proposed.moved == 0 {
+        p.conflicts = plan.proposed.conflicts.clone();
     }
-    // Brief 031 (§10.6): a page's `text.` keys are written by `showtext` only, also when asked for
-    // as `props` or as a field of their own.
-    let text_key = |k: &String| crate::text_style::is_reserved_key(k);
-    if params.as_object().is_some_and(|o| o.keys().any(text_key))
-        || params.get("props").and_then(Value::as_object).is_some_and(|o| o.keys().any(text_key))
-    {
-        return Err(err(crate::text_style::RESERVED_KEY));
+    for l in crate::proposals::conflict_words(p.ledger.document(), &plan.proposed.conflicts) {
+        pg.echo(l);
     }
-    let page = opt_id::<PageId>(params, "page").map_err(err)?;
-    let number = text_field(params, "number").map_err(err)?;
-    let title = match params.get("title") {
-        None => None,
-        Some(_) => Some(crate::cmd::page_title(params).map_err(err)?),
-    };
-    let function = text_field(params, FUNCTION_KEY).map_err(err)?;
-    let location = text_field(params, LOCATION_KEY).map_err(err)?;
-    let sheet = text_field(params, SHEET_KEY).map_err(err)?;
-    let write = number.is_some() || title.is_some() || function.is_some() || location.is_some() || sheet.is_some();
-    if !write {
-        return with_any_page(s, |p, _| {
+    Ok(())
+}
+
+/// `pageprops {page?, number?, title?, function?, location?, sheet?, proposal?}`: a page's
+/// properties (each null clears; no fields: the current values, read only).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PagepropsParams {
+    /// The page (default: the active page).
+    #[serde(default)]
+    page: Option<PageId>,
+    /// The page number: 1 to 12 letters, digits or _ (null: back to the book position).
+    #[serde(default, deserialize_with = "nullable")]
+    number: Option<Option<String>>,
+    /// The page title: 1 to 200 characters.
+    #[serde(default, deserialize_with = "nullable")]
+    title: Option<Option<String>>,
+    /// The page's function (=…), or null for the project's.
+    #[serde(default, deserialize_with = "nullable")]
+    function: Option<Option<String>>,
+    /// The page's location (+…), or null for the project's.
+    #[serde(default, deserialize_with = "nullable")]
+    location: Option<Option<String>>,
+    /// The page's sheet ("A3", "A2 12x8"…), or null (or "project") for the project's.
+    #[serde(default, deserialize_with = "nullable")]
+    sheet: Option<Option<String>>,
+    /// What a new function or location does to the page's device symbols: "propose" (default),
+    /// "move" or "keep".
+    #[serde(default)]
+    proposal: Option<String>,
+    /// Refused: a page's kind is set when it is made.
+    #[serde(default, deserialize_with = "nullable")]
+    generated: Option<Option<Value>>,
+    /// Refused for `text.` keys (Text styles); page properties are fields of their own.
+    #[serde(default)]
+    props: Option<Map<String, Value>>,
+}
+
+impl Command for PagepropsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        if self.generated.is_some() {
+            return Err(err(crate::generated::KIND_FIXED));
+        }
+        // Brief 031 (§10.6): a page's `text.` keys are written by `showtext` only, also when asked
+        // for as `props`.
+        if self.props.as_ref().is_some_and(|o| o.keys().any(|k| crate::text_style::is_reserved_key(k))) {
+            return Err(err(crate::text_style::RESERVED_KEY));
+        }
+        let page = self.page;
+        let title = match self.title {
+            None => None,
+            Some(t) => Some(rules::page_title(t.as_deref().unwrap_or_default()).map_err(|e| err(e.to_string()))?),
+        };
+        let mut change =
+            PageChange { number: self.number, title, function: self.function, location: self.location, sheet: self.sheet, mode: Default::default() };
+        if !change.writes() {
+            return on_any_page(s, |p, _| {
+                if crate::generated::has_bom_page(p.ledger.document()) {
+                    p.outputs();
+                }
+                let doc = p.ledger.document();
+                let page = page.or(p.active_page()).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
+                if !doc.pages.contains_key(&page) {
+                    return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
+                }
+                Ok(page_json(doc, &Book::of(doc), page, p.outputs.as_ref()))
+            });
+        }
+        let proposal = self.proposal;
+        on_project(s, |p, pg, active| {
+            let page = page.unwrap_or(active);
             if crate::generated::has_bom_page(p.ledger.document()) {
                 p.outputs();
             }
+            if !p.ledger.document().pages.contains_key(&page) {
+                return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
+            }
+            change.mode = rules::proposal_mode(proposal.as_deref())?;
+            let kept = crate::draw::outputs::kept_of(p.outputs.as_ref());
+            let plan = rules::page_props(p.ledger.document(), &mut p.ids, page, &change, kept)?;
+            if plan.ops.is_empty() {
+                let doc = p.ledger.document();
+                let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
+                v["changed"] = json!(false);
+                return Ok(v);
+            }
+            commit_props(p, pg, "pageprops", "Page properties", plan)?;
             let doc = p.ledger.document();
-            let page = page.or(p.active_page()).ok_or("`page` (hex id) is required: no page is shown")?;
-            if !doc.pages.contains_key(&page) {
-                return Err("no such page".into());
-            }
-            Ok(page_json(doc, &Book::of(doc), page, p.outputs.as_ref()))
-        });
+            let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
+            v["changed"] = json!(true);
+            Ok(v)
+        })
     }
-    with_project(s, |p, pg, active| {
-        let page = page.unwrap_or(active);
-        if crate::generated::has_bom_page(p.ledger.document()) {
-            p.outputs();
-        }
-        let doc = p.ledger.document();
-        let outputs = p.outputs.as_ref();
-        let old = doc.pages.get(&page).cloned().ok_or("no such page")?;
-        let book = Book::of(doc);
-        let object = ObjectRef::Page(page);
-        let mut ops = Vec::new();
-        let mut now = old.clone();
-        let mut put = |key: &str, after: Option<String>, ops: &mut Vec<Op>| {
-            if let Some(op) = set(object, Some(&now.properties), key, after.clone()) {
-                ops.push(op);
-                match after {
-                    Some(v) => now.properties.insert(key.to_string(), v),
-                    None => now.properties.remove(key),
-                };
-            }
-        };
-        if let Some(n) = number {
-            let n = n.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-            if let Some(t) = &n {
-                check_number(doc, &book, Some(page), t, outputs)?;
-            }
-            put(NUMBER_KEY, n, &mut ops);
-        }
-        // Brief 052 (design 052 §5.9): a typed code is stored as its entry's key; an unknown code
-        // adds its entry in the same transaction.
-        let mut pending = crate::designations::Pending::default();
-        // Brief 052d (design 052 §5.6): a new page value proposes itself for the device symbols on
-        // the page outside every box carrying that aspect (`proposal`, as `locationbox`).
-        let mode = proposal_mode(params)?;
-        let mut proposed = crate::proposals::Planned::default();
-        for (key, v) in [(FUNCTION_KEY, function), (LOCATION_KEY, location)] {
-            if let Some(v) = v {
-                let a = crate::designations::Aspect::of_property(key).ok_or("not an aspect")?;
-                let stored = match v.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-                    Some(t) => Some(pending.store(doc, &mut p.ids, a, t, &mut ops)?),
-                    None => None,
-                };
-                let old = old.properties.get(key).cloned();
-                if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
-                    let code = crate::designations::code_of(doc, a, k)
-                        .or_else(|| pending.new_codes.iter().rev().find(|(x, _)| *x == a).map(|(_, c)| c.clone()))
-                        .unwrap_or_default();
-                    let spots = crate::proposals::spots_on_page(doc, a, page);
-                    let x = crate::proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &mode);
-                    proposed.ops.extend(x.ops);
-                    proposed.set.extend(x.set);
-                    proposed.conflicts.extend(x.conflicts);
-                    proposed.moved += x.moved;
-                }
-                put(key, stored, &mut ops);
-            }
-        }
-        ops.extend(proposed.ops.iter().cloned());
-        if let Some(v) = sheet {
-            let v = v.map(|t| t.trim().to_string()).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("project"));
-            let spec = match v {
-                Some(t) => Some(SheetSpec::parse(&t)?.text()),
-                None => None,
-            };
-            put(SHEET_KEY, spec, &mut ops);
-        }
-        if let Some(t) = title
-            && t != now.title
-        {
-            let index = doc.page_order.iter().position(|x| *x == page).ok_or("no such page")?;
-            let mut renamed = now.clone();
-            renamed.title = t;
-            ops.push(Op::RemovePage { id: page, page: now.clone(), index });
-            ops.push(Op::AddPage { id: page, page: renamed, index });
-        }
-        if ops.is_empty() {
-            let mut v = page_json(doc, &book, page, outputs);
-            v["changed"] = json!(false);
-            return Ok(v);
-        }
-        p.apply_edit(pg, "pageprops", "Page properties", ops)?;
-        if proposed.moved == 0 {
-            p.conflicts = proposed.conflicts.clone();
-        }
-        for l in crate::proposals::conflict_words(p.ledger.document(), &proposed.conflicts) {
-            pg.echo(l);
-        }
-        let doc = p.ledger.document();
-        let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
-        v["changed"] = json!(true);
-        Ok(v)
-    })
 }
 
 // ---------------------------------------------------------------- project
 
-/// The project property keys the dialog and the title block use, in order.
-pub const PROJECT_KEYS: [&str; 6] = [TITLE, DRAWING_NUMBER, CUSTOMER, STATUS, FUNCTION_KEY, LOCATION_KEY];
 /// Status suggestions (owner answer Q9: any text is allowed).
 pub const STATUS_SUGGESTIONS: [&str; 4] = ["Draft", "For review", "For construction", "As built"];
-/// Most characters of a free property key.
-pub const MAX_KEY_CHARS: usize = 40;
-/// The page-number step's range.
-pub const MAX_STEP: u32 = ecad_model::builtins::MAX_PAGE_NUMBER_STEP;
 
-/// Whether `key` is a free property (not one of [`PROJECT_KEYS`], a revision or a folder key).
 /// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
 /// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters (design 054 §6.4).
 pub use crate::front::{
     MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, MAX_NOTES as MAX_COVER_NOTES, NOTES_KEY as COVER_NOTES, NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
 };
-
-fn check_free_key(doc: &Document, key: &str) -> Result<(), String> {
-    // Brief 052: the project's list of functions and locations changes through its commands.
-    if crate::designations::is_list_property(key) {
-        return Err(
-            "Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.".into()
-        );
-    }
-    // Brief 031 (§10.6): `text.` keys are written by the text commands only.
-    if crate::text_style::is_reserved_key(key) {
-        return Err(crate::text_style::RESERVED_KEY.into());
-    }
-    if let Some(rest) = key.strip_prefix(revisions::PREFIX) {
-        let n = rest.split('.').next().and_then(|n| n.parse::<u32>().ok());
-        if let Some(r) = n.and_then(|n| revisions::list(doc).into_iter().find(|r| r.n == n)).filter(|r| r.issued.is_some()) {
-            return Err(format!("Rev {} is issued and cannot change.", r.rev()));
-        }
-        return Err("Revision fields are changed with `revision` (Revisions…).".into());
-    }
-    if PROJECT_KEYS.contains(&key) {
-        return Err(format!("\"{key}\" is set above."));
-    }
-    if key.starts_with("folder") {
-        return Err(format!("\"{key}\" is reserved."));
-    }
-    // Brief 026: the numbering keys are written by `numbering`, Renumber and Finalise.
-    if key.starts_with("numbering.") {
-        return Err(format!("\"{key}\" is reserved (Project settings → Numbering)."));
-    }
-    // Brief 036: the registry's terminal defaults are project properties of their entry's key.
-    if key.starts_with("terminal.") && crate::defaults::find(key).is_some() {
-        return Ok(());
-    }
-    // Brief 054 (FP4, design 054 §8.1a): the cover's notes and its table editor rows.
-    if key == COVER_NOTES || key == crate::front::WIRE_ROWS_KEY || key == crate::front::LEGEND_ROWS_KEY {
-        return Ok(());
-    }
-    let n = key.chars().count();
-    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
-        return Err("A property name is 1 to 40 characters a-z, 0-9 or _.".into());
-    }
-    Ok(())
-}
 
 fn style_word(s: ReferenceStyle) -> &'static str {
     match s {
@@ -816,320 +589,181 @@ pub fn project_json(doc: &Document) -> Value {
     v
 }
 
-/// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
-/// one `SetProperty(tag)` per component or cable tag whose stored text changes (a new dash, or
-/// back to upper case). The echo in words. Tags are identities by `tag::key`, which ignores the
-/// dash and the case, so no index changes key; each rewrite is an ordinary tag op that every
-/// tag-showing view already maps. Merging two branches with different dash settings: the merged
-/// `tags.dash` is the branch that changed it, its rewrites come with it, and tags the other branch
-/// added keep their own form until the style is set again.
-///
-/// # Errors
-/// A bad value, or (never expected: the key ignores what changes) two different tags rewritten to
-/// the same text.
-fn tag_style_ops(doc: &Document, params: &Value) -> Result<(Vec<Op>, Option<String>), String> {
-    use ecad_model::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
-    let dash = match params.get("tag_dash").filter(|v| !v.is_null()) {
-        Some(v) => Some(v.as_bool().ok_or("`tag_dash` must be true or false")?),
-        None => None,
-    };
-    let case = match params.get("tag_case").filter(|v| !v.is_null()) {
-        Some(v) => Some(match v.as_str().map(str::trim) {
-            Some("upper") => Case::Upper,
-            Some("typed") => Case::Typed,
-            _ => return Err("`tag_case` must be \"upper\" or \"typed\"".into()),
-        }),
-        None => None,
-    };
-    let before = crate::defaults::print::tag_style(doc);
-    let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
-    let mut ops = Vec::new();
-    if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(if d { "yes" } else { "no" }.to_string())));
-    }
-    if let Some(c) = case {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(if c == Case::Typed { "typed" } else { "upper" }.to_string())));
-    }
-    let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
-    let mut n = 0usize;
-    if rewrite {
-        let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        let objects = doc
-            .components
-            .iter()
-            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Component(*id), t)))
-            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
-        for (object, old) in objects {
-            let new = tag::restyle(old, after);
-            if let Some(k) = seen.get(&new)
-                && *k != tag::key(old)
-            {
-                return Err(format!("Changing the tag style would make two tags {new}; nothing was changed."));
-            }
-            seen.insert(new.clone(), tag::key(old));
-            if new != *old {
-                ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.clone()), after: Some(new) });
-                n += 1;
-            }
-        }
-    }
-    let rewritten = if n == 1 { "1 tag rewritten".to_string() } else { format!("{n} tags rewritten") };
-    let words = if after.dash != before.dash {
-        Some(format!("Tag style: {}. {rewritten}.", if after.dash { "leading -" } else { "no leading -" }))
-    } else if after.case != before.case {
-        Some(match after.case {
-            Case::Typed => "Tags typed from now on keep their case; existing tags are unchanged.".to_string(),
-            Case::Upper => format!("Tag style: upper case. {rewritten}."),
-        })
-    } else {
-        None
-    };
-    Ok((ops, words))
+/// How cross-references are written.
+#[derive(Deserialize, JsonSchema, Clone, Copy)]
+enum ReferenceStyleParam {
+    /// Page and zone (`12.C4`).
+    #[serde(rename = "page-zone")]
+    Zone,
+    /// Page, column and row.
+    #[serde(rename = "page-column-row")]
+    ColumnRow,
+    /// Page and column.
+    #[serde(rename = "page-column")]
+    Column,
 }
 
-fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let o = params.as_object().cloned().unwrap_or_default();
-    if o.is_empty() {
-        return with_any_page(s, |p, _| Ok(project_json(p.ledger.document())));
+/// `projectprops {title?, drawing_number?, customer?, status?, function?, location?, sheet?,
+/// page_number_step?, reference_style?, contact_mirror?, tag_padding?, tag_prefixes?,
+/// colour_style?, label_height?, tag_dash?, tag_case?, revision_columns?, revision_pending?,
+/// provisional?, props?, proposal?}`: the project's properties and settings, in one transaction
+/// (no fields: everything, read only).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProjectpropsParams {
+    /// The project title (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    title: Option<Option<String>>,
+    /// The drawing number (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    drawing_number: Option<Option<String>>,
+    /// The customer (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    customer: Option<Option<String>>,
+    /// The status, any text (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    status: Option<Option<String>>,
+    /// The project's function (=…; null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    function: Option<Option<String>>,
+    /// The project's location (+…; null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    location: Option<Option<String>>,
+    /// The sheet: "A3", "A2 12x8"…
+    #[serde(default, deserialize_with = "nullable")]
+    sheet: Option<Option<String>>,
+    /// The page-number step, 1 to 1000.
+    #[serde(default, deserialize_with = "nullable")]
+    page_number_step: Option<Option<u64>>,
+    /// How cross-references are written.
+    #[serde(default, deserialize_with = "nullable")]
+    reference_style: Option<Option<ReferenceStyleParam>>,
+    /// Where contact tables go by default: "auto", "below", "right" or "off".
+    #[serde(default, deserialize_with = "nullable")]
+    contact_mirror: Option<Option<String>>,
+    /// Digits of a tag's number, 1 to 6.
+    #[serde(default, deserialize_with = "nullable")]
+    tag_padding: Option<Option<u64>>,
+    /// Tag prefixes by symbol: a prefix, or null for the built-in one.
+    #[serde(default, deserialize_with = "nullable")]
+    tag_prefixes: Option<Option<BTreeMap<String, Option<String>>>>,
+    /// How label colours are written: "iec" (BN, BU, GNYE) or "three-letter" (BRN, BLU, GRN/YEL).
+    #[serde(default, deserialize_with = "nullable")]
+    colour_style: Option<Option<String>>,
+    /// Wire label height in mm, 0.5 to 10.
+    #[serde(default, deserialize_with = "nullable")]
+    label_height: Option<Option<f64>>,
+    /// Whether tags have a leading `-`.
+    #[serde(default, deserialize_with = "nullable")]
+    tag_dash: Option<Option<bool>>,
+    /// "upper" or "typed": whether tags keep the case they are typed in.
+    #[serde(default, deserialize_with = "nullable")]
+    tag_case: Option<Option<String>>,
+    /// The revision table's columns ("rev, date, ecr:ECR@20, description"), or null for the
+    /// built-in ones.
+    #[serde(default, deserialize_with = "nullable")]
+    revision_columns: Option<Option<String>>,
+    /// How the pending revision shows: "star", "draft" or "off".
+    #[serde(default, deserialize_with = "nullable")]
+    revision_pending: Option<Option<String>>,
+    /// Provisional tags until Finalise.
+    #[serde(default, deserialize_with = "nullable")]
+    provisional: Option<Option<bool>>,
+    /// Free properties: key: value, or null to clear.
+    #[serde(default)]
+    props: Option<BTreeMap<String, Option<String>>>,
+    /// What a new function or location does to the device symbols: "propose" (default), "move" or
+    /// "keep".
+    #[serde(default, deserialize_with = "nullable")]
+    proposal: Option<Option<String>>,
+}
+
+impl ProjectpropsParams {
+    /// Whether no field is given (`projectprops` then only reads).
+    fn is_empty(&self) -> bool {
+        let fields = [&self.title, &self.drawing_number, &self.customer, &self.status, &self.function, &self.location];
+        fields.iter().all(|f| f.is_none())
+            && self.sheet.is_none()
+            && self.page_number_step.is_none()
+            && self.reference_style.is_none()
+            && self.contact_mirror.is_none()
+            && self.tag_padding.is_none()
+            && self.tag_prefixes.is_none()
+            && self.colour_style.is_none()
+            && self.label_height.is_none()
+            && self.tag_dash.is_none()
+            && self.tag_case.is_none()
+            && self.revision_columns.is_none()
+            && self.revision_pending.is_none()
+            && self.provisional.is_none()
+            && self.props.is_none()
+            && self.proposal.is_none()
     }
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let mut ops = Vec::new();
-        let mut pending = crate::designations::Pending::default();
-        // Brief 052d (design 052 §5.6): a new project value proposes itself for the device symbols
-        // whose context falls back to the project (the one project-wide case).
-        let mode = proposal_mode(params)?;
-        let mut proposed = crate::proposals::Planned::default();
-        for k in PROJECT_KEYS {
-            if let Some(v) = text_field(params, k)? {
-                // Brief 052 (design 052 §5.9): the project's function and location are entry keys.
-                let after = match (crate::designations::Aspect::of_property(k), v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
-                    (Some(a), Some(t)) => Some(pending.store(doc, &mut p.ids, a, t, &mut ops)?),
-                    (Some(_), None) => None,
-                    (None, _) => value(doc, k, v.as_deref())?,
-                };
-                if let (Some(a), Some(key)) = (crate::designations::Aspect::of_property(k), after.as_ref())
-                    && doc.properties.get(k) != Some(key)
-                {
-                    let code = crate::designations::code_of(doc, a, key)
-                        .or_else(|| pending.new_codes.iter().rev().find(|(x, _)| *x == a).map(|(_, c)| c.clone()))
-                        .unwrap_or_default();
-                    let spots = crate::proposals::spots_of_project(doc, a);
-                    let x = crate::proposals::plan_change(doc, a, &spots, doc.properties.get(k).map(String::as_str), key, &code, &mode);
-                    proposed.ops.extend(x.ops);
-                    proposed.set.extend(x.set);
-                    proposed.conflicts.extend(x.conflicts);
-                    proposed.moved += x.moved;
-                }
-                ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+}
+
+impl Command for ProjectpropsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        if self.is_empty() {
+            return on_any_page(s, |p, _| Ok(project_json(p.ledger.document())));
+        }
+        let given = [self.title, self.drawing_number, self.customer, self.status, self.function, self.location];
+        let fields = PROJECT_KEYS.into_iter().zip(given).filter_map(|(k, v)| v.map(|v| (k, v))).collect();
+        let proposal = self.proposal.flatten();
+        let mut change = ProjectChange {
+            fields,
+            props: self.props.map(|m| m.into_iter().collect()).unwrap_or_default(),
+            provisional: self.provisional.flatten(),
+            sheet: self.sheet.flatten(),
+            page_number_step: self.page_number_step.flatten(),
+            reference_style: self.reference_style.flatten().map(|r| match r {
+                ReferenceStyleParam::Zone => ReferenceStyle::PageZone,
+                ReferenceStyleParam::ColumnRow => ReferenceStyle::PageColumnRow,
+                ReferenceStyleParam::Column => ReferenceStyle::PageColumn,
+            }),
+            contact_mirror: self.contact_mirror.flatten(),
+            tag_padding: self.tag_padding.flatten(),
+            tag_prefixes: self.tag_prefixes.flatten().map(|m| m.into_iter().collect()).unwrap_or_default(),
+            colour_style: self.colour_style.flatten(),
+            label_height: self.label_height.flatten(),
+            revision_columns: self.revision_columns,
+            revision_pending: self.revision_pending.flatten(),
+            tag_dash: self.tag_dash.flatten(),
+            tag_case: self.tag_case.flatten(),
+            mode: Default::default(),
+        };
+        on_project(s, |p, pg, _| {
+            change.mode = rules::proposal_mode(proposal.as_deref())?;
+            let plan = rules::project_props(p.ledger.document(), &mut p.ids, &change)?;
+            if plan.ops.is_empty() {
+                let mut v = project_json(p.ledger.document());
+                v["changed"] = json!(false);
+                return Ok(v);
             }
-        }
-        ops.extend(proposed.ops.iter().cloned());
-        if let Some(props) = params.get("props") {
-            let m = props.as_object().ok_or("`props` must be an object of key: value|null")?;
-            for (k, v) in m {
-                // Brief 050a (FP4 ruling): an old 031 text key may be cleared, which removes its
-                // `ignored-old-setting` row; it is never written.
-                if v.is_null() && crate::styles::checks::is_old_key(k) {
-                    ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, None));
-                    continue;
-                }
-                check_free_key(doc, k)?;
-                let v = match v {
-                    Value::Null => None,
-                    // Brief 054 (FP4, design 054 §6.4): the cover's notes, one per line, bounded.
-                    Value::String(t) if k == COVER_NOTES => {
-                        let lines: Vec<&str> = t.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-                        if lines.len() > MAX_COVER_NOTES || lines.iter().any(|l| l.chars().count() > MAX_COVER_NOTE_CHARS) {
-                            return Err(COVER_NOTES_TOO_LONG.into());
-                        }
-                        (!lines.is_empty()).then(|| {
-                            lines.join(
-                                "
-",
-                            )
-                        })
-                    }
-                    // Brief 054 (design 054 §8.1a): the cover's table editor rows.
-                    Value::String(t) if k == crate::front::WIRE_ROWS_KEY || k == crate::front::LEGEND_ROWS_KEY => {
-                        crate::front::check_overrides(t)?;
-                        (!t.trim().is_empty()).then(|| t.trim_end().to_string())
-                    }
-                    // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
-                    Value::String(t) => match crate::accessories::project_rule(doc, k, Some(t)) {
-                        Some(r) => r?,
-                        // Brief 036: the registry's terminal defaults (`""` on the separator is none).
-                        None => match crate::defaults::terminals::setprop_value(k, Some(t)) {
-                            Some(r) => r?,
-                            None => value(doc, k, Some(t))?,
-                        },
-                    },
-                    _ => return Err(format!("`props.{k}` must be a string, or null to clear it")),
-                };
-                ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
-            }
-        }
-        // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
-        if let Some(v) = params.get("provisional").filter(|v| !v.is_null()) {
-            let on = v.as_bool().ok_or("`provisional` must be true or false")?;
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), ecad_model::tag::PROVISIONAL_SETTING, on.then(|| "yes".to_string())));
-        }
-        let mut settings = doc.settings.clone();
-        if let Some(v) = params.get("sheet").filter(|v| !v.is_null()) {
-            let t = v.as_str().ok_or("`sheet` must be text such as \"A3\" or \"A2 12x8\"")?;
-            settings.sheet = Some(SheetSpec::parse(t)?);
-        }
-        if let Some(v) = params.get("page_number_step").filter(|v| !v.is_null()) {
-            let n = v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=MAX_STEP).contains(n));
-            settings.page_number_step = Some(n.ok_or(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}"))?);
-        }
-        if let Some(v) = params.get("reference_style").filter(|v| !v.is_null()) {
-            settings.reference_style = Some(match v.as_str() {
-                Some("page-zone") => ReferenceStyle::PageZone,
-                Some("page-column-row") => ReferenceStyle::PageColumnRow,
-                Some("page-column") => ReferenceStyle::PageColumn,
-                _ => return Err("`reference_style` must be \"page-zone\", \"page-column-row\" or \"page-column\"".into()),
-            });
-        }
-        if let Some(v) = params.get("contact_mirror").filter(|v| !v.is_null()) {
-            settings.contact_mirror =
-                v.as_str().and_then(ecad_model::ContactMirror::parse).ok_or("`contact_mirror` must be \"auto\", \"below\", \"right\" or \"off\"")?;
-        }
-        let (padding, prefixes) = crate::cmd::device::tag_settings_params(params, "tag_padding", "tag_prefixes")?;
-        crate::cmd::device::apply_tag_settings(&mut settings, padding, prefixes);
-        // Brief 022 fix round: how label colours are written, and the label height.
-        if let Some(v) = params.get("colour_style").filter(|v| !v.is_null()) {
-            settings.wiring.colour_style = Some(
-                v.as_str()
-                    .and_then(ecad_model::wiring::ColourStyle::parse)
-                    .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?,
-            );
-        }
-        if let Some(v) = params.get("label_height").filter(|v| !v.is_null()) {
-            settings.wiring.label_height =
-                Some(v.as_f64().filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?);
-        }
-        if settings != doc.settings {
-            ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
-        }
-        // Brief 033: the revision table's columns and the pending marker.
-        if let Some(v) = params.get("revision_columns") {
-            let t = match v {
-                Value::Null => None,
-                Value::String(t) if t.trim().is_empty() => None,
-                Value::String(t) => {
-                    revisions::parse_columns(t)?;
-                    Some(t.trim().to_string())
-                }
-                _ => return Err("`revision_columns` must be text such as \"rev, date, ecr:ECR, description\", or null".into()),
-            };
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::COLUMNS_KEY, t));
-        }
-        if let Some(v) = params.get("revision_pending").filter(|v| !v.is_null()) {
-            let w = v.as_str().map(str::trim).filter(|w| ["star", "draft", "off"].contains(w));
-            let w = w.ok_or("`revision_pending` must be \"star\", \"draft\" or \"off\"")?;
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::PENDING_KEY, Some(w.to_string())));
-        }
-        // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
-        let mut message = None;
-        let (tag_ops, words) = tag_style_ops(doc, params)?;
-        ops.extend(tag_ops);
-        if let Some(w) = words {
-            message = Some(w);
-        }
-        if ops.is_empty() {
+            let message = plan.message.clone();
+            commit_props(p, pg, "projectprops", "Project properties", plan)?;
+            let doc = p.ledger.document();
             let mut v = project_json(doc);
-            v["changed"] = json!(false);
-            return Ok(v);
-        }
-        p.apply_edit(pg, "projectprops", "Project properties", ops)?;
-        if proposed.moved == 0 {
-            p.conflicts = proposed.conflicts.clone();
-        }
-        for l in crate::proposals::conflict_words(p.ledger.document(), &proposed.conflicts) {
-            pg.echo(l);
-        }
-        let doc = p.ledger.document();
-        let mut v = project_json(doc);
-        v["changed"] = json!(true);
-        if revisions::widths(&revisions::columns(doc), revisions::A3_TABLE_MM).1 {
-            v["narrowed"] = json!(revisions::NARROWED);
-        }
-        if let Some(m) = message {
-            v["message"] = json!(m);
-        }
-        Ok(v)
-    })
+            v["changed"] = json!(true);
+            if revisions::widths(&revisions::columns(doc), revisions::A3_TABLE_MM).1 {
+                v["narrowed"] = json!(revisions::NARROWED);
+            }
+            if let Some(m) = message {
+                v["message"] = json!(m);
+            }
+            Ok(v)
+        })
+    }
 }
 
 // ---------------------------------------------------------------- revisions
 
-/// The ops writing the given revision fields (`rev`, `date`, …) to the pending row.
-fn revision_ops(doc: &Document, params: &Value) -> Result<Vec<Op>, String> {
-    let n = revisions::pending_n(doc);
-    let mut ops = Vec::new();
-    let mut given = false;
-    for f in FIELDS {
-        let Some(v) = text_field(params, f)? else { continue };
-        given = true;
-        let v = match v.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-            Some(t) if f == "rev" => {
-                revisions::check_rev(doc, t)?;
-                Some(t.to_string())
-            }
-            other => value(doc, f, other)?,
-        };
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, f), v));
+/// The revision fields given, as the rules take them.
+fn revision_fields(standard: [Option<Option<String>>; 6], n: Option<u64>, custom: Option<BTreeMap<String, Option<String>>>) -> RevisionFields {
+    RevisionFields {
+        standard: FIELDS.into_iter().zip(standard).filter_map(|(k, v)| v.map(|v| (k, v))).collect(),
+        n,
+        custom: custom.map(|m| m.into_iter().collect()).unwrap_or_default(),
     }
-    // Brief 033 (design 033 §7.2): custom fields, `fields: {ecr: "ECR-114"}`, on the pending row
-    // only; an issued row never changes.
-    if let Some(n_given) = params.get("n").filter(|v| !v.is_null()) {
-        let m = n_given.as_u64().and_then(|m| u32::try_from(m).ok()).ok_or("`n` must be a revision row number")?;
-        if m != n {
-            return Err(match revisions::list(doc).into_iter().find(|r| r.n == m) {
-                Some(r) if r.issued.is_some() => format!("Rev {} is issued and cannot change.", r.rev()),
-                _ => format!("There is no pending revision row {m}."),
-            });
-        }
-    }
-    if let Some(f) = params.get("fields").filter(|v| !v.is_null()) {
-        let m = f.as_object().ok_or("`fields` must be an object of field: text|null")?;
-        for (field, v) in m {
-            if !FIELDS.contains(&field.as_str()) && !revisions::is_custom_field(field) {
-                return Err(if field == revisions::ISSUED || field == revisions::RELEASED {
-                    format!("\"{field}\" is set by issuing.")
-                } else {
-                    format!("\"{field}\" is not a field name. Use 1 to 20 letters, digits or _.")
-                });
-            }
-            let t = match v {
-                Value::Null => None,
-                Value::String(t) => Some(t.trim().to_string()).filter(|t| !t.is_empty()),
-                _ => return Err(format!("`fields.{field}` must be text, or null to clear it")),
-            };
-            let t = match t {
-                Some(t) if field == "rev" => {
-                    revisions::check_rev(doc, &t)?;
-                    Some(t)
-                }
-                other => value(doc, field, other.as_deref())?,
-            };
-            given = true;
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), t));
-        }
-    }
-    // A new pending row gets the suggested rev with its first field.
-    let row_exists = revisions::pending(doc).is_some();
-    let rev_given = params.get("rev").is_some_and(|v| !v.is_null());
-    if given && !row_exists && !rev_given {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: revisions::key(n, "rev"),
-            before: None,
-            after: Some(revisions::pending_rev(doc)),
-        });
-    }
-    Ok(ops)
 }
 
 /// Revisions are issued, and the pending one edited, on a release line only (design 020 §2.5.2,
@@ -1147,141 +781,200 @@ pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
     })
 }
 
-fn run_revision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, pg, _| {
-        if let Some(r) = release_line_refusal(p, false) {
-            return Err(r);
-        }
-        let ops = revision_ops(p.ledger.document(), params)?;
-        if ops.is_empty() {
-            return Ok(json!({"changed": false, "pending_rev": revisions::pending_rev(p.ledger.document())}));
-        }
-        p.apply_edit(pg, "revision", "Revision", ops)?;
-        Ok(json!({"changed": true, "pending_rev": revisions::pending_rev(p.ledger.document())}))
-    })
+/// `revision {rev?, date?, description?, drawn?, checked?, approved?, fields?, n?}`: the pending
+/// revision's fields, custom fields by name; an issued row is refused.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RevisionParams {
+    /// The rev (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    rev: Option<Option<String>>,
+    /// The date (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    date: Option<Option<String>>,
+    /// The description (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    description: Option<Option<String>>,
+    /// Who drew it (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    drawn: Option<Option<String>>,
+    /// Who checked it (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    checked: Option<Option<String>>,
+    /// Who approved it (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    approved: Option<Option<String>>,
+    /// Custom fields by name: text, or null to clear.
+    #[serde(default)]
+    fields: Option<BTreeMap<String, Option<String>>>,
+    /// The revision row meant; refused unless it is the pending one.
+    #[serde(default)]
+    n: Option<u64>,
 }
 
-/// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
-/// `rev.<n>.issued` and `NameVersion { "Rev <rev>", head }`, worked out before anything is written.
-#[derive(Debug, Clone, PartialEq)]
-pub struct IssuePlan {
-    pub ops: Vec<Op>,
-    pub rev: String,
-    /// The pending row's number.
-    pub n: u32,
-    pub date: String,
-    /// The transaction the version names: the one before the issue.
-    pub head: u64,
+impl RevisionParams {
+    fn fields(self) -> RevisionFields {
+        revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], self.n, self.fields)
+    }
 }
 
-/// Plan issuing the pending revision with the field writes in `params` (as `issuerevision`).
+impl Command for RevisionParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let f = self.fields();
+        on_project(s, |p, pg, _| {
+            if let Some(r) = release_line_refusal(p, false) {
+                return Err(CmdError::refused(r));
+            }
+            let ops = rules::revision_ops(p.ledger.document(), &f)?;
+            if ops.is_empty() {
+                return Ok(json!({"changed": false, "pending_rev": revisions::pending_rev(p.ledger.document())}));
+            }
+            p.apply_edit(pg, "revision", "Revision", ops)?;
+            Ok(json!({"changed": true, "pending_rev": revisions::pending_rev(p.ledger.document())}))
+        })
+    }
+}
+
+/// Plan issuing the pending revision with the field writes `f` (as `issuerevision`).
 ///
 /// # Errors
 /// Off a release line, nothing done yet, Rev, Description or Drawn empty, or a rev used before:
 /// in words, each with its way forward.
+fn plan_issue_of(p: &Project, f: &RevisionFields) -> Result<IssuePlan, CmdError> {
+    rules::plan_issue(&p.ledger, release_line_refusal(p, true), f, today)
+}
+
+/// Plan issuing the pending revision with no field writes (Release, brief 027).
+///
+/// # Errors
+/// As `issuerevision`, in words.
 pub fn plan_issue(p: &Project, params: &Value) -> Result<IssuePlan, String> {
-    if let Some(r) = release_line_refusal(p, true) {
-        return Err(r);
-    }
-    let head = p.ledger.head();
-    if head == 0 {
-        return Err("Nothing to issue yet.".into());
-    }
-    let mut ops = revision_ops(p.ledger.document(), params)?;
-    // The pending row as it will be after those writes.
-    let doc = p.ledger.preview(&ops).map_err(|e| e.to_string())?;
-    let n = revisions::pending_n(&doc);
-    let row = revisions::pending(&doc).unwrap_or_default();
-    if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {
-        return Err(revisions::FILL_FIRST.into());
-    }
-    let rev = row.rev().to_string();
-    let name = revisions::version_name(&rev);
-    if doc.versions.contains_key(&name) {
-        return Err(format!("Rev {rev} was issued before; choose another."));
-    }
-    let mut date = row.get("date").to_string();
-    if date.is_empty() {
-        date = today().unwrap_or_default();
-        if !date.is_empty() {
-            ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
-        }
-    }
-    ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
-    ops.push(Op::NameVersion { name, at: head, description: None });
-    Ok(IssuePlan { ops, rev, n, date, head })
+    let f = crate::cmd::input::parse::<RevisionParams>(params)?.fields();
+    Ok(plan_issue_of(p, &f)?)
 }
 
-fn run_issuerevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, pg, _| {
-        // Checked before anything is written.
-        plan_issue(p, params)?;
-        // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their own
-        // transaction), or issued as they are, as asked; without an answer the ways forward are
-        // named.
-        let note = crate::cmd::numbering::before_issue(p, pg, params)?;
-        let IssuePlan { ops, rev, date, head, .. } = plan_issue(p, params)?;
-        p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
-        let tx = p.ledger.head();
-        let line = match &note {
-            Some(n) => format!("Rev {rev} issued (transaction {tx}) {n}. Save to keep it."),
-            None => format!("Rev {rev} issued (transaction {tx}). Save to keep it."),
-        };
-        pg.echo(line.clone());
-        Ok(json!({"rev": rev, "date": date, "at": head, "transaction": tx, "message": line}))
-    })
+/// `issuerevision {rev?, date?, description?, drawn?, checked?, approved?, provisional?}`: issues
+/// the pending revision (needs Rev, Description and Drawn; names the log point "Rev <rev>").
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IssuerevisionParams {
+    /// The rev (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    rev: Option<Option<String>>,
+    /// The date (null clears; empty: today).
+    #[serde(default, deserialize_with = "nullable")]
+    date: Option<Option<String>>,
+    /// The description (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    description: Option<Option<String>>,
+    /// Who drew it (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    drawn: Option<Option<String>>,
+    /// Who checked it (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    checked: Option<Option<String>>,
+    /// Who approved it (null clears).
+    #[serde(default, deserialize_with = "nullable")]
+    approved: Option<Option<String>>,
+    /// With provisional tags or wire numbers present: "finalise" them first, or "issue" them as
+    /// they are.
+    #[serde(default)]
+    provisional: Option<String>,
 }
 
-fn run_openrevision(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let rev = params.get("rev").and_then(Value::as_str).map(str::trim).ok_or_else(|| err("`rev` is required"))?.to_string();
-    with_any_page(s, |p, _| {
-        let doc = p.ledger.document();
-        let row = revisions::issued(doc)
-            .into_iter()
-            .find(|r| r.rev().eq_ignore_ascii_case(&rev))
-            .ok_or_else(|| format!("Rev {rev} has not been issued."))?;
-        // The project as issued (brief 027 §16): the state after the issue transaction, so the
-        // title block, the revision table and the generated Revision list read this revision.
-        let (named, _, then) = crate::history::issued_state(p, row.rev())?;
-        let at = named.seq;
-        let book = Book::of(&then);
-        let pages: Vec<Value> = book
-            .order
-            .iter()
-            .map(|pg| {
-                json!({"page": pg.hex(), "number": book.number(&then, *pg),
-                       "title": then.pages.get(pg).map(|x| x.title.clone())})
-            })
-            .collect();
-        let date = row.get("date").to_string();
-        p.revision_view =
-            Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then), bar: None, id: next_view_id() });
-        Ok(json!({"rev": row.rev(), "date": date, "at": at, "pages": pages}))
-    })
+impl Command for IssuerevisionParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let f = revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], None, None);
+        let way = json!({"provisional": self.provisional});
+        on_project(s, |p, pg, _| {
+            // Checked before anything is written.
+            plan_issue_of(p, &f)?;
+            // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their
+            // own transaction), or issued as they are, as asked; without an answer the ways forward
+            // are named.
+            let note = crate::cmd::numbering::before_issue(p, pg, &way)?;
+            let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &f)?;
+            p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
+            let tx = p.ledger.head();
+            let line = match &note {
+                Some(n) => format!("Rev {rev} issued (transaction {tx}) {n}. Save to keep it."),
+                None => format!("Rev {rev} issued (transaction {tx}). Save to keep it."),
+            };
+            pg.echo(line.clone());
+            Ok(json!({"rev": rev, "date": date, "at": head, "transaction": tx, "message": line}))
+        })
+    }
 }
 
-fn run_closerevision(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| {
-        let was = p.revision_view.take().map(|v| v.rev);
-        Ok(json!({"closed": was}))
-    })
+/// `openrevision {rev}`: the project as issued, read only; records nothing.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OpenrevisionParams {
+    /// The issued rev (any case).
+    rev: String,
 }
 
-fn run_undoissue(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, pg, _| {
-        let ops = p.ledger.undo_ops().unwrap_or_default();
-        let Some((rev, _)) = revisions::issue_in(&revisions::inverse(&ops)) else {
-            return Err("The last step did not issue a revision; use Undo.".into());
-        };
-        p.confirm_issue_undo = true;
-        let r = p.undo_step(pg);
-        p.confirm_issue_undo = false;
-        r?;
-        if p.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
-            p.revision_view = None;
-        }
-        Ok(json!({"rev": rev, "undone": true}))
-    })
+impl Command for OpenrevisionParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let rev = self.rev.trim().to_string();
+        on_any_page(s, |p, _| {
+            let row = rules::issued(p.ledger.document(), &rev)?;
+            // The project as issued (brief 027 §16): the state after the issue transaction, so the
+            // title block, the revision table and the generated Revision list read this revision.
+            let (named, _, then) = crate::history::issued_state(p, row.rev())?;
+            let at = named.seq;
+            let book = Book::of(&then);
+            let pages: Vec<Value> = book
+                .order
+                .iter()
+                .map(|pg| {
+                    json!({"page": pg.hex(), "number": book.number(&then, *pg),
+                           "title": then.pages.get(pg).map(|x| x.title.clone())})
+                })
+                .collect();
+            let date = row.get("date").to_string();
+            p.revision_view =
+                Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then), bar: None, id: next_view_id() });
+            Ok(json!({"rev": row.rev(), "date": date, "at": at, "pages": pages}))
+        })
+    }
+}
+
+/// `closerevision {}`: back to the current project from an opened revision.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct CloserevisionParams {}
+
+impl Command for CloserevisionParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| {
+            let was = p.revision_view.take().map(|v| v.rev);
+            Ok(json!({"closed": was}))
+        })
+    }
+}
+
+/// `undoissue {}`: undoes the last step when it issued a revision (removes its release mark).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct UndoissueParams {}
+
+impl Command for UndoissueParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_project(s, |p, pg, _| {
+            let rev = rules::undone_issue(&p.ledger.undo_ops().unwrap_or_default())?;
+            p.confirm_issue_undo = true;
+            let r = p.undo_step(pg);
+            p.confirm_issue_undo = false;
+            r?;
+            if p.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
+                p.revision_view = None;
+            }
+            Ok(json!({"rev": rev, "undone": true}))
+        })
+    }
 }
 
 /// Today's date `YYYY-MM-DD` (UTC; the desktop app fills the local date in the dialog), or `None`

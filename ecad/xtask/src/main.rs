@@ -533,6 +533,103 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Brief 070: per crate, the lines that still report an error as text: `Result<_, String>` and
+/// `Err(format!(`. Each crate's two counts only fall as its errors move to its `thiserror` enum.
+/// `ecad-file` and `ecad-store` are left out until lane 069 has rewritten them; `xtask` is a tool.
+const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
+    ("ecad-app", 57, 6),
+    ("ecad-bench", 95, 22),
+    ("ecad-cadcraft", 291, 191),
+    ("ecad-cli", 1, 0),
+    ("ecad-desktop", 3, 5),
+    ("ecad-electrical", 142, 135),
+    ("ecad-inspector", 5, 2),
+    ("ecad-mcp", 34, 10),
+    ("ecad-model", 6, 7),
+];
+
+/// Brief 070: the command files (`crates/ecad-cadcraft/src/cmd`) on their own, as the crate rows:
+/// they reach 0 by the end of 070.
+const CMD_STRING_ERRORS: (usize, usize) = (122, 141);
+
+/// Brief 070: the migration bridges `impl From<String> for CmdError` and `impl From<&'static str>
+/// for CmdError` in ecad-electrical; gone by the end of 070.
+const CMD_ERROR_BRIDGES: usize = 2;
+
+/// Crates [`string_error_violations`] does not count.
+const STRING_ERROR_SKIP: &[&str] = &["ecad-file", "ecad-store", "ecad-xtask"];
+
+/// The lines of `text` (outside `//` comments) with a `Result<_, String>`, and with an
+/// `Err(format!(`.
+fn string_error_counts(text: &str) -> (usize, usize) {
+    let code = strip_line_comments(text);
+    let results = code.lines().filter(|l| l.contains("Result<") && (l.contains(", String>") || l.contains(",String>"))).count();
+    let formats = code.lines().filter(|l| l.contains("Err(format!(")).count();
+    (results, formats)
+}
+
+/// [`STRING_ERROR_ALLOWLIST`] against the sources: a count that rose, fell (lower it) or a crate
+/// missing from the list.
+fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (name, _, dir, _) in classed_packages(meta)? {
+        let Some(dir) = dir else { continue };
+        if STRING_ERROR_SKIP.contains(&name) {
+            continue;
+        }
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        let (mut results, mut formats) = (0, 0);
+        for f in files {
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let (r, e) = string_error_counts(&text);
+            (results, formats) = (results + r, formats + e);
+        }
+        match STRING_ERROR_ALLOWLIST.iter().find(|(n, _, _)| *n == name) {
+            Some((n, r, e)) => {
+                seen.insert(n);
+                const FIX: &str = "return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool (brief 070)";
+                out.extend(ratchet_problem(n, results, *r, "lines with `Result<_, String>`", FIX));
+                out.extend(ratchet_problem(n, formats, *e, "lines with `Err(format!(`", FIX));
+            }
+            None if results + formats > 0 => {
+                out.push(format!("{name}: {results} lines with `Result<_, String>` and {formats} with `Err(format!(` but no entry in STRING_ERROR_ALLOWLIST; return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool (brief 070)"));
+            }
+            None => {}
+        }
+    }
+    for (n, _, _) in STRING_ERROR_ALLOWLIST {
+        if !seen.contains(n) {
+            out.push(format!("{n}: in STRING_ERROR_ALLOWLIST but not a counted crate; remove the entry"));
+        }
+    }
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let count_in = |dir: &Path, f: &dyn Fn(&str) -> (usize, usize)| -> Result<(usize, usize), String> {
+        let mut files = Vec::new();
+        rust_files(dir, &mut files);
+        let mut sum = (0, 0);
+        for p in files {
+            let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let (a, b) = f(&text);
+            sum = (sum.0 + a, sum.1 + b);
+        }
+        Ok(sum)
+    };
+    const FIX: &str = "return CmdError (brief 070)";
+    let cmd = "crates/ecad-cadcraft/src/cmd";
+    let (r, e) = count_in(&root.join(cmd), &string_error_counts)?;
+    out.extend(ratchet_problem(cmd, r, CMD_STRING_ERRORS.0, "lines with `Result<_, String>`", FIX));
+    out.extend(ratchet_problem(cmd, e, CMD_STRING_ERRORS.1, "lines with `Err(format!(`", FIX));
+    let bridges = |t: &str| {
+        let code = strip_line_comments(t);
+        (code.lines().filter(|l| l.contains("impl From<String> for CmdError") || l.contains("impl From<&'static str> for CmdError")).count(), 0)
+    };
+    let (b, _) = count_in(&root.join("crates/ecad-electrical/src"), &bridges)?;
+    out.extend(ratchet_problem("ecad-electrical", b, CMD_ERROR_BRIDGES, "CmdError bridges from text", "return a CmdError variant (brief 070)"));
+    Ok(out)
+}
+
 /// The crate rules of design 061 §6 (065 §4) on ECAD's own manifests in `meta`; CADCraft's and
 /// transitive dependencies are not checked:
 /// - `anyhow` only in Programs and [`ANYHOW_OK`] (dev-dependencies aside);
@@ -959,6 +1056,7 @@ fn layers() -> Result<(), String> {
     v.extend(dependency_rule_violations(&meta)?);
     v.extend(core_os_violations(&meta)?);
     v.extend(readme_violations(&meta)?);
+    v.extend(string_error_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -1570,6 +1668,18 @@ let c = ecad_ui::color(SHELL.text);",
         for (text, n) in rows {
             assert_eq!(literal_size_places("crates/ecad-app/src/x.rs", text).len(), *n, "{text}");
         }
+    }
+
+    /// Brief 070: the text-error counter counts lines, outside comments.
+    #[test]
+    fn text_errors_are_counted_by_line() {
+        let text = "fn a() -> Result<u8, String> {
+    Err(format!(\"x\"))
+}
+// fn b() -> Result<(), String>
+fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
+";
+        assert_eq!(string_error_counts(text), (2, 1));
     }
 
     /// Brief 060: the ratchet message for each case.

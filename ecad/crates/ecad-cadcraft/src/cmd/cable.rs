@@ -501,7 +501,7 @@ pub fn edit_ops(
                     let n = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc)).map_err(|e| CableError::BadValue {
                         field,
                         value: t.clone(),
-                        reason: BadReason::BadOffer(e),
+                        reason: BadReason::BadOffer(e.to_string()),
                     })?;
                     refuse_taken(doc, &n, Some(k))?;
                     match ecad_model::tag::provisional(&n) {

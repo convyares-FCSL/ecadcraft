@@ -348,12 +348,12 @@ pub fn restyle(tag: &str, style: impl Into<Style>) -> String {
 /// # Errors
 /// [`BAD_TAG`] when it is empty, longer than [`MAX_TAG_CHARS`] characters, holds a control
 /// character, or is nothing but `-` (its [`key`] would be empty or `-`).
-pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, String> {
+pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, crate::ParseError> {
     let style = style.into();
     let t = text.trim();
     let n = t.chars().count();
     if !(1..=MAX_TAG_CHARS).contains(&n) || t.chars().any(char::is_control) || t.chars().all(|c| c == '-' || c.is_whitespace()) {
-        return Err(BAD_TAG.into());
+        return Err(crate::ParseError::invalid(crate::Parsed::Tag, BAD_TAG));
     }
     if let Some((_, number)) = parse(t) {
         let prefix = typed_prefix(t).unwrap_or_default();

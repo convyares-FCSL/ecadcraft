@@ -23,6 +23,8 @@ ecad-electrical = { path = "crates/ecad-electrical" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
+# Command parameter schemas (design 061 §4, R6; brief 070): Engine only (design 065 §4).
+schemars = "1.2"
 # Container v2 (brief 021, EEP-0005 §2.3): the redb version is pinned exactly; changing it is a
 # deliberate change with its own review and tests, never a routine update.
 redb = "=4.5.0"
