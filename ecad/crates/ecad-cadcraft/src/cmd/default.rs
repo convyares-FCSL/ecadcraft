@@ -126,16 +126,16 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
 pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>) -> Result<(), String> {
     // Brief 066 (F2): `None` stores "not chosen", never the built-in's value.
     let number = |v: Option<&str>| v.and_then(|t| t.parse::<f64>().ok());
-    fn whole<T: std::str::FromStr>(v: Option<&str>) -> Result<Option<T>, String> {
-        v.map(|t| t.trim().parse::<T>().map_err(|_| format!("`{t}` must be a whole number."))).transpose()
-    }
+    // A whole number; the entry's kind has already checked its range.
+    let whole = |v: Option<&str>| v.map(|t| t.trim().parse::<u32>().map_err(|_| format!("`{t}` must be a whole number."))).transpose();
+    let small = |n: u32| u8::try_from(n).unwrap_or(u8::MAX);
     match entry.key {
         k if k == defaults::text::WIRE_LABEL_HEIGHT.key => s.wiring.label_height = number(value),
         k if k == defaults::wires::WIRING_LABEL_RULE.key => s.wiring.label_rule = value.map(str::to_string),
         k if k == defaults::wires::WIRING_LABEL_MIN_LENGTH.key => s.wiring.label_min_length = number(value),
         // Brief 066c (F3): whole numbers and words; the entry's kind has checked the range.
-        k if k == defaults::settings::TAG_PADDING.key => s.tag_padding = whole(value)?,
-        k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?,
+        k if k == defaults::settings::TAG_PADDING.key => s.tag_padding = whole(value)?.map(small),
+        k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?.map(small),
         k if k == defaults::settings::PAGE_NUMBER_STEP.key => s.page_number_step = whole(value)?,
         k if k == defaults::settings::COLOUR_STYLE.key => s.wiring.colour_style = value.and_then(ecad_model::wiring::ColourStyle::parse),
         k if k == defaults::settings::REFERENCE_STYLE.key => s.reference_style = value.and_then(ecad_model::ReferenceStyle::parse),
