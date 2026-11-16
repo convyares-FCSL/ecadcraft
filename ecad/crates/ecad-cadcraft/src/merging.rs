@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_file::v2::schema::{BranchId, BranchStatus};
+use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_model::merge::{self, Choice, ConflictKind, Inputs, Obj, Plan, Scope};
 use ecad_model::{BranchPoint, Document, StepPoint, TxKind};
 use serde_json::{Value, json};
@@ -84,7 +84,7 @@ pub fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, Strin
     if sid == tid {
         return Err(format!("\"{}\" cannot be merged into itself; pick its parent, or update it from its parent.", srec.name));
     }
-    let child_of = |child: &ecad_file::v2::schema::BranchRecord, parent: BranchId| child.parent.as_deref() == Some(parent.hex().as_str());
+    let child_of = |child: &ecad_file::schema::BranchRecord, parent: BranchId| child.parent.as_deref() == Some(parent.hex().as_str());
     let (update, fork) = if child_of(&srec, tid) {
         (false, srec.fork_point.as_ref().map_or(0, |f| f.seq))
     } else if child_of(&trec, sid) {

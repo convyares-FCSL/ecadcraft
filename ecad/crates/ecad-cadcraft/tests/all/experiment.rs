@@ -9,7 +9,6 @@ use ecad_cadcraft::ProjectHandle;
 use ecad_inspect::EventKind;
 use ecad_model::derive::nets;
 use ecad_model::{ComponentId, ConductorId, Document, End, PageId, Pt, Subject, TerminalId};
-use ecad_store::Medium;
 use serde_json::{Value, json};
 
 #[test]
@@ -191,25 +190,26 @@ fn scenario_s1_to_s16() {
     h.activate(p1);
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
-    let saved_bytes = h.p(|p| p.store.medium().read_all().unwrap());
+    let saved_log = h.p(|p| p.ledger.full_log().unwrap());
     let saved_head = h.head();
     h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"})).unwrap();
     let i1 = h.page_index(p1).unwrap();
     assert!(h.s.doc_unsaved(i1));
-    h.cfg(|p| p.store.medium_mut().fail_next_append = true);
+    h.cfg(|p| p.store.fail_next_write());
     let e = h.run("qsave", Value::Null).unwrap_err();
     assert!(e.contains("not saved"), "{e}");
     assert!(h.p(|p| p.ledger.is_unsaved()), "still unsaved after the failure");
     assert_eq!(h.p(|p| p.ledger.persisted()), saved_head);
-    // The failed append left part of the batch after the verified prefix; the writer knows it is
-    // its own (§20.5) and the retry replaces it, so nothing is duplicated or lost.
-    let after_failure = h.p(|p| p.store.medium().read_all().unwrap());
-    assert!(after_failure.starts_with(&saved_bytes), "the first save is untouched");
-    assert!(h.p(|p| p.store.file().and_then(|f| f.state().attempt).is_some()), "the failed attempt is recorded");
+    // The failed save acknowledged nothing: the file still opens at the first save, and the retry
+    // writes the rest, so nothing is duplicated or lost.
+    let after_failure = h.p(|p| p.store.bytes());
+    let mut s0 = cadcraft_engine::Session::empty();
+    let first = ProjectHandle::open_from(&mut s0, "Demo", after_failure, 1).unwrap();
+    assert_eq!(first.read(&mut s0, |p, _| p.ledger.full_log().unwrap()).unwrap(), saved_log, "the first save is untouched");
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
     assert_eq!(h.p(|p| p.events.count(EventKind::SaveFailed)), 1);
-    let medium = h.p(|p| p.store.medium().clone());
+    let medium = h.p(|p| p.store.bytes());
     let log = h.p(|p| p.ledger.full_log().unwrap());
     let mut s1 = cadcraft_engine::Session::empty();
     let reopened = ProjectHandle::open_from(&mut s1, "Demo", medium, 1).unwrap();
@@ -235,7 +235,7 @@ fn scenario_s1_to_s16() {
 
     // S15: reopen from the in-memory project file (checkpoints are disabled, §20.8).
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.medium().clone());
+    let medium = h.p(|p| p.store.bytes());
     let live = h.doc();
     let id = h.p(|p| p.id);
     let mut s2 = cadcraft_engine::Session::empty();
@@ -243,7 +243,7 @@ fn scenario_s1_to_s16() {
     assert_eq!(reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap(), live);
     assert_eq!(reopened.read(&mut s2, |p, _| p.id).unwrap(), id, "the project keeps its identity");
     let report = reopened.read(&mut s2, |p, _| p.open_report.clone()).unwrap();
-    assert!(report.is_some_and(|r| r.outcome == ecad_file::Outcome::Clean));
+    assert!(report.is_some_and(|r| r.damage.is_none()));
 
     // S16: failure after acceptance, before projection completes (PROJ-02).
     h.activate(p1);

@@ -404,7 +404,11 @@ ecad-store, with no allowlist beyond named redb exceptions, if any.
 
 Pre-v1 there is no old-format compatibility: the redb container (`ecad-file/src/v2/`) is the only
 `.ecad` format kept. Survey at `df5c1e72`, before anything is deleted. **Status: stopped at the
-survey**, because removing v1 reaches past the agreed knock-ons (marked **beyond** below).
+survey**, because removing v1 reaches past the agreed knock-ons (marked **beyond** below). **Done
+by lane 069** (`docs/briefs/069-one-format.md`), with the owner's calls on the items beyond. The
+golden v1 file was also used by `tester_025_xref_probe`, `tester_026_numbering` and
+`tester_031_text`; they moved to the golden redb project with `tester_024_probe` and
+`lane_057_tester`.
 
 **Goes (ecad-file):** `codec` (JSON Lines framing), `read` (`open_project`, `OpenReport`,
 `Outcome`, `Check`, `RecordSpan`…), `write` (`ProjectFile`, `SaveOutcome`, `AttemptSummary`…), the

@@ -1,29 +1,19 @@
-//! Records as JSON values: the header and transaction records of container version 1, the flat
-//! op form `{"op": name, "v": n, …}`, version checks, upcasts and input caps (proposal §20.2,
-//! §20.7, §20.11).
+//! Transaction records as JSON values: the flat op form `{"op": name, "v": n, …}`, version
+//! checks, upcasts and input caps (proposal §20.2, §20.7, §20.11). The project file stores every
+//! transaction as one such record, in canonical form ([`crate::canonical`]).
 
 use ecad_model as m;
-use ecad_model::{LibraryId, ProjectId, TxId};
+use ecad_model::TxId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::canonical::MAX_SAFE_INTEGER;
-use crate::chain::{self, ChainKind, Hash};
-use crate::v1;
+use crate::chain::{self, Hash};
+use crate::records;
 
-/// Container name of a project file.
-pub const CONTAINER_PROJECT: &str = "ecad-project";
-/// Container name of a library file.
-pub const CONTAINER_LIBRARY: &str = "ecad-library";
-/// Record types and framing this build reads and writes.
-pub const CONTAINER_VERSION: u64 = 1;
 /// Meaning of record contents this build reads and writes.
 pub const SCHEMA_VERSION: u64 = 1;
-/// The codec of this build.
-pub const CODEC: &str = "jsonl/1";
 
-/// Longest line read (64 MiB).
-pub const MAX_LINE: usize = 64 << 20;
 /// Longest string in a record (1 MiB).
 pub const MAX_STRING: usize = 1 << 20;
 /// Most elements in one array (ops per transaction, vertices per polyline, …).
@@ -32,84 +22,11 @@ pub const MAX_ARRAY: usize = 1_000_000;
 pub const MAX_OBJECT: usize = 100_000;
 /// Deepest nesting of arrays and objects.
 pub const MAX_DEPTH: usize = 32;
-/// Most records in one file.
-pub const MAX_RECORDS: usize = 50_000_000;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum HeaderTag {
-    Header,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum TxTag {
     Tx,
-}
-
-/// The first record of every file.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Header {
-    #[serde(rename = "type")]
-    tag: HeaderTag,
-    pub container: String,
-    pub container_version: u64,
-    pub schema_version: u64,
-    pub codec: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_id: Option<ProjectId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub library_id: Option<LibraryId>,
-    pub created_ms: Option<u64>,
-    pub writer: String,
-}
-
-impl Header {
-    /// A header for a new project file written by this build.
-    pub fn project(id: ProjectId, created_ms: Option<u64>, writer: &str) -> Self {
-        Self {
-            tag: HeaderTag::Header,
-            container: CONTAINER_PROJECT.into(),
-            container_version: CONTAINER_VERSION,
-            schema_version: SCHEMA_VERSION,
-            codec: CODEC.into(),
-            project_id: Some(id),
-            library_id: None,
-            created_ms,
-            writer: writer.into(),
-        }
-    }
-
-    /// The kind of chain and the ID it is seeded from, after checking every version field.
-    ///
-    /// # Errors
-    /// A message naming what this build does not support.
-    pub fn validate(&self) -> Result<(ChainKind, u128), String> {
-        if self.container_version != CONTAINER_VERSION {
-            return Err(format!("container version {} is not supported (this build reads {CONTAINER_VERSION})", self.container_version));
-        }
-        if self.codec != CODEC {
-            return Err(format!("codec {:?} is not supported (this build reads {CODEC:?})", self.codec));
-        }
-        if self.schema_version > SCHEMA_VERSION || self.schema_version == 0 {
-            return Err(format!("schema version {} is not supported (this build reads 1 to {SCHEMA_VERSION})", self.schema_version));
-        }
-        match (self.container.as_str(), self.project_id, self.library_id) {
-            (CONTAINER_PROJECT, Some(p), None) => Ok((ChainKind::Project, p.0)),
-            (CONTAINER_LIBRARY, None, Some(l)) => Ok((ChainKind::Library, l.0)),
-            (CONTAINER_PROJECT | CONTAINER_LIBRARY, _, _) => Err(format!("a {} header must carry exactly its own ID", self.container)),
-            (other, _, _) => Err(format!("container {other:?} is not an ECAD file")),
-        }
-    }
-
-    /// The hash chain seed of this file (§20.10).
-    ///
-    /// # Errors
-    /// As [`Header::validate`].
-    pub fn seed(&self) -> Result<Hash, String> {
-        self.validate().map(|(kind, id)| chain::seed(kind, id))
-    }
 }
 
 /// A transaction record before its ops are decoded.
@@ -120,8 +37,8 @@ struct TxRaw {
     tag: TxTag,
     seq: u64,
     id: TxId,
-    kind: v1::TxKind,
-    author: v1::Author,
+    kind: records::TxKind,
+    author: records::Author,
     time_ms: Option<u64>,
     label: String,
     prev: String,
@@ -165,7 +82,7 @@ pub const OP_NAMES: &[&str] = &[
     "SetStandard",
 ];
 
-/// Why a record could not be decoded; the reader maps these to its checks (§20.6).
+/// Why a record could not be decoded (§20.6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
     /// Not the expected record type (including the reserved `checkpoint`).
@@ -187,7 +104,7 @@ pub enum DecodeError {
 /// # Errors
 /// An integer outside the limits.
 pub fn op_value(op: &m::Op) -> Result<Value, String> {
-    let rec = v1::Op::from(op);
+    let rec = records::Op::from(op);
     let tagged = serde_json::to_value(&rec).map_err(|e| e.to_string())?;
     let Value::Object(outer) = tagged else { return Err("op did not encode as an object".into()) };
     let Some((name, Value::Object(fields))) = outer.into_iter().next() else {
@@ -195,7 +112,7 @@ pub fn op_value(op: &m::Op) -> Result<Value, String> {
     };
     let mut flat = Map::new();
     flat.insert("op".into(), Value::String(name));
-    flat.insert("v".into(), Value::from(v1::OP_VERSION));
+    flat.insert("v".into(), Value::from(records::OP_VERSION));
     flat.extend(fields);
     check_integers(&rec)?;
     Ok(Value::Object(flat))
@@ -275,7 +192,7 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
     upcast_op(&name, version, &mut obj).map_err(DecodeError::Upcast)?;
     let mut tagged = Map::new();
     tagged.insert(name, Value::Object(obj));
-    let rec: v1::Op = serde_json::from_value(Value::Object(tagged)).map_err(|e| DecodeError::Parse(e.to_string()))?;
+    let rec: records::Op = serde_json::from_value(Value::Object(tagged)).map_err(|e| DecodeError::Parse(e.to_string()))?;
     check_integers(&rec).map_err(DecodeError::Limits)?;
     let op = m::Op::try_from(rec).map_err(DecodeError::Parse)?;
     check_content_hash(&op)?;
@@ -300,15 +217,15 @@ fn check_content_hash(op: &m::Op) -> Result<(), DecodeError> {
     Ok(())
 }
 
-/// Bring an op stored in an older version up to [`v1::OP_VERSION`], on its JSON fields.
+/// Bring an op stored in an older version up to [`records::OP_VERSION`], on its JSON fields.
 /// Runs only after the record's integrity has been verified on its stored form (§20.7).
 #[cfg_attr(not(test), allow(unused_variables))]
 fn upcast_op(name: &str, version: u64, obj: &mut Map<String, Value>) -> Result<(), String> {
-    if version == v1::OP_VERSION {
+    if version == records::OP_VERSION {
         return Ok(());
     }
-    if version > v1::OP_VERSION {
-        return Err(format!("op {name} version {version} is newer than this build reads ({})", v1::OP_VERSION));
+    if version > records::OP_VERSION {
+        return Err(format!("op {name} version {version} is newer than this build reads ({})", records::OP_VERSION));
     }
     match (name, version) {
         // A synthetic older version, compiled only into the crate's own tests, proving the
@@ -320,21 +237,21 @@ fn upcast_op(name: &str, version: u64, obj: &mut Map<String, Value>) -> Result<(
             page.insert("title".into(), title);
             Ok(())
         }
-        _ => Err(format!("op {name} version {version} has no upcast to version {}", v1::OP_VERSION)),
+        _ => Err(format!("op {name} version {version} has no upcast to version {}", records::OP_VERSION)),
     }
 }
 
 /// Integer fields of ops must be exact as doubles (§20.10).
-fn check_integers(op: &v1::Op) -> Result<(), String> {
+fn check_integers(op: &records::Op) -> Result<(), String> {
     let n = match op {
-        v1::Op::AddPage { index, .. }
-        | v1::Op::RemovePage { index, .. }
-        | v1::Op::AddCableMember { index, .. }
-        | v1::Op::RemoveCableMember { index, .. }
-        | v1::Op::AddFolder { index, .. }
-        | v1::Op::RemoveFolder { index, .. } => *index,
-        v1::Op::NameVersion { at, .. } | v1::Op::UnnameVersion { at, .. } => *at,
-        v1::Op::EmbedDefinition { definition, .. } | v1::Op::RemoveDefinition { definition, .. } => {
+        records::Op::AddPage { index, .. }
+        | records::Op::RemovePage { index, .. }
+        | records::Op::AddCableMember { index, .. }
+        | records::Op::RemoveCableMember { index, .. }
+        | records::Op::AddFolder { index, .. }
+        | records::Op::RemoveFolder { index, .. } => *index,
+        records::Op::NameVersion { at, .. } | records::Op::UnnameVersion { at, .. } => *at,
+        records::Op::EmbedDefinition { definition, .. } | records::Op::RemoveDefinition { definition, .. } => {
             definition.origin.as_ref().map_or(0, |o| o.library_seq)
         }
         _ => 0,
@@ -374,7 +291,7 @@ pub fn check_limits(v: &Value) -> Result<(), String> {
 /// # Errors
 /// A number without canonical form (not possible for a valid definition).
 pub fn definition_hash(d: &m::Definition) -> Result<m::ContentHash, String> {
-    let mut rec = v1::Definition::from(d);
+    let mut rec = records::Definition::from(d);
     rec.origin = None;
     let v = serde_json::to_value(&rec).map_err(|e| e.to_string())?;
     let bytes = crate::canonical::canonical(&v).map_err(|e| e.to_string())?;
@@ -384,16 +301,10 @@ pub fn definition_hash(d: &m::Definition) -> Result<m::ContentHash, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec::{Codec, JsonLines};
 
-    /// A file whose second transaction stores `AddPage` in the synthetic version 0: the chain is
-    /// verified on the stored (v0) form, then the op is upcast, and the project opens clean.
+    /// A transaction whose `AddPage` is stored in the synthetic version 0 is upcast on decoding.
     #[test]
-    fn old_op_versions_are_upcast_after_integrity_checks() {
-        let project = ProjectId(0x1234);
-        let header = Header::project(project, None, "test");
-        let seed = header.seed().unwrap();
-        let mut file = JsonLines.encode(&serde_json::to_value(&header).unwrap()).unwrap();
+    fn old_op_versions_are_upcast() {
         let tx = m::Transaction {
             id: TxId(1),
             seq: 1,
@@ -403,19 +314,15 @@ mod tests {
             time_ms: None,
             ops: vec![m::Op::AddPage { id: m::PageId(9), page: m::Page::new("1"), index: 0 }],
         };
-        let mut v = tx_value(&tx, &seed).unwrap();
+        let mut v = tx_value(&tx, &[0; 32]).unwrap();
         let op = v["ops"][0].as_object_mut().unwrap();
         op.insert("v".into(), Value::from(0u64));
         let page = op.get_mut("page").unwrap().as_object_mut().unwrap();
         let title = page.remove("title").unwrap();
         page.insert("name".into(), title);
-        file.extend(JsonLines.encode(&v).unwrap());
-        let opened = crate::read::open_project(&file, 1).unwrap();
-        assert_eq!(opened.report.outcome, crate::read::Outcome::Clean);
-        assert_eq!(opened.ledger.document().pages[&m::PageId(9)].title, "1");
-        // The chain hash covers the stored v0 form, not the upcast one.
-        let stored = crate::canonical::canonical(&v).unwrap();
-        assert_eq!(opened.chain_head, chain::tx_hash(&stored));
+        let back = decode_tx(&v).unwrap();
+        let m::Op::AddPage { page, .. } = &back.ops[0] else { panic!("not AddPage") };
+        assert_eq!(page.title, "1");
     }
 
     #[test]

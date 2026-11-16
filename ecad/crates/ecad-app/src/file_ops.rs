@@ -30,14 +30,6 @@ impl App {
             return Err("an ECAD project is already open; close it first".into());
         }
         let path = ecad_cadcraft::normalize_with(path, self.home.as_deref())?;
-        if let Some(out) = ecad_cadcraft::file::needs_conversion(&path) {
-            // Never opened for editing, never converted silently: offer it.
-            self.convert_offer = Some((path.clone(), out.clone()));
-            return Err(format!(
-                "{path} is a version 1 project file. It can be converted to a new version 2 file, {out}; \
-                 the original is left untouched."
-            ));
-        }
         let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
@@ -128,44 +120,6 @@ impl App {
     /// Title of the project close waiting for an answer.
     pub fn pending_close(&self) -> Option<&str> {
         self.held.as_ref().map(|h| h.title.as_str())
-    }
-
-    /// The version 1 file waiting for the user's answer to the conversion offer, and the file it
-    /// would write.
-    pub fn convert_offer(&self) -> Option<(&str, &str)> {
-        self.convert_offer.as_ref().map(|(a, b)| (a.as_str(), b.as_str()))
-    }
-
-    /// Accept the conversion offer: convert the version 1 file to its new version 2 file
-    /// (verified by replaying both; the original is untouched), then open the new file.
-    ///
-    /// # Errors
-    /// Nothing is offered, the conversion failed (nothing was written), or the new file could
-    /// not be opened.
-    pub fn accept_conversion(&mut self) -> Result<String, String> {
-        let (source, output) = self.convert_offer.take().ok_or("no conversion is offered")?;
-        // The blank project the app started with (a file was given at startup) closes first;
-        // one with unsaved work asks, and then the offer stays.
-        if self.project_open() {
-            self.close_project();
-            if self.project_open() {
-                self.convert_offer = Some((source, output));
-                return Err("close the open project first; the conversion is still offered".into());
-            }
-        }
-        let (report, out) = ecad_cadcraft::file::convert(&source, Some(&output), &ecad_cadcraft::writer())?;
-        self.cad.session.echo(report.clone());
-        self.dialog = None;
-        let summary = self.open_project(&out)?;
-        self.notice = Some(format!("{report}\n\n{summary}"));
-        Ok(summary)
-    }
-
-    /// Decline the conversion offer: nothing is opened or written.
-    pub fn decline_conversion(&mut self) {
-        if self.convert_offer.take().is_some() {
-            self.cad.session.echo("Not converted; nothing was opened or written.");
-        }
     }
 
     /// The open file dialog: its kind and the path typed so far.

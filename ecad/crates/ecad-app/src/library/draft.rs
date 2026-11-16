@@ -606,7 +606,7 @@ impl Draft {
 
     /// The JSON form's content fields (`name`, `key`, `graphics`, `points`, `slots`, `defaults`).
     pub fn params(&self) -> Value {
-        let graphics: Vec<ecad_file::v1::Primitive> = self.shape.graphics.iter().map(ecad_file::v1::Primitive::from).collect();
+        let graphics: Vec<ecad_file::records::Primitive> = self.shape.graphics.iter().map(ecad_file::records::Primitive::from).collect();
         let points: Vec<Value> = self.shape.points.iter().map(|p| json!({"key": p.key, "label": p.label, "at": [p.at.x, p.at.y]})).collect();
         let slots: Vec<Value> =
             self.shape.slots.iter().map(|s| json!({"text": s.text, "at": [s.at.x, s.at.y], "h": s.h, "v": s.v, "rotation": s.rotation})).collect();

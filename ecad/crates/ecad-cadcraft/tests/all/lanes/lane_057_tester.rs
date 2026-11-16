@@ -1034,19 +1034,15 @@ fn h01_hostile_values_are_refused_by_the_command_and_ignored_from_a_file() {
 
 // ---------------------------------------------------------------- old files (§13)
 
-/// The golden v1 project (written long before 057) opens with no new transaction, no rating rows,
+/// The golden project (its records written long before 057) opens with no new transaction, no rating rows,
 /// no rated subjects, `rating.table` none, and saves back to a file that reopens equal.
 #[test]
 fn o01_an_old_file_opens_unchanged_with_no_rating_rows() {
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project-v1.ecad");
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project.ecad");
     let dir = std::env::temp_dir().join(format!("t057 alt ä {}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("old project.ecad");
     std::fs::copy(&src, &path).unwrap();
-    // v1 files open only through conversion (pre-057 behaviour); 057 must open the converted file
-    // as written.
-    let (_, path) = ecad_cadcraft::file::convert(&path.display().to_string(), None, "t057").unwrap();
-    let path = std::path::PathBuf::from(path);
     let before = std::fs::read(&path).unwrap();
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path.display().to_string(), 5727).unwrap();
@@ -1205,7 +1201,7 @@ fn core02_a_core_open_at_an_end_names_the_conductor_and_its_free_end() {
 }
 
 /// Item 2: a project saved with an automatic spare (no `unused.` key, as every project before the
-/// owner rule) opens without a crash and shows a clear `core-open` Error; the golden v1 project
+/// owner rule) opens without a crash and shows a clear `core-open` Error; the golden project
 /// converts and its checks run.
 #[test]
 fn core03_an_old_projects_spare_core_is_now_a_clear_error() {
@@ -1234,11 +1230,11 @@ fn core03_an_old_projects_spare_core_is_now_a_clear_error() {
     assert!(t.contains("\"page\":\"1\""), "goes to the cable's page: {t}");
     assert_eq!(h.head(), head, "opening and checking record nothing");
     assert!(!open_of(&mut h, k).is_empty());
-    // The golden v1 project: converted, opened, checked; any core row reads clearly.
-    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project-v1.ecad");
+    // The golden project: opened, checked; any core row reads clearly.
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project.ecad");
     let old = dir.join("golden.ecad");
     std::fs::copy(&src, &old).unwrap();
-    let (_, v2) = ecad_cadcraft::file::convert(&old.display().to_string(), None, "t057").unwrap();
+    let v2 = old.display().to_string();
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &v2, 5734).unwrap();
     let mut g = H { s, project, trail: Vec::new() };

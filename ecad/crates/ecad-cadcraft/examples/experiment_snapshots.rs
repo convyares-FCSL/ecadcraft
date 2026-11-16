@@ -57,7 +57,7 @@ fn main() -> Result<(), String> {
     let _ = t1;
     s.execute("qsave", &Value::Null).map_err(|e| e.to_string())?;
     run(&mut s, "setprop", json!({"component": c["component"], "key": "description", "value": "Contactor"}));
-    project.configure(&mut s, |p| p.store.medium_mut().fail_next_flush = true)?;
+    project.configure(&mut s, |p| p.store.fail_next_write())?;
     run(&mut s, "qsave", Value::Null); // fails: injected
     let head = project.read(&mut s, |p, _| p.ledger.head())?;
     let mut written = Vec::new();

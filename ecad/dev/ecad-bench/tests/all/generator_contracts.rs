@@ -5,15 +5,14 @@
 use std::collections::BTreeSet;
 
 use ecad_bench::generate::{Generated, REFERENCE_ROLE, Tier, Variant, generate, tier};
-use ecad_file::{Outcome, open_project};
 use ecad_model::{Document, Subject};
 
 const TINY: Tier = Tier { name: "tiny", pages: 3, components: 9, wires: 18, cables: 6 };
 
 fn opened(g: &Generated) -> (Document, u64) {
     let bytes = g.file_bytes().unwrap();
-    let o = open_project(&bytes, 5).unwrap();
-    assert_eq!(o.report.outcome, Outcome::Clean, "{}", o.report.describe());
+    let o = ecad_file::ProjectV2::open(ecad_file::Store::from_bytes(bytes).unwrap(), 5, "test").unwrap();
+    assert!(o.report.damage.is_none(), "{}", o.report.describe());
     (o.ledger.document().clone(), o.ledger.head())
 }
 

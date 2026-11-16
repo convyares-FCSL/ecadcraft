@@ -5,7 +5,6 @@ use crate::common;
 
 use common::small_project;
 use ecad_inspect::EventKind;
-use ecad_store::Medium;
 use serde_json::{Value, json};
 
 #[test]
@@ -22,9 +21,9 @@ fn save_from_either_page_saves_the_whole_project() {
     h.run("qsave", Value::Null).unwrap();
     let (head, persisted, len) = h.p(|p| (p.ledger.head(), p.ledger.persisted(), p.ledger.log().len()));
     assert_eq!(persisted, head);
-    let stored = h.p(|p| p.store.medium().read_all().unwrap());
-    let records = stored.iter().filter(|b| **b == b'\n').count();
-    assert_eq!(records, len + 1, "header plus every transaction, including page 1's edit");
+    let (stored, id) = h.p(|p| (p.store.bytes(), p.id));
+    let rows = ecad_file::Store::from_bytes(stored).unwrap().reader().unwrap().tx_count(ecad_file::schema::BranchId::main_of(id.0)).unwrap();
+    assert_eq!(rows, len as u64, "every transaction, including page 1's edit");
     let i = h.page_index(p2).unwrap();
     assert!(!h.s.doc_unsaved(i), "the page window is clean");
     // An edit on page 2, saved from page 1 (the same page window, showing page 1).
@@ -142,9 +141,8 @@ fn without_persistence_save_reports_unavailable_and_changes_nothing() {
         assert_eq!(s.docs[0].path, None, "{cmd}: no path recorded");
     }
     assert!(!target.exists() && !dir.exists(), "no file or folder was written");
-    let (persisted, stored, events) = project
-        .read(&mut s, |p, _| (p.ledger.persisted(), p.store.medium().read_all().unwrap().len(), p.events.count(EventKind::SaveUnavailable)))
-        .unwrap();
+    let (persisted, stored, events) =
+        project.read(&mut s, |p, _| (p.ledger.persisted(), p.store.byte_len(), p.events.count(EventKind::SaveUnavailable))).unwrap();
     assert_eq!((persisted, stored, events), (0, 0, 2), "not persisted, nothing stored, both reported");
     // Undo back to the start still counts as changed: the history moved.
     s.execute("u", &Value::Null).unwrap();

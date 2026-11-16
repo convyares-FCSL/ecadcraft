@@ -28,3 +28,5 @@ tungstenite = { version = "=0.30.0", default-features = false, features = ["hand
 ecad-model = { workspace = true, features = ["verify-invariants"] }
 ecad-store = { workspace = true }
 redb = { workspace = true }
+# Brief 069: the every-op test reads `Op`'s variant names through serde.
+serde = { workspace = true }

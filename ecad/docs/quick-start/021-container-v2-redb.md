@@ -5,6 +5,9 @@ when one is headed with it here, otherwise to the quick start's (1–10, 5A…).
 
 ## What this brief changed
 
+**Since brief 069** the version 1 format, the conversion offer, `ecad upgrade` and `export-jsonl`
+are gone (see [069](069-one-format.md)); the parts below that use them no longer apply.
+
 **Brief 021 (container v2 on redb, EEP-0005), on `feature/container-v2` (built on
 `dev`, brief 022 included), not yet in `dev`:** a `.ecad` file is now one **redb** database. Saving writes
 one transaction in a few milliseconds and opening reads the latest snapshot and the changes after

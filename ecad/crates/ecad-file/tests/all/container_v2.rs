@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use crate::common;
 
 use common::*;
-use ecad_file::v2::schema::{self, BranchId, VersionKind};
-use ecad_file::v2::{ProjectV2, Store, StoreError};
+use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::{ProjectV2, Store, StoreError};
 use ecad_model::*;
 
 /// A fresh folder under the system temp folder, removed when dropped.
@@ -35,10 +35,10 @@ impl Drop for TempDir {
 /// Write `ledger` to a new file at `path` with snapshots every `every` transactions.
 fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, None, None, Some(1), WRITER, every).unwrap().0
+    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::v2::OpenedV2 {
+fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
     ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
@@ -74,7 +74,7 @@ fn a_written_project_reopens_identically_and_undoes_like_the_replayed_one() {
     let p = dir.path("p.ecad");
     let (_, saved) = {
         let store = Store::create(&p).unwrap();
-        ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 2_000).unwrap()
+        ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap()
     };
     assert_eq!(saved.last_seq, f.ledger.head());
     let mut o = open(&p);
@@ -130,7 +130,7 @@ fn saves_append_and_snapshots_keep_the_tail_short() {
     assert_eq!(r.tx_count(o.project.branch()).unwrap(), head);
     let autos = r.versions(o.project.branch(), VersionKind::Auto).unwrap();
     assert!(autos.len() >= 3, "{}", autos.len());
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
     assert_eq!(v.transactions, head);
     // Every automatic snapshot equals the replayed state at its point.
@@ -173,15 +173,15 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     drop(proj);
     let o = open(&p);
     assert_eq!(o.ledger.document(), f.ledger.document());
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
     // A version's snapshot is the state at its point.
     let reader = o.project.store().reader().unwrap();
     for (kind, name, seq) in [(VersionKind::User, "Before", at), (VersionKind::Revision, "Rev A", at3)] {
         let v = reader.version(o.project.branch(), kind, name).unwrap().unwrap();
-        let set = ecad_file::v2::chunks::ChunkSet::from_record(&v.chunks).unwrap();
+        let set = ecad_file::chunks::ChunkSet::from_record(&v.chunks).unwrap();
         let bodies = set.chunks.iter().map(|(k, h)| (k.clone(), reader.chunk_body(h).unwrap())).collect::<Vec<_>>();
-        let (mut doc, _) = ecad_file::v2::chunks::assemble(&set, bodies).unwrap();
+        let (mut doc, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
         doc.rebuild_index();
         assert_eq!(doc, f.ledger.state_at(seq).unwrap(), "{name}");
     }
@@ -310,7 +310,7 @@ fn undo_below_the_recorded_stack_top_reads_the_history_once() {
     // Saving now writes a snapshot whose stacks need the whole history at the base: still right.
     o.project.set_snapshot_every(16).unwrap();
     o.project.save(&mut o.ledger).unwrap();
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
     drop(o);
     let again = open(&p);
@@ -348,11 +348,9 @@ fn the_backward_walk_finds_the_same_stack_entries_as_a_full_replay() {
 }
 
 /// Brief 022's format additions, `ProjectSettings.wiring` and `Definition.bridges`, survive the
-/// version 2 chunks (in a snapshot and in the tail) and the converter's replay check.
+/// chunks (in a snapshot and in the tail).
 #[test]
-fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
-    use ecad_file::ProjectFile;
-    use ecad_store::{Medium, MemoryMedium};
+fn wiring_settings_and_bridges_survive_chunks() {
     let dir = TempDir::new("wiring");
     let mut f = fixture();
     // In the tail: written by a save after the file was created.
@@ -395,13 +393,6 @@ fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
     let o = open(&snap);
     assert_eq!(o.report.tail, 0);
     check(o.ledger.document(), "snapshot");
-    // Converted from version 1, replay-verified.
-    let file = ProjectFile::create(MemoryMedium::default(), PROJECT, &mut f.ledger, Some(1), WRITER).unwrap();
-    let src = dir.path("v1.ecad");
-    std::fs::write(&src, file.medium().read_all().unwrap()).unwrap();
-    let out = dir.path("v1.v2.ecad");
-    ecad_file::v2::convert::convert_file(&src, Some(&out), WRITER).unwrap();
-    check(open(&out).ledger.document(), "converted");
 }
 
 /// A project of `n` edits written to `p`, and the reference ledger.
@@ -513,8 +504,8 @@ fn a_row_at_the_largest_sequence_number_is_refused_not_overflowed() {
     assert_eq!(o.ledger.document(), f.ledger.document());
 }
 
-/// The converter's output is created with create-new semantics: a file already at that name (for
-/// example one that appeared after the converter's first look) is refused and left as it was.
+/// A new file is created with create-new semantics: a file already at that name is refused and
+/// left as it was.
 #[test]
 fn creating_a_file_never_replaces_one_already_there() {
     let dir = TempDir::new("create-new");

@@ -219,3 +219,19 @@ pub fn fixture() -> Fixture {
     f.ledger.redo_at(Author::Agent("assistant".into()), Some(f.time)).unwrap();
     f
 }
+
+/// Write `ledger`'s whole history as a new project file in memory and open it again from its
+/// bytes (the real format, no disk). The ledger is marked persisted.
+pub fn reopened(ledger: &mut Ledger) -> ecad_file::OpenedV2 {
+    ecad_file::ProjectV2::open(ecad_file::Store::from_bytes(written(ledger)).unwrap(), SEED, WRITER).unwrap()
+}
+
+/// The bytes of a new project file in memory holding `ledger`'s whole history.
+pub fn written(ledger: &mut Ledger) -> Vec<u8> {
+    let backend = ecad_store::MemoryBackend::new();
+    let store = ecad_file::Store::with_backend(backend.clone()).unwrap();
+    let (p, _) = ecad_file::ProjectV2::create(store, PROJECT, ledger, Some(1_760_000_000_000), WRITER, 16).unwrap();
+    drop(p);
+    ledger.mark_persisted(ledger.head()).unwrap();
+    backend.bytes()
+}

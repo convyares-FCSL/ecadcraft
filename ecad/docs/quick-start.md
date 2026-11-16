@@ -1278,41 +1278,14 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
    - `demo.ecad.lock` is normal. It marks which session may write the file, and it is empty when
      nothing holds it. If the app is killed or crashes, the next open reports and reclaims the
      leftover lock; nothing stays locked.
-   - Since brief 021 there is nothing else: `demo.ecad` is one redb database. (A version 1 file
-     could leave `demo.ecad.tail-<offset>-<…>` after an interrupted save; version 2 never does.)
+   - There is nothing else: `demo.ecad` is one redb database.
 8. **Kill it mid-edit (brief 021).** Make a few edits, save, make one more edit, then end the app
    from Task Manager (or `kill -9` on Linux) without saving. Start it again with the same file.
    Expected: it opens at once at the last save; the status says a leftover lock was reclaimed and,
    if the app was killed inside a save, that the file was recovered to its last save. The unsaved
    edit is gone; nothing saved is lost.
 
-## 7B. Open a version 1 project: convert it (brief 021)
-
-Projects saved before brief 021 are version 1 files (JSON Lines). This version opens only
-version 2 files, and never converts one silently.
-
-1. Click **Open…** in the PROJECT panel (no project open) and type the path of a version 1 file,
-   for example `C:\dev\ecad-projects\demo.ecad`, then Enter.
-   Expected: a dialog, **Convert this project to the new file format?**, naming the new file it
-   would write, `C:\dev\ecad-projects\demo.v2.ecad`, and saying the original is left untouched.
-2. Click **Convert and open**.
-   Expected: the project opens from `demo.v2.ecad`, with the same pages, devices and history; a
-   notice reports the conversion (transactions, named versions, sizes, the final hash carried
-   over, and that it was verified by replaying both). `demo.ecad` is unchanged.
-   **Cancel** opens and writes nothing.
-3. Opening the same version 1 file again offers again; the new file is never overwritten (rename
-   or delete `demo.v2.ecad` first, or open it directly).
-
-The same converter on the command line (build once with `cargo build --release -p ecad-cli`):
-
-```sh
-cargo run --release -p ecad-cli --bin ecad -- upgrade ~/ecad-projects/demo.ecad
-```
-
-`--out <file>` chooses another name. It refuses a damaged version 1 file (rescue it first with
-Save As in a build before brief 021) and an output that exists.
-
-## 7C. Look inside a version 2 file: `ecadinspect` (brief 021, moved by brief 029)
+## 7C. Look inside a project file: `ecadinspect` (brief 021, moved by brief 029)
 
 A developer tool: it is in `ecad/dev/ecad-inspector` and never ships (`ecad inspect` now only
 says where it went). Read-only; run it on a saved file (the app may have it open). The page that
@@ -1328,10 +1301,8 @@ decompressed, one JSON record each with its stored size), `versions` (named vers
 revisions and the automatic snapshots taken every 2 000 transactions), `chunk <hash>` (one
 snapshot chunk, decompressed), `verify` (the chain, then the replay with the commit-time check,
 then the full check at every snapshot and branch end; reads everything, about 2 s on the large
-bench file), and `export-jsonl [--out <file>]` (the whole history as a version 1 JSON
-Lines file: the HTML inspector and any version 1 reader open it). `export-jsonl --with-raw
---out <file>` writes every stored row instead, with its raw bytes (hex) beside the readable form;
-that file is not a version 1 project.
+bench file). Since brief 069 there is no JSON Lines export: the inspector page's **Raw** and
+**Readable** views show every stored row (see "The inspector" below).
 
 ## 7A. Let an AI agent work on a project (MCP, headless)
 
@@ -1446,8 +1417,8 @@ read-only developer view drawn inside the Developer section, which takes the low
 panel (drag its top edge to make it taller, and the panel's right edge to make it wider, up to
 720 px). It follows one trail: **selected drawing
 objects → ECAD IDs → model objects → the transactions that touched them, with the values each
-change replaced (before) and set (after) → where each transaction's record is in the saved file,
-and its bytes.**
+change replaced (before) and set (after) → whether each transaction is in the saved file, and its
+stored record.**
 
 - **Heading.** `Snapshot: live at seq N` is the transaction the panel shows. The panel copies the
   project only when something changes (an edit, a save, the selection) or when you press
@@ -1456,9 +1427,9 @@ and its bytes.**
   **Stale**, the project was busy; the previous copy is shown until the next one succeeds.
 - **Views.** **Selection** (what you clicked, and its IDs), **Model** and **Definitions**
   (searchable lists), **History** (every transaction, newest first), **Persistence** (the file,
-  its lock, header and record positions), **Storage** (brief 021: the version 2 file's head, the
-  snapshot the project was opened from, the latest snapshot and the interval, what the last save
-  wrote, the version 1 link; **Read table sizes** reads each table's rows and bytes and the version
+  its lock, the head in the file and what opening found), **Storage** (brief 021: the file's head,
+  the snapshot the project was opened from, the latest snapshot and the interval, what the last
+  save wrote; **Read table sizes** reads each table's rows and bytes and the version
   rows, on request), **Branches** (brief 021: each branch, its head, rows and fork point, read
   again after each save), **Diagnostics** (pages and runtime events, which are never saved in the
   project) and **Checks**.
@@ -1467,16 +1438,13 @@ and its bytes.**
   and the chosen transaction's command, ops and record.
 - **Transaction states.**
   - `[pending]` (orange): only in memory, not in the file. Save writes it.
-  - `[saved]` (green): durably saved. For a version 2 file (brief 021) **Read row** reads its row
-    from the file's transactions table, decompressed, and checks that it holds exactly this
-    transaction. (A version 1 file showed its offset and **Read bytes**.)
+  - `[saved]` (green): durably saved. **Read row** reads its row from the file's transactions
+    table, decompressed, and checks that it holds exactly this transaction.
   - `[written, unconfirmed]`: a Save As wrote it, but could not confirm it is durable; Save
-    confirms it.
-  - `[pending (save failed)]`: a save of it failed; Save retries it.
+    confirms it. A save that failed leaves its transactions `[pending]`; Save retries them.
 - **Checks** run only when you press their button, on copies, and never change the project:
   **Verify replay** (replaying the history gives the live document), **Verify projection** (the
-  drawing equals a fresh projection of the document) and **Verify file** (for a version 2 file:
-  replay the history from the root with every check, compare every snapshot with the replay, and
+  drawing equals a fresh projection of the document) and **Verify file** (replay the history from the root with every check, compare every snapshot with the replay, and
   compare the rows with the project's history). Each result shows the
   transaction and the time it ran against.
 
@@ -1539,13 +1507,13 @@ cargo run -p ecad-inspector --bin ecadinspect -- serve C:\dev\ecad-projects\demo
 2. Open the printed address. Expected: the file name, size, `container 2 · schema 1 · json/1`
    and the writer; pills `local only`, **chain PASS** and **verifying…**, then **verified** (or
    **Verify FAIL**); the Project tab with the pages.
-3. Visit Devices, Wires and nets, History (branches, log with **Export JSONL**, versions) and
-   Tables (pick a table, expand a row, then **Raw**, then **Readable**). Lists show 200 rows at a
+3. Visit Devices, Wires and nets, History (branches, log (expand a row for its record),
+   versions) and Tables (pick a table, expand a row, then **Raw**, then **Readable**). Lists show 200 rows at a
    time with a search box. Times are UTC.
 4. **Checks**: the open report, the chain, the invariants of the opened state, and Verify's
    result with its time.
-5. Drop `demo.v2.ecad.lock` (it says it is the lock file), then `demo-old.ecad` (version 1: it
-   offers `ecad upgrade`). Drop `demo.v2.ecad` again to go back. A dropped file is held in memory
+5. Drop `demo.v2.ecad.lock` (it says it is the lock file), then any file that is not a project
+   (it says so and shows its first bytes). Drop `demo.v2.ecad` again to go back. A dropped file is held in memory
    only; **Reload** re-opens the file named on the command line (also after the app saved it:
    the page then says the file changed).
 6. If the server stops, the page says so and offers **Reconnect**.
@@ -1616,15 +1584,13 @@ transactions). Columns, each the median of 5 runs (`--runs N` to change):
 | goto ms | From the Devices tab, show a device symbol's page and select it. |
 | devupd ms | Bring the Devices tab's list up to date after one device property edit (only that device is refreshed). |
 
-**Container version 2 (brief 021).** The generated version 1 file is converted to a version 2 file
-(`<tier>-<history>.v2.ecad`), and since the app opens only version 2, every column from **1st
-page** on is timed on the version 2 file; **open**, **edit** and **save** above stay the version 1
-timings. A second table follows. It reports the version 2 file only, against the targets in the
-specification; it does not compare it with the version 1 file:
+**The project file (brief 021, brief 069).** The bench writes each generated project straight to
+a project file (`<tier>-<history>.v2.ecad`), the one format the app opens, and every column above
+is timed on it. A second table follows, against the targets in the specification:
 
 | Column | What it times |
 | --- | --- |
-| v2 MB | The converted version 2 file. |
+| v2 MB | The project file the bench wrote. |
 | v2 open ms | Open the version 2 file as the app does: the latest snapshot and the transactions after it. Target (EEP-0005): about 100 ms or less on large. |
 | v2 save ms | Save one new wire: one redb write transaction, durable before it returns. Target: about 1–1.4 ms on large (the bake-off's redb range). |
 | crash open ms | Open the file after a process saved and exited without closing it (as a killed app leaves it), with redb's quick repair. |
@@ -1980,8 +1946,9 @@ Your table of three clean runs goes here once you have run it.
   a file or pipe. Use a debug build (`cargo run -p ecad-desktop -- --help`) to see them.
 - Only the app's Save As dialog creates the default projects folder. `saveas {"path": …}` typed
   in the ECAD command field saves only into a folder that already exists.
-- The `.ecad` format is version 1, a development format. Files from a later format version are
-  refused rather than converted, and nothing rewrites older files yet.
+- The `.ecad` format is a development format: one redb database (container version 2), and
+  before version 1.0 there is no compatibility with older formats (brief 069 removed the JSON
+  Lines format and `ecad upgrade`). Files from a later format version are refused.
 - No library files (`.ecadlib`) and no checkpoints.
 - **Refused on ECAD pages** (CADCraft 0.15.1 features that change a page outside the commands
   ECAD records): the Block Editor (BEDIT, BSAVE, BSAVEAS, BCLOSE, also from Tools, the context

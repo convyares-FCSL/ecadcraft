@@ -1,8 +1,8 @@
 //! Read-only debugger snapshots (persistence stage 2b, proposal §21).
 //!
 //! The developer debugger follows one trail: **selected drawing objects → ECAD IDs → model objects
-//! → the transactions that touched them, with before/after values → where each transaction's
-//! record sits in the saved file, and its bytes.** This module supplies the data; the panel that
+//! → the transactions that touched them, with before/after values → whether each transaction is
+//! saved in the file, and its stored record.** This module supplies the data; the panel that
 //! shows it is in the desktop app app.
 //!
 //! # Semantics
@@ -15,25 +15,22 @@
 //! - **History is copied once.** Recorded transactions never change, so the panel keeps its own
 //!   copy and a snapshot carries only the transactions after the copy's end ([`TxCursor`]).
 //! - **Pending versus saved.** [`DebugSnapshot::record_state`] says, per transaction, whether it is
-//!   only in memory (pending), written but not yet confirmed durable, or saved durably at a file
-//!   offset ([`RecordState`]).
+//!   only in memory (pending), written but not yet confirmed durable, or saved durably
+//!   ([`RecordState`]).
 //! - **Expensive checks only on request.** A snapshot never replays the log, reprojects a page or
 //!   reads the file. [`verify_replay`], [`verify_projection`] (inputs from
-//!   [`ProjectHandle::debug_projection_inputs`]) and [`verify_file`] do, when asked, on copies and
-//!   outside the lock. [`read_record`] reads one record's bytes, capped.
+//!   [`ProjectHandle::debug_projection_inputs`]) and [`verify_store`] do, when asked, on copies and
+//!   outside the lock. [`read_row`] reads one transaction's stored record, capped.
 //! - **History never touches the live project.** [`state_at`] rebuilds the document after
 //!   transaction `n` from the panel's copy of the log.
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Handle};
-use ecad_file::codec::{Codec, JsonLines};
-use ecad_file::{AttemptStage, AttemptSummary, Header, RecordSpan};
 use ecad_inspect::Event;
 use ecad_model::{
     CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject,
@@ -48,10 +45,8 @@ use crate::project::{HandleMap, Mapped, Persistence, Project};
 pub const MAX_SELECTION: usize = 500;
 /// Runtime events carried by a snapshot (the most recent).
 pub const MAX_EVENTS: usize = 500;
-/// Record bytes shown by [`read_record`]; longer records are checked in full but shown cut.
+/// Record bytes shown by [`read_row`]; longer records are checked in full but shown cut.
 pub const MAX_RECORD_SHOWN: usize = 16 * 1024;
-/// Largest file [`verify_file`] reads.
-pub const MAX_VERIFY_FILE: u64 = 1 << 30;
 
 /// Any ECAD object, for following IDs across the model and the history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -192,22 +187,15 @@ pub struct FileFacts {
     pub lock_file: Option<String>,
     /// The test store keeps its file in memory (automated tests only).
     pub in_memory: bool,
-    pub header: Option<Header>,
-    /// Bytes of the verified prefix (header included).
-    pub verified_len: Option<u64>,
-    /// The writer's acknowledged durable position (equals the ledger's when acknowledged).
+    /// The file's head: the last transaction written to it (equals the ledger's saved position
+    /// once acknowledged).
     pub writer_persisted: Option<u64>,
-    pub attempt: Option<AttemptSummary>,
-    /// An incomplete trailing write reported at open, still in the file.
-    pub pending_fragment: Option<u64>,
-    /// Where each written transaction's record sits.
-    pub spans: Vec<RecordSpan>,
     pub read_only: Option<String>,
     /// The last Save As replaced its target without confirming durability.
     pub unconfirmed: bool,
     /// What opening found, when the project was opened from a file.
     pub open_report: Option<String>,
-    /// A version 2 file's facts (the debugger's Storage view).
+    /// The file's facts (the debugger's Storage view).
     pub storage: Option<crate::file::StorageFacts>,
 }
 
@@ -219,15 +207,7 @@ impl FileFacts {
             "path": self.path,
             "lock_file": self.lock_file,
             "in_memory": self.in_memory,
-            "header": self.header,
-            "verified_len": self.verified_len,
             "writer_persisted": self.writer_persisted,
-            "attempt": self.attempt.as_ref().map(|a| json!({
-                "offset": a.offset, "len": a.len, "first_seq": a.first_seq, "last_seq": a.last_seq,
-                "stage": format!("{:?}", a.stage),
-            })),
-            "pending_fragment": self.pending_fragment,
-            "records": self.spans.iter().map(|s| json!({"seq": s.seq, "offset": s.offset, "len": s.len})).collect::<Vec<_>>(),
             "read_only": self.read_only,
             "unconfirmed": self.unconfirmed,
             "open_report": self.open_report,
@@ -255,12 +235,13 @@ pub struct StateCounts {
 /// Where one transaction stands with respect to the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordState {
-    /// Saved: acknowledged durable, in the file at `span` (when the writer knows the span).
-    Saved(Option<RecordSpan>),
-    /// Written by a Save As whose durability could not be confirmed; Save confirms it.
-    Unconfirmed(RecordSpan),
-    /// Only in memory. `attempt`: a failed save tried to write it and may have left bytes.
-    Pending { attempt: Option<AttemptStage> },
+    /// Saved: acknowledged durable, in the file.
+    Saved,
+    /// In the file, written by a Save As whose durability could not be confirmed; Save confirms
+    /// it.
+    Unconfirmed,
+    /// Only in memory.
+    Pending,
     /// The project has no persistence: nothing is ever saved.
     NotSaved,
 }
@@ -269,17 +250,21 @@ impl RecordState {
     /// A short label for listings.
     pub fn label(self) -> &'static str {
         match self {
-            RecordState::Saved(_) => "saved",
-            RecordState::Unconfirmed(_) => "written, unconfirmed",
-            RecordState::Pending { attempt: None } => "pending",
-            RecordState::Pending { attempt: Some(_) } => "pending (save failed)",
+            RecordState::Saved => "saved",
+            RecordState::Unconfirmed => "written, unconfirmed",
+            RecordState::Pending => "pending",
             RecordState::NotSaved => "not saved",
         }
     }
 
     /// Whether the transaction is durably saved.
     pub fn durable(self) -> bool {
-        matches!(self, RecordState::Saved(_))
+        matches!(self, RecordState::Saved)
+    }
+
+    /// Whether the transaction's record is in the file.
+    pub fn in_file(self) -> bool {
+        matches!(self, RecordState::Saved | RecordState::Unconfirmed)
     }
 }
 
@@ -314,15 +299,15 @@ pub struct DebugSnapshot {
     pub base: u64,
     /// Where the history before `base` is read, on request only.
     pub history: Option<Arc<dyn ecad_model::History>>,
-    /// The bound version 2 file's database, for on-request reads (records, Verify file, the
-    /// Storage and Branches views). Reads only; weak, so a copy never keeps a closed project's
+    /// The project file's database (on disk, or the test store's in memory), for on-request reads
+    /// (records, Verify file, the Storage and Branches views). Reads only; weak, so a copy never keeps a closed project's
     /// file open.
-    pub store: Option<std::sync::Weak<ecad_file::v2::Store>>,
+    pub store: Option<std::sync::Weak<ecad_file::Store>>,
 }
 
 impl DebugSnapshot {
     /// The bound file's database, while the project still has it open.
-    pub fn store_arc(&self) -> Option<Arc<ecad_file::v2::Store>> {
+    pub fn store_arc(&self) -> Option<Arc<ecad_file::Store>> {
         self.store.as_ref().and_then(std::sync::Weak::upgrade)
     }
 
@@ -347,22 +332,9 @@ impl DebugSnapshot {
             return StateCounts { saved: 0, unconfirmed: 0, pending: self.head };
         }
         let saved = self.persisted.min(self.head);
-        let spans = &self.file.spans;
-        let written_after = spans.len().saturating_sub(spans.partition_point(|s| s.seq <= saved)) as u64;
-        let unconfirmed = written_after.min(self.head - saved);
-        StateCounts { saved, unconfirmed, pending: self.head - saved - unconfirmed }
+        let written = self.file.writer_persisted.unwrap_or(0).clamp(saved, self.head);
+        StateCounts { saved, unconfirmed: written - saved, pending: self.head - written }
     }
-
-    /// The record span of transaction `seq`, when it has been written.
-    pub fn span(&self, seq: u64) -> Option<RecordSpan> {
-        span_of(&self.file.spans, seq)
-    }
-}
-
-fn span_of(spans: &[RecordSpan], seq: u64) -> Option<RecordSpan> {
-    // Spans are in sequence order, but not necessarily from seq 1 (none for a memory test store
-    // before its first save), so search.
-    spans.binary_search_by_key(&seq, |s| s.seq).ok().and_then(|i| spans.get(i).copied())
 }
 
 /// Where transaction `seq` stands, given the file facts and the durable position.
@@ -370,13 +342,12 @@ pub fn record_state(file: &FileFacts, persisted: u64, seq: u64) -> RecordState {
     if file.persistence == Some(Persistence::Unavailable) {
         return RecordState::NotSaved;
     }
-    let span = span_of(&file.spans, seq);
     if seq <= persisted {
-        return RecordState::Saved(span);
-    }
-    match span {
-        Some(s) => RecordState::Unconfirmed(s),
-        None => RecordState::Pending { attempt: file.attempt.as_ref().filter(|a| (a.first_seq..=a.last_seq).contains(&seq)).map(|a| a.stage) },
+        RecordState::Saved
+    } else if file.writer_persisted.is_some_and(|w| seq <= w) {
+        RecordState::Unconfirmed
+    } else {
+        RecordState::Pending
     }
 }
 
@@ -408,17 +379,14 @@ impl Project {
     pub fn file_facts(&self) -> FileFacts {
         let mut f = FileFacts {
             persistence: Some(self.persistence),
-            open_report: self
-                .open_report
-                .as_ref()
-                .map(ecad_file::OpenReport::describe)
-                .or_else(|| self.open_report_v2.as_ref().map(ecad_file::v2::ReportV2::describe)),
+            open_report: self.open_report.as_ref().map(ecad_file::ReportV2::describe),
             ..FileFacts::default()
         };
-        let writer = match self.persistence {
+        match self.persistence {
             Persistence::TestStore => {
                 f.in_memory = true;
-                self.store.file().map(|w| (w.header().clone(), w.summary(), w.spans().to_vec()))
+                f.storage = self.store.project().map(crate::file::StorageFacts::of);
+                f.read_only = self.store.project().and_then(|p| p.read_only()).map(str::to_string);
             }
             Persistence::File => {
                 let st = self.file.status();
@@ -427,19 +395,10 @@ impl Project {
                 f.unconfirmed = st.unconfirmed;
                 f.lock_file = self.file.lock_file();
                 f.storage = self.file.storage();
-                f.writer_persisted = f.storage.as_ref().map(|s| s.head);
-                None
             }
-            Persistence::Unavailable => None,
-        };
-        if let Some((header, state, spans)) = writer {
-            f.header = Some(header);
-            f.verified_len = Some(state.verified_len);
-            f.writer_persisted = Some(state.persisted);
-            f.attempt = state.attempt;
-            f.pending_fragment = state.pending_fragment;
-            f.spans = spans;
+            Persistence::Unavailable => {}
         }
+        f.writer_persisted = f.storage.as_ref().map(|s| s.head);
         f
     }
 
@@ -502,7 +461,10 @@ impl Project {
             file: self.file_facts(),
             base: self.ledger.base(),
             history: self.ledger.history().cloned(),
-            store: self.file.store().as_ref().map(Arc::downgrade),
+            store: match self.persistence {
+                Persistence::TestStore => self.store.project().map(|p| Arc::downgrade(p.store())),
+                _ => self.file.store().as_ref().map(Arc::downgrade),
+            },
         }
     }
 
@@ -652,9 +614,9 @@ pub fn verify_replay_from(base: u64, history: Option<&Arc<dyn ecad_model::Histor
 /// **Verify file** for a version 2 file (EEP-0005 §5.8): replay the branch from the root with
 /// every check and check every snapshot against the replay, then compare the file's rows with the
 /// copied history (after `base`) up to the saved position. Reads only, on request.
-pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {
+pub fn verify_store(store: &ecad_file::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {
     let at_seq = base + log.len() as u64;
-    let v = ecad_file::v2::verify::verify(store);
+    let v = ecad_file::verify::verify(store);
     let mut ok = v.ok;
     let mut lines = v.lines;
     let rows = store.reader().map_err(|e| e.to_string()).and_then(|r| {
@@ -672,7 +634,7 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
             let mut differ = None;
             for tx in log.iter().filter(|t| t.seq <= head.min(persisted)) {
                 let row = r.tx(branch, tx.seq).ok().flatten();
-                let same = row.and_then(|(flag, _, body)| ecad_file::v2::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
+                let same = row.and_then(|(flag, _, body)| ecad_file::pack::unpack(flag, &body).ok()).is_some_and(|rec| {
                     serde_json::from_slice::<Value>(&rec).ok().and_then(|v| ecad_file::record::decode_tx(&v).ok()).is_some_and(|t| &t == tx)
                 });
                 if !same {
@@ -699,16 +661,16 @@ pub fn verify_store(store: &ecad_file::v2::Store, base: u64, log: &[Transaction]
     Check { what: "file", at_seq, ok, lines }
 }
 
-/// Read transaction `seq`'s row from a version 2 file (no project lock) and check that it decodes
-/// to exactly `expected`. `shown` is the record, decompressed; the span gives its stored size.
+/// Read transaction `seq`'s row from the project file (no project lock) and check that it decodes
+/// to exactly `expected`. `shown` is the record, decompressed; `stored` is its size in the file.
 ///
 /// # Errors
 /// The file cannot be read, or holds no such row.
-pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
+pub fn read_row(store: &ecad_file::Store, seq: u64, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let branch = r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
     let (flag, chain, body) = r.tx(branch, seq).map_err(|e| e.to_string())?.ok_or(format!("no row for {seq}"))?;
-    let record = ecad_file::v2::pack::unpack(flag, &body)?;
+    let record = ecad_file::pack::unpack(flag, &body)?;
     let check = (|| {
         if ecad_file::chain::tx_hash(&record) != chain {
             return Err("the record does not match its chain value".to_string());
@@ -720,11 +682,11 @@ pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transa
             _ => Ok(()),
         }
     })();
-    let span = RecordSpan { seq, offset: 0, len: (body.len() + 33) as u64 };
+    let stored = (body.len() + 33) as u64;
     let mut shown = record;
     let truncated = shown.len() > MAX_RECORD_SHOWN;
     shown.truncate(MAX_RECORD_SHOWN);
-    Ok(RecordBytes { span, shown, truncated, check })
+    Ok(RecordBytes { seq, stored, shown, truncated, check })
 }
 
 /// What the Storage and Branches views read from a version 2 file, on request: table sizes, the
@@ -732,7 +694,7 @@ pub fn read_row(store: &ecad_file::v2::Store, seq: u64, expected: Option<&Transa
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StorageRead {
     pub file_bytes: u64,
-    pub tables: Vec<ecad_file::v2::TableStat>,
+    pub tables: Vec<ecad_file::TableStat>,
     /// Name, ID, status, head, rows, parent and fork point.
     pub branches: Vec<BranchRow>,
     /// Branch name, kind, name, point and chunk count.
@@ -758,7 +720,7 @@ pub struct BranchRow {
 ///
 /// # Errors
 /// The file cannot be read.
-pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, String> {
+pub fn read_branches(store: &ecad_file::Store) -> Result<Vec<BranchRow>, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for (id, b) in r.branches().map_err(|e| e.to_string())? {
@@ -782,13 +744,12 @@ pub fn read_branches(store: &ecad_file::v2::Store) -> Result<Vec<BranchRow>, Str
 ///
 /// # Errors
 /// The file cannot be read.
-pub fn read_storage(store: &ecad_file::v2::Store, path: Option<&Path>) -> Result<StorageRead, String> {
+pub fn read_storage(store: &ecad_file::Store, path: Option<&Path>) -> Result<StorageRead, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let tables = r.stats().map_err(|e| e.to_string())?;
     let mut versions = Vec::new();
     for (id, b) in r.branches().map_err(|e| e.to_string())? {
-        for kind in [ecad_file::v2::schema::VersionKind::User, ecad_file::v2::schema::VersionKind::Revision, ecad_file::v2::schema::VersionKind::Auto]
-        {
+        for kind in [ecad_file::schema::VersionKind::User, ecad_file::schema::VersionKind::Revision, ecad_file::schema::VersionKind::Auto] {
             for v in r.versions(id, kind).map_err(|e| e.to_string())? {
                 versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.chunks.len()));
             }
@@ -851,101 +812,17 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
     Check { what: "projection", at_seq: inputs.head, ok, lines }
 }
 
-/// Re-read the project file from disk and check it end to end (frames, checksums, hash chain,
-/// sequence, replay), then compare its history and record positions with the snapshot's. Reads
-/// only; the file and the project are unchanged.
-pub fn verify_file(path: &Path, log: &[Transaction], file: &FileFacts, persisted: u64) -> Check {
-    let at_seq = log.len() as u64;
-    let fail = |m: String| Check { what: "file", at_seq, ok: false, lines: vec![m] };
-    let bytes = match read_capped(path, MAX_VERIFY_FILE) {
-        Ok(b) => b,
-        Err(e) => return fail(format!("could not read {}: {e}", path.display())),
-    };
-    let opened = match ecad_file::open_project(&bytes, 0) {
-        Ok(o) => o,
-        Err(e) => return fail(format!("{} does not open: {e}", path.display())),
-    };
-    let mut lines = vec![format!("{} ({} bytes): {}", path.display(), bytes.len(), opened.report.describe())];
-    let mut ok = opened.report.outcome == ecad_file::Outcome::Clean;
-    let in_file = opened.ledger.log();
-    let n = in_file.len();
-    if log.get(..n) == Some(in_file) {
-        lines.push(format!("the file's {n} transactions are the first {n} of the project's history"));
-    } else {
-        ok = false;
-        lines.push(format!("the file's {n} transactions DIFFER from the project's history"));
-    }
-    if (n as u64) < persisted {
-        ok = false;
-        lines.push(format!("the file ends at transaction {n}, before the saved position {persisted}"));
-    } else {
-        lines.push(format!("saved through transaction {persisted}; {} pending in memory", at_seq.saturating_sub(n as u64)));
-    }
-    if opened.spans == file.spans {
-        lines.push(format!("all {} record offsets match the writer's", opened.spans.len()));
-    } else {
-        ok = false;
-        lines.push("record offsets DIFFER from the writer's".into());
-    }
-    if file.header.as_ref().is_some_and(|h| *h != opened.header) {
-        ok = false;
-        lines.push("the header DIFFERS from the writer's".into());
-    }
-    Check { what: "file", at_seq, ok, lines }
-}
-
-fn read_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
-    let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let len = f.metadata().map_err(|e| e.to_string())?.len();
-    if len > cap {
-        return Err(format!("it is {len} bytes, more than the debugger reads ({cap})"));
-    }
-    let mut bytes = Vec::new();
-    f.take(cap).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-    Ok(bytes)
-}
-
-/// One record's bytes, read from the file.
+/// One transaction's stored record, read from the file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordBytes {
-    pub span: RecordSpan,
-    /// The first [`MAX_RECORD_SHOWN`] bytes.
+    pub seq: u64,
+    /// Bytes the row takes in the file (compressed, with its flag and chain value).
+    pub stored: u64,
+    /// The first [`MAX_RECORD_SHOWN`] bytes of the record.
     pub shown: Vec<u8>,
     pub truncated: bool,
-    /// Whether the bytes are a valid frame decoding to exactly the expected transaction.
+    /// Whether the record matches its chain value and decodes to exactly the expected transaction.
     pub check: Result<(), String>,
-}
-
-/// Read the record at `span` from `path` (outside any lock) and check that it is a valid frame
-/// holding exactly `expected`.
-///
-/// # Errors
-/// The file cannot be read at that position.
-pub fn read_record(path: &Path, span: RecordSpan, expected: Option<&Transaction>) -> Result<RecordBytes, String> {
-    let len = usize::try_from(span.len).ok().filter(|l| *l <= ecad_file::record::MAX_LINE + 64);
-    let len = len.ok_or_else(|| format!("record of {} bytes is longer than any valid record", span.len))?;
-    let mut f = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    f.seek(SeekFrom::Start(span.offset)).map_err(|e| e.to_string())?;
-    let mut bytes = vec![0; len];
-    f.read_exact(&mut bytes).map_err(|e| format!("reading {} bytes at offset {}: {e}", span.len, span.offset))?;
-    let check = check_record(&bytes, span.seq, expected);
-    let truncated = bytes.len() > MAX_RECORD_SHOWN;
-    bytes.truncate(MAX_RECORD_SHOWN);
-    Ok(RecordBytes { span, shown: bytes, truncated, check })
-}
-
-fn check_record(bytes: &[u8], seq: u64, expected: Option<&Transaction>) -> Result<(), String> {
-    let frame = bytes.strip_suffix(b"\n").ok_or("the record does not end with a line break")?;
-    let payload = JsonLines.payload(frame).map_err(|e| e.to_string())?;
-    let value: Value = serde_json::from_slice(payload).map_err(|e| format!("not JSON: {e}"))?;
-    let tx = ecad_file::record::decode_tx(&value).map_err(|e| format!("not a transaction record: {e:?}"))?;
-    if tx.seq != seq {
-        return Err(format!("it holds transaction {}, not {seq}", tx.seq));
-    }
-    match expected {
-        Some(e) if *e != tx => Err(format!("transaction {seq} in the file differs from the one in memory")),
-        _ => Ok(()),
-    }
 }
 
 /// The document after transaction `seq`, rebuilt from a copy of the history. The live project is
@@ -1366,7 +1243,7 @@ pub fn counts(doc: &Document) -> BTreeMap<&'static str, usize> {
     m
 }
 
-/// Bytes for display: text as it is (records are UTF-8 JSON lines), with control characters
+/// Bytes for display: text as it is (records are UTF-8 JSON), with control characters
 /// (the line break included) and invalid UTF-8 escaped.
 pub fn printable(bytes: &[u8]) -> String {
     let mut out = String::new();

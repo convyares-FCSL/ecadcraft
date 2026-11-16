@@ -32,7 +32,6 @@ use ecad_model::{
     ProjectSettings, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId,
     TxKind,
 };
-use ecad_store::{Medium, MemoryMedium};
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
 /// are the ones `ecad_model::derive::cable_references` derives.
@@ -129,14 +128,19 @@ pub struct Generated {
 }
 
 impl Generated {
-    /// The project file's bytes.
+    /// The project file's bytes: the whole history written in memory as the app's first save
+    /// writes it (the default snapshot interval).
     ///
     /// # Errors
     /// Encoding failed.
     pub fn file_bytes(&self) -> Result<Vec<u8>, String> {
-        let file = ecad_file::ProjectFile::write_new(MemoryMedium::default(), self.project, &self.ledger, None, WRITER)
+        use ecad_file::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
+        let backend = ecad_store::MemoryBackend::new();
+        Store::with_backend(backend.clone())
+            .map_err(|e| e.to_string())
+            .and_then(|store| ProjectV2::create(store, self.project, &self.ledger, None, WRITER, DEFAULT_SNAPSHOT_EVERY).map_err(|e| e.to_string()))
             .map_err(|e| format!("writing the {} {} project: {e}", self.tier.name, self.variant.name()))?;
-        file.into_medium().read_all().map_err(|e| e.to_string())
+        Ok(backend.bytes())
     }
 }
 

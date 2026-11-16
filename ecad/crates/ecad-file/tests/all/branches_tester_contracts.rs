@@ -17,8 +17,8 @@ use std::time::Instant;
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::v2::schema::{BranchId, BranchStatus};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::schema::{BranchId, BranchStatus};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
 use redb::ReadableDatabase;
@@ -50,7 +50,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).map_err(|e| e.to_string())?;
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, "crash", 16).map_err(|e| e.to_string())?;
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     if let Some(c) = cut {
         disk.cut_after(c);
@@ -179,7 +179,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
         return Err(format!("damage after the cut: {d:?}"));
     }
     let found = observe(&o).map_err(|e| format!("observe: {e}"))?;
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     if !v.ok {
         return Err(format!("verify: {:?}", v.lines));
     }
@@ -203,7 +203,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     ))
 }
 
-fn observe(o: &ecad_file::v2::OpenedV2) -> Result<Expect, String> {
+fn observe(o: &ecad_file::OpenedV2) -> Result<Expect, String> {
     let mut branches = BTreeMap::new();
     for (id, rec) in o.project.branches().map_err(|e| e.to_string())? {
         let doc = o.project.point_state(id, rec.head.seq)?;
@@ -258,7 +258,7 @@ fn power_loss_during_branch_actions_reopens_consistently() {
 fn meta_get(path: &std::path::Path, name: &str) -> Option<Vec<u8>> {
     let db = redb::Database::open(path).unwrap();
     let r = db.begin_read().unwrap();
-    let t = r.open_table(ecad_file::v2::schema::META).unwrap();
+    let t = r.open_table(ecad_file::schema::META).unwrap();
     t.get(name).unwrap().map(|v| v.value().to_vec())
 }
 
@@ -266,7 +266,7 @@ fn meta_put(path: &std::path::Path, name: &str, value: Option<&[u8]>) {
     let db = redb::Database::open(path).unwrap();
     let w = db.begin_write().unwrap();
     {
-        let mut t = w.open_table(ecad_file::v2::schema::META).unwrap();
+        let mut t = w.open_table(ecad_file::schema::META).unwrap();
         match value {
             Some(v) => {
                 t.insert(name, v).unwrap();
@@ -286,7 +286,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
         let mut f = fixture();
         let p = dir.path("p.ecad");
         let store = Store::create(&p).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 16).unwrap();
+        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut rng = Rng::new(5);
         let main = proj.branch();
@@ -334,7 +334,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
             assert_eq!(&o.ledger.state_at(s as u64).unwrap(), d, "state_at {s}");
         }
         assert_eq!(o.project.point_state(main, fork).unwrap(), fork_doc);
-        let v = ecad_file::v2::verify::verify(o.project.store());
+        let v = ecad_file::verify::verify(o.project.store());
         assert!(v.ok, "drop cache {drop_branch_cache}: {:#?}", v.lines);
         let mut proj = o.project;
         let (ml2, _) = proj.switch_to(&o.ledger, main, 4).unwrap();
@@ -344,7 +344,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
         line(&mut bl2, &mut rng);
         proj.save(&mut bl2).unwrap();
         drop(proj);
-        let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+        let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
         assert!(v.ok, "{:#?}", v.lines);
     }
 }
@@ -357,7 +357,7 @@ fn a_stale_or_odd_meta_active_opens_on_main() {
     let f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 2_000).unwrap();
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap();
     let main = proj.branch();
     let (b, _) = proj.create_branch("Gone", main, f.ledger.head(), None, None).unwrap();
     proj.set_branch_open(b, false).unwrap();
@@ -385,7 +385,7 @@ fn a_reader_opened_earlier_reads_a_branch_written_later() {
     let mut f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 16).unwrap();
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let main = proj.branch();
     let reader = ProjectV2::open(Store::open(&p, false).unwrap(), 2, "reader").unwrap();

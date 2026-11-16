@@ -742,9 +742,6 @@ impl App {
         if self.issue_prompt.is_some() {
             return Some("Issue revision");
         }
-        if self.convert_offer.is_some() {
-            return Some("Convert");
-        }
         if self.agent.undo_confirm.is_some() {
             return Some("Undo agent session");
         }
