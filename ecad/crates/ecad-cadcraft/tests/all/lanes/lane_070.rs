@@ -66,12 +66,6 @@ const UNTYPED: &[&str] = &[
     "jumper",
     "prerelease",
     "release",
-    "textstyle",
-    "showtext",
-    "movetext",
-    "hiddentext",
-    "pagetexts",
-    "defaults",
     "agentaccess",
     "termlabel",
     "toposition",
@@ -392,4 +386,75 @@ fn the_typed_output_commands_still_work() {
     let cables = h.run("cablelist", json!({"include_not_drawn": false})).unwrap_or(Value::Null);
     assert!(cables["rows"].is_array(), "{cables}");
     assert_eq!(h.run("reports", json!({})).unwrap_or(Value::Null), json!({"open": "reports"}));
+}
+
+/// Input refusals of the text commands: one wording.
+#[test]
+fn the_text_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("textstyle", json!({"kind": "tag", "height": "x"}), "`height` must be a number, or null"),
+        ("textstyle", json!({"kinds": 1}), "`kinds` must be a list of objects, or null"),
+        ("showtext", json!({"show": "on"}), "`kind` (text) is required"),
+        ("showtext", json!({"kind": "tag"}), "`show` (text) is required"),
+        ("movetext", json!({"to": [1, 2]}), "`representation` (hex id) is required"),
+        ("movetext", json!({"representation": "1", "to": [1]}), "`to` must be a point [x, y], or null"),
+        ("hiddentext", json!({"on": "yes"}), "`on` must be true or false, or null"),
+        ("pagetexts", json!({"page": "zz"}), "`page` must be a hex id, or null"),
+        ("defaults", json!({"group": 1}), "`group` must be text, or null"),
+    ];
+    let mut h = H::new(7011);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the text commands keep their words.
+#[test]
+fn the_text_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_cadcraft::text_cmds::BAD_HEIGHT),
+        ("textstyle", json!({"height": 3}), ecad_cadcraft::text_cmds::NEEDS_KIND),
+        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_cadcraft::text_cmds::NEEDS_KIND),
+        ("textstyle", json!({"font": ""}), ecad_cadcraft::text_cmds::BAD_FONT),
+        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_cadcraft::text_cmds::BAD_SHOW),
+        (
+            "showtext",
+            json!({"kind": "tag", "show": "on", "page": "1", "component": "2"}),
+            "Name at most one of representation, component, conductor and page.",
+        ),
+        ("showtext", json!({"kind": "tag", "show": "on", "page": "1"}), "No page 00000000000000000000000000000001."),
+        ("movetext", json!({"representation": "1"}), ecad_cadcraft::text_cmds::BAD_POINT),
+        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_cadcraft::text_cmds::BAD_JUSTIFY),
+        ("movetext", json!({"representation": "1", "to": [1, 2]}), "No representation 00000000000000000000000000000001."),
+        ("pagetexts", json!({"page": "1"}), "No page 00000000000000000000000000000001."),
+        ("defaults", json!({"key": "no.such"}), "No default \"no.such\"."),
+    ];
+    let mut h = H::new(7012);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+    let e = h.run("showtext", json!({"kind": "nope", "show": "on"})).err().unwrap_or_default();
+    assert!(e.starts_with("Unknown text kind \"nope\". Kinds: tag, point_label"), "{e}");
+}
+
+/// The typed text commands still work, and answer as before.
+#[test]
+fn the_typed_text_commands_still_work() {
+    let mut h = H::new(7013);
+    let read = h.run("textstyle", json!({})).unwrap_or(Value::Null);
+    assert_eq!(read["changed"], json!(false));
+    let set = h.run("textstyle", json!({"kind": "tag", "height": 3, "kinds": [{"kind": "point_label", "weight": "bold"}]})).unwrap_or(Value::Null);
+    assert_eq!(set["changed"], json!(true));
+    let same = h.run("textstyle", json!({"kind": "tag", "height": 3})).unwrap_or(Value::Null);
+    assert_eq!(same["changed"], json!(false));
+    let shown = h.run("showtext", json!({"kind": "tag", "show": "off"})).unwrap_or(Value::Null);
+    assert_eq!(shown, json!({"level": "project", "target": null, "kind": "tag", "show": "off", "changed": true}));
+    let back = h.run("showtext", json!({"kind": "tag", "show": null})).unwrap_or(Value::Null);
+    assert_eq!((&back["show"], &back["changed"]), (&Value::Null, &json!(true)));
+    let on = h.run("hiddentext", json!({})).unwrap_or(Value::Null);
+    assert_eq!(on["on"], json!(true));
+    let texts = h.run("pagetexts", json!({})).unwrap_or(Value::Null);
+    assert!(texts["texts"].is_array(), "{texts}");
+    let d = h.run("defaults", json!({"key": "text.tag.show"})).unwrap_or(Value::Null);
+    assert_eq!(d["defaults"].as_array().map(Vec::len), Some(1), "{d}");
 }
