@@ -124,7 +124,7 @@ fn runs(doc: &Document, book: &Book, outputs: Option<&Outputs>) -> Runs {
 /// The numbers each run would give if nothing else were in the way: its span, from its start by
 /// the step, a multi-sheet page taking one number per sheet.
 fn spans(doc: &Document, runs: &Runs) -> BTreeMap<Option<FolderId>, BTreeSet<u64>> {
-    let step = u64::from(doc.settings.page_number_step.max(1));
+    let step = u64::from(doc.settings.page_number_step().max(1));
     runs.iter()
         .map(|(run, pages)| {
             let (mut n, _) = start_value(doc, *run);
@@ -174,7 +174,7 @@ pub fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option<Folder
 /// What [`renumber`] would write: each page whose number changes, with its new number.
 pub fn renumber(doc: &Document, outputs: Option<&Outputs>, scope: Option<FolderId>) -> Vec<(PageId, String)> {
     let book = Book::of(doc);
-    let step = u64::from(doc.settings.page_number_step.max(1));
+    let step = u64::from(doc.settings.page_number_step().max(1));
     let rs = runs(doc, &book, outputs);
     let sp = spans(doc, &rs);
     let in_scope = |p: PageId| scope.is_none_or(|f| within(doc, p, f));

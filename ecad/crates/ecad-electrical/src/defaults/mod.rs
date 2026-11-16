@@ -62,6 +62,7 @@ pub mod pages;
 pub mod plc;
 pub mod print;
 pub mod rating;
+pub mod settings;
 pub mod strip_pages;
 pub mod styles;
 pub mod symbols;
@@ -387,6 +388,7 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         plc::ENTRIES,
         pages::ENTRIES,
         rating::ENTRIES,
+        settings::ENTRIES,
     ]
     .into_iter()
     .flatten()
@@ -661,7 +663,7 @@ mod kind_tests {
     };
 
     fn rule(s: &ProjectSettings) -> Option<Value<'_>> {
-        (s.tag_padding == 3).then_some(Value::Choice("each"))
+        (s.tag_padding == Some(3)).then_some(Value::Choice("each"))
     }
 
     static CHOICE: Entry = Entry {
@@ -704,7 +706,7 @@ mod kind_tests {
         // A property of the same key is never a second project path.
         doc.properties.insert(CHOICE.key.into(), "each".into());
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()).from, Source::Builtin);
-        doc.settings.tag_padding = 3;
+        doc.settings.tag_padding = Some(3);
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("each"), from: Source::Project });
     }
 

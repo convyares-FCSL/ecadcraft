@@ -56,6 +56,17 @@ pub static FILES: &[(&str, &str)] = &[
     ("rating.toml", include_str!("../../defaults/rating.toml")),
 ];
 
+/// Built-in layout values no level overrides (brief 066c): `[layout]` keys of the files, with the
+/// check each value must pass. Not registry entries (every entry has a project level).
+pub static LAYOUT: &[(&str, Kind)] =
+    &[("page.report.row_height", Kind::Length { min: 3.0, max: 20.0 }), ("page.report.header_height", Kind::Length { min: 3.0, max: 30.0 })];
+
+/// Whether ecad-model holds `key`'s built-in (`ecad_model::builtins::KEYS`; owner, 2026-11-16:
+/// what the lower crate needs lives only in the lower crate). This crate's files never name it.
+pub fn in_model(key: &str) -> bool {
+    ecad_model::builtins::KEYS.contains(&key)
+}
+
 /// A problem with a defaults file. Each names the file and, where it has one, the byte span the
 /// TOML parser reports (what a `miette` report underlines).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -114,10 +125,24 @@ impl<'i> Loaded<'i> {
         &self.problems
     }
 
-    /// The file's valid value of `entry`, if it sets one.
+    /// The file's valid value of `entry`, if it sets one (never one of ecad-model's keys).
     pub fn value<'a>(&'a self, entry: &Entry) -> Option<Value<'a>> {
+        if in_model(entry.key) {
+            return None;
+        }
         let v = self.section("values")?.get(entry.key)?;
         convert(entry.kind, v.get_ref(), false).ok()
+    }
+
+    /// The file's valid `[layout]` value of `key`, if it sets one.
+    pub fn layout<'a>(&'a self, key: &str) -> Option<Value<'a>> {
+        let (_, kind) = LAYOUT.iter().find(|(l, _)| *l == key)?;
+        convert(*kind, self.section("layout")?.get(key)?.get_ref(), false).ok()
+    }
+
+    /// Whether the file names `key` under `[values]` or `[layout]` (a guard test reads it).
+    pub fn names(&self, key: &str) -> bool {
+        self.has(key) || self.section("layout").is_some_and(|t| t.get(key).is_some())
     }
 
     /// The file's valid value of field `key` of catalogue `cat`'s built-in style `id`, or, with
@@ -215,9 +240,18 @@ fn check(file: &str, t: &DeTable<'_>) -> Vec<DefaultsError> {
             "values" => {
                 for (k, v) in body.iter() {
                     let key = k.get_ref().as_ref();
-                    match find(key) {
+                    match find(key).filter(|e| !in_model(e.key)) {
                         Some(e) => bad(&mut problems, key.to_string(), e.kind, v, false),
                         None => unknown_key(&mut problems, key.to_string(), k.span()),
+                    }
+                }
+            }
+            "layout" => {
+                for (k, v) in body.iter() {
+                    let key = k.get_ref().as_ref();
+                    match LAYOUT.iter().find(|(l, _)| *l == key) {
+                        Some((_, kind)) => bad(&mut problems, format!("layout.{key}"), *kind, v, false),
+                        None => unknown_key(&mut problems, format!("layout.{key}"), k.span()),
                     }
                 }
             }
@@ -324,9 +358,33 @@ fn builtin_files() -> &'static [Loaded<'static>] {
     LOADED.get_or_init(|| FILES.iter().map(|(name, text)| load(name, text)).collect())
 }
 
-/// `entry`'s built-in value from the data (what [`Entry::builtin`] caches).
+/// `entry`'s built-in value from the data (what [`Entry::builtin`] caches): ecad-model's for its
+/// keys, else this crate's files.
 pub(crate) fn builtin_value(entry: &Entry) -> Value<'static> {
-    builtin_files().iter().find_map(|f| f.value(entry)).unwrap_or_else(|| safe_value(entry.kind))
+    let found = if in_model(entry.key) { model_value(entry) } else { builtin_files().iter().find_map(|f| f.value(entry)) };
+    found.unwrap_or_else(|| safe_value(entry.kind))
+}
+
+/// ecad-model's built-in of `entry`, valid for its kind.
+fn model_value(entry: &Entry) -> Option<Value<'static>> {
+    use ecad_model::builtins::BuiltinValue;
+    let v = match (entry.kind, ecad_model::builtins::get(entry.key)?) {
+        (Kind::Number { .. }, BuiltinValue::Number(x)) => Value::Number(x),
+        (Kind::Length { .. }, BuiltinValue::Number(x)) => Value::Length(x),
+        (Kind::Choice(words), BuiltinValue::Word(w)) => Value::Choice(words.iter().copied().find(|x| *x == w)?),
+        _ => return None,
+    };
+    entry.accepts(&v).then_some(v)
+}
+
+/// A `[layout]` value (millimetres for a length), or its kind's safe value when missing or damaged.
+pub fn layout(key: &str) -> f64 {
+    let kind = LAYOUT.iter().find(|(l, _)| *l == key).map(|(_, k)| *k);
+    let v = builtin_files().iter().find_map(|f| f.layout(key)).or_else(|| kind.map(safe_value));
+    match v {
+        Some(Value::Length(x) | Value::Number(x)) => x,
+        _ => 0.0,
+    }
 }
 
 /// The catalogue that declares `f`.
@@ -368,8 +426,15 @@ pub fn builtin_problems() -> &'static [DefaultsError] {
         let files = builtin_files();
         let mut out: Vec<DefaultsError> = files.iter().flat_map(|f| f.problems.iter().cloned()).collect();
         for e in entries() {
-            if !files.iter().any(|f| f.has(e.key)) {
-                out.push(DefaultsError::Missing { file: area_file(e.key).to_string(), key: e.key.to_string() });
+            let found = if in_model(e.key) { model_value(e).is_some() } else { files.iter().any(|f| f.has(e.key)) };
+            if !found {
+                let file = if in_model(e.key) { ecad_model::builtins::FILE } else { area_file(e.key) };
+                out.push(DefaultsError::Missing { file: file.to_string(), key: e.key.to_string() });
+            }
+        }
+        for (key, _) in LAYOUT {
+            if !files.iter().any(|f| f.layout(key).is_some()) {
+                out.push(DefaultsError::Missing { file: "pages.toml".to_string(), key: format!("layout.{key}") });
             }
         }
         for cat in styles::CATALOGUES {

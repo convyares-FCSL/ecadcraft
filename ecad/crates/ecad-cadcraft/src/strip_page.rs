@@ -273,7 +273,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
         placed.push(Placed { col: *col, x, w: *w });
         x += w;
     }
-    let style = doc.settings.reference_style;
+    let style = doc.settings.reference_style();
     let (half, yc) = (g.body / 2.0, fr.yc);
     // §3.2: the strip tag box.
     tag_box(pen, s, g, fr, lk);

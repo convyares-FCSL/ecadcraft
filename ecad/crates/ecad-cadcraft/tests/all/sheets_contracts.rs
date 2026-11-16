@@ -194,7 +194,7 @@ fn project_properties_are_one_transaction() {
     // The sheet and the step are settings; a grid change changes every reference text.
     s.h.run("projectprops", json!({"sheet": "A2", "page_number_step": 5})).unwrap();
     let d = s.h.doc();
-    assert_eq!((d.settings.sheet.width, d.settings.sheet.columns, d.settings.page_number_step), (594, 12, 5));
+    assert_eq!((d.settings.sheet().width, d.settings.sheet().columns, d.settings.page_number_step()), (594, 12, 5));
     let v = s.h.run("projectprops", json!({})).unwrap();
     assert_eq!(v["sheet"], "A2");
     s.h.check();
@@ -332,7 +332,7 @@ fn an_old_project_shows_positions_and_the_default_sheet() {
     assert!(frame_texts(&mut h, first).iter().any(|t| t == "2"), "Total 2");
     let rows = h.p(|p| p.page_rows());
     assert_eq!(rows.iter().map(|r| r.number.as_str()).collect::<Vec<_>>(), ["1", "2"]);
-    assert_eq!(h.doc().settings.sheet, ecad_model::SheetSpec::default());
+    assert_eq!(h.doc().settings.sheet(), ecad_model::SheetSpec::default());
 }
 
 /// Check J: a read-only project refuses every write and still opens a revision.
@@ -424,8 +424,7 @@ fn an_invalid_sheet_falls_back_to_a3_everywhere() {
     let mut s = fixture();
     let before = s.h.doc().settings;
     let mut after = before.clone();
-    after.sheet.columns = 0;
-    after.sheet.width = 0;
+    after.sheet = Some(ecad_model::SheetSpec { columns: 0, width: 0, ..ecad_model::SheetSpec::default() });
     s.h.project.apply_ops(&mut s.h.s, "hostile", vec![Op::SetProjectSettings { before, after }]).unwrap();
     let doc = s.h.doc();
     assert_eq!(ecad_model::sheet::sheet_of(&doc, s.supply), ecad_model::SheetSpec::default());

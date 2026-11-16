@@ -472,7 +472,7 @@ fn project(d: &Document) -> Value {
     json!({
         "properties": props,
         "revisions": revisions,
-        "reference_style": format!("{:?}", d.settings.reference_style),
+        "reference_style": format!("{:?}", d.settings.reference_style()),
         "versions": d.versions,
         "counts": {
             "pages": d.pages.len(),

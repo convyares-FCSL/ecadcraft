@@ -267,13 +267,13 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(crate::mouse_tester::head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.colour_style, ecad_model::wiring::ColourStyle::ThreeLetter);
+    assert_eq!(d.settings.wiring.colour_style(), ecad_model::wiring::ColourStyle::ThreeLetter);
     assert!(d.settings.wiring.label_height.is_some_and(|x| (x - 3.0).abs() < 1e-9));
     let labels = ecad_cadcraft::wires::labels_on_page(&d, p2);
     assert!(labels.iter().any(|l| l.text == "24V-04 0.5 BLU") && labels.iter().all(|l| (l.height - 3.0).abs() < 1e-9));
     ok(&mut h, "u");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.colour_style, ecad_model::wiring::ColourStyle::Iec);
+    assert_eq!(d.settings.wiring.colour_style(), ecad_model::wiring::ColourStyle::Iec);
 
     // Brief 032 §12 item 20: the label rule rows by element name; Every wire and 10 mm run one
     // `wiresettings` line.

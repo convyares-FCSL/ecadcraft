@@ -505,7 +505,7 @@ impl CablesView {
         let rows: Vec<ecad_cadcraft::checks::Check> =
             p.checks().rows().filter(|c| c.object == ecad_cadcraft::checks::Object::Cable(k)).cloned().collect();
         let doc = p.ledger.document();
-        let style = doc.settings.reference_style;
+        let style = doc.settings.reference_style();
         let mut rows = ecad_cadcraft::checks::sort(doc, rows);
         rows.truncate(200);
         self.cable_checks = rows

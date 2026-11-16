@@ -7,9 +7,12 @@ follows the built-in.
 
 The first value changed as data is the **wire label cap height: 1.6 mm → 2.5 mm**.
 
-Status: 066a (the data files) and 066b (the saved-file rule, F2, and the 2.5 mm change) are
-built. 066c (the other project settings: tag padding, wire number digits, page number step, sheet,
-reference style and report rows) is not; see the lane report.
+Status: built in three parts. 066a: the data files. 066b: the saved-file rule for the wire
+label settings (F2) and the 2.5 mm change. 066c: the same rule for the other project settings
+(F3): tag number digits, wire number digits, wire colour codes, page number step, sheet and
+reference style. Their built-ins are ecad-model's own data (`crates/ecad-model/defaults/
+settings.toml`) and nowhere else; the registry reads them from ecad-model. Report tables'
+row and header heights are data as well, and the rows per A3 sheet (44) are computed from them.
 
 Checked automatically (`cargo test -p ecad-cadcraft lane_066`); the click steps below have not
 been tried by the owner yet.
@@ -28,13 +31,21 @@ Run the program from `ecad/` (`cargo run --release -p ecad-desktop`).
    1.6 mm, and Project settings still shows 1.6.
 3. **A chosen 2.5 is kept as chosen.** Set the height to 2.5 and save: the file now records 2.5,
    so the project keeps 2.5 even if the built-in changes later.
+4. **Other settings keep a chosen value too (066c).** In Project settings change the sheet (for
+   example to A2) or the page number step, press OK, save, close and reopen: the choice is kept.
+   A value equal to the built-in is kept as chosen as well; the dialog sends only what changed,
+   so record one with the command line, for example `setdefault {"key": "tags.padding",
+   "level": "project", "value": "2"}`.
 
 Nothing else on a page moves: every other built-in has the value it had before.
 
 ## What did not change
 
-- No new command. `defaults` lists the same values (now read from the data), and `setdefault`
-  behaves as before. Clearing a chosen wire label height ("use default" in Standards, or
+- No new command. `defaults` lists the same values (now read from the data) plus five new
+  entries: `tags.padding`, `wiring.digits`, `wiring.colour_style`, `page.number_step` and
+  `print.reference_style`, which `setdefault` can set. Their built-ins, the tag dash and case,
+  and the new-project sheet live only in ecad-model's `settings.toml`; everything else lives only
+  in ecad-electrical's files (owner: no value in two places). Clearing a chosen wire label height ("use default" in Standards, or
   `textstyle {"kind": "wire_label", "height": null}`) stores "not chosen".
 - No company file is read from the machine: a project reads the same on any two machines.
 - References, contact-table texts and the cable look keep their 2.5 mm text sizes (design 066

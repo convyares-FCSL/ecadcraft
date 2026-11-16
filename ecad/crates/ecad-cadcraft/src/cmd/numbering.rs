@@ -344,10 +344,10 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
             let before = doc.settings.clone();
             let mut after = before.clone();
             if req.kinds.contains(&Kind::Devices) || req.kinds.contains(&Kind::Cables) {
-                after.tag_padding = d;
+                after.tag_padding = Some(d);
             }
             if req.kinds.contains(&Kind::Wires) {
-                after.wiring.digits = d;
+                after.wiring.digits = Some(d);
             }
             if after != before {
                 ops.push(Op::SetProjectSettings { before, after });

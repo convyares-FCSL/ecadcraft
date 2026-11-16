@@ -1,6 +1,6 @@
 //! Tester 054 in the model (FP3, design 054 §3.1 and §11): `ecad_model::sheet::sheet_of` reads the
 //! page type's stored `sheet`: the page's own `sheet` → the type's project record → the type's
-//! standard record (each only when it parses and is within limits) → `settings.sheet` → A3. The
+//! standard record (each only when it parses and is within limits) → `settings.sheet()` → A3. The
 //! type is the page's `page.type`, else derived from `generated` by the fixed six-word table
 //! (`cover`, `revisions`, `contents` → `front`; every other kind → `report`), else `schematic`.
 //! Old documents (no record) resolve exactly as before. Replay and the inverse of every op give the
@@ -108,7 +108,7 @@ fn fp3_page_type_property_and_own_types() {
 }
 
 /// FP3: the project record over the standard record; a malformed or out-of-limits stored sheet
-/// (`A0 999x999`, `A9`, 10 000 characters, `project`) is skipped as if absent; then settings.sheet.
+/// (`A0 999x999`, `A9`, 10 000 characters, `project`) is skipped as if absent; then settings.sheet().
 #[test]
 fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     let (mut l, p) = fixture();

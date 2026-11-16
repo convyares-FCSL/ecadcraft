@@ -166,13 +166,17 @@ pub fn colour_text(style: ColourStyle, value: &str) -> String {
 #[serde(default)]
 pub struct WiringSettings {
     pub scheme: Scheme,
-    /// Digits the sequence is padded to (1-6; the `page-column` scheme does not pad).
-    pub digits: u8,
+    /// Digits the sequence is padded to (1-6; the `page-column` scheme does not pad), when the
+    /// project chose (brief 066, F3: `None` follows the built-in, [`WiringSettings::digits`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digits: Option<u8>,
     /// The prefix of a net with no potential (design 022 Q8: empty, so `07`).
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
-    /// How label colours are written (IEC 60757 codes by default).
-    pub colour_style: ColourStyle,
+    /// How label colours are written, when the project chose (brief 066, F3: `None` follows the
+    /// built-in, [`WiringSettings::colour_style`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub colour_style: Option<ColourStyle>,
     /// Text height of conductor labels, millimetres, when the project chose one (brief 066, F2:
     /// `None` follows the built-in, the registry's `text.wire_label.height`; a chosen value is kept
     /// even when it equals the built-in). Read through the registry, which keeps it in range.
@@ -200,8 +204,8 @@ pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
-/// The default sequence padding.
-pub const DEFAULT_DIGITS: u8 = 2;
+/// The words of the colour styles ([`ColourStyle::name`]).
+pub const COLOUR_STYLE_WORDS: &[&str] = &["iec", "three-letter"];
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
@@ -228,10 +232,10 @@ impl Default for WiringSettings {
     fn default() -> Self {
         Self {
             scheme: Scheme::default(),
-            digits: DEFAULT_DIGITS,
+            digits: None,
             unclassified_prefix: String::new(),
             potentials: default_potentials(),
-            colour_style: ColourStyle::default(),
+            colour_style: None,
             label_height: None,
             label_rule: None,
             label_min_length: None,
@@ -248,7 +252,7 @@ impl WiringSettings {
 
     /// `value` as a label writes it ([`colour_text`] in this project's style).
     pub fn colour(&self, value: &str) -> String {
-        colour_text(self.colour_style, value)
+        colour_text(self.colour_style(), value)
     }
 
     /// The table row of potential `name`, case-insensitively.
@@ -257,9 +261,14 @@ impl WiringSettings {
         self.potentials.iter().find(|p| p.name.eq_ignore_ascii_case(n))
     }
 
-    /// Digits clamped to 1..=[`MAX_DIGITS`].
+    /// The colour style: the project's choice, else the built-in ([`crate::builtins`]).
+    pub fn colour_style(&self) -> ColourStyle {
+        self.colour_style.unwrap_or_else(|| crate::builtins::builtins().colour_style)
+    }
+
+    /// Digits clamped to 1..=[`MAX_DIGITS`]: the project's choice, else the built-in.
     pub fn digits(&self) -> usize {
-        usize::from(self.digits.clamp(1, MAX_DIGITS))
+        usize::from(self.digits.unwrap_or_else(|| crate::builtins::builtins().wire_digits).clamp(1, MAX_DIGITS))
     }
 }
 
@@ -349,7 +358,7 @@ pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate:
 pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     let first_column = |page: Option<PageId>| match page {
         Some(p) => crate::sheet::Grid::of(doc, p).column_label(1),
-        None => doc.settings.sheet.column_labels.label(1),
+        None => doc.settings.sheet().column_labels.label(1),
     };
     let fallback = || ("1".to_string(), first_column(None));
     let Some(first) = net.first_conductor() else { return fallback() };

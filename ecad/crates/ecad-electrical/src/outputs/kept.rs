@@ -115,8 +115,8 @@ impl Outputs {
     /// Every model, from scratch (open, reload, first show), with text measured in `m`.
     pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> Outputs {
         let mut o = Outputs {
-            style: doc.settings.reference_style,
-            colour_style: doc.settings.wiring.colour_style,
+            style: doc.settings.reference_style(),
+            colour_style: doc.settings.wiring.colour_style(),
             view: BomView::of(doc),
             ..Outputs::default()
         };
@@ -277,8 +277,8 @@ impl Outputs {
             return;
         }
         let mut work = 0;
-        self.style = doc.settings.reference_style;
-        self.colour_style = doc.settings.wiring.colour_style;
+        self.style = doc.settings.reference_style();
+        self.colour_style = doc.settings.wiring.colour_style();
         if scope.bom_view {
             self.view = BomView::of(doc);
         }
@@ -1346,7 +1346,7 @@ impl Outputs {
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
     /// location only (O(locations)), never the BOM rows themselves.
     pub fn bom_sheets(&self) -> usize {
-        let per = crate::generated::ROWS_PER_SHEET;
+        let per = crate::generated::rows_per_sheet();
         let (mut sheets, mut used) = (1, 0);
         // Brief 028: the strips' rows per location, kept with them (O(locations), never the rows).
         // Brief 047: the nested layout's counts are kept too (main rows, then each part line).

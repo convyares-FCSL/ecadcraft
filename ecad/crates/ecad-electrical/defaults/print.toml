@@ -5,8 +5,6 @@
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
 
 [values]
-"tags.dash" = "yes"
-"tags.case" = "upper"
 "revisions.columns" = "rev@12, ecr:ECR@18, date@24, description, drawn@22, checked@22, approved@22"
 "revisions.custom_width" = 20.0
 "revisions.pending" = "star"

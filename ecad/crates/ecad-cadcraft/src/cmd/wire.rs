@@ -189,7 +189,7 @@ fn where_words(doc: &Document, net: &NetData) -> String {
     let place = net.first_conductor().and_then(|c| {
         doc.representations_of(Subject::Conductor(c)).find_map(|(_, r)| {
             let (a, _) = ecad_model::derive::route_ends_on(doc, c, r.page)?;
-            Some(ecad_model::wiring::place(doc, r.page, a)?.text(doc.settings.reference_style))
+            Some(ecad_model::wiring::place(doc, r.page, a)?.text(doc.settings.reference_style()))
         })
     });
     [point, place].into_iter().flatten().collect::<Vec<_>>().join(", ")
@@ -493,11 +493,11 @@ fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
-        "colour_style": w.colour_style.name(),
+        "colour_style": w.colour_style().name(),
         "label_height": crate::cmd::sheet::wire_label_height(doc),
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
-        "digits": w.digits,
+        "digits": w.digits(),
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
             "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
@@ -522,11 +522,11 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
         }
         if let Some(d) = params.get("digits").filter(|v| !v.is_null()) {
             let d = d.as_u64().filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d)).ok_or("`digits` must be 1 to 6")?;
-            w.digits = d as u8;
+            w.digits = Some(d as u8);
         }
         if let Some(c) = opt_str(params, "colour_style")? {
             w.colour_style =
-                wiring::ColourStyle::parse(c).ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
+                Some(wiring::ColourStyle::parse(c).ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?);
         }
         if let Some(hv) = params.get("label_height").filter(|v| !v.is_null()) {
             let hv = hv.as_f64().filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;

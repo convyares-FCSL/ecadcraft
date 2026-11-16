@@ -102,7 +102,7 @@ pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::tag::Style {
     use ecad_model::tag::{Case, MAX_PADDING, Style};
     let word = |e: &Entry| super::resolve(doc, e, super::Scope::project()).word();
     Style {
-        padding: doc.settings.tag_padding.min(MAX_PADDING),
+        padding: doc.settings.tag_padding().min(MAX_PADDING),
         dash: word(&TAG_DASH) == "yes",
         case: if word(&TAG_CASE) == "typed" { Case::Typed } else { Case::Upper },
     }

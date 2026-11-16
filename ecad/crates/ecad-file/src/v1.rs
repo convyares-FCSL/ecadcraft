@@ -65,7 +65,7 @@ pub struct SheetSpec {
 pub enum ReferenceStyle {
     PageColumnRow,
     PageColumn,
-    /// UI rev 3: `2/B5`, the default ([`default_style`]): left out of the file, never written.
+    /// UI rev 3: `2/B5`.
     PageZone,
 }
 
@@ -326,26 +326,26 @@ pub enum LengthUnit {
 #[serde(deny_unknown_fields)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
-    #[serde(default = "default_padding", skip_serializing_if = "is_default_padding")]
-    pub tag_padding: u8,
+    /// Brief 066 (F3): written only when the project chose a padding, even one equal to the
+    /// built-in; absent follows the built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag_padding: Option<u8>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tag_prefixes: BTreeMap<String, String>,
     /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
     /// project that never changes them is written exactly as before.
     #[serde(default, skip_serializing_if = "is_default_wiring")]
     pub wiring: WiringSettings,
-    /// Brief 019 (decision FP2): left out at the default A3 sheet.
-    #[serde(default = "default_sheet", skip_serializing_if = "is_default_sheet")]
-    pub sheet: SheetSpec,
-    /// Brief 019 (decision FP2): left out at the default step 1.
-    #[serde(default = "default_step", skip_serializing_if = "is_default_step")]
-    pub page_number_step: u32,
-    /// Brief 019 (owner answer Q1): left out at the default. UI rev 3: the default is
-    /// `page_zone` (`2/B5`), so a new project writes nothing and a reader that knows only the
-    /// older styles reads it back as `page_column_row`; an absent field reads as `page_zone`.
-    /// `page_zone` itself is never written.
-    #[serde(default = "default_style", skip_serializing_if = "is_default_style")]
-    pub reference_style: ReferenceStyle,
+    /// Brief 019 (decision FP2); brief 066 (F3): written only when the project chose a sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    /// Brief 019 (decision FP2); brief 066 (F3): written only when the project chose a step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_number_step: Option<u32>,
+    /// Brief 019 (owner answer Q1); brief 066 (F3): written only when the project chose a style,
+    /// `page_zone` included; absent follows the built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_style: Option<ReferenceStyle>,
     /// Brief 025 (FP3): left out at the default `auto`.
     #[serde(default, skip_serializing_if = "ContactMirror::is_auto")]
     pub contact_mirror: ContactMirror,
@@ -407,25 +407,19 @@ pub enum ColourStyle {
     ThreeLetter,
 }
 
-fn is_iec(s: &ColourStyle) -> bool {
-    *s == ColourStyle::Iec
-}
-
-fn iec() -> ColourStyle {
-    ColourStyle::Iec
-}
-
 /// Wiring settings (brief 022). `colour_style` is left out at its default; the label height, rule
 /// and shortest labelled wire are written only when the project chose them (brief 066, F2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WiringSettings {
     pub scheme: Scheme,
-    pub digits: u8,
+    /// Brief 066 (F3): absent follows the built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digits: Option<u8>,
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
-    #[serde(default = "iec", skip_serializing_if = "is_iec")]
-    pub colour_style: ColourStyle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour_style: Option<ColourStyle>,
     /// Brief 066 (F2): written only when the project chose a height, even one equal to the
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -465,39 +459,15 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     cross_section: p.legacy_cross_section.clone(),
                 })
                 .collect(),
-            colour_style: match w.colour_style {
+            colour_style: w.colour_style.map(|c| match c {
                 m::wiring::ColourStyle::Iec => ColourStyle::Iec,
                 m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
-            },
+            }),
             label_height: w.label_height,
             label_rule: w.label_rule.clone(),
             label_min_length: w.label_min_length,
         }
     }
-}
-
-fn default_sheet() -> SheetSpec {
-    (&m::SheetSpec::default()).into()
-}
-
-fn is_default_sheet(s: &SheetSpec) -> bool {
-    *s == default_sheet()
-}
-
-fn default_step() -> u32 {
-    m::DEFAULT_PAGE_NUMBER_STEP
-}
-
-fn is_default_step(s: &u32) -> bool {
-    *s == m::DEFAULT_PAGE_NUMBER_STEP
-}
-
-fn default_style() -> ReferenceStyle {
-    ReferenceStyle::PageZone
-}
-
-fn is_default_style(s: &ReferenceStyle) -> bool {
-    *s == ReferenceStyle::PageZone
 }
 
 fn labels(l: m::GridLabels) -> GridLabels {
@@ -548,10 +518,10 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
                 })
                 .collect(),
-            colour_style: match w.colour_style {
+            colour_style: w.colour_style.map(|c| match c {
                 ColourStyle::Iec => m::wiring::ColourStyle::Iec,
                 ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
-            },
+            }),
             label_height: w.label_height,
             label_rule: w.label_rule,
             label_min_length: w.label_min_length,
@@ -570,14 +540,6 @@ impl From<SheetSpec> for m::SheetSpec {
             row_labels: mlabels(s.row_labels),
         }
     }
-}
-
-fn default_padding() -> u8 {
-    m::DEFAULT_TAG_PADDING
-}
-
-fn is_default_padding(p: &u8) -> bool {
-    *p == m::DEFAULT_TAG_PADDING
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -1076,13 +1038,13 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes.clone(),
             wiring: WiringSettings::from(&s.wiring),
-            sheet: (&s.sheet).into(),
+            sheet: s.sheet.as_ref().map(SheetSpec::from),
             page_number_step: s.page_number_step,
-            reference_style: match s.reference_style {
+            reference_style: s.reference_style.map(|r| match r {
                 m::ReferenceStyle::PageColumnRow => ReferenceStyle::PageColumnRow,
                 m::ReferenceStyle::PageColumn => ReferenceStyle::PageColumn,
                 m::ReferenceStyle::PageZone => ReferenceStyle::PageZone,
-            },
+            }),
             contact_mirror: match s.contact_mirror {
                 m::ContactMirror::Auto => ContactMirror::Auto,
                 m::ContactMirror::Below => ContactMirror::Below,
@@ -1321,13 +1283,13 @@ impl From<ProjectSettings> for m::ProjectSettings {
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes,
             wiring: s.wiring.into(),
-            sheet: s.sheet.into(),
+            sheet: s.sheet.map(Into::into),
             page_number_step: s.page_number_step,
-            reference_style: match s.reference_style {
+            reference_style: s.reference_style.map(|r| match r {
                 ReferenceStyle::PageColumnRow => m::ReferenceStyle::PageColumnRow,
                 ReferenceStyle::PageColumn => m::ReferenceStyle::PageColumn,
                 ReferenceStyle::PageZone => m::ReferenceStyle::PageZone,
-            },
+            }),
             contact_mirror: match s.contact_mirror {
                 ContactMirror::Auto => m::ContactMirror::Auto,
                 ContactMirror::Below => m::ContactMirror::Below,

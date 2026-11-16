@@ -543,7 +543,7 @@ impl Check {
     pub fn locator(&self, doc: &Document) -> String {
         let Some(page) = self.page else { return String::new() };
         match self.at.and_then(|a| ecad_model::wiring::place(doc, page, a)) {
-            Some(p) => p.text(doc.settings.reference_style),
+            Some(p) => p.text(doc.settings.reference_style()),
             None => ecad_model::book::page_number(doc, page),
         }
     }

@@ -14,7 +14,7 @@ use ecad_model::{Document, PageId};
 
 use super::overview::{self, Square, Tile, TileKind};
 use super::{CardData, iolist, kept::Plc};
-use crate::generated::ROWS_PER_SHEET;
+use crate::generated::rows_per_sheet;
 
 /// A sheet's drawing area in paper millimetres, and the A3 column scale.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -92,11 +92,11 @@ pub fn pack(rows: &[usize], head: f64, row: f64, gap: f64, height: f64) -> Vec<V
     sheets
 }
 
-/// The I/O list's sheets from the kept row counts: (lines a sheet holds) per [`ROWS_PER_SHEET`].
+/// The I/O list's sheets from the kept row counts: (lines a sheet holds) per [`rows_per_sheet`].
 pub fn io_pack(plc: &Plc) -> Vec<Vec<Seg>> {
     let rows: Vec<usize> = iolist::cards_in_order(plc).iter().map(|c| c.rows).collect();
     // A heading line and the header row; one empty row between groups.
-    pack(&rows, 2.0, 1.0, 1.0, ROWS_PER_SHEET as f64)
+    pack(&rows, 2.0, 1.0, 1.0, rows_per_sheet() as f64)
 }
 
 /// `-A01 slot 2 · -A03 · DQ 16 · <part number> · 9 used, 1 reserved, 6 spare` (design 051 §4.1).

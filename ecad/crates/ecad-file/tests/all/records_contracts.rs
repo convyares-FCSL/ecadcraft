@@ -200,7 +200,7 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     let mut f = fixture();
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
-    after.tag_padding = 3;
+    after.tag_padding = Some(3);
     after.tag_prefixes.insert("coil".into(), "KA".into());
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
@@ -225,8 +225,8 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
     after.wiring.scheme = ecad_model::wiring::Scheme::PageColumn;
-    after.wiring.digits = 3;
-    after.wiring.colour_style = ecad_model::wiring::ColourStyle::ThreeLetter;
+    after.wiring.digits = Some(3);
+    after.wiring.colour_style = Some(ecad_model::wiring::ColourStyle::ThreeLetter);
     after.wiring.label_height = Some(2.5);
     // Brief 032 (FP-W1): the label rule and the shortest labelled wire.
     after.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
@@ -271,9 +271,9 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     let folder: FolderId = f.ids.fresh();
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
-    after.sheet = SheetSpec::parse("A2 12x8 numbers letters").unwrap();
-    after.page_number_step = 5;
-    after.reference_style = ReferenceStyle::PageColumn;
+    after.sheet = Some(SheetSpec::parse("A2 12x8 numbers letters").unwrap());
+    after.page_number_step = Some(5);
+    after.reference_style = Some(ReferenceStyle::PageColumn);
     let ops = vec![
         Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
         Op::SetProperty { object: ObjectRef::Page(f.page), key: "folder".into(), before: None, after: Some(folder.hex()) },

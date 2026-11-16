@@ -511,7 +511,7 @@ mod tests {
         }
         doc.properties.insert("tags.case".into(), "x".into());
         doc.properties.insert("tags.dash".into(), "maybe".into());
-        assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::tag::Style::from(doc.settings.tag_padding));
+        assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::tag::Style::from(doc.settings.tag_padding()));
     }
 
     #[test]

@@ -316,3 +316,82 @@ fn a_project_reads_the_same_whatever_company_files_the_machine_holds() {
     }
     assert!(reads.windows(2).all(|w| w[0] == w[1]), "every machine reads the project the same");
 }
+
+// ---------------------------------------------------------------- 066c: the other settings (F3)
+
+/// No repeated values (owner, 2026-11-16): no key appears in both ecad-model's data and this
+/// crate's files, and every registry entry takes its built-in from exactly one of them.
+#[test]
+fn every_built_in_lives_in_exactly_one_place() {
+    let model = ecad_model::builtins::KEYS;
+    let files: Vec<_> = data::FILES.iter().map(|(name, text)| (*name, load(name, text))).collect();
+    // ecad-model's own test checks its file holds exactly `KEYS`.
+    for key in model {
+        for (name, f) in &files {
+            assert!(!f.names(key), "{key} is ecad-model's, yet {name} names it");
+        }
+    }
+    for e in data::entries() {
+        let in_files = files.iter().filter(|(_, f)| f.names(e.key)).count();
+        let in_model = usize::from(ecad_model::builtins::get(e.key).is_some());
+        assert_eq!(in_files + in_model, 1, "{}: built-in in {in_files} file(s) and {in_model} model key(s)", e.key);
+    }
+    // Every model key but the structured sheet is a registry entry reading it.
+    for key in model.iter().filter(|k| **k != ecad_model::builtins::SHEET) {
+        let e = defaults::find(key).unwrap_or_else(|| panic!("{key} has no entry"));
+        assert!(data::in_model(e.key) && e.accepts(&e.builtin()), "{key}");
+    }
+    // And they are today's values: nothing moves.
+    let b = ecad_model::builtins::builtins();
+    assert_eq!((b.tag_padding, b.wire_digits, b.page_number_step), (2, 2, 1));
+    assert_eq!(b.sheet, ecad_model::SheetSpec::default());
+}
+
+/// Rows per sheet are computed from the row and header heights: 44 on A3, as before.
+#[test]
+fn rows_per_sheet_are_computed_and_unchanged() {
+    use ecad_cadcraft::generated::{header_mm, row_mm, rows_per_sheet};
+    assert_eq!((row_mm(), header_mm(), rows_per_sheet()), (5.0, 7.0, 44));
+}
+
+/// F3: a chosen setting is kept through a save and an open, even when it equals the built-in;
+/// one not chosen stays not chosen and reads the built-in.
+#[test]
+fn chosen_and_unset_settings_survive_save_and_open() {
+    let mut chosen = ecad_model::ProjectSettings {
+        tag_padding: Some(2),
+        page_number_step: Some(1),
+        reference_style: Some(ecad_model::ReferenceStyle::PageZone),
+        sheet: Some(ecad_model::SheetSpec::default()),
+        ..Default::default()
+    };
+    chosen.wiring.digits = Some(2);
+    chosen.wiring.colour_style = Some(ecad_model::wiring::ColourStyle::Iec);
+    for (i, want) in [chosen, ecad_model::ProjectSettings::default()].into_iter().enumerate() {
+        let seed = 0x66_c1 + i as u64;
+        let mut h = project(seed, None);
+        let before = h.doc().settings;
+        if before != want {
+            h.project.apply_ops(&mut h.s, "settings", vec![ecad_model::Op::SetProjectSettings { before, after: want.clone() }]).unwrap();
+        }
+        let resolved = resolved_all(&h.doc());
+        let mut h = save_and_reopen(h, "066 settings", seed);
+        let doc = h.doc();
+        assert_eq!(doc.settings, want, "{i}: kept as chosen or not chosen");
+        assert_eq!(resolved_all(&doc), resolved, "{i}: every entry resolves the same");
+        assert_eq!((doc.settings.tag_padding(), doc.settings.page_number_step()), (2, 1));
+    }
+}
+
+/// `setdefault` writes a settings-backed entry at project level as a chosen value, and `reset`
+/// clears it to not chosen.
+#[test]
+fn setdefault_writes_and_clears_a_settings_entry() {
+    let mut h = H::new(0x66_c3);
+    h.run("setdefault", json!({"key": "tags.padding", "level": "project", "value": "3"})).unwrap();
+    assert_eq!(h.doc().settings.tag_padding, Some(3));
+    h.run("setdefault", json!({"key": "tags.padding", "level": "project", "reset": true})).unwrap();
+    assert_eq!(h.doc().settings.tag_padding, None);
+    h.run("setdefault", json!({"key": "print.reference_style", "level": "project", "value": "page-column"})).unwrap();
+    assert_eq!(h.doc().settings.reference_style(), ecad_model::ReferenceStyle::PageColumn);
+}

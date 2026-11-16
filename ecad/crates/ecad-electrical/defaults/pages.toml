@@ -13,3 +13,8 @@
 "front.cover.structure_codes" = "off"
 "front.cover.customer_site" = "on"
 "front.cover.heading" = "Electrical documentation"
+
+# Built-in layout values no level overrides (brief 066c).
+[layout]
+"page.report.row_height" = 5.0     # ecad.table-row: rows per A3 sheet are computed from these
+"page.report.header_height" = 7.0  # ecad.table-header

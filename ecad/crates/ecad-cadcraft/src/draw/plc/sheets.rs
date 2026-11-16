@@ -6,7 +6,7 @@ use cadcraft_engine::doc::HAlign;
 use ecad_model::{Document, LengthUnit};
 
 use crate::frame::{LABEL_ACI, THIN_WEIGHT, TextLook};
-use crate::generated::{Draw, ROW_MM};
+use crate::generated::{Draw, row_mm};
 use crate::plc::overview::{self, Square, Tile, TileKind};
 use crate::plc::sheets::*;
 use crate::plc::{iolist, kept::Plc};
@@ -37,7 +37,7 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &
     let (heading, header, cell) = (look(TextKind::TableHeading), look(TextKind::TableHeader), look(TextKind::Table));
     let cards = plc.map(iolist::cards_in_order).unwrap_or_default();
     let Some(plc) = plc.filter(|_| !cards.is_empty()) else {
-        d.text((a.l + 1.0, a.t - ROW_MM / 2.0), cell, iolist::NO_CARDS, HAlign::Left, None, Some(a.r - a.l - 2.0));
+        d.text((a.l + 1.0, a.t - row_mm() / 2.0), cell, iolist::NO_CARDS, HAlign::Left, None, Some(a.r - a.l - 2.0));
         return;
     };
     let sheets = io_pack(plc);
@@ -49,30 +49,30 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &
     for (k, seg) in segs.iter().enumerate() {
         let Some(card) = cards.get(seg.group) else { continue };
         if k > 0 {
-            y -= ROW_MM;
+            y -= row_mm();
         }
         let rows = iolist::rows_of(doc, plc, card);
         let mut words = group_heading(doc, card, &rows);
         if seg.continued {
             words.push_str(" (continued)");
         }
-        d.text((a.l, y - ROW_MM / 2.0), heading, &words, HAlign::Left, None, Some(a.r - a.l));
-        y -= ROW_MM;
+        d.text((a.l, y - row_mm() / 2.0), heading, &words, HAlign::Left, None, Some(a.r - a.l));
+        y -= row_mm();
         let top = y;
         let mut x = a.l;
         for ((name, _), w) in IO_COLUMNS.iter().zip(&widths) {
-            d.text((x + 1.0, y - ROW_MM / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
+            d.text((x + 1.0, y - row_mm() / 2.0), header, name, HAlign::Left, Some(LABEL_ACI), Some(w - 2.0));
             x += w;
         }
-        y -= ROW_MM;
+        y -= row_mm();
         d.line((a.l, y), (a.l + total, y));
         for r in rows.get(seg.start..seg.end).unwrap_or_default() {
             let mut x = a.l;
             for (v, w) in io_cells(r, &spare).iter().zip(&widths) {
-                d.text((x + 1.0, y - ROW_MM / 2.0), cell, v, HAlign::Left, None, Some(w - 2.0));
+                d.text((x + 1.0, y - row_mm() / 2.0), cell, v, HAlign::Left, None, Some(w - 2.0));
                 x += w;
             }
-            y -= ROW_MM;
+            y -= row_mm();
             d.line((a.l, y), (a.l + total, y));
         }
         // The box: its top, and every column line from top to bottom.
@@ -190,7 +190,7 @@ fn tile(doc: &Document, d: &mut Draw, looks: &Look, unit: LengthUnit, t: &Tile, 
 pub(crate) fn rack_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &Look, unit: LengthUnit, a: Area, i: usize) {
     let look = |k| TextLook::of(looks, k, unit);
     let Some(plc) = plc.filter(|p| !p.racks.is_empty() || !p.cards.is_empty()) else {
-        d.text((a.l + 1.0, a.t - ROW_MM / 2.0), look(TextKind::Table), NO_RACKS, HAlign::Left, None, Some(a.r - a.l - 2.0));
+        d.text((a.l + 1.0, a.t - row_mm() / 2.0), look(TextKind::Table), NO_RACKS, HAlign::Left, None, Some(a.r - a.l - 2.0));
         return;
     };
     let (groups, sheets, per) = rack_pack(plc, a.r - a.l, a.t - a.b);

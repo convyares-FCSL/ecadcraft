@@ -440,7 +440,7 @@ impl Plc {
             let Some(r) = doc.representations.get(&rid) else { return "?".into() };
             let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
             at.and_then(|a| ecad_model::wiring::place(doc, r.page, a))
-                .map_or_else(|| crate::references::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style))
+                .map_or_else(|| crate::references::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style()))
         };
         let mut highest: Option<u32> = None;
         for (i, ch) in &card.chans {

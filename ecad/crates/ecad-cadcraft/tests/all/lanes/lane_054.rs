@@ -58,7 +58,7 @@ fn old_pages_resolve_their_type_without_a_property() {
     assert_eq!((ty(&mut h, first), ty(&mut h, cover), ty(&mut h, bom)), ("schematic".into(), "front".into(), "report".into()));
     // The sheet is the project's, as before.
     let d = h.doc();
-    assert_eq!(sheet_of(&d, first), d.settings.sheet);
+    assert_eq!(sheet_of(&d, first), d.settings.sheet());
 }
 
 #[test]
@@ -127,15 +127,15 @@ fn a_type_sheet_reaches_its_pages_and_undo_restores_it() {
     let d = h.doc();
     assert_eq!(sheet_of(&d, p1).text(), "A2", "a schematic page takes its type's sheet");
     assert_eq!(sheet_of(&d, own).text(), "A1", "a page's own sheet still wins");
-    assert_eq!(sheet_of(&d, cover), d.settings.sheet, "another type keeps the project's");
+    assert_eq!(sheet_of(&d, cover), d.settings.sheet(), "another type keeps the project's");
     h.run("u", Value::Null).unwrap();
     let d = h.doc();
-    assert_eq!(sheet_of(&d, p1), d.settings.sheet);
+    assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     // `project` takes the project's sheet back.
     h.run("redo", Value::Null).unwrap();
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "project"}})).unwrap();
     let d = h.doc();
-    assert_eq!(sheet_of(&d, p1), d.settings.sheet);
+    assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     h.check();
 }
 
@@ -297,7 +297,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     let d = h.doc();
     let look = ptype::look_of(&d, &StyleRef::Builtin("schematic".into()));
     assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
-    assert_eq!(sheet_of(&d, p1), d.settings.sheet);
+    assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
     for k in [Kind::PageTypeUnknown, Kind::PageTypeField, Kind::FolderStartUnknown] {
         assert!(rows.iter().any(|(x, _)| *x == k), "{k:?}: {rows:?}");

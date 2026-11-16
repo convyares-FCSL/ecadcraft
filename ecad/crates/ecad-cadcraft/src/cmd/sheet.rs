@@ -178,7 +178,7 @@ pub fn default_number_from(
         .flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, crate::draw::outputs::kept_of(outputs)))
         .map(|n| n.to_ascii_lowercase())
         .collect();
-    let step = u64::from(doc.settings.page_number_step.max(1));
+    let step = u64::from(doc.settings.page_number_step().max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
     let (mut n, step, width) = match (from_start, digits.as_deref().and_then(|d| d.parse::<u64>().ok().map(|n| (n, d)))) {
@@ -685,7 +685,7 @@ pub const STATUS_SUGGESTIONS: [&str; 4] = ["Draft", "For review", "For construct
 /// Most characters of a free property key.
 pub const MAX_KEY_CHARS: usize = 40;
 /// The page-number step's range.
-pub const MAX_STEP: u32 = 1000;
+pub const MAX_STEP: u32 = ecad_model::builtins::MAX_PAGE_NUMBER_STEP;
 
 /// Whether `key` is a free property (not one of [`PROJECT_KEYS`], a revision or a folder key).
 /// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
@@ -786,10 +786,10 @@ pub fn project_json(doc: &Document) -> Value {
         .collect();
     let mut v = Value::Object(fields);
     v["props"] = Value::Object(free);
-    v["sheet"] = json!(doc.settings.sheet.text());
-    v["sheet_shown"] = json!(doc.settings.sheet.summary());
-    v["page_number_step"] = json!(doc.settings.page_number_step);
-    v["reference_style"] = json!(style_word(doc.settings.reference_style));
+    v["sheet"] = json!(doc.settings.sheet().text());
+    v["sheet_shown"] = json!(doc.settings.sheet().summary());
+    v["page_number_step"] = json!(doc.settings.page_number_step());
+    v["reference_style"] = json!(style_word(doc.settings.reference_style()));
     // Brief 025 (FP3): where contact tables go by default.
     v["contact_mirror"] = json!(doc.settings.contact_mirror.word());
     v["tag_padding"] = json!(crate::devices::padding(doc));
@@ -807,7 +807,7 @@ pub fn project_json(doc: &Document) -> Value {
     });
     v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
-    v["colour_style"] = json!(doc.settings.wiring.colour_style.name());
+    v["colour_style"] = json!(doc.settings.wiring.colour_style().name());
     v["label_height"] = json!(wire_label_height(doc));
     // Brief 026: Project settings → Numbering.
     v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
@@ -977,19 +977,19 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         let mut settings = doc.settings.clone();
         if let Some(v) = params.get("sheet").filter(|v| !v.is_null()) {
             let t = v.as_str().ok_or("`sheet` must be text such as \"A3\" or \"A2 12x8\"")?;
-            settings.sheet = SheetSpec::parse(t)?;
+            settings.sheet = Some(SheetSpec::parse(t)?);
         }
         if let Some(v) = params.get("page_number_step").filter(|v| !v.is_null()) {
             let n = v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=MAX_STEP).contains(n));
-            settings.page_number_step = n.ok_or(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}"))?;
+            settings.page_number_step = Some(n.ok_or(format!("`page_number_step` must be a whole number from 1 to {MAX_STEP}"))?);
         }
         if let Some(v) = params.get("reference_style").filter(|v| !v.is_null()) {
-            settings.reference_style = match v.as_str() {
+            settings.reference_style = Some(match v.as_str() {
                 Some("page-zone") => ReferenceStyle::PageZone,
                 Some("page-column-row") => ReferenceStyle::PageColumnRow,
                 Some("page-column") => ReferenceStyle::PageColumn,
                 _ => return Err("`reference_style` must be \"page-zone\", \"page-column-row\" or \"page-column\"".into()),
-            };
+            });
         }
         if let Some(v) = params.get("contact_mirror").filter(|v| !v.is_null()) {
             settings.contact_mirror =
@@ -999,10 +999,11 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         crate::cmd::device::apply_tag_settings(&mut settings, padding, prefixes);
         // Brief 022 fix round: how label colours are written, and the label height.
         if let Some(v) = params.get("colour_style").filter(|v| !v.is_null()) {
-            settings.wiring.colour_style = v
-                .as_str()
-                .and_then(ecad_model::wiring::ColourStyle::parse)
-                .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?;
+            settings.wiring.colour_style = Some(
+                v.as_str()
+                    .and_then(ecad_model::wiring::ColourStyle::parse)
+                    .ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?,
+            );
         }
         if let Some(v) = params.get("label_height").filter(|v| !v.is_null()) {
             settings.wiring.label_height =

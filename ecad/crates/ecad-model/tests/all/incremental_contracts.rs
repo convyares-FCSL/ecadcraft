@@ -852,7 +852,7 @@ impl Gen {
                     let after = ProjectSettings {
                         length_unit: if self.rng.chance(50) { LengthUnit::Inch } else { LengthUnit::Millimetre },
                         // Brief 018's tag settings change with it sometimes.
-                        tag_padding: if self.rng.chance(30) { 3 } else { ecad_model::DEFAULT_TAG_PADDING },
+                        tag_padding: if self.rng.chance(30) { Some(3) } else { None },
                         ..ProjectSettings::default()
                     };
                     Op::SetProjectSettings { before, after }

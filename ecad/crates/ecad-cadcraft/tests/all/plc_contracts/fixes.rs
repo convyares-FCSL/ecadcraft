@@ -175,7 +175,7 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
             let d = p.ledger.document();
             let made: Vec<usize> =
                 ecad_cadcraft::plc::iolist::cards_in_order(&o.plc).iter().map(|c| ecad_cadcraft::plc::iolist::rows_of(d, &o.plc, c).len()).collect();
-            let per = ecad_cadcraft::generated::ROWS_PER_SHEET;
+            let per = ecad_cadcraft::generated::rows_per_sheet();
             (o.plc.iolist_sheets(per), ecad_cadcraft::plc::sheets::pack(&made, 2.0, 1.0, 1.0, per as f64).len())
         });
         assert_eq!(kept, laid, "{n} channels");

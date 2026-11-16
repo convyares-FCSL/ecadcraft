@@ -223,7 +223,7 @@ fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_mod
     let page_number = book.number(doc, r.page);
     let grid = ecad_model::sheet::Grid::of(doc, r.page);
     let place = position(doc, r).and_then(|p| ecad_model::derive::place_on(&grid, &page_number, p));
-    let style = doc.settings.reference_style;
+    let style = doc.settings.reference_style();
     let n = book.position(r.page).unwrap_or(usize::MAX);
     (
         n,
