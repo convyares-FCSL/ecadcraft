@@ -283,7 +283,7 @@ pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut 
 
 /// Every command with a typed input (brief 070): its id, run function and parameter schema.
 pub fn typed_commands() -> Vec<input::Typed> {
-    [crate::cmd::wire::TYPED, crate::cmd::sheet::TYPED, crate::cmd::output::TYPED, crate::cmd::text::TYPED].concat()
+    [crate::cmd::wire::TYPED, crate::cmd::sheet::TYPED, crate::cmd::output::TYPED, crate::cmd::text::TYPED, crate::cmd::style::TYPED].concat()
 }
 
 /// The JSON Schema of command `id`'s parameters, when its input is typed.

@@ -5,5 +5,6 @@
 
 pub mod output;
 pub mod sheet;
+pub mod style;
 pub mod text;
 pub mod wire;

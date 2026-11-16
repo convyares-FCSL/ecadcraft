@@ -88,11 +88,6 @@ const UNTYPED: &[&str] = &[
     "symbolupdate",
     "makesymbol",
     "contcaption",
-    "standard",
-    "setstyle",
-    "deletestyle",
-    "promote",
-    "styles",
     "plcpage",
     "conflicts",
     "setlocation",
@@ -457,4 +452,83 @@ fn the_typed_text_commands_still_work() {
     assert!(texts["texts"].is_array(), "{texts}");
     let d = h.run("defaults", json!({"key": "text.tag.show"})).unwrap_or(Value::Null);
     assert_eq!(d["defaults"].as_array().map(Vec::len), Some(1), "{d}");
+}
+
+/// Input refusals of the style commands: one wording.
+#[test]
+fn the_style_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("standard", json!({"new": 5}), "`new` must be text, or null"),
+        ("standard", json!({"remove": true, "replace_with": "x"}), "`replace_with` must be an object, or null"),
+        ("setstyle", json!({"id": "tag"}), "`catalogue` (text) is required"),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": 1}), "`fields` must be an object, or null"),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": true}}), "`fields` must be an object, or null"),
+        (
+            "setstyle",
+            json!({"catalogue": "text", "id": "tag", "colour": "RD"}),
+            "`colour` is not a parameter of this command; it takes `catalogue`, `copy_of`, `fields`, `id`, `layer`, `name`, `new`, `rename`",
+        ),
+        ("deletestyle", json!({"id": "x"}), "`catalogue` (text) is required"),
+        ("promote", json!({"key": 5}), "`key` must be text, or null"),
+        ("styles", json!({"catalogue": 5}), "`catalogue` must be text, or null"),
+    ];
+    let mut h = H::new(7014);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the style commands keep their words.
+#[test]
+fn the_style_commands_keep_their_rule_words() {
+    use ecad_cadcraft::style_cmds::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
+    let rows: &[(&str, Value, &str)] = &[
+        ("standard", json!({"name": "S"}), STANDARD_FIRST),
+        ("standard", json!({"remove": true}), STANDARD_FIRST),
+        ("standard", json!({"new": " "}), NEEDS_NAME),
+        ("setstyle", json!({"catalogue": "nope", "id": "tag"}), "No catalogue \"nope\"; the catalogues are"),
+        ("setstyle", json!({"catalogue": "text"}), "Name the style: `id` or `name`."),
+        ("setstyle", json!({"catalogue": "text", "id": "tag"}), "Give `fields` to set, `rename`, or `new: true`."),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 3}}), STANDARD_FIRST),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "x", "fields": {"height": 3}}), "Unknown layer \"x\": project or standard."),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"nope": 1}}), "No field \"nope\"; Text styles have"),
+        ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 99}}), "height is"),
+        ("setstyle", json!({"catalogue": "text", "new": true}), STYLE_NEEDS_NAME),
+        ("deletestyle", json!({"catalogue": "text", "id": "tag"}), BUILTIN_KEPT),
+        ("promote", json!({"key": "no.such"}), "No default \"no.such\"."),
+        ("promote", json!({"id": "tag"}), "`catalogue` is required:"),
+        ("promote", json!({"catalogue": "text", "id": "tag"}), STANDARD_FIRST),
+        ("styles", json!({"catalogue": "nope"}), "No catalogue \"nope\""),
+    ];
+    let mut h = H::new(7015);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed style commands still work, and answer as before.
+#[test]
+fn the_typed_style_commands_still_work() {
+    let mut h = H::new(7016);
+    let read = h.run("standard", json!({})).unwrap_or(Value::Null);
+    assert_eq!(read, json!({"name": "IEC (built in)", "id": null}));
+    let made = h.run("standard", json!({"new": "Plant"})).unwrap_or(Value::Null);
+    assert_eq!((&made["changed"], &made["standard"]["name"]), (&json!(true), &json!("Plant")));
+    let same = h.run("standard", json!({"name": "Plant"})).unwrap_or(Value::Null);
+    assert_eq!(same["changed"], json!(false));
+    let new = h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Big", "fields": {"height": 5}})).unwrap_or(Value::Null);
+    assert_eq!((&new["name"], &new["changed"]), (&json!("Big"), &json!(true)));
+    let id = new["id"].as_str().unwrap_or_default().to_string();
+    let set = h.run("setstyle", json!({"catalogue": "text", "id": id, "fields": {"weight": "bold"}})).unwrap_or(Value::Null);
+    assert_eq!(set["fields"]["weight"]["value"], json!("bold"));
+    let listed = h.run("styles", json!({"catalogue": "text", "users": true})).unwrap_or(Value::Null);
+    assert!(listed["styles"].as_array().is_some_and(|a| a.iter().any(|s| s["name"] == json!("Big"))), "{listed}");
+    let up = h.run("promote", json!({"catalogue": "text", "name": "Big"})).unwrap_or(Value::Null);
+    assert_eq!(up["changed"], json!(true));
+    let gone = h.run("standard", json!({"remove": true})).unwrap_or(Value::Null);
+    assert_eq!(gone["standard"]["name"], json!("IEC (built in)"));
+    let own = h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small"})).unwrap_or(Value::Null);
+    let d = h.run("deletestyle", json!({"catalogue": "text", "name": "Small"})).unwrap_or(Value::Null);
+    assert_eq!((&d["deleted"], &d["moved"]), (&own["id"], &json!(0)));
 }
