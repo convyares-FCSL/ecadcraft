@@ -2,8 +2,8 @@
 //! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
 //!
 //! Read them through `ecad_cadcraft::cmd::wire::join_by_default`, `wires::label_rule`, `wires::label_rule_word` and
-//! `wires::label_min_length`, not by key. The label rule's built-ins are `ecad-model`'s constants
-//! (`wiring::DEFAULT_LABEL_RULE`, `DEFAULT_LABEL_MIN_LENGTH`), referenced here, never copied.
+//! `wires::label_min_length`, not by key. Their built-ins are data (`defaults/wires.toml`, brief
+//! 066); a project's chosen value is its `settings.wiring` field, absent when it chose none.
 
 use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
@@ -26,13 +26,10 @@ pub static WIRE_JOIN: Entry = Entry {
 /// The label rule words, as registered.
 const LABEL_RULES: &[&str] = &[ecad_model::wiring::LABEL_RULE_NET, ecad_model::wiring::LABEL_RULE_EACH];
 
-/// The project's label rule as stored in `settings.wiring`, as a registered word; `None` while it
-/// is the default (so it resolves as the built-in).
+/// The label rule the project chose in `settings.wiring`, as a registered word; `None` when it
+/// chose none (brief 066, F2), so it resolves as the built-in.
 fn label_rule_setting(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
-    let r = s.wiring.label_rule.trim();
-    if r.eq_ignore_ascii_case(ecad_model::wiring::DEFAULT_LABEL_RULE) {
-        return None;
-    }
+    let r = s.wiring.label_rule.as_deref()?.trim();
     LABEL_RULES.iter().find(|w| w.eq_ignore_ascii_case(r)).map(|w| Value::Choice(w))
 }
 
@@ -49,10 +46,9 @@ pub static WIRING_LABEL_RULE: Entry = Entry {
     project: ProjectSource::Settings(label_rule_setting),
 };
 
-/// The project's shortest labelled wire as stored, `None` while it is the default.
+/// The shortest labelled wire the project chose, `None` when it chose none (brief 066, F2).
 fn label_min_length_setting(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
-    let v = s.wiring.label_min_length;
-    ((v - ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH).abs() > f64::EPSILON).then_some(Value::Length(v))
+    s.wiring.label_min_length.map(Value::Length)
 }
 
 /// `wiring.label_min_length`: with `each`, the shortest labelled wire, millimetres (design 032

@@ -808,7 +808,7 @@ pub fn project_json(doc: &Document) -> Value {
     v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
     v["colour_style"] = json!(doc.settings.wiring.colour_style.name());
-    v["label_height"] = json!(doc.settings.wiring.label_height());
+    v["label_height"] = json!(wire_label_height(doc));
     // Brief 026: Project settings → Numbering.
     v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
     v["revisions"] = Value::Array(revs);
@@ -1006,7 +1006,7 @@ fn run_projectprops(s: &mut Session, params: &Value) -> cadcraft_engine::Result<
         }
         if let Some(v) = params.get("label_height").filter(|v| !v.is_null()) {
             settings.wiring.label_height =
-                v.as_f64().filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
+                Some(v.as_f64().filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?);
         }
         if settings != doc.settings {
             ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
@@ -1287,4 +1287,10 @@ fn run_undoissue(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Va
 /// where there is no clock.
 pub fn today() -> Option<String> {
     revisions::date_of_ms(crate::project::now_ms()?)
+}
+
+/// The wire label cap height the project resolves to, millimetres (its chosen one, its standard's
+/// or the built-in; brief 066).
+pub(crate) fn wire_label_height(doc: &ecad_model::Document) -> f64 {
+    crate::defaults::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, crate::defaults::Scope::project()).number()
 }

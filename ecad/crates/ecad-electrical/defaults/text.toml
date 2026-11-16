@@ -6,7 +6,7 @@
 
 [values]
 "text.font" = "Barlow Semi Condensed"
-"text.wire_label.height" = 1.6
+"text.wire_label.height" = 2.5   # owner, 2026-11-15: was 1.6 (brief 066)
 "text.tag.show" = "on"
 "text.tag.show.strip" = "first"
 "text.tag.show.plc" = "first"

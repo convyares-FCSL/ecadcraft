@@ -194,3 +194,125 @@ fn a_tested_build_reports_no_damaged_defaults() {
     let rows = ecad_cadcraft::checks::all(&doc, 0.01);
     assert!(rows.iter().all(|c| c.kind != ecad_cadcraft::checks::Kind::DefaultsDamaged));
 }
+
+// ---------------------------------------------------------------- 066b: the saved-file rule (F2)
+
+use ecad_cadcraft::Persistence;
+use ecad_cadcraft::defaults::{Scope, resolve};
+use ecad_model::Document;
+use serde_json::json;
+
+use crate::common::{H, close_all, pts, reopen, tmp_dir};
+
+/// Every entry's resolved value at project scope, as text, with where it came from.
+fn resolved_all(doc: &Document) -> Vec<(&'static str, String, &'static str)> {
+    data::entries().map(|e| (e.key, resolve(doc, e, Scope::project()).text(), resolve(doc, e, Scope::project()).from.as_str())).collect()
+}
+
+fn wire_label_height(doc: &Document) -> Value<'_> {
+    resolve(doc, &defaults::text::WIRE_LABEL_HEIGHT, Scope::project()).value
+}
+
+/// A project with one labelled wire, the label height chosen (`Some`) or not.
+fn project(seed: u64, height: Option<f64>) -> H {
+    let mut h = H::new(seed);
+    h.run("wire", json!({"points": pts(&[(20.0, 20.0), (80.0, 20.0)]), "potential": "24V"})).unwrap();
+    if let Some(x) = height {
+        h.run("wiresettings", json!({"label_height": x})).unwrap();
+    }
+    h
+}
+
+/// Save `h` as a file and open it in a fresh session.
+fn save_and_reopen(mut h: H, tag: &str, seed: u64) -> H {
+    h.cfg(|p| p.persistence = Persistence::File);
+    let dir = tmp_dir(tag);
+    let path = dir.join("p066").display().to_string();
+    h.run("saveas", json!({"path": path})).unwrap();
+    close_all(&mut h.s);
+    let h = reopen(&format!("{path}.ecad"), seed);
+    // The folder may still be open on Windows; a leftover temporary folder is harmless.
+    let _ = std::fs::remove_dir_all(&dir);
+    h
+}
+
+/// 066b: the first value changed as data. A project that chose no height draws 2.5 mm labels.
+#[test]
+fn a_project_that_chose_no_height_follows_the_built_in() {
+    assert_eq!(defaults::text::WIRE_LABEL_HEIGHT.builtin(), Value::Length(2.5));
+    let mut h = project(0x66_b1, None);
+    let doc = h.doc();
+    assert_eq!(doc.settings.wiring.label_height, None);
+    assert_eq!(wire_label_height(&doc), Value::Length(2.5));
+    let page = h.first_page();
+    let labels = ecad_cadcraft::wires::labels_on_page(&doc, page);
+    assert!(!labels.is_empty() && labels.iter().all(|l| (l.height - 2.5).abs() < 1e-9), "{:?}", labels.iter().map(|l| l.height).collect::<Vec<_>>());
+}
+
+/// A chosen value is kept, even one equal to the built-in; an unset one stays unset, through a
+/// save and an open (the file format, brief 066 F2).
+#[test]
+fn chosen_and_unset_heights_survive_save_and_open() {
+    for (i, chosen) in [Some(1.6), Some(2.5), None].into_iter().enumerate() {
+        let seed = 0x66_b2 + i as u64;
+        let mut h = project(seed, chosen);
+        let before = h.doc();
+        assert_eq!(before.settings.wiring.label_height, chosen, "{chosen:?}");
+        let want = resolved_all(&before);
+        let mut h = save_and_reopen(h, "066 chosen", seed);
+        let after = h.doc();
+        assert_eq!(after.settings.wiring.label_height, chosen, "{chosen:?}: kept as chosen or not chosen");
+        assert_eq!(resolved_all(&after), want, "{chosen:?}: every entry resolves the same");
+        let page = h.first_page();
+        let height = chosen.unwrap_or(2.5);
+        let labels = ecad_cadcraft::wires::labels_on_page(&after, page);
+        assert!(labels.iter().all(|l| (l.height - height).abs() < 1e-9), "{chosen:?}");
+    }
+}
+
+/// The v1 record of the wiring settings: a chosen value (also one equal to the built-in) is written,
+/// an unchosen one is left out, and both read back as they were.
+#[test]
+fn the_v1_record_writes_only_chosen_values() {
+    let cases: [(Option<f64>, Option<&str>, Option<f64>); 3] =
+        [(None, None, None), (Some(2.5), Some("net"), Some(0.0)), (Some(1.6), Some("each"), Some(10.0))];
+    for (height, rule, min) in cases {
+        let mut w = ecad_model::wiring::WiringSettings::default();
+        (w.label_height, w.label_rule, w.label_min_length) = (height, rule.map(str::to_string), min);
+        let v = serde_json::to_value(ecad_file::v1::WiringSettings::from(&w)).unwrap();
+        for (key, present) in [("label_height", height.is_some()), ("label_rule", rule.is_some()), ("label_min_length", min.is_some())] {
+            assert_eq!(v.get(key).is_some(), present, "{key} in {v}");
+        }
+        let back: ecad_file::v1::WiringSettings = serde_json::from_value(v).unwrap();
+        assert_eq!(ecad_model::wiring::WiringSettings::from(back), w);
+    }
+}
+
+/// Two machines, same read: a project never reads a company file from the machine. Files named
+/// like a company standard beside the project and in the working folder change nothing.
+#[test]
+fn a_project_reads_the_same_whatever_company_files_the_machine_holds() {
+    let company = "[values]\n\"text.wire_label.height\" = 5.0\n\"text.tag.show\" = \"off\"\n";
+    let mut reads = Vec::new();
+    for (i, files) in [&[][..], &["company.toml", "defaults.toml"][..], &["text.toml", "standard.toml"][..]].into_iter().enumerate() {
+        let seed = 0x66_b6 + i as u64;
+        let mut h = project(seed, None);
+        h.cfg(|p| p.persistence = Persistence::File);
+        let dir = tmp_dir("066 machines");
+        for f in files {
+            std::fs::write(dir.join(f), company).unwrap();
+            std::fs::create_dir_all(dir.join("defaults")).unwrap();
+            std::fs::write(dir.join("defaults").join(f), company).unwrap();
+        }
+        let path = dir.join("p066").display().to_string();
+        h.run("saveas", json!({"path": path})).unwrap();
+        close_all(&mut h.s);
+        let mut h = reopen(&format!("{path}.ecad"), seed);
+        let doc = h.doc();
+        let page = h.first_page();
+        let heights: Vec<f64> = ecad_cadcraft::wires::labels_on_page(&doc, page).iter().map(|l| l.height).collect();
+        reads.push((resolved_all(&doc), heights));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    assert!(reads.windows(2).all(|w| w[0] == w[1]), "every machine reads the project the same");
+}

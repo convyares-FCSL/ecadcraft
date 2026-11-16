@@ -494,7 +494,7 @@ fn settings_json(doc: &Document) -> Value {
     json!({
         "scheme": w.scheme.name(),
         "colour_style": w.colour_style.name(),
-        "label_height": w.label_height(),
+        "label_height": crate::cmd::sheet::wire_label_height(doc),
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
         "digits": w.digits,
@@ -530,7 +530,7 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
         }
         if let Some(hv) = params.get("label_height").filter(|v| !v.is_null()) {
             let hv = hv.as_f64().filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?;
-            w.label_height = hv;
+            w.label_height = Some(hv);
         }
         // Brief 032 §4: the label rule and the shortest labelled wire.
         if let Some(r) = opt_str(params, "label_rule")? {
@@ -538,11 +538,11 @@ pub(crate) fn run_wiresettings(s: &mut Session, params: &Value) -> cadcraft_engi
             if r != wiring::LABEL_RULE_NET && r != wiring::LABEL_RULE_EACH {
                 return Err("`label_rule` must be \"net\" (one label per net per page) or \"each\" (every wire)".into());
             }
-            w.label_rule = r;
+            w.label_rule = Some(r);
         }
         if let Some(lv) = params.get("label_min_length").filter(|v| !v.is_null()) {
             let lv = lv.as_f64().filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or("Shortest labelled wire is 0 to 100 mm.")?;
-            w.label_min_length = lv;
+            w.label_min_length = Some(lv);
         }
         if let Some(u) = opt_str(params, "unclassified_prefix")? {
             w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();

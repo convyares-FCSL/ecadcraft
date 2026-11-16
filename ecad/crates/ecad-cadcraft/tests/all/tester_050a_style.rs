@@ -253,7 +253,7 @@ pub(crate) const BUILTIN_TEXT: [(&str, f64, &str); 23] = [
     ("reference", 2.0, "regular"),
     // Brief 049's continuation caption (merged after 050a).
     ("continuation_caption", 2.5, "regular"),
-    ("wire_label", 1.6, "regular"),
+    ("wire_label", 2.5, "regular"),
     ("cable_text", 1.6, "regular"),
     ("location", 1.6, "regular"),
     ("title_value", 2.5, "regular"),
@@ -661,7 +661,7 @@ fn a03_textstyle_writes_the_kinds_style_record() {
     assert!(near(field_num(&r, "height"), 3.0) && field(&r, "height").1 == "project", "the project record: {r}");
     let (_, tx) = one_tx(&mut h, "textstyle", json!({"kind": "wire_label", "height": 2}));
     assert!(op_names(&tx).contains(&"SetProjectSettings"), "the wire label height stays in settings.wiring: {:?}", op_names(&tx));
-    assert!(near(h.doc().settings.wiring.label_height, 2.0));
+    assert!(h.doc().settings.wiring.label_height.is_some_and(|x| near(x, 2.0)));
     let r = style_row(&mut h, "text", "wire_label");
     assert!(near(field_num(&r, "height"), 2.0) && field(&r, "height").1 == "project", "read as the project field: {r}");
 }

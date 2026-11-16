@@ -357,7 +357,7 @@ const DEFAULTS: &[(&str, f64, &str, &str)] = &[
     ("part_number", 1.6, "regular", "off"),
     ("continuation_name", 2.0, "regular", "off"),
     ("reference", 2.0, "regular", "on"),
-    ("wire_label", 1.6, "regular", "on"),
+    ("wire_label", 2.5, "regular", "on"),
     ("cable_text", 1.6, "regular", "on"),
     ("location", 1.6, "regular", "on"),
     ("title_value", 2.5, "regular", "on"),
@@ -369,7 +369,7 @@ const DEFAULTS: &[(&str, f64, &str, &str)] = &[
 ];
 
 /// T2 (AC 1): `textstyle {}` reads with no write and gives the §3.2 defaults for every kind; the
-/// wire label default is 1.6 (FP6).
+/// wire label default is 2.5 (FP6 made it 1.6; brief 066, 2.5).
 #[test]
 fn t2_textstyle_reads_the_defaults_of_every_kind() {
     let mut h = H::new(0x7031_0201);
@@ -388,9 +388,11 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
         assert!(ok, "{kind}: {k}");
         assert_eq!(k["default"], json!(true), "{kind}: {k}");
     }
-    assert_eq!(ecad_model::wiring::DEFAULT_LABEL_HEIGHT, 1.6, "FP6: wire label default 1.8 → 1.6");
+    // FP6 made it 1.6; brief 066 moved it to data and made it 2.5.
+    let builtin = ecad_cadcraft::defaults::text::WIRE_LABEL_HEIGHT.builtin();
+    assert_eq!(builtin, ecad_cadcraft::defaults::Value::Length(2.5), "066: wire label built-in 2.5");
     let s = serde_json::to_value(&h.doc().settings).unwrap();
-    assert!(s.pointer("/wiring/label_height").is_none_or(|x| x.as_f64() == Some(1.6)), "a new project stores no 1.8: {s}");
+    assert!(s.pointer("/wiring/label_height").is_none(), "a new project chooses no height (066, F2): {s}");
 }
 
 /// T2 (AC 1): hostile stored values fall back to the default; nothing panics; the page draws.
@@ -528,7 +530,7 @@ fn t4_wire_label_height_is_written_to_the_wiring_settings() {
     let ops = last_ops(&mut h);
     assert!(ops.iter().any(|o| matches!(o, Op::SetProjectSettings { .. })), "{ops:?}");
     assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("text.wire_label"))), "{ops:?}");
-    assert_eq!(h.doc().settings.wiring.label_height(), 2.0);
+    assert_eq!(h.doc().settings.wiring.label_height(), Some(2.0));
     assert_eq!(project_prop(&mut h, "text.wire_label.height"), None);
     let v = h.run("textstyle", json!({})).unwrap();
     assert_eq!(num(&textstyle_kind(&v, "wire_label")["height"]), 2.0);

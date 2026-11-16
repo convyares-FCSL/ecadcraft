@@ -415,32 +415,8 @@ fn iec() -> ColourStyle {
     ColourStyle::Iec
 }
 
-fn default_label_height() -> f64 {
-    m::wiring::DEFAULT_LABEL_HEIGHT
-}
-
-fn default_label_rule() -> String {
-    m::wiring::DEFAULT_LABEL_RULE.to_string()
-}
-
-fn default_label_min_length() -> f64 {
-    m::wiring::DEFAULT_LABEL_MIN_LENGTH
-}
-
-fn is_default_label_rule(r: &str) -> bool {
-    r == m::wiring::DEFAULT_LABEL_RULE
-}
-
-fn is_default_label_min_length(v: &f64) -> bool {
-    *v == m::wiring::DEFAULT_LABEL_MIN_LENGTH
-}
-
-fn is_default_label_height(h: &f64) -> bool {
-    *h == m::wiring::DEFAULT_LABEL_HEIGHT
-}
-
-/// Wiring settings (brief 022). `colour_style` and `label_height` (fix round, 2026-11-09) are left
-/// out at their defaults.
+/// Wiring settings (brief 022). `colour_style` is left out at its default; the label height, rule
+/// and shortest labelled wire are written only when the project chose them (brief 066, F2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WiringSettings {
@@ -450,14 +426,16 @@ pub struct WiringSettings {
     pub potentials: Vec<PotentialDef>,
     #[serde(default = "iec", skip_serializing_if = "is_iec")]
     pub colour_style: ColourStyle,
-    #[serde(default = "default_label_height", skip_serializing_if = "is_default_label_height")]
-    pub label_height: f64,
+    /// Brief 066 (F2): written only when the project chose a height, even one equal to the
+    /// built-in; absent follows the built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_height: Option<f64>,
     /// Brief 032 (FP-W1); left out at its default, like its neighbours.
-    #[serde(default = "default_label_rule", skip_serializing_if = "is_default_label_rule")]
-    pub label_rule: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_rule: Option<String>,
     /// Brief 032 (FP-W1); left out at its default, like its neighbours.
-    #[serde(default = "default_label_min_length", skip_serializing_if = "is_default_label_min_length")]
-    pub label_min_length: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_min_length: Option<f64>,
 }
 
 impl Default for WiringSettings {

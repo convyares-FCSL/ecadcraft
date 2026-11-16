@@ -26,11 +26,10 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind, levels: &'sta
     Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels, project: ProjectSource::Property }
 }
 
-/// The wire label height as the project stores it (`settings.wiring.label_height`), or `None`
-/// while it is the default.
+/// The wire label height the project chose (`settings.wiring.label_height`), or `None` when it
+/// chose none (brief 066, F2: a chosen value equal to the built-in is still chosen).
 pub(crate) fn wire_label_height(s: &ecad_model::ProjectSettings) -> Option<Value<'_>> {
-    let h = s.wiring.label_height;
-    ((h - ecad_model::wiring::DEFAULT_LABEL_HEIGHT).abs() > f64::EPSILON).then_some(Value::Length(h))
+    s.wiring.label_height.map(Value::Length)
 }
 
 // --- Font ------------------------------------------------------------------------------------

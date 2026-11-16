@@ -229,7 +229,7 @@ impl WireLooks {
         let line_weight = f("line_weight").map_or(0.25, |r| r.number());
         let rule = f("label_rule").map_or("project", |r| r.word());
         let label_rule = match rule {
-            "project" | "" => doc.settings.wiring.label_rule.clone(),
+            "project" | "" => crate::wires::label_rule_word(doc).to_string(),
             other => other.to_string(),
         };
         WireLook { category, from, colour, cross_section, line_colour, line_type, line_weight, label_rule }

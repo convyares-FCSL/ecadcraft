@@ -124,15 +124,12 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
 /// # Errors
 /// The entry has no setting this command knows (a registry entry added without a writer).
 pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>) -> Result<(), String> {
-    let number = |v: Option<&str>, default: f64| v.and_then(|t| t.parse::<f64>().ok()).unwrap_or(default);
+    // Brief 066 (F2): `None` stores "not chosen", never the built-in's value.
+    let number = |v: Option<&str>| v.and_then(|t| t.parse::<f64>().ok());
     match entry.key {
-        k if k == defaults::text::WIRE_LABEL_HEIGHT.key => s.wiring.label_height = number(value, ecad_model::wiring::DEFAULT_LABEL_HEIGHT),
-        k if k == defaults::wires::WIRING_LABEL_RULE.key => {
-            s.wiring.label_rule = value.unwrap_or(ecad_model::wiring::DEFAULT_LABEL_RULE).to_string();
-        }
-        k if k == defaults::wires::WIRING_LABEL_MIN_LENGTH.key => {
-            s.wiring.label_min_length = number(value, ecad_model::wiring::DEFAULT_LABEL_MIN_LENGTH);
-        }
+        k if k == defaults::text::WIRE_LABEL_HEIGHT.key => s.wiring.label_height = number(value),
+        k if k == defaults::wires::WIRING_LABEL_RULE.key => s.wiring.label_rule = value.map(str::to_string),
+        k if k == defaults::wires::WIRING_LABEL_MIN_LENGTH.key => s.wiring.label_min_length = number(value),
         _ => match starter_key(entry) {
             Some(key) => crate::cmd::device::apply_tag_settings(s, None, vec![(key.to_string(), value.map(str::to_string))]),
             None => return Err(format!("`{}` has no project setting this command can write.", entry.key)),

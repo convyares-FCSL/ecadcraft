@@ -634,9 +634,9 @@ mod tests {
         let e = &text::WIRE_LABEL_HEIGHT;
         let mut doc = Document::default();
         assert_eq!(resolve(&doc, e, Scope::project()).from, Source::Builtin);
-        doc.settings.wiring.label_height = 2.0;
+        doc.settings.wiring.label_height = Some(2.0);
         assert_eq!(resolve(&doc, e, Scope::project()), Resolved { value: Value::Length(2.0), from: Source::Project });
-        doc.settings.wiring.label_height = f64::NAN;
+        doc.settings.wiring.label_height = Some(f64::NAN);
         assert_eq!(resolve(&doc, e, Scope::project()).from, Source::Builtin);
     }
 }
@@ -717,11 +717,6 @@ mod kind_tests {
         doc.pages.insert(page, ecad_model::Page::new("p"));
         doc.pages.get_mut(&page).map(|p| p.properties.insert(PAGE_ONLY.key.into(), "5".into()));
         assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::page(page)), Resolved { value: Value::Length(5.0), from: Source::Page });
-    }
-
-    #[test]
-    fn a_default_used_below_this_crate_is_its_model_constant() {
-        assert_eq!(text::WIRE_LABEL_HEIGHT.builtin(), Value::Length(ecad_model::wiring::DEFAULT_LABEL_HEIGHT));
     }
 
     #[test]

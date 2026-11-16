@@ -163,7 +163,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
             ops.retain(|o| !matches!(o, Op::SetProjectSettings { .. }));
             let before = doc.settings.clone();
             let mut after = before.clone();
-            after.wiring.label_height = h.unwrap_or(ecad_model::wiring::DEFAULT_LABEL_HEIGHT);
+            after.wiring.label_height = h;
             if after != before {
                 ops.push(Op::SetProjectSettings { before, after });
             }

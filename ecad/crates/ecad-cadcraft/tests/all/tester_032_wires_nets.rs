@@ -892,18 +892,16 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
-    // Serde: a stored WiringSettings without the two fields reads the defaults.
-    let mut v = serde_json::to_value(ecad_model::wiring::WiringSettings::default()).unwrap();
-    assert_eq!(v["label_rule"], "net", "{v}");
-    assert_eq!(v["label_min_length"], json!(0.0), "{v}");
-    if let Some(o) = v.as_object_mut() {
-        o.remove("label_rule");
-        o.remove("label_min_length");
-    }
+    // Serde: unset, the two fields are left out (brief 066, F2) and read back unset, which
+    // resolves as the built-ins `net` and 0.
+    let v = serde_json::to_value(ecad_model::wiring::WiringSettings::default()).unwrap();
+    assert!(v.get("label_rule").is_none() && v.get("label_min_length").is_none(), "{v}");
     let back: ecad_model::wiring::WiringSettings = serde_json::from_value(v).unwrap();
-    let again = serde_json::to_value(back).unwrap();
-    assert_eq!(again["label_rule"], "net");
-    assert_eq!(again["label_min_length"], json!(0.0));
+    assert_eq!((back.label_rule.as_deref(), back.label_min_length), (None, None));
+    let mut doc = ecad_model::Document::default();
+    doc.settings.wiring = back;
+    assert_eq!(ecad_cadcraft::wires::label_rule_word(&doc), "net");
+    assert_eq!(ecad_cadcraft::wires::label_min_length(&doc), 0.0);
 }
 
 /// `wiresettings` refuses bad values in words and writes nothing.
