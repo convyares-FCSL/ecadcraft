@@ -1,8 +1,8 @@
 # Brief 072: Types for keys, units, words and device kinds
 
 Status: **Draft** (designer, 2026-11-16; revised after the owner's answers). Needs the owner's
-calls in design 072 §14 and the overseer's approval of F3′ and F8–F12 (design §13) before it is
-approved. F1, F2, F4–F7 approved by the overseer, 2026-11-16.
+calls in design 072 §14 before it is approved. Format and op changes (design §13, F1–F12 with
+F3′, including the new op `SetDeviceKind`) approved by the overseer, 2026-11-16.
 Branch: `feature/types`, from `refactor/0.2.3` **after lanes 070 (errors and typed command
 inputs) and 073 (renames) have landed there**. Phase: 0.2.3 tidy-up; no PRs: the overseer merges
 the lane when it is green.
@@ -46,8 +46,9 @@ Design 072 is the spec; read it whole. In short:
    into the variants, the predicates deleted (§5).
 8. Guards G1–G10, all at 0 with no allowlist at the end (§6).
 
-Format and op changes are design §13: F1, F2, F4–F7 approved; F3′ and F8–F12 are part of this lane
-once the overseer approves them. Fixtures are regenerated, never shimmed (§5.8).
+Format and op changes are design §13, all approved by the overseer (2026-11-16). F11's condition
+is a hard rule: the inspector's Raw and Readable views keep working for the new op and fields
+(A15). Fixtures are regenerated, never shimmed (§5.8).
 
 ## Not in this lane
 
@@ -101,10 +102,11 @@ crates it touched pass, every guard at or under its count. Push after each green
 
 ## Acceptance
 
-Design 072 §10, A1–A14, in `tests/all/lanes/lane_072.rs` of each crate tested (plus one line in
+Design 072 §10, A1–A15, in `tests/all/lanes/lane_072.rs` of each crate tested (plus one line in
 `tests/all/lanes/mod.rs`). Every command whose input type or recorded op changed has the MCP
 contract test of brief 011 (accepted call, its transaction and `Author::Agent(..)`, refused with
-writes off). The inspector's Raw and Readable views show the changed words and the kinds (A12).
+writes off). The inspector's Raw and Readable views show the changed words, the kinds and the
+`SetDeviceKind` op, also on a project opened read-only for an unknown word (A12, A15: a hard rule).
 
 ## Stop and ask the overseer
 

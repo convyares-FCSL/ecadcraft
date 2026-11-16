@@ -1,8 +1,8 @@
 # Design 072: Types for keys, units, words and device kinds
 
 Status: **Draft** (designer, 2026-11-16; revised the same day after the owner's answers). Waiting
-for the owner's calls in §14 and the overseer's approval of the revised and new format changes in
-§13 (F3′, F8–F12; F1, F2, F4–F7 approved 2026-11-16). Brief: `docs/briefs/072-types.md`.
+for the owner's calls in §14. Format and op changes §13 (F1–F12 with F3′) approved by the
+overseer, 2026-11-16. Brief: `docs/briefs/072-types.md`.
 
 **Goal (one sentence).** Property keys, physical units, the words a file stores and the kind of a
 device stop being free strings and bare numbers, so that the compiler finds every place a new key,
@@ -770,6 +770,7 @@ ready to start, since R9 needs `keys.rs`, `Area` and `StyleCatalogue`; R9 then a
 | A12 | `format_words` | A project saved by this build has the §13 shapes: `yes`/`no` switches, part-role words, `cable_prefix`, `kind` on devices and definitions, no moved keys in any property bag. The inspector's Raw and Readable views show them (`.ecad` never a black box). Fixtures regenerated, not shimmed. |
 | A13 | guards | `cargo xtask layers` passes with no allowlist entries for G2, G3, G6–G10; the G1/G4 tests pass at 0; clippy passes with G5's denies. |
 | A14 | existing suites | fast tests of ecad-model, ecad-electrical, Engine, ecad-app, ecad-mcp, ecad-file unchanged in outcome except where a test asserted a changed word or a moved key. |
+| A15 | `inspector_shows_kinds_and_words` | (hard rule, F11's condition) The inspector's Raw and Readable views show: a `SetDeviceKind` op with its before and after kinds; `Component.kind` and `Definition.kind` with every variant's fields (one device per variant); the part-role words; and, for a project opened read-only for an unknown word, the record or value with that word and the open report's reason. Neither view fails or hides a record because of a kind or an unknown word. |
 
 **Bench** (medium while building, large once at the end): `views.setprop_tag` and
 `views.move_symbol` no worse than `refactor/0.2.3` + 10%; `plc.slot_edit` (a slot change through
@@ -812,24 +813,26 @@ rows). Every other row is unchanged.
 Pre-v1, no compatibility path: fixtures are regenerated and no shims are added (ruling). No format
 version change.
 
-**Approved (overseer, 2026-11-16): F1, F2, F4, F5, F6, F7 as written.** F3 was approved as
-`symbol.<key>` roles; the owner's answer replaced it with F3′ below, which needs approval with
-F8–F12.
+**Approved (overseer, 2026-11-16): F1, F2, F4, F5, F6, F7 as written; then F3′ and F8–F12 as
+written**, including the new op `SetDeviceKind` (a kind change and its variant edits need their
+own undoable record). F3 was first approved as `symbol.<key>` roles; the owner's answer replaced
+it with F3′. Condition on F11 (hard rule): the inspector's Raw and Readable views keep working for
+the new op and fields, including on a project opened read-only for an unknown word (A15).
 
 | # | Change | On disk | State |
 | --- | --- | --- | --- |
 | F1 | `Op::SetStyle.catalogue`: `String` → `StyleCatalogue` | same words (`text`, `location`, `frame`, `wire`, `page`, `cable`, `ratingtable`); an unknown one is now a damaged record | approved |
 | F2 | `StyleCatalogues` keyed by `StyleCatalogue` | same words | approved |
-| F3′ | `Representation.role`: `String` → `Role`; a symbol's role is its **part in the device** | **symbol roles change**: `coil`, `no`, a project symbol's key → `head`, `contact`, `pole`, `terminal`, `channel`, `half`, `pin`, `other`; the fixed words stay | **for approval** |
+| F3′ | `Representation.role`: `String` → `Role`; a symbol's role is its **part in the device** | **symbol roles change**: `coil`, `no`, a project symbol's key → `head`, `contact`, `pole`, `terminal`, `channel`, `half`, `pin`, `other`; the fixed words stay | approved |
 | F4 | On/off switches → `yes` / `no`; text show → `yes` / `no` / `first` | words change in the defaults TOML, in project, page and component properties, and in style fields: `front.cover.{notes,wire_colours,symbol_legend,revisions,structure_codes,customer_site}`, `text.{point_label,description,part_number,continuation_name,reference,continuation_caption,location,wire_label}.show`, the 5 plc switches (`ON_OFF` in `defaults/plc.rs`), `wire.join`, `bom.column.article`, frame fields `grid_labels`, `centre_marks`, page fields `zones`, `checks`; `text.tag.show`, `.strip`, `.plc` and per-object `text.<rep>.<kind>.show` | approved |
 | F5 | `ProjectSettings.cable_prefix: Option<String>`; `tag_prefixes` keyed by `SymbolName`, no `"cable"` entry | new settings field | approved |
 | F6 | Symbol content command: `slots[].rotation` in degrees | command input only; stored stays radians | approved |
 | F7 | `Placement.rotation`, `TextSlot.rotation`, `Primitive::Text.rotation` typed `Radians` | bytes unchanged (`serde(transparent)`) | approved |
-| F8 | `Definition.kind: DeviceKind`: the kind a symbol declares, with its default data | **new field** on every definition record (starters' embedded copies and project symbols) | **for approval** |
-| F9 | `Component.kind: DeviceKind` with its variant data (§5.1, §5.3) | **new field** on every component record; `{ "kind": "<word>", …fields }`, default fields left out | **for approval** |
-| F10 | The kind-specific keys of §5.3 leave the property bag and are `RESERVED` on components | **keys removed**: `plc.rack`, `plc.slot`, `plc.channels`, `plc.addr.*`, `plc.kind`, `plc.ch.<i>.*`, `terminals`, `part_number.pe`, `maker.pe`, `term_label.*`, `acc.*`, `marker.per_card`, `jumper.bar`, `pins`, `pin_names`, `half.*`, `ignore.*`, `rating` and `rating.<n>` on devices, `contacts`, `mirror`, `kind`, `name` and `caption` on components, `rating.temperature` on boxes, `qty`, `unit` on items | **for approval** |
-| F11 | Unknown words are a read error: a damaged record for typed fields, `ReadOnly::UnknownWords` for words in values (§4.1) | no change to the bytes; a new read-only reason | **for approval** |
-| F12 | **New op `Op::SetDeviceKind { id, before, after }`** (§5.5): records a kind change and every variant-field edit | new op in the log | **for approval** |
+| F8 | `Definition.kind: DeviceKind`: the kind a symbol declares, with its default data | **new field** on every definition record (starters' embedded copies and project symbols) | approved |
+| F9 | `Component.kind: DeviceKind` with its variant data (§5.1, §5.3) | **new field** on every component record; `{ "kind": "<word>", …fields }`, default fields left out | approved |
+| F10 | The kind-specific keys of §5.3 leave the property bag and are `RESERVED` on components | **keys removed**: `plc.rack`, `plc.slot`, `plc.channels`, `plc.addr.*`, `plc.kind`, `plc.ch.<i>.*`, `terminals`, `part_number.pe`, `maker.pe`, `term_label.*`, `acc.*`, `marker.per_card`, `jumper.bar`, `pins`, `pin_names`, `half.*`, `ignore.*`, `rating` and `rating.<n>` on devices, `contacts`, `mirror`, `kind`, `name` and `caption` on components, `rating.temperature` on boxes, `qty`, `unit` on items | approved |
+| F11 | Unknown words are a read error: a damaged record for typed fields, `ReadOnly::UnknownWords` for words in values (§4.1) | no change to the bytes; a new read-only reason | approved |
+| F12 | **New op `Op::SetDeviceKind { id, before, after }`** (§5.5): records a kind change and every variant-field edit | new op in the log | approved |
 
 ---
 
