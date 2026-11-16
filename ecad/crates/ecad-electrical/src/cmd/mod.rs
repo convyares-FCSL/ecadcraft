@@ -7,5 +7,6 @@ pub mod designation;
 pub mod output;
 pub mod sheet;
 pub mod style;
+pub mod symbol;
 pub mod text;
 pub mod wire;

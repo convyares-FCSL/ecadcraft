@@ -290,6 +290,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::text::TYPED,
         crate::cmd::style::TYPED,
         crate::cmd::designation::TYPED,
+        crate::cmd::symbol::TYPED,
     ]
     .concat()
 }

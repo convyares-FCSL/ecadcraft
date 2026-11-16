@@ -82,11 +82,6 @@ const UNTYPED: &[&str] = &[
     "partline",
     "bomitem",
     "article",
-    "symbolnew",
-    "symboledit",
-    "symbolimpact",
-    "symbolupdate",
-    "makesymbol",
     "contcaption",
     "plcpage",
     "conflicts",
@@ -586,4 +581,85 @@ fn the_typed_designation_commands_still_work() {
     assert_eq!(r, json!({"changed": true, "code": "=F3"}));
     let none = h.run("designationremove", json!({"unused": true})).unwrap_or(Value::Null);
     assert_eq!(none, json!({"changed": false, "removed": []}));
+}
+
+/// A float switch as `symbolnew` takes it (design 048 §9.1's example), with `extra` on top.
+fn float_switch(extra: Value) -> Value {
+    let mut p = json!({
+        "name": "Float switch", "key": "float1",
+        "graphics": [{"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true}],
+        "points": [{"key": 1, "label": "BN", "at": [0, 5]}, {"key": "2", "label": null, "at": [0, -5]}],
+        "slots": [{"text": "tag", "at": [-4, 0], "h": "right", "v": "middle", "rotation": 0}],
+        "defaults": {"prefix": "B", "description": "Float switch", "join": "device"},
+    });
+    if let (Some(o), Some(e)) = (p.as_object_mut(), extra.as_object()) {
+        o.extend(e.clone());
+    }
+    p
+}
+
+/// Input refusals of the symbol builder's commands: one wording.
+#[test]
+fn the_symbol_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("symbolnew", json!({"name": 5}), "`name` must be text, or null"),
+        ("symbolnew", json!({"points": [{"key": "1", "at": "x"}]}), "`points` must be a list of objects, or null"),
+        ("symbolnew", json!({"slots": [{"text": "tag", "at": [0, 0], "h": "up"}]}), "`slots` must be a list of objects, or null"),
+        ("symbolnew", json!({"defaults": {"prefix": 5}}), "`defaults` must be an object, or null"),
+        ("symbolnew", json!({"from": "zz"}), "`from` must be a hex id, or null"),
+        ("symbolimpact", json!({}), "`definition` (hex id) is required"),
+        ("symboledit", json!({"definition": "1", "copies": "x"}), "`copies` must be a list of hex ids, or null"),
+        ("symboledit", json!({"definition": "1", "update": 5}), "`update` must be text, or null"),
+        ("symbolupdate", json!({"lineage": "zz"}), "`lineage` must be a hex id, or null"),
+        ("makesymbol", json!({"at": [1]}), "`at` must be a point [x, y], or null"),
+        ("symbolupdate", json!({"colour": 1}), "`colour` is not a parameter of this command; it takes `copies`, `lineage`, `to`"),
+    ];
+    let mut h = H::new(7020);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the symbol builder's commands keep their words.
+#[test]
+fn the_symbol_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("symbolnew", json!({}), "A symbol needs a name."),
+        ("symbolnew", json!({"points": [{"at": [0, 0]}]}), "Each point needs a `key`."),
+        ("symbolnew", json!({"points": [{"key": "1"}]}), "Point 1 needs `at` [x, y]."),
+        ("symbolnew", json!({"slots": [{"at": [0, 0]}]}), "Each slot needs a `text`."),
+        ("symbolnew", json!({"slots": [{"text": "tag"}]}), "The tag slot needs `at` [x, y]."),
+        ("symbolnew", json!({"graphics": [{"kind": "nope"}]}), "A shape could not be read: "),
+        ("symbolnew", float_switch(json!({"key": "coil"})), "The key coil is a built-in symbol's; choose another."),
+        ("symboledit", json!({"definition": "1", "update": "x"}), "`update` is all, selected, none or new."),
+        ("symboledit", json!({"definition": "1"}), "No such symbol."),
+        ("symbolupdate", json!({}), "Name the `copies` or the `lineage` to update."),
+        ("symbolupdate", json!({"copies": []}), "Name a placed copy or a lineage."),
+        ("makesymbol", json!({"handles": []}), "Select the lines, arcs and texts to make a symbol of."),
+        ("makesymbol", json!({"handles": ["zz"]}), "`\"zz\"` is not a valid handle"),
+        ("makesymbol", json!({"component": "1"}), "No such device."),
+    ];
+    let mut h = H::new(7021);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed symbol builder's commands still work, and answer as before.
+#[test]
+fn the_typed_symbol_commands_still_work() {
+    let mut h = H::new(7022);
+    let v1 = h.run("symbolnew", float_switch(json!({}))).unwrap_or(Value::Null);
+    assert_eq!((&v1["version"], &v1["key"], &v1["name"]), (&json!(1), &json!("float1"), &json!("Float switch")), "{v1}");
+    let def = v1["definition"].as_str().unwrap_or_default().to_string();
+    let lineage = v1["lineage"].as_str().unwrap_or_default().to_string();
+    let impact = h.run("symbolimpact", float_switch(json!({"definition": def, "name": "Float"}))).unwrap_or(Value::Null);
+    assert_eq!((&impact["version"], &impact["copies"], &impact["problems"]), (&json!(2), &json!(0), &json!([])), "{impact}");
+    let same = h.run("symboledit", float_switch(json!({"definition": def, "update": "None"}))).err().unwrap_or_default();
+    assert_eq!(same, "Nothing changed.");
+    let v2 = h.run("symboledit", float_switch(json!({"definition": def, "name": "Float", "update": "None", "builtins": "x"}))).unwrap_or(Value::Null);
+    assert_eq!((&v2["version"], &v2["lineage"], &v2["updated"], &v2["left"]), (&json!(2), &json!(lineage), &json!(0), &json!(0)), "{v2}");
+    let none = h.run("symbolupdate", json!({"lineage": lineage})).err().unwrap_or_default();
+    assert_eq!(none, "Nothing to update: every copy shows this version.");
 }
