@@ -1,14 +1,14 @@
 //! ecad-store
 //!
-//! The **storage layer** of ECAD persistence (proposal §20.1, layer 3): byte media that project
-//! and library files are written to, and nothing else. What the bytes mean, and how records are
-//! framed and checked, belongs to `ecad-file`.
+//! The **storage layer** of ECAD persistence (proposal §20.1, layer 3): the storage project
+//! files live in, and nothing else. What is stored, which tables exist and how records are checked
+//! belong to `ecad-file`.
 //!
-//! - [`Medium`]: append, flush, truncate and read, the operations the writer's durability and
-//!   retry rules (§20.5) are built from.
-//! - [`MemoryMedium`]: an in-memory medium with injectable failures (partial append, failed
-//!   flush, failed truncate) and direct access for simulating external changes, so every
-//!   failure point can be tested without a disk.
+//! - [`db`]: [`db::Database`], a redb database as generic storage: open (new, existing, read-only,
+//!   over any backend, or from bytes), a read view, a write transaction with quick-repair, and
+//!   reopening once after an I/O error.
+//! - [`Medium`] and [`MemoryMedium`]: append, flush, truncate and read over bytes, with injectable
+//!   failures. The version 1 writer was built on them; no file format uses them since brief 069.
 //!
 //! - [`disk`] (native only): [`FileMedium`], a file on disk as a medium; [`WriterLock`], the
 //!   operating-system lock that makes one session the writer; and the steps of an atomic
@@ -20,14 +20,16 @@
 //! - [`MemoryBackend`]: a redb storage backend in memory, shared by its clones, with an
 //!   injectable write failure (tests keep a real project file without a disk).
 //! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes
-//!   since the last flush), for the version 2 container's crash tests.
+//!   since the last flush), for the project file's crash tests.
 //!
-//! Excluded: the order of those steps and what is written (`ecad-file`), and any file format.
+//! Excluded: what is written and in which order (`ecad-file`), and any file format: no table,
+//! record or `.ecad` type is known here.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io;
 
 pub mod backend;
+pub mod db;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 pub mod power;

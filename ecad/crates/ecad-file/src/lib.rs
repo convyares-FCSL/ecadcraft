@@ -16,6 +16,8 @@
 //!   chunks), [`chunks`] (snapshot chunks), [`project`] (opening from the latest snapshot, saving,
 //!   branches), [`verify`] (Verify) and [`disk`] (files on disk with the writer lock). The format
 //!   version is the number the file records (`meta.container_version`), not a module name.
+//!   Opening the database, its transactions and reopening after an I/O error are ecad-store's
+//!   generic handle (`ecad_store::db`); this crate defines the tables and reads and writes them.
 //! - **Binding** ([`binding`]): a project bound to its file (open, Save, Save As, status) and
 //!   the checks on a path typed for one; the caller passes the home folder.
 //!

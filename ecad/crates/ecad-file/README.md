@@ -4,8 +4,9 @@ Layer: Core
 
 ## Purpose
 The `.ecad` project file, one format (a redb database): what is written, how records are checked,
-and how a file is read back, saved and recovered. It reads and writes through `ecad-store`, so it makes no OS calls
-of its own.
+and how a file is read back, saved and recovered. Opening the database and its transactions are
+`ecad-store`'s (`ecad_store::db`); the tables and what goes in them are here. It reads and
+writes through `ecad-store`, so it makes no OS calls of its own.
 
 ## Contents
 - `records`, `record`: the transaction records the file stores, kept apart from `ecad-model` and converted explicitly, so a model change never changes the format silently.
