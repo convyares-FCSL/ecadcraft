@@ -54,10 +54,6 @@ const UNTYPED: &[&str] = &[
     "renumber",
     "finalise",
     "numbering",
-    "terminals",
-    "bridge",
-    "stripplan",
-    "cablecores",
     "accessory",
     "jumper",
     "prerelease",
@@ -715,4 +711,73 @@ fn the_typed_xref_commands_still_work() {
     assert_eq!((&off["changed"], &off["mirror"]), (&json!(true), &json!("off")), "{off}");
     let again = h.run("mirrormove", json!({"component": c, "placement": "off"})).unwrap_or(Value::Null);
     assert_eq!(again, json!({"changed": false, "mirror": "off"}));
+}
+
+/// Input refusals of the terminal commands: one wording.
+#[test]
+fn the_terminal_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("terminals", json!({"to": [0, 0]}), "`from` (point [x, y]) is required"),
+        ("terminals", json!({"from": [0, 0], "to": "x"}), "`to` must be a point [x, y]"),
+        ("terminals", json!({"from": [0, 0], "to": [9, 9], "pe": "yes"}), "`pe` must be true or false, or null"),
+        ("terminals", json!({"from": [0, 0], "to": [9, 9], "type": 2}), "`type` must be text, or null"),
+        ("terminals", json!({"from": [0, 0], "to": [9, 9], "strip": "zz"}), "`strip` must be a hex id, or null"),
+        ("bridge", json!({"from": "1"}), "`to` (hex id) is required"),
+        ("stripplan", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("stripplan", json!({"accessories": 1}), "`accessories` must be true or false, or null"),
+        ("cablecores", json!({}), "`cable` (hex id) is required"),
+        ("cablecores", json!({"cable": "1", "x": 1}), "`x` is not a parameter of this command; it takes `cable`"),
+    ];
+    let mut h = H::new(7026);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the terminal commands keep their words.
+#[test]
+fn the_terminal_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        (
+            "terminals",
+            json!({"from": [0, 0], "to": [9, 9], "type": "nope"}),
+            "No terminal type \"nope\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
+        ),
+        ("terminals", json!({"from": [0, 0], "to": [0, 0]}), "`from` and `to` must differ"),
+        ("terminals", json!({"from": [0, 0], "to": [9, 9]}), "The line crosses no wire. Draw it across the wires to land."),
+        (
+            "terminals",
+            json!({"from": [0, 0], "to": [9, 9], "type": "x2", "level": "Q"}),
+            "A two-level terminal has levels 1, 2. Type one of them, or All for the whole terminal.",
+        ),
+        ("bridge", json!({"from": "1", "to": "2"}), "No such terminal."),
+        ("stripplan", json!({"strip": "1"}), "No such terminal strip."),
+        ("cablecores", json!({"cable": "1"}), "no such cable"),
+    ];
+    let mut h = H::new(7027);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed terminal commands still work, and answer as before.
+#[test]
+fn the_typed_terminal_commands_still_work() {
+    let mut h = H::new(7028);
+    assert!(h.run("wire", json!({"points": [[0, 0], [0, 100]]})).is_ok());
+    assert!(h.run("wire", json!({"points": [[20, 0], [20, 100]]})).is_ok());
+    let f = h.run("terminals", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
+    let placed = f["terminals"].as_array().cloned().unwrap_or_default();
+    assert_eq!(placed.len(), 2, "{f}");
+    assert!(f["message"].as_str().is_some_and(|m| m.starts_with("Placed ")), "{f}");
+    let (a, b) = (placed[0]["terminal"].clone(), placed[1]["terminal"].clone());
+    let br = h.run("bridge", json!({"from": a, "to": b})).unwrap_or(Value::Null);
+    assert_eq!((&br["bridge"], &br["changed"]), (&json!(true), &json!(true)), "{br}");
+    let again = h.run("bridge", json!({"from": a, "to": b})).unwrap_or(Value::Null);
+    assert_eq!(again["changed"], json!(false), "{again}");
+    let plan = h.run("stripplan", json!({"limit": 1})).unwrap_or(Value::Null);
+    assert_eq!((&plan["next"], &plan["strips"].as_array().map(Vec::len)), (&json!(1), &Some(1)), "{plan}");
+    let rest = h.run("stripplan", json!({"after": 1, "accessories": false})).unwrap_or(Value::Null);
+    assert_eq!(rest["strips"][0]["first_row"], json!(1), "{rest}");
 }

@@ -4,18 +4,23 @@
 //!
 //! Every write is one transaction, committed through [`Project::apply_edit`]; the reads record
 //! nothing.
-
-use std::collections::BTreeMap;
+//!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::terminal`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::{
-    CableId, ComponentId, Conductor, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement,
-    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
+pub use ecad_electrical::cmd::terminal::{
+    BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
 };
+use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, id, opt_id, opt_typed, plain_style, point, with_any_page, with_project};
-use crate::connectors::segments;
+use crate::cmd::input::{Command, Point, Typed};
+use crate::cmd::{err, on_any_page, on_project, opt_id, opt_typed, plain_style, with_project};
 pub use crate::connectors::strip_terminal_at;
 pub use crate::connectors::{Land, plan_land};
 pub use crate::strips::terminal_words;
@@ -23,15 +28,18 @@ use crate::strips::{self, StripData, TermRow};
 use crate::terminal_types as tt;
 use crate::wires::{ON_WIRE, OnWire};
 
-/// Most wires one Place Terminals line lands on (design 028 §3.2).
-pub const MAX_FENCE: usize = 200;
-/// How far a bridge's staple stands off its terminals, in millimetres (design 028 §4).
-pub const BRIDGE_STANDOFF: f64 = 4.0;
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<TerminalsParams>("terminals"),
+    Typed::of::<BridgeParams>("bridge"),
+    Typed::of::<StripplanParams>("stripplan"),
+    Typed::of::<CablecoresParams>("cablecores"),
+];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("terminals", "Place Terminals", run_terminals)
+        CommandSpec::new("terminals", "Place Terminals", crate::cmd::input::typed::<TerminalsParams>)
             .params(
                 "{strip?: id (null or absent: a new strip), pe?: bool, type?: Feedthrough|PE|x2|x2B|x3|LNPE|SEN|DIS|FUSE, level?: name, number \
 or All, position?: label, from: [x,y], to: [x,y]} (one terminal, or one level, on each wire the line crosses; a level fills the next \
@@ -39,40 +47,23 @@ position of its type that lacks it; at most 200)",
             )
             .interactive(crate::interact::terminals)
             .noundo(),
-        CommandSpec::new("bridge", "Draw Bridge", run_bridge)
+        CommandSpec::new("bridge", "Draw Bridge", crate::cmd::input::typed::<BridgeParams>)
             .params("{from: terminal id, to: terminal id} (a wire between two terminals; of one strip it is a bridge)")
             .interactive(crate::interact::bridge)
             .noundo(),
-        CommandSpec::new("stripplan", "Terminal Plan", run_stripplan)
+        CommandSpec::new("stripplan", "Terminal Plan", crate::cmd::input::typed::<StripplanParams>)
             .params(
                 "{strip?: id, limit?: rows (500, max 5000), after?: row index, accessories?: bool (true: gap rows, markers and links)} \
 (every strip's terminals, drawn and spare; read only)",
             )
             .noundo(),
-        CommandSpec::new("cablecores", "Cable Cores", run_cablecores)
+        CommandSpec::new("cablecores", "Cable Cores", crate::cmd::input::typed::<CablecoresParams>)
             .params("{cable: id} (the cable's offered cores, used, spare and over; read only)")
             .noundo(),
     ]
 }
 
 // ---------------------------------------------------------------- landing on a wire (§3.1)
-
-/// The wire `c` met at `at` on `page`: its segment there.
-pub fn on_wire_of(doc: &Document, page: PageId, c: ConductorId, at: Pt) -> Option<OnWire> {
-    let (_, _, v) = crate::wires::route_vertices(doc, c, page)?;
-    let mut best: Option<(f64, usize)> = None;
-    for (i, (a, b)) in segments(&v).enumerate() {
-        let (dx, dy) = (b.x - a.x, b.y - a.y);
-        let len2 = dx * dx + dy * dy;
-        let t = if len2 > 0.0 { (((at.x - a.x) * dx + (at.y - a.y) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
-        let d = Pt::new(a.x + t * dx, a.y + t * dy).dist(at);
-        if d.is_finite() && best.is_none_or(|(bd, _)| d < bd) {
-            best = Some((d, i));
-        }
-    }
-    let (d, segment) = best?;
-    (d <= ON_WIRE).then_some(OnWire { conductor: c, segment, at })
-}
 
 /// The echo of a landed terminal.
 fn land_words(doc: &Document, t: TerminalId, land: &Land) -> String {
@@ -126,298 +117,13 @@ pub(crate) fn land_result(doc: &Document, t: TerminalId, land: &Land) -> (Value,
 
 // ---------------------------------------------------------------- Place Terminals (§3.2)
 
-/// The definition ID of starter `s` in `doc`, embedding it in `ops` when it is not yet there.
-pub(crate) fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols::Starter, ops: &mut Vec<Op>) -> Result<DefinitionId, String> {
-    if let Some(d) = crate::symbols::embedded(doc, s) {
-        return Ok(d);
-    }
-    if let Some(d) = ops.iter().find_map(|o| match o {
-        Op::EmbedDefinition { id, definition } if crate::symbols::of_definition(definition).is_some_and(|x| x.key == s.key) => Some(*id),
-        _ => None,
-    }) {
-        return Ok(d);
-    }
-    let d: DefinitionId = ids.fresh();
-    ops.push(Op::EmbedDefinition { id: d, definition: s.definition()?.clone() });
-    Ok(d)
-}
-
-/// Plan one terminal symbol of `strip` labelled `label` at `at` (a join: its own connection
-/// point keyed by its label, as 018's joins are). `first`: a new strip's first symbol, which shows
-/// the definition's own point. Every symbol's role is its starter key (design 052 §4).
-#[allow(clippy::too_many_arguments)]
-fn terminal_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: ComponentId, label: &str, at: Pt, first: bool, role: &str,
-    ops: &mut Vec<Op>,
-) -> TerminalId {
-    let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let key = if first { "1".to_string() } else { label.to_string() };
-    ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key) } });
-    let placement = Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 };
-    ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
-    let mut cps = BTreeMap::new();
-    if !first {
-        cps.insert(t, Pt::new(0.0, 0.0));
-    }
-    ops.push(Op::LinkRepresentation {
-        id: rep,
-        rep: Representation {
-            subject: Subject::Component(strip),
-            page,
-            form: Form::Symbol,
-            role: role.into(),
-            items: vec![item],
-            connection_points: cps,
-        },
-    });
-    t
-}
-
-/// A planned Place Terminals line.
-#[derive(Debug, Clone)]
-pub struct Fence {
-    pub ops: Vec<Op>,
-    pub strip: ComponentId,
-    pub tag: String,
-    /// (terminal, label, wire, new half) in crossing order.
-    pub placed: Vec<(TerminalId, String, ConductorId, ConductorId)>,
-    /// Wires skipped because a terminal of the strip is already there.
-    pub skipped: usize,
-    /// Brief 036: stored wire numbers the out halves of two-point splits did not keep: (the new
-    /// half, the number, whether it was fixed).
-    pub dropped: Vec<(ConductorId, String, bool)>,
-}
-
-/// Plan Place Terminals (design 028 §3.2) from `from` to `to` on `page`.
-///
-/// # Errors
-/// No wire crossed, more than [`MAX_FENCE`], an unknown strip, or a refusal of one landing.
-#[allow(clippy::too_many_arguments)]
-pub fn plan_fence(
-    ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, page: PageId, style: Style, strip: Option<ComponentId>,
-    pe: bool, from: Pt, to: Pt, tol: f64,
-) -> Result<Fence, String> {
-    let ty = if pe { tt::by_code("pe") } else { Some(tt::feedthrough()) }.ok_or("no PE type")?;
-    plan_fence_typed(ledger, ids, high, page, style, strip, FenceKind { ty, level: Some(1), position: None }, from, to, tol)
-}
-
-/// What a Place Terminals line places (brief 036 §3.2).
-#[derive(Debug, Clone)]
-pub struct FenceKind {
-    pub ty: &'static tt::TermType,
-    /// The level (`None`: whole-terminal symbols).
-    pub level: Option<u32>,
-    /// The position typed at the prompt, for the first crossing.
-    pub position: Option<String>,
-}
-
-/// [`plan_fence`] for any terminal type and level (brief 036 §3.2, §3.3).
-///
-/// # Errors
-/// As [`plan_fence`], and a named position that cannot take the level.
-#[allow(clippy::too_many_arguments)]
-pub fn plan_fence_typed(
-    ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, page: PageId, style: Style, strip: Option<ComponentId>,
-    kind: FenceKind, from: Pt, to: Pt, tol: f64,
-) -> Result<Fence, String> {
-    let doc = ledger.document();
-    let found = crate::slash::crossings(doc, page, from, to, tol);
-    if found.members.len() > MAX_FENCE {
-        return Err(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len()));
-    }
-    let legacy = kind.ty.legacy();
-    let starter = crate::devices::starter(&kind.ty.starter_key(kind.level))?;
-    if let Some(c) = strip
-        && !strips::is_strip(doc, c)
-    {
-        return Err("That device is not a terminal strip. Press Enter for a new strip, or type the tag of one (-X01).".into());
-    }
-    let mut ops = Vec::new();
-    let def = definition_for(doc, ids, starter, &mut ops)?;
-    let mut crossings = Vec::new();
-    let mut skipped = 0;
-    for m in &found.members {
-        if let Some(x) = strip_terminal_at(doc, page, m.at)
-            && strip.is_some_and(|c| doc.terminals.get(&x).is_some_and(|t| t.component == c))
-        {
-            skipped += 1;
-            continue;
-        }
-        crossings.push(*m);
-    }
-    if crossings.is_empty() {
-        return Err(if skipped > 0 {
-            "Every wire the line crosses already has a terminal of this strip there.".into()
-        } else {
-            "The line crosses no wire. Draw it across the wires to land.".into()
-        });
-    }
-    let mut chooser = tt::Chooser::new(doc, strip);
-    let existing = strip;
-    let (strip, tag, mut next, mut first_main) = match strip {
-        Some(c) => (c, crate::devices::tag_words(doc, c), tt::highest_number(doc, c) + 1, false),
-        None => {
-            let c: ComponentId = ids.fresh();
-            // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
-            let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
-            let mut properties = ecad_model::Properties::new();
-            properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
-            properties.insert("description".into(), "Terminal".into());
-            ops.push(Op::CreateComponent { id: c, component: ecad_model::Component { properties, definition: Some(def) } });
-            (c, tag, 1, legacy)
-        }
-    };
-    let mut placed = Vec::new();
-    let mut dropped = Vec::new();
-    let mut named = kind.position.clone();
-    for m in crossings {
-        let on = on_wire_of(doc, page, m.conductor, m.at).ok_or("A crossed wire has no route here.")?;
-        if legacy {
-            let label = next.to_string();
-            let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, starter.key, &mut ops);
-            first_main = false;
-            let land = plan_land(doc, ids, page, on, t).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
-            ops.extend(land.ops);
-            placed.push((t, label, land.conductor, land.new));
-            next += 1;
-            continue;
-        }
-        let position = chooser.choose(doc, existing, kind.ty, kind.level, named.take().as_deref())?;
-        let placement = Placement { origin: m.at, rotation: 0.0, mirror: false, scale: 1.0 };
-        let shown = level_symbol(ids, page, style.clone(), def, starter, strip, &position, placement, &mut ops)?;
-        let land =
-            land_level(doc, ids, page, on, &shown, placement).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
-        if let Some((n, fixed)) = land.dropped_number.clone() {
-            dropped.push((land.new, n, fixed));
-        }
-        ops.extend(land.ops);
-        let t = shown.first().map(|(_, t, _)| *t).ok_or("The symbol has no connection point.")?;
-        placed.push((t, position, land.conductor, land.new));
-    }
-    Ok(Fence { ops, strip, tag, placed, skipped, dropped })
-}
-
-/// Plan one level symbol (or a whole terminal) of `strip` at position `position` (brief 036 §3.3):
-/// one terminal per definition point, labelled with the position and keyed by the point, shown
-/// through explicit connection points. Returns (key, terminal, local point) in definition order.
-///
-/// # Errors
-/// The starter's definition could not be built.
-#[allow(clippy::too_many_arguments)]
-pub fn level_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: ComponentId, position: &str,
-    placement: Placement, ops: &mut Vec<Op>,
-) -> Result<Vec<(String, TerminalId, Pt)>, String> {
-    let d = starter.definition()?;
-    let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
-    let mut cps = BTreeMap::new();
-    let mut out = Vec::new();
-    for td in &d.terminals {
-        let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(position.to_string()), key: Some(td.key.clone()) } });
-        cps.insert(t, td.at);
-        out.push((td.key.clone(), t, td.at));
-    }
-    ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
-    ops.push(Op::LinkRepresentation {
-        id: rep,
-        rep: Representation {
-            subject: Subject::Component(strip),
-            page,
-            form: Form::Symbol,
-            role: starter.key.into(),
-            items: vec![item],
-            connection_points: cps,
-        },
-    });
-    Ok(out)
-}
-
-/// Land a level symbol on its wire: a one-point level as 028 does; a two-point level splits the
-/// wire into two nets (design 036 §3.4): the half towards the in point lands on `.1i`, the other
-/// on `.1o`, each route ending at its point, and the second half drops its stored wire number.
-///
-/// # Errors
-/// [`plan_land`]'s.
-pub fn land_level(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, shown: &[(String, TerminalId, Pt)], placement: Placement,
-) -> Result<Land, String> {
-    let first = shown.first().map(|(_, t, _)| *t).ok_or("The symbol has no connection point.")?;
-    let (Some(tin), Some(tout)) = (shown.iter().find(|(k, _, _)| k.ends_with('i')), shown.iter().find(|(k, _, _)| k.ends_with('o'))) else {
-        return plan_land(doc, ids, page, on, first);
-    };
-    let mut land = plan_land(doc, ids, page, on, tin.1)?;
-    let (pin, pout) = (placement.apply(tin.2), placement.apply(tout.2));
-    // Which half comes from the in point's side: the kept half's vertex before the split.
-    let before = crate::wires::route_vertices(doc, on.conductor, page).and_then(|(_, _, v)| v.get(on.segment).copied());
-    let keep_in = before.is_none_or(|b| b.dist(pin) <= b.dist(pout));
-    let (keep_t, keep_p, rest_t, rest_p) = if keep_in { (tin.1, pin, tout.1, pout) } else { (tout.1, pout, tin.1, pin) };
-    let (c1, c2) = (land.conductor, land.new);
-    let mut dropped: Option<(String, bool)> = None;
-    for op in &mut land.ops {
-        match op {
-            Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 => *after = Some(keep_t),
-            Op::CreateConductor { id, conductor } if *id == c2 => {
-                conductor.ends[0] = Some(rest_t);
-                let number = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER);
-                let fixed = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER_FIXED).is_some();
-                dropped = number.map(|n| (n, fixed));
-            }
-            Op::ModifyItem { after, .. } => set_route_end(after, keep_p, false),
-            Op::AddItem { item, .. } if matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, rest_p, true),
-            _ => {}
-        }
-    }
-    land.dropped_number = dropped;
-    Ok(land)
-}
-
-/// Move a route's first (`start`) or last vertex to `p`.
-fn set_route_end(item: &mut Item, p: Pt, start: bool) {
-    match &mut item.kind {
-        ItemKind::Primitive(Primitive::Line { a, b }) => {
-            if start {
-                *a = p;
-            } else {
-                *b = p;
-            }
-        }
-        ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => {
-            let v = if start { vertices.first_mut() } else { vertices.last_mut() };
-            if let Some(v) = v {
-                *v = p;
-            }
-        }
-        _ => {}
-    }
-}
-
-/// The level a prompt or JSON names for type `t` on strip `c`: a level name (`N`), a number, or
-/// `All` (`None`: the whole terminal).
+/// The level a prompt or JSON names for type `t` on strip `c` ([`rules::level_word`]), for the
+/// prompt.
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
 pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, String> {
-    let w = word.trim();
-    if !t.multi() {
-        return Ok(Some(1));
-    }
-    if w.eq_ignore_ascii_case("all") || w.eq_ignore_ascii_case("whole") {
-        return Ok(None);
-    }
-    let names: Vec<String> = match c {
-        Some(c) => tt::level_names(doc, c, t),
-        None => t.levels.iter().map(|x| x.to_string()).collect(),
-    };
-    if let Some(i) = names.iter().position(|n| n.eq_ignore_ascii_case(w)) {
-        return Ok(u32::try_from(i + 1).ok());
-    }
-    if let Ok(n) = w.parse::<u32>()
-        && (1..=t.count()).contains(&n)
-    {
-        return Ok(Some(n));
-    }
-    Err(format!("A {} has levels {}. Type one of them, or All for the whole terminal.", t.name.to_lowercase(), names.join(", ")))
+    rules::level_word(doc, c, t, word).map_err(String::from)
 }
 
 /// [`plan_fence`] on project `p`, with its own IDs and tag numbers (tools such as the bench, which
@@ -429,96 +135,67 @@ pub fn plan_fence_in(
     p: &mut crate::project::Project, page: PageId, style: Style, strip: Option<ComponentId>, pe: bool, from: Pt, to: Pt,
 ) -> Result<Fence, String> {
     let tol = p.tolerance;
-    plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol)
+    plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol).map_err(String::from)
 }
 
-fn run_terminals(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let from = params.get("from").and_then(point).ok_or_else(|| err("`from` [x,y] is required"))?;
-    let to = params.get("to").and_then(point).ok_or_else(|| err("`to` [x,y] is required"))?;
-    let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
-    let pe = opt_typed(params, "pe", "true or false", Value::as_bool).map_err(err)?.unwrap_or(false);
-    // Brief 036: `type` (Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE), `level`, `position`.
-    let ty_word = opt_typed(params, "type", "a terminal type: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS or FUSE", Value::as_str).map_err(err)?;
-    let level_in = opt_typed(params, "level", "a level name, a level number, or All", Value::as_str).map_err(err)?.map(str::to_string);
-    let position = opt_typed(params, "position", "a position label", Value::as_str).map_err(err)?.map(str::to_string);
-    let ty = match ty_word {
-        Some(w) => tt::by_word(w).ok_or_else(|| {
-            err(format!(
-                "No terminal type \"{}\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
-                w.chars().take(24).collect::<String>()
-            ))
-        })?,
-        None if pe => tt::by_code("pe").ok_or_else(|| err("no PE type"))?,
-        None => tt::feedthrough(),
-    };
-    let bad = |q: Pt| !(q.x.abs() <= crate::interact::MAX_COORD && q.y.abs() <= crate::interact::MAX_COORD);
-    if bad(from) || bad(to) {
-        return Err(err(crate::interact::OUT_OF_RANGE));
-    }
-    let v = with_project(s, |p, pg, page| {
-        if from.near(to, p.tolerance) {
-            return Err("`from` and `to` must differ".into());
+/// `terminals {strip?, pe?, type?, level?, position?, from, to}` (Place Terminals, design 028
+/// §3.2, brief 036 §3.2): one terminal, or one level, on each wire the line crosses.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalsParams {
+    /// The strip to join (null or absent: a new strip).
+    #[serde(default)]
+    strip: Option<ComponentId>,
+    /// PE terminals (without `type`).
+    #[serde(default)]
+    pe: Option<bool>,
+    /// The terminal type: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS or FUSE.
+    #[serde(default, rename = "type")]
+    ty: Option<String>,
+    /// The level: a level name, a level number, or All.
+    #[serde(default)]
+    level: Option<String>,
+    /// The position label for the first crossing.
+    #[serde(default)]
+    position: Option<String>,
+    /// One end of the line.
+    from: Point,
+    /// The other end of the line.
+    to: Point,
+}
+
+impl Command for TerminalsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let ty = rules::term_type(self.ty.as_deref(), self.pe.unwrap_or(false)).map_err(|e| err(e.to_string()))?;
+        let (from, to) = (self.from.0, self.to.0);
+        let bad = |q: Pt| !(q.x.abs() <= crate::interact::MAX_COORD && q.y.abs() <= crate::interact::MAX_COORD);
+        if bad(from) || bad(to) {
+            return Err(err(crate::interact::OUT_OF_RANGE));
         }
-        let style = plain_style(p);
-        let level = match &level_in {
-            Some(w) => level_word(p.ledger.document(), strip, ty, w)?,
-            None => Some(1),
-        };
-        let kind = FenceKind { ty, level, position: position.clone() };
-        let f = plan_fence_typed(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, kind, from, to, p.tolerance)?;
-        let tx = if ty.legacy() { "Place terminals" } else { "Place terminal level" };
-        p.apply_edit(pg, "terminals", tx, f.ops.clone())?;
-        p.last_placed = Some((ty.starter_key(level), f.strip));
-        let doc = p.ledger.document();
-        let shown: Vec<String> = f.placed.iter().map(|(t, _, _, _)| crate::terminal_types::terminal_name(doc, *t)).collect();
-        let range = match shown.as_slice() {
-            [one] => one.clone(),
-            [a, .., b] => format!("{a}\u{2026}{b}"),
-            [] => String::new(),
-        };
-        let n = f.placed.len();
-        let wires = if n == 1 { "1 wire".to_string() } else { format!("{n} wires") };
-        let message = if ty.legacy() {
-            format!("Placed {}:{range} on {wires}.", f.tag)
-        } else {
-            let positions: Vec<&str> = f.placed.iter().map(|(_, l, _, _)| l.as_str()).collect();
-            let span = match positions.as_slice() {
-                [one] => format!("position {one}"),
-                [a, .., b] => format!("positions {a}\u{2013}{b}"),
-                [] => String::new(),
-            };
-            let what = match level {
-                Some(l) if ty.multi() => format!(", level {}", tt::level_name(doc, f.strip, ty, l)),
-                Some(_) => format!(", {}", ty.name.to_lowercase()),
-                None => ", whole terminals".to_string(),
-            };
-            format!("Placed {}:{range} on {wires} ({span}{what}).", f.tag)
-        };
-        // Review M1: a stored wire number an out half did not keep is said, never dropped silently.
-        let message = if f.dropped.is_empty() {
-            message
-        } else {
-            let list: Vec<&str> = f.dropped.iter().map(|(_, n, _)| n.as_str()).collect();
-            format!(
-                "{message} Out halves no longer carry wire number{} {}; they get their own.",
-                if list.len() == 1 { "" } else { "s" },
-                list.join(", ")
-            )
-        };
-        Ok(json!({
-            "strip": f.strip.hex(),
-            "tag": f.tag,
-            "type": ty.code,
-            "terminals": f.placed.iter().zip(&shown).map(|((t, l, c, n), sl)| json!({"terminal": t.hex(), "position": l, "label": sl, "conductor": c.hex(), "new": n.hex()})).collect::<Vec<_>>(),
-            "skipped": f.skipped,
-            "dropped_wire_numbers": f.dropped.iter().map(|(c, n, fixed)| json!({"conductor": c.hex(), "number": n, "fixed": fixed})).collect::<Vec<_>>(),
-            "message": message,
-        }))
-    })?;
-    if let Some(m) = v.get("message").and_then(Value::as_str) {
-        s.echo(m.to_string());
+        let input = TerminalsInput { strip: self.strip, ty, level: self.level, position: self.position, from, to };
+        let v = on_project(s, |p, pg, page| {
+            let style = plain_style(p);
+            let tol = p.tolerance;
+            let done = rules::plan_terminals(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, input, tol)?;
+            let f = done.fence;
+            p.apply_edit(pg, "terminals", done.label, f.ops.clone())?;
+            p.last_placed = Some((ty.starter_key(done.level), f.strip));
+            let (shown, message) = rules::terminals_message(p.ledger.document(), ty, done.level, &f);
+            Ok(json!({
+                "strip": f.strip.hex(),
+                "tag": f.tag,
+                "type": ty.code,
+                "terminals": f.placed.iter().zip(&shown).map(|((t, l, c, n), sl)| json!({"terminal": t.hex(), "position": l, "label": sl, "conductor": c.hex(), "new": n.hex()})).collect::<Vec<_>>(),
+                "skipped": f.skipped,
+                "dropped_wire_numbers": f.dropped.iter().map(|(c, n, fixed)| json!({"conductor": c.hex(), "number": n, "fixed": fixed})).collect::<Vec<_>>(),
+                "message": message,
+            }))
+        })?;
+        if let Some(m) = v.get("message").and_then(Value::as_str) {
+            s.echo(m.to_string());
+        }
+        Ok(v)
     }
-    Ok(v)
 }
 
 /// The net number of conductor `w`, else its name.
@@ -657,75 +334,36 @@ pub(crate) fn run_place_level(
 
 // ---------------------------------------------------------------- Draw Bridge (§4)
 
-/// The staple of a bridge from `a` to `b` (design 028 §4): 4 mm towards the inside (up; left when
-/// the terminals sit one above the other), then across.
-pub fn staple(a: Pt, b: Pt) -> Vec<Pt> {
-    let (dx, dy) = ((b.x - a.x).abs(), (b.y - a.y).abs());
-    let (ox, oy) = if dy > dx { (-BRIDGE_STANDOFF, 0.0) } else { (0.0, BRIDGE_STANDOFF) };
-    vec![a, Pt::new(a.x + ox, a.y + oy), Pt::new(b.x + ox, b.y + oy), b]
+/// `bridge {from, to}` (Draw Bridge, design 028 §4): a wire between two terminals; of one strip it
+/// is a bridge.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BridgeParams {
+    /// The first terminal (a connection point).
+    from: TerminalId,
+    /// The second terminal.
+    to: TerminalId,
 }
 
-fn run_bridge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let a: TerminalId = id(params, "from").map_err(err)?;
-    let b: TerminalId = id(params, "to").map_err(err)?;
-    let v = with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        if !doc.terminals.contains_key(&a) || !doc.terminals.contains_key(&b) {
-            return Err("No such terminal.".into());
+impl Command for BridgeParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let v = on_project(s, |p, pg, page| {
+            let style = plain_style(p);
+            match rules::plan_bridge(p.ledger.document(), &mut p.ids, page, style, self.from, self.to)? {
+                Bridge::Already { conductor, same, message } => {
+                    Ok(json!({"conductor": conductor.hex(), "bridge": same, "changed": false, "message": message}))
+                }
+                Bridge::Drawn { ops, label, conductor, same, message } => {
+                    p.apply_edit(pg, "bridge", &label, ops)?;
+                    Ok(json!({"conductor": conductor.hex(), "bridge": same, "changed": true, "message": message}))
+                }
+            }
+        })?;
+        if let Some(m) = v.get("message").and_then(Value::as_str) {
+            s.echo(m.to_string());
         }
-        if a == b {
-            return Err("Pick two different terminals: a bridge links one terminal to another.".into());
-        }
-        let (wa, wb) = (terminal_words(doc, a), terminal_words(doc, b));
-        let (sa, sb) = (strips::strip_of_terminal(doc, a), strips::strip_of_terminal(doc, b));
-        let same = sa.is_some() && sa == sb;
-        if let Some((w, _)) =
-            doc.ends_at(a).into_iter().find(|(w, _)| doc.conductors.get(w).is_some_and(|c| c.ends.contains(&Some(b)) && c.ends.contains(&Some(a))))
-        {
-            let message = format!("{wa} and {wb} are already bridged.");
-            return Ok(json!({"conductor": w.hex(), "bridge": same, "changed": false, "message": message}));
-        }
-        let pos = |t: TerminalId| {
-            doc.representations_of(Subject::Component(doc.terminals.get(&t)?.component))
-                .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::terminal_position(doc, page, t)).flatten())
-        };
-        let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {
-            return Err(format!("{wa} and {wb} must both be on this page to draw a bridge; open the page that shows both, or draw a wire."));
-        };
-        let route = if same { staple(pa, pb) } else { vec![pa, pb] };
-        let (w, i, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-        let item = Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Polyline { vertices: route, closed: false }) };
-        let ops = vec![
-            Op::CreateConductor { id: w, conductor: Conductor::default() },
-            Op::AddItem { id: i, item },
-            Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Conductor(w),
-                    page,
-                    form: Form::Drawn,
-                    role: "route".into(),
-                    items: vec![i],
-                    connection_points: BTreeMap::new(),
-                },
-            },
-            Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(a) },
-            Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b) },
-        ];
-        let label_b = crate::terminal_types::terminal_name(doc, b);
-        let label = if same { format!("Bridge {wa}\u{2013}{label_b}") } else { "Wire".to_string() };
-        p.apply_edit(pg, "bridge", &label, ops)?;
-        let message = if same {
-            format!("Bridged {wa}\u{2013}{label_b}.")
-        } else {
-            format!("{wa} and {wb} are on different strips; drawn as a wire, not a bridge.")
-        };
-        Ok(json!({"conductor": w.hex(), "bridge": same, "changed": true, "message": message}))
-    })?;
-    if let Some(m) = v.get("message").and_then(Value::as_str) {
-        s.echo(m.to_string());
+        Ok(v)
     }
-    Ok(v)
 }
 
 // ---------------------------------------------------------------- reads (§10)
@@ -919,105 +557,117 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
     Value::Object(o)
 }
 
-/// `stripplan {strip?, limit?, after?}`: the strips in tag order (or one), paged by rows: `after`
-/// rows are skipped and at most `limit` returned, a strip split across pages carrying
-/// `first_row`; `total` counts the rows, `next` is the next `after`.
-fn run_stripplan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
-    let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)
-        .map_err(err)?
-        .map_or(crate::outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
-        .clamp(1, crate::outputs::MAX_LIMIT);
-    let after = opt_typed(params, "after", "a whole number", Value::as_u64).map_err(err)?.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
-    let accessories = opt_typed(params, "accessories", "true or false", Value::as_bool).map_err(err)?.unwrap_or(true);
-    with_any_page(s, |p, _| {
-        let style = p.ledger.document().settings.reference_style();
-        let o = p.outputs();
-        let shown: Vec<&StripData> = match strip {
-            Some(c) => vec![o.strips.get(c).ok_or("No such terminal strip.")?],
-            None => o.sorted_strips(),
-        };
-        let len = |d: &StripData| if accessories { d.rows.len() + d.acc.gap_rows() } else { d.rows.len() };
-        let total: usize = shown.iter().map(|d| len(d)).sum();
-        let mut out = Vec::new();
-        let (mut skip, mut left) = (after, limit);
-        for d in &shown {
-            let n = len(d);
-            if skip >= n && n > 0 {
-                skip -= n;
-                continue;
-            }
-            if left == 0 {
-                break;
-            }
-            let end = (skip + left).min(n);
-            out.push(strip_json(d, style, skip, end, accessories));
-            left -= end - skip;
-            skip = 0;
-        }
-        let mut v = json!({"strips": out, "total": total, "fields": plan_fields_json()});
-        let shown_rows = limit - left;
-        if after.saturating_add(shown_rows) < total {
-            v["next"] = json!(after + shown_rows);
-        }
-        Ok(v)
-    })
+/// `stripplan {strip?, limit?, after?, accessories?}` (read only): the strips in tag order (or
+/// one), paged by rows: `after` rows are skipped and at most `limit` returned, a strip split across
+/// pages carrying `first_row`; `total` counts the rows, `next` is the next `after`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StripplanParams {
+    /// Only this strip.
+    #[serde(default)]
+    strip: Option<ComponentId>,
+    /// At most this many rows (500, at most 5000).
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Skip this many rows (the `next` of the last call).
+    #[serde(default)]
+    after: Option<u64>,
+    /// Gap rows, markers and links (default true).
+    #[serde(default)]
+    accessories: Option<bool>,
 }
 
-fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let k: CableId = id(params, "cable").map_err(err)?;
-    with_any_page(s, |p, _| {
-        p.outputs();
-        let o = p.outputs.as_ref().ok_or("The reports could not be built.")?;
-        let row = o.cable_row(k).cloned().ok_or("no such cable")?;
-        let wire = |w: ConductorId| o.wire(w).cloned();
-        let doc = p.ledger.document();
-        let style = doc.settings.reference_style();
-        let o_chain = |i: usize| o.chain_ends(&row, i, style);
-        let count = &row.count;
-        let member_json = |i: usize, label: Option<String>, state: &str| {
-            let w = row.members.get(i).copied();
-            let r = w.and_then(wire);
-            let mut o = serde_json::Map::new();
-            put(&mut o, "label", label);
-            o.insert("state".into(), json!(state));
-            put(&mut o, "conductor", w.map(|w| w.hex()));
-            put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
-            // Brief 032: a core is a chain of members through continuations, From to To.
-            let (from, to) = o_chain(i);
-            put(&mut o, "from", from);
-            put(&mut o, "to", to);
-            Value::Object(o)
-        };
-        // Brief 032: the rows are the cable's core chains, each with its stored label.
-        let stored = |i: usize| row.member_cores.get(i).cloned().flatten();
-        let mut cores = Vec::new();
-        match &count.offer {
-            Some(offer) => {
-                for label in offer {
-                    match count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
-                        Some(i) => cores.push(member_json(i, Some(label.clone()), "used")),
-                        // A spare core has no ends (review of PR #55, finding 3).
-                        None => cores.push(json!({"label": label, "state": "spare"})),
+impl Command for StripplanParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let limit =
+            self.limit.map_or(crate::outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, crate::outputs::MAX_LIMIT);
+        let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
+        let accessories = self.accessories.unwrap_or(true);
+        let strip = self.strip;
+        on_any_page(s, |p, _| {
+            let style = p.ledger.document().settings.reference_style();
+            let o = p.outputs();
+            let shown: Vec<&StripData> = match strip {
+                Some(c) => vec![o.strips.get(c).ok_or(CmdError::NotFound(Noun::TerminalStrip))?],
+                None => o.sorted_strips(),
+            };
+            let lens: Vec<usize> = shown.iter().map(|d| if accessories { d.rows.len() + d.acc.gap_rows() } else { d.rows.len() }).collect();
+            let page = rules::plan_page(&lens, after, limit);
+            let out: Vec<Value> =
+                page.parts.iter().filter_map(|(i, first, end)| shown.get(*i).map(|d| strip_json(d, style, *first, *end, accessories))).collect();
+            let mut v = json!({"strips": out, "total": page.total, "fields": plan_fields_json()});
+            if let Some(n) = page.next {
+                v["next"] = json!(n);
+            }
+            Ok(v)
+        })
+    }
+}
+
+/// `cablecores {cable}` (read only): the cable's offered cores, used, spare and over.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CablecoresParams {
+    /// The cable.
+    cable: CableId,
+}
+
+impl Command for CablecoresParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let k = self.cable;
+        on_any_page(s, |p, _| {
+            p.outputs();
+            let o = p.outputs.as_ref().ok_or(CmdError::refused("The reports could not be built."))?;
+            let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
+            let wire = |w: ConductorId| o.wire(w).cloned();
+            let doc = p.ledger.document();
+            let style = doc.settings.reference_style();
+            let o_chain = |i: usize| o.chain_ends(&row, i, style);
+            let count = &row.count;
+            let member_json = |i: usize, label: Option<String>, state: &str| {
+                let w = row.members.get(i).copied();
+                let r = w.and_then(wire);
+                let mut o = serde_json::Map::new();
+                put(&mut o, "label", label);
+                o.insert("state".into(), json!(state));
+                put(&mut o, "conductor", w.map(|w| w.hex()));
+                put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
+                // Brief 032: a core is a chain of members through continuations, From to To.
+                let (from, to) = o_chain(i);
+                put(&mut o, "from", from);
+                put(&mut o, "to", to);
+                Value::Object(o)
+            };
+            // Brief 032: the rows are the cable's core chains, each with its stored label.
+            let stored = |i: usize| row.member_cores.get(i).cloned().flatten();
+            let mut cores = Vec::new();
+            match &count.offer {
+                Some(offer) => {
+                    for label in offer {
+                        match count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
+                            Some(i) => cores.push(member_json(i, Some(label.clone()), "used")),
+                            // A spare core has no ends (review of PR #55, finding 3).
+                            None => cores.push(json!({"label": label, "state": "spare"})),
+                        }
+                    }
+                }
+                None => {
+                    for i in 0..row.members.len() {
+                        cores.push(member_json(i, stored(i), "used"));
                     }
                 }
             }
-            None => {
-                for i in 0..row.members.len() {
-                    cores.push(member_json(i, stored(i), "used"));
-                }
-            }
-        }
-        let over: Vec<Value> = count.over.iter().map(|i| member_json(*i, stored(*i), "over")).collect();
-        let mut v = serde_json::Map::new();
-        v.insert("cable".into(), json!(k.hex()));
-        put(&mut v, "tag", row.tag.as_ref());
-        put(&mut v, "offer", count.offer_text.as_ref());
-        put(&mut v, "source", count.source.map(|s| s.word()));
-        v.insert("used".into(), json!(count.used()));
-        put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
-        v.insert("cores".into(), Value::Array(cores));
-        v.insert("over".into(), Value::Array(over));
-        Ok(Value::Object(v))
-    })
+            let over: Vec<Value> = count.over.iter().map(|i| member_json(*i, stored(*i), "over")).collect();
+            let mut v = serde_json::Map::new();
+            v.insert("cable".into(), json!(k.hex()));
+            put(&mut v, "tag", row.tag.as_ref());
+            put(&mut v, "offer", count.offer_text.as_ref());
+            put(&mut v, "source", count.source.map(|s| s.word()));
+            v.insert("used".into(), json!(count.used()));
+            put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
+            v.insert("cores".into(), Value::Array(cores));
+            v.insert("over".into(), Value::Array(over));
+            Ok(Value::Object(v))
+        })
+    }
 }
