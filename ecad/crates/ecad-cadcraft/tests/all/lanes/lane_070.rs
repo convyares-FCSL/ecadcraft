@@ -92,11 +92,6 @@ const UNTYPED: &[&str] = &[
     "conflicts",
     "setlocation",
     "setfunction",
-    "designations",
-    "designationadd",
-    "designationedit",
-    "designationmerge",
-    "designationremove",
     "folderprops",
     "renumberpages",
     "deletepage",
@@ -531,4 +526,64 @@ fn the_typed_style_commands_still_work() {
     let own = h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small"})).unwrap_or(Value::Null);
     let d = h.run("deletestyle", json!({"catalogue": "text", "name": "Small"})).unwrap_or(Value::Null);
     assert_eq!((&d["deleted"], &d["moved"]), (&own["id"], &json!(0)));
+}
+
+/// Input refusals of the function and location list commands: one wording.
+#[test]
+fn the_designation_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("designations", json!({"aspect": 1}), "`aspect` must be text, or null"),
+        ("designationadd", json!({"code": "=F1"}), "`aspect` (text) is required"),
+        ("designationadd", json!({"aspect": "function"}), "`code` (text) is required"),
+        ("designationedit", json!({"aspect": "function", "code": "=F1", "description": 5}), "`description` must be text, or null"),
+        ("designationmerge", json!({"aspect": "function", "from": "=F1"}), "`into` (text) is required"),
+        ("designationremove", json!({"unused": true, "x": 1}), "`x` is not a parameter of this command; it takes `aspect`, `code`, `key`, `unused`"),
+    ];
+    let mut h = H::new(7017);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the function and location list commands keep their words.
+#[test]
+fn the_designation_commands_keep_their_rule_words() {
+    let mut h = H::new(7018);
+    assert!(h.run("designationadd", json!({"aspect": "function", "code": "=F1"})).is_ok());
+    assert!(h.run("designationadd", json!({"aspect": "function", "code": "=F2"})).is_ok());
+    let rows: &[(&str, Value, &str)] = &[
+        ("designations", json!({"aspect": "x"}), "`aspect` is \"function\" or \"location\""),
+        ("designationadd", json!({"aspect": "function", "code": "=F1"}), "=F1 is already in the list."),
+        ("designationedit", json!({"aspect": "function"}), "`code` (a key or a code such as =F1) is required"),
+        ("designationedit", json!({"aspect": "function", "code": "=F9", "to": "=F8"}), "=F9 is not in the project's list of functions."),
+        ("designationedit", json!({"aspect": "function", "code": "=F1", "to": "=F2"}), "=F2 is already in the list. Merge =F1 into it instead?"),
+        ("designationmerge", json!({"aspect": "function", "from": "=F1", "into": "=F1"}), "=F1 and =F1 are the same entry."),
+        ("designationremove", json!({"code": "=F1"}), "`aspect` is required: \"function\" or \"location\""),
+        ("designationremove", json!({"aspect": "function"}), "`code` (a key or a code such as =F1) is required"),
+    ];
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// The typed function and location list commands still work, and answer as before.
+#[test]
+fn the_typed_designation_commands_still_work() {
+    let mut h = H::new(7019);
+    let a = h.run("designationadd", json!({"aspect": "function", "code": "=F1", "description": "Pumps"})).unwrap_or(Value::Null);
+    assert_eq!((&a["changed"], &a["code"]), (&json!(true), &json!("=F1")));
+    let key = a["key"].as_str().unwrap_or_default().to_string();
+    let e = h.run("designationedit", json!({"aspect": "function", "key": key, "code": "=F3"})).unwrap_or(Value::Null);
+    assert_eq!(e, json!({"changed": true, "key": key, "code": "=F3"}));
+    let same = h.run("designationedit", json!({"aspect": "function", "code": "=F3", "description": "Pumps"})).unwrap_or(Value::Null);
+    assert_eq!(same["changed"], json!(false));
+    assert!(h.run("designationadd", json!({"aspect": "f", "code": "=F4"})).is_ok());
+    let m = h.run("designationmerge", json!({"aspect": "function", "from": "=F4", "into": "=F3"})).unwrap_or(Value::Null);
+    assert_eq!((&m["from"], &m["into"], &m["key"]), (&json!("=F4"), &json!("=F3"), &json!(key)));
+    let list = h.run("designations", json!({"aspect": "function"})).unwrap_or(Value::Null);
+    assert_eq!(list["functions"]["entries"].as_array().map(Vec::len), Some(1), "{list}");
+    let r = h.run("designationremove", json!({"aspect": "function", "code": "=F3"})).unwrap_or(Value::Null);
+    assert_eq!(r, json!({"changed": true, "code": "=F3"}));
+    let none = h.run("designationremove", json!({"unused": true})).unwrap_or(Value::Null);
+    assert_eq!(none, json!({"changed": false, "removed": []}));
 }
