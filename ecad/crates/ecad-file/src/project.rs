@@ -542,7 +542,7 @@ impl History for StoreHistory {
         struct Head {
             seq: u64,
             id: TxId,
-            kind: crate::v1::TxKind,
+            kind: crate::records::TxKind,
             prev: String,
         }
         let bad = |m: String| ModelError::CorruptLog(m);
@@ -580,7 +580,7 @@ impl History for StoreHistory {
             }
             expect_last = heads.first().map(|(_, p)| *p);
             for (h, _) in heads.into_iter().rev() {
-                use crate::v1::TxKind as K;
+                use crate::records::TxKind as K;
                 let (push, pop, clears) = match (h.kind, undo) {
                     (K::Edit | K::Merge(_), true) | (K::Redo(_), true) => (true, false, false),
                     (K::Undo(_), true) => (false, true, false),
@@ -624,7 +624,7 @@ impl History for StoreHistory {
         struct Head {
             seq: u64,
             id: TxId,
-            kind: crate::v1::TxKind,
+            kind: crate::records::TxKind,
             prev: String,
         }
         /// A range's rows, checked on their own: each row against its chain value and the one
@@ -632,7 +632,7 @@ impl History for StoreHistory {
         struct Range {
             first_prev: Hash,
             last: Hash,
-            rows: Vec<(u64, TxId, crate::v1::TxKind)>,
+            rows: Vec<(u64, TxId, crate::records::TxKind)>,
         }
         let bad = |m: String| ModelError::CorruptLog(m);
         let store = self.store.upgrade().ok_or_else(|| bad("the project's file is closed".into()))?;
@@ -686,17 +686,17 @@ impl History for StoreHistory {
                 prev = range.last;
                 for (q, id, kind) in range.rows {
                     match kind {
-                        crate::v1::TxKind::Edit | crate::v1::TxKind::Merge(_) => {
+                        crate::records::TxKind::Edit | crate::records::TxKind::Merge(_) => {
                             undo.push((q, id));
                             redo.clear();
                         }
-                        crate::v1::TxKind::Undo(of) => {
+                        crate::records::TxKind::Undo(of) => {
                             if undo.pop().map(|t| t.1) != Some(of) {
                                 return Err(bad(format!("undo {q} does not undo the latest step")));
                             }
                             redo.push((q, id));
                         }
-                        crate::v1::TxKind::Redo(of) => {
+                        crate::records::TxKind::Redo(of) => {
                             if redo.pop().map(|t| t.1) != Some(of) {
                                 return Err(bad(format!("redo {q} does not redo the latest undo")));
                             }
@@ -1092,15 +1092,13 @@ impl ProjectV2 {
 
     /// Write `ledger`'s whole history into the empty database `store` as a new project file:
     /// `main` from the project root, a snapshot for every named version, and a snapshot at the
-    /// head. `link` names the version 1 history it continues, when converted; `records` are then
-    /// the version 1 records exactly as stored (canonical), so the chain is version 1's.
+    /// head.
     ///
     /// # Errors
     /// [`SaveErrorV2`]; nothing is committed. `every` outside [`SNAPSHOT_EVERY_RANGE`] is refused
     /// (an open would refuse the file).
     pub fn create(
-        store: Store, project: ProjectId, ledger: &Ledger, records: Option<&[Vec<u8>]>, link: Option<LinkV1>, created_ms: Option<u64>, writer: &str,
-        every: u64,
+        store: Store, project: ProjectId, ledger: &Ledger, created_ms: Option<u64>, writer: &str, every: u64,
     ) -> Result<(ProjectV2, SavedV2), SaveErrorV2> {
         if ledger.base() != 0 {
             return Err(SaveErrorV2::Encode("a new file needs the whole history in memory".into()));
@@ -1120,11 +1118,8 @@ impl ProjectV2 {
         let mut chains = Vec::with_capacity(ledger.log().len() + 1);
         chains.push(seed);
         let mut prev = seed;
-        for (i, tx) in ledger.log().iter().enumerate() {
-            let (bytes, hash) = match records.and_then(|r| r.get(i)) {
-                Some(b) => (b.clone(), chain::tx_hash(b)),
-                None => encode_tx(tx, &prev).map_err(SaveErrorV2::Encode)?,
-            };
+        for tx in ledger.log() {
+            let (bytes, hash) = encode_tx(tx, &prev).map_err(SaveErrorV2::Encode)?;
             saved.bytes += w.append_tx(branch, tx.seq, &hash, &bytes)?;
             chains.push(hash);
             prev = hash;
@@ -1207,9 +1202,6 @@ impl ProjectV2 {
         w.set_meta("writer", &json!(writer))?;
         w.set_meta("created_ms", &json!(created_ms))?;
         w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
-        if let Some(l) = &link {
-            w.set_meta("link_v1", &serde_json::to_value(l).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
-        }
         w.commit()?;
         let lineage = Arc::new(vec![Line { branch, seed, fork: None }]);
         let me = ProjectV2 {
@@ -1228,7 +1220,7 @@ impl ProjectV2 {
             writer: writer.to_string(),
             read_only: None,
             file_read_only: None,
-            link_v1: link,
+            link_v1: None,
             created_ms,
             last_save: Some(saved.clone()),
             wrote_writer: true,

@@ -130,7 +130,7 @@ fn the_quick_start_debugger_example_runs_headless() {
         "Saved through transaction 0; 1 pending (in memory only). The Project panel counts 0: a new project's own setup \
 is not counted as a change until the project has a file."
     );
-    assert_eq!(snap.record_state(1), RecordState::Pending { attempt: None }, "a new project is in memory only");
+    assert_eq!(snap.record_state(1), RecordState::Pending, "a new project is in memory only");
 
     // 1. Place a coil, select it: Selection → item → representation → component; one pending
     //    transaction created it.
@@ -155,9 +155,9 @@ is not counted as a change until the project has a file."
     assert_eq!(place.label, "Place symbol");
     let names: Vec<&str> = place.ops.iter().map(ecad_model::Op::name).collect();
     assert!(names.contains(&"CreateComponent") && names.contains(&"LinkRepresentation"), "{names:?}");
-    assert_eq!(t.debugger.snapshot().unwrap().record_state(2), RecordState::Pending { attempt: None });
-    t.debugger.read_record();
-    assert!(t.debugger.record().unwrap().as_ref().unwrap_err().contains("no record in the file"));
+    assert_eq!(t.debugger.snapshot().unwrap().record_state(2), RecordState::Pending);
+    t.debugger.read_row();
+    assert!(t.debugger.record().unwrap().as_ref().unwrap_err().contains("no file yet"));
 
     // 2. Wire to the coil's lower terminal: the wire's trail shows the attachment, before (none)
     //    and after (the terminal).
@@ -190,7 +190,7 @@ is not counted as a change until the project has a file."
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!((snap.head, snap.persisted), (3, 3));
     assert_eq!(saved_summary(snap), "Saved through transaction 3; 0 pending (in memory only).");
-    assert_eq!(snap.record_state(3), RecordState::Saved(None));
+    assert_eq!(snap.record_state(3), RecordState::Saved);
     assert_eq!(snap.file.path.as_deref(), Some(path.as_str()));
     t.debugger.select_tx(Some(3));
     t.debugger.read_row();
@@ -205,7 +205,7 @@ is not counted as a change until the project has a file."
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!((snap.head, snap.persisted), (4, 3));
-    assert_eq!(snap.record_state(4), RecordState::Pending { attempt: None });
+    assert_eq!(snap.record_state(4), RecordState::Pending);
     select_ecad(&mut t, route);
     frame(&mut t, &ctx);
     t.debugger.follow_selection(0);
@@ -218,7 +218,7 @@ is not counted as a change until the project has a file."
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!(snap.head, 5);
     assert_eq!(ecad_cadcraft::debug::tx_kind(&t.debugger.log()[4], t.debugger.log()), "undo of #4");
-    assert_eq!(snap.record_state(5), RecordState::Pending { attempt: None });
+    assert_eq!(snap.record_state(5), RecordState::Pending);
     assert_eq!(t.debugger.touching(), vec![2, 3, 4, 5]);
     // History at seq 2 (before the wire) is rebuilt from the copy; the live project is unchanged.
     t.debugger.show_at(2);
@@ -233,7 +233,7 @@ is not counted as a change until the project has a file."
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!(snap.persisted, 5);
-    assert_eq!(snap.record_state(4), RecordState::Saved(None));
+    assert_eq!(snap.record_state(4), RecordState::Saved);
     // 7. The checks, on request only.
     assert!(t.debugger.checks().is_empty(), "no check ran by itself");
     for k in [CheckKind::Replay, CheckKind::Projection, CheckKind::File] {

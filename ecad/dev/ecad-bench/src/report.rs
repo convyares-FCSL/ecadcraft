@@ -483,7 +483,7 @@ pub fn commit(root: &Path) -> String {
 /// the full UTC time.
 pub fn stem_and_time(commit: &str) -> (String, String) {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let full = ecad_file::disk::utc(secs);
+    let full = ecad_file::utc(secs);
     let date: String = full.chars().take(10).collect();
     let time: String = full.chars().skip(11).take(8).filter(|c| *c != ':').collect();
     (format!("load-{date}-{time}-{commit}"), full)

@@ -41,7 +41,6 @@ use cadcraft_engine::doc::{Drawing, Entity, Space};
 use cadcraft_engine::ext::OwnerRef;
 use cadcraft_engine::{DocState, Session};
 use ecad_model::PageId;
-use ecad_store::MemoryMedium;
 use serde_json::Value;
 
 use crate::project::Project;
@@ -170,12 +169,12 @@ impl ProjectHandle {
         Ok(p.projection_inputs(&PagesRef(s)))
     }
 
-    /// Reopen a project from an in-memory project file; see [`Project::open_from`].
+    /// Reopen a project from a copy of the test store's bytes; see [`Project::open_from`].
     ///
     /// # Errors
-    /// Store or replay failure.
-    pub fn open_from(s: &mut Session, name: &str, medium: MemoryMedium, seed: u64) -> Result<Self, String> {
-        Project::open_from(s, name, medium, seed)
+    /// The bytes are not a supported project file, or the project cannot be shown.
+    pub fn open_from(s: &mut Session, name: &str, bytes: Vec<u8>, seed: u64) -> Result<Self, String> {
+        Project::open_from(s, name, bytes, seed)
     }
 
     /// Open a project file from disk; see [`Project::open_file`]. Returns the handle and what

@@ -270,20 +270,20 @@ fn chosen_and_unset_heights_survive_save_and_open() {
     }
 }
 
-/// The v1 record of the wiring settings: a chosen value (also one equal to the built-in) is written,
+/// The record of the wiring settings: a chosen value (also one equal to the built-in) is written,
 /// an unchosen one is left out, and both read back as they were.
 #[test]
-fn the_v1_record_writes_only_chosen_values() {
+fn the_record_writes_only_chosen_values() {
     let cases: [(Option<f64>, Option<&str>, Option<f64>); 3] =
         [(None, None, None), (Some(2.5), Some("net"), Some(0.0)), (Some(1.6), Some("each"), Some(10.0))];
     for (height, rule, min) in cases {
         let mut w = ecad_model::wiring::WiringSettings::default();
         (w.label_height, w.label_rule, w.label_min_length) = (height, rule.map(str::to_string), min);
-        let v = serde_json::to_value(ecad_file::v1::WiringSettings::from(&w)).unwrap();
+        let v = serde_json::to_value(ecad_file::records::WiringSettings::from(&w)).unwrap();
         for (key, present) in [("label_height", height.is_some()), ("label_rule", rule.is_some()), ("label_min_length", min.is_some())] {
             assert_eq!(v.get(key).is_some(), present, "{key} in {v}");
         }
-        let back: ecad_file::v1::WiringSettings = serde_json::from_value(v).unwrap();
+        let back: ecad_file::records::WiringSettings = serde_json::from_value(v).unwrap();
         assert_eq!(ecad_model::wiring::WiringSettings::from(back), w);
     }
 }

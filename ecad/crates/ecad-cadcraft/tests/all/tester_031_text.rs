@@ -1231,15 +1231,15 @@ fn t11_justified_text_is_recorded_and_reopens_centred() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T11 (AC 3): the golden v1 project from before 031 converts and opens with no transaction, its
+/// T11 (AC 3): the golden project (its records from before 031) opens with no transaction, its
 /// items serialise without alignment fields, and a save and reopen gives the same document.
 #[test]
 fn t11_an_old_file_opens_and_saves_unchanged() {
-    let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project-v1.ecad");
+    let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project.ecad");
     let dir = tmp_dir("golden");
     let path = dir.join("old.ecad");
     std::fs::copy(&golden, &path).unwrap();
-    let (_, v2) = ecad_cadcraft::file::convert(&path.display().to_string(), None, "tester-031").unwrap();
+    let v2 = path.display().to_string();
     let mut h = reopen(&v2, 0x7031_1103);
     let head = h.head();
     let doc = h.doc();

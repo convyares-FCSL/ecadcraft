@@ -4,14 +4,7 @@
 //! checked on read like any embedded definition's.
 
 use crate::common::*;
-use ecad_file::{Outcome, ProjectFile, open_project};
 use ecad_model::*;
-use ecad_store::{Medium, MemoryMedium};
-
-fn written(ledger: &mut Ledger) -> Vec<u8> {
-    let file = ProjectFile::create(MemoryMedium::default(), PROJECT, ledger, Some(1_760_000_000_000), WRITER).unwrap();
-    file.medium().read_all().unwrap()
-}
 
 fn symbol() -> Definition {
     let mut d = coil(3.0);
@@ -28,12 +21,12 @@ fn symbol() -> Definition {
 #[test]
 fn empty_new_fields_are_left_out_and_old_hashes_hold() {
     let bare = coil(3.0);
-    let line = serde_json::to_string(&ecad_file::v1::Definition::from(&bare)).unwrap();
+    let line = serde_json::to_string(&ecad_file::records::Definition::from(&bare)).unwrap();
     for word in ["texts", "defaults", "derived_from"] {
         assert!(!line.contains(word), "{word} in {line}");
     }
-    // The golden file (`records_contracts::the_golden_file_is_stable`) holds the old record and
-    // hash; here: a slot, a default or a source each change the hash.
+    // The known hashes (`canonical_contracts`) pin the old record and hash; here: a slot, a
+    // default or a source each change the hash.
     let h = ecad_file::definition_hash(&bare).unwrap();
     let full = symbol();
     for d in [
@@ -73,10 +66,9 @@ fn a_project_symbol_and_set_component_definition_round_trip() {
     f.commit("No symbol", vec![none.clone()]);
     f.commit("Back", vec![none.inverse()]);
 
-    let bytes = written(&mut f.ledger);
-    let opened = open_project(&bytes, SEED).unwrap();
-    assert_eq!(opened.report.outcome, Outcome::Clean);
-    assert_eq!(opened.ledger.log(), f.ledger.log());
+    let opened = reopened(&mut f.ledger);
+    assert!(opened.report.damage.is_none());
+    assert_eq!(opened.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());
     assert_eq!(opened.ledger.document(), f.ledger.document());
     let read = &opened.ledger.document().definitions[&id];
     assert_eq!(read, &sym);

@@ -16,10 +16,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_file::v2::Store;
-use ecad_file::v2::schema::VersionKind;
-use ecad_file::v2::store::TABLES as TABLES_ORDER;
-use ecad_file::v2::verify::VerifyReport;
+use ecad_file::Store;
+use ecad_file::schema::VersionKind;
+use ecad_file::store::TABLES as TABLES_ORDER;
+use ecad_file::verify::VerifyReport;
 use ecad_model::{ComponentId, ConductorId, Document, Subject, TerminalId};
 use serde_json::{Map, Value, json};
 
@@ -34,7 +34,7 @@ pub const SERVER: &str = concat!("ecadinspect ", env!("CARGO_PKG_VERSION"));
 
 /// Every op version 1 answers (`open` and `reload` are handled by the transport, which owns the
 /// source).
-pub const OPS: [&str; 20] = [
+pub const OPS: [&str; 19] = [
     "hello",
     "summary",
     "project",
@@ -52,7 +52,6 @@ pub const OPS: [&str; 20] = [
     "check_chain",
     "invariants",
     "verify",
-    "export_jsonl",
     "open",
     "reload",
 ];
@@ -182,11 +181,7 @@ pub fn reply_to(source: Option<&dyn Source>, req: &Request) -> String {
     if text.len() > MAX_REPLY {
         return error(
             &req.id,
-            &Problem::new(
-                "too-large",
-                format!("The reply is {} , over the limit of 256 MiB.", size_text(text.len() as u64)),
-                "Ask for fewer rows, or use `ecadinspect <file> export-jsonl --out <file>`.",
-            ),
+            &Problem::new("too-large", format!("The reply is {} , over the limit of 256 MiB.", size_text(text.len() as u64)), "Ask for fewer rows."),
         );
     }
     text
@@ -250,7 +245,6 @@ fn op(s: &dyn Source, req: &Request) -> Result<Value, Problem> {
         },
         "invariants" => model(s).map(|o| invariants(&o.doc)),
         "verify" => Ok(verify_json(&s.verify())),
-        "export_jsonl" => store(s).and_then(|st| export(st, req)),
         _ => Err(Problem::new("unknown-op", format!("Unknown op `{}`.", req.op), r#"Send {"v":1,"op":"hello"}."#)),
     }
 }
@@ -352,10 +346,6 @@ fn summary(s: &dyn Source) -> Value {
     });
     if let Some(p) = s.problem() {
         match p.what {
-            "version-1" => {
-                let line = s.head().split(|b| *b == b'\n').next().unwrap_or_default();
-                out["v1_header"] = json!(String::from_utf8_lossy(line));
-            }
             "not-ecad" | "unreadable" => {
                 out["head_hex"] = json!(text::hex(s.head().get(..64).unwrap_or(s.head())));
             }
@@ -691,7 +681,7 @@ fn log(st: &Store, s: &dyn Source, req: &Request) -> Result<Value, Problem> {
     let mut rows = Vec::new();
     if hi >= 1 && count > 0 {
         for (seq, flag, chain, body) in r.tx_range(id, lo..=hi).map_err(engine)?.into_iter().rev() {
-            let record = ecad_file::v2::pack::unpack(flag, &body);
+            let record = ecad_file::pack::unpack(flag, &body);
             let value = record.as_ref().ok().and_then(|b| serde_json::from_slice::<Value>(b).ok());
             let v = value.clone().unwrap_or(Value::Null);
             let mut row = json!({
@@ -848,39 +838,4 @@ fn row(st: &Store, req: &Request) -> Result<Value, Problem> {
     })
     .map_err(engine)?;
     found.ok_or_else(|| Problem::new("not-found", format!("No row of `{table}` has the key {want}."), "List the keys with the `rows` op."))
-}
-
-/// A writer that refuses past `limit` bytes.
-struct Capped {
-    buf: Vec<u8>,
-    limit: usize,
-    over: bool,
-}
-
-impl std::io::Write for Capped {
-    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-        if self.buf.len().saturating_add(b.len()) > self.limit {
-            self.over = true;
-            return Err(std::io::Error::other("over the reply limit"));
-        }
-        self.buf.extend_from_slice(b);
-        Ok(b.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-fn export(st: &Store, req: &Request) -> Result<Value, Problem> {
-    let branch = req.str("branch").unwrap_or("main");
-    // Half the reply limit: the text is escaped once more inside the reply.
-    let mut w = Capped { buf: Vec::new(), limit: MAX_REPLY / 2, over: false };
-    match text::export_branch_jsonl(st, req.bool("with_raw"), branch, &mut w) {
-        Ok((lines, left_out)) => Ok(json!({"branch": branch, "lines": lines, "left_out": left_out, "text": String::from_utf8_lossy(&w.buf)})),
-        Err(_) if w.over => {
-            Err(Problem::new("too-large", "The export is over the reply limit of 256 MiB.", "`ecadinspect <file> export-jsonl --out <file>`"))
-        }
-        Err(e) => Err(Problem::new("unreadable", e, "`ecadinspect <file> export-jsonl` names the row.")),
-    }
 }

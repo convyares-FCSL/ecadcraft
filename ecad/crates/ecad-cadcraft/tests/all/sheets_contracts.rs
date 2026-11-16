@@ -308,7 +308,7 @@ fn save_and_reopen_keep_everything() {
     s.h.run("issuerevision", json!({})).unwrap();
     s.h.run("qsave", Value::Null).unwrap();
     let doc = s.h.doc();
-    let medium = s.h.p(|p| p.store.medium().clone());
+    let medium = s.h.p(|p| p.store.bytes());
     let mut s2 = cadcraft_engine::Session::empty();
     let reopened = ecad_cadcraft::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     let doc2 = reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap();

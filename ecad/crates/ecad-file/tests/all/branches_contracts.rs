@@ -6,18 +6,18 @@
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::v2::project::BranchError;
-use ecad_file::v2::schema::{BranchId, BranchStatus, VersionKind};
-use ecad_file::v2::{ProjectV2, Store};
+use ecad_file::project::BranchError;
+use ecad_file::schema::{BranchId, BranchStatus, VersionKind};
+use ecad_file::{ProjectV2, Store};
 use ecad_model::*;
 use redb::{ReadableDatabase, ReadableTable};
 
 fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, None, None, Some(1), WRITER, every).unwrap().0
+    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::v2::OpenedV2 {
+fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
     ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
@@ -74,7 +74,7 @@ fn a_branch_forks_owns_its_log_and_leaves_main_unchanged() {
     assert_eq!(ml.document(), &main_doc);
     drop(proj);
     assert_eq!(open(&p).project.branch(), main, "main is now the active branch");
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }
 
@@ -131,7 +131,7 @@ fn a_branch_from_an_older_point_snapshots_and_reads_its_ancestry() {
     let (cl, _) = proj.switch_to(&o.ledger, c, 9).unwrap();
     assert_eq!(cl.document(), &full[3]);
     assert_eq!(proj.lineage().len(), 3);
-    let v = ecad_file::v2::verify::verify(proj.store());
+    let v = ecad_file::verify::verify(proj.store());
     assert!(v.ok, "{:#?}", v.lines);
 }
 
@@ -186,14 +186,14 @@ fn readers_ignore_unknown_optional_fields_in_meta_branch_and_version_rows() {
         let db = redb::Database::open(&p).unwrap();
         let w = db.begin_write().unwrap();
         {
-            let mut meta = w.open_table(ecad_file::v2::schema::META).unwrap();
+            let mut meta = w.open_table(ecad_file::schema::META).unwrap();
             meta.insert("future_name", br#"{"anything": 1}"#.as_slice()).unwrap();
-            let mut branches = w.open_table(ecad_file::v2::schema::BRANCHES).unwrap();
+            let mut branches = w.open_table(ecad_file::schema::BRANCHES).unwrap();
             let row = branches.get(main.0).unwrap().unwrap().value().to_vec();
             let mut v: serde_json::Value = serde_json::from_slice(&row).unwrap();
             v["future_field"] = serde_json::json!({"x": [1, 2]});
             branches.insert(main.0, serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
-            let mut versions = w.open_table(ecad_file::v2::schema::VERSIONS).unwrap();
+            let mut versions = w.open_table(ecad_file::schema::VERSIONS).unwrap();
             let rows: Vec<(Vec<u8>, Vec<u8>)> =
                 versions.iter().unwrap().map(|r| r.unwrap()).map(|(k, v)| (k.value().to_vec(), v.value().to_vec())).collect();
             for (k, row) in rows {
@@ -208,7 +208,7 @@ fn readers_ignore_unknown_optional_fields_in_meta_branch_and_version_rows() {
     let o = open(&p);
     assert!(o.report.damage.is_none(), "{:?}", o.report);
     assert_eq!(o.ledger.document(), f.ledger.document());
-    let v = ecad_file::v2::verify::verify(o.project.store());
+    let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
 }
 
@@ -241,7 +241,7 @@ fn has_field<K: redb::Key + 'static>(p: &std::path::Path, table: redb::TableDefi
 
 #[test]
 fn writers_keep_the_unknown_fields_a_newer_build_wrote_through_save_switch_and_rename() {
-    use ecad_file::v2::schema::{BRANCHES, META, VERSIONS, version_key};
+    use ecad_file::schema::{BRANCHES, META, VERSIONS, version_key};
     let dir = TempDir::new("preserve");
     let mut f = fixture();
     let p = dir.path("p.ecad");
@@ -278,7 +278,7 @@ fn writers_keep_the_unknown_fields_a_newer_build_wrote_through_save_switch_and_r
     assert!(has_field(&p, BRANCHES, b.0, "future_branch"), "the renamed branch's row");
     assert!(has_field(&p, META, "cache", "future_cache"), "meta.cache");
     assert!(has_field(&p, VERSIONS, vkey.as_slice(), "future_version"), "the version row");
-    let v = ecad_file::v2::verify::verify(&Store::open(&p, false).unwrap());
+    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }
 

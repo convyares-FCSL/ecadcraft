@@ -515,7 +515,7 @@ impl Written {
 
 /// Lowercase hex SHA-256 of `bytes`.
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    ecad_file::v2::schema::asset_hash(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    ecad_file::schema::asset_hash(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Write `bytes` as `name` in `dir`, recording it.
