@@ -83,7 +83,7 @@ fn textstyle_refusals_write_nothing() {
     for (p, words) in [
         (json!({"kind": "tag", "height": 0.1}), "A text height is 0.5 to 10 mm."),
         (json!({"kind": "tag", "height": 11}), "A text height is 0.5 to 10 mm."),
-        (json!({"kind": "tag", "height": "big"}), "A text height is 0.5 to 10 mm."),
+        (json!({"kind": "tag", "height": "big"}), "`height` must be a number, or null"),
         (json!({"kind": "nope", "height": 3}), "Unknown text kind \"nope\". Kinds: tag, point_label"),
         (json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold."),
         (json!({"kind": "tag", "show": "maybe"}), "Shown is on, off or first (first: tag only)."),
