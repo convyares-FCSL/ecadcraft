@@ -23,6 +23,7 @@ pub mod continuation;
 pub mod default;
 pub mod designation;
 pub(crate) mod device;
+pub mod input;
 pub mod level;
 pub mod location;
 pub mod numbering;
@@ -37,13 +38,14 @@ pub mod symbol;
 pub mod terminal;
 pub mod text;
 pub mod title_block;
-pub(crate) mod wire;
+pub mod wire;
 pub(crate) mod xref;
 
 use std::collections::BTreeMap;
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
+use ecad_electrical::CmdError;
 use ecad_model::{
     CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, End, Form, Item, ItemId, ItemKind,
     ObjectRef, Op, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef,
@@ -100,7 +102,7 @@ fn base_specs() -> Vec<CommandSpec> {
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
             .interactive(interact::addterminal)
             .noundo(),
-        CommandSpec::new("wire", "Wire", crate::cmd::wire::run_wire)
+        CommandSpec::new("wire", "Wire", crate::cmd::input::typed::<crate::cmd::wire::WireParams>)
             .params(
                 "{points: [[x,y], …], potential?: string, join?: bool (true), junction?: bool (old name of join)} (ends on connection points attach; an end on another wire's open end joins it into one wire, on its interior adds a junction; open ends lying on the new wire join it with a junction)",
             )
@@ -186,35 +188,35 @@ end's spine; null: the middle)",
             .params("{component: id} (deletes the device with every symbol, as `ecaddelete`)")
             .interactive(interact::devicedelete)
             .noundo(),
-        CommandSpec::new("nets", "List Nets", crate::cmd::wire::run_nets)
+        CommandSpec::new("nets", "List Nets", crate::cmd::input::typed::<crate::cmd::wire::NetsParams>)
             .params("{page?: id, number?, conductor?: id, terminal?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)")
             .noundo(),
-        CommandSpec::new("net", "Show Net", crate::cmd::wire::run_net)
+        CommandSpec::new("net", "Show Net", crate::cmd::input::typed::<crate::cmd::wire::NetParams>)
             .params("{conductor: id} | {terminal: id} | {number} (read only)")
             .noundo(),
-        CommandSpec::new("wirenumber", "Fix Wire Number", crate::cmd::wire::run_wirenumber)
+        CommandSpec::new("wirenumber", "Fix Wire Number", crate::cmd::input::typed::<crate::cmd::wire::WirenumberParams>)
             .params(
                 "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} | {conductor: id, fixed: bool} (fixes the net's number; null or fixed false releases it; a number another net uses needs `conflict`)",
             )
             .interactive(interact::wirenumber)
             .noundo(),
-        CommandSpec::new("potential", "Set Potential", crate::cmd::wire::run_potential)
+        CommandSpec::new("potential", "Set Potential", crate::cmd::input::typed::<crate::cmd::wire::PotentialParams>)
             .params("{conductor: id, value: string|null} (the potential of the whole net)")
             .noundo(),
-        CommandSpec::new("wiresettings", "Wire Settings", crate::cmd::wire::run_wiresettings)
+        CommandSpec::new("wiresettings", "Wire Settings", crate::cmd::input::typed::<crate::cmd::wire::WiresettingsParams>)
             .params(
                 "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered}] (colours and cross-sections: wire categories), colour_style?: \"iec\"|\"three-letter\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)",
             )
             .noundo(),
-        CommandSpec::new("renumberwires", "Renumber Wires", crate::cmd::wire::run_renumberwires)
+        CommandSpec::new("renumberwires", "Renumber Wires", crate::cmd::input::typed::<crate::cmd::wire::RenumberwiresParams>)
             .params("{scope?: \"unnumbered\"|\"all\"} (fixed numbers never change)")
             .interactive(interact::renumberwires)
             .noundo(),
-        CommandSpec::new("junction", "Junction", crate::cmd::wire::run_junction)
+        CommandSpec::new("junction", "Junction", crate::cmd::input::typed::<crate::cmd::wire::JunctionParams>)
             .params("{at: [x,y]} (a junction on the wire there, which is split at it)")
             .interactive(interact::junction)
             .noundo(),
-        CommandSpec::new("checks", "Checks", crate::cmd::wire::run_checks)
+        CommandSpec::new("checks", "Checks", crate::cmd::input::typed::<crate::cmd::wire::ChecksParams>)
             .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
             .noundo(),
         CommandSpec::new("newpage", "New Page", run_newpage)
@@ -230,7 +232,7 @@ end's spine; null: the middle)",
         CommandSpec::new("ecadinspect", "Inspect Project", run_inspect)
             .params("{seq?: n} (read-only snapshot)")
             .noundo(),
-        CommandSpec::new("joinwires", "Join Wires", crate::cmd::wire::run_joinwires)
+        CommandSpec::new("joinwires", "Join Wires", crate::cmd::input::typed::<crate::cmd::wire::JoinwiresParams>)
             .params("{at: [x,y]} (two open ends there become one wire; an open end on a wire, or three or more ends, get a junction)")
             .interactive(interact::joinwires)
             .noundo(),
@@ -264,6 +266,29 @@ pub(crate) fn with_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mu
     let mut guard = try_lock(&owner).map_err(err)?;
     let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
     f(p, &mut Pages(s)).map_err(EngineError::Other)
+}
+
+/// [`with_project`] for a typed command (brief 070): the closure refuses with a [`CmdError`],
+/// which becomes text here, at the edge.
+pub(crate) fn on_project<R>(
+    s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, CmdError>,
+) -> cadcraft_engine::Result<R> {
+    with_project(s, |p, pg, page| f(p, pg, page).map_err(String::from))
+}
+
+/// [`with_any_page`] for a typed command (brief 070).
+pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, CmdError>) -> cadcraft_engine::Result<R> {
+    with_any_page(s, |p, pg| f(p, pg).map_err(String::from))
+}
+
+/// Every command with a typed input (brief 070): its id, run function and parameter schema.
+pub fn typed_commands() -> Vec<input::Typed> {
+    [crate::cmd::wire::TYPED, crate::cmd::sheet::TYPED, crate::cmd::output::TYPED].concat()
+}
+
+/// The JSON Schema of command `id`'s parameters, when its input is typed.
+pub fn schema_of(id: &str) -> Option<Value> {
+    typed_commands().into_iter().find(|t| t.id == id).map(|t| (t.schema)())
 }
 
 /// Refusal for edits on a page whose drawing could not be rebuilt (PROJ-02).
@@ -720,7 +745,7 @@ pub(crate) fn component_value(doc: &ecad_model::Document, c: ComponentId, key: &
         return crate::devices::property_value(doc, key, value.as_deref());
     }
     // Brief 022 and 049: a junction's or continuation's name and kind, a continuation's caption.
-    if let Some(v) = crate::cmd::wire::setprop_rule(doc, ObjectRef::Component(c), key, value.as_deref())? {
+    if let Some(v) = ecad_electrical::cmd::wire::setprop_rule(doc, ObjectRef::Component(c), key, value.as_deref())? {
         return Ok(v);
     }
     Ok(match key {
@@ -774,7 +799,7 @@ pub(crate) fn component_value(doc: &ecad_model::Document, c: ComponentId, key: &
 /// # Errors
 /// The first rule that refuses the value, in words.
 fn other_value(doc: &ecad_model::Document, object: ObjectRef, key: &str, value: Option<String>) -> Result<Option<String>, String> {
-    if let Some(v) = crate::cmd::wire::setprop_rule(doc, object, key, value.as_deref())? {
+    if let Some(v) = ecad_electrical::cmd::wire::setprop_rule(doc, object, key, value.as_deref())? {
         return Ok(v);
     }
     Ok(match (object, key) {

@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
+schemars = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
@@ -24,3 +25,6 @@ ecad-model = { path = ".", features = ["verify-invariants"] }
 # ecad-model enables it through its dev-dependencies, so every `cargo test` verifies while app
 # builds, debug or release, take the fast path. `ECAD_VERIFY_INVARIANTS=1` turns it on at run time.
 verify-invariants = []
+# Brief 070 (design 061 §4): JSON Schemas of the typed ids for command parameters; the Engine turns
+# it on, other crates never compile schemars.
+schema = ["dep:schemars"]

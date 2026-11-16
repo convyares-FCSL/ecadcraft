@@ -16,6 +16,7 @@ ecad-drawing-style = { workspace = true }
 # §1, owner 2026-11-15, option A).
 ecad-file = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 serde_json = { workspace = true }
 # Revision dates (calendar only; no clock: the time is passed in).
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
