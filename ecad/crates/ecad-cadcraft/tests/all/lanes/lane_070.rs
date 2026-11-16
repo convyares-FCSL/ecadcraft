@@ -1,84 +1,236 @@
-//! Brief 070: typed command inputs. Every typed command is registered with its typed run function
-//! and offers a JSON Schema; the commands not typed yet can only become fewer; and a typed
-//! command refuses bad input in the same words as before.
+//! Brief 070: typed command inputs. Every registered command is typed (or on the shrink-only
+//! list of commands not converted yet), with its typed run function and a JSON Schema; input
+//! refusals use one uniform wording; rule refusals keep their words.
 
 use ecad_cadcraft::cmd::{schema_of, specs, typed_commands};
 use serde_json::{Value, json};
 
 use crate::common::H;
 
-/// Registered commands still reading their JSON by hand. Brief 070 moves them module by module:
-/// lower this as they move, never raise it.
-const UNTYPED_MAX: usize = 132;
+/// Registered commands still reading their JSON by hand. Brief 070 converts them module by
+/// module: remove ids as they are typed, never add one.
+const UNTYPED: &[&str] = &[
+    "convertcomponent",
+    "addterminal",
+    "connect",
+    "disconnect",
+    "cableslash",
+    "cableview",
+    "cablecore",
+    "cablefan",
+    "cableref",
+    "cablecontinue",
+    "cablegoto",
+    "cablerefs",
+    "ecaddelete",
+    "setprop",
+    "cableadd",
+    "place",
+    "symbols",
+    "devices",
+    "tagsettings",
+    "deviceprops",
+    "devicedelete",
+    "newpage",
+    "openpage",
+    "renamepage",
+    "movepage",
+    "ecadinspect",
+    "pageprops",
+    "projectprops",
+    "newfolder",
+    "renamefolder",
+    "movefolder",
+    "deletefolder",
+    "revision",
+    "issuerevision",
+    "openrevision",
+    "closerevision",
+    "undoissue",
+    "history",
+    "steps",
+    "pointinfo",
+    "version",
+    "showpoint",
+    "closepoint",
+    "restore",
+    "branches",
+    "branch",
+    "renamebranch",
+    "switchbranch",
+    "archivebranch",
+    "reopenbranch",
+    "merge",
+    "undomerge",
+    "renumber",
+    "finalise",
+    "numbering",
+    "xrefs",
+    "contacts",
+    "refgoto",
+    "mirrormove",
+    "locationbox",
+    "functionbox",
+    "bom",
+    "wirelist",
+    "cablelist",
+    "printbook",
+    "reports",
+    "terminals",
+    "bridge",
+    "stripplan",
+    "cablecores",
+    "accessory",
+    "jumper",
+    "prerelease",
+    "release",
+    "textstyle",
+    "showtext",
+    "movetext",
+    "hiddentext",
+    "pagetexts",
+    "defaults",
+    "agentaccess",
+    "termlabel",
+    "toposition",
+    "canvassheet",
+    "setdefault",
+    "connector",
+    "pinlabel",
+    "plcslot",
+    "plcracks",
+    "plcchannels",
+    "plcchannel",
+    "iolist",
+    "plcaddress",
+    "partline",
+    "bomitem",
+    "article",
+    "symbolnew",
+    "symboledit",
+    "symbolimpact",
+    "symbolupdate",
+    "makesymbol",
+    "contcaption",
+    "standard",
+    "setstyle",
+    "deletestyle",
+    "promote",
+    "styles",
+    "plcpage",
+    "conflicts",
+    "setlocation",
+    "setfunction",
+    "designations",
+    "designationadd",
+    "designationedit",
+    "designationmerge",
+    "designationremove",
+    "folderprops",
+    "renumberpages",
+    "deletepage",
+    "titleblocks",
+    "titleblock",
+    "titleblockimport",
+    "plcmaketags",
+    "plcexport",
+    "plcimport",
+    "plccardtype",
+    "rating",
+    "ratingtable",
+    "ratings",
+    "cablenew",
+    "cableedit",
+    "cableremove",
+];
 
 #[test]
-fn every_typed_command_is_registered_with_its_schema() {
+fn every_command_is_typed_with_a_schema_or_still_listed() {
     let all = specs();
-    for t in typed_commands() {
+    let typed = typed_commands();
+    for t in &typed {
         let spec = all.iter().find(|s| s.id == t.id).unwrap_or_else(|| panic!("{} is typed but not registered", t.id));
         assert!(std::ptr::fn_addr_eq(spec.run, t.run), "{} is registered with another run function", t.id);
         let schema = schema_of(t.id).unwrap_or(Value::Null);
         assert_eq!(schema["type"], json!("object"), "{}: {schema}", t.id);
         assert!(schema["properties"].is_object(), "{}: {schema}", t.id);
         assert!(!spec.params.is_empty(), "{} keeps its params text", t.id);
+        assert!(!UNTYPED.contains(&t.id), "{} is typed now: remove it from UNTYPED", t.id);
     }
-}
-
-#[test]
-fn the_untyped_commands_only_become_fewer() {
-    let typed: Vec<&str> = typed_commands().iter().map(|t| t.id).collect();
-    let untyped: Vec<&str> = specs().iter().map(|s| s.id).filter(|id| !typed.contains(id)).collect();
-    assert!(untyped.len() <= UNTYPED_MAX, "{} commands are untyped, at most {UNTYPED_MAX} may be: {untyped:?}", untyped.len());
+    let untyped: Vec<&str> = all.iter().map(|s| s.id).filter(|id| !typed.iter().any(|t| t.id == *id)).collect();
+    let unlisted: Vec<&&str> = untyped.iter().filter(|id| !UNTYPED.contains(id)).collect();
+    assert!(unlisted.is_empty(), "registered without a typed input and not in UNTYPED: {unlisted:?}");
+    let stale: Vec<&&str> = UNTYPED.iter().filter(|id| !untyped.contains(id)).collect();
+    assert!(stale.is_empty(), "in UNTYPED but not an untyped registered command: {stale:?}");
 }
 
 #[test]
 fn a_schema_says_what_the_command_takes() {
     let wire = schema_of("wire").unwrap_or(Value::Null);
     assert_eq!(wire["required"], json!(["points"]));
-    assert!(wire["properties"]["points"]["description"].as_str().is_some_and(|d| d.contains("points")), "{wire}");
+    assert_eq!(wire["properties"]["points"]["minItems"], json!(2));
+    assert_eq!(wire["properties"]["points"]["items"]["format"], json!("point"));
     assert_eq!(wire["additionalProperties"], json!(false), "unknown parameters are refused");
+    let net = schema_of("net").unwrap_or(Value::Null);
+    assert!(net["properties"]["conductor"].to_string().contains("hex-id"), "{net}");
+    let renumber = schema_of("renumberwires").unwrap_or(Value::Null);
+    assert!(renumber.to_string().contains("\"unnumbered\""), "{renumber}");
 }
 
-/// The wire commands refuse bad input word for word as their hand-written readers did.
+/// Input refusals of the wire commands: one wording, from the parameter's name and kind.
 #[test]
-fn the_wire_commands_keep_their_words() {
+fn the_wire_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("wire", json!({}), "`points` [[x,y], …] is required"),
-        ("wire", json!({"points": 5}), "`points` [[x,y], …] is required"),
-        ("wire", json!({"points": [[0, 0]]}), "`points` needs at least two [x,y] points"),
-        ("wire", json!({"points": [[0, 0], ["a", 1]]}), "`[\"a\",1]` is not a finite [x,y] point"),
-        ("wire", json!({"points": [[0, 0], [9, 0]], "potential": 5}), "`potential` must be a string"),
-        ("wire", json!({"points": [[0, 0], [9, 0]], "join": 1}), "`join` must be true or false"),
+        ("wire", json!({}), "`points` (list of point [x, y]s) is required"),
+        ("wire", json!({"points": 5}), "`points` must be a list of point [x, y]s"),
+        ("wire", json!({"points": [[0, 0]]}), "`points` needs at least 2 entries"),
+        ("wire", json!({"points": [[0, 0], ["a", 1]]}), "`points` must be a list of point [x, y]s"),
+        ("wire", json!({"points": [[0, 0], [9, 0]], "potential": 5}), "`potential` must be text, or null"),
+        ("wire", json!({"points": [[0, 0], [9, 0]], "join": 1}), "`join` must be true or false, or null"),
+        ("nets", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("net", json!({"conductor": "zz"}), "`conductor` must be a hex id, or null"),
+        ("wirenumber", json!({"conductor": "1"}), "`value` (text, or null) is required"),
+        ("wirenumber", json!({"conductor": "1", "value": 3}), "`value` must be text, or null"),
+        (
+            "wirenumber",
+            json!({"conductor": "1", "value": "7", "conflict": "x"}),
+            "`conflict` must be one of \"swap\", \"another\", \"merge\", or null",
+        ),
+        ("potential", json!({}), "`conductor` (hex id) is required"),
+        ("potential", json!({"conductor": "1"}), "`value` (text) is required"),
+        ("category", json!({"conductors": "1", "value": null}), "`conductors` must be a list of hex ids, or null"),
+        ("wiresettings", json!({"scheme": 1}), "`scheme` must be text, or null"),
+        ("wiresettings", json!({"potentials": 1}), "`potentials` must be a list of objects, or null"),
+        ("renumberwires", json!({"scope": "x"}), "`scope` must be one of \"unnumbered\", \"all\", or null"),
+        ("junction", json!({}), "`at` (point [x, y]) is required"),
+        ("joinwires", json!({"at": "here"}), "`at` must be a point [x, y]"),
+        ("checks", json!({"kinds": "nope"}), "`kinds` must be a list of texts, or null"),
+    ];
+    let mut h = H::new(7001);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals keep their words.
+#[test]
+fn the_wire_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
         ("wire", json!({"points": [[0, 0], [9, 0]], "join": true, "junction": false}), "`join` and `junction` disagree; give only `join`"),
-        ("wire", json!({"points": [[0, 0], [9, 0]], "category": 3}), "`category` must be a wire category's ID or name"),
-        ("nets", json!({"limit": "x"}), "`limit` must be a number"),
         ("nets", json!({"after": "zz"}), "`after` must be a cursor from `next`"),
         ("net", json!({}), "one of `conductor`, `terminal` or `number` is required"),
-        ("net", json!({"conductor": "zz"}), "`conductor` (hex id) is required"),
         ("net", json!({"conductor": "1"}), "No such wire."),
         ("net", json!({"terminal": "1"}), "No such connection point."),
         ("net", json!({"number": "999"}), "no net has number 999"),
-        ("wirenumber", json!({"conductor": "1"}), "`value` is required (a wire number, or null to release a fixed number)"),
-        ("wirenumber", json!({"conductor": "1", "value": 3}), "`value` must be a string, or null to release a fixed number"),
         ("wirenumber", json!({"conductor": "1", "value": "a b"}), "A wire number has no spaces or control characters."),
-        ("potential", json!({}), "`conductor` (hex id) is required"),
-        ("potential", json!({"conductor": "1"}), "`value` is required (a potential such as 24V, or null to clear it)"),
         ("potential", json!({"conductor": "1", "value": "24V"}), "No such wire."),
-        ("category", json!({"conductor": "1", "value": 3}), "`value` is required: a wire category (its ID or name), or null to clear it"),
         ("category", json!({"value": null}), "Give one of `conductor`, `net` or `conductors`."),
-        ("category", json!({"conductors": "1", "value": null}), "`conductors` (array of hex ids) is required"),
         ("wiresettings", json!({"digits": 9}), "`digits` must be 1 to 6"),
-        ("wiresettings", json!({"scheme": 1}), "`scheme` must be a string"),
-        ("wiresettings", json!({"potentials": 1}), "`potentials` must be the whole table: [{name, prefix, numbered}]"),
         ("wiresettings", json!({"potentials": [{"name": "24V", "colour": "RD"}]}), ecad_electrical::msg::CATEGORY_COLOURS),
-        ("renumberwires", json!({"scope": "x"}), "`scope` must be \"unnumbered\" or \"all\", not \"x\""),
-        ("junction", json!({}), "`at` [x,y] is required"),
-        ("joinwires", json!({"at": "here"}), "`at` [x,y] is required"),
         ("joinwires", json!({"at": [500, 500]}), ecad_electrical::msg::NO_ENDS_TO_JOIN),
         ("checks", json!({"kinds": ["nope"]}), "unknown check kind \"nope\""),
-        ("checks", json!({"kinds": "nope"}), "`kinds` must be a list of check kinds"),
     ];
-    let mut h = H::new(7001);
+    let mut h = H::new(7004);
     for (cmd, params, says) in rows {
         assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
     }
@@ -89,7 +241,7 @@ fn the_wire_commands_keep_their_words() {
 fn an_unknown_parameter_is_refused() {
     let mut h = H::new(7002);
     let e = h.run("wire", json!({"points": [[0, 0], [9, 0]], "colour": "RD"})).err().unwrap_or_default();
-    assert!(e.starts_with("unknown field `colour`"), "{e}");
+    assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `junction`, `points`, `potential`");
     assert!(h.doc().conductors.is_empty(), "nothing was drawn");
 }
 

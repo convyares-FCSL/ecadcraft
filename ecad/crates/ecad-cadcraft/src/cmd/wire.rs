@@ -6,11 +6,11 @@
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
 //! [`ecad_electrical::cmd::wire`] decide, and the shim commits the ops and answers in JSON.
 
-use std::collections::BTreeSet;
-
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::wire::{self as rules, CategoryName, Junctioned, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires};
+use ecad_electrical::cmd::wire::{
+    self as rules, CategoryName, Conflict, Junctioned, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires,
+};
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::wiring;
 use ecad_model::{ConductorId, Document, PageId, Placement, Pt, TerminalId};
@@ -18,7 +18,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{self, Command, Typed, field};
+use crate::cmd::input::{Bounded, Command, Point, Typed, lenient, nullable};
 use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style, with_project};
 use crate::project::Project;
 use crate::symbols::Starter;
@@ -39,135 +39,9 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<JoinwiresParams>("joinwires"),
 ];
 
-// ---------------------------------------------------------------- fields
-
-field!(fn conductor -> Option<ConductorId> = |v| input::opt_hex(v, "conductor"));
-field!(fn conductor_required -> ConductorId = |v| input::hex(v, "conductor"));
-field!(fn terminal -> Option<TerminalId> = |v| input::opt_hex(v, "terminal"));
-field!(fn net_conductor -> Option<ConductorId> = |v| input::opt_hex(v, "net"));
-field!(fn conductors -> Option<Vec<ConductorId>> = |v| input::opt_hex_list(v, "conductors", MAX_HANDLES));
-field!(fn page -> Option<PageId> = |v| input::opt_hex(v, "page"));
-field!(fn number -> Option<String> = |v| input::opt_string(v, "number"));
-field!(fn after -> Option<String> = |v| input::opt_string(v, "after"));
-field!(fn conflict -> Option<String> = |v| input::opt_string(v, "conflict"));
-field!(fn lenient -> Option<bool> = input::lenient_bool);
-field!(fn nets_limit -> usize = |v| input::limit(v, "limit", rules::DEFAULT_LIMIT, rules::MAX_LIMIT));
-field!(fn checks_limit -> usize = |v| input::limit(v, "limit", crate::checks::DEFAULT_LIMIT, crate::checks::MAX_LIMIT));
-field!(fn checks_after -> Option<u64> = input::lenient_u64);
-field!(fn at -> Pt = |v| input::point(v, AT_REQUIRED));
-field!(fn join -> Option<bool> = |v| input::opt_bool(v, "join"));
-field!(fn junction -> Option<bool> = |v| input::opt_bool(v, "junction"));
-field!(fn number_value -> Option<Option<String>> = |v| input::nullable_string(v, "`value` must be a string, or null to release a fixed number"));
-field!(fn potential_value -> Option<Option<String>> = |v| input::nullable_string(v, POTENTIAL_VALUE));
-field!(fn category_value -> Option<Option<String>> = |v| input::nullable_string(v, CATEGORY_VALUE));
-field!(fn scheme -> Option<String> = |v| input::opt_string(v, "scheme"));
-field!(fn colour_style -> Option<String> = |v| input::opt_string(v, "colour_style"));
-field!(fn label_rule -> Option<String> = |v| input::opt_string(v, "label_rule"));
-field!(fn unclassified_prefix -> Option<String> = |v| input::opt_string(v, "unclassified_prefix"));
-field!(fn digits -> Option<u64> = |v| input::opt_u64(v, "`digits` must be 1 to 6"));
-field!(fn label_height -> Option<f64> = |v| input::opt_f64(v, "`label_height` must be 0.5 to 10 (millimetres)"));
-field!(fn label_min_length -> Option<f64> = |v| input::opt_f64(v, "Shortest labelled wire is 0 to 100 mm."));
-field!(fn potentials -> Option<Vec<PotentialRow>> = potential_rows);
-field!(fn scope_all -> bool = renumber_scope);
-field!(fn kinds -> Option<BTreeSet<crate::checks::Kind>> = check_kinds);
-field!(fn points -> Vec<Pt> = wire_points);
-field!(fn wire_potential -> Option<String> = wire_potential_value);
-field!(fn wire_category -> Option<String> = wire_category_value);
-
-const AT_REQUIRED: &str = "`at` [x,y] is required";
-const POTENTIAL_VALUE: &str = "`value` is required (a potential such as 24V, or null to clear it)";
-const CATEGORY_VALUE: &str = "`value` is required: a wire category (its ID or name), or null to clear it";
-const POINTS_REQUIRED: &str = "`points` [[x,y], …] is required";
-
-/// The potentials table: rows read leniently (a word not given is empty).
-fn potential_rows(v: Value) -> Result<Option<Vec<PotentialRow>>, CmdError> {
-    let a = match v {
-        Value::Null => return Ok(None),
-        Value::Array(a) => a,
-        _ => return Err(CmdError::input("`potentials` must be the whole table: [{name, prefix, numbered}]")),
-    };
-    let word = |r: &Value, k: &str| r.get(k).and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
-    Ok(Some(
-        a.iter()
-            .map(|r| PotentialRow {
-                name: word(r, "name"),
-                prefix: word(r, "prefix"),
-                numbered: r.get("numbered").and_then(Value::as_bool),
-                colours: ["colour", "cross_section"].iter().any(|k| r.get(*k).is_some_and(|v| !v.is_null())),
-            })
-            .collect(),
-    ))
-}
-
-/// `scope` of `renumberwires`: `all` is true.
-fn renumber_scope(v: Value) -> Result<bool, CmdError> {
-    match input::opt_string(v, "scope")?.map(|x| x.trim().to_ascii_lowercase()) {
-        None => Ok(false),
-        Some(x) if x == "unnumbered" => Ok(false),
-        Some(x) if x == "all" => Ok(true),
-        Some(x) => Err(CmdError::input(format!("`scope` must be \"unnumbered\" or \"all\", not {x:?}"))),
-    }
-}
-
-/// `kinds` of `checks`.
-fn check_kinds(v: Value) -> Result<Option<BTreeSet<crate::checks::Kind>>, CmdError> {
-    match v {
-        Value::Null => Ok(None),
-        Value::Array(a) => a
-            .iter()
-            .map(|k| k.as_str().and_then(crate::checks::Kind::parse).ok_or_else(|| CmdError::input(format!("unknown check kind {k}"))))
-            .collect::<Result<_, _>>()
-            .map(Some),
-        _ => Err(CmdError::input("`kinds` must be a list of check kinds")),
-    }
-}
-
-/// `points` of `wire`: 2 to [`MAX_WIRE_POINTS`] finite points.
-fn wire_points(v: Value) -> Result<Vec<Pt>, CmdError> {
-    let raw = v.as_array().ok_or(CmdError::input(POINTS_REQUIRED))?;
-    if raw.len() > MAX_WIRE_POINTS {
-        return Err(CmdError::input(format!("at most {MAX_WIRE_POINTS} points per wire")));
-    }
-    let pts: Vec<Pt> = raw
-        .iter()
-        .map(|v| crate::cmd::point(v).ok_or_else(|| CmdError::input(format!("`{v}` is not a finite [x,y] point"))))
-        .collect::<Result<_, _>>()?;
-    if pts.len() < 2 {
-        return Err(CmdError::input("`points` needs at least two [x,y] points"));
-    }
-    Ok(pts)
-}
-
-/// `potential` of `wire`: `auto` (or none) leaves it to the net (brief 022).
-fn wire_potential_value(v: Value) -> Result<Option<String>, CmdError> {
-    match v {
-        Value::Null => Ok(None),
-        Value::String(v) if v.trim().eq_ignore_ascii_case("auto") => Ok(None),
-        Value::String(v) => wiring::valid_text("potential", Some(&v)).map_err(CmdError::input),
-        _ => Err(CmdError::input("`potential` must be a string")),
-    }
-}
-
-/// `category` of `wire` (brief 050b): `auto` (or none) leaves it to the net.
-fn wire_category_value(v: Value) -> Result<Option<String>, CmdError> {
-    match v {
-        Value::Null => Ok(None),
-        Value::String(v) if v.trim().eq_ignore_ascii_case("auto") => Ok(None),
-        Value::String(v) => Ok(Some(v)),
-        _ => Err(CmdError::input("`category` must be a wire category's ID or name")),
-    }
-}
-
-/// The schema of one row of the potentials table.
-#[derive(JsonSchema)]
-#[allow(dead_code)]
-struct PotentialRowSchema {
-    /// The potential's name (24V, L1, PE…).
-    name: String,
-    /// The prefix of its wire numbers.
-    prefix: Option<String>,
-    /// Whether its wires are numbered (default true).
-    numbered: Option<bool>,
+/// `auto` (any case) or nothing: leave it to the net.
+fn not_auto(v: Option<String>) -> Option<String> {
+    v.filter(|v| !v.trim().eq_ignore_ascii_case("auto"))
 }
 
 // ---------------------------------------------------------------- JSON
@@ -228,33 +102,27 @@ fn settings_json(doc: &Document) -> Value {
 #[serde(deny_unknown_fields)]
 pub(crate) struct NetsParams {
     /// Only nets drawn on this page.
-    #[serde(default, deserialize_with = "page")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     page: Option<PageId>,
     /// Every net with this wire number.
-    #[serde(default, deserialize_with = "number")]
+    #[serde(default)]
     number: Option<String>,
     /// The net of this wire.
-    #[serde(default, deserialize_with = "conductor")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     conductor: Option<ConductorId>,
     /// The net of this connection point.
-    #[serde(default, deserialize_with = "terminal")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     terminal: Option<TerminalId>,
     /// Also nets without a wire.
     #[serde(default, deserialize_with = "lenient")]
+    #[schemars(with = "Option<bool>")]
     all: Option<bool>,
     /// At most this many (default 200, at most 2000).
-    #[serde(default = "default_nets_limit", deserialize_with = "nets_limit")]
-    limit: usize,
+    #[serde(default)]
+    limit: Option<usize>,
     /// The cursor `next` gave.
-    #[serde(default, deserialize_with = "after")]
+    #[serde(default)]
     after: Option<String>,
-}
-
-fn default_nets_limit() -> usize {
-    rules::DEFAULT_LIMIT
 }
 
 impl Command for NetsParams {
@@ -263,7 +131,7 @@ impl Command for NetsParams {
             page: self.page,
             choice: NetChoice { conductor: self.conductor, terminal: self.terminal, number: self.number },
             all: self.all.unwrap_or(false),
-            limit: self.limit,
+            limit: self.limit.unwrap_or(rules::DEFAULT_LIMIT).clamp(1, rules::MAX_LIMIT),
             after: self.after,
         };
         on_any_page(s, |p, _| {
@@ -282,15 +150,13 @@ impl Command for NetsParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct NetParams {
     /// The net of this wire.
-    #[serde(default, deserialize_with = "conductor")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     conductor: Option<ConductorId>,
     /// The net of this connection point.
-    #[serde(default, deserialize_with = "terminal")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     terminal: Option<TerminalId>,
     /// The (first) net with this wire number.
-    #[serde(default, deserialize_with = "number")]
+    #[serde(default)]
     number: Option<String>,
 }
 
@@ -303,32 +169,42 @@ impl Command for NetParams {
 
 // ---------------------------------------------------------------- wirenumber and potential
 
+/// What to do when another net uses the number.
+#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum ConflictParam {
+    /// That net takes this one's number.
+    Swap,
+    /// This net takes the next free number.
+    Another,
+    /// Join the nets with a continuation pair named for the number.
+    Merge,
+}
+
 /// `wirenumber {conductor | terminal | number, value: string | null, conflict?}` or
 /// `{conductor, fixed: bool}`: fix the net's number (null, or fixed false, releases it).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WirenumberParams {
     /// A wire of the net.
-    #[serde(default, deserialize_with = "conductor")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     conductor: Option<ConductorId>,
     /// A connection point of the net.
-    #[serde(default, deserialize_with = "terminal")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     terminal: Option<TerminalId>,
     /// The net's current number.
-    #[serde(default, deserialize_with = "number")]
+    #[serde(default)]
     number: Option<String>,
     /// The number to fix, or null to release the fixed number.
-    #[serde(default, deserialize_with = "number_value")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default, deserialize_with = "nullable")]
     value: Option<Option<String>>,
     /// Without `value`: true fixes the net's current number, false releases it.
     #[serde(default, deserialize_with = "lenient")]
+    #[schemars(with = "Option<bool>")]
     fixed: Option<bool>,
-    /// When another net uses the number: "swap", "another" or "merge".
-    #[serde(default, deserialize_with = "conflict")]
-    conflict: Option<String>,
+    /// When another net uses the number.
+    #[serde(default)]
+    conflict: Option<ConflictParam>,
 }
 
 impl Command for WirenumberParams {
@@ -340,13 +216,17 @@ impl Command for WirenumberParams {
             (Some(v), _) => Some(v),
             (None, Some(false)) => Some(None),
             (None, Some(true)) => None,
-            (None, None) => return Err(err("`value` is required (a wire number, or null to release a fixed number)")),
+            (None, None) => return Err(err("`value` (text, or null) is required")),
         };
         let value = match value {
             Some(Some(v)) => Some(Some(wiring::valid_number(&v).map_err(|e| err(e.to_string()))?)),
             other => other,
         };
-        let conflict = self.conflict.map(|c| c.to_ascii_lowercase());
+        let conflict = self.conflict.map(|c| match c {
+            ConflictParam::Swap => Conflict::Swap,
+            ConflictParam::Another => Conflict::Another,
+            ConflictParam::Merge => Conflict::Merge,
+        });
         on_project(s, |p, pg, _| {
             let style = plain_style(p);
             let doc = p.ledger.document();
@@ -354,7 +234,7 @@ impl Command for WirenumberParams {
                 Some(v) => v,
                 None => Some(wiring::valid_number(&rules::current_number(doc, &choice)?)?),
             };
-            let done = rules::wirenumber(doc, &mut p.ids, style, &choice, value.as_deref(), conflict.as_deref())?;
+            let done = rules::wirenumber(doc, &mut p.ids, style, &choice, value.as_deref(), conflict)?;
             let (ops, label) = done.ops();
             let must_record = !matches!(done, Numbered::Released { .. } | Numbered::Fixed { .. });
             if must_record || !ops.is_empty() {
@@ -385,23 +265,18 @@ impl Command for WirenumberParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct PotentialParams {
     /// A wire of the net.
-    #[serde(deserialize_with = "conductor_required")]
-    #[schemars(with = "String")]
     conductor: ConductorId,
     /// The potential (24V, L1…), or null to clear it.
-    #[serde(default, deserialize_with = "potential_value")]
-    #[schemars(with = "Option<String>")]
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required)]
     value: Option<Option<String>>,
 }
 
 impl Command for PotentialParams {
-    const REQUIRED: &'static [(&'static str, &'static str)] = &[("conductor", "`conductor` (hex id) is required")];
-
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let value = match self.value {
-            Some(Some(v)) => wiring::valid_text("potential", Some(&v)).map_err(err)?,
-            Some(None) => None,
-            None => return Err(err(POTENTIAL_VALUE)),
+        let value = match self.value.flatten() {
+            Some(v) => wiring::valid_text("potential", Some(&v)).map_err(err)?,
+            None => None,
         };
         let c = self.conductor;
         on_project(s, |p, pg, _| {
@@ -423,27 +298,24 @@ impl Command for PotentialParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct CategoryParams {
     /// One wire.
-    #[serde(default, deserialize_with = "conductor")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     conductor: Option<ConductorId>,
     /// A wire whose whole net takes the category.
-    #[serde(default, deserialize_with = "net_conductor")]
-    #[schemars(with = "Option<String>")]
+    #[serde(default)]
     net: Option<ConductorId>,
     /// These wires.
-    #[serde(default, deserialize_with = "conductors")]
-    #[schemars(with = "Option<Vec<String>>")]
-    conductors: Option<Vec<ConductorId>>,
+    #[serde(default)]
+    conductors: Option<Bounded<ConductorId, 0, { MAX_HANDLES }>>,
     /// The wire category (its ID or name), or null to clear the wires' own.
-    #[serde(default, deserialize_with = "category_value")]
-    #[schemars(with = "Option<String>")]
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required)]
     value: Option<Option<String>>,
 }
 
 impl Command for CategoryParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let Some(value) = self.value else { return Err(err(CATEGORY_VALUE)) };
-        let (one, net, many) = (self.conductor, self.net, self.conductors);
+        let value = self.value.flatten();
+        let (one, net, many) = (self.conductor, self.net, self.conductors.map(|b| b.0));
         on_project(s, |p, pg, _| {
             let which = match (one, net, many) {
                 (Some(c), None, None) => Wires::One(c),
@@ -463,40 +335,70 @@ impl Command for CategoryParams {
 
 // ---------------------------------------------------------------- wiresettings and renumberwires
 
+/// One row of the potentials table.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct PotentialRowParam {
+    /// The potential's name (24V, L1, PE…).
+    #[serde(default)]
+    name: String,
+    /// The prefix of its wire numbers.
+    #[serde(default)]
+    prefix: String,
+    /// Whether its wires are numbered (default true).
+    #[serde(default)]
+    numbered: Option<bool>,
+    /// Refused: colours belong to wire categories now.
+    #[serde(default)]
+    colour: Option<Value>,
+    /// Refused: cross-sections belong to wire categories now.
+    #[serde(default)]
+    cross_section: Option<Value>,
+}
+
 /// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?, colour_style?,
 /// label_height?, label_rule?, label_min_length?}`: no parameters reads.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WiresettingsParams {
     /// How wires are numbered: "potential", "page" or "page-column".
-    #[serde(default, deserialize_with = "scheme")]
+    #[serde(default)]
     scheme: Option<String>,
     /// Digits of a wire number's sequence, 1 to 6.
-    #[serde(default, deserialize_with = "digits")]
+    #[serde(default)]
     digits: Option<u64>,
     /// The prefix of wires of no potential.
-    #[serde(default, deserialize_with = "unclassified_prefix")]
+    #[serde(default)]
     unclassified_prefix: Option<String>,
     /// The whole potentials table (colours and cross-sections are wire categories').
-    #[serde(default, deserialize_with = "potentials")]
-    #[schemars(with = "Option<Vec<PotentialRowSchema>>")]
-    potentials: Option<Vec<PotentialRow>>,
+    #[serde(default)]
+    potentials: Option<Vec<PotentialRowParam>>,
     /// "iec" (BN, BU, GNYE) or "three-letter" (BRN, BLU, GRN/YEL).
-    #[serde(default, deserialize_with = "colour_style")]
+    #[serde(default)]
     colour_style: Option<String>,
     /// Wire label height in mm, 0.5 to 10.
-    #[serde(default, deserialize_with = "label_height")]
+    #[serde(default)]
     label_height: Option<f64>,
     /// "net" (one label per net per page) or "each" (every wire).
-    #[serde(default, deserialize_with = "label_rule")]
+    #[serde(default)]
     label_rule: Option<String>,
     /// The shortest labelled wire in mm, 0 to 100.
-    #[serde(default, deserialize_with = "label_min_length")]
+    #[serde(default)]
     label_min_length: Option<f64>,
 }
 
 impl Command for WiresettingsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let rows = self.potentials.map(|rows| {
+            rows.into_iter()
+                .map(|r| PotentialRow {
+                    name: r.name,
+                    prefix: r.prefix,
+                    numbered: r.numbered,
+                    colours: r.colour.is_some() || r.cross_section.is_some(),
+                })
+                .collect()
+        });
         let change = WireSettingsChange {
             scheme: self.scheme,
             digits: self.digits,
@@ -505,7 +407,7 @@ impl Command for WiresettingsParams {
             label_rule: self.label_rule,
             label_min_length: self.label_min_length,
             unclassified_prefix: self.unclassified_prefix,
-            potentials: self.potentials,
+            potentials: rows,
         };
         on_project(s, |p, pg, _| {
             if change == WireSettingsChange::default() {
@@ -521,20 +423,30 @@ impl Command for WiresettingsParams {
     }
 }
 
+/// Which wires `renumberwires` renumbers.
+#[derive(Deserialize, JsonSchema, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Scope {
+    /// Only wires without a number (the default).
+    Unnumbered,
+    /// Every wire without a fixed number.
+    All,
+}
+
 /// `renumberwires {scope?: "unnumbered" | "all"}` (fixed numbers never change).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenumberwiresParams {
-    /// "unnumbered" (the default) or "all".
-    #[serde(default, rename = "scope", deserialize_with = "scope_all")]
-    #[schemars(with = "Option<String>")]
-    all: bool,
+    /// Which wires (default "unnumbered").
+    #[serde(default)]
+    scope: Option<Scope>,
 }
 
 impl Command for RenumberwiresParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let all = self.scope == Some(Scope::All);
         on_project(s, |p, pg, _| {
-            let (ops, nets) = rules::renumber(p.ledger.document(), self.all);
+            let (ops, nets) = rules::renumber(p.ledger.document(), all);
             if ops.is_empty() {
                 return Ok(json!({"renumbered": 0}));
             }
@@ -551,18 +463,14 @@ impl Command for RenumberwiresParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct JunctionParams {
     /// The point on the wire, which is split there.
-    #[serde(deserialize_with = "at")]
-    #[schemars(with = "[f64; 2]")]
-    at: Pt,
+    at: Point,
 }
 
 impl Command for JunctionParams {
-    const REQUIRED: &'static [(&'static str, &'static str)] = &[("at", AT_REQUIRED)];
-
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, page| {
             let style = plain_style(p);
-            let (ops, j) = rules::junction_at(p.ledger.document(), &mut p.ids, style, page, self.at)?;
+            let (ops, j) = rules::junction_at(p.ledger.document(), &mut p.ids, style, page, self.at.0)?;
             p.apply_edit(pg, "junction", "Junction", ops)?;
             Ok(junction_json(&j))
         })
@@ -575,19 +483,15 @@ impl Command for JunctionParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct JoinwiresParams {
     /// Where the ends meet.
-    #[serde(deserialize_with = "at")]
-    #[schemars(with = "[f64; 2]")]
-    at: Pt,
+    at: Point,
 }
 
 impl Command for JoinwiresParams {
-    const REQUIRED: &'static [(&'static str, &'static str)] = &[("at", AT_REQUIRED)];
-
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let quiet = quiet_ends(p, page);
-            let done = rules::join_wires(p.ledger.document(), &mut p.ids, style, page, self.at, &quiet, MAX_WIRE_POINTS)?;
+            let done = rules::join_wires(p.ledger.document(), &mut p.ids, style, page, self.at.0, &quiet, MAX_WIRE_POINTS)?;
             Ok(match done {
                 rules::Joined::Merged { ops, survivor, removed, at } => {
                     p.apply_edit(pg, "joinwires", "Join wires", ops)?;
@@ -611,29 +515,34 @@ impl Command for JoinwiresParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ChecksParams {
     /// Only these kinds of check.
-    #[serde(default, deserialize_with = "kinds")]
-    #[schemars(with = "Option<Vec<String>>")]
-    kinds: Option<BTreeSet<crate::checks::Kind>>,
+    #[serde(default)]
+    kinds: Option<Vec<String>>,
     /// At most this many (default 200, at most 2000).
-    #[serde(default = "default_checks_limit", deserialize_with = "checks_limit")]
-    limit: usize,
+    #[serde(default)]
+    limit: Option<usize>,
     /// Skip this many (the `next` a previous call gave).
-    #[serde(default, deserialize_with = "checks_after")]
-    after: Option<u64>,
-}
-
-fn default_checks_limit() -> usize {
-    crate::checks::DEFAULT_LIMIT
+    #[serde(default)]
+    after: Option<usize>,
 }
 
 impl Command for ChecksParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let (kinds, limit, after) = (self.kinds, self.limit, self.after.unwrap_or(0) as usize);
+        let kinds = match self.kinds {
+            Some(words) => Some(
+                words
+                    .iter()
+                    .map(|k| crate::checks::Kind::parse(k).ok_or_else(|| err(format!("unknown check kind {k:?}"))))
+                    .collect::<cadcraft_engine::Result<std::collections::BTreeSet<_>>>()?,
+            ),
+            None => None,
+        };
+        let limit = self.limit.unwrap_or(crate::checks::DEFAULT_LIMIT).clamp(1, crate::checks::MAX_LIMIT);
+        let after = self.after.unwrap_or(0);
         on_any_page(s, |p, _| {
             // The project's kept report models (built on first use, then kept from each change).
             p.outputs();
             let doc = p.ledger.document();
-            let outputs = p.outputs.as_ref().ok_or("the report models could not be built")?;
+            let outputs = p.outputs.as_ref().ok_or(CmdError::refused("the report models could not be built"))?;
             let rows: Vec<_> = crate::checks::all_with(doc, p.tolerance, outputs)
                 .into_iter()
                 .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))
@@ -655,32 +564,33 @@ impl Command for ChecksParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct WireParams {
     /// The route: 2 to 10,000 [x, y] points.
-    #[serde(deserialize_with = "points")]
-    #[schemars(with = "Vec<[f64; 2]>")]
-    points: Vec<Pt>,
+    points: Bounded<Point, 2, { MAX_WIRE_POINTS }>,
     /// The wire's potential ("auto" or none: the net's).
-    #[serde(default, deserialize_with = "wire_potential")]
+    #[serde(default)]
     potential: Option<String>,
     /// Join ends that meet other wires (default: the project's `wire.join`).
-    #[serde(default, deserialize_with = "join")]
+    #[serde(default)]
     join: Option<bool>,
     /// The old name of `join`.
-    #[serde(default, deserialize_with = "junction")]
+    #[serde(default)]
     junction: Option<bool>,
     /// The new wire's category, its ID or name ("auto" or none: the net's).
-    #[serde(default, deserialize_with = "wire_category")]
+    #[serde(default)]
     category: Option<String>,
 }
 
 impl Command for WireParams {
-    const REQUIRED: &'static [(&'static str, &'static str)] = &[("points", POINTS_REQUIRED)];
-
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let potential = match not_auto(self.potential) {
+            Some(v) => wiring::valid_text("potential", Some(&v)).map_err(err)?,
+            None => None,
+        };
         let join = match (self.join, self.junction) {
             (Some(a), Some(b)) if a != b => return Err(err("`join` and `junction` disagree; give only `join`")),
             (a, b) => a.or(b),
         };
-        let (points, potential, category) = (self.points, self.potential, self.category);
+        let points: Vec<Pt> = self.points.0.into_iter().map(|p| p.0).collect();
+        let category = not_auto(self.category);
         on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let quiet = quiet_ends(p, page);

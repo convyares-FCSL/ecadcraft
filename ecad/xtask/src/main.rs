@@ -548,6 +548,14 @@ const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-model", 6, 7),
 ];
 
+/// Brief 070: the command files (`crates/ecad-cadcraft/src/cmd`) on their own, as the crate rows:
+/// they reach 0 by the end of 070.
+const CMD_STRING_ERRORS: (usize, usize) = (138, 156);
+
+/// Brief 070: the migration bridges `impl From<String> for CmdError` and `impl From<&'static str>
+/// for CmdError` in ecad-electrical; gone by the end of 070.
+const CMD_ERROR_BRIDGES: usize = 2;
+
 /// Crates [`string_error_violations`] does not count.
 const STRING_ERROR_SKIP: &[&str] = &["ecad-file", "ecad-store", "ecad-xtask"];
 
@@ -596,6 +604,29 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
             out.push(format!("{n}: in STRING_ERROR_ALLOWLIST but not a counted crate; remove the entry"));
         }
     }
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let count_in = |dir: &Path, f: &dyn Fn(&str) -> (usize, usize)| -> Result<(usize, usize), String> {
+        let mut files = Vec::new();
+        rust_files(dir, &mut files);
+        let mut sum = (0, 0);
+        for p in files {
+            let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let (a, b) = f(&text);
+            sum = (sum.0 + a, sum.1 + b);
+        }
+        Ok(sum)
+    };
+    const FIX: &str = "return CmdError (brief 070)";
+    let cmd = "crates/ecad-cadcraft/src/cmd";
+    let (r, e) = count_in(&root.join(cmd), &string_error_counts)?;
+    out.extend(ratchet_problem(cmd, r, CMD_STRING_ERRORS.0, "lines with `Result<_, String>`", FIX));
+    out.extend(ratchet_problem(cmd, e, CMD_STRING_ERRORS.1, "lines with `Err(format!(`", FIX));
+    let bridges = |t: &str| {
+        let code = strip_line_comments(t);
+        (code.lines().filter(|l| l.contains("impl From<String> for CmdError") || l.contains("impl From<&'static str> for CmdError")).count(), 0)
+    };
+    let (b, _) = count_in(&root.join("crates/ecad-electrical/src"), &bridges)?;
+    out.extend(ratchet_problem("ecad-electrical", b, CMD_ERROR_BRIDGES, "CmdError bridges from text", "return a CmdError variant (brief 070)"));
     Ok(out)
 }
 

@@ -295,6 +295,17 @@ pub fn current_number(doc: &Document, choice: &NetChoice) -> Result<String, CmdE
     doc.connectivity().net(id).and_then(|n| wiring::net_number(doc, n)).ok_or(CmdError::refused(msg::NO_NUMBER_TO_FIX))
 }
 
+/// What to do when another net uses the number `wirenumber` was given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Conflict {
+    /// The other net takes this one's number.
+    Swap,
+    /// This net takes the next free number instead.
+    Another,
+    /// The nets are joined with a continuation pair named for the number.
+    Merge,
+}
+
 /// What `wirenumber` did.
 #[derive(Debug, Clone)]
 pub enum Numbered {
@@ -326,10 +337,9 @@ impl Numbered {
 /// number). A number another net uses needs `conflict`: `swap`, `another` or `merge`.
 ///
 /// # Errors
-/// As [`chosen_net`]; a net with no wire; a taken number without (or with an unknown)
-/// `conflict`; a merge that is not sensible or has nowhere to continue from.
+/// As [`chosen_net`]; a net with no wire; a taken number without `conflict`; a merge that is not sensible or has nowhere to continue from.
 pub fn wirenumber(
-    doc: &Document, ids: &mut IdAllocator, style: Style, choice: &NetChoice, value: Option<&str>, conflict: Option<&str>,
+    doc: &Document, ids: &mut IdAllocator, style: Style, choice: &NetChoice, value: Option<&str>, conflict: Option<Conflict>,
 ) -> Result<Numbered, CmdError> {
     let id = chosen_net(doc, choice)?;
     let net = doc.connectivity().net(id).ok_or(CmdError::NotFound(Noun::Net))?.clone();
@@ -368,8 +378,8 @@ pub fn wirenumber(
                 where_words(doc, &other)
             )))
         }
-        Some("another") => Ok(Numbered::Another { ops: wiring::write_ops(doc, &net, &next, true), number: next, conductors }),
-        Some("swap") => {
+        Some(Conflict::Another) => Ok(Numbered::Another { ops: wiring::write_ops(doc, &net, &next, true), number: next, conductors }),
+        Some(Conflict::Swap) => {
             if others.len() > 1 {
                 return Err(CmdError::refused(format!("{v} is used by {} other nets; choose another number.", others.len())));
             }
@@ -378,7 +388,7 @@ pub fn wirenumber(
             ops.extend(wiring::write_ops(doc, &other, &theirs, wiring::net_fixed(&other)));
             Ok(Numbered::Swapped { ops, number: v, conductors, swapped: theirs })
         }
-        Some("merge") => {
+        Some(Conflict::Merge) => {
             sense.map_err(|why| CmdError::refused(format!("The nets can't be merged: {why}.")))?;
             let name = wires::valid_name(&v)
                 .map_err(|_| CmdError::refused(format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)))?;
@@ -403,7 +413,6 @@ pub fn wirenumber(
             }
             Ok(Numbered::Merged { ops, number: v, continuations })
         }
-        Some(o) => Err(CmdError::input(format!("`conflict` must be \"swap\", \"another\" or \"merge\", not {o:?}"))),
     }
 }
 
