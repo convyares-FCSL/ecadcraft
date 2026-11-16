@@ -128,7 +128,7 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
             rotation: l.rotation,
             width_factor: 1.0,
             oblique: 0.0,
-            style: crate::text_style::STYLE_REGULAR.into(),
+            style: crate::text_style::PLACEHOLDER_STYLE.into(),
             halign: HAlign::Center,
             valign: VAlign::Bottom,
         }),

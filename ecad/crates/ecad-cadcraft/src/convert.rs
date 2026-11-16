@@ -90,7 +90,7 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
                 rotation: *rotation,
                 width_factor: 1.0,
                 oblique: 0.0,
-                style: "Standard".into(),
+                style: crate::text_style::PLACEHOLDER_STYLE.into(),
                 halign: h,
                 valign: v,
             })

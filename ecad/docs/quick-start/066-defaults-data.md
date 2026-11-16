@@ -51,3 +51,16 @@ Nothing else on a page moves: every other built-in has the value it had before.
 - References, contact-table texts and the cable look keep their 2.5 mm text sizes (design 066
   §2.4; the reference text style says 2.0 mm, and which one wins is an open question for the
   owner).
+
+## 066d: drawn text follows its style
+
+Every text drawn on a page now reads its text style (Settings ▸ Standards ▸ Text styles): change
+a style's height, weight, font or colour and the texts of that kind move with it. Visible
+changes: continuation references and cable reference ends are 2.5 mm (was 2.0); contact
+cross-references, contact tables and PLC card texts take their style's font and weight (a bold
+tag style now draws the PLC card tag bold); strip page terminal labels and locations use the
+connection point label and location label styles; the house title block's page number and
+other fields take their styles' weight; the cable look's label boxes and flags are laid out for
+the cable text height (1.6 mm, so they are smaller). To try: open Standards, set the
+`reference` text style to 4 mm, and see the cross-references under contacts grow.
+

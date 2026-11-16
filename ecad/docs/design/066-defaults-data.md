@@ -75,21 +75,45 @@ value lost" bug. Each becomes a registry entry with its value in the data, and i
 | Terminal strip drawing look (box 8 × 24, lane pitches, stagger) | `strip_page.rs:52-74` | Look values and tuning are mixed in one block; separating them is its own small brief. |
 | Drawing line weights (symbol 0.35, control wire 0.4, power 0.6, frame 0.5) | `ecad-tokens/src/line.rs` | Owner-ruled design tokens with a doc-sync test; a company line-weight table belongs with plot styles. |
 
-### 2.4 Hard-coded text heights that bypass their style (bugs to fix here)
+### 2.4 Drawn text reads its style (066d; owner, 2026-11-16)
 
-These draw text at a fixed height although a text style for that kind exists. A company that
-changes the style sees no effect. Each reads its style instead (066a):
+Owner ruling: drawn text never ignores its style. Every place drawing or layout code puts text on
+a page reads its `TextKind`'s `TextStyle` (height, weight, font through `style_name`, colour);
+no literal heights, weights or font names remain outside `styles/`, `defaults/`, the text style
+modules and the TOML. `cargo xtask layers` enforces it at **0** (`drawn_text_violations`).
 
-| Constant | Style it should read |
-| --- | --- |
-| `references.rs` `TEXT_HEIGHT_MM` 2.5 | `reference` (built-in 2.0) |
-| `xref.rs` `XREF_TEXT_MM` 2.5 | `reference` |
-| `devices.rs` `TAG_HEIGHT` 3.5 | `tag` (2.5) |
-| `look.rs` `LABEL_HEIGHT` 2.5 | the style of what it labels |
+| Text | Where | Kind | Before 066d |
+| --- | --- | --- | --- |
+| Contact cross-reference, connector member references | `xref.rs` | Reference | `XREF_TEXT_MM` 2.5, literal "Standard" |
+| Contact table rows | `xref.rs` | Table | style height, literal "Standard" |
+| Continuation other-end reference | `continuations.rs` | Reference | literal "Standard" |
+| Continuation caption | `continuations.rs` | ContinuationCaption | literal "Standard" |
+| PLC card name block, type text | `plc/look.rs` | Tag / PartNumber | literal "Standard" (bold tag drawn regular) |
+| PLC card caption | `plc/mod.rs` | PartNumber | Description height, PartNumber style |
+| Cable marker text height (pick box) | `references.rs` | Reference | `TEXT_HEIGHT_MM` 2.5 |
+| Cable look layout: label spacing, box pitch and padding, flags, slash labels | `look.rs`, `words.rs` | CableText | `LABEL_HEIGHT` 2.5 |
+| Free text | `convert.rs` | Free (font, weight; height and colour the user's) | literal "Standard" |
+| "PAGE UNAVAILABLE" placeholder | `project.rs` | Free (overseer ruling 3) | 5.0, "Standard" |
+| Location label in a box style of its own | `draw/locations.rs` | LocationLabel, the box's style as a whole | literal bold/regular names |
+| Strip page terminal label | `strip_page.rs` | PointLabel | Table |
+| Strip page location in the tag box | `strip_page.rs` | LocationLabel | Table |
+| House title block: Page, Rev, Title, Drawing no., Project, values, company line | `title_block/house.rs` | TitlePage, TitleRev, TitleMain, TitleValue, TitleCaption weights | literal `bold: true` |
+| Cover block titles, body, column heads, customer line | `draw/front.rs` | Cover × `[layout]` factors 0.5, 0.35, 0.24, 0.38 (ruling 5) | literals 5.0, 3.5, 2.4, 3.8 |
+| Device texts, wire labels, report tables, I/O list, rack tiles, frame grid, title captions, cover heading, cable texts | various | their kinds | already read their styles |
 
-Where a constant differs from its style today, the worker keeps what is drawn (adds a built-in style
-with that value, or leaves the constant with a comment) and reports it; nothing else on a page moves
-in 066a.
+**Reference default:** 2.5 mm (ruling 6), one value in `text.toml`: contact cross-references, on
+almost every schematic page, keep their size; continuation references and cable reference ends
+move from 2.0 to 2.5.
+
+**Exempt by location** (the guard's `DRAWN_TEXT_EXEMPT`): symbol definitions and builders
+(`ecad-electrical/src/symbols*`: glyph text is line art in symbol units, ruling 1), text inside a
+title block logo (graphics, ruling 2), user and DXF-imported title block items (their sizes are user
+data, ruling 4; `draw/title_block/dxf.rs`), screen-only overlays (`interact/`, pixels), commands,
+and the style modules themselves. Base text entities are built with
+`text_style::PLACEHOLDER_STYLE`, which every drawn text overwrites with its kind's style.
+
+Not changed: the revision rows' fill is a named fit bound (`ROW_FILL`), not a size; the strip
+tag's size is the TableHeading style times the registry's `strippage` tag factor (data).
 
 ### 2.5 Stays code
 

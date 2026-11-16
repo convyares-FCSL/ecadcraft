@@ -51,7 +51,7 @@ const IN_TARGET_MM: f64 = 45.0;
 /// `ecad.dot-size`: a connection dot's radius.
 const DOT_MM: f64 = 0.5;
 /// The area height (mm) at which the vertical layout is drawn at full size (§6.2).
-const FULL_HEIGHT_MM: f64 = 260.0;
+const FULL_AREA_MM: f64 = 260.0;
 /// Below this area height the band and leads scale down.
 const SCALE_BELOW_MM: f64 = 160.0;
 
@@ -205,7 +205,7 @@ pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f
         description: look(TextKind::Description),
     };
     // §6.2: a short area scales the band and the leads (texts keep their heights).
-    let f = if t - b < SCALE_BELOW_MM { ((t - b) / FULL_HEIGHT_MM).clamp(0.5, 1.0) } else { 1.0 };
+    let f = if t - b < SCALE_BELOW_MM { ((t - b) / FULL_AREA_MM).clamp(0.5, 1.0) } else { 1.0 };
     let yc = t - g.band_y * f;
     let lead = g.lead * f;
     match sheet_at(doc, page, o, i) {
