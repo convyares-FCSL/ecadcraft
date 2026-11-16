@@ -1,6 +1,6 @@
 [package]
 name = "ecad-cli"
-description = "ECAD's command-line tool: `ecad upgrade` (version 1 to 2 converter)"
+description = "ECAD's command-line tool `ecad` (no commands in this version)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,11 +14,8 @@ name = "ecad"
 path = "src/main.rs"
 
 [dependencies]
-ecad-file = { workspace = true }
 # Verify mode: `main` passes the ECAD_VERIFY_INVARIANTS switch to the model (design 065 §3.1).
 ecad-model = { workspace = true }
 
 [dev-dependencies]
 ecad-model = { workspace = true, features = ["verify-invariants"] }
-ecad-store = { workspace = true }
-serde_json = { workspace = true }

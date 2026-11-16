@@ -16,8 +16,7 @@ line, and a web page served on this machine. It never ships, and no product crat
 
 ## Must not depend on
 Dev may use any crate; this one uses `ecad-file`, `ecad-model` and a WebSocket crate. Nothing here
-writes a project file. Left out: drawing checks, version 1 files (use `ecad upgrade`) and
-attaching to a running app.
+writes a project file. Left out: drawing checks and attaching to a running app.
 
 ## Key types
 `source::Source`, `source::FileSource`, `protocol::handle`.

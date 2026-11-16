@@ -31,7 +31,7 @@ fn a_merge_row_keeps_a_newer_builds_field_and_an_unknown_version_kind_is_kept() 
     let mut f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let mut proj = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 2_000).unwrap().0;
+    let mut proj = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap().0;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let main = proj.branch();
     let fork = f.ledger.head();

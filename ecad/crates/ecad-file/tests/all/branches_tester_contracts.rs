@@ -50,7 +50,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).map_err(|e| e.to_string())?;
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, "crash", 16).map_err(|e| e.to_string())?;
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     if let Some(c) = cut {
         disk.cut_after(c);
@@ -286,7 +286,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
         let mut f = fixture();
         let p = dir.path("p.ecad");
         let store = Store::create(&p).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 16).unwrap();
+        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut rng = Rng::new(5);
         let main = proj.branch();
@@ -357,7 +357,7 @@ fn a_stale_or_odd_meta_active_opens_on_main() {
     let f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 2_000).unwrap();
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap();
     let main = proj.branch();
     let (b, _) = proj.create_branch("Gone", main, f.ledger.head(), None, None).unwrap();
     proj.set_branch_open(b, false).unwrap();
@@ -385,7 +385,7 @@ fn a_reader_opened_earlier_reads_a_branch_written_later() {
     let mut f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 16).unwrap();
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let main = proj.branch();
     let reader = ProjectV2::open(Store::open(&p, false).unwrap(), 2, "reader").unwrap();

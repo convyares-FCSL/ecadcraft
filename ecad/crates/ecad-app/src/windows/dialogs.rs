@@ -200,38 +200,6 @@ impl App {
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context) {
         if let Some(h) = &self.held {
             self.close_dialog(ctx, h.title.clone(), h.changes);
-        } else if let Some((source, output)) = self.convert_offer.clone() {
-            let shown = Dialog::new(egui::Id::unique("ecad_app_convert"), "Convert this project?", "ecad.convert").medium().show(
-                ctx,
-                |ui| {
-                    prim::body(ui, &format!("{source} is a version 1 project file. This version saves projects in version 2."), false);
-                    prim::body(
-                        ui,
-                        &format!(
-                            "Converting writes a new file, {output}, checks it by replaying both, and opens it. \
-                             The original file is left untouched."
-                        ),
-                        true,
-                    );
-                },
-                |ui| {
-                    if action(ui, "Convert and open", Kind::Primary, "Convert and open", None).clicked() {
-                        Some(true)
-                    } else {
-                        action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked().then_some(false)
-                    }
-                },
-            );
-            let answer = shown.footer.or(shown.closed.then_some(false));
-            match answer {
-                Some(true) => {
-                    if let Err(e) = self.accept_conversion() {
-                        self.notice = Some(format!("The project was not converted.\n\n{e}"));
-                    }
-                }
-                Some(false) => self.decline_conversion(),
-                None => {}
-            }
         } else if self.dialog.is_some() {
             self.file_dialog(ctx);
         } else if self.name_box.is_some() {

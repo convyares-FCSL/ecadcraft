@@ -1,6 +1,6 @@
 //! Version 2 project files on disk (native only; EEP-0005 §6.4, §7).
 //!
-//! - **Open** takes the writer lock (`<file>.lock`, as version 1); redb's own lock is taken too.
+//! - **Open** takes the writer lock (`<file>.lock`); redb's own lock is taken too.
 //!   If another session holds the lock, the file opens read-only and follows nothing: a second
 //!   opener reads the last committed state. A lock left by a session that crashed is reclaimed
 //!   and reported. redb's quick-repair makes reopening after a crash fast.
@@ -19,7 +19,62 @@ use ecad_store::disk::{self, LockAttempt, WriterLock};
 use super::project::{OpenedV2, ProjectV2, ReportV2, SaveErrorV2, SavedV2};
 use super::schema::DEFAULT_SNAPSHOT_EVERY;
 use super::store::{Store, StoreError};
-use crate::disk::{JUST_ENDED, ReadOnly, holder_record};
+
+/// Why a project cannot be saved to its own file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReadOnly {
+    /// Damage was found on open; the file is preserved as it is (see the open report).
+    Damaged,
+    /// Another session is editing the file (it holds the writer lock).
+    Locked {
+        /// What that session recorded about itself; always `None` where the system cannot show
+        /// it ([`ecad_store::disk::HOLDER_SHOWN`]: not on Windows).
+        holder: Option<String>,
+    },
+    /// No writer lock could be taken (for example the folder cannot be written), so nothing is
+    /// known about other sessions; this is not another session editing.
+    NoLock(String),
+    /// The file itself cannot be opened for writing (a read-only file, or one this user may not
+    /// change).
+    NotWritable(String),
+}
+
+/// Added wherever another session is said to be editing a file: the lock of a session that has
+/// just ended (or was killed) can take a moment to be released, notably on Windows.
+pub const JUST_ENDED: &str = "if that session has just ended, it may take a moment to release the file; try again shortly";
+
+impl std::fmt::Display for ReadOnly {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadOnly::Damaged => f.write_str("the file is damaged and is kept exactly as it is"),
+            ReadOnly::Locked { holder } => {
+                write!(f, "another session is editing it{}; {JUST_ENDED}", holder_text(holder.as_deref()))
+            }
+            ReadOnly::NoLock(e) => write!(f, "no writer lock could be taken ({e}), so it cannot be saved safely"),
+            ReadOnly::NotWritable(e) => write!(f, "the file cannot be written ({e})"),
+        }
+    }
+}
+
+/// What a writer records in the lock file about itself, stamped with ecad-store's clock.
+pub fn holder_record(writer: &str) -> String {
+    disk::holder_record(writer, disk::now_secs())
+}
+
+/// `secs` since 1970 as a UTC date and time (kept here for callers; it lives in ecad-store).
+pub use ecad_store::disk::utc;
+
+/// redb's file magic: every project file starts with it.
+pub const MAGIC: &[u8] = b"redb";
+
+/// Whether the file at `path` starts like a project file (a redb database). A file that cannot
+/// be read is an error; opening reports what is wrong with one that does start like a project.
+///
+/// # Errors
+/// The file cannot be read.
+pub fn starts_like_project(path: &Path) -> std::io::Result<bool> {
+    Ok(disk::read_head(path, MAGIC.len())?.starts_with(MAGIC))
+}
 
 /// Why opening or saving on disk did not complete. The in-memory project is then unchanged and
 /// nothing more is acknowledged than before.
@@ -190,7 +245,7 @@ impl DiskProjectV2 {
                     store.compact().map_err(|e| before("compacting the temporary file", e.to_string()))?;
                 }
                 None => {
-                    let (p, _) = ProjectV2::create(store, project, ledger, None, None, created_ms, writer, every)
+                    let (p, _) = ProjectV2::create(store, project, ledger, created_ms, writer, every)
                         .map_err(|e| before("writing the temporary file", e.to_string()))?;
                     drop(p);
                     store = Store::open(&temp, true).map_err(|e| before("reopening the temporary file", e.to_string()))?;

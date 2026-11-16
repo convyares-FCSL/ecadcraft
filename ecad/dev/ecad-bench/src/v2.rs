@@ -59,9 +59,7 @@ pub fn write(g: &crate::Generated, path: &Path) -> Result<(), String> {
     use ecad_file::v2::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
     crate::measure::remove(path);
     let written = Store::create(path).map_err(|e| e.to_string()).and_then(|store| {
-        ProjectV2::create(store, g.project, &g.ledger, None, None, None, crate::generate::WRITER, DEFAULT_SNAPSHOT_EVERY)
-            .map(drop)
-            .map_err(|e| e.to_string())
+        ProjectV2::create(store, g.project, &g.ledger, None, crate::generate::WRITER, DEFAULT_SNAPSHOT_EVERY).map(drop).map_err(|e| e.to_string())
     });
     written.map_err(|e| {
         crate::measure::remove(path);

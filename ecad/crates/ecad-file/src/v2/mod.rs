@@ -14,8 +14,6 @@
 
 pub mod chunks;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod convert;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 pub mod pack;
 pub mod project;

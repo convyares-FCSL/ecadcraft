@@ -86,7 +86,7 @@ fn a_title_block_round_trips_through_a_project_file_and_its_snapshots() {
     for (name, every) in [("snap.ecad", 16), ("log.ecad", 1_000_000)] {
         let p = dir.path(name);
         let store = Store::create(&p).unwrap();
-        let proj = ProjectV2::create(store, PROJECT, &ledger, None, None, Some(1), WRITER, every).unwrap().0;
+        let proj = ProjectV2::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
         drop(proj);
         let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(o.ledger.document(), ledger.document(), "{name}");

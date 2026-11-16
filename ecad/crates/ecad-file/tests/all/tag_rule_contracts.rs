@@ -40,7 +40,7 @@ fn history() -> Ledger {
 
 fn create(path: &Path, ledger: &Ledger) {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, None, None, Some(1), WRITER, 16).unwrap();
+    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, 16).unwrap();
 }
 
 /// The marks as a build before brief 026 counted them (rule 1): no cable tags, no resets.

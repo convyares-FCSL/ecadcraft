@@ -11,7 +11,6 @@
 //! - Damage at rest (bytes changed inside the stored file) in a transaction row, a chunk, the
 //!   row a snapshot stands on, and a snapshot's recorded stacks: detected, never loaded silently;
 //!   EEP-0005 §5.8 says the project then opens read-only with a report.
-//! - Converting a version 1 file cut short at any point.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::io;
@@ -108,7 +107,7 @@ fn sim(every: u64, before: u64, rng: &mut Rng) -> Sim {
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, WRITER, every).unwrap();
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, every).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     for _ in 0..before {
@@ -362,7 +361,7 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
         let disk = Flaky::default();
         let mut f = fixture();
         let store = Store::with_backend(disk.clone()).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, WRITER, 16).unwrap();
+        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut ledger = f.ledger;
         lines(&mut ledger, &mut rng, 5);
@@ -552,7 +551,7 @@ fn undo_and_redo_across_the_stack_cap_after_a_power_cut() {
         prop(&mut f.ledger, i);
     }
     let store = Store::with_backend(disk.clone()).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, WRITER, 500).unwrap();
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, 500).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     for _ in 0..1_060 {
@@ -762,92 +761,6 @@ fn a_damaged_stack_record_in_a_snapshot_opens_read_only_not_refused() {
     assert_eq!(o.ledger.document(), &rest.ledger.state_at(o.ledger.head()).unwrap());
 }
 
-// --- 7. Converting a version 1 file cut short -------------------------------------------------
-
-/// A version 1 file cut at every line end and at points inside lines converts its sound prefix
-/// (or is refused); the result holds exactly the complete transactions, with the version 1 chain
-/// value of that prefix, the same document, and the source is never changed. A refused
-/// conversion leaves no output.
-#[test]
-fn a_version_1_file_cut_short_converts_its_complete_prefix_or_is_refused_quick() {
-    v1_cut(5);
-}
-
-#[test]
-#[ignore = "slow: a conversion for every cut"]
-fn a_version_1_file_cut_short_converts_its_complete_prefix_or_is_refused() {
-    v1_cut(1);
-}
-
-/// Every `stride`-th line's cut points.
-fn v1_cut(stride: usize) {
-    use ecad_file::ProjectFile;
-    use ecad_store::{Medium, MemoryMedium};
-    let mut f = fixture();
-    let mut rng = Rng::new(0x7121);
-    lines(&mut f.ledger, &mut rng, 12);
-    name_version(&mut f.ledger, "late");
-    let file = ProjectFile::create(MemoryMedium::default(), PROJECT, &mut f.ledger, Some(1), WRITER).unwrap();
-    let bytes = file.medium().read_all().unwrap();
-    let ends: Vec<usize> = bytes.iter().enumerate().filter(|(_, b)| **b == b'\n').map(|(i, _)| i + 1).collect();
-    let mut cuts: Vec<usize> = Vec::new();
-    for w in ends.windows(2).step_by(stride) {
-        let (a, b) = (w[0], w[1]);
-        cuts.extend([a, a + 1, (a + b) / 2, b - 2, b - 1]);
-    }
-    cuts.extend([1, ends[0] / 2, ends[0] - 1]);
-    cuts.sort_unstable();
-    cuts.dedup();
-    let dir = TempDir::new("v1-cut");
-    let mut outcomes = std::collections::BTreeMap::<&str, u64>::new();
-    let mut failures = Vec::new();
-    for (k, cut) in cuts.iter().enumerate() {
-        let src = dir.path(&format!("cut{k}.ecad"));
-        let out = dir.path(&format!("cut{k}.v2.ecad"));
-        let cut_bytes = bytes[..*cut].to_vec();
-        std::fs::write(&src, &cut_bytes).unwrap();
-        let v1 = ecad_file::open_project(&cut_bytes, 0);
-        let result = ecad_file::v2::convert::convert_file(&src, Some(&out), WRITER);
-        if std::fs::read(&src).unwrap() != cut_bytes {
-            failures.push(format!("cut {cut}: the source changed"));
-        }
-        match result {
-            Err(e) => {
-                *outcomes.entry("refused").or_default() += 1;
-                if out.exists() {
-                    failures.push(format!("cut {cut}: refused ({e}) but an output was left"));
-                }
-                if let Ok(v1) = &v1
-                    && !matches!(v1.report.outcome, ecad_file::Outcome::Corrupt(_))
-                    && v1.ledger.head() > 0
-                {
-                    failures.push(format!("cut {cut}: version 1 reads {} transactions, yet refused: {e}", v1.ledger.head()));
-                }
-            }
-            Ok(rep) => {
-                *outcomes.entry(if rep.omitted.is_some() { "converted the prefix" } else { "converted whole" }).or_default() += 1;
-                let complete = ends.iter().filter(|e| **e <= *cut).count().saturating_sub(1) as u64;
-                let v1 = v1.unwrap();
-                let o = ProjectV2::open(Store::open(&out, false).unwrap(), 1, WRITER).unwrap();
-                if rep.transactions != complete && rep.transactions != v1.ledger.head() {
-                    failures.push(format!("cut {cut}: {} transactions converted, {complete} complete", rep.transactions));
-                }
-                if o.ledger.head() != v1.ledger.head() || o.ledger.document() != v1.ledger.document() {
-                    failures.push(format!("cut {cut}: the converted file differs from the version 1 prefix"));
-                }
-                if rep.source_hash != ecad_file::chain::hex(&v1.chain_head) || o.project.link_v1().map(|l| l.transactions) != Some(v1.ledger.head()) {
-                    failures.push(format!("cut {cut}: link_v1 does not name the prefix"));
-                }
-                if o.report.damage.is_some() {
-                    failures.push(format!("cut {cut}: damage {:?}", o.report.damage));
-                }
-            }
-        }
-    }
-    eprintln!("version 1 cut short: {} cuts, {outcomes:?}", cuts.len());
-    assert!(failures.is_empty(), "{failures:#?}");
-}
-
 /// After a save fails and the engine refuses further saves on that handle, the work is not lost:
 /// Save As (copy the file's rows into a new file, open it, save the pending transactions, as
 /// `DiskProjectV2::save_as` does) keeps everything in memory.
@@ -859,7 +772,7 @@ fn after_a_failed_save_the_work_can_still_be_saved_as_a_new_file() {
         let disk = Flaky::default();
         let mut f = fixture();
         let store = Store::with_backend(disk.clone()).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, WRITER, 16).unwrap();
+        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut ledger = f.ledger;
         lines(&mut ledger, &mut rng, 25);

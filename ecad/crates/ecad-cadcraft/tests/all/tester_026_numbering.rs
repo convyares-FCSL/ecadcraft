@@ -545,16 +545,16 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_tw
 
 // ---------------------------------------------------------------- 5, 6. save, reopen, old projects
 
-/// A project written before 026 (the version 1 golden file) opens with no change, no transaction
+/// A project written before 026 (the golden file) opens with no change, no transaction
 /// and nothing provisional, and the numbering read records nothing.
 #[test]
 fn a_pre_026_golden_project_opens_unchanged() {
     let dir = std::env::temp_dir().join(format!("ecad-t026-gold-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
-    let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../ecad-file/tests/golden/project-v1.ecad");
+    let src = concat!(env!("CARGO_MANIFEST_DIR"), "/../ecad-file/tests/golden/project.ecad");
     let v1 = dir.join("old.ecad");
     std::fs::copy(src, &v1).unwrap();
-    let (_, path) = ecad_cadcraft::file::convert(&v1.display().to_string(), None, "tester-026").unwrap();
+    let path = v1.display().to_string();
     ecad_cadcraft::install();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 80).unwrap();

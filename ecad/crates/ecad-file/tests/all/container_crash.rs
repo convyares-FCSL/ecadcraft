@@ -63,7 +63,7 @@ fn power_round(seed: u64, mode: CrashMode, span: Option<u64>) -> std::result::Re
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).map_err(|e| e.to_string())?;
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, None, None, "crash", 16).map_err(|e| e.to_string())?;
+    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     let mut acked = (ledger.head(), ledger.document().clone());

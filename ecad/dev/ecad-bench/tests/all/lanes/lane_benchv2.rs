@@ -1,10 +1,10 @@
-//! The bench writes its projects straight to version 2 (fix/bench-direct-v2) instead of writing a
-//! version 1 file and converting it. These tests prove the two routes give the same project: the
-//! same document, the same number of pages, components, conductors and history entries.
+//! The bench writes its projects straight to the project file (fix/bench-direct-v2). These tests
+//! prove the file holds the generated project: the same document, pages, components, conductors
+//! and history entries.
 
 use std::path::{Path, PathBuf};
 
-use ecad_bench::generate::{Generated, Tier, Variant, generate, tier};
+use ecad_bench::generate::{Generated, Tier, Variant, generate};
 use ecad_file::v2::disk::DiskProjectV2;
 use ecad_model::Document;
 
@@ -34,54 +34,25 @@ fn shape(path: &Path) -> Shape {
     Shape { pages: doc.pages.len(), components: doc.components.len(), conductors: doc.conductors.len(), history: o.ledger.head(), document: doc }
 }
 
-/// The old route: a version 1 file, converted.
-fn converted(g: &Generated, dir: &Path) -> PathBuf {
-    let v1 = dir.join(format!("{}-{}.v1.ecad", g.tier.name, g.variant.name()));
-    std::fs::write(&v1, g.file_bytes().unwrap()).unwrap();
-    let out = dir.join(format!("{}-{}.converted.ecad", g.tier.name, g.variant.name()));
-    ecad_file::v2::convert::convert_file(&v1, Some(&out), "lane_benchv2").unwrap();
-    out
-}
-
-/// The new route: written straight to version 2.
+/// Written straight to the project file, as the bench does.
 fn direct(g: &Generated, dir: &Path) -> PathBuf {
     let out = dir.join(format!("{}-{}.ecad", g.tier.name, g.variant.name()));
     ecad_bench::v2::write(g, &out).unwrap();
     out
 }
 
-fn same_both_ways(t: Tier, tag: &str) -> Vec<Shape> {
-    let d = dir(tag);
-    let mut shapes = Vec::new();
+#[test]
+fn a_project_written_straight_to_the_file_matches_the_generated_one() {
+    let d = dir("tiny");
     for variant in [Variant::Lean, Variant::Churned] {
-        let g = generate(t, variant).unwrap();
-        let old = shape(&converted(&g, &d));
-        let new = shape(&direct(&g, &d));
-        assert_eq!(new.pages, old.pages, "{} {}: pages", t.name, variant.name());
-        assert_eq!(new.components, old.components, "{} {}: components", t.name, variant.name());
-        assert_eq!(new.conductors, old.conductors, "{} {}: conductors", t.name, variant.name());
-        assert_eq!(new.history, old.history, "{} {}: history entries", t.name, variant.name());
-        assert!(new.document == old.document, "{} {}: the documents differ", t.name, variant.name());
-        assert_eq!(new.history, g.ledger.head());
-        eprintln!(
-            "{} {}: {} pages, {} components, {} conductors, {} history entries (both routes)",
-            t.name,
-            variant.name(),
-            new.pages,
-            new.components,
-            new.conductors,
-            new.history
-        );
-        shapes.push(new);
+        let g = generate(TINY, variant).unwrap();
+        let s = shape(&direct(&g, &d));
+        let doc = g.ledger.document();
+        assert_eq!((s.pages, s.components, s.conductors), (doc.pages.len(), doc.components.len(), doc.conductors.len()), "{}", variant.name());
+        assert_eq!(s.history, g.ledger.head(), "{}: history entries", variant.name());
+        assert!(&s.document == doc, "{}: the documents differ", variant.name());
     }
     let _ = std::fs::remove_dir_all(&d);
-    shapes
-}
-
-#[test]
-fn a_project_written_straight_to_version_2_matches_the_converted_one() {
-    let shapes = same_both_ways(TINY, "tiny");
-    assert_eq!(shapes.len(), 2);
 }
 
 #[test]
@@ -102,27 +73,13 @@ fn every_transaction_written_straight_to_version_2_matches_the_generated_history
 fn writing_over_a_stale_file_regenerates_it() {
     let d = dir("stale");
     let path = d.join("tiny-lean.ecad");
-    // A version 1 file from an older build at the bench's file name.
+    // Something else from an older build at the bench's file name.
     let g = generate(TINY, Variant::Lean).unwrap();
-    std::fs::write(&path, g.file_bytes().unwrap()).unwrap();
+    std::fs::write(&path, b"{\"stale\": true}\n").unwrap();
     ecad_bench::v2::write(&g, &path).unwrap();
-    assert_eq!(ecad_file::v2::convert::sniff(&path).unwrap(), ecad_file::v2::convert::Major::V2);
+    assert!(ecad_file::v2::disk::starts_like_project(&path).unwrap());
     assert_eq!(shape(&path).history, g.ledger.head());
     let _ = std::fs::remove_dir_all(&d);
-}
-
-// One test per tier (owner, 2026-11-14), so the QA gate's nextest jobs run them at the same time:
-// together they took 24 min on CI, nearly all of it the medium tier.
-#[test]
-#[ignore = "slow: generates the small tier and converts it the old way"]
-fn the_small_tier_is_the_same_both_ways() {
-    same_both_ways(tier("small").unwrap(), "small");
-}
-
-#[test]
-#[ignore = "slow: generates the medium tier and converts it the old way, about 20 min on CI"]
-fn the_medium_tier_is_the_same_both_ways() {
-    same_both_ways(tier("medium").unwrap(), "medium");
 }
 
 /// The ccont row's own cable must not share a tag with a generated cable: on large, `-W932` was

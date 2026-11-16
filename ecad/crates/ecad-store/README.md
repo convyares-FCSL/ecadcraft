@@ -11,7 +11,8 @@ randomness). It does not know what the bytes mean; that is `ecad-file`.
 - `Medium` (trait): append, flush, truncate and read. `MemoryMedium`: an in-memory medium that can be made to fail, for tests.
 - `disk`: `FileMedium` (a file as a medium), `WriterLock` (makes one session the writer), atomic replacement (temporary file, rename, folder flush), and the disk and clock reads that `ecad-file` needs.
 - `random_u128`: the system's randomness, for new ids.
-- `power`: a storage backend that simulates power loss, for the version 2 container's crash tests.
+- `MemoryBackend`: a redb storage backend in memory, shared by its clones, that can be made to fail once (tests keep a real project file without a disk).
+- `power`: a storage backend that simulates power loss, for the container's crash tests.
 
 ## Must not depend on
 Core rules: no `cadcraft-*`, no UI crate, nothing above Core. In Core it is the only crate where

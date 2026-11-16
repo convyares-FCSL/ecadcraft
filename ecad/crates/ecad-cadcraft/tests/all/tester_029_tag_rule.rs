@@ -55,7 +55,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     )
     .unwrap();
     l.commit(Author::User, "Delete", vec![Op::DeleteCable { id: w2, cable: Cable { properties: tagged("-W02"), members: Vec::new() } }]).unwrap();
-    ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, None, None, Some(1), "tester 029", 16).unwrap();
+    ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "tester 029", 16).unwrap();
     // As a build before 026 wrote it: device marks only (-K, -X), no rule in the row.
     {
         let store = Store::open(&path, true).unwrap();

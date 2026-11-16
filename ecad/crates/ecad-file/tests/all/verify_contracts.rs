@@ -49,7 +49,7 @@ fn build(name: &str) -> Fixture2 {
     let path = dir.path("p.ecad");
     let mut proj = {
         let store = Store::create(&path).unwrap();
-        ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, EVERY).unwrap().0
+        ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0
     };
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     for i in 0..20 {

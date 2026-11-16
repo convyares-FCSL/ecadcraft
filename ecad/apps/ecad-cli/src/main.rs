@@ -1,4 +1,4 @@
-//! `ecad`: `ecad upgrade <file>` (see [`ecad_cli::USAGE`]).
+//! `ecad` (see [`ecad_cli::USAGE`]).
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 

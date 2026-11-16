@@ -149,30 +149,17 @@ fn classify_head(name: &str, size: u64, head: &[u8]) -> Option<Problem> {
             format!("Open `{open}` instead."),
         ));
     }
-    match ecad_file::v2::convert::sniff_bytes(head) {
-        ecad_file::v2::convert::Major::V2 => None,
-        ecad_file::v2::convert::Major::V1 => {
-            let text = String::from_utf8_lossy(head);
-            if text.contains("\"ecad-inspect/") {
-                return Some(Problem::new(
-                    "snapshot",
-                    "This is an inspector snapshot, not a project file.",
-                    "The page opens it in Snapshots mode itself.",
-                ));
-            }
-            let stem = name.strip_suffix(".ecad").unwrap_or(name);
-            Some(Problem::new(
-                "version-1",
-                "This is a version 1 project file; the inspector reads version 2.",
-                format!("Upgrade a copy: `ecad upgrade {name}` writes `{stem}.v2.ecad` beside it and never changes the original."),
-            ))
-        }
-        ecad_file::v2::convert::Major::Unknown => Some(Problem::new(
-            "not-ecad",
-            format!("Not an ECAD project file (it starts with `{}`).", hex(head.get(..4).unwrap_or(head))),
-            "Open a `.ecad` file.",
-        )),
+    if head.starts_with(ecad_file::v2::disk::MAGIC) {
+        return None;
     }
+    if head.first() == Some(&b'{') && String::from_utf8_lossy(head).contains("\"ecad-inspect/") {
+        return Some(Problem::new("snapshot", "This is an inspector snapshot, not a project file.", "The page opens it in Snapshots mode itself."));
+    }
+    Some(Problem::new(
+        "not-ecad",
+        format!("Not an ECAD project file (it starts with `{}`).", hex(head.get(..4).unwrap_or(head))),
+        "Open a `.ecad` file.",
+    ))
 }
 
 /// What the meta rows say (design 029 §6 rows 5–7).

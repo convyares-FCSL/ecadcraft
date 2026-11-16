@@ -14,7 +14,7 @@ use redb::{ReadableDatabase, ReadableTable};
 
 fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, None, None, Some(1), WRITER, every).unwrap().0
+    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
 fn open(path: &std::path::Path) -> ecad_file::v2::OpenedV2 {

@@ -14,13 +14,12 @@ use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
-use ecad_file::{OpenReport, ProjectFile, SaveOutcome};
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
     Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
     ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
-use ecad_store::MemoryMedium;
+use ecad_store::MemoryBackend;
 use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
@@ -445,8 +444,8 @@ pub struct Faults {
 /// Whether a project can be saved, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Persistence {
-    /// Automated tests only: saving writes the real `.ecad` format (`ecad-file`) to an
-    /// in-memory medium and marks the project clean. No file is written to disk.
+    /// Automated tests only: saving writes the real `.ecad` format (`ecad-file`) to a database
+    /// in memory and marks the project clean. No file is written to disk.
     TestStore,
     /// No persistence: Save and Save As report that saving is unavailable, change nothing and
     /// never mark the project clean.
@@ -456,57 +455,61 @@ pub enum Persistence {
     File,
 }
 
-/// The test-only project file: the real `.ecad` format (`ecad-file`) over an in-memory medium
-/// (persistence stage 1). It is written on the first save; until then it is an empty medium.
-#[derive(Debug)]
-pub enum MemoryStore {
-    /// Not saved yet: an empty medium (tests may set its fault flags before the first save).
-    Unwritten(MemoryMedium),
-    /// Written: the file and its writer state.
-    Written(Box<ProjectFile<MemoryMedium>>),
-}
-
-impl Default for MemoryStore {
-    fn default() -> Self {
-        MemoryStore::Unwritten(MemoryMedium::default())
-    }
+/// The test-only project file: the real `.ecad` format (`ecad-file`), a redb database held in
+/// memory. It is written on the first save; until then it is empty.
+#[derive(Debug, Default)]
+pub struct MemoryStore {
+    /// The database's bytes (tests read them, or make the next write fail).
+    backend: MemoryBackend,
+    /// The project in the database, once written.
+    project: Option<Box<ecad_file::v2::ProjectV2>>,
 }
 
 impl MemoryStore {
-    /// The medium holding the file's bytes.
-    pub fn medium(&self) -> &MemoryMedium {
-        match self {
-            MemoryStore::Unwritten(m) => m,
-            MemoryStore::Written(f) => f.medium(),
-        }
+    /// A copy of the database's bytes (empty before the first save): what a test reopens with
+    /// [`Project::open_from`].
+    pub fn bytes(&self) -> Vec<u8> {
+        self.backend.bytes()
     }
 
-    /// The medium, to inject faults in tests.
-    pub fn medium_mut(&mut self) -> &mut MemoryMedium {
-        match self {
-            MemoryStore::Unwritten(m) => m,
-            MemoryStore::Written(f) => f.medium_mut(),
-        }
+    /// The database's size in bytes.
+    pub fn byte_len(&self) -> usize {
+        self.backend.byte_len()
     }
 
-    /// The writer, once the file exists.
-    pub fn file(&self) -> Option<&ProjectFile<MemoryMedium>> {
-        match self {
-            MemoryStore::Unwritten(_) => None,
-            MemoryStore::Written(f) => Some(&**f),
-        }
+    /// Make the next write fail once (tests): the save in progress fails and nothing it wrote is
+    /// acknowledged.
+    pub fn fail_next_write(&self) {
+        self.backend.fail_next_write();
     }
 
-    /// Save: the first save writes the whole history (Save As semantics: a failure leaves no
-    /// file); later saves append with retry (§20.5). Returns the persisted `seq`.
+    /// The project in the database, once written.
+    pub fn project(&self) -> Option<&ecad_file::v2::ProjectV2> {
+        self.project.as_deref()
+    }
+
+    /// Save: the first save writes the whole history (a failure leaves no database); later saves
+    /// write the transactions after the database's head, in one transaction. Returns the persisted
+    /// `seq`.
     fn save(&mut self, project: ProjectId, ledger: &mut Ledger, writer: &str) -> Result<u64, String> {
-        match self {
-            MemoryStore::Written(f) => f.save(ledger).map_err(|e| e.to_string()).map(|_: SaveOutcome| ledger.persisted()),
-            MemoryStore::Unwritten(m) => {
-                let medium = std::mem::take(m);
-                let f = ProjectFile::create(medium, project, ledger, now_ms(), writer).map_err(|e| e.to_string())?;
-                *self = MemoryStore::Written(Box::new(f));
-                Ok(ledger.persisted())
+        match &mut self.project {
+            Some(p) => p.save(ledger).map_err(|e| e.to_string()).map(|_| ledger.persisted()),
+            None => {
+                let created = ecad_file::v2::Store::with_backend(self.backend.clone()).map_err(|e| e.to_string()).and_then(|store| {
+                    ecad_file::v2::ProjectV2::create(store, project, ledger, now_ms(), writer, ecad_file::v2::schema::DEFAULT_SNAPSHOT_EVERY)
+                        .map_err(|e| e.to_string())
+                });
+                match created {
+                    Ok((p, _)) => {
+                        self.project = Some(Box::new(p));
+                        ledger.mark_persisted(ledger.head()).map_err(|e| e.to_string())?;
+                        Ok(ledger.persisted())
+                    }
+                    Err(e) => {
+                        self.backend.clear();
+                        Err(e)
+                    }
+                }
             }
         }
     }
@@ -534,15 +537,13 @@ pub struct Project {
     pub ids: IdAllocator,
     /// The project's stable identity (the file header records it).
     pub id: ProjectId,
-    /// The test-only in-memory project file (`Persistence::TestStore`).
+    /// The test-only project file in memory (`Persistence::TestStore`).
     pub store: MemoryStore,
     /// The project's file on disk (`Persistence::File`).
     pub file: crate::file::Binding,
-    /// What opening reported, when the project was opened from the in-memory test store
-    /// (version 1 format).
-    pub open_report: Option<OpenReport>,
-    /// What opening reported, when the project was opened from a file on disk (version 2).
-    pub open_report_v2: Option<ecad_file::v2::ReportV2>,
+    /// What opening reported, when the project was opened from a file on disk or from the test
+    /// store.
+    pub open_report: Option<ecad_file::v2::ReportV2>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,
@@ -1193,7 +1194,6 @@ impl Project {
             store: MemoryStore::default(),
             file: crate::file::Binding::default(),
             open_report: None,
-            open_report_v2: None,
             pages: BTreeMap::new(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -1265,14 +1265,19 @@ impl Project {
         Ok(ProjectHandle::new(project))
     }
 
-    /// Reopen a project from an in-memory project file (the log is replayed; FILE-02). A damaged
-    /// file opens its verified prefix read-only; the report is kept in [`Project::open_report`].
+    /// Reopen a project from a copy of the test store's bytes ([`MemoryStore::bytes`]), from its
+    /// latest snapshot (FILE-02). A damaged file opens read-only at the last state that verifies;
+    /// the report is kept in [`Project::open_report`].
     ///
     /// # Errors
-    /// The file has no valid, supported header, or the project cannot be shown.
-    pub(crate) fn open_from(s: &mut Session, name: &str, medium: MemoryMedium, seed: u64) -> Result<ProjectHandle, String> {
-        let (file, ledger, report) = ProjectFile::open(medium, seed).map_err(|e| e.to_string())?;
-        let id = file.header().project_id.ok_or("the file has no project ID")?;
+    /// The bytes are not a project file this build supports, or the project cannot be shown.
+    pub(crate) fn open_from(s: &mut Session, name: &str, bytes: Vec<u8>, seed: u64) -> Result<ProjectHandle, String> {
+        let backend = MemoryBackend::from_bytes(bytes);
+        let store = ecad_file::v2::Store::with_backend(backend.clone()).map_err(|e| e.to_string())?;
+        let opened = ecad_file::v2::ProjectV2::open(store, seed, &writer()).map_err(|e| e.to_string())?;
+        let (file, ledger, report) = (opened.project, opened.ledger, opened.report);
+        let id = file.project_id();
+        let tag_high = file.base_tag_high().clone();
         let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
         // A fresh ID stream even when the caller reuses the creation seed.
@@ -1287,10 +1292,9 @@ impl Project {
             ledger,
             ids,
             id,
-            store: MemoryStore::Written(Box::new(file)),
+            store: MemoryStore { backend, project: Some(Box::new(file)) },
             file: crate::file::Binding::default(),
             open_report: Some(report),
-            open_report_v2: None,
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
@@ -1312,7 +1316,7 @@ impl Project {
             page_views: HashMap::new(),
             changes: std::collections::VecDeque::new(),
             change_count: 0,
-            tag_high: crate::devices::TagHigh::default(),
+            tag_high: crate::devices::TagHigh::starting_at(tag_high),
             designation_uses: crate::designations::Uses::default(),
             conflicts: Vec::new(),
             page_list_version: 0,
@@ -1427,8 +1431,7 @@ impl Project {
             id: o.project,
             store: MemoryStore::default(),
             file: o.binding,
-            open_report: None,
-            open_report_v2: Some(o.report),
+            open_report: Some(o.report),
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),

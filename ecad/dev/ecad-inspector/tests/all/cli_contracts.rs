@@ -1,48 +1,28 @@
 //! `ecadinspect`'s text views (brief 021; moved from `ecad-cli` by brief 029): the views show the
-//! tables, branches, log, versions and chunks; `export-jsonl` round-trips into a version 1
-//! history; a version 1 file and a damaged history are refused in words.
+//! tables, branches, log, versions and chunks; a file that is not a project and a damaged history
+//! are refused in words.
 
 use crate::common::*;
 use ecad_model::*;
 
 #[test]
-fn ecadinspect_refuses_a_version_1_file_and_points_at_the_converter() {
-    let dir = TempDir::new("v1");
+fn ecadinspect_refuses_a_file_that_is_not_a_project() {
+    let dir = TempDir::new("not-project");
     let src = dir.path("demo.ecad");
-    std::fs::write(&src, v1_bytes(&history())).unwrap();
+    // A JSON Lines file, as the removed version 1 format was.
+    std::fs::write(&src, br#"{"crc":"00000000","rec":{"type":"header"}}"#).unwrap();
     let e = run(&[src.to_str().unwrap(), "tables"]).unwrap_err();
-    assert!(e.contains("ecad upgrade"), "{e}");
-}
-
-/// A crafted row at `u64::MAX` (moved from `ecad-file`'s `container_v2`): the export reports the
-/// gap instead of walking 2^52 empty ranges.
-#[test]
-fn export_refuses_a_gap_up_to_the_largest_sequence_number() {
-    let dir = TempDir::new("max-seq");
-    let out = upgraded(&dir, &history());
-    let branch = ecad_file::v2::schema::BranchId::main_of(PROJECT.0);
-    {
-        let db = redb::Database::open(&out).unwrap();
-        let w = db.begin_write().unwrap();
-        {
-            let mut t = w.open_table(ecad_file::v2::schema::TRANSACTIONS).unwrap();
-            let value = ecad_file::v2::schema::tx_value(0, &[0; 32], b"{}");
-            t.insert(ecad_file::v2::schema::tx_key(branch, u64::MAX), value.as_slice()).unwrap();
-        }
-        w.commit().unwrap();
-    }
-    let e = run(&[out.to_str().unwrap(), "export-jsonl"]).unwrap_err();
-    assert!(e.contains("not all stored"), "{e}");
+    assert!(e.contains("not an ECAD project file"), "{e}");
 }
 
 #[test]
-fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
+fn ecadinspect_shows_every_table() {
     let dir = TempDir::new("inspect");
     let l = history();
-    let out = upgraded(&dir, &l);
+    let out = written(&dir, &l);
     let o = out.to_str().unwrap();
     let tables = run(&[o, "tables"]).unwrap();
-    for t in ["meta", "branches", "transactions", "versions", "chunks", "assets", "link_v1", "json/1"] {
+    for t in ["meta", "branches", "transactions", "versions", "chunks", "assets", "json/1"] {
         assert!(tables.contains(t), "{t}: {tables}");
     }
     let branches = run(&[o, "branches"]).unwrap();
@@ -59,26 +39,6 @@ fn ecadinspect_shows_every_table_and_export_round_trips_into_version_1() {
     assert!(chunk.contains("hash verified"), "{chunk}");
     let verify = run(&[o, "verify"]).unwrap();
     assert!(verify.trim_end().ends_with("OK"), "{verify}");
-    // export-jsonl is a version 1 file with the same history and chain.
-    let exported = run(&[o, "export-jsonl"]).unwrap();
-    let back = ecad_file::open_project(exported.as_bytes(), 0).unwrap();
-    assert_eq!(back.report.outcome, ecad_file::Outcome::Clean);
-    assert_eq!(back.ledger.log(), l.log());
-    assert_eq!(back.ledger.document(), l.document());
-    // --with-raw: every stored row, with its raw bytes and readable form.
-    let raw_path = dir.path("raw.jsonl");
-    let said = run(&[o, "export-jsonl", "--with-raw", "--out", raw_path.to_str().unwrap()]).unwrap();
-    assert!(said.contains("wrote"), "{said}");
-    let raw = std::fs::read_to_string(&raw_path).unwrap();
-    let mut tables_seen = std::collections::BTreeSet::new();
-    for line in raw.lines() {
-        let v: serde_json::Value = serde_json::from_str(line).unwrap();
-        tables_seen.insert(v["table"].as_str().unwrap().to_string());
-        assert!(v["stored"].as_str().is_some() && !v["decoded"].is_null(), "{line}");
-    }
-    for t in ["meta", "branches", "transactions", "versions", "chunks"] {
-        assert!(tables_seen.contains(t), "{t}");
-    }
 }
 
 /// Tester, brief 020a: `ecadinspect` on a file with branches (one forked from a version, one
@@ -89,7 +49,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     use ecad_file::v2::{ProjectV2, Store};
     let dir = TempDir::new("inspect-branches");
     let mut l = history();
-    let out = upgraded(&dir, &l);
+    let out = written(&dir, &l);
     let o = out.to_str().unwrap();
     let ten = l.document().versions["Ten"];
     {
@@ -137,12 +97,6 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     assert!(log.contains("# 41:") && log.contains("# 40:"), "{log}");
     let versions = run(&[o, "versions"]).unwrap();
     assert!(versions.contains("Option B User \"On B\" at 40"), "{versions}");
-    // export-jsonl of a branch: its own records, the others named on stderr.
-    let (mut lines, mut notes) = (Vec::new(), Vec::new());
-    ecad_inspector::cli::ecadinspect_with(&[o.into(), "export-jsonl".into(), "--branch".into(), "Option B".into()], &mut lines, &mut notes).unwrap();
-    assert_eq!(String::from_utf8(lines).unwrap().lines().count(), 1 + 41, "a header and the branch's 41 records");
-    let notes = String::from_utf8(notes).unwrap();
-    assert!(notes.contains("left out: 3 other branch(es)") && notes.contains("main (") && notes.contains("Gone ("), "{notes}");
     // A second branch named "Gone" (the first is archived, so the name is free): a name is no
     // longer enough, an ID is.
     let ids: Vec<(String, String)> = {

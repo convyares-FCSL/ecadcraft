@@ -51,7 +51,7 @@ fn build(name: &str) -> Fx {
     let dir = TempDir::new(&format!("t029-{name}"));
     let mut f = fixture();
     let path = dir.path("p.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, None, None, Some(1), WRITER, EVERY).unwrap().0;
+    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     for i in 0..40 {
         let op = line(&mut f.ids, f.page, f.layer, 10.0 + f64::from(i));
@@ -615,7 +615,7 @@ mod fp1 {
         let mut f = fixture();
         let (w1, w2): (CableId, CableId) = (f.ids.fresh(), f.ids.fresh());
         f.commit("Cables", vec![Op::CreateCable { id: w1, cable: cable("-W01") }, Op::CreateCable { id: w2, cable: cable("-W02") }]);
-        let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, None, None, Some(1), WRITER, EVERY).unwrap().0;
+        let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let main = proj.branch();
         let at = f.ledger.head();

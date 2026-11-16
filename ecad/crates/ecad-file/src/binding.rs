@@ -1,7 +1,6 @@
 //! A project's file on disk (persistence stage 2a; container version 2 since brief 021): the
 //! binding between a project (ecad-cadcraft's `Project`) and its `.ecad` file, through
-//! [`crate::v2::disk::DiskProjectV2`], and the checks on a path typed for one. A version 1 file is
-//! never opened for editing: opening one offers to convert it ([`needs_conversion`], [`convert`]).
+//! [`crate::v2::disk::DiskProjectV2`], and the checks on a path typed for one.
 //! Native only; in a browser build every operation reports that project files are not available.
 //!
 //! It reads no environment: the home folder is passed in ([`normalize_with`]).
@@ -13,9 +12,6 @@ use ecad_model::{Ledger, ProjectId};
 pub const NO_FILE_YET: &str = "this project has no file yet; use Save As and choose a .ecad file";
 /// What Save As says without a file name.
 pub const SAVE_AS_NEEDS_PATH: &str = "Save As needs a file name (a .ecad file)";
-/// What opening a version 1 file says until it is converted.
-pub const NEEDS_CONVERSION: &str = "is a version 1 project file and is not opened for editing; convert it to a new \
-version 2 file (the original is left untouched)";
 
 /// Where a project's file stands, for status displays.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -75,50 +71,29 @@ pub struct StorageFacts {
     pub writable: bool,
 }
 
-/// The new file opening `path` would first convert it to, when `path` is a version 1 file;
-/// `None` for anything else (a file that cannot be read included: opening reports that).
-pub fn needs_conversion(path: &str) -> Option<String> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let p = std::path::Path::new(path);
-        if crate::v2::convert::sniff(p).ok()? == crate::v2::convert::Major::V1 {
-            return Some(crate::v2::convert::default_output(p).display().to_string());
+impl StorageFacts {
+    /// The facts of the project in a file (copies; no file access).
+    pub fn of(p: &crate::v2::ProjectV2) -> Self {
+        StorageFacts {
+            branch: format!("{} ({})", p.branch_record().name, p.branch().hex()),
+            head: p.head().0,
+            snapshot_seq: p.snapshot_seq(),
+            snapshot_every: p.snapshot_every(),
+            last_save: p.last_save().cloned(),
+            link_v1: p.link_v1().map(|l| (l.hash.clone(), l.transactions)),
+            writable: p.read_only().is_none(),
         }
     }
-    #[cfg(target_arch = "wasm32")]
-    let _ = path;
-    None
 }
 
-/// Refuse a file that exists but is neither version of an ECAD project.
+/// Refuse a file that exists but is not an ECAD project (a file that cannot be read is left to
+/// opening, which says why).
 #[cfg(not(target_arch = "wasm32"))]
 fn not_a_project(path: &str) -> Result<(), String> {
-    #[cfg(not(target_arch = "wasm32"))]
-    if crate::v2::convert::sniff(std::path::Path::new(path)).ok() == Some(crate::v2::convert::Major::Unknown) {
+    if crate::v2::disk::starts_like_project(std::path::Path::new(path)).ok() == Some(false) {
         return Err(format!("could not open {path}: it is not an ECAD project file"));
     }
-    #[cfg(target_arch = "wasm32")]
-    let _ = path;
     Ok(())
-}
-
-/// Convert the version 1 file at `path` to a new version 2 file (`output`, or `<name>.v2.ecad`
-/// beside it), verified by replaying both. The report in words, and the new file's path.
-///
-/// # Errors
-/// Why it was not converted (the source is never changed).
-pub fn convert(path: &str, output: Option<&str>, writer: &str) -> Result<(String, String), String> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let out = output.map(std::path::Path::new);
-        let r = crate::v2::convert::convert_file(std::path::Path::new(path), out, writer)?;
-        Ok((r.describe(), r.output.display().to_string()))
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = (path, output, writer);
-        Err(NO_FILES.into())
-    }
 }
 
 /// What a path starting with `~` says when the home folder is not known.
@@ -204,12 +179,8 @@ impl Binding {
     /// from its latest snapshot.
     ///
     /// # Errors
-    /// The file cannot be read, is a version 1 file ([`NEEDS_CONVERSION`]), or is not a project
-    /// file this build supports.
+    /// The file cannot be read or is not a project file this build supports.
     pub fn open(path: &str, seed: u64, writer: &str) -> Result<Opened, String> {
-        if let Some(out) = needs_conversion(path) {
-            return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
-        }
         not_a_project(path)?;
         let o = crate::v2::disk::DiskProjectV2::open(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
         let project = o.project.project().project_id();
@@ -230,9 +201,6 @@ impl Binding {
     /// As [`Binding::open`].
     pub fn open_read_only(path: &str, seed: u64, writer: &str) -> Result<Opened, String> {
         not_a_project(path)?;
-        if let Some(out) = needs_conversion(path) {
-            return Err(format!("{path} {NEEDS_CONVERSION}: {out}"));
-        }
         let o = crate::v2::disk::DiskProjectV2::open_read_only(std::path::Path::new(path), seed, writer).map_err(|e| e.to_string())?;
         let project = o.project.project().project_id();
         let tag_high = o.project.project().base_tag_high().clone();
@@ -298,17 +266,7 @@ impl Binding {
 
     /// The version 2 file's facts (copies, for the debugger's Storage view; no file access).
     pub fn storage(&self) -> Option<StorageFacts> {
-        let d = self.disk.as_ref()?;
-        let p = d.project();
-        Some(StorageFacts {
-            branch: format!("{} ({})", p.branch_record().name, p.branch().hex()),
-            head: p.head().0,
-            snapshot_seq: p.snapshot_seq(),
-            snapshot_every: p.snapshot_every(),
-            last_save: p.last_save().cloned(),
-            link_v1: p.link_v1().map(|l| (l.hash.clone(), l.transactions)),
-            writable: p.read_only().is_none(),
-        })
+        self.disk.as_ref().map(|d| StorageFacts::of(d.project()))
     }
 
     /// The bound file's database, for the debugger's on-request reads (table sizes, branches,

@@ -17,6 +17,8 @@
 //!   whole and partial reads, file lengths, path comparison, the lock holder record.
 //! - [`random_u128`]: the operating system's randomness, for new IDs.
 //!
+//! - [`MemoryBackend`]: a redb storage backend in memory, shared by its clones, with an
+//!   injectable write failure (tests keep a real project file without a disk).
 //! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes
 //!   since the last flush), for the version 2 container's crash tests.
 //!
@@ -25,9 +27,11 @@
 
 use std::io;
 
+pub mod backend;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 pub mod power;
+pub use backend::MemoryBackend;
 #[cfg(not(target_arch = "wasm32"))]
 pub use disk::{FileIdentity, FileMedium, LockAttempt, MediumFaults, WriterLock};
 

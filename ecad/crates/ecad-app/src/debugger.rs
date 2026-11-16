@@ -186,7 +186,7 @@ impl Default for Debugger {
 
 fn now() -> String {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    ecad_file::disk::utc(secs)
+    ecad_file::utc(secs)
 }
 
 fn json_text(v: &serde_json::Value) -> String {
@@ -337,33 +337,15 @@ impl Debugger {
         self.log.iter().filter(|t| debug::touches(t, &ids)).map(|t| t.seq).collect()
     }
 
-    /// Read the trail transaction's record from the file (no project lock).
-    pub fn read_record(&mut self) {
-        let (Some(snap), Some(seq)) = (&self.snap, self.tx) else { return };
-        let span = match snap.record_state(seq) {
-            RecordState::Saved(Some(s)) | RecordState::Unconfirmed(s) => s,
-            other => {
-                self.record = Some(Err(format!("transaction {seq} has no record in the file ({})", other.label())));
-                return;
-            }
-        };
-        let Some(path) = &snap.file.path else {
-            self.record = Some(Err("the test store keeps its file in memory".into()));
-            return;
-        };
-        let expected = snap.tx_in(&self.log, seq);
-        self.record = Some(debug::read_record(Path::new(path), span, expected));
-    }
-
-    /// Read the trail transaction's row from a version 2 file (no project lock).
+    /// Read the trail transaction's row from the project file (no project lock).
     pub fn read_row(&mut self) {
         let (Some(snap), Some(seq)) = (&self.snap, self.tx) else { return };
         let Some(store) = snap.store_arc() else {
-            self.record = Some(Err("the project has no version 2 file".into()));
+            self.record = Some(Err("the project has no file yet".into()));
             return;
         };
-        if !snap.record_state(seq).durable() {
-            self.record = Some(Err(format!("transaction {seq} is not saved yet")));
+        if !snap.record_state(seq).in_file() {
+            self.record = Some(Err(format!("transaction {seq} is not in the file yet")));
             return;
         }
         self.record = Some(debug::read_row(&store, seq, snap.tx_in(&self.log, seq)));
@@ -382,7 +364,7 @@ impl Debugger {
         let Some(snap) = &self.snap else { return };
         let read = match snap.store_arc() {
             Some(st) => debug::read_storage(&st, snap.file.path.as_deref().map(Path::new)),
-            None => Err("the project has no version 2 file yet".into()),
+            None => Err("the project has no file yet".into()),
         };
         self.storage = Some((read, now()));
     }
@@ -396,10 +378,9 @@ impl Debugger {
                 Ok(inputs) => debug::verify_projection(&inputs),
                 Err(e) => Check { what: "projection", at_seq: snap.head, ok: false, lines: vec![e] },
             },
-            (CheckKind::File, Some(snap)) => match (snap.store_arc(), &snap.file.path) {
-                (Some(st), _) => debug::verify_store(&st, snap.base, &self.log, snap.persisted),
-                (None, Some(p)) => debug::verify_file(Path::new(p), &self.log, &snap.file, snap.persisted),
-                (None, None) => Check { what: "file", at_seq: snap.head, ok: false, lines: vec!["the project has no file yet".into()] },
+            (CheckKind::File, Some(snap)) => match snap.store_arc() {
+                Some(st) => debug::verify_store(&st, snap.base, &self.log, snap.persisted),
+                None => Check { what: "file", at_seq: snap.head, ok: false, lines: vec!["the project has no file yet".into()] },
             },
             // Copies taken under the lock; the rebuild runs with the project unlocked.
             (CheckKind::Index, Some(snap)) => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref.clone(), p.ledger.head())) {
@@ -549,7 +530,11 @@ impl Debugger {
     fn history_view(&mut self, ui: &mut egui::Ui) {
         let Some(snap) = &self.snap else { return };
         let head = snap.head;
-        let where_ = snap.file.path.clone().unwrap_or_else(|| "no file yet".into());
+        let where_ = match (&snap.file.path, snap.file.in_memory && snap.file.storage.is_some()) {
+            (Some(p), _) => p.clone(),
+            (None, true) => "the test store, in memory".into(),
+            (None, false) => "no file yet".into(),
+        };
         prim::note(ui, &format!("Saved durably ({where_}): transactions 1–{}.", snap.persisted), Tone::Ok);
         let c = snap.state_counts();
         if c.unconfirmed > 0 {
@@ -634,31 +619,17 @@ impl Debugger {
                 ui.end_row();
             };
             row("Persistence", f.persistence.map_or_else(String::new, |p| format!("{p:?}")));
-            row("File", f.path.clone().unwrap_or_else(|| "none yet (Save As writes one)".into()));
+            let file = match (&f.path, f.in_memory) {
+                (Some(p), _) => p.clone(),
+                (None, true) if f.storage.is_some() => "in memory (the test store)".into(),
+                (None, _) => "none yet (Save As writes one)".into(),
+            };
+            row("File", file);
             row("Writer lock", f.lock_file.clone().unwrap_or_else(|| "not held".into()));
-            if let Some(h) = &f.header {
-                row(
-                    "Header",
-                    format!(
-                        "{} v{}, schema {}, codec {}, project {}",
-                        h.container,
-                        h.container_version,
-                        h.schema_version,
-                        h.codec,
-                        h.project_id.map_or_else(String::new, |p| p.short())
-                    ),
-                );
-                row("Written by", h.writer.clone());
-            }
-            row("Verified bytes", f.verified_len.map_or_else(String::new, |v| v.to_string()));
             row(
-                "Saved through (writer / project)",
+                "Saved through (file / project)",
                 format!("{} / {}", f.writer_persisted.map_or_else(|| "-".into(), |v| v.to_string()), snap.persisted),
             );
-            row("Records in the file", f.spans.len().to_string());
-            if let Some(last) = f.spans.last() {
-                row("Last record", format!("transaction {} at offset {} ({} bytes)", last.seq, last.offset, last.len));
-            }
             row("Opening found", f.open_report.clone().unwrap_or_else(|| "(created in this session, not opened from a file)".into()));
         });
         if let Some(r) = &f.read_only {
@@ -667,27 +638,14 @@ impl Debugger {
         if f.unconfirmed {
             prim::note(ui, "The last Save As is not confirmed durable; Save confirms it.", Tone::Warning);
         }
-        if let Some(a) = &f.attempt {
-            prim::note(
-                ui,
-                &format!(
-                    "A failed save ({:?}) of transactions {}–{} may have left {} bytes at offset {}; the next Save removes them first.",
-                    a.stage, a.first_seq, a.last_seq, a.len, a.offset
-                ),
-                Tone::Warning,
-            );
-        }
-        if let Some(n) = f.pending_fragment {
-            prim::note(ui, &format!("An incomplete trailing write of {n} bytes is still in the file."), Tone::Warning);
-        }
     }
 
-    /// The version 2 file's facts (live, from the snapshot) and, on request, its table sizes and
+    /// The project file's facts (live, from the snapshot) and, on request, its table sizes and
     /// version rows. Returns whether the read was asked for.
     fn storage_view(&mut self, ui: &mut egui::Ui) -> bool {
         let Some(snap) = &self.snap else { return false };
         let Some(st) = &snap.file.storage else {
-            prim::body(ui, "The project has no version 2 file yet (Save As writes one).", true);
+            prim::body(ui, "The project has no file yet (Save As writes one).", true);
             return false;
         };
         // A grid rather than property rows: these labels are longer than the label column.
@@ -834,7 +792,7 @@ impl Debugger {
             if ui.add(Button::new("Verify projection").small()).on_hover_text("Reproject the open pages and compare with their drawings").clicked() {
                 run = Some(CheckKind::Projection);
             }
-            if ui.add(Button::new("Verify file").small()).on_hover_text("Re-read the file: frames, checksums, hash chain, history").clicked() {
+            if ui.add(Button::new("Verify file").small()).on_hover_text("Re-read the file: rows, hash chain, history").clicked() {
                 run = Some(CheckKind::File);
             }
             if ui
@@ -904,7 +862,7 @@ impl Debugger {
                 "{}, by {}, {}, ID {}",
                 debug::tx_kind(tx, &self.log),
                 author(&tx.author),
-                tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_file::disk::utc(ms / 1000)),
+                tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_file::utc(ms / 1000)),
                 tx.id.short()
             ),
             true,
@@ -913,31 +871,17 @@ impl Debugger {
         if let Some(e) = command {
             prim::body(ui, &format!("Recorded by command {} (event #{} {:?})", e.command.as_deref().unwrap_or(""), e.n, e.kind), true);
         }
-        let mut read = false;
         let mut read_row = false;
         match state {
-            RecordState::Saved(None) if snap.store.is_some() => {
+            RecordState::Saved | RecordState::Unconfirmed => {
+                let what = if state.durable() { "Saved" } else { "Written but NOT confirmed durable" };
                 ui.horizontal_wrapped(|ui| {
-                    prim::body(ui, "Saved: a row of the file's transactions table.", false);
+                    prim::body(ui, &format!("{what}: a row of the file's transactions table."), false);
                     read_row = ui.add(Button::new("Read row").small()).clicked();
                 });
             }
-            RecordState::Saved(Some(s)) | RecordState::Unconfirmed(s) => {
-                let what = if state.durable() { "Saved" } else { "Written but NOT confirmed durable" };
-                ui.horizontal_wrapped(|ui| {
-                    prim::body(ui, &format!("{what}: offset {} in the file, {} bytes.", s.offset, s.len), false);
-                    read = ui.add(Button::new("Read bytes").small()).clicked();
-                });
-            }
-            RecordState::Saved(None) => {
-                prim::body(ui, "Saved (the writer does not know the record's position).", false);
-            }
-            RecordState::Pending { attempt } => {
-                let words = match attempt {
-                    None => "Pending: only in memory, not in the file. Save writes it.".to_string(),
-                    Some(st) => format!("Pending: a save of it failed ({st:?}); only in memory. Save retries it."),
-                };
-                prim::note(ui, &words, Tone::Warning);
+            RecordState::Pending => {
+                prim::note(ui, "Pending: only in memory, not in the file. Save writes it.", Tone::Warning);
             }
             RecordState::NotSaved => {
                 prim::body(ui, "This project has no persistence; nothing is saved.", false);
@@ -946,7 +890,7 @@ impl Debugger {
         match &self.record {
             Some(Ok(r)) => {
                 match &r.check {
-                    Ok(()) => prim::note(ui, "The bytes are a valid record holding exactly this transaction.", Tone::Ok),
+                    Ok(()) => prim::note(ui, &format!("The row ({} bytes stored) holds exactly this transaction.", r.stored), Tone::Ok),
                     Err(e) => prim::note(ui, &format!("The bytes do NOT match: {e}"), Tone::Warning),
                 };
                 mono(ui, debug::printable(&r.shown));
@@ -972,9 +916,6 @@ impl Debugger {
         }
         if tx.ops.len() > MAX_OPS {
             prim::body(ui, &format!("… {} more ops", tx.ops.len() - MAX_OPS), true);
-        }
-        if read {
-            self.read_record();
         }
         if read_row {
             self.read_row();

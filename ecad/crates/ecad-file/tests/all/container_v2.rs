@@ -35,7 +35,7 @@ impl Drop for TempDir {
 /// Write `ledger` to a new file at `path` with snapshots every `every` transactions.
 fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, None, None, Some(1), WRITER, every).unwrap().0
+    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
 fn open(path: &std::path::Path) -> ecad_file::v2::OpenedV2 {
@@ -74,7 +74,7 @@ fn a_written_project_reopens_identically_and_undoes_like_the_replayed_one() {
     let p = dir.path("p.ecad");
     let (_, saved) = {
         let store = Store::create(&p).unwrap();
-        ProjectV2::create(store, PROJECT, &f.ledger, None, None, Some(1), WRITER, 2_000).unwrap()
+        ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap()
     };
     assert_eq!(saved.last_seq, f.ledger.head());
     let mut o = open(&p);
@@ -348,11 +348,9 @@ fn the_backward_walk_finds_the_same_stack_entries_as_a_full_replay() {
 }
 
 /// Brief 022's format additions, `ProjectSettings.wiring` and `Definition.bridges`, survive the
-/// version 2 chunks (in a snapshot and in the tail) and the converter's replay check.
+/// chunks (in a snapshot and in the tail).
 #[test]
-fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
-    use ecad_file::ProjectFile;
-    use ecad_store::{Medium, MemoryMedium};
+fn wiring_settings_and_bridges_survive_chunks() {
     let dir = TempDir::new("wiring");
     let mut f = fixture();
     // In the tail: written by a save after the file was created.
@@ -395,13 +393,6 @@ fn wiring_settings_and_bridges_survive_chunks_and_conversion() {
     let o = open(&snap);
     assert_eq!(o.report.tail, 0);
     check(o.ledger.document(), "snapshot");
-    // Converted from version 1, replay-verified.
-    let file = ProjectFile::create(MemoryMedium::default(), PROJECT, &mut f.ledger, Some(1), WRITER).unwrap();
-    let src = dir.path("v1.ecad");
-    std::fs::write(&src, file.medium().read_all().unwrap()).unwrap();
-    let out = dir.path("v1.v2.ecad");
-    ecad_file::v2::convert::convert_file(&src, Some(&out), WRITER).unwrap();
-    check(open(&out).ledger.document(), "converted");
 }
 
 /// A project of `n` edits written to `p`, and the reference ledger.
@@ -513,8 +504,8 @@ fn a_row_at_the_largest_sequence_number_is_refused_not_overflowed() {
     assert_eq!(o.ledger.document(), f.ledger.document());
 }
 
-/// The converter's output is created with create-new semantics: a file already at that name (for
-/// example one that appeared after the converter's first look) is refused and left as it was.
+/// A new file is created with create-new semantics: a file already at that name is refused and
+/// left as it was.
 #[test]
 fn creating_a_file_never_replaces_one_already_there() {
     let dir = TempDir::new("create-new");

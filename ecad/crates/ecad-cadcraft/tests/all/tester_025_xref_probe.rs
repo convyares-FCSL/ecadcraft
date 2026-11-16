@@ -451,18 +451,18 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     close_all(&mut h3.s);
 }
 
-/// Probe 2b: the golden v1 project from before 025 opens with no transaction and no error.
+/// Probe 2b: the golden project (its records from before 025) opens with no transaction and no error.
 #[test]
 fn tester_025_old_v1_golden_opens_with_an_index_and_no_transaction() {
-    let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project-v1.ecad");
+    let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project.ecad");
     let dir = TempDir::new("golden");
     let path = dir.path("old.ecad");
     std::fs::copy(&golden, &path).unwrap();
-    let (_, v2) = ecad_cadcraft::file::convert(&path, None, "tester-025").unwrap();
+    let v2 = path.clone();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, &v2, 7).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
-    index_is_a_rebuild(&mut h, "golden v1");
+    index_is_a_rebuild(&mut h, "golden");
     let log_len = h.p(|p| p.ledger.log().len());
     let pages = h.doc().page_order.clone();
     for p in pages {

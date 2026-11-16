@@ -257,9 +257,6 @@ pub struct App {
     seen_events: u64,
     /// A message waiting in a dialog.
     notice: Option<String>,
-    /// A version 1 file the user tried to open, and the new file converting it would write
-    /// (brief 021: offered, never silent).
-    convert_offer: Option<(String, String)>,
     snapshot_count: u32,
     /// The ECAD command field's field (whole lines, spaces included).
     pub command: String,
@@ -460,7 +457,6 @@ impl App {
             save_as_requested: requested,
             seen_events: 0,
             notice: None,
-            convert_offer: None,
             snapshot_count: 0,
             command: String::new(),
             command_hint: None,
