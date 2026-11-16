@@ -91,4 +91,14 @@ pub mod msg {
     pub const NO_ENDS_TO_JOIN: &str = "There are no wire ends to join here.";
     /// A wire-number command on a net without a wire.
     pub const NO_NUMBER_TO_FIX: &str = "That net has no number to fix yet.";
+    /// A folder the input names that the project does not have (pages, folders and revisions).
+    pub const NO_SUCH_FOLDER: &str = "no such folder";
+    /// A page the input names that the project does not have (pages, folders and revisions).
+    pub const NO_SUCH_PAGE: &str = "no such page";
+    /// A folder name that does not read.
+    pub const FOLDER_NAME: &str = "A folder name is 1 to 100 characters, with no control characters.";
+    /// A page title that does not read.
+    pub const PAGE_TITLE: &str = "`title` must be a non-empty string of at most 200 characters";
+    /// A `proposal` word that does not read (brief 052d).
+    pub const PROPOSAL_WORDS: &str = "`proposal` is \"propose\", \"move\" or \"keep\"";
 }

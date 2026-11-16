@@ -539,7 +539,7 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 58, 8),
     ("ecad-bench", 95, 22),
-    ("ecad-cadcraft", 310, 209),
+    ("ecad-cadcraft", 298, 195),
     ("ecad-cli", 2, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 142, 135),
@@ -550,7 +550,7 @@ const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
 
 /// Brief 070: the command files (`crates/ecad-cadcraft/src/cmd`) on their own, as the crate rows:
 /// they reach 0 by the end of 070.
-const CMD_STRING_ERRORS: (usize, usize) = (138, 156);
+const CMD_STRING_ERRORS: (usize, usize) = (126, 142);
 
 /// Brief 070: the migration bridges `impl From<String> for CmdError` and `impl From<&'static str>
 /// for CmdError` in ecad-electrical; gone by the end of 070.

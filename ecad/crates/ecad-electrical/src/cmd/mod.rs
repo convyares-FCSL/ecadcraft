@@ -3,4 +3,5 @@
 //! `ecad_cadcraft::cmd` read the parameters, take the project, call these functions, commit the
 //! ops and answer in JSON.
 
+pub mod sheet;
 pub mod wire;
