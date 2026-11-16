@@ -7,9 +7,10 @@
 //!   stored (design 005 rule 3). It reads the members' `core`, the cable's `tag`, `designation`
 //!   and `type`, the conductors' `tag`, the routes, the slashes and the cable's `reference`
 //!   representations (brief 010's model: one Point item each).
-//! - Sizes are drawing units ([`LABEL_HEIGHT`] and the others); text widths are measured with the
-//!   drafting font CADCraft draws text with ([`font_width`]), passed in as a function so the
-//!   geometry can be tested on its own.
+//! - Sizes are drawing units, laid out from the `CableText` text style's height ([`label_height`],
+//!   brief 066d); text widths are measured with the drafting font CADCraft draws text with
+//!   ([`font_width`], per unit of height), passed in as a function so the geometry can be tested
+//!   on its own.
 //! - Hostile values never panic: any value that is not finite makes the fan fall back to the
 //!   traditional drawing on that page, and text is shortened before it is measured.
 //!
@@ -24,17 +25,23 @@ use ecad_model::{CableId, ConductorId, Document, End, ItemId, ItemKind, PageId, 
 
 /// `ecad.label-gap`: between the bend and the first label, between labels, after the last.
 pub const LABEL_GAP: f64 = 1.0;
-/// Between a core label and the wire number after it: one text height, so the two never read as
-/// one (overseer decision on the brief 009 review, `W4 4` not `W44`).
-pub const LABEL_SPACING: f64 = LABEL_HEIGHT;
+/// Between a core label and the wire number after it: one text height `h`, so the two never read
+/// as one (overseer decision on the brief 009 review, `W4 4` not `W44`).
+pub fn label_spacing(h: f64) -> f64 {
+    h
+}
 /// `ecad.tail-min`: the shortest tail in fan view.
 pub const TAIL_MIN: f64 = 20.0;
 /// `ecad.bend-radius`, capped at half the core pitch.
 pub const BEND_RADIUS: f64 = 2.5;
-/// `ecad.box-line-pitch`: line spacing in the label box.
-pub const BOX_LINE_PITCH: f64 = 1.5 * LABEL_HEIGHT;
-/// `ecad.box-pad`: padding in the label box and the reference flag.
-pub const BOX_PAD: f64 = 0.5 * LABEL_HEIGHT;
+/// `ecad.box-line-pitch`: line spacing in the label box, 1.5 text heights `h`.
+pub fn box_line_pitch(h: f64) -> f64 {
+    1.5 * h
+}
+/// `ecad.box-pad`: padding in the label box and the reference flag, half a text height `h`.
+pub fn box_pad(h: f64) -> f64 {
+    0.5 * h
+}
 /// `ecad.cable-weight`: trunk and spine (cable section), hundredths of a millimetre.
 pub const CABLE_WEIGHT: u16 = 70;
 /// Wire numbers and label box lines longer than this are drawn shortened.
@@ -43,7 +50,7 @@ pub use crate::words::{
     CODE_COLOURS, DashBudget, MAX_CODE_CHARS, MAX_CORE_CHARS, MAX_DASHES, MAX_PAGE_DASHES, colour_code, conductor_colour, conductor_colour_in,
     dash_budget, dash_count, dash_segments, shorten, wire_colours,
 };
-pub use crate::words::{FlagShape, FlagSide, LABEL_HEIGHT, WIRE_WEIGHT, flag_shape};
+pub use crate::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape, label_height};
 /// The representation role of a cable's reference end: brief 010's, one definition for both briefs.
 pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
 /// The representation role of a stored fan join (owner request, 2026-11-07): one Point item per
@@ -55,10 +62,10 @@ pub const REFERENCE_PLACEHOLDER: &str = "/?";
 /// `ecad.orphan`: a reference end with no other end shows its text in red.
 pub const ORPHAN_ACI: u8 = crate::references::ORPHAN_ACI;
 
-/// The width of `text` at [`LABEL_HEIGHT`] in the drafting font CADCraft draws text with (0 for
-/// anything that does not measure).
+/// The width of `text` per unit of text height in the drafting font CADCraft draws text with (0
+/// for anything that does not measure): multiply by the height it is drawn at.
 pub fn font_width(text: &str) -> f64 {
-    let w = cadcraft_engine::fonts::line_width(text, LABEL_HEIGHT, 1.0);
+    let w = cadcraft_engine::fonts::line_width(text, 1.0, 1.0);
     if w.is_finite() && w >= 0.0 { w } else { 0.0 }
 }
 
@@ -91,7 +98,7 @@ pub enum Shape {
     Path { points: Vec<Pt>, closed: bool },
     /// Radians, counter-clockwise from `start` to `end`.
     Arc { center: Pt, radius: f64, start: f64, end: f64 },
-    /// Left-baseline text at [`LABEL_HEIGHT`].
+    /// Left-baseline text in the `CableText` (or, for a reference end, `Reference`) text style.
     Text { at: Pt, rotation: f64, value: String },
 }
 
@@ -357,18 +364,20 @@ struct Marker {
     width: f64,
     orphan: bool,
     side: FlagSide,
+    /// The text height the flag is laid out for ([`label_height`]).
+    h: f64,
 }
 
 /// The box a reference end's marker covers on the page (its flag, point included), for a
 /// reference end at `at` showing `text` with its flag on `side`: what a pick of the marker hits
 /// (brief 010's pick-first rule). It follows the flag to whichever side it is drawn.
-pub fn marker_box(at: Pt, text: &str, side: FlagSide) -> (Pt, Pt) {
-    crate::words::flag_box(at, font_width(&shorten(text, 64)), side)
+pub fn marker_box(at: Pt, text: &str, side: FlagSide, h: f64) -> (Pt, Pt) {
+    crate::words::flag_box(at, font_width(&shorten(text, 64)) * h, side, h)
 }
 
 impl Marker {
     fn shape(&self) -> FlagShape {
-        flag_shape(self.at, self.width, self.side)
+        flag_shape(self.at, self.width, self.side, self.h)
     }
     /// The flag rectangle's centre, as `lo + (hi - lo) / 2`, which stays finite for a point near
     /// ±f64::MAX.
@@ -396,8 +405,9 @@ fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn
             })?;
             let (text, orphan, side) = reference_marker_side(doc, *id);
             let text = shorten(&text, 64);
-            let width = measure(&text);
-            (at.is_finite() && width.is_finite()).then_some(Marker { id: *id, at, text, width, orphan, side })
+            let h = label_height(doc);
+            let width = measure(&text) * h;
+            (at.is_finite() && width.is_finite()).then_some(Marker { id: *id, at, text, width, orphan, side, h })
         })
         .collect()
 }
@@ -493,12 +503,15 @@ struct Frame {
     t: Vec<f64>,
     rho: f64,
     labels: Vec<Labels>,
+    /// The text height the labels are laid out for ([`label_height`]).
+    h: f64,
 }
 
 /// The frame of one fanned end (design §4.2 steps 1 to 5). `ends`: each member's end on this side.
 #[allow(clippy::too_many_arguments)]
 fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Option<Frame> {
     let g = LABEL_GAP;
+    let h = label_height(doc);
     let o = *ends.get(reference)?;
     let rpath = &members.get(reference)?.path;
     let u = if side == 0 { leaving(rpath.iter().copied(), tol)? } else { leaving(rpath.iter().rev().copied(), tol)? };
@@ -520,19 +533,19 @@ fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends
             let core = m.core.as_deref().filter(|c| !c.trim().is_empty()).map(|c| shorten(c, MAX_CORE_CHARS));
             let wire =
                 doc.conductors.get(&m.conductor).and_then(|c| c.properties.get("tag")).filter(|t| !t.is_empty()).map(|t| shorten(t, MAX_SHOWN_CHARS));
-            let core_w = core.as_deref().map_or(0.0, measure);
-            let wire_w = wire.as_deref().map_or(0.0, measure);
+            let core_w = core.as_deref().map_or(0.0, measure) * h;
+            let wire_w = wire.as_deref().map_or(0.0, measure) * h;
             Labels { core, wire, core_w, wire_w }
         })
         .collect();
     let wc = labels.iter().map(|l| l.core_w).fold(0.0, f64::max);
     let ww = labels.iter().map(|l| l.wire_w).fold(0.0, f64::max);
-    let tail = TAIL_MIN.max(g + wc + LABEL_SPACING + ww + g);
+    let tail = TAIL_MIN.max(g + wc + label_spacing(h) + ww + g);
     let amax = a.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let c = amax + tail + rho;
     let (tmin, tmax) = (sorted.first().copied()?, sorted.last().copied()?);
     let spine = Spine { o, u, v, c, tmin, tmax };
-    (c.is_finite() && spine.middle().is_finite()).then_some(Frame { spine, t, rho, labels })
+    (c.is_finite() && spine.middle().is_finite()).then_some(Frame { spine, t, rho, labels, h })
 }
 
 /// One fanned end joined at `join` (a point on its spine; design §4.2 steps 6 to 9, with the
@@ -540,7 +553,7 @@ fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends
 /// a core level with the join leaves the spine straight.
 fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Option<FannedEnd> {
     let g = LABEL_GAP;
-    let h = LABEL_HEIGHT;
+    let h = f.h;
     let Spine { o, u, v, c, .. } = f.spine;
     let tj = dot(sub(join, o), v);
     if !tj.is_finite() {
@@ -569,7 +582,7 @@ fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Op
             parts.push(Part::new(Role::Tail, Shape::Path { points: vec![start, *e], closed: false }, Weight::Wire).of_core(m.conductor));
         }
         // Labels at the tail start, reading left to right or bottom to top (design §4.5).
-        let second = if l.core.is_some() { g + l.core_w + LABEL_SPACING } else { g };
+        let second = if l.core.is_some() { g + l.core_w + label_spacing(h) } else { g };
         let lift = 0.3 * h;
         let (core_at, wire_at, rotation) = if r.x > 0.5 {
             (add(start, Pt::new(g, lift)), add(start, Pt::new(second, lift)), 0.0)
@@ -646,10 +659,10 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
     let mut lines = vec![get("tag").unwrap_or_else(|| "?".to_string())];
     lines.extend(get("designation"));
     lines.extend(get("type"));
-    let widths: Vec<f64> = lines.iter().map(|l| measure(l)).collect();
-    let h = LABEL_HEIGHT;
-    let width = widths.iter().copied().fold(0.0, f64::max) + 2.0 * BOX_PAD;
-    let height = (lines.len().saturating_sub(1)) as f64 * BOX_LINE_PITCH + h + 2.0 * BOX_PAD;
+    let h = label_height(doc);
+    let widths: Vec<f64> = lines.iter().map(|l| measure(l) * h).collect();
+    let width = widths.iter().copied().fold(0.0, f64::max) + 2.0 * box_pad(h);
+    let height = (lines.len().saturating_sub(1)) as f64 * box_line_pitch(h) + h + 2.0 * box_pad(h);
     // Centred on the midpoint of the trunk's longest segment (the first on a tie).
     let mut best: Option<(f64, Pt)> = None;
     for w in trunk.windows(2) {
@@ -668,7 +681,7 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
         .collect();
     parts.push(Part::new(Role::LabelBox, Shape::Path { points: vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], closed: true }, Weight::Wire));
     for (i, (line, w)) in lines.into_iter().zip(widths).enumerate() {
-        let baseline = hi.y - BOX_PAD - h - i as f64 * BOX_LINE_PITCH;
+        let baseline = hi.y - box_pad(h) - h - i as f64 * box_line_pitch(h);
         parts.push(Part::new(Role::BoxText, Shape::Text { at: Pt::new(centre.x - w / 2.0, baseline), rotation: 0.0, value: line }, Weight::Text));
     }
     parts
@@ -685,7 +698,7 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
     if core_of.is_empty() {
         return Vec::new();
     }
-    let h = LABEL_HEIGHT;
+    let h = label_height(doc);
     let mut out = Vec::new();
     let slashes: Vec<(Pt, Pt)> = idx
         .cable_reps(cable)

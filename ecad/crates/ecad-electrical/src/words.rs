@@ -210,12 +210,12 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     out
 }
 
-/// The height the cable look is laid out for (label spacing, box pitch and padding, and the width
-/// [`stroke_label_width`] measures). The texts themselves are drawn at the project's cable text and
-/// reference heights (brief 031, `text_style`), never larger than this by default, so they fit.
-/// A layout size, not a text height (brief 066, design 066 §2.4): the texts already read their
-/// styles; this only spaces the look around them.
-pub const LABEL_HEIGHT: f64 = 2.5;
+/// The height the cable look is laid out for (label spacing, box pitch and padding, flags, and the
+/// width [`stroke_label_width`] measures): the `CableText` text style's, in drawing units (brief
+/// 066d: the cable look never has a text size of its own).
+pub fn label_height(doc: &ecad_model::Document) -> f64 {
+    crate::text_style::text_style(doc, crate::text_style::TextKind::CableText).height
+}
 
 /// `ecad.wire-weight`: bends, tails, label box frame, reference flag (wire section).
 pub const WIRE_WEIGHT: u16 = 25;
@@ -251,7 +251,7 @@ impl FlagSide {
 }
 
 /// A reference end's flag laid out at `at` around a text `w` wide, on `side`: the rectangle
-/// `(lo, hi)`, where the text starts (bottom left, height [`LABEL_HEIGHT`]), the closed outline
+/// `(lo, hi)`, where the text starts (bottom left, height `h`, [`label_height`]), the closed outline
 /// (rectangle plus a point of depth h on `side`) and the attach point M (middle of the flat side).
 /// The reference point stays inside the rectangle, h/2 from the flat side.
 pub struct FlagShape {
@@ -264,8 +264,7 @@ pub struct FlagShape {
 
 /// Lay out a flag (see [`FlagShape`]). Midpoints are `lo + (hi - lo) / 2`, finite for any finite
 /// rectangle.
-pub fn flag_shape(at: Pt, w: f64, side: FlagSide) -> FlagShape {
-    let h = LABEL_HEIGHT;
+pub fn flag_shape(at: Pt, w: f64, side: FlagSide, h: f64) -> FlagShape {
     let (lo, hi, text_at) = match side {
         FlagSide::Right => (Pt::new(at.x - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + w + 0.5 * h, at.y + 1.5 * h), at),
         FlagSide::Left => (Pt::new(at.x - w - 0.5 * h, at.y - 0.5 * h), Pt::new(at.x + 0.5 * h, at.y + 1.5 * h), Pt::new(at.x - w, at.y)),
@@ -296,17 +295,17 @@ pub const OUT_OF_RANGE: &str = "Point out of range.";
 /// Most lines a hover description shows.
 pub const MAX_HOVER_LINES: usize = 12;
 
-/// The width of `text` in the stroke font at [`LABEL_HEIGHT`], as the cable look measures it
-/// (`look::font_width` with CADCraft's fonts); 0 when not finite.
-pub fn stroke_label_width(text: &str, m: &dyn crate::text_style::fonts::TextMetrics) -> f64 {
-    let w = m.width(m.stroke_font(), text, LABEL_HEIGHT);
+/// The width of `text` in the stroke font at height `h` ([`label_height`]), as the cable look
+/// measures it (`look::font_width` with CADCraft's fonts); 0 when not finite.
+pub fn stroke_label_width(text: &str, h: f64, m: &dyn crate::text_style::fonts::TextMetrics) -> f64 {
+    let w = m.width(m.stroke_font(), text, h);
     if w.is_finite() && w >= 0.0 { w } else { 0.0 }
 }
 
 /// The box a reference end's flag `w` wide covers at `at` on `side`, its point included: what a
 /// pick of the marker hits (brief 010's pick-first rule; `look::marker_box`).
-pub fn flag_box(at: Pt, w: f64, side: FlagSide) -> (Pt, Pt) {
-    let f = flag_shape(at, w, side);
+pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
+    let f = flag_shape(at, w, side, h);
     let lo = f.outline.iter().fold(f.lo, |a, p| Pt::new(a.x.min(p.x), a.y.min(p.y)));
     let hi = f.outline.iter().fold(f.hi, |a, p| Pt::new(a.x.max(p.x), a.y.max(p.y)));
     (lo, hi)

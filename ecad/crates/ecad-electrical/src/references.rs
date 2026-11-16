@@ -197,15 +197,16 @@ pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m
     if let Some((_, r)) = near {
         return Some(r);
     }
-    markers.iter().find(|x| text_box_holds(x, p, radius, m)).map(|x| x.reference)
+    let h = crate::words::label_height(doc);
+    markers.iter().find(|x| text_box_holds(x, p, radius, h, m)).map(|x| x.reference)
 }
 
 /// Whether `p` lies in a marker's box (brief 009's flag) grown by `pad`.
-fn text_box_holds(m: &Marker, p: Pt, pad: f64, metrics: &dyn TextMetrics) -> bool {
+fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics) -> bool {
     // Brief 009 draws the marker: its flag around the text, at the reference point, on the side
     // away from the wires.
-    let w = crate::words::stroke_label_width(&crate::words::shorten(&m.text, 64), metrics);
-    let (lo, hi) = crate::words::flag_box(m.at, w, crate::words::FlagSide::away(m.text_dir));
+    let w = crate::words::stroke_label_width(&crate::words::shorten(&m.text, 64), h, metrics);
+    let (lo, hi) = crate::words::flag_box(m.at, w, crate::words::FlagSide::away(m.text_dir), h);
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 
