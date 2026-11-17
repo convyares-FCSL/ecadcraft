@@ -654,7 +654,7 @@ fn ac8_wire_colours_show_only_categories_in_use() {
     h.activate(sch);
     let _ = w;
     undo(&mut h);
-    assert!(h.doc().conductors.is_empty(), "the undo removed the only conductor");
+    assert!(h.doc().wires.is_empty(), "the undo removed the only conductor");
     let t = gen_texts(&mut h, cover);
     assert!(t.iter().any(|x| x == "No wires yet."), "a count crossing 0 removes the line: {t:?}");
 }

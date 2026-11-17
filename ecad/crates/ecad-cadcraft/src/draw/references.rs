@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{CableId, ConductorId, ItemId, Op, PageId, Pt, Representation, RepresentationId, Subject};
+use ecad_model::{CableId, ItemId, Op, PageId, Pt, Representation, RepresentationId, Subject, WireId};
 
 use crate::draw::text_style::EngineMetrics;
 
@@ -24,11 +24,11 @@ pub(crate) fn run_slash_continue(
     found: &crate::slash::Crossings,
 ) -> Result<serde_json::Value, String> {
     let doc = p.ledger.document();
-    let crossed: Vec<ConductorId> = found.members.iter().map(|m| m.conductor).collect();
+    let crossed: Vec<WireId> = found.members.iter().map(|m| m.conductor).collect();
     if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
         return Err(format!("{} already has a slash on this page.", crate::references::title(doc, cable)));
     }
-    let blocked: Vec<(ConductorId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
+    let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
     if !blocked.is_empty() {
         return Err(crate::slash::already_in_cable(doc, &blocked, "Nothing was created."));
     }

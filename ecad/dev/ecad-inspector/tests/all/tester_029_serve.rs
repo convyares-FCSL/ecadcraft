@@ -425,7 +425,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
     let mut ids = IdAllocator::seeded(0xE5C);
     let mut l = Ledger::new(3);
     let (p1, layer, k, a, b): (PageId, LayerId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let (w, c): (ConductorId, CableId) = (ids.fresh(), ids.fresh());
+    let (w, c): (WireId, CableId) = (ids.fresh(), ids.fresh());
     let props = |pairs: &[(&str, &str)]| {
         let mut p = ecad_model::doc::Properties::new();
         for (k, v) in pairs {
@@ -445,7 +445,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             },
             Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None } },
             Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None } },
-            Op::CreateConductor { id: w, conductor: Conductor { properties: props(&[("wire_number", X)]), ends: [Some(a), Some(b)] } },
+            Op::CreateWire { id: w, conductor: Wire { display: props(&[("wire.category", X)]), ends: [Some(a), Some(b)], ..Wire::default() } },
             Op::CreateCable {
                 id: c,
                 cable: Cable { properties: props(&[("tag", X)]), members: vec![CableMember { conductor: w, core: Some(X.into()) }] },

@@ -13,7 +13,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
 use cadcraft_engine::geom::Vec2;
 use common::{H, pts, small_project};
-use ecad_model::{ConductorId, PageId, TxKind};
+use ecad_model::{PageId, TxKind, WireId};
 use serde_json::{Value, json};
 
 fn active_page(h: &mut H) -> PageId {
@@ -27,7 +27,7 @@ fn model(h: &mut H, page: PageId) -> cadcraft_engine::doc::EntityStore {
 }
 
 /// The small project plus a plain line from (50, 30) to (80, 30) and its handle.
-fn fixture(seed: u64) -> (H, Handle, ConductorId) {
+fn fixture(seed: u64) -> (H, Handle, WireId) {
     let (mut h, _, _, w) = small_project(seed);
     let page = h.first_page();
     h.run("line", json!({"points": pts(&[(50.0, 30.0), (80.0, 30.0)])})).unwrap();
@@ -41,7 +41,7 @@ const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkY
 struct Probe {
     name: &'static str,
     cmd: &'static str,
-    params: fn(&mut H, Handle, ConductorId, &str) -> Value,
+    params: fn(&mut H, Handle, WireId, &str) -> Value,
 }
 
 fn symbol_handle(h: &mut H) -> String {
@@ -51,7 +51,7 @@ fn symbol_handle(h: &mut H) -> String {
     h.handle_of(page, item).hex()
 }
 
-fn wire_handle(h: &mut H, w: ConductorId) -> String {
+fn wire_handle(h: &mut H, w: WireId) -> String {
     let page = h.first_page();
     h.route_handle(page, w).hex()
 }
@@ -262,7 +262,7 @@ fn undo_and_redo_on_an_ecad_page_mixed_with_plain_drawing_walk_the_ledger() {
     assert_eq!(h.doc(), after, "nothing to redo after a new edit");
     h.cmdline("u");
     assert_eq!(h.doc(), trail[n - 2]);
-    assert!(h.doc().conductors.contains_key(&w));
+    assert!(h.doc().wires.contains_key(&w));
     h.check();
 }
 
@@ -303,7 +303,7 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
     for (tool, transparent) in [("wire", "'zoom"), ("wire", "'pan"), ("place", "'zoom"), ("wire", "'redraw")] {
         let (mut h, _, _) = fixture(2360);
         let head = h.head();
-        let conductors = h.doc().conductors.len();
+        let conductors = h.doc().wires.len();
         let devices = h.doc().devices.len();
         h.s.start(tool).unwrap();
         if tool == "wire" {
@@ -335,13 +335,13 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
         assert_eq!(h.head(), head + 1, "{tool} {transparent}: one transaction");
         let d = h.doc();
         match tool {
-            "wire" => assert_eq!(d.conductors.len(), conductors + 1, "{tool} {transparent}"),
+            "wire" => assert_eq!(d.wires.len(), conductors + 1, "{tool} {transparent}"),
             _ => assert_eq!(d.devices.len(), devices + 1, "{tool} {transparent}"),
         }
         assert!(h.s.state().unwrap().undo.is_empty());
         h.check();
         h.cmdline("u");
-        assert_eq!(h.doc().conductors.len(), conductors);
+        assert_eq!(h.doc().wires.len(), conductors);
         assert_eq!(h.doc().devices.len(), devices);
     }
 }

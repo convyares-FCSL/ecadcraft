@@ -263,7 +263,7 @@ impl App {
                 "Counts: {} components, {} connection points, {} conductors, {} items, {} representations, {} definitions.",
                 doc.devices.len(),
                 doc.terminals.len(),
-                doc.conductors.len(),
+                doc.wires.len(),
                 doc.items.len(),
                 doc.representations.len(),
                 doc.definitions.len()

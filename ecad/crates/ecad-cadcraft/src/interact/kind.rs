@@ -13,7 +13,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{CableId, ConductorId, DeviceId, Document, End, PageId, RepresentationId, Subject, TerminalId};
+use ecad_model::{CableId, DeviceId, Document, End, PageId, RepresentationId, Subject, TerminalId, WireId};
 
 use super::{capture, pick, pixel, pt, read, route_ends, terminal_name};
 use crate::kinds::ObjectKind;
@@ -29,7 +29,7 @@ pub struct Target {
     /// What the wheel's chip names: `-K01`, `wire 24V-05`, `Page 3`.
     pub name: String,
     pub component: Option<DeviceId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
     pub end: Option<End>,
     pub cable: Option<CableId>,
     pub terminal: Option<TerminalId>,
@@ -114,7 +114,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     }
     // A wire's end within the aperture.
     if ok_aperture {
-        let mut best: Option<(f64, ConductorId, End)> = None;
+        let mut best: Option<(f64, WireId, End)> = None;
         for (w, a, b) in route_ends(doc, page) {
             for (end, p_) in [(End::A, a), (End::B, b)] {
                 let d = p_.dist(c);
@@ -128,7 +128,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.conductor = Some(w);
             t.end = Some(end);
             t.name = format!("end of {}", wire_words(doc, w));
-            t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Conductor(w));
+            t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Wire(w));
             return t;
         }
     }
@@ -196,11 +196,11 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             Some((rid, r)) => match r.subject {
                 Subject::Device(c) if crate::strips::is_strip(doc, c) => return terminal(p, page, t, c, None),
                 Subject::Device(c) => return device(p, page, t, c, Some(rid)),
-                Subject::Conductor(w) => {
+                Subject::Wire(w) => {
                     t.kind = ObjectKind::Wire;
                     t.conductor = Some(w);
                     t.name = wire_words(doc, w);
-                    t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Conductor(w));
+                    t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Wire(w));
                 }
                 Subject::Cable(k) => return cable(p, page, t, k),
             },
@@ -272,7 +272,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
         match rep.subject {
             Subject::Cable(k) => t.cable = Some(k),
             Subject::Device(c) => t.component = Some(c),
-            Subject::Conductor(_) => {}
+            Subject::Wire(_) => {}
         }
         if rep.page == page {
             t.handles = rep.items.iter().filter_map(|i| map.item(*i)).collect();
@@ -283,7 +283,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
 }
 
 /// A wire as a person names it: `wire 01` (its net's number), else its tag or short ID.
-pub fn wire_words(doc: &Document, w: ConductorId) -> String {
+pub fn wire_words(doc: &Document, w: WireId) -> String {
     let conn = doc.connectivity();
     match conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)) {
         Some(n) => format!("wire {n}"),

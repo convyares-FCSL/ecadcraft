@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId,
+    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -202,7 +202,7 @@ pub struct Terminal {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Subject {
     Device(DeviceId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Cable(CableId),
 }
 
@@ -238,17 +238,32 @@ pub struct Ends {
     pub b: Option<TerminalId>,
 }
 
+/// A wire (design 072 §4.2): its ends, its typed values (the model's own strict types) and its
+/// display choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Conductor {
-    pub properties: BTreeMap<String, String>,
+pub struct Wire {
     pub ends: Ends,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<m::wire::WireSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colours: Option<m::wire::Colours>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<m::wire::WireNumber>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub potential: Option<m::text::Text<{ m::wire::MAX_VALUE_CHARS }>>,
+    #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
+    pub rating: m::wire::CircuitInputs,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<m::units::Amps>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub display: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CableMember {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub core: Option<String>,
 }
 
@@ -567,7 +582,7 @@ impl From<SheetSpec> for m::SheetSpec {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ObjectRef {
     Device(DeviceId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Cable(CableId),
     /// Brief 019 (decision FP1).
     Page(PageId),
@@ -729,16 +744,21 @@ pub enum Op {
         id: RepresentationId,
         rep: Representation,
     },
-    CreateConductor {
-        id: ConductorId,
-        conductor: Conductor,
+    CreateWire {
+        id: WireId,
+        conductor: Wire,
     },
-    DeleteConductor {
-        id: ConductorId,
-        conductor: Conductor,
+    DeleteWire {
+        id: WireId,
+        conductor: Wire,
+    },
+    ModifyWire {
+        id: WireId,
+        before: Wire,
+        after: Wire,
     },
     AttachEnd {
-        conductor: ConductorId,
+        conductor: WireId,
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
@@ -982,7 +1002,7 @@ impl From<&m::Representation> for Representation {
         Representation {
             subject: match r.subject {
                 m::Subject::Device(c) => Subject::Device(c),
-                m::Subject::Conductor(c) => Subject::Conductor(c),
+                m::Subject::Wire(c) => Subject::Wire(c),
                 m::Subject::Cable(c) => Subject::Cable(c),
             },
             page: r.page,
@@ -1004,9 +1024,18 @@ fn end(e: m::End) -> End {
     }
 }
 
-impl From<&m::Conductor> for Conductor {
-    fn from(c: &m::Conductor) -> Self {
-        Conductor { properties: c.properties.clone(), ends: Ends { a: c.end(m::End::A), b: c.end(m::End::B) } }
+impl From<&m::Wire> for Wire {
+    fn from(c: &m::Wire) -> Self {
+        Wire {
+            ends: Ends { a: c.end(m::End::A), b: c.end(m::End::B) },
+            size: c.size,
+            colours: c.colours.clone(),
+            number: c.number.clone(),
+            potential: c.potential.clone(),
+            rating: c.rating,
+            load: c.load,
+            display: c.display.clone(),
+        }
     }
 }
 
@@ -1111,7 +1140,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
 fn object(o: m::ObjectRef) -> ObjectRef {
     match o {
         m::ObjectRef::Device(c) => ObjectRef::Device(c),
-        m::ObjectRef::Conductor(c) => ObjectRef::Conductor(c),
+        m::ObjectRef::Wire(c) => ObjectRef::Wire(c),
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
         m::ObjectRef::Page(p) => ObjectRef::Page(p),
         m::ObjectRef::Project => ObjectRef::Project,
@@ -1140,8 +1169,9 @@ impl From<&m::Op> for Op {
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
-            m::Op::CreateConductor { id, conductor } => Op::CreateConductor { id: *id, conductor: conductor.into() },
-            m::Op::DeleteConductor { id, conductor } => Op::DeleteConductor { id: *id, conductor: conductor.into() },
+            m::Op::CreateWire { id, conductor } => Op::CreateWire { id: *id, conductor: conductor.into() },
+            m::Op::DeleteWire { id, conductor } => Op::DeleteWire { id: *id, conductor: conductor.into() },
+            m::Op::ModifyWire { id, before, after } => Op::ModifyWire { id: *id, before: before.into(), after: after.into() },
             m::Op::AttachEnd { conductor, end: e, before, after } => {
                 Op::AttachEnd { conductor: *conductor, end: end(*e), before: *before, after: *after }
             }
@@ -1273,7 +1303,7 @@ impl From<Representation> for m::Representation {
         m::Representation {
             subject: match r.subject {
                 Subject::Device(c) => m::Subject::Device(c),
-                Subject::Conductor(c) => m::Subject::Conductor(c),
+                Subject::Wire(c) => m::Subject::Wire(c),
                 Subject::Cable(c) => m::Subject::Cable(c),
             },
             page: r.page,
@@ -1295,9 +1325,18 @@ fn mend(e: End) -> m::End {
     }
 }
 
-impl From<Conductor> for m::Conductor {
-    fn from(c: Conductor) -> Self {
-        m::Conductor { properties: c.properties, ends: [c.ends.a, c.ends.b] }
+impl From<Wire> for m::Wire {
+    fn from(c: Wire) -> Self {
+        m::Wire {
+            ends: [c.ends.a, c.ends.b],
+            size: c.size,
+            colours: c.colours,
+            number: c.number,
+            potential: c.potential,
+            rating: c.rating,
+            load: c.load,
+            display: c.display,
+        }
     }
 }
 
@@ -1360,7 +1399,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
 fn mobject(o: ObjectRef) -> m::ObjectRef {
     match o {
         ObjectRef::Device(c) => m::ObjectRef::Device(c),
-        ObjectRef::Conductor(c) => m::ObjectRef::Conductor(c),
+        ObjectRef::Wire(c) => m::ObjectRef::Wire(c),
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
         ObjectRef::Page(p) => m::ObjectRef::Page(p),
         ObjectRef::Project => m::ObjectRef::Project,
@@ -1389,8 +1428,9 @@ impl TryFrom<Op> for m::Op {
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },
-            Op::CreateConductor { id, conductor } => m::Op::CreateConductor { id, conductor: conductor.into() },
-            Op::DeleteConductor { id, conductor } => m::Op::DeleteConductor { id, conductor: conductor.into() },
+            Op::CreateWire { id, conductor } => m::Op::CreateWire { id, conductor: conductor.into() },
+            Op::DeleteWire { id, conductor } => m::Op::DeleteWire { id, conductor: conductor.into() },
+            Op::ModifyWire { id, before, after } => m::Op::ModifyWire { id, before: before.into(), after: after.into() },
             Op::AttachEnd { conductor, end, before, after } => m::Op::AttachEnd { conductor, end: mend(end), before, after },
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },

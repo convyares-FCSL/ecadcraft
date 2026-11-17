@@ -191,7 +191,7 @@ fn templates_take_ids_from_the_selection() {
     let mut t = new_app();
     assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
     let d = doc(&mut t);
-    let (cid, _) = d.conductors.iter().next().unwrap();
+    let (cid, _) = d.wires.iter().next().unwrap();
     let page = d.page_order[0];
     let (item, _) = ecad_model::derive::route_on_page(&d, *cid, page).unwrap();
     let p = t.project().unwrap().clone();

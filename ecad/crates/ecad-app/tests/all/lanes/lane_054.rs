@@ -101,7 +101,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
         let y = 60 + 8 * i;
         ok(&mut h, &format!(r#"wire {{"points":[[40,{y}],[340,{y}]]}}"#));
         let d = doc(&mut h);
-        let c = d.conductors.keys().copied().find(|c| !wires.contains(c)).unwrap();
+        let c = d.wires.keys().copied().find(|c| !wires.contains(c)).unwrap();
         wires.push(c);
         ok(&mut h, &format!(r#"category {{"conductor":"{}","value":"{cat}"}}"#, c.hex()));
     }

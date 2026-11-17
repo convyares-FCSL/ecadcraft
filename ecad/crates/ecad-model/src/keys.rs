@@ -229,10 +229,8 @@ pub const LOCATION: PropKey = PropKey(crate::book::LOCATION_KEY);
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
-    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
+    KeySpec { key: TAG, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Ruled },
     KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
-    KeySpec { key: WIRE_NUMBER, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Ruled },
-    KeySpec { key: WIRE_NUMBER_FIXED, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
     KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
     KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
@@ -259,6 +257,9 @@ pub const RESERVED: &[PropKey] = &[
     PropKey(crate::sheet::GENERATED_KEY),
     PropKey(crate::page::STRIP_KEY),
     PropKey(crate::sheet::PAGE_TYPE_KEY),
+    // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
+    WIRE_NUMBER,
+    WIRE_NUMBER_FIXED,
 ];
 
 /// The fixed key `key`, if it is one.

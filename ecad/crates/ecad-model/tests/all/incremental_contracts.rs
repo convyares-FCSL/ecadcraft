@@ -4,9 +4,9 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Author, Cable, CableMember, Color, Conductor, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId,
-    Ledger, LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
-    StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched,
+    Author, Cable, CableMember, Color, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
+    LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
+    StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched, Wire,
 };
 
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
@@ -83,9 +83,9 @@ pub(crate) struct Base {
     rep_sym_v: Representation,
     rep_wire: ecad_model::RepresentationId,
     rep_wire_v: Representation,
-    wire: ecad_model::ConductorId,
-    wire_v: Conductor,
-    wire2: ecad_model::ConductorId,
+    wire: ecad_model::WireId,
+    wire_v: Wire,
+    wire2: ecad_model::WireId,
     cable: ecad_model::CableId,
     cable_v: Cable,
     pub(crate) folder: ecad_model::FolderId,
@@ -127,11 +127,11 @@ pub(crate) fn base() -> Base {
         connection_points: Default::default(),
     };
     let wire = ids.fresh();
-    let wire_v = Conductor { ends: [Some(term), None], ..Conductor::default() };
+    let wire_v = Wire { ends: [Some(term), None], ..Wire::default() };
     let wire2 = ids.fresh();
     let rep_wire = ids.fresh();
     let rep_wire_v = Representation {
-        subject: Subject::Conductor(wire),
+        subject: Subject::Wire(wire),
         page,
         form: Form::Drawn,
         role: "route".into(),
@@ -155,8 +155,8 @@ pub(crate) fn base() -> Base {
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-                Op::CreateConductor { id: wire, conductor: wire_v.clone() },
-                Op::CreateConductor { id: wire2, conductor: Conductor::default() },
+                Op::CreateWire { id: wire, conductor: wire_v.clone() },
+                Op::CreateWire { id: wire2, conductor: Wire::default() },
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
@@ -231,8 +231,9 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
-        Op::CreateConductor { id: b.ids.fresh(), conductor: Conductor { ends: [Some(b.term), Some(b.term)], ..Conductor::default() } },
-        Op::DeleteConductor { id: b.wire, conductor: b.wire_v.clone() },
+        Op::CreateWire { id: b.ids.fresh(), conductor: Wire { ends: [Some(b.term), Some(b.term)], ..Wire::default() } },
+        Op::DeleteWire { id: b.wire, conductor: b.wire_v.clone() },
+        Op::ModifyWire { id: b.wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
         Op::AttachEnd { conductor: b.wire2, end: End::B, before: None, after: Some(b.term) },
         Op::CreateCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
@@ -289,8 +290,9 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::LinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_sym_v.clone(), after: b.rep_wire_v.clone() },
         Op::UnlinkRepresentation { id: b.ids.fresh(), rep: b.rep_sym_v.clone() },
-        Op::CreateConductor { id: b.wire, conductor: Conductor::default() },
-        Op::DeleteConductor { id: b.wire, conductor: Conductor::default() },
+        Op::CreateWire { id: b.wire, conductor: Wire::default() },
+        Op::DeleteWire { id: b.wire, conductor: Wire::default() },
+        Op::ModifyWire { id: missing_conductor, before: Wire::default(), after: Wire::default() },
         Op::AttachEnd { conductor: b.wire, end: End::A, before: None, after: Some(b.term) },
         Op::AttachEnd { conductor: missing_conductor, end: End::A, before: None, after: Some(b.term) },
         Op::CreateCable { id: b.cable, cable: Cable::default() },
@@ -419,7 +421,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
-        Op::CreateConductor { id: wire, conductor: Conductor::default() },
+        Op::CreateWire { id: wire, conductor: Wire::default() },
         Op::AttachEnd { conductor: wire, end: End::A, before: None, after: Some(term) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: wire, core: None } },
     ];
@@ -554,7 +556,7 @@ struct Pools {
     comps: Vec<ecad_model::DeviceId>,
     terms: Vec<ecad_model::TerminalId>,
     reps: Vec<ecad_model::RepresentationId>,
-    conds: Vec<ecad_model::ConductorId>,
+    conds: Vec<ecad_model::WireId>,
     cables: Vec<ecad_model::CableId>,
     defs: Vec<ecad_model::DefinitionId>,
 }
@@ -593,7 +595,7 @@ impl Gen {
     fn term(&mut self) -> Option<ecad_model::TerminalId> {
         if self.rng.chance(30) { None } else { self.rng.pick(&self.pools.terms) }
     }
-    fn cond(&mut self) -> ecad_model::ConductorId {
+    fn cond(&mut self) -> ecad_model::WireId {
         self.rng.pick(&self.pools.conds).unwrap_or_else(|| fresh_in!(self, conds))
     }
 
@@ -652,7 +654,7 @@ impl Gen {
         }
         let subject = match self.rng.below(3) {
             0 => Subject::Device(self.comp()),
-            1 => Subject::Conductor(self.cond()),
+            1 => Subject::Wire(self.cond()),
             _ => Subject::Cable(self.rng.pick(&self.pools.cables).unwrap_or_else(|| fresh_in!(self, cables))),
         };
         let page = self.rng.pick_key(&doc.pages).unwrap_or_else(|| self.page());
@@ -790,20 +792,20 @@ impl Gen {
             },
             24..=26 => {
                 let ends = [self.term(), self.term()];
-                Op::CreateConductor { id: fresh_in!(self, conds), conductor: Conductor { ends, ..Conductor::default() } }
+                Op::CreateWire { id: fresh_in!(self, conds), conductor: Wire { ends, ..Wire::default() } }
             }
-            27 => match self.rng.pick_key(&doc.conductors) {
-                Some(id) => Op::DeleteConductor { id, conductor: doc.conductors.get(&id).cloned().unwrap_or_default() },
-                None => Op::CreateConductor { id: fresh_in!(self, conds), conductor: Conductor::default() },
+            27 => match self.rng.pick_key(&doc.wires) {
+                Some(id) => Op::DeleteWire { id, conductor: doc.wires.get(&id).cloned().unwrap_or_default() },
+                None => Op::CreateWire { id: fresh_in!(self, conds), conductor: Wire::default() },
             },
-            28..=29 => match self.rng.pick_key(&doc.conductors) {
+            28..=29 => match self.rng.pick_key(&doc.wires) {
                 Some(conductor) => {
                     let end = if self.rng.chance(50) { End::A } else { End::B };
-                    let current = doc.conductors.get(&conductor).and_then(|c| c.end(end));
+                    let current = doc.wires.get(&conductor).and_then(|c| c.end(end));
                     let before = if spoil { self.term() } else { current };
                     Op::AttachEnd { conductor, end, before, after: self.term() }
                 }
-                None => Op::CreateConductor { id: fresh_in!(self, conds), conductor: Conductor::default() },
+                None => Op::CreateWire { id: fresh_in!(self, conds), conductor: Wire::default() },
             },
             30 => {
                 let mut members = Vec::new();
@@ -1011,7 +1013,7 @@ struct Snapshot {
     head: u64,
     undo: Option<String>,
     redo: Option<String>,
-    ends: Vec<(ecad_model::ConductorId, End)>,
+    ends: Vec<(ecad_model::WireId, End)>,
     cables: Vec<ecad_model::CableId>,
 }
 

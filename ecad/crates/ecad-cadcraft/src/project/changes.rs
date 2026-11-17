@@ -192,7 +192,7 @@ impl Project {
                     amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
                     // Tag texts and terminal labels follow their symbols (brief 018).
                     amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
-                    // Conductor labels follow their routes and nets (brief 022).
+                    // Wire labels follow their routes and nets (brief 022).
                     amended.extend(prev.label_handles().chain(map.label_handles()));
                     // Contact texts and mirror tables follow their device (brief 025).
                     amended.extend(prev.xref_handles().chain(map.xref_handles()));
@@ -481,8 +481,8 @@ impl Project {
         let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
         let mut out = BTreeSet::new();
         for op in extra {
-            if let Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } = op {
-                out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+            if let Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } = op {
+                out.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
             }
         }
         Some(out)

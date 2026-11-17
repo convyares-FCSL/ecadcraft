@@ -67,7 +67,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
-        for (w, cond) in doc.conductors.iter() {
+        for (w, cond) in doc.wires.iter() {
             for end in End::BOTH {
                 if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
                     ops.push(Op::AttachEnd { conductor: *w, end, before: Some(t), after: None });

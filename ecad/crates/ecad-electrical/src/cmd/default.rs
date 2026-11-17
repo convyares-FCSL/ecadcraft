@@ -18,7 +18,7 @@
 //!
 //! Excluded: any entry's levels, which only the registry sets.
 
-use ecad_model::{ConductorId, DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
+use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId, WireId};
 
 use crate::defaults::{self, Entry, Level, ProjectSource};
 use crate::error::CmdError;
@@ -153,7 +153,7 @@ pub enum Target {
     Project,
     Page(PageId),
     Device(DeviceId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Symbol(RepresentationId),
 }
 
@@ -203,9 +203,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
             property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
         (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
-        (Level::Object, Target::Conductor(c)) => {
-            property(ObjectRef::Conductor(c), doc.conductors.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
+        (Level::Object, Target::Wire(c)) => property(ObjectRef::Wire(c), doc.wires.get(&c).map(|c| &c.display), entry.key.to_string()),
         (Level::Object, _) => Err(CmdError::refused(NEEDS_OBJECT)),
         (Level::Page, _) => Err(CmdError::refused("The page level needs a `page`.")),
         (Level::Standard, _) => property(ObjectRef::Standard, doc.standard.as_ref().map(|s| &s.values), entry.key.to_string()),
@@ -256,7 +254,7 @@ pub fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen
 pub struct Objects {
     pub representation: Option<RepresentationId>,
     pub component: Option<DeviceId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
 }
 
 /// The target of `level`: the page `page` (else `shown`), or the object named.
@@ -270,7 +268,7 @@ pub fn target(level: Level, page: Option<PageId>, shown: PageId, o: Objects) -> 
         Level::Object => match (o.representation, o.component, o.conductor) {
             (Some(r), _, _) => Target::Symbol(r),
             (None, Some(c), _) => Target::Device(c),
-            (None, None, Some(c)) => Target::Conductor(c),
+            (None, None, Some(c)) => Target::Wire(c),
             _ => return Err(CmdError::refused(NEEDS_OBJECT)),
         },
     })

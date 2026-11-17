@@ -12,8 +12,8 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, CableMember, Conductor, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal};
-use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
 use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
@@ -69,14 +69,14 @@ pub enum Effect<'a> {
         before: Option<&'a Representation>,
         after: Option<&'a Representation>,
     },
-    Conductor {
-        id: ConductorId,
-        before: Option<&'a Conductor>,
-        after: Option<&'a Conductor>,
+    Wire {
+        id: WireId,
+        before: Option<&'a Wire>,
+        after: Option<&'a Wire>,
     },
     /// A conductor end attached or detached.
     End {
-        conductor: ConductorId,
+        conductor: WireId,
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
@@ -149,7 +149,7 @@ pub enum EffectKind {
     DeviceDefinition,
     Terminal,
     Rep,
-    Conductor,
+    Wire,
     End,
     Cable,
     Member,
@@ -172,7 +172,7 @@ impl EffectKind {
         EffectKind::DeviceDefinition,
         EffectKind::Terminal,
         EffectKind::Rep,
-        EffectKind::Conductor,
+        EffectKind::Wire,
         EffectKind::End,
         EffectKind::Cable,
         EffectKind::Member,
@@ -249,7 +249,7 @@ impl Effect<'_> {
             Effect::DeviceDefinition { .. } => EffectKind::DeviceDefinition,
             Effect::Terminal { .. } => EffectKind::Terminal,
             Effect::Rep { .. } => EffectKind::Rep,
-            Effect::Conductor { .. } => EffectKind::Conductor,
+            Effect::Wire { .. } => EffectKind::Wire,
             Effect::End { .. } => EffectKind::End,
             Effect::Cable { .. } => EffectKind::Cable,
             Effect::Member { .. } => EffectKind::Member,
@@ -379,8 +379,9 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
         Op::ModifyRepresentation { id, before, after } => Effect::Rep { id: *id, before: Some(before), after: Some(after) },
         Op::UnlinkRepresentation { id, rep } => Effect::Rep { id: *id, before: Some(rep), after: None },
-        Op::CreateConductor { id, conductor } => Effect::Conductor { id: *id, before: None, after: Some(conductor) },
-        Op::DeleteConductor { id, conductor } => Effect::Conductor { id: *id, before: Some(conductor), after: None },
+        Op::CreateWire { id, conductor } => Effect::Wire { id: *id, before: None, after: Some(conductor) },
+        Op::DeleteWire { id, conductor } => Effect::Wire { id: *id, before: Some(conductor), after: None },
+        Op::ModifyWire { id, before, after } => Effect::Wire { id: *id, before: Some(before), after: Some(after) },
         Op::AttachEnd { conductor, end, before, after } => Effect::End { conductor: *conductor, end: *end, before: *before, after: *after },
         Op::CreateCable { id, cable } => Effect::Cable { id: *id, before: None, after: Some(cable) },
         Op::DeleteCable { id, cable } => Effect::Cable { id: *id, before: Some(cable), after: None },
@@ -426,7 +427,7 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::DeviceDefinition { .. }
         | Effect::Terminal { .. }
         | Effect::Rep { .. }
-        | Effect::Conductor { .. }
+        | Effect::Wire { .. }
         | Effect::End { .. }
         | Effect::Cable { .. }
         | Effect::Member { .. }

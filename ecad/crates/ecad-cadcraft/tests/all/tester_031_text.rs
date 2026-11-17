@@ -177,7 +177,7 @@ fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> 
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
 }
 
 fn textstyle_kind(v: &Value, kind: &str) -> Value {
@@ -683,8 +683,8 @@ fn t5_showtext_refusals() {
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": ghost}), "No page");
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": "zz"}), "");
     // A wire's representation is not a symbol.
-    let w: ecad_model::ConductorId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
-    let wr = f.h.doc().representations_of(Subject::Conductor(w)).map(|(id, _)| id).next().unwrap();
+    let w: ecad_model::WireId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
+    let wr = f.h.doc().representations_of(Subject::Wire(w)).map(|(id, _)| id).next().unwrap();
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "representation": wr.hex()}), "That representation is not a symbol.");
     // Two targets at once.
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": f.page.hex(), "component": f.k1.hex()}), "");

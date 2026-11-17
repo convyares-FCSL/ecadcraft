@@ -216,7 +216,7 @@ pub enum Action {
     OfferDrawn(ecad_model::DeviceId),
     RenumberStrip(ecad_model::DeviceId),
     SetCores(ecad_model::CableId),
-    NextFreeCore(ecad_model::ConductorId),
+    NextFreeCore(ecad_model::WireId),
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
     OpenStandards(&'static str),

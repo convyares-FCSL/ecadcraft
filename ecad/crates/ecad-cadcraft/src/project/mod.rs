@@ -17,8 +17,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_electrical::CmdError;
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, ConductorId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
-    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId, ProjectId,
+    ProjectSettings, Pt, RepresentationId, Subject, TerminalId, WireId,
 };
 use ecad_store::MemoryBackend;
 use serde_json::{Value, json};
@@ -645,7 +645,7 @@ pub fn project_page_kept(
     }
     // Looks-connected marks (brief 032 §2.6): derived with the page, after its quiet ends.
     map.looks = crate::wires::looks_connected_on_page(doc, page, &map.quiet);
-    // Conductor labels (brief 022): derived on every draw of the page, never stored.
+    // Wire labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
@@ -1135,7 +1135,7 @@ impl Project {
     fn following_routes(&self, page: PageId, moved: &dyn Fn(TerminalId) -> Option<Pt>) -> Vec<cadcraft_engine::doc::EntityKind> {
         let doc = self.ledger.document();
         let mut out = Vec::new();
-        for (cid, c) in &doc.conductors {
+        for (cid, c) in &doc.wires {
             let Some((_, prim)) = ecad_model::derive::route_on_page(doc, *cid, page) else { continue };
             let mut p = prim.clone();
             let mut any = false;
@@ -1202,17 +1202,17 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.insert(after.page);
             }
             Op::AttachEnd { conductor, .. } => {
-                out.extend(doc.representations_of(Subject::Conductor(*conductor)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(Subject::Wire(*conductor)).map(|(_, r)| r.page));
             }
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
             // its representation ops.
             Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
                 if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
-            Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
             // same transaction (the invariant requires it), and those ops name its pages.
-            Op::DeleteConductor { .. } => {}
+            Op::DeleteWire { .. } => {}
             Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
@@ -1268,8 +1268,8 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // finding 1), and their own ops name their pages; the document here is the one before.
             Op::RemoveDefinition { id, .. } if unused_after(doc, *id, ops) => {}
             // A conductor's label shows its properties (brief 022): its pages.
-            Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
-                out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+            Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
+                out.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
             }
             // Brief 026: a cable's tag is drawn by its slashes and its members' labels: their
             // pages (its references elsewhere are the reference snapshot's part). A high-water
@@ -1278,7 +1278,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.extend(doc.representations_of(Subject::Cable(*k)).map(|(_, r)| r.page));
                 if let Some(cable) = doc.cables.get(k) {
                     for m in &cable.members {
-                        out.extend(doc.representations_of(Subject::Conductor(m.conductor)).map(|(_, r)| r.page));
+                        out.extend(doc.representations_of(Subject::Wire(m.conductor)).map(|(_, r)| r.page));
                     }
                 }
             }

@@ -24,7 +24,7 @@
 //! in its catalogue.
 
 pub use data::{DefaultsError, Slot};
-use ecad_model::{ConductorId, DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject, WireId};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): the words of
 /// [`ecad_model::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
@@ -198,7 +198,7 @@ pub struct Scope {
     pub page: Option<PageId>,
     pub component: Option<DeviceId>,
     pub rep: Option<RepresentationId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
 }
 
 impl Scope {
@@ -460,7 +460,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
                 return Resolved { value, from: Source::Object };
             }
         }
-        if let Some(value) = at.conductor.and_then(|c| doc.conductors.get(&c)).and_then(|c| stored(&c.properties, entry.key)) {
+        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)) {
             return Resolved { value, from: Source::Object };
         }
     }
@@ -530,7 +530,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
-        .or_else(|| at.conductor.and_then(|c| doc.conductors.get(&c)).and_then(|c| stored(&c.properties, entry.key)));
+        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)));
     if entry.allows(Level::Object) || object.is_some() {
         out.push((Source::Object, object.filter(|_| entry.allows(Level::Object))));
     }
@@ -583,7 +583,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
         "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
-        "wires" => doc.conductors.values().filter(|c| !own(&c.properties)).count(),
+        "wires" => doc.wires.values().filter(|c| !own(&c.display)).count(),
         _ => doc.pages.len(),
     }
 }

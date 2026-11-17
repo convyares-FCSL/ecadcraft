@@ -32,11 +32,11 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 t.representations.insert(*id);
             }
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } => {
-                t.conductors.insert(*id);
+            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => {
+                t.wires.insert(*id);
             }
             Op::AttachEnd { conductor, .. } => {
-                t.conductors.insert(*conductor);
+                t.wires.insert(*conductor);
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 t.cables.insert(*id);
@@ -48,8 +48,8 @@ fn old_touched(ops: &[Op]) -> Touched {
                 ObjectRef::Device(id) => {
                     t.devices.insert(*id);
                 }
-                ObjectRef::Conductor(id) => {
-                    t.conductors.insert(*id);
+                ObjectRef::Wire(id) => {
+                    t.wires.insert(*id);
                 }
                 ObjectRef::Cable(id) => {
                     t.cables.insert(*id);

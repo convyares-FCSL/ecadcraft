@@ -113,7 +113,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     // The result: the quick-start's structure (IDs aside), drawn by clicks.
     let d = doc(&mut h);
     assert_eq!(d.devices.len(), 2);
-    assert_eq!(d.conductors.len(), 1);
+    assert_eq!(d.wires.len(), 1);
     let page = d.page_order[0];
     let drawn = d
         .representations
@@ -127,7 +127,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
         drawn.1.connection_points.iter().map(|(t, p)| (d.terminals[t].label.clone().unwrap_or_default(), *p)).collect();
     terminals.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(terminals, vec![("1".into(), Pt::new(40.0, 10.0)), ("2".into(), Pt::new(0.0, 10.0))]);
-    let (w, c) = d.conductors.iter().next().unwrap();
+    let (w, c) = d.wires.iter().next().unwrap();
     let ends: Vec<String> = End::BOTH.iter().map(|e| c.end(*e).and_then(|t| d.terminals[&t].label.clone()).unwrap_or_default()).collect();
     assert_eq!(ends, ["1", "A1"], "both ends attached: to terminal 1 and to the coil's A1");
     let route = ecad_model::derive::route_on_page(&d, *w, page).unwrap().1;
@@ -195,7 +195,7 @@ fn hovering_names_the_object_and_its_connections_and_writes_nothing() {
     let on_wire = screen(&h, 55.0, 10.0);
     pointer_to(&mut h, on_wire);
     h.run_steps(2);
-    assert!(h.query_by_label("Wire (no tag)").is_some());
+    assert!(h.query_by_label("Wire 01").is_some(), "a wire is named by its number");
     assert!(h.query_by_label("End B: connection point A1 of ").is_none(), "lines are whole");
     let lines = h.state().hover_lines().unwrap().to_vec();
     assert!(lines.iter().any(|l| l.starts_with("End B: connection point A1 of ")), "{lines:?}");

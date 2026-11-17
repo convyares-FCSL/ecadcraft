@@ -157,7 +157,7 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
     for (_, o) in users {
         match o {
             ObjectRef::Device(_) => d += 1,
-            ObjectRef::Conductor(_) | ObjectRef::Cable(_) => w += 1,
+            ObjectRef::Wire(_) | ObjectRef::Cable(_) => w += 1,
             ObjectRef::Page(_) => p += 1,
             ObjectRef::Project | ObjectRef::Standard => {}
         }
@@ -170,7 +170,7 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
         ObjectRef::Project => Some(&doc.properties),

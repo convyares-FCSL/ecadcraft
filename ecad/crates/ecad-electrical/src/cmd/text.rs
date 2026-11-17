@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ConductorId, DeviceId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, StyleLayer, StyleRef, Subject, TerminalId, TextHAlign,
-    TextVAlign,
+    DeviceId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, StyleLayer, StyleRef, Subject, TerminalId, TextHAlign, TextVAlign,
+    WireId,
 };
 
 use crate::defaults::{self, Scope};
@@ -305,7 +305,7 @@ pub fn default_key(doc: &Document, key: &str) -> Result<(), CmdError> {
 pub enum ShowLevel {
     Symbol(RepresentationId, DeviceId),
     Device(DeviceId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Page(PageId),
     Project,
 }
@@ -316,7 +316,7 @@ impl ShowLevel {
         match self {
             ShowLevel::Symbol(..) => "symbol",
             ShowLevel::Device(_) => "device",
-            ShowLevel::Conductor(_) => "conductor",
+            ShowLevel::Wire(_) => "conductor",
             ShowLevel::Page(_) => "page",
             ShowLevel::Project => "project",
         }
@@ -328,7 +328,7 @@ impl ShowLevel {
 pub struct ShowTarget {
     pub representation: Option<RepresentationId>,
     pub component: Option<DeviceId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
     pub page: Option<PageId>,
 }
 
@@ -337,7 +337,7 @@ fn kinds_at(level: ShowLevel) -> &'static [TextKind] {
     use TextKind::*;
     match level {
         ShowLevel::Symbol(..) | ShowLevel::Device(_) => &[Tag, PointLabel, Description, PartNumber, ContinuationName],
-        ShowLevel::Conductor(_) => &[WireLabel],
+        ShowLevel::Wire(_) => &[WireLabel],
         ShowLevel::Page(_) | ShowLevel::Project => &[Tag, PointLabel, Description, PartNumber, ContinuationName, Reference, LocationLabel, WireLabel],
     }
 }
@@ -348,7 +348,7 @@ pub fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)>
     Some(match level {
         ShowLevel::Symbol(rep, c) => (ObjectRef::Device(c), defaults::symbol_key(entry.key, rep)),
         ShowLevel::Device(c) => (ObjectRef::Device(c), entry.key.to_string()),
-        ShowLevel::Conductor(c) => (ObjectRef::Conductor(c), entry.key.to_string()),
+        ShowLevel::Wire(c) => (ObjectRef::Wire(c), entry.key.to_string()),
         ShowLevel::Page(p) => (ObjectRef::Page(p), entry.key.to_string()),
         ShowLevel::Project => (ObjectRef::Project, entry.key.to_string()),
     })
@@ -382,11 +382,7 @@ pub fn show_level(doc: &Document, t: &ShowTarget) -> Result<ShowLevel, CmdError>
         return doc.devices.contains_key(&c).then_some(ShowLevel::Device(c)).ok_or_else(|| CmdError::refused(format!("No component {}.", c.hex())));
     }
     if let Some(c) = t.conductor {
-        return doc
-            .conductors
-            .contains_key(&c)
-            .then_some(ShowLevel::Conductor(c))
-            .ok_or_else(|| CmdError::refused(format!("No conductor {}.", c.hex())));
+        return doc.wires.contains_key(&c).then_some(ShowLevel::Wire(c)).ok_or_else(|| CmdError::refused(format!("No conductor {}.", c.hex())));
     }
     if let Some(p) = t.page {
         return doc.pages.contains_key(&p).then_some(ShowLevel::Page(p)).ok_or_else(|| CmdError::refused(format!("No page {}.", p.hex())));
@@ -410,7 +406,7 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
     let (object, key) = show_key(level, kind).ok_or(CmdError::refused(BAD_SHOW))?;
     let props = match object {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
         ObjectRef::Project => Some(&doc.properties),
         ObjectRef::Cable(_) | ObjectRef::Standard => None,

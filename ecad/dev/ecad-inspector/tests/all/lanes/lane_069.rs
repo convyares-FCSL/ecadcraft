@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, CableMember, Color, Conductor, Definition, Device, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
-    LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
-    StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef,
+    Author, Cable, CableMember, Color, Definition, Device, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
+    ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef,
+    Subject, SymbolInstance, Terminal, TerminalDef, Wire,
 };
 use serde_json::{Value, json};
 
@@ -103,12 +103,12 @@ fn every_op_ledger() -> Ledger {
         items: vec![sym],
         connection_points: Default::default(),
     };
-    let wire: ecad_model::ConductorId = ids.fresh();
-    let wire_v = Conductor { ends: [Some(term), None], ..Conductor::default() };
-    let wire2: ecad_model::ConductorId = ids.fresh();
+    let wire: ecad_model::WireId = ids.fresh();
+    let wire_v = Wire { ends: [Some(term), None], ..Wire::default() };
+    let wire2: ecad_model::WireId = ids.fresh();
     let rep_wire: ecad_model::RepresentationId = ids.fresh();
     let rep_wire_v = Representation {
-        subject: Subject::Conductor(wire),
+        subject: Subject::Wire(wire),
         page,
         form: Form::Drawn,
         role: "route".into(),
@@ -132,8 +132,8 @@ fn every_op_ledger() -> Ledger {
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-                Op::CreateConductor { id: wire, conductor: wire_v.clone() },
-                Op::CreateConductor { id: wire2, conductor: Conductor::default() },
+                Op::CreateWire { id: wire, conductor: wire_v.clone() },
+                Op::CreateWire { id: wire2, conductor: Wire::default() },
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
@@ -171,8 +171,9 @@ fn every_op_ledger() -> Ledger {
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-        Op::CreateConductor { id: ids.fresh(), conductor: Conductor { ends: [Some(term), Some(term)], ..Conductor::default() } },
-        Op::DeleteConductor { id: wire, conductor: wire_v.clone() },
+        Op::CreateWire { id: ids.fresh(), conductor: Wire { ends: [Some(term), Some(term)], ..Wire::default() } },
+        Op::DeleteWire { id: wire, conductor: wire_v.clone() },
+        Op::ModifyWire { id: wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
         Op::AttachEnd { conductor: wire2, end: End::B, before: None, after: Some(term) },
         Op::CreateCable { id: ids.fresh(), cable: cable_v.clone() },
         Op::DeleteCable { id: cable, cable: cable_v.clone() },

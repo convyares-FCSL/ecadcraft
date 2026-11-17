@@ -214,10 +214,11 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
         });
         let cable_of = |c| doc.cables.iter().find(|(_, k)| k.members.iter().any(|m| m.conductor == c)).map(|(id, _)| id.hex());
-        let conductors = doc.conductors.iter().map(|(id, c)| {
+        let conductors = doc.wires.iter().map(|(id, c)| {
             json!({
                 "id": id.hex(),
-                "properties": c.properties,
+                "values": c.values().into_iter().map(|(k, v)| (k.to_string(), Value::String(v))).collect::<serde_json::Map<_, _>>(),
+                "display": c.display,
                 "ends": {"A": c.end(ecad_model::End::A).map(|t| t.hex()), "B": c.end(ecad_model::End::B).map(|t| t.hex())},
                 "cable": cable_of(*id),
             })
@@ -231,7 +232,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
         let nets = nets.into_iter().map(|n| {
             json!({
                 "terminals": n.terminals.iter().map(|t| t.hex()).collect::<Vec<_>>(),
-                "conductors": n.conductors.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+                "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
             })
         });
         let status = p.file_status();
@@ -246,7 +247,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             "unsavedTransactions": p.unsaved_transactions(),
             "pages": listed(pages, doc.page_order.len(), limit),
             "devices": listed(devices, doc.devices.len(), limit),
-            "conductors": listed(conductors, doc.conductors.len(), limit),
+            "conductors": listed(conductors, doc.wires.len(), limit),
             "cables": listed(cables, doc.cables.len(), limit),
             "nets": listed(nets, net_count, limit),
         })

@@ -12,7 +12,7 @@
 //!
 //! This module draws nothing and stores nothing.
 
-use ecad_model::{ConductorId, DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign, WireId};
 
 use crate::defaults::{self, Entry, Scope, text as d};
 
@@ -104,7 +104,7 @@ pub enum TextKind {
     Reference,
     /// Brief 049 (FP2): a continuation caption.
     ContinuationCaption,
-    /// Conductor labels (height stored in `settings.wiring.label_height`).
+    /// Wire labels (height stored in `settings.wiring.label_height`).
     WireLabel,
     /// Cable look: core labels, wire numbers at the slash, label box lines.
     CableText,
@@ -449,7 +449,7 @@ pub struct TextTarget {
     pub page: Option<PageId>,
     pub component: Option<DeviceId>,
     pub representation: Option<RepresentationId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
     /// The symbol's run rule (only for a tag).
     pub run: RunRule,
 }
@@ -472,7 +472,7 @@ impl TextTarget {
     }
 
     /// A conductor drawn on `page` (lane W: wire labels).
-    pub fn conductor(conductor: ConductorId, page: Option<PageId>) -> Self {
+    pub fn conductor(conductor: WireId, page: Option<PageId>) -> Self {
         TextTarget { page, conductor: Some(conductor), ..TextTarget::default() }
     }
 
@@ -806,7 +806,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
                     obs.add(b);
                 }
             }
-            ecad_model::Subject::Conductor(_) => {
+            ecad_model::Subject::Wire(_) => {
                 for item in r.items.iter().filter_map(|i| doc.items.get(i)) {
                     let pts: Vec<ecad_model::Pt> = match &item.kind {
                         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => vec![*a, *b],

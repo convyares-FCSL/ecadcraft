@@ -7,7 +7,7 @@ use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::LOCATION_KEY;
-use ecad_model::{CableId, ConductorId, DeviceId, Document, End, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
+use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
@@ -46,9 +46,9 @@ pub struct Outputs {
     items_no_part: usize,
     /// The report settings the tables use (`bom.column.article`, `bom.lines`).
     pub view: BomView,
-    wires: BTreeMap<ConductorId, WireRow>,
+    wires: BTreeMap<WireId, WireRow>,
     /// Conductors by their net's potential (lower case; `""`: none), for wiring-table changes.
-    by_potential: BTreeMap<String, BTreeSet<ConductorId>>,
+    by_potential: BTreeMap<String, BTreeSet<WireId>>,
     cables: BTreeMap<CableId, CableRow>,
     /// Rows of the BOM-by-location table per location (a heading each), for its sheet count.
     loc_rows: BTreeMap<LocKey, usize>,
@@ -132,7 +132,7 @@ impl Outputs {
             }
         }
         let cx = PageCx::of(doc);
-        for w in doc.conductors.keys() {
+        for w in doc.wires.keys() {
             o.set_wire(doc, *w, &cx);
         }
         for k in doc.cables.keys() {
@@ -283,10 +283,10 @@ impl Outputs {
             self.view = BomView::of(doc);
         }
         for k in &scope.potentials {
-            scope.conductors.extend(self.by_potential.get(k).into_iter().flatten().copied());
+            scope.wires.extend(self.by_potential.get(k).into_iter().flatten().copied());
         }
         if scope.all_wires {
-            scope.conductors.extend(self.wires.keys().copied());
+            scope.wires.extend(self.wires.keys().copied());
         }
         if scope.sheet {
             let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.sheet.is_some());
@@ -307,7 +307,7 @@ impl Outputs {
             }
             for (t, x) in doc.terminals_of(*c) {
                 if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
-                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
         }
@@ -321,7 +321,7 @@ impl Outputs {
                 scope.devices.insert(c);
                 if crate::defaults::connectors::is_naming_key(k) {
                     for (t, _) in doc.terminals_of(c) {
-                        scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                        scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
                 }
             }
@@ -330,14 +330,14 @@ impl Outputs {
             let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
             if crate::defaults::connectors::is_naming_key(key) && crate::connectors::is_connector(doc, *c) {
                 for (t, _) in doc.terminals_of(*c) {
-                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
         }
         for k in scope.strip_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
             for c in self.strips.inheriting(k) {
                 for (t, _) in doc.terminals_of(c) {
-                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
         }
@@ -349,22 +349,22 @@ impl Outputs {
             let after = self.devices.get(c).map(|d| (d.tag.clone(), d.location.value.clone()));
             if before != after {
                 for (t, _) in doc.terminals_of(*c) {
-                    scope.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
         }
         for p in &scope.route_pages {
             if doc.pages.contains_key(p) {
                 for (_, r) in doc.representations_on(*p) {
-                    if let Subject::Conductor(w) = r.subject {
-                        scope.conductors.insert(w);
+                    if let Subject::Wire(w) = r.subject {
+                        scope.wires.insert(w);
                     }
                 }
             }
         }
         // Page positions and numbers only when a wire is in scope (review of PR #51, finding 3).
-        let mut cx = if scope.conductors.is_empty() { None } else { Some(PageCx::of(doc)) };
-        for (w, cx) in scope.conductors.iter().zip(std::iter::repeat_with(|| cx.as_ref()).flatten()) {
+        let mut cx = if scope.wires.is_empty() { None } else { Some(PageCx::of(doc)) };
+        for (w, cx) in scope.wires.iter().zip(std::iter::repeat_with(|| cx.as_ref()).flatten()) {
             self.set_wire(doc, *w, cx);
             work += 1;
             scope.cables.extend(doc.cables_of(*w));
@@ -384,7 +384,7 @@ impl Outputs {
             doc,
             &crate::strips::StripScope {
                 devices: &scope.devices,
-                conductors: &scope.conductors,
+                wires: &scope.wires,
                 cables: &scope.cables,
                 pages: &pages,
                 project_keys: &scope.strip_keys,
@@ -790,7 +790,7 @@ impl Outputs {
         self.end_cell(doc, t, at, cx)
     }
 
-    fn set_wire(&mut self, doc: &Document, w: ConductorId, cx: &PageCx) {
+    fn set_wire(&mut self, doc: &Document, w: WireId, cx: &PageCx) {
         if let Some(old) = self.wires.remove(&w) {
             let k = old.potential.as_deref().unwrap_or("").trim().to_lowercase();
             if let Some(set) = self.by_potential.get_mut(&k) {
@@ -800,10 +800,10 @@ impl Outputs {
                 }
             }
         }
-        let Some(cond) = doc.conductors.get(&w) else { return };
+        let Some(cond) = doc.wires.get(&w) else { return };
         // Routes in book order.
         let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
-            .representations_of(Subject::Conductor(w))
+            .representations_of(Subject::Wire(w))
             .filter_map(|(_, r)| {
                 let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
                     ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
@@ -922,7 +922,7 @@ impl Outputs {
         // Brief 028: the devices at the cores' ends, per location.
         let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), DeviceId)>> = BTreeMap::new();
         for m in &cab.members {
-            let Some(cond) = doc.conductors.get(&m.conductor) else { continue };
+            let Some(cond) = doc.wires.get(&m.conductor) else { continue };
             for t in cond.ends.iter().flatten() {
                 let Some(c) = doc.terminals.get(t).map(|x| x.component) else { continue };
                 if crate::wires::kind_of(doc, c).is_some() {
@@ -1209,7 +1209,7 @@ impl Outputs {
                     kind: Kind::TooManyCores,
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
-                    object: Object::Conductor(*first),
+                    object: Object::Wire(*first),
                     which: format!("{tag}: {} cores used, cable offers {} ({named})", r.members.len(), offer.len()),
                     fix: Some(Fix::SetCores(r.cable)),
                 });
@@ -1234,7 +1234,7 @@ impl Outputs {
             kind: Kind::CoreTwice,
             page: go.map(|(p, _)| p),
             at: go.map(|(_, a)| a),
-            object: w.map_or(Object::None, Object::Conductor),
+            object: w.map_or(Object::None, Object::Wire),
             which: format!("{tag}: core {core} is used by two wires"),
             fix: w.map(Fix::NextFreeCore),
         }
@@ -1707,7 +1707,7 @@ impl Outputs {
     }
 
     /// One wire's row.
-    pub fn wire(&self, w: ConductorId) -> Option<&WireRow> {
+    pub fn wire(&self, w: WireId) -> Option<&WireRow> {
         self.wires.get(&w)
     }
 

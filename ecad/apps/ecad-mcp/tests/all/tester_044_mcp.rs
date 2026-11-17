@@ -91,7 +91,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         let ops = assert_one_by_agent(&mut c, n, &format!("connector pins → {v}")).ops;
         let x2 = conn(&v);
         assert_eq!(sides(&ops).len(), 6, "pins 1–3 on both sides: {ops:?}");
-        assert!(ops.iter().any(|o| matches!(o, Op::CreateConductor { .. })), "the wires are split: {ops:?}");
+        assert!(ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "the wires are split: {ops:?}");
 
         // (2) `place {symbol: pinpair, device}` joins and takes the next free pin (4).
         let n = c.log().len();
