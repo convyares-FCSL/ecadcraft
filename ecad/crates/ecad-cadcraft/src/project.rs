@@ -1392,9 +1392,10 @@ impl Project {
     pub fn open_file_with(
         s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings, reading: bool,
     ) -> Result<(ProjectHandle, String), String> {
-        let path = crate::file::normalize(path)?;
+        let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
         let mut o =
-            if reading { crate::file::Binding::open_read_only(&path, seed, &writer())? } else { crate::file::Binding::open(&path, seed, &writer())? };
+            if reading { crate::file::Binding::open_read_only(&path, seed, &writer()) } else { crate::file::Binding::open(&path, seed, &writer()) }
+                .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
         let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
@@ -1654,9 +1655,9 @@ impl Project {
         let target = path.filter(|p| !p.trim().is_empty());
         let r: Result<(Option<String>, Option<String>), String> = match target {
             None if save_as => Err(crate::file::SAVE_AS_NEEDS_PATH.into()),
-            None => self.file.save(&mut self.ledger).map(|()| (None, None)),
-            Some(p) => crate::file::normalize(p).and_then(|p| {
-                let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms())?;
+            None => self.file.save(&mut self.ledger).map(|()| (None, None)).map_err(|e| e.to_string()),
+            Some(p) => crate::file::normalize(p).map_err(|e| e.to_string()).and_then(|p| {
+                let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms()).map_err(|e| e.to_string())?;
                 Ok((
                     Some(p),
                     match w {

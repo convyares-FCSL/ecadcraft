@@ -319,7 +319,7 @@ fn install() -> Result<(), String> {
 /// Open the project file at `path` headless; also what opening found, in words.
 fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, String), String> {
     install()?;
-    let path = ecad_cadcraft::normalize(path)?;
+    let path = ecad_cadcraft::normalize(path).map_err(|e| e.to_string())?;
     let mut headless = Headless { session: Session::empty() };
     // Writes off: the file is opened for reading only, so it is never changed, not even by the
     // database's own bookkeeping (brief 021: a version 2 file is a redb database).
@@ -335,7 +335,7 @@ fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, Strin
 /// Create the project file at `path` headless (it must not exist yet), saved straight away.
 fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
     install()?;
-    let path = ecad_cadcraft::normalize(path)?;
+    let path = ecad_cadcraft::normalize(path).map_err(|e| e.to_string())?;
     if std::path::Path::new(&path).exists() {
         return Err(format!("{path} already exists; open it without --create"));
     }

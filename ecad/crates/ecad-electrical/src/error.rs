@@ -43,6 +43,15 @@ pub enum CmdError {
     /// The model refused the ops.
     #[error(transparent)]
     Model(#[from] ModelError),
+    /// The project file's data did not read, or could not be written.
+    #[error(transparent)]
+    File(#[from] ecad_file::FileError),
+    /// A project file could not be opened or saved.
+    #[error(transparent)]
+    Binding(#[from] ecad_file::binding::BindingError),
+    /// A path typed for a project file cannot be used.
+    #[error(transparent)]
+    Path(#[from] ecad_file::binding::PathError),
 }
 
 impl CmdError {

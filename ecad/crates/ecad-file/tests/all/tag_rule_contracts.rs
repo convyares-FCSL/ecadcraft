@@ -13,7 +13,7 @@ use crate::container_v2::TempDir;
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{ProjectV2, Store, StoreError};
 use ecad_model::tag::{HighWater, TAG_RULE, note_ops};
 use ecad_model::*;
 
@@ -224,12 +224,12 @@ fn a_build_before_029_reads_the_rows_and_meta_029_writes() {
     let mut seen = 0;
     r.raw_rows(|table, _, value| {
         if table == "versions" {
-            let old: OldVersionRecord = serde_json::from_slice(value).map_err(|e| e.to_string())?;
+            let old: OldVersionRecord = serde_json::from_slice(value).map_err(|e| StoreError::Damaged(e.to_string()))?;
             if old.kind != VersionKind::Merge {
                 assert_eq!(old.extra.get("tag_rule"), Some(&serde_json::json!(TAG_RULE)), "kept as an unknown field");
-                let h = chain::parse_hex(&old.chunks[META_KEY]).ok_or("hash")?;
-                let body = r.chunk_body(&h).map_err(|e| e.to_string())?;
-                serde_json::from_slice::<OldModelMeta>(&body).map_err(|e| format!("an old reader refuses model:meta: {e}"))?;
+                let h = chain::parse_hex(&old.chunks[META_KEY]).ok_or(StoreError::Damaged("hash".into()))?;
+                let body = r.chunk_body(&h)?;
+                serde_json::from_slice::<OldModelMeta>(&body).map_err(|e| StoreError::Damaged(format!("an old reader refuses model:meta: {e}")))?;
                 seen += 1;
             }
         }

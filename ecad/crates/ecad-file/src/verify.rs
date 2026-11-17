@@ -532,11 +532,11 @@ fn first_difference(replayed: &Document, snapshot: &Document) -> String {
     }
 }
 
-fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<chunks::ModelMeta>), String> {
+fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<chunks::ModelMeta>), crate::FileError> {
     let set = ChunkSet::from_record(&v.chunks)?;
     let mut bodies = Vec::new();
     for (k, h) in &set.chunks {
-        bodies.push((k.clone(), r.chunk_body(h).map_err(|e| e.to_string())?));
+        bodies.push((k.clone(), r.chunk_body(h)?));
     }
     let (mut d, meta) = chunks::assemble(&set, bodies)?;
     d.rebuild_index();

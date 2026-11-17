@@ -24,6 +24,7 @@ use super::schema::{
     SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
+use crate::FileError;
 use crate::chain::{self, ChainKind, Hash};
 use crate::record::{self, SCHEMA_VERSION};
 use ecad_model::tag::HighWater;
@@ -37,7 +38,7 @@ pub enum OpenErrorV2 {
     Unsupported(String),
     /// The container facts or the branch are unusable.
     #[error("the file is damaged: {0}")]
-    Damaged(String),
+    Damaged(FileError),
 }
 
 /// Why a save did not complete. The file then holds exactly what it held before, and the
@@ -51,7 +52,7 @@ pub enum SaveErrorV2 {
     #[error("{0}")]
     Store(#[from] StoreError),
     #[error("could not encode: {0}")]
-    Encode(String),
+    Encode(FileError),
 }
 
 /// Why a branch action (create, rename, archive, reopen, switch) did not happen. The file is then
@@ -168,27 +169,27 @@ pub(crate) use decode_row as decode_row_pub;
 
 /// A transaction row decoded and checked: its record against its stored chain value, its `seq`,
 /// and its `prev` against the previous row's chain value.
-pub(crate) fn decode_row(seq: u64, flag: u8, stored_chain: &Hash, body: &[u8], prev: &Hash) -> Result<Transaction, String> {
+pub(crate) fn decode_row(seq: u64, flag: u8, stored_chain: &Hash, body: &[u8], prev: &Hash) -> Result<Transaction, FileError> {
     let record = pack::unpack(flag, body)?;
     if chain::tx_hash(&record) != *stored_chain {
-        return Err("the record does not match its chain value".into());
+        return Err(FileError::RecordChain);
     }
-    let value: Value = serde_json::from_slice(&record).map_err(|e| format!("not a record: {e}"))?;
+    let value: Value = serde_json::from_slice(&record).map_err(|e| FileError::NotARecord(e.to_string()))?;
     record::check_limits(&value)?;
     let (rseq, rprev) = record::seq_and_prev(&value);
     if rseq != Some(seq) {
-        return Err(format!("the row of {seq} holds transaction {rseq:?}"));
+        return Err(FileError::RowHolds { seq, held: rseq });
     }
     if rprev.and_then(chain::parse_hex) != Some(*prev) {
-        return Err("prev does not link to the previous transaction".into());
+        return Err(FileError::PrevLink);
     }
-    record::decode_tx(&value).map_err(|e| format!("{e:?}"))
+    record::decode_tx(&value).map_err(FileError::Decode)
 }
 
 /// The canonical record and chain value of `tx` after `prev`.
-fn encode_tx(tx: &Transaction, prev: &Hash) -> Result<(Vec<u8>, Hash), String> {
+fn encode_tx(tx: &Transaction, prev: &Hash) -> Result<(Vec<u8>, Hash), FileError> {
     let value = record::tx_value(tx, prev)?;
-    let canonical = crate::canonical::canonical(&value).map_err(|e| e.to_string())?;
+    let canonical = crate::canonical::canonical(&value)?;
     let hash = chain::tx_hash(&canonical);
     Ok((canonical, hash))
 }
@@ -249,13 +250,13 @@ impl StackState {
     /// From a version row.
     /// The cap is the record's own `stack_cap`, never this build's [`STACK_CAP`]: a record holds
     /// at most that many entries of each stack, and entries below them only with a cap.
-    fn from_record(v: &VersionRecord) -> Result<Self, String> {
+    fn from_record(v: &VersionRecord) -> Result<Self, FileError> {
         let cap = v.stack_cap;
         if cap == 0 && (v.undo_hidden > 0 || v.redo_hidden > 0) {
-            return Err("the stack record has entries below it but no cap".into());
+            return Err(FileError::StackNoCap);
         }
         if cap > 0 && (v.undo.len() as u64 > cap || v.redo.len() as u64 > cap) {
-            return Err(format!("the stack record holds more than its cap of {cap}"));
+            return Err(FileError::StackOverCap(cap));
         }
         Ok(Self {
             undo: stacks_from_record(&v.undo)?,
@@ -267,8 +268,8 @@ impl StackState {
     }
 }
 
-fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, String> {
-    s.iter().map(|(q, id)| TxId::parse(id).map(|t| (*q, t)).ok_or_else(|| format!("{id:?} is not a transaction ID"))).collect()
+fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, FileError> {
+    s.iter().map(|(q, id)| TxId::parse(id).map(|t| (*q, t)).ok_or_else(|| FileError::NotATxId(id.clone()))).collect()
 }
 
 /// One branch of a lineage: the branch, its chain seed (its chain value at `seq` 0) and, for a
@@ -291,24 +292,24 @@ const MAX_DEPTH: usize = 64;
 ///
 /// # Errors
 /// A missing or inconsistent row, a cycle, or more than [`MAX_DEPTH`] levels.
-pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Lineage, String> {
+pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Lineage, FileError> {
     let main = BranchId::main_of(project.0);
     let mut out: Vec<Line> = Vec::new();
     let mut at = branch;
     loop {
         if out.len() >= MAX_DEPTH || out.iter().any(|l| l.branch == at) {
-            return Err("the branches' parents form a loop or are too deep".into());
+            return Err(FileError::LineageLoop);
         }
-        let rec = r.branch(at).map_err(|e| e.to_string())?.ok_or_else(|| format!("branch {} is missing", at.hex()))?;
+        let rec = r.branch(at)?.ok_or_else(|| FileError::BranchMissing(at.hex()))?;
         if at == main {
             if rec.parent.is_some() || rec.fork_point.is_some() {
-                return Err("the main branch's record is inconsistent".into());
+                return Err(FileError::MainInconsistent);
             }
             out.push(Line { branch: at, seed: chain::seed(ChainKind::Project, project.0), fork: None });
             break;
         }
         let (Some(parent), Some(fork)) = (rec.parent.as_deref().and_then(BranchId::parse), rec.fork_point.as_ref()) else {
-            return Err(format!("branch {:?} has no parent or fork point", rec.name));
+            return Err(FileError::NoForkPoint(rec.name));
         };
         let fork_chain = fork.hash()?;
         let i = out.len();
@@ -318,11 +319,11 @@ pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Linea
     // Each fork point must be the parent's stored row (its chain value), or the parent's seed.
     for i in 0..out.len() {
         if let Some(Line { fork: Some((pi, seq)), branch, .. }) = out.get(i).cloned() {
-            let parent = out.get(pi).ok_or("a lineage index is out of range")?;
-            let want = r.branch(branch).map_err(|e| e.to_string())?.and_then(|b| b.fork_point).map(|p| p.chain).unwrap_or_default();
-            let have = if seq == 0 { Some(parent.seed) } else { r.tx(parent.branch, seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c) };
+            let parent = out.get(pi).ok_or(FileError::LineageIndex)?;
+            let want = r.branch(branch)?.and_then(|b| b.fork_point).map(|p| p.chain).unwrap_or_default();
+            let have = if seq == 0 { Some(parent.seed) } else { r.tx(parent.branch, seq)?.map(|(_, c, _)| c) };
             if have.map(|h| chain::hex(&h)) != Some(want) {
-                return Err(format!("the fork point of branch {} does not match its parent's transaction {seq}", branch.hex()));
+                return Err(FileError::ForkMismatch { branch: branch.hex(), seq });
             }
         }
     }
@@ -330,10 +331,10 @@ pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Linea
 }
 
 /// The nearest snapshot of `branch` at or before `seq` (an automatic one or a named version).
-fn nearest_snapshot(r: &Reader, branch: BranchId, seq: u64) -> Result<Option<VersionRecord>, String> {
-    let mut best: Option<VersionRecord> = r.auto_at_or_before(branch, seq).map_err(|e| e.to_string())?;
+fn nearest_snapshot(r: &Reader, branch: BranchId, seq: u64) -> Result<Option<VersionRecord>, FileError> {
+    let mut best: Option<VersionRecord> = r.auto_at_or_before(branch, seq)?;
     for kind in [VersionKind::User, VersionKind::Revision] {
-        for v in r.versions(branch, kind).map_err(|e| e.to_string())? {
+        for v in r.versions(branch, kind)? {
             if v.point.seq <= seq && best.as_ref().is_none_or(|b| b.point.seq < v.point.seq) {
                 best = Some(v);
             }
@@ -348,8 +349,8 @@ fn nearest_snapshot(r: &Reader, branch: BranchId, seq: u64) -> Result<Option<Ver
 ///
 /// # Errors
 /// Missing or damaged rows or chunks, and replay failures.
-pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(Document, HighWater), String> {
-    let line = lineage.get(i).ok_or("a lineage index is out of range")?;
+pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(Document, HighWater), FileError> {
+    let line = lineage.get(i).ok_or(FileError::LineageIndex)?;
     let (mut doc, mut high, from, prev) = match nearest_snapshot(r, line.branch, seq)? {
         Some(v) => {
             let (mut doc, meta) = load_snapshot(r, &v)?;
@@ -373,13 +374,13 @@ pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(D
     let mut prev = prev;
     while from <= seq {
         let to = seq.min(from.saturating_add(4_095));
-        let (txs, last, damage) = read_rows(r, line.branch, from, to, prev).map_err(|e| e.to_string())?;
+        let (txs, last, damage) = read_rows(r, line.branch, from, to, prev)?;
         if let Some(d) = damage {
-            return Err(format!("transaction {:?}: {}", d.seq, d.detail));
+            return Err(FileError::AtTx { seq: d.seq, detail: d.detail });
         }
         for tx in &txs {
             for op in &tx.ops {
-                op.apply(&mut doc).map_err(|e| format!("replaying {}: {e}", tx.seq))?;
+                op.apply(&mut doc).map_err(|error| FileError::Replay { seq: tx.seq, error })?;
             }
             ecad_model::tag::note_ops(&mut high, &tx.ops);
         }
@@ -393,8 +394,8 @@ pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(D
 /// The tag high-water mark of lineage entry `i` after its transaction `seq`, read from the file
 /// without rebuilding documents: the nearest snapshot's `model:meta` (or the parent's mark at the
 /// fork), then the rows after it.
-fn line_high(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<HighWater, String> {
-    let line = lineage.get(i).ok_or("a lineage index is out of range")?;
+fn line_high(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<HighWater, FileError> {
+    let line = lineage.get(i).ok_or(FileError::LineageIndex)?;
     let snap = nearest_snapshot(r, line.branch, seq)?;
     let meta = match &snap {
         // Marks of an older rule are not used: the rows from the branch's start are scanned.
@@ -403,8 +404,8 @@ fn line_high(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<HighWat
             let set = ChunkSet::from_record(&v.chunks)?;
             match set.chunks.get(chunks::META_KEY) {
                 Some(h) => {
-                    let body = r.chunk_body(h).map_err(|e| e.to_string())?;
-                    let m: ModelMeta = serde_json::from_slice(&body).map_err(|e| format!("chunk {}: {e}", chunks::META_KEY))?;
+                    let body = r.chunk_body(h)?;
+                    let m: ModelMeta = serde_json::from_slice(&body).map_err(|e| FileError::MetaChunk(e.to_string()))?;
                     Some((m.tag_high, v.point.seq, v.point.hash()?))
                 }
                 None => None,
@@ -423,14 +424,14 @@ fn line_high(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<HighWat
 }
 
 /// `high` advanced over rows `after + 1 ..= upto` of `branch` (`prev`: the chain value at `after`).
-fn scan_tag_high(r: &Reader, branch: BranchId, mut high: HighWater, after: u64, seed: Hash, upto: u64) -> Result<HighWater, String> {
+fn scan_tag_high(r: &Reader, branch: BranchId, mut high: HighWater, after: u64, seed: Hash, upto: u64) -> Result<HighWater, FileError> {
     let mut from = after.saturating_add(1);
     let mut prev = seed;
     while from <= upto {
         let to = upto.min(from.saturating_add(4_095));
-        let (txs, last, damage) = read_rows(r, branch, from, to, prev).map_err(|e| e.to_string())?;
+        let (txs, last, damage) = read_rows(r, branch, from, to, prev)?;
         if let Some(d) = damage {
-            return Err(format!("transaction {:?}: {}", d.seq, d.detail));
+            return Err(FileError::AtTx { seq: d.seq, detail: d.detail });
         }
         for tx in &txs {
             ecad_model::tag::note_ops(&mut high, &tx.ops);
@@ -443,11 +444,11 @@ fn scan_tag_high(r: &Reader, branch: BranchId, mut high: HighWater, after: u64, 
 }
 
 /// Read a snapshot's document and its `model:meta`: every chunk, each checked against its hash.
-fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<ModelMeta>), String> {
+fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<ModelMeta>), FileError> {
     let set = ChunkSet::from_record(&v.chunks)?;
     let mut stored = Vec::with_capacity(set.chunks.len());
     for (key, hash) in &set.chunks {
-        let (flag, body) = r.chunk(hash).map_err(|e| e.to_string())?.ok_or_else(|| format!("chunk {} is missing", chain::hex(hash)))?;
+        let (flag, body) = r.chunk(hash)?.ok_or_else(|| FileError::ChunkMissing(chain::hex(hash)))?;
         stored.push((key.clone(), *hash, flag, body));
     }
     chunks::assemble_stored(&set, stored)
@@ -469,7 +470,7 @@ fn read_rows(r: &Reader, branch: BranchId, from: u64, to: u64, mut prev: Hash) -
                 out.push(tx);
                 prev = stored;
             }
-            Err(detail) => return Ok((out, prev, Some(DamageV2 { seq: Some(seq), detail }))),
+            Err(e) => return Ok((out, prev, Some(DamageV2 { seq: Some(seq), detail: e.to_string() }))),
         }
         expected = seq.checked_add(1);
     }
@@ -561,7 +562,7 @@ impl History for StoreHistory {
             let mut heads = Vec::with_capacity(rows.len());
             let mut last_chain = None;
             for (q, flag, chain_value, body) in rows {
-                let record = pack::unpack(flag, &body).map_err(bad)?;
+                let record = pack::unpack(flag, &body).map_err(|e| bad(e.to_string()))?;
                 if chain::tx_hash(&record) != chain_value {
                     return Err(bad(format!("transaction {q} does not match its chain value")));
                 }
@@ -637,22 +638,22 @@ impl History for StoreHistory {
         let bad = |m: String| ModelError::CorruptLog(m);
         let store = self.store.upgrade().ok_or_else(|| bad("the project's file is closed".into()))?;
         let branch = self.branch;
-        let read_range = |(from, to): (u64, u64)| -> Result<Range, String> {
-            let r = store.reader().map_err(|e| e.to_string())?;
-            let stored = r.tx_range(branch, from..=to).map_err(|e| e.to_string())?;
+        let read_range = |(from, to): (u64, u64)| -> Result<Range, FileError> {
+            let r = store.reader()?;
+            let stored = r.tx_range(branch, from..=to)?;
             if stored.len() as u64 != to.saturating_sub(from).saturating_add(1) {
-                return Err(format!("transactions {from} to {to} are not all stored"));
+                return Err(FileError::NotAllStored { from, to });
             }
             let mut out = Range { first_prev: [0; 32], last: [0; 32], rows: Vec::with_capacity(stored.len()) };
             for (i, (q, flag, chain_value, body)) in stored.into_iter().enumerate() {
                 let record = pack::unpack(flag, &body)?;
                 if chain::tx_hash(&record) != chain_value {
-                    return Err(format!("transaction {q} does not match its chain value"));
+                    return Err(FileError::TxChain(q));
                 }
-                let h: Head = serde_json::from_slice(&record).map_err(|e| format!("transaction {q}: {e}"))?;
-                let prev = chain::parse_hex(&h.prev).ok_or_else(|| format!("transaction {q}: bad prev"))?;
+                let h: Head = serde_json::from_slice(&record).map_err(|e| FileError::TxJson { seq: q, error: e.to_string() })?;
+                let prev = chain::parse_hex(&h.prev).ok_or(FileError::TxPrev(q))?;
                 if h.seq != q || (i > 0 && prev != out.last) {
-                    return Err(format!("transaction {q} does not follow the one before"));
+                    return Err(FileError::TxNotFollowing(q));
                 }
                 if i == 0 {
                     out.first_prev = prev;
@@ -679,7 +680,7 @@ impl History for StoreHistory {
                 return Err(bad("the history could not be read: a worker thread did not start".into()));
             }
             for range in read {
-                let range = range.map_err(bad)?;
+                let range = range.map_err(|e| bad(e.to_string()))?;
                 if range.first_prev != prev {
                     return Err(bad("the history's chain is broken between two ranges".into()));
                 }
@@ -711,7 +712,7 @@ impl History for StoreHistory {
 
     fn state_at(&self, seq: u64) -> ecad_model::Result<Document> {
         let r = self.read()?;
-        let (doc, _) = line_state(&r, &self.lineage, 0, seq).map_err(ModelError::CorruptLog)?;
+        let (doc, _) = line_state(&r, &self.lineage, 0, seq).map_err(|e| ModelError::CorruptLog(e.to_string()))?;
         doc.check()?;
         Ok(doc)
     }
@@ -774,15 +775,15 @@ pub struct MergeIndex {
 }
 
 impl MergeIndex {
-    fn of(seq: u64, row: &MergeRow) -> Result<Self, String> {
+    fn of(seq: u64, row: &MergeRow) -> Result<Self, FileError> {
         Ok(Self {
             seq,
-            source: row.source_id().ok_or("a merge row names no source branch")?,
+            source: row.source_id().ok_or(FileError::MergeNoSource)?,
             source_head: (row.source_head.seq, row.source_head.hash()?),
             ancestor: (
-                row.ancestor_id().ok_or("a merge row names no ancestor branch")?,
+                row.ancestor_id().ok_or(FileError::MergeNoAncestor)?,
                 row.ancestor.seq,
-                chain::parse_hex(&row.ancestor.chain).ok_or("a merge row's ancestor has no chain value")?,
+                chain::parse_hex(&row.ancestor.chain).ok_or(FileError::MergeAncestorChain)?,
             ),
         })
     }
@@ -808,10 +809,10 @@ pub struct OpenedV2 {
     pub report: ReportV2,
 }
 
-fn meta_json(r: &Reader, name: &str) -> Result<Option<Value>, OpenErrorV2> {
+fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenErrorV2> {
     match r.meta(name)? {
         None => Ok(None),
-        Some(b) => serde_json::from_slice(&b).map(Some).map_err(|e| OpenErrorV2::Damaged(format!("meta {name}: {e}"))),
+        Some(b) => serde_json::from_slice(&b).map(Some).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name, error: e.to_string() })),
     }
 }
 
@@ -844,18 +845,16 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
     if codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
         return Err(OpenErrorV2::Unsupported(format!("codec {codec:?} is not supported (this build reads {CODEC:?})")));
     }
-    let project = meta_json(r, "file_id")?
-        .and_then(|v| v.as_str().and_then(ProjectId::parse))
-        .ok_or_else(|| OpenErrorV2::Damaged("meta file_id is missing or malformed".into()))?;
+    let project = meta_json(r, "file_id")?.and_then(|v| v.as_str().and_then(ProjectId::parse)).ok_or(OpenErrorV2::Damaged(FileError::FileId))?;
     let cache: Cache = match meta_json(r, "cache")? {
-        Some(v) => serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(format!("meta cache: {e}")))?,
+        Some(v) => serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name: "cache", error: e.to_string() }))?,
         None => Cache::default(),
     };
     if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&cache.every) {
-        return Err(OpenErrorV2::Damaged(format!("meta cache: snapshot interval {} is out of range", cache.every)));
+        return Err(OpenErrorV2::Damaged(FileError::CacheEvery(cache.every)));
     }
     let link_v1 = match meta_json(r, "link_v1")? {
-        Some(v) => Some(serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(format!("meta link_v1: {e}")))?),
+        Some(v) => Some(serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name: "link_v1", error: e.to_string() }))?),
         None => None,
     };
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
@@ -865,16 +864,16 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
 }
 
 /// [`main_branch`], for Verify: the check that opening applies.
-pub(crate) fn main_branch_pub(r: &Reader, project: ProjectId) -> Result<(), String> {
-    main_branch(r, project).map(|_| ()).map_err(|e| e.to_string())
+pub(crate) fn main_branch_pub(r: &Reader, project: ProjectId) -> Result<(), OpenErrorV2> {
+    main_branch(r, project).map(|_| ())
 }
 
 /// The original branch, `main`.
 fn main_branch(r: &Reader, project: ProjectId) -> Result<(BranchId, BranchRecord), OpenErrorV2> {
     let id = BranchId::main_of(project.0);
-    let rec = r.branch(id)?.ok_or_else(|| OpenErrorV2::Damaged("the file has no main branch".into()))?;
+    let rec = r.branch(id)?.ok_or(OpenErrorV2::Damaged(FileError::NoMain))?;
     if rec.name != "main" || rec.parent.is_some() || rec.fork_point.is_some() || rec.status != BranchStatus::Open {
-        return Err(OpenErrorV2::Damaged("the main branch's record is inconsistent".into()));
+        return Err(OpenErrorV2::Damaged(FileError::MainInconsistent));
     }
     Ok((id, rec))
 }
@@ -900,7 +899,7 @@ fn load_branch(
 ) -> Result<Loaded, OpenErrorV2> {
     let r = store.reader()?;
     let lineage = lineage(&r, project, branch).map_err(OpenErrorV2::Damaged)?;
-    let own = lineage.first().cloned().ok_or_else(|| OpenErrorV2::Damaged("an empty lineage".into()))?;
+    let own = lineage.first().cloned().ok_or(OpenErrorV2::Damaged(FileError::EmptyLineage))?;
     let seed_chain = own.seed;
     let head = rec.head.seq;
     let head_chain = rec.head.hash().map_err(OpenErrorV2::Damaged)?;
@@ -948,15 +947,15 @@ fn load_branch(
     let (ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage) = loop {
         let using = loaded.take();
         let from_snapshot = using.as_ref().map(|(v, _, _)| v.point.seq);
-        let attempt = (|| -> Result<_, String> {
+        let attempt = (|| -> Result<_, FileError> {
             let (snap_seq, snap_chain, doc, stacks, set, high) = match using {
                 Some((v, doc, meta)) => {
                     let chain = v.point.hash()?;
                     let stacks = StackState::from_record(&v)?;
                     let set = ChunkSet::from_record(&v.chunks)?;
                     // The snapshot's point must be the stored row's chain value.
-                    if r.tx(branch, v.point.seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c) != Some(chain) {
-                        return Err("the snapshot's point does not match its transaction".into());
+                    if r.tx(branch, v.point.seq)?.map(|(_, c, _)| c) != Some(chain) {
+                        return Err(FileError::SnapshotPoint);
                     }
                     // The tag high-water mark at the snapshot: carried by `model:meta`; a
                     // snapshot written without it is scanned once (a cache, rebuilt from the
@@ -979,7 +978,7 @@ fn load_branch(
                     None => (0, seed_chain, Document::default(), StackState::default(), Some(ChunkSet::default()), HighWater::new()),
                 },
             };
-            let (tail, verified_chain, row_damage) = read_rows(&r, branch, snap_seq.saturating_add(1), to, snap_chain).map_err(|e| e.to_string())?;
+            let (tail, verified_chain, row_damage) = read_rows(&r, branch, snap_seq.saturating_add(1), to, snap_chain)?;
             let history: Arc<dyn History> =
                 Arc::new(StoreHistory { store: Arc::downgrade(store), branch, seed: seed_chain, lineage: lineage.clone() });
             let base = Base {
@@ -994,7 +993,7 @@ fn load_branch(
                 history,
             };
             let tail_len = tail.len() as u64;
-            let (ledger, failure) = Ledger::from_base(base, tail, seed).map_err(|e| format!("the snapshot at {snap_seq}: {e}"))?;
+            let (ledger, failure) = Ledger::from_base(base, tail, seed).map_err(|error| FileError::SnapshotAt { seq: snap_seq, error })?;
             Ok((ledger, failure, snap_seq, snap_chain, stacks, set, high, tail_len, verified_chain, row_damage))
         })();
         match (attempt, from_snapshot) {
@@ -1101,13 +1100,10 @@ impl ProjectV2 {
         store: Store, project: ProjectId, ledger: &Ledger, created_ms: Option<u64>, writer: &str, every: u64,
     ) -> Result<(ProjectV2, SavedV2), SaveErrorV2> {
         if ledger.base() != 0 {
-            return Err(SaveErrorV2::Encode("a new file needs the whole history in memory".into()));
+            return Err(SaveErrorV2::Encode(FileError::WholeHistory));
         }
         if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&every) {
-            return Err(SaveErrorV2::Encode(format!(
-                "the snapshot interval must be between {} and {}",
-                SNAPSHOT_EVERY_RANGE.0, SNAPSHOT_EVERY_RANGE.1
-            )));
+            return Err(SaveErrorV2::Encode(FileError::SnapshotEvery));
         }
         let store = Arc::new(store);
         let branch = BranchId::main_of(project.0);
@@ -1145,7 +1141,7 @@ impl ProjectV2 {
             let mut dirty = Dirty::default();
             for tx in range {
                 for op in &tx.ops {
-                    op.apply(&mut doc).map_err(|e| SaveErrorV2::Encode(format!("replaying {}: {e}", tx.seq)))?;
+                    op.apply(&mut doc).map_err(|error| SaveErrorV2::Encode(FileError::Replay { seq: tx.seq, error }))?;
                 }
                 dirty.add_ops(&tx.ops);
                 ecad_model::tag::note_ops(&mut high, &tx.ops);
@@ -1201,7 +1197,7 @@ impl ProjectV2 {
         w.set_meta("file_id", &json!(project.hex()))?;
         w.set_meta("writer", &json!(writer))?;
         w.set_meta("created_ms", &json!(created_ms))?;
-        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
+        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(FileError::json(&e)))?)?;
         w.commit()?;
         let lineage = Arc::new(vec![Line { branch, seed, fork: None }]);
         let me = ProjectV2 {
@@ -1243,18 +1239,14 @@ impl ProjectV2 {
         let (head, mut prev) = self.head;
         if ledger.head() == head {
             if ledger.persisted() != head {
-                ledger.mark_persisted(head).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
+                ledger.mark_persisted(head).map_err(|e| SaveErrorV2::Encode(e.into()))?;
             }
             return Ok(SavedV2 { first_seq: head.saturating_add(1), last_seq: head, ..SavedV2::default() });
         }
         if ledger.base() > head || ledger.head() < head {
-            return Err(SaveErrorV2::Encode(format!(
-                "the project's history (base {}, head {}) does not continue the file's head {head}",
-                ledger.base(),
-                ledger.head()
-            )));
+            return Err(SaveErrorV2::Encode(FileError::NotContinuing { base: ledger.base(), head: ledger.head(), file: head }));
         }
-        let start = usize::try_from(head - ledger.base()).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
+        let start = usize::try_from(head - ledger.base()).map_err(|e| SaveErrorV2::Encode(e.into()))?;
         let pending: Vec<Transaction> = ledger.log().get(start..).unwrap_or_default().to_vec();
         let mut w = self.store.writer()?;
         // Another writer cannot exist (locks); check anyway, inside this write transaction: one
@@ -1346,7 +1338,7 @@ impl ProjectV2 {
             w.set_meta("writer", &json!(self.writer))?;
         }
         if cache != self.cache {
-            w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
+            w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(FileError::json(&e)))?)?;
         }
         w.commit()?;
         self.rec = rec;
@@ -1354,7 +1346,7 @@ impl ProjectV2 {
         self.snap = snap;
         self.snap_ref = cache.latest.get(&self.branch.hex()).cloned();
         self.cache = cache;
-        ledger.mark_persisted(end).map_err(|e| SaveErrorV2::Encode(e.to_string()))?;
+        ledger.mark_persisted(end).map_err(|e| SaveErrorV2::Encode(e.into()))?;
         for tx in &pending {
             self.closing.remove(&tx.id);
         }
@@ -1495,20 +1487,13 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The file could not be read.
-    pub fn merge_index(&self, ledger: &Ledger) -> Result<Vec<MergeIndex>, String> {
-        let mut rows: BTreeMap<u64, MergeRow> = self
-            .store
-            .reader()
-            .map_err(|e| e.to_string())?
-            .versions(self.branch, VersionKind::Merge)
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter_map(|v| v.merge.map(|m| (v.point.seq, m)))
-            .collect();
+    pub fn merge_index(&self, ledger: &Ledger) -> Result<Vec<MergeIndex>, FileError> {
+        let mut rows: BTreeMap<u64, MergeRow> =
+            self.store.reader()?.versions(self.branch, VersionKind::Merge)?.into_iter().filter_map(|v| v.merge.map(|m| (v.point.seq, m))).collect();
         if ledger.head() > self.head.0 && ledger.base() <= self.head.0 {
             let start = usize::try_from(self.head.0 - ledger.base()).unwrap_or(usize::MAX);
             let pending: Vec<Transaction> = ledger.log().get(start..).unwrap_or_default().to_vec();
-            let follow = self.follow_merges(ledger, &pending, None).map_err(|e| e.to_string())?;
+            let follow = self.follow_merges(ledger, &pending, None).map_err(|e| FileError::Save(Box::new(e)))?;
             for (seq, row) in follow.rows {
                 match row {
                     Some(r) => rows.insert(seq, r),
@@ -1523,9 +1508,9 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The file could not be read.
-    pub fn merge_rows(&self, branch: BranchId) -> Result<Vec<MergeIndex>, String> {
-        let r = self.store.reader().map_err(|e| e.to_string())?;
-        let rows = r.versions(branch, VersionKind::Merge).map_err(|e| e.to_string())?;
+    pub fn merge_rows(&self, branch: BranchId) -> Result<Vec<MergeIndex>, FileError> {
+        let r = self.store.reader()?;
+        let rows = r.versions(branch, VersionKind::Merge)?;
         let mut out = Vec::new();
         for v in &rows {
             if let Some(m) = &v.merge {
@@ -1546,13 +1531,13 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The step is not stored, or the branch's lineage cannot be read.
-    pub fn chain_of(&self, branch: BranchId, seq: u64) -> Result<Hash, String> {
-        let r = self.store.reader().map_err(|e| e.to_string())?;
+    pub fn chain_of(&self, branch: BranchId, seq: u64) -> Result<Hash, FileError> {
+        let r = self.store.reader()?;
         if seq == 0 {
             let line = lineage(&r, self.project, branch)?;
-            return line.first().map(|l| l.seed).ok_or_else(|| "an empty lineage".to_string());
+            return line.first().map(|l| l.seed).ok_or(FileError::EmptyLineage);
         }
-        r.tx(branch, seq).map_err(|e| e.to_string())?.map(|(_, c, _)| c).ok_or_else(|| format!("step {seq} is not stored"))
+        r.tx(branch, seq)?.map(|(_, c, _)| c).ok_or(FileError::StepNotStored(seq))
     }
 
     /// Mark `source` merged into `into` at its step `seq`, written at once (a merge with nothing
@@ -1585,7 +1570,7 @@ impl ProjectV2 {
             return Ok(self.seed());
         }
         let r = self.store.reader()?;
-        r.tx(self.branch, seq)?.map(|(_, c, _)| c).ok_or_else(|| SaveErrorV2::Encode(format!("transaction {seq} is not stored")))
+        r.tx(self.branch, seq)?.map(|(_, c, _)| c).ok_or(SaveErrorV2::Encode(FileError::TxNotStored(seq)))
     }
 
     /// Build and write the snapshot at `at` (a point at or before the ledger's head), relative to
@@ -1612,10 +1597,10 @@ impl ProjectV2 {
             if undo_after.is_empty() {
                 chunks::build_incremental(ledger.document(), &prev, &dirty, &meta)
             } else {
-                ledger.with_applied(&undo_after, |d| chunks::build_incremental(d, &prev, &dirty, &meta)).map_err(|e| enc(e.to_string()))?
+                ledger.with_applied(&undo_after, |d| chunks::build_incremental(d, &prev, &dirty, &meta)).map_err(|e| enc(e.into()))?
             }
         } else {
-            let doc = ledger.state_at(at).map_err(|e| enc(e.to_string()))?;
+            let doc = ledger.state_at(at).map_err(|e| enc(e.into()))?;
             chunks::build_full(&doc, &meta)
         }
         .map_err(enc)?;
@@ -1680,7 +1665,7 @@ impl ProjectV2 {
         if let Some(s) = self.snap_ref.as_ref().filter(|s| s.seq <= seq) {
             cache.latest.insert(self.branch.hex(), s.clone());
         }
-        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(e.to_string()))?)?;
+        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(FileError::json(&e)))?)?;
         Ok(())
     }
 
@@ -1943,19 +1928,19 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The engine failed, or a row does not decode.
-    pub fn tx_display(&self, branch: BranchId, from: u64, to: u64) -> Result<Vec<Transaction>, String> {
+    pub fn tx_display(&self, branch: BranchId, from: u64, to: u64) -> Result<Vec<Transaction>, FileError> {
         if from > to {
             return Ok(Vec::new());
         }
-        let r = self.store.reader().map_err(|e| e.to_string())?;
+        let r = self.store.reader()?;
         let mut out = Vec::new();
-        for (seq, flag, stored, body) in r.tx_range(branch, from..=to).map_err(|e| e.to_string())? {
+        for (seq, flag, stored, body) in r.tx_range(branch, from..=to)? {
             let record = pack::unpack(flag, &body)?;
             if chain::tx_hash(&record) != stored {
-                return Err(format!("transaction {seq} does not match its chain value"));
+                return Err(FileError::TxChain(seq));
             }
-            let value: Value = serde_json::from_slice(&record).map_err(|e| format!("transaction {seq}: {e}"))?;
-            out.push(record::decode_tx(&value).map_err(|e| format!("transaction {seq}: {e:?}"))?);
+            let value: Value = serde_json::from_slice(&record).map_err(|e| FileError::TxJson { seq, error: e.to_string() })?;
+            out.push(record::decode_tx(&value).map_err(|error| FileError::TxDecode { seq, error })?);
         }
         Ok(out)
     }
@@ -1966,12 +1951,12 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The branch does not exist, or the file cannot be read.
-    pub fn point_replay(&self, branch: BranchId, seq: u64) -> Result<u64, String> {
-        let r = self.store.reader().map_err(|e| e.to_string())?;
+    pub fn point_replay(&self, branch: BranchId, seq: u64) -> Result<u64, FileError> {
+        let r = self.store.reader()?;
         let line = lineage(&r, self.project, branch)?;
         let (mut i, mut at, mut steps) = (0usize, seq, 0u64);
         loop {
-            let l = line.get(i).ok_or("a lineage index is out of range")?;
+            let l = line.get(i).ok_or(FileError::LineageIndex)?;
             if let Some(v) = nearest_snapshot(&r, l.branch, at)? {
                 return Ok(steps + at - v.point.seq);
             }
@@ -1988,8 +1973,8 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The branch or point does not exist, or the file cannot be read.
-    pub fn point_state(&self, branch: BranchId, seq: u64) -> Result<Document, String> {
-        let r = self.store.reader().map_err(|e| e.to_string())?;
+    pub fn point_state(&self, branch: BranchId, seq: u64) -> Result<Document, FileError> {
+        let r = self.store.reader()?;
         let line = lineage(&r, self.project, branch)?;
         let (doc, _) = line_state(&r, &line, 0, seq)?;
         Ok(doc)
@@ -2040,9 +2025,9 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// Out of range.
-    pub fn set_snapshot_every(&mut self, every: u64) -> Result<(), String> {
+    pub fn set_snapshot_every(&mut self, every: u64) -> Result<(), FileError> {
         if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&every) {
-            return Err(format!("the snapshot interval must be between {} and {}", SNAPSHOT_EVERY_RANGE.0, SNAPSHOT_EVERY_RANGE.1));
+            return Err(FileError::SnapshotEvery);
         }
         self.cache.every = every;
         Ok(())
@@ -2080,7 +2065,7 @@ impl ProjectV2 {
 /// entries are read from `history` (the record's cap at a time, walking back only as far as they
 /// go) and kept in `base`. A point before `base_seq` is read from the history.
 fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
-    let enc = |e: ModelError| SaveErrorV2::Encode(e.to_string());
+    let enc = |e: ModelError| SaveErrorV2::Encode(e.into());
     if at >= base_seq && base_seq >= ledger.base() {
         let from = usize::try_from(base_seq - ledger.base()).unwrap_or(usize::MAX);
         let to = usize::try_from(at - ledger.base()).unwrap_or(usize::MAX);
@@ -2100,7 +2085,7 @@ fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledg
                 let n = (*hidden).min(cap);
                 let more = history.stack_slice(base_seq, undo, stack.len() as u64, n).map_err(enc)?;
                 if more.len() as u64 != n {
-                    return Err(SaveErrorV2::Encode("the history holds fewer undo steps than recorded".into()));
+                    return Err(SaveErrorV2::Encode(FileError::FewerUndo));
                 }
                 let mut all = more;
                 all.append(stack);
@@ -2109,7 +2094,7 @@ fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledg
                 grew = true;
             }
             if !grew {
-                return Err(SaveErrorV2::Encode("the undo history is inconsistent".into()));
+                return Err(SaveErrorV2::Encode(FileError::UndoInconsistent));
             }
         }
     }
@@ -2159,15 +2144,12 @@ fn revision_of(doc: &Document, name: &str) -> Option<Release> {
 
 /// The release data of revision `name` as issued by `tx`: the revision row's fields once `tx`
 /// applied (fields are never changed after issuing, so the document after `tx` is read).
-fn release_at(ledger: &mut Ledger, tx: &Transaction, name: &str) -> Result<Release, String> {
+fn release_at(ledger: &mut Ledger, tx: &Transaction, name: &str) -> Result<Release, FileError> {
     if name.len() > MAX_NAME {
-        return Err("a revision name is too long".into());
+        return Err(FileError::RevisionName);
     }
     let undo_after: Vec<Op> = ledger.log().iter().rev().take_while(|t| t.seq > tx.seq).flat_map(|t| t.ops.iter().rev().map(Op::inverse)).collect();
-    let release = if undo_after.is_empty() {
-        revision_of(ledger.document(), name)
-    } else {
-        ledger.with_applied(&undo_after, |d| revision_of(d, name)).map_err(|e| e.to_string())?
-    };
+    let release =
+        if undo_after.is_empty() { revision_of(ledger.document(), name) } else { ledger.with_applied(&undo_after, |d| revision_of(d, name))? };
     Ok(release.unwrap_or_default())
 }

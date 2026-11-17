@@ -259,8 +259,8 @@ impl Command for StandardParams {
 /// # Errors
 /// The file cannot be opened, or uses IEC (built in), in words.
 pub fn read_standard(path: &str) -> Result<ecad_model::Standard, String> {
-    let path = crate::file::normalize(path)?;
-    let opened = crate::file::Binding::open_read_only(&path, 0x050a, "ecad standard copy")?;
+    let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
+    let opened = crate::file::Binding::open_read_only(&path, 0x050a, "ecad standard copy").map_err(|e| e.to_string())?;
     let doc = opened.ledger.document();
     doc.standard.clone().ok_or_else(|| NOTHING_TO_COPY.to_string())
 }

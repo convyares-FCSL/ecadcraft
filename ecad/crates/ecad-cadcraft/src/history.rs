@@ -224,7 +224,7 @@ fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64
         v.lineage().clone()
     } else {
         let r = v.store().reader().map_err(|e| e.to_string())?;
-        ecad_file::project::lineage(&r, p.id, branch)?
+        ecad_file::project::lineage(&r, p.id, branch).map_err(|e| e.to_string())?
     };
     Ok(line.iter().map(|l| (l.branch, l.fork.map(|f| f.1))).collect())
 }
@@ -320,7 +320,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
         if from <= base {
             let hi = to.min(base);
             match (p.file.v2(), p.ledger.history()) {
-                (Some(v), _) => out.extend(v.tx_display(branch, from, hi)?),
+                (Some(v), _) => out.extend(v.tx_display(branch, from, hi).map_err(|e| e.to_string())?),
                 (None, Some(h)) => out.extend(h.transactions(from, hi).map_err(|e| e.to_string())?),
                 (None, None) => {}
             }
@@ -332,7 +332,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
         }
         return Ok(out);
     }
-    p.file.v2().ok_or("this branch is not in a file")?.tx_display(branch, from, to)
+    p.file.v2().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
 }
 
 /// Who: `you` for the user, the agent's name otherwise.
@@ -581,7 +581,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
         }
         // Merges into this branch (the merge index, FQ2), its unsaved ones included.
         if let Some(v) = p.file.v2() {
-            let merges = if is_cur { v.merge_index(&p.ledger)? } else { v.merge_rows(*id)? };
+            let merges = if is_cur { v.merge_index(&p.ledger) } else { v.merge_rows(*id) }.map_err(|e| e.to_string())?;
             for m in merges {
                 let src = names.get(&m.source).cloned().unwrap_or_else(|| "a branch".into());
                 let update = b.parent.as_deref() == Some(m.source.hex().as_str());
@@ -893,7 +893,7 @@ pub fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
 /// The file could not be read or replayed.
 pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
     match reads_saved(p, pt) {
-        true => p.file.v2().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq),
+        true => p.file.v2().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq).map_err(|e| e.to_string()),
         false => p.ledger.state_at(pt.seq).map_err(|e| e.to_string()),
     }
 }

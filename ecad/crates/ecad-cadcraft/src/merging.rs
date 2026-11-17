@@ -140,7 +140,7 @@ pub struct Prepared {
 /// target records the target's head (`A2`); the newer of them, else the fork.
 fn ancestor(p: &Project, s: &Sides) -> Result<(BranchId, u64), String> {
     let v = p.file.v2().ok_or("Branches live in the project file. Save it first.")?;
-    let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) };
+    let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) }.map_err(|e| e.to_string());
     // A1: into the target from the source, at target step m, of source head s1.
     let a1 = rows(s.target)?.into_iter().filter(|m| m.source == s.source).max_by_key(|m| m.seq);
     // A2: into the source from the target, at source step u, of target head t2.
@@ -708,8 +708,12 @@ fn run_merge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> 
         let source_head = prep.key.0;
         let kind = TxKind::Merge {
             source: sides.source.0,
-            source_head: StepPoint { seq: source_head, chain: v.chain_of(sides.source, source_head)? },
-            ancestor: BranchPoint { branch: prep.ancestor.0.0, seq: prep.ancestor.1, chain: v.chain_of(prep.ancestor.0, prep.ancestor.1)? },
+            source_head: StepPoint { seq: source_head, chain: v.chain_of(sides.source, source_head).map_err(|e| e.to_string())? },
+            ancestor: BranchPoint {
+                branch: prep.ancestor.0.0,
+                seq: prep.ancestor.1,
+                chain: v.chain_of(prep.ancestor.0, prep.ancestor.1).map_err(|e| e.to_string())?,
+            },
         };
         let changes = plan.changes.len();
         let resolved = plan.conflicts.len();

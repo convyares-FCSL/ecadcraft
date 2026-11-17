@@ -7,6 +7,7 @@ use ecad_model::TxId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::FileError;
 use crate::canonical::MAX_SAFE_INTEGER;
 use crate::chain::{self, Hash};
 use crate::records;
@@ -103,12 +104,12 @@ pub enum DecodeError {
 ///
 /// # Errors
 /// An integer outside the limits.
-pub fn op_value(op: &m::Op) -> Result<Value, String> {
+pub fn op_value(op: &m::Op) -> Result<Value, FileError> {
     let rec = records::Op::from(op);
-    let tagged = serde_json::to_value(&rec).map_err(|e| e.to_string())?;
-    let Value::Object(outer) = tagged else { return Err("op did not encode as an object".into()) };
+    let tagged = serde_json::to_value(&rec).map_err(|e| FileError::json(&e))?;
+    let Value::Object(outer) = tagged else { return Err(FileError::OpNotObject) };
     let Some((name, Value::Object(fields))) = outer.into_iter().next() else {
-        return Err("op did not encode as a tagged object".into());
+        return Err(FileError::OpNotTagged);
     };
     let mut flat = Map::new();
     flat.insert("op".into(), Value::String(name));
@@ -122,9 +123,9 @@ pub fn op_value(op: &m::Op) -> Result<Value, String> {
 ///
 /// # Errors
 /// An integer outside the limits.
-pub fn tx_value(tx: &m::Transaction, prev: &Hash) -> Result<Value, String> {
+pub fn tx_value(tx: &m::Transaction, prev: &Hash) -> Result<Value, FileError> {
     if tx.seq > MAX_SAFE_INTEGER || tx.time_ms.is_some_and(|t| t > MAX_SAFE_INTEGER) {
-        return Err(format!("transaction {}: seq or time exceeds 2^53 - 1", tx.seq));
+        return Err(FileError::TxLimits(tx.seq));
     }
     let raw = TxRaw {
         tag: TxTag::Tx,
@@ -137,7 +138,7 @@ pub fn tx_value(tx: &m::Transaction, prev: &Hash) -> Result<Value, String> {
         prev: chain::hex(prev),
         ops: tx.ops.iter().map(op_value).collect::<Result<_, _>>()?,
     };
-    serde_json::to_value(&raw).map_err(|e| e.to_string())
+    serde_json::to_value(&raw).map_err(|e| FileError::json(&e))
 }
 
 /// The `type` of a record value.
@@ -189,11 +190,11 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
         return Err(DecodeError::UnknownOp(format!("op {name:?} is not known to this build")));
     }
     let version = obj.remove("v").and_then(|v| v.as_u64()).ok_or_else(|| DecodeError::Parse(format!("op {name} has no version")))?;
-    upcast_op(&name, version, &mut obj).map_err(DecodeError::Upcast)?;
+    upcast_op(&name, version, &mut obj).map_err(|e| DecodeError::Upcast(e.to_string()))?;
     let mut tagged = Map::new();
     tagged.insert(name, Value::Object(obj));
     let rec: records::Op = serde_json::from_value(Value::Object(tagged)).map_err(|e| DecodeError::Parse(e.to_string()))?;
-    check_integers(&rec).map_err(DecodeError::Limits)?;
+    check_integers(&rec).map_err(|e| DecodeError::Limits(e.to_string()))?;
     let op = m::Op::try_from(rec).map_err(DecodeError::Parse)?;
     check_content_hash(&op)?;
     Ok(op)
@@ -206,7 +207,7 @@ fn check_content_hash(op: &m::Op) -> Result<(), DecodeError> {
         return Ok(());
     };
     let Some(origin) = &definition.origin else { return Ok(()) };
-    let computed = definition_hash(definition).map_err(DecodeError::Parse)?;
+    let computed = definition_hash(definition).map_err(|e| DecodeError::Parse(e.to_string()))?;
     if computed != origin.content_hash {
         return Err(DecodeError::ContentHash(format!(
             "definition {id}: recorded content hash {} does not match its content ({})",
@@ -220,29 +221,29 @@ fn check_content_hash(op: &m::Op) -> Result<(), DecodeError> {
 /// Bring an op stored in an older version up to [`records::OP_VERSION`], on its JSON fields.
 /// Runs only after the record's integrity has been verified on its stored form (§20.7).
 #[cfg_attr(not(test), allow(unused_variables))]
-fn upcast_op(name: &str, version: u64, obj: &mut Map<String, Value>) -> Result<(), String> {
+fn upcast_op(name: &str, version: u64, obj: &mut Map<String, Value>) -> Result<(), FileError> {
     if version == records::OP_VERSION {
         return Ok(());
     }
     if version > records::OP_VERSION {
-        return Err(format!("op {name} version {version} is newer than this build reads ({})", records::OP_VERSION));
+        return Err(FileError::OpNewer { name: name.to_string(), version });
     }
     match (name, version) {
         // A synthetic older version, compiled only into the crate's own tests, proving the
         // upcast path: in "v0" a page's title was called "name".
         #[cfg(test)]
         ("AddPage", 0) => {
-            let page = obj.get_mut("page").and_then(Value::as_object_mut).ok_or("AddPage v0 has no page")?;
-            let title = page.remove("name").ok_or("AddPage v0 page has no name")?;
+            let page = obj.get_mut("page").and_then(Value::as_object_mut).ok_or(FileError::OpUpcastShape("AddPage v0 has no page"))?;
+            let title = page.remove("name").ok_or(FileError::OpUpcastShape("AddPage v0 page has no name"))?;
             page.insert("title".into(), title);
             Ok(())
         }
-        _ => Err(format!("op {name} version {version} has no upcast to version {}", records::OP_VERSION)),
+        _ => Err(FileError::OpNoUpcast { name: name.to_string(), version }),
     }
 }
 
 /// Integer fields of ops must be exact as doubles (§20.10).
-fn check_integers(op: &records::Op) -> Result<(), String> {
+fn check_integers(op: &records::Op) -> Result<(), FileError> {
     let n = match op {
         records::Op::AddPage { index, .. }
         | records::Op::RemovePage { index, .. }
@@ -256,26 +257,26 @@ fn check_integers(op: &records::Op) -> Result<(), String> {
         }
         _ => 0,
     };
-    if n > MAX_SAFE_INTEGER { Err(format!("integer {n} exceeds 2^53 - 1")) } else { Ok(()) }
+    if n > MAX_SAFE_INTEGER { Err(FileError::Integer(n)) } else { Ok(()) }
 }
 
 /// Refuse values beyond the caps before typed decoding (§20.11).
 ///
 /// # Errors
 /// A message naming the cap.
-pub fn check_limits(v: &Value) -> Result<(), String> {
-    fn walk(v: &Value, depth: usize) -> Result<(), String> {
+pub fn check_limits(v: &Value) -> Result<(), FileError> {
+    fn walk(v: &Value, depth: usize) -> Result<(), FileError> {
         if depth > MAX_DEPTH {
-            return Err(format!("nesting deeper than {MAX_DEPTH}"));
+            return Err(FileError::Depth);
         }
         match v {
-            Value::String(s) if s.len() > MAX_STRING => Err(format!("a string longer than {MAX_STRING} bytes")),
-            Value::Array(a) if a.len() > MAX_ARRAY => Err(format!("an array longer than {MAX_ARRAY}")),
+            Value::String(s) if s.len() > MAX_STRING => Err(FileError::LongString),
+            Value::Array(a) if a.len() > MAX_ARRAY => Err(FileError::LongArray),
             Value::Array(a) => a.iter().try_for_each(|x| walk(x, depth + 1)),
-            Value::Object(o) if o.len() > MAX_OBJECT => Err(format!("an object with more than {MAX_OBJECT} entries")),
+            Value::Object(o) if o.len() > MAX_OBJECT => Err(FileError::BigObject),
             Value::Object(o) => o.iter().try_for_each(|(k, x)| {
                 if k.len() > MAX_STRING {
-                    return Err(format!("a key longer than {MAX_STRING} bytes"));
+                    return Err(FileError::LongKey);
                 }
                 walk(x, depth + 1)
             }),
@@ -290,11 +291,11 @@ pub fn check_limits(v: &Value) -> Result<(), String> {
 ///
 /// # Errors
 /// A number without canonical form (not possible for a valid definition).
-pub fn definition_hash(d: &m::Definition) -> Result<m::ContentHash, String> {
+pub fn definition_hash(d: &m::Definition) -> Result<m::ContentHash, FileError> {
     let mut rec = records::Definition::from(d);
     rec.origin = None;
-    let v = serde_json::to_value(&rec).map_err(|e| e.to_string())?;
-    let bytes = crate::canonical::canonical(&v).map_err(|e| e.to_string())?;
+    let v = serde_json::to_value(&rec).map_err(|e| FileError::json(&e))?;
+    let bytes = crate::canonical::canonical(&v)?;
     Ok(m::ContentHash(chain::content_hash(&bytes)))
 }
 
@@ -328,7 +329,7 @@ mod tests {
     #[test]
     fn newer_op_versions_are_refused() {
         let mut obj = Map::new();
-        assert!(upcast_op("AddPage", 2, &mut obj).unwrap_err().contains("newer"));
-        assert!(upcast_op("AddItem", 0, &mut obj).unwrap_err().contains("no upcast"));
+        assert!(upcast_op("AddPage", 2, &mut obj).unwrap_err().to_string().contains("newer"));
+        assert!(upcast_op("AddItem", 0, &mut obj).unwrap_err().to_string().contains("no upcast"));
     }
 }

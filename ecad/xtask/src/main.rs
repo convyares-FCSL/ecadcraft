@@ -535,11 +535,12 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 
 /// Brief 070: per crate, the lines that still report an error as text: `Result<_, String>` and
 /// `Err(format!(`. Each crate's two counts only fall as its errors move to its `thiserror` enum.
-/// `ecad-file` and `ecad-store` are left out until lane 069 has rewritten them; `xtask` is a tool.
+/// A crate without an entry must have none (`ecad-file` and `ecad-store`, since batch 8); `xtask`
+/// is a tool.
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 95, 22),
-    ("ecad-cadcraft", 186, 50),
+    ("ecad-cadcraft", 185, 50),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 136, 129),
@@ -557,7 +558,7 @@ const CMD_STRING_ERRORS: (usize, usize) = (18, 3);
 const CMD_ERROR_BRIDGES: usize = 2;
 
 /// Crates [`string_error_violations`] does not count.
-const STRING_ERROR_SKIP: &[&str] = &["ecad-file", "ecad-store", "ecad-xtask"];
+const STRING_ERROR_SKIP: &[&str] = &["ecad-xtask"];
 
 /// The lines of `text` (outside `//` comments) with a `Result<_, String>`, and with an
 /// `Err(format!(`.
