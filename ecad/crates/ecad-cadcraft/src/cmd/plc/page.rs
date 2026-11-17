@@ -110,9 +110,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
                 _ => None,
             })
         });
-        def.and_then(crate::symbols::of_definition)
-            .and_then(crate::plc::rack::CardType::of_symbol)
-            .is_some_and(crate::plc::rack::CardType::is_rack)
+        def.and_then(crate::symbols::of_definition).and_then(crate::plc::rack::CardType::of_symbol).is_some_and(crate::plc::rack::CardType::is_rack)
     };
     let places_rack = ops.iter().any(|op| match op {
         Op::AddItem { item, .. } => matches!(&item.kind, ItemKind::Symbol(s) if is_rack_def(s.definition)),

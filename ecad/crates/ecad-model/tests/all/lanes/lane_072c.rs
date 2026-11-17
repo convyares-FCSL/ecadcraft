@@ -4,8 +4,8 @@
 use ecad_model::Word;
 use ecad_model::keys::is_reserved;
 use ecad_model::plc::{
-    AddressStyle, Channel, ChannelGroup, CommRole, Communication, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol, RackHead, SafeState,
-    Signal,
+    AddressStyle, Channel, ChannelGroup, CommLink, CommRole, Communication, IoLinkMaster, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol,
+    RackHead, SafeState, Signal,
 };
 use ecad_model::text::Text;
 use ecad_model::{DeviceId, DeviceType};
@@ -38,12 +38,14 @@ fn stations_and_modules_round_trip() {
     m.attributes.calibration_certificate = true;
     m.address.start = Some(12);
     round_trip(&DeviceType::PlcModule(m));
-    round_trip(&DeviceType::PlcModule(PlcModule::new(ModuleFunction::Communication(Communication {
-        protocol: Protocol::IoLink,
-        role: CommRole::Master,
-        ports: Vec::new(),
-        channels: Some(ChannelGroup::new(Signal::IoLink, 4)),
-    }))));
+    round_trip(&DeviceType::PlcModule(PlcModule::new(ModuleFunction::Communication(Communication::IoLinkMaster(IoLinkMaster {
+        channels: ChannelGroup::new(Signal::IoLink, 4),
+    })))));
+    round_trip(&DeviceType::PlcModule(PlcModule::new(ModuleFunction::Communication(Communication::Link(CommLink {
+        protocol: Protocol::ModbusTcp,
+        role: CommRole::Gateway,
+        ports: vec![ecad_model::plc::Port { name: Text::new("X1").ok() }],
+    })))));
     for w in Signal::WORDS.iter().chain(Protocol::WORDS).chain(AddressStyle::WORDS) {
         assert!(!w.is_empty());
     }
@@ -61,6 +63,9 @@ fn reading_is_strict() {
         r#"{"plc_rack":{"head":{"cpu":{}},"address":"03"}}"#,
         r#"{"plc_module":{"function":{"digital_in":{"signal":"volts","count":4}}}}"#,
         r#"{"plc_module":{"function":{"teleport":{}}}}"#,
+        // An IO-Link master always has its channels; a link never has any.
+        r#"{"plc_module":{"function":{"communication":{"io_link_master":{}}}}}"#,
+        r#"{"plc_module":{"function":{"communication":{"link":{"protocol":"profinet","role":"gateway","channels":{"signal":"io_link","count":4}}}}}}"#,
         r#"{"plc_module":{"function":{"digital_in":{"signal":"dc24v","count":257}}}}"#,
         r#"{"plc_module":{"slot":1000,"function":{"digital_in":{"signal":"dc24v","count":4}}}}"#,
         r#"{"plc_module":{"function":{"digital_in":{"signal":"dc24v","count":4}},"address":{"size":0}}}"#,

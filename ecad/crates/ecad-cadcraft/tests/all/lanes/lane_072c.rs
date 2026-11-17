@@ -1,7 +1,7 @@
 //! Lane 072 C (design 072 §3; acceptance A9, A11, A19): PLC stations with a CPU or coupler head,
 //! modules with a typed function and attributes, and their channels, stored and edited as fields.
 
-use ecad_model::plc::{AddressStyle, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind};
+use ecad_model::plc::{AddressStyle, Communication, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind};
 use ecad_model::{DeviceId, DeviceType, Document};
 use serde_json::json;
 
@@ -53,11 +53,11 @@ fn each_plc_starter_gives_its_function() {
         ("plcrtd", |f| matches!(f, ModuleFunction::AnalogIn(g) if g.signal == Signal::Rtd)),
         (
             "plciol",
-            |f| matches!(f, ModuleFunction::Communication(c) if c.protocol == Protocol::IoLink && c.channels.as_ref().is_some_and(|g| g.signal == Signal::IoLink)),
+            |f| matches!(f, ModuleFunction::Communication(Communication::IoLinkMaster(m)) if m.channels.signal == Signal::IoLink && m.channels.count == 4),
         ),
         ("plcps", |f| matches!(f, ModuleFunction::System(s) if s.kind == SystemKind::PowerSupply)),
         ("plcpm", |f| matches!(f, ModuleFunction::System(s) if s.kind == SystemKind::PowerFeed)),
-        ("plccm", |f| matches!(f, ModuleFunction::Communication(c) if c.channels.is_none())),
+        ("plccm", |f| matches!(f, ModuleFunction::Communication(Communication::Link(_)))),
     ];
     for (n, (symbol, ok)) in cases.iter().enumerate() {
         let c = placed(&mut h, symbol, [60.0 + 40.0 * n as f64, 80.0]);

@@ -179,7 +179,6 @@ crate::word_enum! {
         Devicenet,
         CcLink,
         Powerlink,
-        IoLink,
         AsInterface,
         Serial,
         Other,
@@ -200,7 +199,6 @@ impl Protocol {
             Protocol::Devicenet => "DeviceNet",
             Protocol::CcLink => "CC-Link",
             Protocol::Powerlink => "POWERLINK",
-            Protocol::IoLink => "IO-Link",
             Protocol::AsInterface => "AS-Interface",
             Protocol::Serial => "Serial",
             Protocol::Other => "Other",
@@ -386,17 +384,34 @@ crate::word_enum! {
     }
 }
 
-/// A communication module's data. An IO-Link master's ports are its channels (signal
-/// [`Signal::IoLink`]).
+/// A communication module's data (deviation from design 072 §3, overseer 2026-11-17): what kind
+/// of link it is decides whether it has channels, so a wrong combination cannot be built. An
+/// IO-Link master always has its channels (its ports, signal [`Signal::IoLink`]); any other
+/// communication module has a protocol and ports and never channels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Communication {
+    /// A gateway, serial interface or sub-bus on a protocol.
+    Link(CommLink),
+    /// An IO-Link master.
+    IoLinkMaster(IoLinkMaster),
+}
+
+/// A communication link's data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Communication {
+pub struct CommLink {
     pub protocol: Protocol,
     pub role: CommRole,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<Port>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub channels: Option<ChannelGroup>,
+}
+
+/// An IO-Link master's data: its ports are its channels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IoLinkMaster {
+    pub channels: ChannelGroup,
 }
 
 crate::word_enum! {
@@ -406,7 +421,6 @@ crate::word_enum! {
         Gateway,
         Serial,
         Fieldbus,
-        Master,
     }
 }
 
@@ -436,7 +450,9 @@ crate::word_enum! {
     }
 }
 
-/// A safety logic module's data.
+/// A safety logic module's data: its own safe inputs and outputs, when it has any (design 072
+/// §3). Unlike a communication module's, both cases are one kind of module, so the option is the
+/// data, not a combination to rule out.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SafetyLogic {
@@ -623,7 +639,8 @@ impl ModuleFunction {
             ModuleFunction::Mixed(v) => v.iter().collect(),
             ModuleFunction::Position(p) => vec![&p.channels],
             ModuleFunction::Measurement(m) => vec![&m.channels],
-            ModuleFunction::Communication(c) => c.channels.iter().collect(),
+            ModuleFunction::Communication(Communication::IoLinkMaster(m)) => vec![&m.channels],
+            ModuleFunction::Communication(Communication::Link(_)) => Vec::new(),
             ModuleFunction::SafetyLogic(s) => s.channels.iter().collect(),
             ModuleFunction::Drive(_) | ModuleFunction::System(_) => Vec::new(),
         }
@@ -636,7 +653,8 @@ impl ModuleFunction {
             ModuleFunction::Mixed(v) => v.iter_mut().collect(),
             ModuleFunction::Position(p) => vec![&mut p.channels],
             ModuleFunction::Measurement(m) => vec![&mut m.channels],
-            ModuleFunction::Communication(c) => c.channels.iter_mut().collect(),
+            ModuleFunction::Communication(Communication::IoLinkMaster(m)) => vec![&mut m.channels],
+            ModuleFunction::Communication(Communication::Link(_)) => Vec::new(),
             ModuleFunction::SafetyLogic(s) => s.channels.iter_mut().collect(),
             ModuleFunction::Drive(_) | ModuleFunction::System(_) => Vec::new(),
         }

@@ -5,15 +5,16 @@
 //! - Each PLC starter declares its full type with its data: `plccpu` a station with a CPU head,
 //!   `plcim` a station with a coupler; `plcdi` → `DigitalIn`, `plcdq` → `DigitalOut`, `plcai` →
 //!   `AnalogIn`, `plcao` → `AnalogOut`, `plcrtd` → `AnalogIn` with the RTD signal, `plciol` →
-//!   `Communication` (an IO-Link master, its ports its channels), `plcps` and `plcpm` → `System`
-//!   (power supply, power feed), `plccm` → `Communication`. The channel symbols declare their card's.
+//!   `Communication::IoLinkMaster` (its ports its channels), `plcps` and `plcpm` → `System`
+//!   (power supply, power feed), `plccm` → `Communication::Link`. The channel symbols declare their card's.
 //! - A new module's channel count is the project's `plc.<type>.channels` at the moment it is made
 //!   ([`new_type`]); from then on the count is the module's own.
 //! - [`CardType::of_type`] reads the stored type; nothing is worked out from a symbol.
 
 use ecad_model::DeviceType;
 use ecad_model::plc::{
-    ChannelGroup, CommRole, Communication, ModuleFunction, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind, SystemModule,
+    ChannelGroup, CommLink, CommRole, Communication, IoLinkMaster, ModuleFunction, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind,
+    SystemModule,
 };
 
 use super::rack::CardType;
@@ -47,20 +48,14 @@ pub fn of_card(t: CardType) -> DeviceType {
         CardType::Ai => module(ModuleFunction::AnalogIn(group(Signal::Current4To20, t))),
         CardType::Ao => module(ModuleFunction::AnalogOut(group(Signal::Current4To20, t))),
         CardType::Rtd => module(ModuleFunction::AnalogIn(group(Signal::Rtd, t))),
-        CardType::Iol => module(ModuleFunction::Communication(Communication {
-            protocol: Protocol::IoLink,
-            role: CommRole::Master,
-            ports: Vec::new(),
-            channels: Some(group(Signal::IoLink, t)),
-        })),
+        CardType::Iol => module(ModuleFunction::Communication(Communication::IoLinkMaster(IoLinkMaster { channels: group(Signal::IoLink, t) }))),
         CardType::Ps => module(ModuleFunction::System(SystemModule { kind: SystemKind::PowerSupply })),
         CardType::Pm => module(ModuleFunction::System(SystemModule { kind: SystemKind::PowerFeed })),
-        CardType::Cm => module(ModuleFunction::Communication(Communication {
+        CardType::Cm => module(ModuleFunction::Communication(Communication::Link(CommLink {
             protocol: Protocol::Other,
             role: CommRole::Gateway,
             ports: Vec::new(),
-            channels: None,
-        })),
+        }))),
         CardType::Module => module(ModuleFunction::System(SystemModule { kind: SystemKind::EndCap })),
     }
 }
@@ -124,10 +119,8 @@ impl CardType {
                     Signal::Dc24v | Signal::Ac230v | Signal::Relay | Signal::Current4To20 | Signal::Voltage0To10 | Signal::IoLink => CardType::Ai,
                 },
                 ModuleFunction::AnalogOut(_) => CardType::Ao,
-                ModuleFunction::Communication(c) => match c.channels {
-                    Some(_) => CardType::Iol,
-                    None => CardType::Cm,
-                },
+                ModuleFunction::Communication(Communication::IoLinkMaster(_)) => CardType::Iol,
+                ModuleFunction::Communication(Communication::Link(_)) => CardType::Cm,
                 ModuleFunction::System(s) => match s.kind {
                     SystemKind::PowerSupply => CardType::Ps,
                     SystemKind::PowerFeed | SystemKind::PotentialDistribution | SystemKind::Fusing | SystemKind::EndCap | SystemKind::Shield => {

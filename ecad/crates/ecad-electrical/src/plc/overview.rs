@@ -231,9 +231,7 @@ pub fn kind_words(doc: &Document, card: &CardData) -> String {
         CardType::Module => super::edit::module_of(doc, card.id).map_or("module", |m| m.function.word()).replace('_', " "),
     };
     let Some(m) = super::edit::module_of(doc, card.id) else { return base };
-    if let ecad_model::plc::ModuleFunction::Communication(c) = &m.function
-        && c.channels.is_none()
-    {
+    if let ecad_model::plc::ModuleFunction::Communication(ecad_model::plc::Communication::Link(c)) = &m.function {
         let ports = match c.ports.len() {
             0 => String::new(),
             1 => ", 1 port".into(),

@@ -206,10 +206,10 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
         EX_I => module.attributes.intrinsically_safe = yes_no(key, v)?,
         CALIBRATION => module.attributes.calibration_certificate = yes_no(key, v)?,
         PROTOCOL => match &mut module.function {
-            ecad_model::plc::ModuleFunction::Communication(x) => {
+            ecad_model::plc::ModuleFunction::Communication(ecad_model::plc::Communication::Link(x)) => {
                 x.protocol = word::<Protocol>(key, v)?.ok_or_else(|| CmdError::refused(format!("{key} needs a protocol.")))?;
             }
-            _ => return Err(CmdError::refused(format!("{who} is not a communication module; only those have a protocol."))),
+            _ => return Err(CmdError::refused(format!("{who} is not a communication link; only those have a protocol."))),
         },
         _ => return Err(CmdError::input("not a module key")),
     }
