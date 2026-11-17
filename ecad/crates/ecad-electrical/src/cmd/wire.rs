@@ -242,17 +242,35 @@ fn next_like(doc: &Document, value: &str, net: &NetData) -> String {
     }
 }
 
+/// Why two nets cannot be merged; its text completes "The nets can't be merged: …".
+#[derive(Debug)]
+enum Unmergeable {
+    /// They carry these two different potentials.
+    Potentials(String, String),
+    /// Both have fixed numbers of their own.
+    BothFixed,
+}
+
+impl std::fmt::Display for Unmergeable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unmergeable::Potentials(x, y) => write!(f, "they carry different potentials ({x} and {y}), so joining them would short them"),
+            Unmergeable::BothFixed => f.write_str("both nets have fixed numbers of their own"),
+        }
+    }
+}
+
 /// Whether merging nets `a` and `b` is electrically sensible: `Err` with the reason when not.
-fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), String> {
+fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), Unmergeable> {
     let (pa, pb) = (wiring::net_potential(doc, a), wiring::net_potential(doc, b));
     if let (Some(x), Some(y)) = (&pa.name, &pb.name)
         && !x.eq_ignore_ascii_case(y)
     {
-        return Err(format!("they carry different potentials ({x} and {y}), so joining them would short them"));
+        return Err(Unmergeable::Potentials(x.clone(), y.clone()));
     }
     let fixed: BTreeSet<&String> = a.fixed.keys().chain(b.fixed.keys()).collect();
     if fixed.len() > 1 {
-        return Err("both nets have fixed numbers of their own".into());
+        return Err(Unmergeable::BothFixed);
     }
     Ok(())
 }
@@ -392,7 +410,7 @@ pub fn wirenumber(
             sense.map_err(|why| CmdError::refused(format!("The nets can't be merged: {why}.")))?;
             let name = wires::valid_name(&v)
                 .map_err(|_| CmdError::refused(format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)))?;
-            let starter = wires::continuation_starter().ok_or("the continuation symbol is missing")?;
+            let starter = wires::continuation_starter().ok_or(CmdError::refused("the continuation symbol is missing"))?;
             let mut ops = wiring::write_ops(doc, &net, &v, true);
             let mut continuations = Vec::new();
             for n in [&net, &other] {

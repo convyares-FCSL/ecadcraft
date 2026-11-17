@@ -510,7 +510,7 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         Err(_) => None,
     };
     if let (Err(e), false) = (&parsed, typed.is_empty() || typed == d.current) {
-        ui.label(RichText::new(e).small().color(ui.visuals().warn_fg_color));
+        ui.label(RichText::new(e.to_string()).small().color(ui.visuals().warn_fg_color));
     }
     if let Some(new) = &changes {
         let n = users(t, row, entry);
@@ -644,7 +644,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
                     match ecad_cadcraft::style_cmds::read_standard(path.trim()) {
                         Ok(s) => Some((s.header.name.clone(), s.values.len(), s.styles.values().map(|m| m.len()).sum())),
                         Err(e) => {
-                            t.settings.standards.header_error = Some(e);
+                            t.settings.standards.header_error = Some(e.to_string());
                             None
                         }
                     }

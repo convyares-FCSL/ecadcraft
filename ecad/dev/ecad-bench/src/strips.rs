@@ -175,7 +175,8 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 false,
                 Pt::new(X0 - 5.0, 100.0),
                 Pt::new(X0 + PITCH * TERMINALS as f64, 100.0),
-            )?;
+            )
+            .map_err(String::from)?;
             made.push(f.strip);
             let mut ops = f.ops;
             for pair in f.placed.chunks(5) {

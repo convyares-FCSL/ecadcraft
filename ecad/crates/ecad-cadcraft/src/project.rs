@@ -2363,7 +2363,7 @@ impl Project {
         // they bring back).
         let mut ops = ops;
         let rack_page = if kind.is_none() && numbering {
-            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops)?;
+            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops).map_err(String::from)?;
             ops.extend(more);
             id
         } else {
