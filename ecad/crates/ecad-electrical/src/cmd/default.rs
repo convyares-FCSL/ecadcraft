@@ -276,7 +276,7 @@ pub fn target(level: Level, page: Option<PageId>, shown: PageId, o: Objects) -> 
 /// A style that does not exist, a page type a generated page cannot take, or [`ops`]' refusals.
 pub fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chosen: Chosen) -> Result<Vec<Op>, CmdError> {
     let value = match chosen {
-        Chosen::Style(cat, v) => Some(crate::styles::find(doc, cat, &v).map_err(CmdError::refused)?.text()),
+        Chosen::Style(cat, v) => Some(crate::styles::find(doc, cat, &v)?.text()),
         Chosen::Stored(v) => v,
     };
     // Brief 054 (design 054 §2.3): a generated page's type keeps its kind's position.

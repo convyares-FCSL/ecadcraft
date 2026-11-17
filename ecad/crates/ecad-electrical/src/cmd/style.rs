@@ -56,7 +56,7 @@ pub fn required_catalogue(word: Option<&str>) -> Result<&'static Catalogue, CmdE
 /// Neither given, or no style of the catalogue has it (or two share the name).
 pub fn target(doc: &Document, cat: &Catalogue, id: Option<&str>, name: Option<&str>) -> Result<StyleRef, CmdError> {
     let t = id.or(name).map(str::trim).ok_or(CmdError::input("Name the style: `id` or `name`."))?;
-    styles::find(doc, cat.word, t).map_err(CmdError::refused)
+    styles::find(doc, cat.word, t)
 }
 
 /// The layer a `setstyle` call writes: "project" (the default) or "standard".
@@ -338,7 +338,7 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
                             cat.word
                         )));
                     };
-                    let to = styles::find(doc, cat.word, w).map_err(CmdError::refused)?;
+                    let to = styles::find(doc, cat.word, w)?;
                     let standard_only = cat.builtin(&to).is_none() && styles::record(doc, StyleLayer::Project, cat.word, &to).is_none();
                     if standard_only {
                         return Err(CmdError::refused(format!(
@@ -413,7 +413,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         // Brief 057: a catalogue with no built-in styles (cable types, rating tables) starts an
         // empty style.
         let from = match copy_of {
-            Some(t) => Some(styles::find(doc, cat.word, &t).map_err(CmdError::refused)?),
+            Some(t) => Some(styles::find(doc, cat.word, &t)?),
             None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
         };
         let id = StyleRef::Own(ids.fresh::<u128>());
@@ -430,7 +430,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
             }
         }
         let rec = styles::with_fields(Some(&rec), None, &fields);
-        styles::check_record(doc, cat, &id, layer, &rec).map_err(CmdError::refused)?;
+        styles::check_record(doc, cat, &id, layer, &rec)?;
         let op = Op::SetStyle { layer, catalogue: cat.word.into(), id: id.clone(), before: None, after: Some(rec) };
         return Ok(StylePlan { ops: vec![op], id, label: format!("New {} {name}", cat.one.to_lowercase()) });
     }
@@ -470,7 +470,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         let keep = !rec.fields.is_empty() || !rec.name.is_empty();
         let after = keep.then_some(rec);
         if let Some(r) = &after {
-            styles::check_record(doc, cat, &id, l, r).map_err(CmdError::refused)?;
+            styles::check_record(doc, cat, &id, l, r)?;
         }
         if after != before {
             ops.push(Op::SetStyle { layer: l, catalogue: cat.word.into(), id: id.clone(), before, after });
@@ -521,7 +521,7 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
             let (who, verb) = who_uses(&users);
             return Err(CmdError::refused(format!("{who} {verb} {name}; give replace_with.")));
         };
-        let to = styles::find(doc, cat.word, w).map_err(CmdError::refused)?;
+        let to = styles::find(doc, cat.word, w)?;
         if to == id {
             return Err(CmdError::refused("replace_with must be another style."));
         }

@@ -903,7 +903,7 @@ impl Command for OpenrevisionParams {
             let row = rules::issued(p.ledger.document(), &rev)?;
             // The project as issued (brief 027 §16): the state after the issue transaction, so the
             // title block, the revision table and the generated Revision list read this revision.
-            let (named, _, then) = crate::history::issued_state(p, row.rev())?;
+            let (named, _, then) = crate::history::issued_state(p, row.rev()).map_err(CmdError::refused)?;
             let at = named.seq;
             let book = Book::of(&then);
             let pages: Vec<Value> = book
@@ -950,7 +950,7 @@ impl Command for UndoissueParams {
             p.confirm_issue_undo = true;
             let r = p.undo_step(pg);
             p.confirm_issue_undo = false;
-            r?;
+            r.map_err(CmdError::refused)?;
             if p.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
                 p.revision_view = None;
             }

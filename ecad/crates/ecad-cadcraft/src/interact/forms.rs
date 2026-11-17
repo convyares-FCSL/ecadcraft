@@ -413,7 +413,7 @@ impl Wire {
                 s.echo("New wires: category auto (from their potential).");
                 return Ok(Step::Continue);
             }
-            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), "wire", &choice)).map_err(other)?;
+            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), "wire", &choice).map_err(String::from)).map_err(other)?;
             let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), "wire", &id))).unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));

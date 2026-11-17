@@ -167,11 +167,6 @@ pub fn is_device_property(object: ObjectRef, key: &str) -> bool {
     is_component(object) && devices::PROPERTIES.iter().any(|(k, _)| *k == key)
 }
 
-/// A refusal in words.
-fn refused(why: String) -> CmdError {
-    CmdError::refused(why)
-}
-
 fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     Ok(value.map(str::to_string))
 }
@@ -257,7 +252,7 @@ fn cores_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Resu
 
 fn unused_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match o {
-        ObjectRef::Cable(k) => crate::styles::cable::unused_value(doc, k, key, value).map_err(refused),
+        ObjectRef::Cable(k) => crate::styles::cable::unused_value(doc, k, key, value),
         _ => Ok(value.map(str::to_string)),
     }
 }

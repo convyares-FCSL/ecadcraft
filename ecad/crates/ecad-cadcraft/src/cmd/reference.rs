@@ -138,7 +138,7 @@ impl Command for CablegotoParams {
         let (uid, there, opened) = on_any_page(s, |p, pg| {
             let there = rules::other_end(p.ledger.document(), self.reference)?;
             let opened = p.pages.get(&there.page).and_then(|v| v.uid).is_none();
-            let uid = p.open_page(pg, there.page)?;
+            let uid = p.open_page(pg, there.page).map_err(CmdError::refused)?;
             Ok((uid, there, opened))
         })?;
         if opened {

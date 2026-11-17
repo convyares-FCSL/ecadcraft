@@ -14,6 +14,7 @@ use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
+use ecad_electrical::CmdError;
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
     Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
@@ -2331,7 +2332,7 @@ impl Project {
     ///
     /// # Errors
     /// Validation failure; nothing changes.
-    pub(crate) fn apply_edit(&mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>) -> Result<ecad_model::TxId, String> {
+    pub(crate) fn apply_edit(&mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>) -> Result<ecad_model::TxId, CmdError> {
         self.apply_edit_with(pg, command, label, ops, true)
     }
 
@@ -2339,8 +2340,8 @@ impl Project {
     /// Restore (brief 020) records exactly the state it returns to, wire numbers included.
     pub(crate) fn apply_edit_with(
         &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool,
-    ) -> Result<ecad_model::TxId, String> {
-        self.apply_tx(pg, command, label, ops, numbering, None)
+    ) -> Result<ecad_model::TxId, CmdError> {
+        self.apply_tx(pg, command, label, ops, numbering, None).map_err(CmdError::refused)
     }
 
     /// Commit a merge (brief 020b): `ops` as one transaction of `kind` (a merge), updated in the

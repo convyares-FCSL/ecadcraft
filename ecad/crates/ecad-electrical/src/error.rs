@@ -66,21 +66,6 @@ impl CmdError {
     }
 }
 
-/// A refusal still written as text by code not yet moved to [`CmdError`] (brief 070 moves it
-/// module by module; `cargo xtask layers` counts what is left).
-impl From<String> for CmdError {
-    fn from(why: String) -> Self {
-        CmdError::Refused(why.into())
-    }
-}
-
-/// See `From<String>`.
-impl From<&'static str> for CmdError {
-    fn from(why: &'static str) -> Self {
-        CmdError::Refused(why.into())
-    }
-}
-
 /// The edge: a refusal shown as text.
 impl From<CmdError> for String {
     fn from(e: CmdError) -> String {

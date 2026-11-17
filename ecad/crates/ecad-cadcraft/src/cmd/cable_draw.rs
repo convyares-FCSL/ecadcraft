@@ -75,7 +75,9 @@ impl Command for CableslashParams {
             let found = rules::crossed(doc, page, from, to, p.tolerance)?;
             match rules::slash_target(doc, self.cable, self.tag.as_deref())? {
                 SlashTarget::Assign(k) => crate::cmd::cable::run_slash_assign(p, pg, page, k, from, to, &found),
-                SlashTarget::Continue(k) => Ok(crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found)?),
+                SlashTarget::Continue(k) => {
+                    Ok(crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found).map_err(CmdError::refused)?)
+                }
                 SlashTarget::New => {
                     let style = plain_style(p);
                     let plan = rules::slash_new(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, from, to, &found, self.tag.as_deref())?;

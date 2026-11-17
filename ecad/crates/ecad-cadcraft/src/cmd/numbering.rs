@@ -539,7 +539,7 @@ pub fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, Cm
 /// # Errors
 /// The commit was refused.
 pub(crate) fn commit_finalise(p: &mut Project, pg: &mut crate::access::Pages<'_>, plan: &Plan) -> Result<(), CmdError> {
-    p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone()).map_err(CmdError::refused)?;
+    p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
     pg.echo(applied_words(plan, true));
     Ok(())
 }

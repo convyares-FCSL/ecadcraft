@@ -216,7 +216,7 @@ impl TagFormat for GenericCsv {
         if bytes.len() > caps.bytes {
             return Err(CmdError::refused(format!("The file is {} MB; at most {} MB is read.", bytes.len() >> 20, caps.bytes >> 20)));
         }
-        let text = text_of(bytes).ok_or(UNKNOWN)?;
+        let text = text_of(bytes).ok_or(CmdError::refused(UNKNOWN))?;
         if text.trim().is_empty() {
             return Err(CmdError::refused("The file is empty."));
         }

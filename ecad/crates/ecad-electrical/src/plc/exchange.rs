@@ -149,7 +149,7 @@ pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<ComponentId>, f: &dyn
 pub fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) -> Result<Read, CmdError> {
     let f = match format {
         Some(f) => f,
-        None => tagtable::sniff(bytes).ok_or(tagtable::UNKNOWN)?,
+        None => tagtable::sniff(bytes).ok_or(CmdError::refused(tagtable::UNKNOWN))?,
     };
     if !f.sniff(bytes) {
         return Err(CmdError::refused(tagtable::UNKNOWN));

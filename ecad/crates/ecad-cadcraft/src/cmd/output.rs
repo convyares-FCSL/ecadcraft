@@ -209,7 +209,7 @@ fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: &Paging, what: &st
     let flagged = t.flagged();
     if let Some(path) = &pg.path {
         let text = outputs::csv(t, pg.excel_safe);
-        printbook::write_file(path, text.as_bytes())?;
+        printbook::write_file(path, text.as_bytes()).map_err(CmdError::refused)?;
         let marked = if flagged == 1 { "1 cell marked ?".to_string() } else { format!("{flagged} cells marked ?") };
         let message = format!("Wrote {} {what} rows to {path} ({marked}).", t.rows.len());
         return Ok(json!({ "path": path, "rows": t.rows.len(), "flagged": flagged, "message": message }));

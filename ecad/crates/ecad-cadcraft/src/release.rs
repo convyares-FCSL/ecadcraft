@@ -1300,7 +1300,8 @@ pub(crate) fn release_pending(
         }
         finalise_tx = Some(p.ledger.head());
     }
-    let issued = injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()));
+    let issued =
+        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()).map_err(String::from));
     if let Err(e) = issued {
         clear_staging(&staging);
         if finalise_tx.is_some() {
