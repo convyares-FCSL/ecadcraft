@@ -248,7 +248,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(record()),
@@ -309,14 +309,14 @@ fn failing(b: &mut Base) -> Vec<Op> {
         // The project has no standard, so a Standard-layer style and a header change both fail.
         Op::SetStyle {
             layer: StyleLayer::Standard,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(record()),
         },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: Some(record()),
             after: None,

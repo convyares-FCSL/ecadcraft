@@ -17,6 +17,8 @@ ecad-drawing-style = { workspace = true }
 ecad-file = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+# `ecad_model::word_enum!` derives strum's traits in the crate that declares the enum.
+strum = { workspace = true }
 serde_json = { workspace = true }
 # The built-in defaults are TOML data (brief 066, design 066 §3.1); parsing only, spans kept.
 toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }

@@ -348,7 +348,7 @@ impl crate::App {
                 };
             }
             // UI rev 3: Wire ▸ Continuation places the continuation arrow, as Find symbol does.
-            App::Continuation => self.start_pick(crate::search::Pick::Symbol("continuation"))?,
+            App::Continuation => self.start_pick(crate::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Continuation))?,
             App::Coming => return Err(actions::COMING.into()),
             App::ShowNet => {
                 let t = target.ok_or("no wire")?;

@@ -25,6 +25,7 @@
 //!
 //! This module records nothing; [`plan_box`] and [`plan_from_item`] only build ops.
 
+use ecad_model::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use crate::CmdError;
@@ -111,8 +112,8 @@ pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> 
         return None;
     }
     let (lo, hi) = bounds(&vertices);
-    let location_key = comp.properties.get(LOCATION_KEY).cloned();
-    let function_key = comp.properties.get(FUNCTION_KEY).cloned();
+    let location_key = comp.properties.text(ecad_model::keys::LOCATION).map(str::to_string);
+    let function_key = comp.properties.text(ecad_model::keys::FUNCTION).map(str::to_string);
     Some(LocBox {
         component: c,
         rep: rid,
@@ -737,8 +738,8 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
         _ => None,
     })?;
     let (lo, hi) = bounds(&vertices);
-    let location_key = props.get(LOCATION_KEY).cloned();
-    let function_key = props.get(FUNCTION_KEY).cloned();
+    let location_key = props.text(ecad_model::keys::LOCATION).map(str::to_string);
+    let function_key = props.text(ecad_model::keys::FUNCTION).map(str::to_string);
     // A code the box adds to the list is in the ops, not in `doc` yet.
     let code = |a: Aspect, k: &Option<String>| {
         k.as_ref().and_then(|k| {

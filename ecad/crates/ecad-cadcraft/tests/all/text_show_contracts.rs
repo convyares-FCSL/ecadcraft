@@ -125,7 +125,7 @@ fn the_narrowest_level_wins() {
     // Refusals.
     for (p, words) in [
         (json!({"kind": "reference", "show": "off", "component": c.hex()}), "At device level the kinds are"),
-        (json!({"kind": "description", "show": "first"}), "Shown is on, off or first"),
+        (json!({"kind": "description", "show": "first"}), "Shown is yes, no or first"),
         (json!({"kind": "tag", "show": "off", "page": page.hex(), "component": c.hex()}), "at most one"),
         (json!({"kind": "tag", "show": "off", "representation": "00000000000000000000000000000001"}), "No representation"),
     ] {
@@ -203,7 +203,7 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let no_rep: RepresentationId = h
         .doc()
         .representations_of(Subject::Component(c))
-        .find(|(_, r)| devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == "no"))
+        .find(|(_, r)| devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::No))
         .map(|(r, _)| r)
         .unwrap();
     let _ = n;
@@ -243,7 +243,11 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let c: ComponentId = id(&k, "component");
     place(&mut h, "no", [140.0, 150.0], Some(c));
     let reps: Vec<RepresentationId> = h.doc().representations_of(Subject::Component(c)).map(|(r, _)| r).collect();
-    let coil = reps.iter().copied().find(|r| devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == "coil")).unwrap();
+    let coil = reps
+        .iter()
+        .copied()
+        .find(|r| devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Coil))
+        .unwrap();
     let other = reps.iter().copied().find(|r| *r != coil).unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": coil.hex()})).unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "on", "representation": other.hex()})).unwrap();
@@ -266,7 +270,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
     let new_hex = new_rep.hex();
     assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");
-    assert_eq!(props.get(&ecad_cadcraft::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("off"));
+    assert_eq!(props.get(&ecad_cadcraft::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("no"));
     assert!(props.contains_key(&format!("text.{new_hex}.tag.at")), "{keys:?}");
     assert_eq!(keys.len(), 2, "{keys:?}");
     h.check();

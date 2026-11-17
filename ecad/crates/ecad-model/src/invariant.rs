@@ -48,6 +48,7 @@
 //!
 //! This module changes nothing: it only reads the document.
 
+use crate::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::doc::{
@@ -219,9 +220,6 @@ impl Document {
         let layers = std::iter::once(&self.styles).chain(self.standard.as_ref().map(|s| &s.styles));
         for cats in layers {
             for (word, styles) in cats {
-                if !crate::style::is_word(word) {
-                    return bad(format!("style catalogue word {word:?} is not 1-32 characters of a-z, 0-9 and _"));
-                }
                 if styles.is_empty() {
                     return bad(format!("style catalogue {word} is listed with no styles"));
                 }
@@ -392,7 +390,7 @@ impl Document {
 
     /// I21.
     fn check_page_folder(&self, id: PageId) -> Result<()> {
-        let Some(text) = self.pages.get(&id).and_then(|p| p.properties.get(crate::book::FOLDER_KEY)) else {
+        let Some(text) = self.pages.get(&id).and_then(|p| p.properties.text(crate::keys::FOLDER)) else {
             return Ok(());
         };
         match FolderId::parse(text) {

@@ -20,6 +20,26 @@ use ecad_model::{ConductorId, Document, StyleRef};
 use super::{Builtin, Catalogue, Field};
 use crate::defaults::{Kind, Resolved, Scope, Slot, Source};
 
+ecad_model::word_enum! {
+    /// How a wire style's line is drawn.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LineType {
+        Continuous,
+        Dashed,
+        Dashdot,
+    }
+}
+ecad_model::word_enum! {
+    /// Which routes a wire style labels.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum RouteLabels {
+        Project,
+        Net,
+        Each,
+        None,
+    }
+}
+
 /// The registry's built-in category choice: no category.
 pub const NONE: &str = "none";
 
@@ -43,9 +63,9 @@ static FIELDS: [Field; 16] = [
     Field { key: "colour", label: "Colour", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::COLOUR) },
     Field { key: "cross_section", label: "Cross-section", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::CROSS_SECTION) },
     Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: is_line_colour }, slot: Slot::new(), over: None },
-    Field { key: "line_type", label: "Line type", kind: Kind::Choice(&["continuous", "dashed", "dashdot"]), slot: Slot::new(), over: None },
+    Field { key: "line_type", label: "Line type", kind: Kind::Choice(<LineType as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(&["project", "net", "each", "none"]), slot: Slot::new(), over: None },
+    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(<RouteLabels as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
@@ -80,8 +100,15 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The wire category catalogue.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: "wire", plural: "Wire categories", one: "Wire category", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Wire,
+    plural: "Wire categories",
+    one: "Wire category",
+    fields: &FIELDS,
+    builtins: &BUILTINS,
+    choices,
+    project_field: None,
+};
 
 /// Where a conductor's category came from (the inspector's badge, design 050 §7.5).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,7 +213,7 @@ impl WireLooks {
     pub fn category(&self, doc: &Document, c: ConductorId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
         let own = doc.conductors.get(&c).and_then(|x| x.properties.get(e.key)).and_then(|v| StyleRef::parse(v));
-        if let Some(id) = own.filter(|id| super::exists(doc, "wire", id)) {
+        if let Some(id) = own.filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             return (Some(id), CategoryFrom::Own);
         }
         let conn = doc.connectivity();
@@ -204,7 +231,7 @@ impl WireLooks {
             Source::Standard => CategoryFrom::Standard,
             _ => CategoryFrom::None,
         };
-        match StyleRef::parse(&r.text()).filter(|id| super::exists(doc, "wire", id)) {
+        match StyleRef::parse(&r.text()).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             Some(id) => (Some(id), from),
             None => (None, CategoryFrom::None),
         }
@@ -215,7 +242,7 @@ impl WireLooks {
         let (category, from) = self.category(doc, c);
         let props = doc.conductors.get(&c).map(|x| &x.properties);
         let core = !doc.cables_of(c).is_empty();
-        let f = |key: &str| category.as_ref().and_then(|id| super::field_of(doc, "wire", id, key, None));
+        let f = |key: &str| category.as_ref().and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
         let own = |key: &str| props.and_then(|p| p.get(key)).filter(|v| !v.trim().is_empty()).map(|v| (v.clone(), Source::Object));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
         let colour = own(ecad_model::wiring::COLOUR).or_else(|| if core { None } else { from_cat("colour") });
@@ -243,7 +270,7 @@ pub fn wire_look(doc: &Document, c: ConductorId) -> WireLook {
 
 /// The category name of conductor `c` for reports (empty for none).
 pub fn category_name(doc: &Document, look: &WireLook) -> String {
-    look.category.as_ref().map(|id| super::name(doc, "wire", id)).unwrap_or_default()
+    look.category.as_ref().map(|id| super::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
 }
 
 /// The CADCraft linetype of a `line_type` word.

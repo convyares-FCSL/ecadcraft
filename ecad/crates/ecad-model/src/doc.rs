@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
+use crate::units::Radians;
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
@@ -102,7 +103,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_default")]
         halign: TextHAlign,
@@ -365,9 +366,14 @@ pub struct ProjectSettings {
     /// above [`crate::tag::MAX_PADDING`] count as that maximum.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag_padding: Option<u8>,
-    /// The project's own tag prefix per starter symbol key (`"coil" → "KA"`), overriding the
-    /// built-in IEC 81346 default. Empty by default.
-    pub tag_prefixes: BTreeMap<String, String>,
+    /// The project's own tag prefix per symbol (`starter:coil → KA`, `project:valve-x → YV`),
+    /// overriding a starter's built-in IEC 81346 default or a project symbol's own (design 072 F5).
+    /// Empty by default.
+    pub tag_prefixes: BTreeMap<crate::prefix::PrefixOf, crate::prefix::TagPrefix>,
+    /// The prefix of new cable tags, when the project chose one (brief 026; design 072 F5: no
+    /// longer a `tag_prefixes` entry). `None` follows the built-in `W`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cable_prefix: Option<crate::prefix::TagPrefix>,
     /// How wires are numbered and what each potential defaults to (brief 022, FP1). Left out of
     /// the file while it holds [`WiringSettings::default`].
     pub wiring: crate::wiring::WiringSettings,
@@ -465,6 +471,16 @@ impl ReferenceStyle {
 }
 
 impl ProjectSettings {
+    /// The project's own prefix for starter `word` (design 072 F5).
+    pub fn starter_prefix(&self, word: &str) -> Option<&crate::prefix::TagPrefix> {
+        self.tag_prefixes.get(&crate::prefix::PrefixOf::Starter(word.into()))
+    }
+
+    /// The project's own prefix for project symbol `key` (design 072 F5).
+    pub fn project_prefix(&self, key: &str) -> Option<&crate::prefix::TagPrefix> {
+        self.tag_prefixes.get(&crate::prefix::PrefixOf::Project(key.into()))
+    }
+
     /// The tag padding: the project's choice, else the built-in ([`crate::builtins`]).
     pub fn tag_padding(&self) -> u8 {
         self.tag_padding.unwrap_or_else(|| crate::builtins::builtins().tag_padding)
@@ -505,9 +521,9 @@ pub struct TextSlot {
     pub h: TextHAlign,
     #[serde(default, skip_serializing_if = "is_default")]
     pub v: TextVAlign,
-    /// Radians, counter-clockwise.
+    /// Counter-clockwise.
     #[serde(default, skip_serializing_if = "is_default")]
-    pub rotation: f64,
+    pub rotation: Radians,
 }
 
 impl TextSlot {

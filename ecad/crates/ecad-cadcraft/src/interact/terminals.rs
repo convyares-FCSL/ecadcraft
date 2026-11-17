@@ -64,10 +64,13 @@ struct PlaceTerminals {
     first: Option<Pt>,
 }
 
+/// The answers that start a new strip.
+const NEW_STRIP: [&str; 2] = ["new", "n"];
+
 impl PlaceTerminals {
     fn choose(&mut self, s: &Session, text: &str) -> R<Step> {
         let t = text.trim();
-        if t.eq_ignore_ascii_case("new") || t.eq_ignore_ascii_case("n") {
+        if NEW_STRIP.iter().any(|w| t.eq_ignore_ascii_case(w)) {
             self.strip = None;
         } else if t.eq_ignore_ascii_case("pe") {
             self.pe = true;

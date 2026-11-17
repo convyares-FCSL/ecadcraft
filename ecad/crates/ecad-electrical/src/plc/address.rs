@@ -67,7 +67,7 @@ impl Style {
 /// A whole number property 0..=`max`, digits only.
 fn number(doc: &Document, c: ComponentId, key: &str, max: u32) -> Option<u32> {
     let t = doc.components.get(&c)?.properties.get(key)?.trim();
-    (!t.is_empty() && t.len() <= 5 && t.bytes().all(|b| b.is_ascii_digit())).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= max)
+    (t.len() <= 5 && ecad_model::words::is_digits(t)).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= max)
 }
 
 /// A card's pinned start, when set.

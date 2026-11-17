@@ -182,7 +182,7 @@ fn every_op_ledger() -> Ledger {
         Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(StyleRecord { name: "Thin".into(), ..StyleRecord::default() }),

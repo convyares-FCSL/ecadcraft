@@ -162,7 +162,7 @@ impl Command for NumberingParams {
             Some(on) => on_project(s, |p, pg, _| {
                 let doc = p.ledger.document();
                 let before = doc.properties.get(PROVISIONAL_SETTING).cloned();
-                let after = on.then(|| "yes".to_string());
+                let after = on.then(|| ecad_model::words::flag_word(true).to_string());
                 if before != after {
                     p.apply_edit(
                         pg,

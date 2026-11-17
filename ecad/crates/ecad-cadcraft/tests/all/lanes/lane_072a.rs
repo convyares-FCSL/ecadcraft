@@ -90,3 +90,52 @@ fn known_words_open_writable() {
     let (_, summary) = ProjectHandle::open_file(&mut s, &saved, 0x72_a7).unwrap();
     assert!(!summary.contains("read-only"), "{summary}");
 }
+
+/// Lane 072 A2 (design 072 F5): a project symbol with the project's own prefix
+/// (`tag_prefixes[project:<key>]`) and a starter's opens writable, and keeps both.
+#[test]
+fn a_project_symbol_with_its_own_prefix_opens_writable() {
+    let dir = TempDir(std::env::temp_dir().join(format!("ecad-072a2-prefix-{}", ecad_store::disk::unique())));
+    std::fs::create_dir_all(&dir.0).unwrap();
+    let mut h = H::new(0x72_a8);
+    let symbol = json!({
+        "name": "Float switch", "key": "float1",
+        "graphics": [{"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true}],
+        "points": [{"key": 1, "label": "BN", "at": [0, 5]}, {"key": "2", "label": null, "at": [0, -5]}],
+        "slots": [{"text": "tag", "at": [-4, 0], "h": "right", "v": "middle", "rotation": 0}],
+        "defaults": {"prefix": "B", "description": "Float switch", "join": "device"},
+    });
+    h.run("symbolnew", symbol).unwrap();
+    h.run("setdefault", json!({"key": "symbol.float1.prefix", "level": "project", "value": "BL"})).unwrap();
+    h.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "project", "value": "KA"})).unwrap();
+    let keys = h.cfg(|p| p.ledger.document().settings.tag_prefixes.keys().map(ToString::to_string).collect::<Vec<_>>());
+    assert_eq!(keys, ["starter:coil", "project:float1"]);
+    let path = dir.0.join("prefix072").display().to_string();
+    let saved = saved_as(&mut h, &path);
+    while !h.s.docs.is_empty() {
+        h.s.execute("close", &json!({"index": 0})).unwrap();
+    }
+    let mut s = Session::empty();
+    let (project, summary) = ProjectHandle::open_file(&mut s, &saved, 0x72_a9).unwrap();
+    assert!(!summary.contains("read-only"), "{summary}");
+    let mut h = H { s, project, trail: Vec::new() };
+    let float = h.cfg(|p| ecad_cadcraft::defaults::symbols::prefix(p.ledger.document(), "float1"));
+    assert_eq!(float, "BL");
+}
+
+/// Lane 072 A2 (design 072 F6, F7): a symbol's text slot takes its rotation in degrees, like every
+/// other command, and stores it in radians.
+#[test]
+fn a_slot_rotation_is_given_in_degrees_and_stored_in_radians() {
+    let mut h = H::new(0x72_aa);
+    let symbol = json!({
+        "name": "Turned", "key": "turned1",
+        "graphics": [{"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true}],
+        "points": [{"key": 1, "label": null, "at": [0, 5]}, {"key": 2, "label": null, "at": [0, -5]}],
+        "slots": [{"text": "tag", "at": [-4, 0], "h": "right", "v": "middle", "rotation": 90}],
+        "defaults": {"prefix": "B", "join": "device"},
+    });
+    h.run("symbolnew", symbol).unwrap();
+    let turns = h.cfg(|p| p.ledger.document().definitions.values().flat_map(|d| d.texts.iter().map(|t| t.rotation)).collect::<Vec<_>>());
+    assert_eq!(turns, [ecad_model::units::Radians(std::f64::consts::FRAC_PI_2)]);
+}

@@ -3,6 +3,7 @@
 //! [`TextMetrics`]; ecad-cadcraft's `crate::outputs::Outputs` wraps this with today's
 //! signatures, passing CADCraft's fonts.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::LOCATION_KEY;
@@ -836,13 +837,14 @@ impl Outputs {
         let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let category = look.category.clone().map(|id| {
-            let n = crate::styles::name(doc, "wire", &id);
+            let n = crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, &id);
             (id, n)
         });
         let part = look.category.as_ref().and_then(|id| {
-            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).and_then(|r| crate::styles::wire::filled(&r));
+            let f =
+                |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, k, None).and_then(|r| crate::styles::wire::filled(&r));
             let pn = f("part_number")?;
-            let allowance = crate::styles::field_of(doc, "wire", id, "allowance", None).map_or(0.0, |r| r.number());
+            let allowance = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "allowance", None).map_or(0.0, |r| r.number());
             Some((pn, f("maker"), f("description"), allowance))
         });
         let cable = doc
@@ -850,7 +852,7 @@ impl Outputs {
             .into_iter()
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
-                let tag = cab.properties.get("tag").cloned().unwrap_or_else(|| "?".into());
+                let tag = cab.properties.text(ecad_model::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
                 let i = cab.members.iter().position(|m| m.conductor == w)?;
                 let core = cab.members.get(i).and_then(|m| m.core.clone()).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))

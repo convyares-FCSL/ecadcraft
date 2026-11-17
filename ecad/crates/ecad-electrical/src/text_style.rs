@@ -12,6 +12,7 @@
 //!
 //! This module draws nothing and stores nothing.
 
+use ecad_model::Word;
 use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
 
 use crate::defaults::{self, Entry, Scope, text as d};
@@ -66,11 +67,13 @@ pub fn text_colour(value: &str) -> Option<TextColour> {
     crate::words::colour_code(t).map(|(first, _)| TextColour::Code(first))
 }
 
-/// A text weight.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Weight {
-    Regular,
-    Bold,
+ecad_model::word_enum! {
+    /// A text weight.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Weight {
+        Regular,
+        Bold,
+    }
 }
 
 impl Weight {
@@ -83,7 +86,9 @@ impl Weight {
     }
 }
 
-/// A kind of text: one row of the style table (design 031 §3.1).
+ecad_model::word_enum! {
+/// A kind of text: one row of the style table (design 031 §3.1). Its word is the key word in
+/// `text.<word>.height` and the commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TextKind {
     /// A device tag beside a symbol.
@@ -105,6 +110,7 @@ pub enum TextKind {
     /// Cable look: core labels, wire numbers at the slash, label box lines.
     CableText,
     /// A location box's `+A1`.
+    #[strum(serialize = "location")]
     LocationLabel,
     /// Title block values.
     TitleValue,
@@ -132,6 +138,7 @@ pub enum TextKind {
     ChannelText,
     /// Brief 051 (FP1): a PLC channel's address inside its cell (`I0.3`).
     Address,
+}
 }
 
 impl TextKind {
@@ -161,40 +168,6 @@ impl TextKind {
         TextKind::ChannelText,
         TextKind::Address,
     ];
-
-    /// The key word (`tag`, `point_label`…), as in `text.<word>.height` and the commands.
-    pub fn word(self) -> &'static str {
-        match self {
-            TextKind::Tag => "tag",
-            TextKind::PointLabel => "point_label",
-            TextKind::Description => "description",
-            TextKind::PartNumber => "part_number",
-            TextKind::ContinuationName => "continuation_name",
-            TextKind::Reference => "reference",
-            TextKind::ContinuationCaption => "continuation_caption",
-            TextKind::WireLabel => "wire_label",
-            TextKind::CableText => "cable_text",
-            TextKind::LocationLabel => "location",
-            TextKind::TitleValue => "title_value",
-            TextKind::TitleCaption => "title_caption",
-            TextKind::TitleMain => "title_main",
-            TextKind::Grid => "grid",
-            TextKind::Table => "table",
-            TextKind::TableHeader => "table_header",
-            TextKind::Free => "free",
-            TextKind::TitlePage => "title_page",
-            TextKind::TitleRev => "title_rev",
-            TextKind::TableHeading => "table_heading",
-            TextKind::Cover => "cover",
-            TextKind::ChannelText => "channel_text",
-            TextKind::Address => "address",
-        }
-    }
-
-    /// The kind with this key word (exact, lower case).
-    pub fn from_word(word: &str) -> Option<TextKind> {
-        TextKind::ALL.into_iter().find(|k| k.word() == word)
-    }
 
     /// The registry entry choosing this kind's text style (`text.<kind>.style`, brief 050a).
     pub fn style_entry(self) -> &'static Entry {
@@ -256,7 +229,7 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
 /// object's style changes height, weight and colour).
 pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     let id = style_of(doc, kind, at);
-    let f = |k: &str| crate::styles::field_of(doc, "text", &id, k, None);
+    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -306,7 +279,7 @@ pub fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::
 /// colour, and the CADCraft style naming its font, as [`own_style`] gives an object's own style.
 /// For a text whose style is chosen by something other than its kind (a location box's label).
 pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
-    let f = |k: &str| crate::styles::field_of(doc, "text", id, k, None);
+    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -327,7 +300,7 @@ fn builtin_height(doc: &Document) -> f64 {
 
 /// [`OwnStyle`] for `style` of text style `id`: its font family when not the project font.
 fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
-    let font = crate::styles::field_of(doc, "text", id, "font", None).map(|r| r.text()).unwrap_or_default();
+    let font = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, id, "font", None).map(|r| r.text()).unwrap_or_default();
     let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
         defaults::Value::Text(t) => t.to_string(),
         _ => default_family().to_string(),
@@ -389,7 +362,7 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
 /// built-in).
 pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     let id = style_of(doc, kind, Scope::project());
-    let r = crate::styles::field_of(doc, "text", &id, "font", None)?;
+    let r = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, "font", None)?;
     let defaults::Value::Text(f) = r.value else { return None };
     if f.eq_ignore_ascii_case(crate::styles::text::PROJECT_FONT) {
         return None;
@@ -401,30 +374,38 @@ pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     (!f.eq_ignore_ascii_case(project)).then_some(f)
 }
 
-/// Whether a text is shown (design 031 §5.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shown {
-    On,
-    Off,
-    /// Once per run (§5.3): on the first symbol of each run, hidden on the others. Tags only.
-    First,
+ecad_model::word_enum! {
+    /// Whether a text is shown (design 031 §5.2).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum Shown {
+        #[default]
+        #[strum(serialize = "yes")]
+        On,
+        #[strum(serialize = "no")]
+        Off,
+        /// Once per run (§5.3): on the first symbol of each run, hidden on the others. Tags only.
+        First,
+    }
 }
 
 impl Shown {
-    /// The stored word: `on`, `off` or `first`.
-    pub fn word(self) -> &'static str {
-        match self {
-            Shown::On => "on",
-            Shown::Off => "off",
-            Shown::First => "first",
-        }
+    /// The value typed in a box: a stored word, any yes/no word ([`ecad_model::words::flag`]), or
+    /// its words in the panels (`Shown`, `Hidden`, `Once per run`), in any case.
+    pub fn from_input(text: &str) -> Option<Shown> {
+        let t = text.trim();
+        <Self as ecad_model::Word>::parse(t)
+            .or_else(|| ecad_model::words::flag(t).map(|on| if on { Shown::On } else { Shown::Off }))
+            .or_else(|| Shown::ALL_LABELS.into_iter().find(|s| s.label().eq_ignore_ascii_case(t)))
     }
 
-    fn from_word(w: &str) -> Shown {
-        match w {
-            "off" => Shown::Off,
-            "first" => Shown::First,
-            _ => Shown::On,
+    const ALL_LABELS: [Shown; 3] = [Shown::On, Shown::Off, Shown::First];
+
+    /// Its words in the panels.
+    pub fn label(self) -> &'static str {
+        match self {
+            Shown::On => "Shown",
+            Shown::Off => "Hidden",
+            Shown::First => "Once per run",
         }
     }
 }
@@ -495,10 +476,10 @@ pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
             RunRule::Plc => Some(&d::TAG_SHOW_PLC),
         };
         if let Some(rule) = rule {
-            return Shown::from_word(defaults::resolve(doc, rule, Scope::project()).word());
+            return <Shown as ecad_model::Word>::parse(defaults::resolve(doc, rule, Scope::project()).word()).unwrap_or_default();
         }
     }
-    Shown::from_word(r.word())
+    <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- Fonts (§2)
@@ -940,8 +921,8 @@ pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<Re
             RunRule::Plc => 2,
             RunRule::None => {
                 // Other symbols: their starter (a definition ID otherwise), so only like with like.
-                let key =
-                    crate::devices::rep_starter(doc, r).map_or(0, |s| s.key.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
+                let key = crate::devices::rep_starter(doc, r)
+                    .map_or(0, |s| ecad_model::Word::word(s.key).bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
                 3 + key
             }
         };
@@ -1101,7 +1082,7 @@ mod tests {
             // Brief 050a: the kind's built-in text style carries exactly these values.
             let b = crate::styles::text::CATALOGUE.builtin(&kind.builtin_style());
             assert_eq!(b.and_then(|b| b.value("height")), Some(Value::Length(h)), "{kind:?}");
-            assert_eq!(TextKind::from_word(kind.word()), Some(kind));
+            assert_eq!(<TextKind as ecad_model::Word>::parse(kind.word()), Some(kind));
             assert_eq!(kind.style_entry().key, format!("text.{}.style", kind.word()));
         }
     }
@@ -1115,7 +1096,7 @@ mod tests {
                 fields: [("height".to_string(), bad.to_string()), ("weight".into(), "heavy".into())].into_iter().collect(),
                 body: None,
             };
-            doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
+            doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
             let want = TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None };
             assert_eq!(text_style(&doc, TextKind::Tag), want, "{bad:?}");
         }
@@ -1138,7 +1119,7 @@ mod tests {
             fields: [("height".to_string(), "3".to_string()), ("weight".into(), "Regular".into())].into_iter().collect(),
             body: None,
         };
-        doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
+        doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });
         doc.settings.length_unit = LengthUnit::Inch;
         assert!((text_style(&doc, TextKind::Tag).height - 3.0 / 25.4).abs() < 1e-12);
@@ -1175,19 +1156,19 @@ mod tests {
         assert_eq!(text_shown(&doc, plain, TextKind::ContinuationName), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Grid), Shown::On);
         // A project-wide tag rule overrides the run rule; `first` is refused for other kinds.
-        doc.properties.insert("text.tag.show".into(), "off".into());
+        doc.properties.insert("text.tag.show".into(), "no".into());
         doc.properties.insert("text.description.show".into(), "first".into());
         assert_eq!(text_shown(&doc, strip, TextKind::Tag), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Description), Shown::Off);
-        doc.pages.get_mut(&page).map(|p| p.properties.insert("text.tag.show".into(), "on".into()));
+        doc.pages.get_mut(&page).map(|p| p.properties.insert("text.tag.show".into(), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
-        doc.components.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "off".into()));
+        doc.components.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::Off);
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "on".into()));
+        doc.components.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         // The project may turn the strip run rule off.
         let mut doc2 = Document::default();
-        doc2.properties.insert("text.tag.show.strip".into(), "on".into());
+        doc2.properties.insert("text.tag.show.strip".into(), "yes".into());
         assert_eq!(text_shown(&doc2, TextTarget { run: RunRule::Strip, ..TextTarget::project() }, TextKind::Tag), Shown::On);
     }
 }

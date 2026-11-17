@@ -66,7 +66,7 @@ pub const MAX_CORES: usize = 100;
 /// The green-yellow core of an IEC `G` cable.
 pub const GNYE: &str = "GNYE";
 /// The PE starter's key.
-pub const PE_KEY: &str = "terminalpe";
+pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Terminalpe;
 
 // ---------------------------------------------------------------- strips and terminals
 
@@ -428,7 +428,7 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, CmdError> {
         Some((i, c @ ('G' | 'X'))) => (upper.get(..i).unwrap_or(""), Some(c)),
         _ => (upper.as_str(), None),
     };
-    if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+    if ecad_model::words::is_digits(digits) {
         let n: usize = digits.parse().map_err(|_| CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")))?;
         if n == 0 {
             return Err(CmdError::refused("A cable offers at least 1 core. Write 7, 7G or 5X; empty clears it."));
@@ -472,7 +472,7 @@ pub fn cores_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let cores = parse_cores(v)?;
     let upper = v.to_ascii_uppercase();
-    if upper.bytes().all(|b| b.is_ascii_digit() || b == b'G' || b == b'X') {
+    if upper.bytes().all(|b| matches!(b, b'0'..=b'9' | b'G' | b'X')) {
         return Ok(Some(upper));
     }
     if !v.contains(',') && v.chars().any(|c| c.is_ascii_digit()) {
@@ -1781,7 +1781,7 @@ pub fn is_fuse_device(doc: &Document, c: ComponentId) -> bool {
 }
 
 /// The starter key of a fuse terminal device (brief 034).
-pub const FUSE_DEVICE: &str = "fuseterm";
+pub const FUSE_DEVICE: crate::symbols::StarterKey = crate::symbols::StarterKey::Fuseterm;
 
 #[cfg(test)]
 mod tests {

@@ -3,6 +3,7 @@
 //! Enter on an optional prompt keeps its default; Esc writes nothing.
 
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
+use ecad_model::keys::PropsExt;
 use serde_json::{Map, Value, json};
 
 use super::can_start;
@@ -13,7 +14,7 @@ pub(crate) fn bomitem(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (metres, location) = super::read(s, |p, _| {
         let doc = p.ledger.document();
-        let stored = doc.properties.get(ecad_model::book::LOCATION_KEY).map(String::as_str);
+        let stored = doc.properties.text(ecad_model::keys::LOCATION);
         Ok((crate::bom::item_unit_metres(doc), crate::designations::shown(doc, crate::designations::Aspect::Location, stored)))
     })
     .unwrap_or((false, None));

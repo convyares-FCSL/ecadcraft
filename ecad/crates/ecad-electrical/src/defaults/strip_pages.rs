@@ -7,6 +7,15 @@
 
 use super::{Entry, Kind, Level, ProjectSource, Slot};
 
+ecad_model::word_enum! {
+    /// How a terminal strip page draws its strip.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum StripPageForm {
+        Table,
+        Graphic,
+    }
+}
+
 /// Project only.
 const P: &[Level] = &[Level::Project];
 /// Project and page.
@@ -25,7 +34,7 @@ pub static STYLE: Entry = Entry {
     label: "Terminal plan style",
     group: GROUP,
     brief: "046",
-    kind: Kind::Choice(&[TABLE, GRAPHIC]),
+    kind: Kind::Choice(<StripPageForm as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: PP,
     project: ProjectSource::Property,

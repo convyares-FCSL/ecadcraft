@@ -65,11 +65,7 @@ pub fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
         after.tag_padding = Some(n);
     }
     for (k, v) in settings.prefixes {
-        match v {
-            Some(px) if crate::symbols::by_key(&k).is_some_and(|s| s.prefix() == px) => after.tag_prefixes.remove(&k),
-            Some(px) => after.tag_prefixes.insert(k, px),
-            None => after.tag_prefixes.remove(&k),
-        };
+        crate::devices::set_symbol_prefix(after, ecad_model::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
 }
 

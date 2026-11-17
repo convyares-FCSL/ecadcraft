@@ -257,8 +257,12 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let coil = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let rep: RepresentationId = id(&coil, "representation");
     let d = h.doc();
-    let (def_id, coil_def) =
-        d.definitions.iter().find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == "coil")).map(|(i, x)| (*i, x.clone())).unwrap();
+    let (def_id, coil_def) = d
+        .definitions
+        .iter()
+        .find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Coil))
+        .map(|(i, x)| (*i, x.clone()))
+        .unwrap();
     let mut p = json!({"definition": def_id.hex(), "name": "Coil, mine", "key": "mycoil", "update": "all",
         "defaults": {"prefix": "K"}, "slots": [{"text": "tag", "at": [-10, 0]}]});
     let pts: Vec<Value> = coil_def.terminals.iter().map(|t| json!({"key": t.key, "label": t.label, "at": [t.at.x, t.at.y]})).collect();

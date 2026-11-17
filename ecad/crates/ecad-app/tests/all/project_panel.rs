@@ -934,7 +934,7 @@ fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
         let s = &mut h.state_mut().search;
         s.open = true;
         s.query = "k".into();
-        s.picked = Some(ecad_app::search::Pick::Symbol("no"));
+        s.picked = Some(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
     }
     h.run_steps(3);
     let count = |h: &Harness<'static, App>| (h.state().panel.rebuilds, h.state().search.rebuilds);

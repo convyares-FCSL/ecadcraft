@@ -15,10 +15,11 @@
 //! Every other op leaves the rows. Working them out reads each page's values once and fits each
 //! field's value in its box; no frame is drawn (one frame input per frame style and sheet).
 
+use ecad_model::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY};
-use ecad_model::sheet::{self, SHEET_KEY};
+use ecad_model::sheet;
 use ecad_model::style::StyleLayer;
 use ecad_model::title_block::BlockItem;
 use ecad_model::{Document, ObjectRef, Op, PageId};
@@ -76,8 +77,8 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
         for (cat, records) in cats {
             for (id, r) in records.iter().take(ecad_model::style::MAX_STYLES_PER_CATALOGUE) {
                 let Some(body) = &r.body else { continue };
-                let name = crate::styles::name(doc, cat, id);
-                if cat != sheet::FRAME_CATALOGUE {
+                let name = crate::styles::name(doc, *cat, id);
+                if *cat != sheet::FRAME_CATALOGUE {
                     let which = format!("{name} carries a title block; only frames draw one.");
                     out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
                     continue;
@@ -121,7 +122,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 fn sheet_rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
     for (page, p) in doc.pages.iter().take(MAX_PAGES) {
-        let Some(own) = p.properties.get(SHEET_KEY).and_then(|t| ecad_model::SheetSpec::parse(t).ok()) else { continue };
+        let Some(own) = p.properties.text(ecad_model::keys::SHEET).and_then(|t| ecad_model::SheetSpec::parse(t).ok()) else { continue };
         let Some(framed) = sheet::frame_sheet(doc, *page) else { continue };
         if (own.width, own.height) == (framed.width, framed.height) && own == framed {
             continue;

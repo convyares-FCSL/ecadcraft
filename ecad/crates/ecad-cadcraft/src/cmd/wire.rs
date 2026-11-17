@@ -11,7 +11,8 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::wire::{
     self as rules, CategoryName, Conflict, Junctioned, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires,
 };
-use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
+use ecad_model::connectivity::{KIND, NAME};
+use ecad_model::units::{Degrees, Radians};
 use ecad_model::wiring;
 use ecad_model::{ConductorId, Document, PageId, Placement, Pt, TerminalId};
 use schemars::JsonSchema;
@@ -663,7 +664,7 @@ pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
 /// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
 /// the registered default `wire.join`.
 pub(crate) fn join_by_default(doc: &Document) -> bool {
-    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).word() == "on"
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).flag()
 }
 
 // ---------------------------------------------------------------- place (the continuation form)
@@ -671,7 +672,7 @@ pub(crate) fn join_by_default(doc: &Document) -> bool {
 /// `place {symbol: "continuation" | "junction", at, rotation?, mirror?, name?, caption?}`: a
 /// tagless component (design 022 §3.2), part of `place` ([`crate::cmd::device::PlaceParams`]).
 pub(crate) fn place_tagless(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let joins = params.device.is_some() || params.tag.is_some();
     let (name, caption) =
@@ -680,16 +681,16 @@ pub(crate) fn place_tagless(
         let style = plain_style(p);
         let doc = p.ledger.document();
         let mut props = ecad_model::Properties::new();
-        props.insert(KIND.into(), starter.key.into());
+        props.insert(KIND.into(), starter.key.to_string());
         if let Some(n) = &name {
             props.insert(NAME.into(), n.clone());
         }
         if let Some(t) = &caption {
             props.insert(crate::continuations::CAPTION_KEY.into(), t.clone());
         }
-        let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
-        let label = if starter.key == CONTINUATION { "Continuation" } else { "Junction" };
+        let label = if starter.key == crate::symbols::StarterKey::Continuation { "Continuation" } else { "Junction" };
         p.apply_edit(pg, "place", label, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());

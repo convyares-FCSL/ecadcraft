@@ -82,7 +82,7 @@ pub fn of(t: &App) -> Option<Placing> {
         return None;
     }
     let prompt = t.cad.session.current_prompt().map(|p| p.message.clone()).unwrap_or_default();
-    let symbol = t.shell.tools.placing.symbol.and_then(symbols::by_key);
+    let symbol = t.shell.tools.placing.symbol.map(symbols::starter);
     Some(Placing { tag: tag_in(&prompt), joins: prompt.contains("joins "), symbol })
 }
 
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn a_new_coil_says_what_the_click_adds_and_leaves() {
-        let p = Placing { tag: Some("-K02".into()), joins: false, symbol: symbols::by_key("coil") };
+        let p = Placing { tag: Some("-K02".into()), joins: false, symbol: Some(symbols::starter(symbols::StarterKey::Coil)) };
         let (title, sub) = p.head();
         assert_eq!(title, "-K02");
         assert!(sub.ends_with(NOT_PLACED), "{sub}");
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn a_symbol_joining_a_device_adds_no_device() {
-        let p = Placing { tag: Some("-K01".into()), joins: true, symbol: symbols::by_key("no") };
+        let p = Placing { tag: Some("-K01".into()), joins: true, symbol: Some(symbols::starter(symbols::StarterKey::No)) };
         let c = p.changes();
         assert!(c[0].1.contains("to -K01"), "{c:?}");
         assert!(c.iter().all(|(m, _)| *m != "warning"), "{c:?}");

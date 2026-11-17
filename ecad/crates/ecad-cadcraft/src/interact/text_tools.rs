@@ -3,6 +3,7 @@
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
+use ecad_model::Word;
 use ecad_model::{ComponentId, Form, PageId, RepresentationId, Subject};
 use serde_json::json;
 
@@ -88,10 +89,10 @@ impl ShowText {
     fn change(&self, s: &mut Session, picked: Picked) -> R<Step> {
         let (rep, component, page, kind, show) = match picked {
             Picked::Text { rep, of, component, symbol, shown, page } => {
-                (rep, component, page, Self::kind(of, symbol), if shown { "off" } else { "on" })
+                (rep, component, page, Self::kind(of, symbol), ecad_model::words::flag_word(!shown))
             }
             Picked::Symbol { tag_hidden: false, .. } => return Err(other(NOTHING_HIDDEN)),
-            Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, "on"),
+            Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::words::flag_word(true)),
         };
         let mut params = json!({"kind": kind.word(), "show": show});
         match (self.level, component) {
@@ -143,7 +144,11 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         (Some(t), TextKind::Tag) => format!("{what} {t}"),
         _ => what,
     };
-    let done = if show == "off" { "hidden" } else { "shown" };
+    let done = if <crate::text_style::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == crate::text_style::Shown::Off {
+        "hidden"
+    } else {
+        "shown"
+    };
     let level = v.get("level").and_then(|l| l.as_str()).unwrap_or_default();
     let place = match level {
         "symbol" => "on this symbol".to_string(),

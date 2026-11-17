@@ -8,7 +8,7 @@ use crate::common;
 use common::{H, id, pts};
 use ecad_cadcraft::checks::{self, Kind as CheckKind};
 use ecad_cadcraft::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
-use ecad_model::{ComponentId, Op, TerminalId};
+use ecad_model::{ComponentId, Op, TerminalId, Word};
 use serde_json::{Value, json};
 
 const SEED: u64 = 34;
@@ -60,7 +60,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
     // page of every symbol would leave the fast set.
     for s in new_keys() {
         let mut h = new_h();
-        let r = place(&mut h, s.key, [0.0, 0.0]);
+        let r = place(&mut h, s.key.word(), [0.0, 0.0]);
         assert_eq!(r["tag"], json!(format!("-{}01", s.prefix())), "{}", s.key);
         assert_eq!(r["joined"], json!(false), "{}", s.key);
         let c: ComponentId = id(&r, "component");
@@ -68,7 +68,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
         // (each half's BOM description is its own); a pin's label is its pin name.
         if let symbols::Kind::ConnectorHalf { .. } = s.kind {
             assert_eq!(prop(&mut h, c, "description").as_deref(), Some("Connector"), "{}", s.key);
-            if !matches!(s.key, "pinpair" | "pins" | "pinp") {
+            if !matches!(s.key.word(), "pinpair" | "pins" | "pinp") {
                 assert_eq!(labels(&r), s.labels(), "{}", s.key);
             }
         } else {
@@ -87,7 +87,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
         let o = d.origin.unwrap();
         assert_eq!((o.library, o.definition), (STARTER_LIBRARY, s.id), "{}", s.key);
         // A second placement reuses the embedded definition and takes the next number.
-        let again = place(&mut h, s.key, [0.0, -60.0]);
+        let again = place(&mut h, s.key.word(), [0.0, -60.0]);
         assert_eq!(again["tag"], json!(format!("-{}02", s.prefix())), "{}", s.key);
         assert_eq!(again["definition"], r["definition"], "{}", s.key);
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());

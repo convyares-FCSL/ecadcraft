@@ -18,11 +18,12 @@
 //! This module only computes; it stores nothing and draws nothing (the drawing is
 //! `ecad-cadcraft`'s).
 
+use crate::keys::PropsExt;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{Document, LengthUnit};
 use crate::id::PageId;
-use crate::style::{StyleLayer, StyleRef};
+use crate::style::{StyleCatalogue, StyleLayer, StyleRef};
 
 /// The page property holding a page's own sheet spec (text, [`SheetSpec::parse`]).
 pub const SHEET_KEY: &str = "sheet";
@@ -244,8 +245,8 @@ pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
 
 /// Brief 055: the choice key of a page's frame style (`ecad-cadcraft`'s `print.frame.style`).
 pub const FRAME_STYLE_KEY: &str = "print.frame.style";
-/// The frame style catalogue's word.
-pub const FRAME_CATALOGUE: &str = "frame";
+/// The frame style catalogue.
+pub const FRAME_CATALOGUE: StyleCatalogue = StyleCatalogue::Frame;
 /// The built-in frame style's word.
 pub const BUILTIN_FRAME: &str = "sheet";
 /// The frame field holding the sheet a frame is drawn for (design 055 §1.4).
@@ -314,11 +315,7 @@ pub const PLAIN_TYPE: &str = "plain";
 /// Whether page type `id` has **Checks and references** on (design 054 §3.4): its record's
 /// `checks` field, else the built-in's (Plain off, the others on).
 pub fn type_checks(doc: &Document, id: &StyleRef) -> bool {
-    match type_field(doc, id, "checks").map(str::trim) {
-        Some(v) if v.eq_ignore_ascii_case("off") => false,
-        Some(v) if v.eq_ignore_ascii_case("on") => true,
-        _ => !matches!(id, StyleRef::Builtin(w) if w == PLAIN_TYPE),
-    }
+    type_field(doc, id, "checks").and_then(crate::words::flag).unwrap_or_else(|| !matches!(id, StyleRef::Builtin(w) if w == PLAIN_TYPE))
 }
 
 /// Whether `page` takes part in checks, cross-references and numbering (its page type's
@@ -339,7 +336,7 @@ pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
     ops.iter().any(|op| match op {
         Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == PAGE_TYPE_KEY,
         Op::AddPage { page, .. } => page.properties.contains_key(PAGE_TYPE_KEY),
-        Op::SetStyle { catalogue, .. } => catalogue == PAGE_CATALOGUE,
+        Op::SetStyle { catalogue, .. } => *catalogue == PAGE_CATALOGUE,
         _ => false,
     })
 }
@@ -349,11 +346,11 @@ pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
 /// that does not exist.
 pub fn page_type_zones(doc: &Document, page: PageId) -> Option<bool> {
     let id = type_of_page(doc, page)?;
-    match type_field(doc, &id, "zones").map(str::trim) {
-        Some(v) if v.eq_ignore_ascii_case("off") => Some(false),
-        Some(v) if v.eq_ignore_ascii_case("on") => Some(true),
-        _ => Some(!matches!(&id, StyleRef::Builtin(w) if ZONELESS_TYPES.contains(&w.as_str()))),
-    }
+    Some(
+        type_field(doc, &id, "zones")
+            .and_then(crate::words::flag)
+            .unwrap_or_else(|| !matches!(&id, StyleRef::Builtin(w) if ZONELESS_TYPES.contains(&w.as_str()))),
+    )
 }
 
 /// Brief 055 (overseer ruling 2026-11-14): the page property naming a frame style whose title
@@ -378,7 +375,7 @@ pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
 /// built-in, or a frame without one) draws the house block.
 pub fn title_block_style(doc: &Document, page: PageId) -> StyleRef {
     let named = |id: Option<StyleRef>| id.filter(|id| frame_exists(doc, id));
-    named(doc.pages.get(&page).and_then(|p| p.properties.get(TITLE_BLOCK_KEY)).and_then(|t| StyleRef::parse(t)))
+    named(doc.pages.get(&page).and_then(|p| p.properties.text(crate::keys::TITLE_BLOCK)).and_then(StyleRef::parse))
         .or_else(|| named(page_type_title_block(doc, page)))
         .unwrap_or_else(|| frame_style(doc, page))
 }
@@ -450,7 +447,7 @@ pub fn keep_out(doc: &Document, page: PageId) -> f64 {
 pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
     doc.pages
         .get(&page)
-        .and_then(|p| p.properties.get(SHEET_KEY))
+        .and_then(|p| p.properties.text(crate::keys::SHEET))
         .and_then(|t| SheetSpec::parse(t).ok())
         .or_else(|| page_type_sheet(doc, page).filter(|s| s.check().is_ok()))
         .unwrap_or_else(|| doc.settings.sheet())
@@ -462,7 +459,7 @@ pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
 /// [`PAGE_CATALOGUE`].
 pub const PAGE_TYPE_KEY: &str = "page.type";
 /// The style catalogue of page types (brief 054, FP1).
-pub const PAGE_CATALOGUE: &str = "page";
+pub const PAGE_CATALOGUE: StyleCatalogue = StyleCatalogue::Page;
 /// The page property holding a generated page's kind (brief 024, FP1).
 pub const GENERATED_KEY: &str = "generated";
 /// The six built-in page types (design 054 §2.2), in table order.
@@ -488,7 +485,7 @@ pub fn derived_page_type(generated: Option<&str>) -> &'static str {
 /// [`derived_page_type`]. Reads stored records only.
 pub fn page_type_of(doc: &Document, props: &crate::Properties) -> crate::StyleRef {
     let own = props.get(PAGE_TYPE_KEY).and_then(|t| crate::StyleRef::parse(t)).filter(|id| page_type_exists(doc, id));
-    own.unwrap_or_else(|| crate::StyleRef::Builtin(derived_page_type(props.get(GENERATED_KEY).map(String::as_str)).to_string()))
+    own.unwrap_or_else(|| crate::StyleRef::Builtin(derived_page_type(props.text(crate::keys::GENERATED)).to_string()))
 }
 
 /// Whether `id` names a page type: a built-in one, or a record (within the bound) in the project
@@ -504,7 +501,7 @@ pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
 /// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-cadcraft` reads them).
 fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::style::StyleRecord> {
     use crate::style::MAX_STYLES_PER_CATALOGUE;
-    let map = crate::style::layer_of(doc, layer)?.get(PAGE_CATALOGUE)?;
+    let map = crate::style::layer_of(doc, layer)?.get(&PAGE_CATALOGUE)?;
     let r = map.get(id)?;
     if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
         return None;

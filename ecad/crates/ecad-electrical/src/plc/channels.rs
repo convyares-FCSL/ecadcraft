@@ -15,6 +15,7 @@
 //! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
 use crate::CmdError;
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -53,7 +54,7 @@ pub fn key(i: u32, role: &str) -> String {
 pub fn parse_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix('.')?;
     let (i, role) = rest.split_once('.')?;
-    if i.is_empty() || i.len() > 4 || !i.bytes().all(|b| b.is_ascii_digit()) {
+    if i.len() > 4 || !ecad_model::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
@@ -69,7 +70,7 @@ pub fn parse_legacy(k: &str) -> Option<(u32, &'static str)> {
         _ => return None,
     };
     let (a, b) = rest.split_once('.')?;
-    if a.is_empty() || a.len() > 4 || b.len() != 1 || !a.bytes().all(|x| x.is_ascii_digit()) {
+    if a.len() > 4 || b.len() != 1 || !ecad_model::words::is_digits(a) {
         return None;
     }
     let (a, b): (u32, u32) = (a.parse().ok()?, b.parse().ok()?);
@@ -130,7 +131,7 @@ fn cells_words(t: CardType) -> String {
 /// The first channel number shown on card `c` (`plc.channel.first`, 0 or 1).
 pub fn first_number(doc: &Document, c: ComponentId) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
-    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).word() == "1")
+    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).choice() == Some(defaults::plc::ChannelFirst::One))
 }
 
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
@@ -149,7 +150,7 @@ pub fn pins_for(
     doc: &Document, c: Option<ComponentId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
 ) -> Vec<String> {
     let at = Scope { component: c, ..Scope::project() };
-    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).word() == "channel";
+    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
     let all = ty.roles();
     let r_count = u32::try_from(all.len()).unwrap_or(1).max(1);
     let n = n.max(i.saturating_add(1));
@@ -285,7 +286,7 @@ pub fn plan_cell(
             subject: Subject::Component(card),
             page,
             form: Form::Symbol,
-            role: s.key.into(),
+            role: s.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },
@@ -344,7 +345,7 @@ pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
 /// wire, the first being the one the cell is placed by.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Landing {
-    pub rotation: f64,
+    pub rotation: Radians,
     pub points: Vec<(&'static str, crate::slash::Crossing)>,
 }
 
@@ -396,7 +397,7 @@ const POINT_MATCH: f64 = 0.5;
 pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
     let roles = roles_of(s);
     let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
-    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { std::f64::consts::PI } else { 0.0 };
+    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
     let n = roles.len();
     if role.is_none() && n > 1 && members.len().is_multiple_of(n) {
         let groups: Option<Vec<Landing>> = members
@@ -498,7 +499,7 @@ pub fn ch_key(i: u32, what: &str) -> String {
 pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix(CH_PREFIX)?;
     let (i, what) = rest.split_once('.')?;
-    if i.is_empty() || i.len() > 4 || !i.bytes().all(|b| b.is_ascii_digit()) {
+    if i.len() > 4 || !ecad_model::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;

@@ -30,3 +30,68 @@ cargo test -p ecad-inspector --test all lane_072a
 ```
 
 These are automated checks only; nobody has tried this by hand yet.
+
+## Lane A2: switches are yes/no
+
+Every on/off setting is now a yes/no switch, in the defaults registry, the page and frame styles
+and the project file:
+
+- The registry's on/off entries (text Shown, wire join, the cover blocks, PLC captions, frame and
+  channel texts, the BOM article column) and the page and frame style fields `zones`, `checks`,
+  `grid_labels` and `centre_marks` are stored as `yes` or `no`. A tag's Shown is `yes`, `no` or
+  `first`.
+- Commands and boxes still take `on`/`off`, `true`/`false` and `1`/`0` as you type them, and
+  write `yes` or `no`. `defaults` and `textstyle` show `yes`/`no`; an entry's kind reads `flag`.
+- A project file holding `on` or `off` for one of these settings opens read-only and names the
+  setting, as for any unknown word. A style field holding `on`/`off` reads as unset (style
+  bodies are checked strictly in lane G).
+
+### Try it
+
+1. Open a project, open the Text section of the project settings and set a kind's Shown to
+   Hidden: it is hidden on the drawing as before.
+2. In the inspector's Layout tab, click a symbol's tag Shown switch twice: hidden, then shown.
+3. In Settings, Pages, switch a page style's zones off and on: the sheet preview follows.
+
+These steps have been checked only by the automated tests (`text_ui`, `standards_ui`, `lane_054`);
+nobody has tried them by hand yet.
+
+## Lane A2: tag prefixes say which symbol they are for
+
+The project's own tag prefixes are stored by symbol, `starter:coil` for a built-in symbol and
+`project:valve-x` for one made in the project, and the cable prefix is a field of its own
+(`cable_prefix`). A prefix is 1 to 10 upper-case letters.
+
+- A project that gave one of its own symbols a prefix (`setdefault
+  {"key": "symbol.<key>.prefix", "value": "BL"}`) now opens writable; before, it opened
+  read-only.
+- A file whose prefix key is neither form, names a built-in symbol that does not exist, or holds
+  a prefix that is not letters opens read-only and names the setting.
+- The inspector shows the new keys and the cable prefix in its Readable view.
+
+### Try it
+
+1. Open a project and make a symbol in the symbol builder with the key `float1`.
+2. In the command line run `setdefault {"key": "symbol.float1.prefix", "value": "BL"}`, then place
+   the symbol: its tag starts `-BL`.
+3. Save, close and open the project again: it opens writable (no read-only notice).
+
+The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
+(ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
+
+## Rotations (A2: F6, F7)
+
+- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
+  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
+  unchanged: stored angles stay radians, now typed as such.
+- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
+  the stored radians as degrees).
+
+### Try it
+
+1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
+   "rotation": 90}`), select it: the Layout tab shows 90°.
+2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
+
+The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
+(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.

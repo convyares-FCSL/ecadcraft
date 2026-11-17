@@ -39,7 +39,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
         let d = h.state_mut().project_props.as_mut().unwrap();
         let t = d.text.as_mut().expect("the Text section");
         let tag = t.rows.iter_mut().find(|r| r.kind == "tag").unwrap();
-        assert_eq!((tag.height.as_str(), tag.bold, tag.show.as_deref()), ("2.5", true, Some("on")));
+        assert_eq!((tag.height.as_str(), tag.bold, tag.show.as_deref()), ("2.5", true, Some("yes")));
         tag.height = "3".into();
     }
     h.run_steps(2);
@@ -50,7 +50,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     assert!(h.state().project_props.is_none(), "OK closes the popout");
     let d = doc(&mut h);
     // Brief 050a: the tag text style's project record.
-    let rec = d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
+    let rec = d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
     assert_eq!(rec.and_then(|r| r.fields.get("height")).map(String::as_str), Some("3"));
     let page = d.page_order[0];
     let tags: Vec<f64> = ecad_cadcraft::devices::texts_on_page(&d, page)

@@ -351,21 +351,21 @@ fn t1_defaults_sizes_weights_and_one_tag_per_strip_run() {
 
 /// The §3.2 defaults table: (kind, height, weight, shown).
 const DEFAULTS: &[(&str, f64, &str, &str)] = &[
-    ("tag", 2.5, "bold", "on"),
-    ("point_label", 1.5, "regular", "on"),
-    ("description", 1.6, "regular", "off"),
-    ("part_number", 1.6, "regular", "off"),
-    ("continuation_name", 2.0, "regular", "off"),
-    ("reference", 2.5, "regular", "on"),
-    ("wire_label", 2.5, "regular", "on"),
-    ("cable_text", 1.6, "regular", "on"),
-    ("location", 1.6, "regular", "on"),
-    ("title_value", 2.5, "regular", "on"),
-    ("title_caption", 1.8, "regular", "on"),
-    ("title_main", 3.5, "bold", "on"),
-    ("grid", 3.0, "regular", "on"),
-    ("table", 2.5, "regular", "on"),
-    ("table_header", 2.5, "bold", "on"),
+    ("tag", 2.5, "bold", "yes"),
+    ("point_label", 1.5, "regular", "yes"),
+    ("description", 1.6, "regular", "no"),
+    ("part_number", 1.6, "regular", "no"),
+    ("continuation_name", 2.0, "regular", "no"),
+    ("reference", 2.5, "regular", "yes"),
+    ("wire_label", 2.5, "regular", "yes"),
+    ("cable_text", 1.6, "regular", "yes"),
+    ("location", 1.6, "regular", "yes"),
+    ("title_value", 2.5, "regular", "yes"),
+    ("title_caption", 1.8, "regular", "yes"),
+    ("title_main", 3.5, "bold", "yes"),
+    ("grid", 3.0, "regular", "yes"),
+    ("table", 2.5, "regular", "yes"),
+    ("table_header", 2.5, "bold", "yes"),
 ];
 
 /// T2 (AC 1): `textstyle {}` reads with no write and gives the §3.2 defaults for every kind; the
@@ -479,7 +479,11 @@ fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
 /// The project's record of the tag text style's `field` (brief 050a).
 fn tag_field(h: &mut H, field: &str) -> Option<String> {
     let d = h.doc();
-    d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into()))).and_then(|r| r.fields.get(field)).cloned()
+    d.styles
+        .get(&ecad_model::StyleCatalogue::Text)
+        .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
+        .and_then(|r| r.fields.get(field))
+        .cloned()
 }
 
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
@@ -493,7 +497,10 @@ fn t4_one_transaction_per_change_and_the_page_redraws() {
     assert_eq!(last_label(&mut f.h), "Text styles");
     // Brief 050a: one record of the tag's text style, at project level.
     let ops = last_ops(&mut f.h);
-    assert!(ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if catalogue == "text" && id.text() == "tag")), "{ops:?}");
+    assert!(
+        ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag")),
+        "{ops:?}"
+    );
     assert_eq!(tag_field(&mut f.h, "height").map(|s| s.parse::<f64>().ok()), Some(Some(3.0)));
     assert_eq!(tag_field(&mut f.h, "weight").as_deref(), Some("regular"));
     let tag = textstyle_kind(&v, "tag");
@@ -553,8 +560,8 @@ fn t4_textstyle_refusals_write_nothing() {
     refused(&mut h, "textstyle", json!({"kind": "tag", "height": "abc"}), "`height` must be a number, or null");
     refused(&mut h, "textstyle", json!({"kind": "x", "height": 3}), "Unknown text kind \"x\". Kinds: tag, point_label");
     refused(&mut h, "textstyle", json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold.");
-    refused(&mut h, "textstyle", json!({"kind": "point_label", "show": "first"}), "Shown is on, off or first (first: tag only).");
-    refused(&mut h, "textstyle", json!({"kind": "tag", "show": "maybe"}), "Shown is on, off or first (first: tag only).");
+    refused(&mut h, "textstyle", json!({"kind": "point_label", "show": "first"}), "Shown is yes, no or first (first: tag only).");
+    refused(&mut h, "textstyle", json!({"kind": "tag", "show": "maybe"}), "Shown is yes, no or first (first: tag only).");
     let font = "A font name is 1 to 64 characters with no control characters.";
     refused(&mut h, "textstyle", json!({"font": ""}), font);
     refused(&mut h, "textstyle", json!({"font": "F".repeat(65)}), font);
@@ -621,11 +628,11 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
 
     // Where the keys live (FP1–FP3).
     let d = f.h.doc();
-    assert_eq!(d.properties.get("text.tag.show").map(String::as_str), Some("off"));
-    assert_eq!(d.pages[&f.page].properties.get("text.tag.show").map(String::as_str), Some("on"));
-    assert_eq!(d.components[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("off"));
+    assert_eq!(d.properties.get("text.tag.show").map(String::as_str), Some("no"));
+    assert_eq!(d.pages[&f.page].properties.get("text.tag.show").map(String::as_str), Some("yes"));
+    assert_eq!(d.components[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
     let sym = format!("text.{}.tag.show", f.r1[1].hex());
-    assert_eq!(d.components[&f.k1].properties.get(&sym).map(String::as_str), Some("on"), "{sym}");
+    assert_eq!(d.components[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");
     // `null` removes the symbol's value: back to the device's off.
     one_tx(&mut f.h, "showtext", json!({"kind": "tag", "show": null, "representation": f.r1[1].hex()}));
     assert!(shown_reps(&mut f.h, f.page, "-K01").is_empty());
@@ -673,7 +680,7 @@ fn t5_showtext_refusals() {
     let mut f = fixture_c(0x7031_0503);
     refused(&mut f.h, "showtext", json!({"kind": "x", "show": "off"}), "tag");
     refused(&mut f.h, "showtext", json!({"kind": "point_label", "show": "first"}), "first");
-    refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "maybe"}), "Shown is on, off or first");
+    refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "maybe"}), "Shown is yes, no or first");
     // `reference` and `location` are page and project kinds only (§5.1).
     refused(&mut f.h, "showtext", json!({"kind": "reference", "show": "off", "component": f.k1.hex()}), "tag");
     refused(&mut f.h, "showtext", json!({"kind": "location", "show": "off", "representation": f.r1[0].hex()}), "tag");
@@ -1440,7 +1447,7 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
     let page = h.first_page();
     h.run("showtext", json!({"kind": "tag", "show": "off", "page": page.hex()})).unwrap();
     let r = h.run("defaults", json!({"key": "text.tag.show", "page": page.hex()})).unwrap()["defaults"][0].clone();
-    assert_eq!((r["value"].clone(), r["from"].clone()), (json!("off"), json!("page")), "{r}");
+    assert_eq!((r["value"].clone(), r["from"].clone()), (json!("no"), json!("page")), "{r}");
     let ghost = "0123456789abcdef0123456789abcdef";
     assert!(h.run("defaults", json!({"page": ghost})).is_err());
     assert!(h.run("defaults", json!({"component": ghost})).is_err());

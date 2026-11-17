@@ -44,14 +44,14 @@ const TILE_H: f32 = 104.0;
 #[derive(Debug, Clone, Default)]
 pub struct State {
     /// The symbol chosen for the running Place Symbol, when the window knows it.
-    pub symbol: Option<&'static str>,
+    pub symbol: Option<ecad_cadcraft::symbols::StarterKey>,
     /// The person opened the picker while the tool asks for a point (Change, P, the chip).
     pub open: bool,
     /// The panel's search text, and whether the field takes the keyboard next frame.
     pub query: String,
     focus: bool,
     /// The second step for (symbol, change count).
-    choices: Option<((&'static str, u64), Vec<Choice>)>,
+    choices: Option<((symbols::StarterKey, u64), Vec<Choice>)>,
     /// How many times the second step was read from the project (tests).
     pub reads: u64,
     /// What was typed at the command line last frame while the tool asked for a symbol: the
@@ -62,7 +62,7 @@ pub struct State {
 /// The built-in symbol a typed answer to "Enter symbol" names: its key, or the one symbol the
 /// text finds (as the tool takes one match). `None` for a device tag, a project symbol or an
 /// answer that matches several.
-pub fn typed_symbol(text: &str) -> Option<&'static str> {
+pub fn typed_symbol(text: &str) -> Option<symbols::StarterKey> {
     let t = text.trim();
     if let Some(s) = symbols::by_key(t) {
         return Some(s.key);
@@ -155,7 +155,7 @@ impl App {
     /// The folded chip: the symbol, "as -K02", Change (P) and search. True when clicked.
     fn chip(&mut self, ui: &mut egui::Ui, at: egui::Pos2) -> bool {
         let s = ecad_ui::SHELL;
-        let sym = self.shell.tools.placing.symbol.and_then(symbols::by_key);
+        let sym = self.shell.tools.placing.symbol.map(symbols::starter);
         let tag = self.cad.session.current_prompt().and_then(|p| tag_in(&p.message));
         let name = sym.map_or("Symbol", |x| x.name);
         let as_words = match &tag {
@@ -258,7 +258,7 @@ impl App {
                     browse = ui.add(prim::Button::new(BROWSE).small()).clicked();
                 });
                 // The second step: what the chosen symbol is placed as.
-                if let Some(sym) = chosen_key.and_then(symbols::by_key)
+                if let Some(sym) = chosen_key.map(symbols::starter)
                     && !choices.is_empty()
                 {
                     ui.separator();
@@ -304,7 +304,7 @@ impl App {
     }
 
     /// The second step for symbol `key`, read again only when the project changed.
-    fn picker_choices(&mut self, key: &'static str) -> Vec<Choice> {
+    fn picker_choices(&mut self, key: symbols::StarterKey) -> Vec<Choice> {
         let Some(p) = self.project.clone() else { return Vec::new() };
         let count = self.change_count();
         if let Some(((k, n), v)) = &self.shell.tools.placing.choices
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn a_typed_symbol_is_its_key_or_its_one_match() {
-        assert_eq!(typed_symbol(" lamp "), Some("lamp"));
+        assert_eq!(typed_symbol(" lamp "), Some(symbols::StarterKey::Lamp));
         assert_eq!(typed_symbol("-K01"), None, "a device tag names no symbol");
     }
 }

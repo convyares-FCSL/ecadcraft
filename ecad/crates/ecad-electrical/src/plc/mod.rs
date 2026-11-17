@@ -23,6 +23,7 @@ pub mod signals;
 pub mod tagtable;
 
 use crate::CmdError;
+use ecad_model::units::Degrees;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{ComponentId, Document, ObjectRef, PageId, Subject};
@@ -238,7 +239,7 @@ pub fn caption(doc: &Document, c: ComponentId) -> Option<(String, bool)> {
     let (rack::RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return None };
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
     let pattern = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION, at).text();
-    let shown = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).word() == "on";
+    let shown = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).flag();
     let text = pattern
         .replace("{rack}", &crate::devices::tag_words(doc, r))
         .replace("{slot:02}", &format!("{slot:02}"))
@@ -418,7 +419,7 @@ pub fn channel_texts(
     let shown_points = crate::devices::shown_terminals(doc, c, r);
     let Some(i) = shown_points.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return Vec::new() };
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).word() == "on";
+    let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).flag();
     let first = channels::first_number(doc, c);
     let (auto, _) = address::of_channel(doc, c, i, kept, cache);
     let (addr, _) = address::shown(doc, c, i, auto);
@@ -434,14 +435,14 @@ pub fn channel_texts(
         (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
         (None, true) => None,
     };
-    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).word() == "90";
+    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors(s);
     let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
     // Brief 051 (design 051 §5): the two text styles of their own.
     let addr_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Address).height;
     let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::ChannelText).height;
     // Brief 051 (design 051 §2.7): a cell at 180° keeps its texts upright and in their bands.
-    let upside = pl.rotation.is_finite() && (pl.rotation.to_degrees().rem_euclid(360.0) - 180.0).abs() < 0.5;
+    let upside = pl.rotation.is_finite() && (Degrees::from(pl.rotation).0.rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();
     let mut push = |role: TextRole, of: TextOf, value: String, height: f64, shown: bool, horizontal: bool| {
         let Some(a) = anchors.iter().find(|x| x.role == role) else { return };
@@ -513,7 +514,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         let max = if key == address::START_KEY { address::MAX_BYTE } else { address::MAX_SIZE };
         return Some(match v {
             None => Ok(None),
-            Some(t) if t.len() <= 5 && t.bytes().all(|b| b.is_ascii_digit()) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
+            Some(t) if t.len() <= 5 && ecad_model::words::is_digits(t) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
             Some(_) => Err(CmdError::refused(format!("{key} is a whole number of bytes from 0 to {max}."))),
         });
     }

@@ -25,9 +25,6 @@ use super::{Builtin, Catalogue, Field};
 use crate::defaults::{Kind, Slot};
 use crate::generated::GenKind;
 
-/// The catalogue word.
-pub const WORD: &str = "page";
-
 fn is_sheet(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case(PROJECT_SHEET) || SheetSpec::parse(s).is_ok()
 }
@@ -50,10 +47,10 @@ static FIELDS: [Field; 6] = [
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, slot: Slot::new(), over: None },
     Field { key: "frame", label: "Frame style", kind: Kind::Parsed { max_chars: 40, parse: is_frame }, slot: Slot::new(), over: None },
     Field { key: "title_block", label: "Title block", kind: Kind::Parsed { max_chars: 40, parse: is_title_block }, slot: Slot::new(), over: None },
-    Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "zones", label: "Zones", kind: Kind::Flag, slot: Slot::new(), over: None },
     // Design 054 §3.4: off, the type's pages get no electrical checks, cross-references or
     // numbering.
-    Field { key: "checks", label: "Checks and references", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "checks", label: "Checks and references", kind: Kind::Flag, slot: Slot::new(), over: None },
     // Not shown: copied with the type, so an own type holds what its source holds.
     Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), slot: Slot::new(), over: None },
 ];
@@ -73,8 +70,15 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The page type catalogue.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Page types", one: "Page type", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Page,
+    plural: "Page types",
+    one: "Page type",
+    fields: &FIELDS,
+    builtins: &BUILTINS,
+    choices,
+    project_field: None,
+};
 
 /// The built-in Cover sheet type (ID `front`, kept: old files store it).
 pub const FRONT: &str = "front";
@@ -132,7 +136,7 @@ pub struct TypeLook {
 }
 
 fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defaults::Resolved<'a>> {
-    super::field_of(doc, WORD, id, key, None)
+    super::field_of(doc, ecad_model::StyleCatalogue::Page, id, key, None)
 }
 
 /// What type `id` brings (design 054 §2.1, §3). Never fails: a malformed field falls through.
@@ -142,13 +146,13 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| super::exists(doc, "frame", f));
+        .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
     let title_block = field(doc, id, "title_block")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| super::exists(doc, "frame", f));
-    let zones = field(doc, id, "zones").is_none_or(|r| r.word() != "off");
+        .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
+    let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false));
     let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
     let checks = msheet::type_checks(doc, id);
     TypeLook { sheet, frame, title_block, zones, holds, checks }
@@ -231,7 +235,7 @@ pub fn pages_of(doc: &Document, id: &StyleRef) -> Vec<PageId> {
 /// references to items on them). `None` for any other op. One pass over the pages.
 pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, bool)> {
     let ecad_model::Op::SetStyle { catalogue, id, before, after, .. } = op else { return None };
-    if catalogue != WORD {
+    if *catalogue != ecad_model::StyleCatalogue::Page {
         return None;
     }
     let text = id.text();
@@ -269,5 +273,5 @@ pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
         [one] => one.clone(),
         [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     };
-    format!("A {} page is generated: give generated: {words}.", super::name(doc, WORD, id))
+    format!("A {} page is generated: give generated: {words}.", super::name(doc, ecad_model::StyleCatalogue::Page, id))
 }

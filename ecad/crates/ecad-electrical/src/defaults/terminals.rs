@@ -46,7 +46,7 @@ fn names_ok(t: &str, n: usize) -> bool {
     let mut seen = std::collections::BTreeSet::new();
     parts.len() == n
         && parts.iter().enumerate().all(|(i, p)| {
-            let digits = p.bytes().all(|b| b.is_ascii_digit());
+            let digits = ecad_model::words::is_digits(p);
             !p.is_empty()
                 && p.chars().count() <= 6
                 && !p.chars().any(|c| c == '.' || c == ',' || c.is_whitespace() || c.is_control())
@@ -92,7 +92,7 @@ macro_rules! prefixes {
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
-                        s.tag_prefixes.get($key).map(|p| Value::Text(p.as_str()))
+                        s.starter_prefix($key).map(|p| Value::Text(p.as_str()))
                     }
                     read
                 }),

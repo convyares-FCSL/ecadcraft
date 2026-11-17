@@ -16,7 +16,7 @@ use crate::doc::{Cable, CableMember, Component, Conductor, Definition, End, Fold
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
-use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use crate::style::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// A placed object of an ordered list: its index and value.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -128,11 +128,10 @@ pub enum Effect<'a> {
         index_before: Option<usize>,
         index_after: Option<usize>,
     },
-    /// A style record set. `catalogue` is the catalogue's stored word until `SetStyle` carries a
-    /// `StyleCatalogue` (lane 072 A2).
+    /// A style record set.
     Style {
         layer: StyleLayer,
-        catalogue: &'a str,
+        catalogue: StyleCatalogue,
         id: &'a StyleRef,
         before: Option<&'a StyleRecord>,
         after: Option<&'a StyleRecord>,
@@ -403,7 +402,7 @@ fn classify(op: &Op) -> Effect<'_> {
             Effect::Folder { id: *id, before: Some(before), after: Some(after), index_before: None, index_after: None }
         }
         Op::SetStyle { layer, catalogue, id, before, after } => {
-            Effect::Style { layer: *layer, catalogue, id, before: before.as_ref(), after: after.as_ref() }
+            Effect::Style { layer: *layer, catalogue: *catalogue, id, before: before.as_ref(), after: after.as_ref() }
         }
         Op::SetStandard { before, after } => Effect::Standard { before: before.as_ref(), after: after.as_ref() },
     }

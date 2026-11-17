@@ -33,8 +33,8 @@ use serde_json::{Value, json};
 
 pub use crate::cables::{
     CableField, DrawnEnd, MAX_ECHO, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, OffPlan, Shield, Side, Source, bad_values, clip, cores_shown,
-    drawn_ends, drawn_pages, gland, is_drawn, is_hidden, length_of, not_drawn, off_plan, part_value, plan_words, planned, planning, read, shield,
-    type_notation, value_checks,
+    drawn_ends, drawn_pages, gland, is_drawn, length_of, not_drawn, off_plan, part_value, plan_words, planned, planning, read, shield, type_notation,
+    value_checks,
 };
 use crate::cmd::input::{Command, TextOrNumber, Typed, nullable, typed};
 use crate::cmd::on_project;

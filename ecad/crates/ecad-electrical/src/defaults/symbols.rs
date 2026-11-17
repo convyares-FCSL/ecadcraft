@@ -42,7 +42,7 @@ macro_rules! prefixes {
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
-                        s.tag_prefixes.get($key).map(|p| Value::Text(p.as_str()))
+                        s.starter_prefix($key).map(|p| Value::Text(p.as_str()))
                     }
                     read
                 }),
@@ -303,7 +303,7 @@ pub fn project_value(doc: &Document, symbol: &str, field: Field) -> Option<Strin
         return None;
     }
     match field {
-        Field::Prefix => doc.settings.tag_prefixes.get(symbol).and_then(|v| crate::devices::valid_prefix(v)),
+        Field::Prefix => doc.settings.project_prefix(symbol).map(|p| p.to_string()),
         _ => family_property(symbol, field).and_then(|k| doc.properties.get(&k)).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
     }
 }
@@ -323,7 +323,9 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
     let ok = |v: &str| field.accepts(v).then(|| v.trim().to_string());
     if let Some(s) = crate::symbols::by_key(symbol) {
         return match field {
-            Field::Prefix => prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), super::Source::Builtin)).filter(|(p, _)| !p.is_empty()),
+            Field::Prefix => prefix_entry(ecad_model::Word::word(s.key))
+                .map(|e| (builtin_prefix(e).to_string(), super::Source::Builtin))
+                .filter(|(p, _)| !p.is_empty()),
             Field::Description => Some((s.name.to_string(), super::Source::Builtin)),
             Field::Rating | Field::Join => None,
         };
@@ -362,15 +364,16 @@ pub fn builtin_prefix(entry: &Entry) -> &'static str {
 mod tests {
     use super::*;
     use crate::symbols::{Kind as SymbolKind, STARTERS};
+    use ecad_model::Word;
 
     #[test]
     fn every_tagged_symbol_has_one_prefix_entry_and_no_other() {
         for s in STARTERS {
-            let e = prefix_entry(s.key);
+            let e = prefix_entry(s.key.word());
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
             // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
             // Brief 045: its new starters' prefixes are in the `plc` area.
-            let plc = super::super::plc::prefix_entry(s.key).is_some();
+            let plc = super::super::plc::prefix_entry(s.key.word()).is_some();
             let area = if crate::terminal_types::is_level_starter(s.key) {
                 "terminal"
             } else if plc {
@@ -394,16 +397,17 @@ mod tests {
                 .iter()
                 .filter(|s| s.kind != SymbolKind::Tagless
                     && !crate::terminal_types::is_level_starter(s.key)
-                    && super::super::plc::prefix_entry(s.key).is_none())
+                    && super::super::plc::prefix_entry(s.key.word()).is_none())
                 .count()
         );
     }
 
     #[test]
     fn the_project_level_is_tag_prefixes_and_hostile_values_fall_back() {
+        use ecad_model::prefix::{PrefixOf, TagPrefix};
         let mut doc = Document::default();
         assert_eq!(prefix(&doc, "fusebank8"), "F");
-        doc.settings.tag_prefixes.insert("fusebank8".into(), "FB".into());
+        doc.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
         assert_eq!(prefix(&doc, "fusebank8"), "FB");
         assert_eq!(super::super::resolve(&doc, &FUSEBANK8, Scope::project()).from, super::super::Source::Project);
         // A project property of the same key is never read: one project path.
@@ -411,9 +415,9 @@ mod tests {
         doc.properties.insert("symbol.fusebank8.prefix".into(), "ZZ".into());
         assert_eq!(prefix(&doc, "fusebank8"), "F");
         let long = "x".repeat(10_000);
+        // A hostile value cannot be stored: the prefix type refuses it.
         for bad in ["", "K1", long.as_str(), "K\u{7}", "-"] {
-            doc.settings.tag_prefixes.insert("fusebank8".into(), bad.into());
-            assert_eq!(prefix(&doc, "fusebank8"), "F", "{bad:?}");
+            assert!(TagPrefix::typed(bad).is_none(), "{bad:?}");
         }
         assert_eq!(prefix(&doc, "junction"), "");
         assert_eq!(prefix(&doc, "nonsense"), "");

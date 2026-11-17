@@ -117,7 +117,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: m::units::Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_left")]
         halign: m::TextHAlign,
@@ -141,8 +141,8 @@ fn is_baseline(v: &m::TextVAlign) -> bool {
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub origin: Pt,
-    /// Radians, counter-clockwise.
-    pub rotation: f64,
+    /// Counter-clockwise.
+    pub rotation: m::units::Radians,
     pub mirror: bool,
     pub scale: f64,
 }
@@ -295,13 +295,13 @@ pub struct TextSlot {
     #[serde(default, skip_serializing_if = "is_baseline")]
     pub v: m::TextVAlign,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: f64,
+    pub rotation: m::units::Radians,
 }
 
-fn is_zero(x: &f64) -> bool {
+fn is_zero(x: &m::units::Radians) -> bool {
     // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
     // that the read-back value (0.0, left out) does not match.
-    *x == 0.0
+    x.0 == 0.0
 }
 
 fn origin(o: &m::Origin) -> Origin {
@@ -330,8 +330,12 @@ pub struct ProjectSettings {
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_padding: Option<u8>,
+    /// Design 072 F5: keyed by the symbol, `starter:<word>` or `project:<key>`; read strictly.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tag_prefixes: BTreeMap<String, String>,
+    pub tag_prefixes: BTreeMap<m::prefix::PrefixOf, m::prefix::TagPrefix>,
+    /// Design 072 F5: the cable tag prefix, written only when the project chose one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cable_prefix: Option<m::prefix::TagPrefix>,
     /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
     /// project that never changes them is written exactly as before.
     #[serde(default, skip_serializing_if = "is_default_wiring")]
@@ -614,7 +618,7 @@ impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let t = String::deserialize(d)?;
         let bad = || serde::de::Error::custom(format!("{t:?} is not {N} bytes of lower-case hex"));
-        if t.len() != N * 2 || !t.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        if t.len() != N * 2 || !t.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
             return Err(bad());
         }
         let mut out = [0u8; N];
@@ -779,7 +783,7 @@ pub enum Op {
     /// Brief 050a (FP3): one whole style record; `null` is no record.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: m::StyleCatalogue,
         id: m::StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -1037,6 +1041,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes.clone(),
+            cable_prefix: s.cable_prefix.clone(),
             wiring: WiringSettings::from(&s.wiring),
             sheet: s.sheet.as_ref().map(SheetSpec::from),
             page_number_step: s.page_number_step,
@@ -1107,7 +1112,7 @@ impl From<&m::Op> for Op {
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
             m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
                 layer: layer(*l),
-                catalogue: catalogue.clone(),
+                catalogue: *catalogue,
                 id: id.clone(),
                 before: before.as_ref().map(Into::into),
                 after: after.as_ref().map(Into::into),
@@ -1282,6 +1287,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes,
+            cable_prefix: s.cable_prefix,
             wiring: s.wiring.into(),
             sheet: s.sheet.map(Into::into),
             page_number_step: s.page_number_step,

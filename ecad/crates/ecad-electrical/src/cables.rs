@@ -3,6 +3,7 @@
 //! ends, off-plan ends and value checks). Pure rules over the document; the commands that write
 //! them are `ecad_cadcraft::cmd::cable`.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subject};
@@ -183,17 +184,7 @@ pub const MAX_WORDS: usize = 400;
 
 /// `t` cut to [`MAX_ECHO`] characters, with `…` when cut, and no hidden characters.
 pub fn clip(t: &str) -> String {
-    let shown: String = t.chars().filter(|c| !is_hidden(*c)).take(MAX_ECHO).collect();
-    if t.chars().filter(|c| !is_hidden(*c)).nth(MAX_ECHO).is_some() { format!("{shown}\u{2026}") } else { shown }
-}
-
-/// A character a value never holds (tester 059a, rule 7): control characters, and the invisible
-/// format characters that reorder or hide text (bidi controls, zero-width and joiner characters,
-/// the byte order mark, soft hyphen).
-pub fn is_hidden(c: char) -> bool {
-    c.is_control()
-        || matches!(c as u32,
-            0x00AD | 0x061C | 0x180E | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF | 0xFFF9..=0xFFFB)
+    ecad_model::text::clip(t, MAX_ECHO)
 }
 
 /// Shortest and longest cable length stored, in metres.
@@ -212,7 +203,7 @@ pub fn length_of(text: &str) -> Option<f64> {
 }
 
 fn text_ok(t: &str, max: usize) -> bool {
-    !t.trim().is_empty() && t.chars().count() <= max && !t.chars().any(is_hidden)
+    ecad_model::text::check(t, max).is_ok()
 }
 
 /// A stored value of cable `k` that ECAD reads: its property for `field`, when within bounds.
@@ -232,7 +223,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
         CableField::Cores => crate::strips::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
         CableField::EndFunction(_) => designations::code_of(doc, Aspect::Function, v.trim()).is_some(),
-        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, cable::WORD, &id)),
+        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, &id)),
         CableField::Tag => !v.trim().is_empty(),
     }
 }
@@ -518,7 +509,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
 /// The notation a cable type gives `type` (`H07RN-F 4G1.5`): its name when it carries a core
 /// notation, else its cores and cross-section (`4G1.5`).
 pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
-    let name = styles::name(doc, cable::WORD, id);
+    let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
     if crate::strips::offer_from_type(&name).is_some() {
         return Some(name);
     }
@@ -529,8 +520,8 @@ pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.properties.get("tag")) {
-        Some(t) => t.clone(),
+    match doc.cables.get(&cable).and_then(|c| c.properties.text(ecad_model::keys::TAG)) {
+        Some(t) => t.to_string(),
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }
 }

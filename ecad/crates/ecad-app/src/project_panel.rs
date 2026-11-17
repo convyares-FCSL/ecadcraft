@@ -41,7 +41,7 @@ pub fn pick_label(number: &str) -> String {
 }
 /// A page number as Book shows it: a plain number padded to two digits (`2` → `02`).
 pub fn padded(number: &str) -> String {
-    if !number.is_empty() && number.len() < 2 && number.chars().all(|c| c.is_ascii_digit()) { format!("{number:0>2}") } else { number.to_string() }
+    if number.len() < 2 && ecad_model::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
 }
 /// `text` cut with `…` to `width` in `font` (the panels' rows).
 pub fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
@@ -219,7 +219,7 @@ pub enum Action {
     NextFreeCore(ecad_model::ConductorId),
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
     RatingFix(ecad_cadcraft::checks::Fix),

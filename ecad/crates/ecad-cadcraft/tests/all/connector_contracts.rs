@@ -339,7 +339,10 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
     let c: ComponentId = id(&h.run("place", json!({"symbol": "socket4", "at": [0, 0]})).unwrap(), "component");
     let d = h.doc();
     assert!(connectors::is_connector(&d, c));
-    assert_eq!(d.definitions.values().filter(|x| symbols::of_definition(x).is_some_and(|y| y.key == "socket4")).count(), 2);
+    assert_eq!(
+        d.definitions.values().filter(|x| symbols::of_definition(x).is_some_and(|y| y.key == ecad_cadcraft::symbols::StarterKey::Socket4)).count(),
+        2
+    );
 }
 
 #[test]

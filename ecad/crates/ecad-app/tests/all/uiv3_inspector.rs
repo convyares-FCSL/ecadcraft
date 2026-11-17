@@ -58,7 +58,7 @@ fn coil(h: &mut H) -> RepresentationId {
     let d = doc(h);
     let k1 = d.components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id).expect("-K01");
     d.representations_of(Subject::Component(k1))
-        .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == "coil"))
+        .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Coil))
         .map(|(id, _)| id)
         .expect("its coil")
 }
@@ -201,7 +201,7 @@ fn screenshots_of_boards_1_05_to_1_07() {
     // 1.11: placing a contactor coil, the picker folded.
     h.state_mut().cad.session.set_selection(Vec::new());
     h.state_mut().open_inspector(RightTab::Device);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol("coil")).unwrap();
+    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(4);
     h.event(egui::Event::PointerMoved(egui::pos2(1100.0, 420.0)));
     h.run_steps(4);
@@ -224,7 +224,7 @@ fn screenshots_of_boards_1_05_to_1_07() {
 fn placing_a_coil_shows_the_device_about_to_be_placed() {
     let (mut h, dir, _one) = harness(None);
     h.state_mut().open_inspector(RightTab::Device);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol("coil")).unwrap();
+    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(4);
     assert_eq!(h.state().picker_shown(), ecad_app::shell::placing::Shown::Chip);
     let sub = h.query_by_label(right::HEAD_SUB).is_some();

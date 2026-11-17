@@ -6,7 +6,6 @@
 //! the strip, card and connector planners), committing and answering in JSON (the engine crate's
 //! `place` shim).
 
-use ecad_model::connectivity::CONTINUATION;
 use ecad_model::tag::{self, Style};
 use ecad_model::{ComponentId, Document, Noun};
 
@@ -194,13 +193,15 @@ pub fn tagless(starter: &Starter, joins: bool, name: Option<&str>, caption: Opti
         Some(n) => Some(crate::wires::valid_name(n)?),
         None => None,
     };
-    if starter.key == CONTINUATION && name.is_none() {
+    if starter.key == crate::symbols::StarterKey::Continuation && name.is_none() {
         return Err(CmdError::input("`name` is required for a continuation (the potential or signal it carries, e.g. 24V)"));
     }
     // Brief 049 (design 049 §5.1): a continuation may be placed with its caption.
     let caption = match caption {
         None => None,
-        Some(_) if starter.key != CONTINUATION => return Err(CmdError::refused("Only continuation arrows have a caption; that is a junction.")),
+        Some(_) if starter.key != crate::symbols::StarterKey::Continuation => {
+            return Err(CmdError::refused("Only continuation arrows have a caption; that is a junction."));
+        }
         Some(t) => crate::continuations::caption_text(Some(t))?,
     };
     Ok((name, caption))

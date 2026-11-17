@@ -18,7 +18,7 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::style::{self as rules, FieldInput, StandardChange, StyleEdit};
 use ecad_model::Document;
-use ecad_model::style::{MAX_STYLES_PER_CATALOGUE, StyleLayer};
+use ecad_model::style::StyleLayer;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Number, Value, json};
@@ -79,7 +79,7 @@ pub fn standard_json(doc: &Document) -> Value {
     match &doc.standard {
         None => json!({"name": IEC, "id": null}),
         Some(s) => {
-            let styles: Map<String, Value> = s.styles.iter().map(|(c, m)| (c.clone(), json!(m.len()))).collect();
+            let styles: Map<String, Value> = s.styles.iter().map(|(c, m)| (c.to_string(), json!(m.len()))).collect();
             json!({
                 "name": s.header.name,
                 "id": s.header.id.hex(),
@@ -103,7 +103,7 @@ pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: boo
         })
         .collect();
     let mut v = json!({
-        "catalogue": cat.word,
+        "catalogue": cat.catalogue,
         "id": row.id.text(),
         "name": row.name,
         "layer": row.layer.word(),
@@ -114,7 +114,7 @@ pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: boo
     }
     let unknown: std::collections::BTreeSet<String> = [StyleLayer::Standard, StyleLayer::Project]
         .into_iter()
-        .filter_map(|l| styles::record(doc, l, cat.word, &row.id))
+        .filter_map(|l| styles::record(doc, l, cat.catalogue, &row.id))
         .flat_map(|r| r.fields.keys())
         .filter(|k| cat.field(k).is_none())
         .cloned()
@@ -123,7 +123,7 @@ pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: boo
         v["unknown_fields"] = json!(unknown);
     }
     if users {
-        let c = styles::users(doc, cat.word, &row.id);
+        let c = styles::users(doc, cat.catalogue, &row.id);
         v["users"] = json!({"explicit": c.explicit, "implicit": c.implicit});
     }
     v
@@ -133,6 +133,7 @@ fn value_json(r: &defaults::Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
         defaults::Value::Choice(w) => json!(w),
+        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
     }
 }
@@ -157,22 +158,12 @@ impl Command for StylesParams {
         on_any_page(s, |p, _| {
             let doc = p.ledger.document();
             let mut out = Vec::new();
-            for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.word == c.word)) {
+            for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.catalogue == c.catalogue)) {
                 for row in styles::rows(doc, cat) {
                     out.push(style_json(doc, cat, &row, users));
                 }
             }
-            let mut unknown = Vec::new();
-            if only.is_none() {
-                for layer in [StyleLayer::Standard, StyleLayer::Project] {
-                    for (word, m) in ecad_model::style::layer_of(doc, layer).into_iter().flatten() {
-                        if styles::catalogue(word).is_none() {
-                            unknown.push(json!({"catalogue": word, "layer": layer.word(), "styles": m.len().min(MAX_STYLES_PER_CATALOGUE)}));
-                        }
-                    }
-                }
-            }
-            Ok(json!({"styles": out, "unknown_catalogues": unknown}))
+            Ok(json!({"styles": out}))
         })
     }
 }
@@ -319,7 +310,7 @@ impl Command for SetstyleParams {
             let id = plan.id;
             let row = styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| styles::Row {
                 id: id.clone(),
-                name: styles::name(doc, cat.word, &id),
+                name: styles::name(doc, cat.catalogue, &id),
                 layer: Layer::Project,
                 overridden: false,
             });

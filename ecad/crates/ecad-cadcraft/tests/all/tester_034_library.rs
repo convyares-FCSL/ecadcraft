@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::checks::{self, Object};
 use ecad_cadcraft::symbols::{self, STARTER_LIBRARY, STARTERS};
-use ecad_model::{ComponentId, Document, Pt, TerminalId};
+use ecad_model::{ComponentId, Document, Pt, TerminalId, Word};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -368,23 +368,24 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
     // IDs unique across the whole catalogue; the count is the old 21 plus the new ones.
     let ids: BTreeSet<u128> = STARTERS.iter().map(|s| s.id.0).collect();
     assert_eq!(ids.len(), STARTERS.len(), "definition IDs unique");
-    let keys: BTreeSet<&str> = STARTERS.iter().map(|s| s.key).collect();
+    let keys: BTreeSet<&str> = STARTERS.iter().map(|s| s.key.word()).collect();
     assert_eq!(keys.len(), STARTERS.len(), "keys unique");
     // Brief 036's multi-level terminal starters (20) are design 036's.
     let extra: Vec<&str> = STARTERS
         .iter()
         .map(|s| s.key)
         .filter(|k| {
-            !OLD.iter().any(|o| o.0 == *k)
-                && !cat.iter().any(|e| e.key == *k)
-                && !ecad_cadcraft::terminal_types::is_level_starter(k)
-                && !BRIEF_045.contains(k)
+            !OLD.iter().any(|o| o.0 == k.word())
+                && !cat.iter().any(|e| e.key == k.word())
+                && !ecad_cadcraft::terminal_types::is_level_starter(*k)
+                && !BRIEF_045.contains(&k.word())
         })
         // Brief 044's connector pins (design 044 §3.2).
-        .filter(|k| !matches!(*k, "pinpair" | "pins" | "pinp"))
+        .filter(|k| !matches!(k.word(), "pinpair" | "pins" | "pinp"))
+        .map(|k| k.word())
         .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key)).count());
+    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key.word())).count());
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.

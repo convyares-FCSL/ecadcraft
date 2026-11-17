@@ -210,7 +210,7 @@ fn apply_styles_an_entity_like_the_page_does() {
     assert_eq!(e.common.lineweight, stroke.map_or(Lineweight::ByLayer, Lineweight::Mm100));
     // Brief 050a: a kind's own font is its text style's `font`.
     let rec = ecad_model::StyleRecord { name: String::new(), fields: [("font".to_string(), "Kind Font 031".to_string())].into(), body: None };
-    doc.styles.entry("text".into()).or_default().insert(ecad_model::StyleRef::Builtin("grid".into()), rec);
+    doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(ecad_model::StyleRef::Builtin("grid".into()), rec);
     text_style::apply(&doc, &mut e, TextKind::Grid);
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (3.0, "ECAD-GRID"));

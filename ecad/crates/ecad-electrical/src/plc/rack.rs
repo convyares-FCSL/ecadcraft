@@ -111,8 +111,8 @@ impl CardType {
     }
 
     /// The type whose body is starter `key`.
-    pub fn of_body(key: &str) -> Option<CardType> {
-        CardType::ALL.into_iter().find(|t| t.body() == key)
+    pub fn of_body(key: crate::symbols::StarterKey) -> Option<CardType> {
+        CardType::ALL.into_iter().find(|t| t.body() == ecad_model::Word::word(key))
     }
 
     /// Whether a device of this type is a rack (a CPU or a head module).
@@ -197,13 +197,13 @@ pub fn is_rack(doc: &Document, c: ComponentId) -> bool {
 /// A slot number as stored: digits only, 0–[`MAX_SLOT`].
 pub fn parse_slot(text: &str) -> Option<u32> {
     let t = text.trim();
-    (!t.is_empty() && t.len() <= 3 && t.bytes().all(|b| b.is_ascii_digit())).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= MAX_SLOT)
+    ecad_model::words::uint(t, MAX_SLOT).filter(|_| t.len() <= 3)
 }
 
 /// A channel count as stored: digits only, 0–[`MAX_CHANNELS`].
 pub fn parse_channels(text: &str) -> Option<u32> {
     let t = text.trim();
-    (!t.is_empty() && t.len() <= 3 && t.bytes().all(|b| b.is_ascii_digit())).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= MAX_CHANNELS)
+    ecad_model::words::uint(t, MAX_CHANNELS).filter(|_| t.len() <= 3)
 }
 
 /// What a card's `plc.rack` names.

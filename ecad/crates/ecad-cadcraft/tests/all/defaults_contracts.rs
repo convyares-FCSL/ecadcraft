@@ -19,6 +19,7 @@ fn other_value(e: &Entry) -> Option<String> {
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
+        Kind::Flag => ecad_model::words::FLAG_WORDS.iter().map(|w| w.to_string()).collect(),
         Kind::Text { .. } | Kind::Parsed { .. } => {
             [
                 "ZZ",
@@ -41,7 +42,7 @@ fn other_value(e: &Entry) -> Option<String> {
             .collect()
         }
         // Brief 050a: a style choice takes another built-in style of its catalogue.
-        Kind::Style(cat) => ecad_cadcraft::styles::catalogue(cat).map(|c| c.builtins.iter().map(|b| b.id.to_string()).collect()).unwrap_or_default(),
+        Kind::Style(cat) => ecad_cadcraft::styles::catalogue(cat).builtins.iter().map(|b| b.id.to_string()).collect(),
     };
     candidates.into_iter().find(|c| e.parse(c).is_some() && !c.eq_ignore_ascii_case(&builtin))
 }
@@ -103,7 +104,7 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
             // only its built-in exists.
             // Brief 057: a catalogue with no built-in styles (rating tables) has none to choose.
-            let single = |c: &str| ecad_cadcraft::styles::catalogue(c).is_some_and(|c| c.builtins.len() <= 1);
+            let single = |c: ecad_model::StyleCatalogue| ecad_cadcraft::styles::catalogue(c).builtins.len() <= 1;
             assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };
@@ -145,7 +146,7 @@ fn setdefault_is_one_undoable_transaction() {
     let doc = h.doc();
     let t = targets(page, c, rep, &doc);
     for (key, value, (level, target, scope, source)) in
-        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "off", t[1]), ("text.tag.show", "first", t[3])]
+        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "no", t[1]), ("text.tag.show", "first", t[3])]
     {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
@@ -205,7 +206,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     assert_eq!(defaults::users(&h.doc(), e), 2);
     h.run("setdefault", json!({"key": e.key, "value": "-q"})).unwrap();
     let d = h.doc();
-    assert_eq!(d.settings.tag_prefixes.get("coil").map(String::as_str), Some("Q"), "as Tag Settings writes it");
+    assert_eq!(d.settings.starter_prefix("coil").map(|p| p.as_str()), Some("Q"), "as Tag Settings writes it");
     assert!(!d.properties.contains_key(e.key), "never a project property too");
     assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
     // The chain: built-in K, the standard (no value of its own), the project's Q.
@@ -213,7 +214,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     let words: Vec<(Source, Option<String>)> = chain.iter().map(|(s, v)| (*s, v.map(|v| defaults::Resolved { value: v, from: *s }.text()))).collect();
     assert_eq!(words, vec![(Source::Builtin, Some("K".into())), (Source::Standard, None), (Source::Project, Some("Q".into()))]);
     h.run("setdefault", json!({"key": e.key, "reset": true})).unwrap();
-    assert!(!h.doc().settings.tag_prefixes.contains_key("coil"));
+    assert!(!h.doc().settings.starter_prefix("coil").is_some());
 }
 
 #[test]
@@ -228,9 +229,9 @@ fn the_chain_shows_a_level_that_holds_a_value_or_is_allowed() {
     // A height has no page level (owner answer 4).
     assert!(!levels(height, &doc).contains(&Source::Page));
     let _ = c;
-    h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "off"})).unwrap();
+    h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "no"})).unwrap();
     let d = h.doc();
     let chain = defaults::chain(&d, show, at);
-    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("off")));
+    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("no")));
     assert_eq!(defaults::resolve(&d, show, at).from, Source::Page);
 }

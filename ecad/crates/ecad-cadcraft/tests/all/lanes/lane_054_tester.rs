@@ -133,12 +133,12 @@ fn ac1_the_page_catalogue_lists_six_built_ins_with_their_fields() {
     let ids: Vec<String> = rows.iter().map(|r| s(&r["id"])).collect();
     assert_eq!(ids.len(), 7, "{ids:?}: the six of board 5.02 and Plain (owner, fix round)");
     for (id, name, holds, zones) in [
-        ("front", "Cover sheet", "front", "off"),
-        ("schematic", "Schematic", "none", "on"),
-        ("network", "Network", "none", "on"),
-        ("singleline", "Single-line", "none", "on"),
-        ("panel", "Panel layout", "none", "off"),
-        ("report", "Report", "report", "off"),
+        ("front", "Cover sheet", "front", "no"),
+        ("schematic", "Schematic", "none", "yes"),
+        ("network", "Network", "none", "yes"),
+        ("singleline", "Single-line", "none", "yes"),
+        ("panel", "Panel layout", "none", "no"),
+        ("report", "Report", "report", "no"),
     ] {
         let r = style_row(&mut h, "page", id);
         assert_eq!(s(&r["name"]), name, "{id}");
@@ -533,12 +533,12 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}}));
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
         let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
-        let before = h.doc().styles.get("page").and_then(|m| m.get(&sch)).cloned();
+        let before = h.doc().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|m| m.get(&sch)).cloned();
         inject(
             &mut h,
             vec![ecad_model::Op::SetStyle {
                 layer: ecad_model::style::StyleLayer::Project,
-                catalogue: "page".into(),
+                catalogue: ecad_model::StyleCatalogue::Page,
                 id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
                 before,
                 after: Some(ecad_model::style::StyleRecord {

@@ -610,10 +610,11 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 /// A value as the inspector shows it: a show word in words (spec §3), else as the Standards table.
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
-        return match r.word() {
-            "off" => "Hidden".into(),
-            "first" => "Shown on the first of each run".into(),
-            _ => "Shown on the page".into(),
+        use ecad_cadcraft::text_style::Shown;
+        return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
+            Shown::Off => "Hidden".into(),
+            Shown::First => "Shown on the first of each run".into(),
+            Shown::On => "Shown on the page".into(),
         };
     }
     crate::lists::standards::value_text(e, r)
@@ -622,7 +623,7 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
 /// A style choice's row (brief 050a): the chosen style's name, the catalogue's styles, and the
 /// warning of an own choice naming no style.
 fn style_row(
-    doc: &ecad_model::Document, e: &Entry, cat: &str, scope: Scope, r: &defaults::Resolved<'_>,
+    doc: &ecad_model::Document, e: &Entry, cat: ecad_model::StyleCatalogue, scope: Scope, r: &defaults::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
     use ecad_cadcraft::styles;
     // Brief 050b (design 050 §7.5): a wire's category with where it comes from.
@@ -631,7 +632,7 @@ fn style_row(
     {
         let looks = styles::wire::WireLooks::new(doc);
         let (id, from) = looks.category(doc, c);
-        let list = styles::catalogue(cat).map(|x| styles::rows(doc, x).into_iter().map(|r| (r.id.text(), r.name)).collect()).unwrap_or_default();
+        let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|r| (r.id.text(), r.name)).collect();
         let name = id.as_ref().map(|i| styles::name(doc, cat, i));
         let value = match (name, from) {
             (Some(n), styles::wire::CategoryFrom::Potential(p)) => format!("{n} (from potential {p})"),
@@ -646,7 +647,7 @@ fn style_row(
         return (value, list, dangling);
     }
     let id = styles::chosen(doc, e, scope);
-    let list = styles::catalogue(cat).map(|c| styles::rows(doc, c).into_iter().map(|x| (x.id.text(), x.name)).collect()).unwrap_or_default();
+    let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|x| (x.id.text(), x.name)).collect();
     let own = match scope.component {
         Some(c) => doc.components.get(&c).and_then(|x| x.properties.get(e.key)),
         None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.properties.get(e.key)),
@@ -706,7 +707,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 .and_then(|c| c.definition)
                 .and_then(|d| doc.definitions.get(&d))
                 .and_then(ecad_cadcraft::symbols::of_definition);
-            es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
+            es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(ecad_model::Word::word(s.key))));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
         What::Conductor(w) => {
@@ -741,6 +742,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 here: target.filter(|(l, _)| e.allows(*l)),
                 choices: match e.kind {
                     Kind::Choice(w) => w,
+                    Kind::Flag => ecad_model::words::FLAG_WORDS,
                     _ => &[],
                 },
                 styles,

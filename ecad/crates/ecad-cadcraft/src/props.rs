@@ -11,6 +11,8 @@
 //! Excluded: editing several kinds at once, cable members and cores (read only here), free
 //! project properties (Project Properties holds them).
 
+use ecad_model::Word;
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use cadcraft_engine::doc::Handle;
@@ -803,7 +805,7 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
     let look = crate::styles::wire::wire_look(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
-    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
     for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &cs_default), (wiring::COLOUR, "Colour", &colour_default)] {
         let shown = |v: &str| if key == wiring::COLOUR { doc.settings.wiring.colour(v) } else { v.to_string() };
@@ -866,7 +868,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
     rows.push(Row::ro("to", "To", end_words(doc, w, End::B)));
     let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::cables::cable_title(doc, k)).collect();
     rows.push(Row::ro("cables", "Cables", if cables.is_empty() { "none".into() } else { cables.join(", ") }));
-    rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default()));
+    rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::keys::TAG)).unwrap_or_default().to_string()));
     rows.extend(free_rows(
         props,
         &[
@@ -885,7 +887,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
 fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default())];
+    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::keys::TAG)).unwrap_or_default().to_string())];
     // Brief 026: Fixed beside Tag.
     rows.push(fixed_row(props));
     rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY, crate::strips::CORES_KEY]));
@@ -972,11 +974,7 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    match w {
-        "off" => "Hidden",
-        "first" => "Once per run",
-        _ => "Shown",
-    }
+    <crate::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
@@ -1032,13 +1030,8 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
         _ => (None, rest),
     };
-    crate::text_style::TextKind::from_word(kind)?;
-    let show = match value.map(|v| v.trim().to_ascii_lowercase()) {
-        Some(v) if v == "shown" || v == "on" => serde_json::json!("on"),
-        Some(v) if v == "hidden" || v == "off" => serde_json::json!("off"),
-        Some(v) if v == "once per run" || v == "first" => serde_json::json!("first"),
-        _ => serde_json::Value::Null,
-    };
+    <crate::text_style::TextKind as ecad_model::Word>::parse(kind)?;
+    let show = value.and_then(crate::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {
         (Some(r), _) => j["representation"] = r.hex().into(),
@@ -1076,7 +1069,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         j["conflict"] = way.into();
         return format!("setprop {j}");
     }
-    let v = if key == ecad_model::tag::FIXED_KEY && value.is_some_and(|s| s.trim().eq_ignore_ascii_case("no")) { serde_json::Value::Null } else { v };
+    let v = if key == ecad_model::tag::FIXED_KEY && value.and_then(ecad_model::words::flag) == Some(false) { serde_json::Value::Null } else { v };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();
@@ -1099,7 +1092,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         // Brief 022: the number and the potential belong to the whole net.
         Target::Conductor(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
         Target::Conductor(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
-            let fixed = value.is_some_and(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "yes" | "y" | "true"));
+            let fixed = value.and_then(ecad_model::words::flag) == Some(true);
             ("wirenumber", serde_json::json!({"conductor": w.hex(), "fixed": fixed}))
         }
         Target::Conductor(w) if key == ecad_model::wiring::POTENTIAL_KEY => {

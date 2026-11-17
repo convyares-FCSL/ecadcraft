@@ -241,7 +241,7 @@ impl super::Inspector {
                     && resp.clicked()
                     && let Some((level, target)) = s.here
                 {
-                    out.push(InspectorAction::Run(s.key, default_cmds::line(s.key, level, target, Some(if on { "off" } else { "on" }))));
+                    out.push(InspectorAction::Run(s.key, default_cmds::line(s.key, level, target, Some(ecad_model::words::flag_word(!on)))));
                 }
             }
             // Where: as the symbol places it (grey: read from the drawing).

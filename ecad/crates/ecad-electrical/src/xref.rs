@@ -53,7 +53,7 @@ use ecad_model::{
 };
 use serde_json::{Value, json};
 
-use crate::symbols::{Kind, Starter};
+use crate::symbols::{Kind, Starter, StarterKey as K};
 use crate::text_style::fonts::TextMetrics;
 
 /// The text style of a contact's or a connector member's reference (brief 066d).
@@ -354,9 +354,9 @@ pub fn is_head(s: &Starter) -> bool {
 /// The poles a starter symbol carries (code, not format: design 025 §2).
 pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
     match (s.key, s.kind) {
-        ("power3", _) => vec![(PoleKind::No, true); 3],
+        (K::Power3, _) => vec![(PoleKind::No, true); 3],
         // Pack re-run, bug 11: the 4-pole set is a contactor's power contacts too.
-        ("power4", _) => vec![(PoleKind::No, true); 4],
+        (K::Power4, _) => vec![(PoleKind::No, true); 4],
         (_, Kind::Contact { make }) => vec![(if make { PoleKind::No } else { PoleKind::Nc }, false)],
         _ => Vec::new(),
     }
@@ -1683,7 +1683,7 @@ impl Scope {
                     self.devices.extend(idx.devices_on(doc, *p));
                 }
                 // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
-                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                         for p in pages {
                             self.devices.extend(idx.devices_on(doc, p));
@@ -1705,7 +1705,7 @@ impl Scope {
                 }
                 // Brief 050a: a change of the text style the table text uses (its height, weight).
                 Op::SetStyle { catalogue, id, .. }
-                    if catalogue == "text"
+                    if *catalogue == ecad_model::StyleCatalogue::Text
                         && *id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
                 {
                     self.wide = true;
@@ -1742,7 +1742,7 @@ impl Scope {
                 {
                     self.names.extend(crate::continuations::names_on(doc, idx, *p));
                 }
-                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                         for p in pages {
                             self.names.extend(crate::continuations::names_on(doc, idx, p));
@@ -1757,7 +1757,7 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key) => {
                     self.arrows_wide = true;
                 }
-                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, catalogue, id) => {
+                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
                     self.arrows_wide = true;
                 }
                 _ => {}
@@ -2165,8 +2165,8 @@ pub fn contact_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> V
     }
     let noun = |doc: &Document, h: RepresentationId| {
         doc.representations.get(&h).and_then(|r| starter_of(doc, r)).map_or("Head", |s| match s.key {
-            "coil" => "Coil",
-            "mcb1" | "mcb2" => "MCB",
+            K::Coil => "Coil",
+            K::Mcb1 | K::Mcb2 => "MCB",
             _ => "Head",
         })
     };

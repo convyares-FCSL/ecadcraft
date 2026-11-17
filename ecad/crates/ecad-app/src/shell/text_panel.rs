@@ -78,11 +78,10 @@ impl App {
     /// `ui.cadchrome [on|off]`: the developer switch; the reply says what it is now.
     pub fn cad_chrome_command(&mut self, line: &str) {
         let arg = line.split_whitespace().nth(1).map(str::to_ascii_lowercase);
-        let on = match arg.as_deref() {
-            Some("on" | "1" | "true") => true,
-            Some("off" | "0" | "false") => false,
+        let on = match arg.as_deref().map(|a| (a, ecad_model::words::flag(a))) {
+            Some((_, Some(on))) => on,
             None => !self.shell.state.cad_chrome,
-            Some(other) => {
+            Some((other, None)) => {
                 self.developer.reply = vec![format!("ui.cadchrome takes on or off, not {other:?}.")];
                 return;
             }

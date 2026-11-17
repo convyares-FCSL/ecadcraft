@@ -102,10 +102,10 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
     after.tag_padding = Some(3);
-    after.tag_prefixes.insert("coil".into(), "KA".into());
+    after.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("coil".into()), ecad_model::prefix::TagPrefix::typed("KA").unwrap());
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
-    assert!(line.contains("\"tag_padding\":3") && line.contains("\"coil\":\"KA\""), "{line}");
+    assert!(line.contains("\"tag_padding\":3") && line.contains("\"starter:coil\":\"KA\""), "{line}");
     f.ledger.commit(Author::User, "Tag settings", vec![op]).unwrap();
     let opened = reopened(&mut f.ledger);
     assert!(opened.report.damage.is_none());

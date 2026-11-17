@@ -189,7 +189,7 @@ impl App {
         }
         // UI rev 3: the picker's chip names the symbol being placed.
         self.shell.tools.placing.symbol = match &pick {
-            search::Pick::Symbol(k) => ecad_cadcraft::symbols::by_key(k).map(|s| s.key),
+            search::Pick::Symbol(k) => Some(*k),
             _ => None,
         };
         let text = match pick {

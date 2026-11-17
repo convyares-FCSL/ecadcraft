@@ -339,7 +339,7 @@ fn the_typed_text_commands_still_work() {
     let same = h.run("textstyle", json!({"kind": "tag", "height": 3})).unwrap_or(Value::Null);
     assert_eq!(same["changed"], json!(false));
     let shown = h.run("showtext", json!({"kind": "tag", "show": "off"})).unwrap_or(Value::Null);
-    assert_eq!(shown, json!({"level": "project", "target": null, "kind": "tag", "show": "off", "changed": true}));
+    assert_eq!(shown, json!({"level": "project", "target": null, "kind": "tag", "show": "no", "changed": true}));
     let back = h.run("showtext", json!({"kind": "tag", "show": null})).unwrap_or(Value::Null);
     assert_eq!((&back["show"], &back["changed"]), (&Value::Null, &json!(true)));
     let on = h.run("hiddentext", json!({})).unwrap_or(Value::Null);

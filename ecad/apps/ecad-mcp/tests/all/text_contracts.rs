@@ -32,7 +32,7 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     assert_eq!(last.label, "Text styles");
     assert!(
         // Brief 050a: the tag text style's record, at project level.
-        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if catalogue == "text" && id.text() == "tag" && r.fields.get("height").map(String::as_str) == Some("3")),
+        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag" && r.fields.get("height").map(String::as_str) == Some("3")),
         "{:?}",
         last.ops
     );
@@ -50,7 +50,11 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     let d = c.doc();
     // Brief 050a: each kind's text style record.
     let field = |kind: &str, f: &str| {
-        d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into()))).and_then(|r| r.fields.get(f)).cloned()
+        d.styles
+            .get(&ecad_model::StyleCatalogue::Text)
+            .and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into())))
+            .and_then(|r| r.fields.get(f))
+            .cloned()
     };
     assert_eq!((field("point_label", "height").as_deref(), field("location", "weight").as_deref()), (Some("2"), Some("bold")));
     let m = c.refused("execute", json!({"command": "textstyle", "params": {"kinds": [{"height": 2}]}}));
@@ -86,8 +90,8 @@ fn textstyle_refusals_write_nothing() {
         (json!({"kind": "tag", "height": "big"}), "`height` must be a number, or null"),
         (json!({"kind": "nope", "height": 3}), "Unknown text kind \"nope\". Kinds: tag, point_label"),
         (json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold."),
-        (json!({"kind": "tag", "show": "maybe"}), "Shown is on, off or first (first: tag only)."),
-        (json!({"kind": "description", "show": "first"}), "Shown is on, off or first (first: tag only)."),
+        (json!({"kind": "tag", "show": "maybe"}), "Shown is yes, no or first (first: tag only)."),
+        (json!({"kind": "description", "show": "first"}), "Shown is yes, no or first (first: tag only)."),
         (json!({"font": ""}), "A font name is 1 to 64 characters with no control characters."),
         (json!({"font": "a".repeat(65)}), "A font name is 1 to 64 characters with no control characters."),
         (json!({"font": "a\u{7}b"}), "A font name is 1 to 64 characters with no control characters."),

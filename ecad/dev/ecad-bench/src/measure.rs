@@ -803,7 +803,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);
     let mut high = TagHigh::default();
     let starter = |k: &str| ecad_cadcraft::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
-    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: 0.0, mirror: false, scale: 1.0 };
+    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
     let mut coils = Vec::with_capacity(wanted);
     for i in 0..wanted {
         let ka = match i {

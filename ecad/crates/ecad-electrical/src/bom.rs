@@ -118,8 +118,7 @@ pub fn parse_part_key(key: &str) -> Option<Result<(u8, Field), CmdError>> {
         CmdError::refused(format!("\"{shown}\" is not a part line key. Write part.<n>.<field>, n 1 to {MAX_LINES}, field one of {}.", field_words()))
     };
     let Some((n, f)) = rest.split_once('.') else { return Some(Err(bad())) };
-    let ok_n = !n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit()) && !n.starts_with('0');
-    let n = if ok_n { n.parse::<u8>().ok().filter(|n| (1..=MAX_LINES).contains(n)) } else { None };
+    let n = ecad_model::words::uint_canonical(n, u32::from(MAX_LINES)).filter(|n| *n >= 1).and_then(|n| u8::try_from(n).ok());
     match (n, Field::parse(f)) {
         (Some(n), Some(f)) => Some(Ok((n, f))),
         _ => Some(Err(bad())),
@@ -188,7 +187,8 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, CmdError> {
     let more = if t.chars().count() > 20 { "…" } else { "" };
     let bad = || CmdError::refused(format!("\"{shown}{more}\" is not a quantity. Write a number greater than 0, at most 9999, like 2 or 3.6."));
     let (w, frac) = t.split_once('.').unwrap_or((t, ""));
-    if w.is_empty() && frac.is_empty() || w.len() > 6 || !w.bytes().all(|b| b.is_ascii_digit()) || !frac.bytes().all(|b| b.is_ascii_digit()) {
+    let digits_or_none = |t: &str| t.is_empty() || ecad_model::words::is_digits(t);
+    if w.is_empty() && frac.is_empty() || w.len() > 6 || !digits_or_none(w) || !digits_or_none(frac) {
         return Err(bad());
     }
     if frac.len() > 3 {
@@ -284,14 +284,14 @@ pub fn sub_items(doc: &Document, c: ComponentId) -> Subs {
         return Subs::Positions { all: ps.into_iter().map(|p| p.label).collect(), fuses };
     }
     match head(doc, c).filter(|s| crate::symbols::is_fuse_bank(s)) {
-        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| !l.is_empty() && l.bytes().all(|b| b.is_ascii_digit())).collect()),
+        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect()),
         None => Subs::None,
     }
 }
 
 /// Whether `c` is a fuse terminal device (034's `fuseterm`): covered by a part line with no `for`.
 pub fn is_fuse_terminal(doc: &Document, c: ComponentId) -> bool {
-    head(doc, c).is_some_and(|s| s.key == "fuseterm")
+    head(doc, c).is_some_and(|s| s.key == crate::symbols::StarterKey::Fuseterm)
 }
 
 /// The names a `for` value lists, ranges of whole numbers expanded (`1-4, 7`), in order, each
@@ -709,17 +709,17 @@ fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, me
 
 /// Whether the BOM shows its Article number column (`bom.column.article`).
 pub fn article_column(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word() == "on"
+    ecad_model::words::flag(defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
 }
 
 /// Whether part lines are listed under their device (`bom.lines = nested`).
 pub fn lines_nested(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).word() == "nested"
+    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)
 }
 
 /// Whether a new item's unit is metres (`bom.item.unit = m`).
 pub fn item_unit_metres(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).word() == METRES
+    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).choice::<defaults::bom::ItemUnit>() == Some(defaults::bom::ItemUnit::Metres)
 }
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.

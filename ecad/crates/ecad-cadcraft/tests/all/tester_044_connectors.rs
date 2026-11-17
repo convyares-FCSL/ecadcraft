@@ -1326,7 +1326,7 @@ fn fp2_a_bridge_to_an_unknown_key_is_refused() {
         let x = 20.0 + 30.0 * (i % 12) as f64;
         let y = 40.0 + 40.0 * (i / 12) as f64;
         let mut params = json!({"symbol": st.key, "at": [x, y]});
-        if st.key == "continuation" {
+        if st.key == ecad_cadcraft::symbols::StarterKey::Continuation {
             params["name"] = json!("24V");
         }
         h.run("place", params).unwrap_or_else(|e| panic!("{}: {e}", st.key));

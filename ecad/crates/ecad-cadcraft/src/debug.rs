@@ -26,6 +26,7 @@
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -1165,7 +1166,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
 }
 
 fn tag(p: &ecad_model::Properties) -> Option<String> {
-    p.get("tag").cloned()
+    p.text(ecad_model::keys::TAG).map(str::to_string)
 }
 
 fn subject_label(doc: &Document, s: Subject) -> String {

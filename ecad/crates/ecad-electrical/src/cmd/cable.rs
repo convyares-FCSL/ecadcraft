@@ -14,9 +14,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use ecad_model::{CableId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Properties, StyleRef};
 
-use crate::cables::{
-    CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, is_hidden, length_of, type_notation,
-};
+use crate::cables::{CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, length_of, type_notation};
 use crate::designations::{self, Aspect};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
@@ -74,7 +72,7 @@ pub fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError
             format!("{}: {}", field.label(), clip_quoted(&why.replace(value, &shown)))
         }
         (CableField::Tag, BadReason::Empty) => "A cable always has a tag. Type a new tag (such as -W05) instead of clearing it.".to_string(),
-        (_, BadReason::NotAWord) if value.chars().any(is_hidden) => {
+        (_, BadReason::NotAWord) if ecad_model::text::has_hidden(value) => {
             format!("{} holds a control or invisible character; type it again without one.", field.label())
         }
         (CableField::CableType, BadReason::UnknownEntry) => format!("No cable type {shown:?} in this project's standards."),
@@ -154,7 +152,7 @@ fn as_text(field: CableField, v: Option<&str>) -> Result<Option<String>, CmdErro
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
         // Tester 059a: no control or invisible character in any value (a planned code, a maker…).
-        Some(s) if s.chars().any(is_hidden) => Err(bad_value(field, s, &BadReason::NotAWord)),
+        Some(s) if ecad_model::text::has_hidden(s) => Err(bad_value(field, s, &BadReason::NotAWord)),
         Some(s) => Ok(Some(s.trim().to_string())),
     }
 }
@@ -176,20 +174,22 @@ fn checked(
             None => Err(bad(BadReason::NotANumber)),
         },
         CableField::Gland(_) if t.chars().count() > cable::MAX_GLAND_CHARS => Err(bad(BadReason::TooLong(cable::MAX_GLAND_CHARS))),
-        CableField::Gland(_) if !cable::is_gland(&t) || t.chars().any(is_hidden) => Err(bad(BadReason::NotAWord)),
+        CableField::Gland(_) if !cable::is_gland(&t) || ecad_model::text::has_hidden(&t) => Err(bad(BadReason::NotAWord)),
         CableField::Gland(_) => Ok(Some(t)),
         CableField::Shield => Shield::parse(&t).map(|s| Some(s.word().to_string())).ok_or_else(|| bad(BadReason::NotAWord)),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => {
             if t.chars().count() > MAX_TEXT {
                 return Err(bad(BadReason::TooLong(MAX_TEXT)));
             }
-            if t.chars().any(is_hidden) {
+            if ecad_model::text::has_hidden(&t) {
                 return Err(bad(BadReason::NotAWord));
             }
             Ok(Some(t))
         }
         CableField::Cores => crate::strips::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
-        CableField::CableType => styles::find(doc, cable::WORD, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry)),
+        CableField::CableType => {
+            styles::find(doc, ecad_model::StyleCatalogue::Cable, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry))
+        }
         CableField::EndLocation(_) => pending.store(doc, ids, Aspect::Location, &t, ops).map(Some).map_err(|_| bad(BadReason::UnknownEntry)),
         CableField::EndFunction(_) => pending.store(doc, ids, Aspect::Function, &t, ops).map(Some).map_err(|_| bad(BadReason::UnknownEntry)),
     }
@@ -374,7 +374,7 @@ pub fn edit_ops(
     if set.tag.is_some() {
         let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::tag::is_provisional(t));
         let before = cab.properties.get(ecad_model::tag::FIXED_KEY).cloned();
-        let a = fixed.then(|| "yes".to_string());
+        let a = fixed.then(|| ecad_model::words::flag_word(true).to_string());
         if before != a {
             ops.push(Op::SetProperty { object, key: ecad_model::tag::FIXED_KEY.into(), before, after: a });
         }

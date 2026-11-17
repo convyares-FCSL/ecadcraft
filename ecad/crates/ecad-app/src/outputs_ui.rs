@@ -315,7 +315,7 @@ impl Reports {
             ui.menu_button("Columns \u{25be}", |ui| {
                 let mut article = self.view.article;
                 if Checkbox::new(&mut article, "Article number").show(ui).accessible_name(COLUMN_ARTICLE).changed() {
-                    let v = if article { "on" } else { "off" };
+                    let v = ecad_model::words::flag_word(article);
                     *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.column.article", "level": "project", "value": v}))));
                     ui.close();
                 }

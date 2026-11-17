@@ -325,7 +325,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
 #[test]
 fn editing_a_built_in_from_the_browser_saves_a_copy_that_remembers_it() {
     let mut h = shell(None);
-    h.state_mut().edit_starter("coil").unwrap();
+    h.state_mut().edit_starter(ecad_cadcraft::symbols::StarterKey::Coil).unwrap();
     h.run_steps(3);
     let main = h.state().shell.slots.unwrap().main;
     h.event(Event::PointerMoved(main.center()));

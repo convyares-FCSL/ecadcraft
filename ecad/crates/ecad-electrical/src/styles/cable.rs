@@ -14,8 +14,6 @@ use crate::CmdError;
 use crate::defaults::{Kind, Slot};
 use crate::rating::fields;
 
-/// The catalogue word.
-pub const WORD: &str = "cable";
 /// The cable property naming its cable type (FP2).
 pub const CABLE_TYPE: &str = "cable_type";
 
@@ -87,10 +85,9 @@ fn is_shield(s: &str) -> bool {
 }
 
 /// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
-/// zero-width) characters ([`crate::cables::is_hidden`], tester 059 f4).
+/// zero-width) characters (`ecad_model::text::check`, tester 059 f4).
 pub fn is_gland(s: &str) -> bool {
-    let t = s.trim();
-    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(crate::cables::is_hidden)
+    ecad_model::text::check(s, MAX_GLAND_CHARS).is_ok()
 }
 
 /// An outer diameter: a number of millimetres from 1 to 200.
@@ -107,18 +104,25 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The cable type catalogue: no built-in entries.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Cable types", one: "Cable type", fields: &FIELDS, builtins: &[], choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Cable,
+    plural: "Cable types",
+    one: "Cable type",
+    fields: &FIELDS,
+    builtins: &[],
+    choices,
+    project_field: None,
+};
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
     let v = doc.cables.get(&k)?.properties.get(CABLE_TYPE)?;
-    StyleRef::parse(v).filter(|id| super::exists(doc, WORD, id))
+    StyleRef::parse(v).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
 pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
-    super::field_of(doc, WORD, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    super::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
@@ -135,7 +139,7 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
     {
         return Some((c, crate::strips::OfferSource::Cores, v.to_string()));
     }
-    let ty = props.get(CABLE_TYPE).and_then(|v| StyleRef::parse(v)).filter(|id| super::exists(doc, WORD, id));
+    let ty = props.get(CABLE_TYPE).and_then(|v| StyleRef::parse(v)).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
         && let Ok(c) = crate::strips::parse_cores(&v)
     {
@@ -147,7 +151,10 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
 /// The core colours of cable `k`'s cable type, in core order; empty when it has no type or no
 /// colours.
 pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
-    of(doc, k).and_then(|id| super::field_of(doc, WORD, &id, CORE_COLOURS, None)).and_then(|r| colour_list(&r.text())).unwrap_or_default()
+    of(doc, k)
+        .and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, CORE_COLOURS, None))
+        .and_then(|r| colour_list(&r.text()))
+        .unwrap_or_default()
 }
 
 /// A cable property ticking core `<label>` as **Not used** (owner rule, board 2.06): `unused.<label>`
@@ -163,7 +170,7 @@ pub fn unused_key(label: &str) -> String {
 
 /// Whether core `label` of cable `k` is ticked **Not used**.
 pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
-    doc.cables.get(&k).and_then(|c| c.properties.get(&unused_key(label))).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"))
+    doc.cables.get(&k).and_then(|c| c.properties.get(&unused_key(label))).and_then(|v| ecad_model::words::flag(v)) == Some(true)
 }
 
 /// Most bad `unused.` keys a cable's Checks rows name (a hostile file may hold many).
@@ -203,7 +210,7 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
 /// In plain words, bounded: the core is not the cable's, or the value is not yes or no.
 pub fn unused_value(doc: &Document, k: CableId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let label = key.strip_prefix(UNUSED_PREFIX).unwrap_or_default();
-    let clearing = value.map(str::trim).is_none_or(|v| v.is_empty() || v.eq_ignore_ascii_case("no"));
+    let clearing = value.map(str::trim).is_none_or(|v| v.is_empty() || ecad_model::words::flag(v) == Some(false));
     if clearing && doc.cables.get(&k).is_some_and(|c| c.properties.contains_key(key)) {
         return Ok(None);
     }
@@ -223,7 +230,7 @@ pub fn unused_value(doc: &Document, k: CableId, key: &str, value: Option<&str>) 
         return Ok(None);
     }
     match value.map(str::trim) {
-        Some(v) if v.eq_ignore_ascii_case("yes") => Ok(Some("yes".into())),
+        Some(v) if ecad_model::words::flag(v) == Some(true) => Ok(Some(ecad_model::words::flag_word(true).into())),
         _ => Err(CmdError::refused("Not used is yes or no (or null to clear it).")),
     }
 }
@@ -245,7 +252,7 @@ pub fn bad_unused(doc: &Document, k: CableId) -> (Vec<(String, String)>, usize) 
             && label.chars().nth(MAX_LABEL_CHARS).is_none()
             && !label.chars().any(char::is_control)
             && cores.iter().any(|c| c == label)
-            && (v.trim().eq_ignore_ascii_case("yes") || v.trim().eq_ignore_ascii_case("no"));
+            && [ecad_model::words::flag_word(true), ecad_model::words::flag_word(false)].contains(&v.as_str());
         if !ok {
             n += 1;
             if out.len() < MAX_BAD_ROWS {

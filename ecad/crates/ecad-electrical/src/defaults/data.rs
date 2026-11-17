@@ -158,8 +158,8 @@ impl<'i> Loaded<'i> {
     pub fn field_value<'a>(&'a self, cat: &Catalogue, id: Option<&str>, key: &str) -> Option<Value<'a>> {
         let f = cat.field(key)?;
         let table = match id {
-            Some(id) => sub(sub(self.section("styles")?, cat.word)?, id)?,
-            None => sub(self.section("fields")?, cat.word)?,
+            Some(id) => sub(sub(self.section("styles")?, ecad_model::Word::word(cat.catalogue))?, id)?,
+            None => sub(self.section("fields")?, ecad_model::Word::word(cat.catalogue))?,
         };
         convert(f.kind, table.get(key)?.get_ref(), true).ok()
     }
@@ -265,12 +265,14 @@ fn check(file: &str, t: &DeTable<'_>) -> Vec<DefaultsError> {
             }
             "fields" => {
                 for (c, fields) in body.iter() {
-                    let Some((cat, DeValue::Table(fields))) = styles::catalogue(c.get_ref()).map(|cat| (cat, fields.get_ref())) else {
+                    let Some((cat, DeValue::Table(fields))) =
+                        <ecad_model::StyleCatalogue as ecad_model::Word>::parse(c.get_ref()).map(|cat| (styles::catalogue(cat), fields.get_ref()))
+                    else {
                         unknown_key(&mut problems, format!("fields.{}", c.get_ref()), c.span());
                         continue;
                     };
                     for (k, v) in fields.iter() {
-                        let key = format!("fields.{}.{}", cat.word, k.get_ref());
+                        let key = format!("fields.{}.{}", cat.catalogue, k.get_ref());
                         match cat.field(k.get_ref()) {
                             Some(f) => bad(&mut problems, key, f.kind, v, true),
                             None => unknown_key(&mut problems, key, k.span()),
@@ -280,18 +282,20 @@ fn check(file: &str, t: &DeTable<'_>) -> Vec<DefaultsError> {
             }
             "styles" => {
                 for (c, ids) in body.iter() {
-                    let Some((cat, DeValue::Table(ids))) = styles::catalogue(c.get_ref()).map(|cat| (cat, ids.get_ref())) else {
+                    let Some((cat, DeValue::Table(ids))) =
+                        <ecad_model::StyleCatalogue as ecad_model::Word>::parse(c.get_ref()).map(|cat| (styles::catalogue(cat), ids.get_ref()))
+                    else {
                         unknown_key(&mut problems, format!("styles.{}", c.get_ref()), c.span());
                         continue;
                     };
                     for (id, fields) in ids.iter() {
                         let known = cat.builtins.iter().any(|b| b.id == id.get_ref().as_ref());
                         let (true, DeValue::Table(fields)) = (known, fields.get_ref()) else {
-                            unknown_key(&mut problems, format!("styles.{}.{}", cat.word, id.get_ref()), id.span());
+                            unknown_key(&mut problems, format!("styles.{}.{}", cat.catalogue, id.get_ref()), id.span());
                             continue;
                         };
                         for (k, v) in fields.iter() {
-                            let key = format!("styles.{}.{}.{}", cat.word, id.get_ref(), k.get_ref());
+                            let key = format!("styles.{}.{}.{}", cat.catalogue, id.get_ref(), k.get_ref());
                             match cat.field(k.get_ref()) {
                                 Some(f) => bad(&mut problems, key, f.kind, v, true),
                                 None => unknown_key(&mut problems, key, k.span()),
@@ -331,7 +335,11 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
         }
         _ => {
             let DeValue::String(s) = v else {
-                return Err(Fault::WrongKind(if matches!(kind, Kind::Choice(_)) { "a word" } else { "text" }));
+                return Err(Fault::WrongKind(match kind {
+                    Kind::Choice(_) => "a word",
+                    Kind::Flag => "yes or no",
+                    _ => "text",
+                }));
             };
             let s: &'a str = s.as_ref();
             if empty && s.is_empty() && matches!(kind, Kind::Text { .. } | Kind::Parsed { .. }) {
@@ -340,7 +348,7 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
             // A built-in is written exactly; a stored project value is trimmed, a data value is not.
             match super::parse_value(kind, s) {
                 Some(Value::Text(t)) if t.len() == s.len() => Ok(Value::Text(t)),
-                Some(v @ Value::Choice(_)) if s.trim() == s => Ok(v),
+                Some(v @ (Value::Choice(_) | Value::Flag(_))) if s.trim() == s => Ok(v),
                 _ => Err(Fault::OutOfRange),
             }
         }
@@ -355,7 +363,8 @@ pub fn safe_value(kind: Kind) -> Value<'static> {
         Kind::Length { min, .. } => Value::Length(min),
         Kind::Number { min, .. } => Value::Number(min),
         Kind::Choice(words) => words.first().map_or(Value::Text(""), |w| Value::Choice(w)),
-        Kind::Style(cat) => Value::Text(styles::catalogue(cat).and_then(|c| c.builtins.first()).map_or("none", |b| b.id)),
+        Kind::Flag => Value::Flag(false),
+        Kind::Style(cat) => Value::Text(styles::catalogue(cat).builtins.first().map_or("none", |b| b.id)),
         Kind::Text { .. } | Kind::Parsed { .. } => Value::Text(""),
     }
 }
@@ -380,6 +389,7 @@ fn model_value(entry: &Entry) -> Option<Value<'static>> {
         (Kind::Number { .. }, BuiltinValue::Number(x)) => Value::Number(x),
         (Kind::Length { .. }, BuiltinValue::Number(x)) => Value::Length(x),
         (Kind::Choice(words), BuiltinValue::Word(w)) => Value::Choice(words.iter().copied().find(|x| *x == w)?),
+        (Kind::Flag, BuiltinValue::Word(w)) => super::parse_value(Kind::Flag, w)?,
         _ => return None,
     };
     entry.accepts(&v).then_some(v)
@@ -419,7 +429,7 @@ pub(crate) fn style_values(b: &BuiltinStyle) -> Vec<(&'static str, Value<'static
         .iter()
         .filter_map(|f| builtin_files().iter().find_map(|file| file.field_value(cat, Some(b.id), f.key)).map(|v| (f.key, v)))
         .collect();
-    if cat.word == styles::text::CATALOGUE.word && b.id == "wire_label" {
+    if cat.catalogue == styles::text::CATALOGUE.catalogue && b.id == "wire_label" {
         out.retain(|(k, _)| *k != "height");
         out.push(("height", super::text::WIRE_LABEL_HEIGHT.builtin()));
     }
@@ -447,8 +457,8 @@ pub fn builtin_problems() -> &'static [DefaultsError] {
         }
         for cat in styles::CATALOGUES {
             for f in cat.fields {
-                if !files.iter().any(|file| file.has_field(cat.word, f.key)) {
-                    out.push(DefaultsError::Missing { file: "styles.toml".to_string(), key: format!("fields.{}.{}", cat.word, f.key) });
+                if !files.iter().any(|file| file.has_field(ecad_model::Word::word(cat.catalogue), f.key)) {
+                    out.push(DefaultsError::Missing { file: "styles.toml".to_string(), key: format!("fields.{}.{}", cat.catalogue, f.key) });
                 }
             }
         }

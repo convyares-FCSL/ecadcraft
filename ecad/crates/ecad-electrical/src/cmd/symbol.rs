@@ -12,6 +12,7 @@
 //! - Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //!   Properties and Devices (048c); the page's selection and every JSON form.
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -105,8 +106,7 @@ pub struct SlotInput {
     pub at: Option<Pt>,
     pub h: TextHAlign,
     pub v: TextVAlign,
-    /// Radians.
-    pub rotation: f64,
+    pub rotation: Radians,
 }
 
 /// The content fields of a call, as given (lists already bounded by the reader).
@@ -966,7 +966,7 @@ pub fn plan_make(
                 ops.push(Op::RemoveItem { id: *i, item: it.clone() });
             }
         }
-        let pl = Placement { origin, rotation: 0.0, mirror: false, scale: 1.0 };
+        let pl = Placement { origin, rotation: Radians(0.0), mirror: false, scale: 1.0 };
         let plan = plan_place(ledger, ids, tag_high, at.page, at.style, id, &def, pl, None, None)?;
         placed = Some((plan.component, plan.representation, plan.tag.clone()));
         ops.extend(plan.ops);
@@ -1043,7 +1043,10 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: ComponentId, mut c
         item: Item {
             page: rep.page,
             style,
-            kind: ItemKind::Symbol(SymbolInstance { definition: id, placement: Placement { origin, rotation: 0.0, mirror: false, scale: 1.0 } }),
+            kind: ItemKind::Symbol(SymbolInstance {
+                definition: id,
+                placement: Placement { origin, rotation: Radians(0.0), mirror: false, scale: 1.0 },
+            }),
         },
     });
     ops.push(Op::LinkRepresentation {

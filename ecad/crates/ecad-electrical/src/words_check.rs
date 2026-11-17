@@ -2,17 +2,19 @@
 //!
 //! A typed field with an unknown word already fails its record's decode. This check finds the
 //! words inside values that stay text: a stored value of a defaults choice that is not one of its
-//! words, a `tag_prefixes` key that is not a built-in symbol, and a property that became a struct
-//! field ([`ecad_model::keys::RESERVED`]). Anything found opens the project read-only, naming the
+//! words, a defaults switch ([`Kind::Flag`]) or a yes/no key ([`keys::ValueSpec::Flag`]) holding anything but `yes` or `no`, a
+//! `tag_prefixes` key that is not a built-in symbol, and a property that became a struct field
+//! ([`ecad_model::keys::RESERVED`]). Typed input may say `true`, `1` or `on`; a file holds only the
+//! words the program writes. Anything found opens the project read-only, naming the
 //! word, the setting and where it is; the file is never changed.
 //!
 //! It reads the whole document, so it runs on open (and on reload) only, never per commit. It
 //! changes nothing and excludes values that are not words: an out-of-range length or a malformed
 //! style ID still reads as absent (design 066).
 
-use ecad_model::keys;
 use ecad_model::strict::{UnknownWord, WordPlace};
 use ecad_model::{Document, Properties, RepresentationId};
+use ecad_model::{keys, words};
 
 use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 
@@ -45,10 +47,15 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     }
     for (id, c) in &doc.cables {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
+        flags(&c.properties, WordPlace::Cable(*id), &mut out);
     }
+    // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
+    // strictly with the file); a project symbol's key is its own and is not looked up.
     for key in doc.settings.tag_prefixes.keys() {
-        if crate::symbols::by_key(key).is_none() {
-            out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.clone(), allowed: Vec::new() });
+        if let ecad_model::prefix::PrefixOf::Starter(w) = key
+            && crate::symbols::by_key(w).is_none()
+        {
+            out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.to_string(), allowed: Vec::new() });
         }
     }
     out.sort();
@@ -58,14 +65,31 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
 /// The unknown words of one property bag held at `level`.
 fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<UnknownWord>) {
     reserved(props, place, out);
+    flags(props, place, out);
     for (key, value) in props {
         let Some((entry, level)) = entry_of(key, level) else { continue };
-        let Kind::Choice(words) = entry.kind else { continue };
+        let words = match entry.kind {
+            Kind::Choice(words) => words,
+            // Stored strictly as `yes` or `no` (F4).
+            Kind::Flag => words::FLAG_WORDS,
+            Kind::Length { .. } | Kind::Number { .. } | Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_) => continue,
+        };
         // A project value an entry keeps in the settings is typed there, not stored as a word.
         let in_settings = level == Level::Project && matches!(entry.project, ProjectSource::Settings(_));
         let stored_here = entry.allows(level) && !in_settings;
         if stored_here && entry.parse(value).is_none() {
             out.push(UnknownWord::Value { place, setting: key.clone(), word: value.clone(), allowed: words.to_vec() });
+        }
+    }
+}
+
+/// The yes/no keys of [`keys::KEYS`] holding anything but the written words `yes` and `no`.
+fn flags(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
+    let written = [words::flag_word(true), words::flag_word(false)];
+    for (key, value) in props {
+        let flag = keys::spec(key).is_some_and(|s| matches!(s.value, keys::ValueSpec::Flag));
+        if flag && !written.contains(&value.as_str()) {
+            out.push(UnknownWord::Value { place, setting: key.clone(), word: value.clone(), allowed: written.to_vec() });
         }
     }
 }
@@ -145,12 +169,36 @@ mod tests {
     }
 
     #[test]
+    fn stored_flags_hold_only_yes_or_no() {
+        let mut d = doc();
+        let c = ComponentId(3);
+        d.components.insert(c, Component::default());
+        d.properties.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
+        if let Some(comp) = d.components.get_mut(&c) {
+            comp.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
+        }
+        assert!(check(&d).is_empty(), "the written words pass");
+        for typed in ["on", "true", "1", "off", "Yes", " no"] {
+            if let Some(comp) = d.components.get_mut(&c) {
+                comp.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
+            }
+            let found = check(&d);
+            assert_eq!(found.len(), 1, "{typed:?} in a file is refused");
+            let text = found[0].to_string();
+            assert!(text.contains("tag_fixed") && text.contains(&format!("`{typed}`")), "{text}");
+        }
+    }
+
+    #[test]
     fn tag_prefixes_name_built_in_symbols() {
         let mut d = doc();
-        d.settings.tag_prefixes.insert("no_such_symbol".into(), "Q".into());
+        let q = ecad_model::prefix::TagPrefix::typed("Q").unwrap();
+        d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
+        // A project symbol's own prefix is not a word to check (it opens writable).
+        d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Project("valve-x".into()), q);
         let found = check(&d);
         assert_eq!(found.len(), 1);
-        assert!(found[0].to_string().contains("tag_prefixes"));
+        assert!(found[0].to_string().contains("tag_prefixes") && found[0].to_string().contains("starter:nosuch"));
     }
 
     #[test]

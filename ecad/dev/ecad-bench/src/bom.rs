@@ -89,7 +89,7 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[ComponentId]
     out.sheets = project.read(s, |p, _| p.outputs.as_ref().map_or(0, Outputs::bom_sheets))?;
     let mut v = Vec::new();
     for i in 0..runs {
-        let value = if i % 2 == 0 { "on" } else { "off" };
+        let value = ecad_model::words::flag_word(i % 2 == 0);
         v.push(timed(s, "setdefault", json!({"key": "bom.column.article", "level": "project", "value": value}))?);
     }
     out.bomcols_ms = median(&mut v);

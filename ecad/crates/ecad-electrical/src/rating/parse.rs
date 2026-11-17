@@ -111,7 +111,7 @@ pub fn bundling(text: &str) -> Option<Bundling> {
 /// A circuit count 1–20 (`rating.grouped`).
 pub fn count(text: &str) -> Option<u32> {
     let t = bounded(text, MAX_CHARS)?;
-    if t.is_empty() || !t.bytes().all(|b| b.is_ascii_digit()) {
+    if !ecad_model::words::is_digits(t) {
         return None;
     }
     t.parse::<u32>().ok().filter(|n| (1..=20).contains(n))

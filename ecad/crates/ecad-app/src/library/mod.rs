@@ -140,8 +140,8 @@ impl App {
 
     /// Edit symbol on a built-in starter from the browser: its embedded definition when the
     /// project uses it, else a new symbol drawn from it (design 048 §8.3).
-    pub fn edit_starter(&mut self, key: &str) -> Result<(), String> {
-        let s = symbols::by_key(key).ok_or("No such symbol.")?;
+    pub fn edit_starter(&mut self, key: symbols::StarterKey) -> Result<(), String> {
+        let s = symbols::starter(key);
         let p = self.project.clone().ok_or("No project is open.")?;
         let embedded = p.read(&mut self.cad.session, |p, _| symbols::embedded(p.ledger.document(), s))?;
         if let Some(id) = embedded {

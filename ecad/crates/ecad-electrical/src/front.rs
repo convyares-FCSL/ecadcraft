@@ -223,7 +223,7 @@ impl Block {
 
     /// Whether it is on in `doc`.
     pub fn on(self, doc: &Document) -> bool {
-        crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word() != "off"
+        ecad_model::words::flag(crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word()) != Some(false)
     }
 }
 
@@ -319,7 +319,11 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
         if !used.contains(&row.id) {
             continue;
         }
-        let f = |k: &str| crate::styles::field_of(doc, "wire", &row.id, k, None).and_then(|r| crate::styles::wire::filled(&r)).unwrap_or_default();
+        let f = |k: &str| {
+            crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None)
+                .and_then(|r| crate::styles::wire::filled(&r))
+                .unwrap_or_default()
+        };
         let (colour, cross_section) = (f("colour"), f("cross_section"));
         match out.iter_mut().find(|l| l.colour.eq_ignore_ascii_case(&colour) && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
@@ -466,7 +470,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
         // A text style's size changes the cover's texts; a wire category's name, colour or
         // cross-section its legend line.
-        Op::SetStyle { catalogue, .. } => catalogue == "text" || catalogue == "wire",
+        Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Text || *catalogue == ecad_model::StyleCatalogue::Wire,
         // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => !doc.items_using(*id).is_empty(),
         Op::SetComponentDefinition { .. } => true,
@@ -532,7 +536,7 @@ impl Uses {
     /// cover's `touches` and a full rebuild handle those).
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
         let wide = ops.iter().any(|op| match op {
-            Op::SetStyle { catalogue, .. } => catalogue == "wire",
+            Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Wire,
             Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
             Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => key == crate::defaults::styles::WIRE_CATEGORY.key,
             Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {

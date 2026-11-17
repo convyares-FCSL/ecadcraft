@@ -19,14 +19,62 @@ use ecad_model::ProjectSettings;
 
 use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
+ecad_model::word_enum! {
+    /// The number of a card's first channel.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ChannelFirst {
+        #[strum(serialize = "0")]
+        Zero,
+        #[strum(serialize = "1")]
+        One,
+    }
+}
+ecad_model::word_enum! {
+    /// How a card's connection points are named.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PlcPins {
+        Role,
+        Channel,
+    }
+}
+ecad_model::word_enum! {
+    /// How PLC addresses are written.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum AddressStyle {
+        #[strum(serialize = "byte.bit")]
+        ByteBit,
+        Iec,
+        Percent,
+        Slot,
+        None,
+    }
+}
+ecad_model::word_enum! {
+    /// How a card is drawn on its page.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CardRotation {
+        #[strum(serialize = "90")]
+        Quarter,
+        #[strum(serialize = "0")]
+        Upright,
+    }
+}
+ecad_model::word_enum! {
+    /// A digital output's safe state.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SafeState {
+        Off,
+        On,
+        Hold,
+    }
+}
+
 const GROUP: &str = "PLC";
 const BRIEF: &str = "045";
 /// A standard (reserved), the project and the object (rack or card) may override.
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 /// A standard (reserved) and the project may override.
 const SP: &[Level] = &[Level::Standard, Level::Project];
-
-const ON_OFF: &[&str] = &["on", "off"];
 
 pub static SLOTS: Entry = Entry {
     key: "plc.slots",
@@ -44,7 +92,7 @@ pub static SLOT_FIRST: Entry = Entry {
     label: "Number of a rack's first slot",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(&["0", "1"]),
+    kind: Kind::Choice(<ChannelFirst as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -120,7 +168,7 @@ pub static CAPTION_SHOW: Entry = Entry {
     label: "Show the card caption",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -144,7 +192,7 @@ macro_rules! prefixes {
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
-                        s.tag_prefixes.get($key).map(|p| Value::Text(p.as_str()))
+                        s.starter_prefix($key).map(|p| Value::Text(p.as_str()))
                     }
                     read
                 }),
@@ -181,7 +229,7 @@ pub static CHANNEL_FIRST: Entry = Entry {
     label: "Number of a card's first channel",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(&["0", "1"]),
+    kind: Kind::Choice(<ChannelFirst as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -192,7 +240,7 @@ pub static PINS: Entry = Entry {
     label: "Pin layout of a card",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(&["role", "channel"]),
+    kind: Kind::Choice(<PlcPins as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -203,7 +251,7 @@ pub static ADDRESS_STYLE: Entry = Entry {
     label: "Address style",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(&["byte.bit", "iec", "percent", "slot", "none"]),
+    kind: Kind::Choice(<AddressStyle as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -269,7 +317,7 @@ pub static CHANNEL_SHOW: Entry = Entry {
     label: "Show channel numbers",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -280,7 +328,7 @@ pub static ADDRESS_SHOW: Entry = Entry {
     label: "Show addresses on channels",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -291,7 +339,7 @@ pub static ROTATION: Entry = Entry {
     label: "Channel description rotation",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(&["90", "0"]),
+    kind: Kind::Choice(<CardRotation as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -302,7 +350,7 @@ pub static XREF_TABLE: Entry = Entry {
     label: "Channel table under a card body",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -334,7 +382,7 @@ pub static FRAME_SHOW: Entry = Entry {
     label: "Draw a frame around a card's cells",
     group: GROUP,
     brief: "051",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -357,7 +405,7 @@ pub static SAFE_DQ: Entry = Entry {
     label: "Safe state of a digital output",
     group: GROUP,
     brief: "056",
-    kind: Kind::Choice(&["off", "on", "hold"]),
+    kind: Kind::Choice(<SafeState as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,

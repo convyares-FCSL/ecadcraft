@@ -393,7 +393,7 @@ pub fn new_page_type(
     let page_type = crate::page_types::newpage_type(doc, ty, kind.generated)?;
     // A page with no kind is titled after its type (design 054 §4.2).
     let title = match (&page_type, kind.generated) {
-        (Some(t), None) => Some(crate::styles::name(doc, crate::styles::page::WORD, t)),
+        (Some(t), None) => Some(crate::styles::name(doc, ecad_model::StyleCatalogue::Page, t)),
         _ => None,
     };
     Ok((page_type, title))
@@ -624,7 +624,7 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
         return Ok(());
     }
     let n = key.chars().count();
-    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')) {
         return Err(CmdError::refused("A property name is 1 to 40 characters a-z, 0-9 or _."));
     }
     Ok(())
@@ -677,7 +677,7 @@ pub struct ProjectChange {
     pub revision_columns: Option<Option<String>>,
     pub revision_pending: Option<String>,
     pub tag_dash: Option<bool>,
-    pub tag_case: Option<String>,
+    pub tag_case: Option<Case>,
     /// What a new function or location proposes for the device symbols.
     pub mode: Mode,
 }
@@ -709,19 +709,23 @@ pub fn tag_settings(
                 CmdError::refused(format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS))
             })?),
         };
-        changes.push((symbol.key, prefix));
+        changes.push((ecad_model::Word::word(symbol.key), prefix));
     }
     if let Some(n) = padding {
         settings.tag_padding = Some(n);
     }
     for (k, v) in changes {
-        match v {
-            Some(px) if crate::symbols::by_key(k).is_some_and(|s| s.prefix() == px) => settings.tag_prefixes.remove(k),
-            Some(px) => settings.tag_prefixes.insert(k.to_string(), px),
-            None => settings.tag_prefixes.remove(k),
-        };
+        crate::devices::set_symbol_prefix(settings, ecad_model::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
     Ok(())
+}
+
+/// `projectprops`' `tag_case` word: `upper` or `typed`.
+///
+/// # Errors
+/// Any other word.
+pub fn tag_case(word: &str) -> Result<Case, CmdError> {
+    <Case as ecad_model::Word>::parse(word).ok_or(CmdError::refused("`tag_case` must be \"upper\" or \"typed\""))
 }
 
 /// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
@@ -735,23 +739,15 @@ pub fn tag_settings(
 /// # Errors
 /// A bad case word, or (never expected: the key ignores what changes) two different tags
 /// rewritten to the same text.
-pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> Result<(Vec<Op>, Option<String>), CmdError> {
-    let case = match case {
-        Some(w) => Some(match w.trim() {
-            "upper" => Case::Upper,
-            "typed" => Case::Typed,
-            _ => return Err(CmdError::refused("`tag_case` must be \"upper\" or \"typed\"")),
-        }),
-        None => None,
-    };
+pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let before = crate::defaults::print::tag_style(doc);
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
     if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(if d { "yes" } else { "no" }.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(ecad_model::words::flag_word(d).to_string())));
     }
     if let Some(c) = case {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(if c == Case::Typed { "typed" } else { "upper" }.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
     }
     let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
     let mut n = 0usize;
@@ -831,7 +827,12 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), tag::PROVISIONAL_SETTING, on.then(|| "yes".to_string())));
+        ops.extend(set(
+            ObjectRef::Project,
+            Some(&doc.properties),
+            tag::PROVISIONAL_SETTING,
+            on.then(|| ecad_model::words::flag_word(true).to_string()),
+        ));
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {
@@ -885,7 +886,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::PENDING_KEY, Some(w.to_string())));
     }
     // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
-    let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case.as_deref())?;
+    let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case)?;
     ops.extend(tag_ops);
     Ok(PropsPlan { ops, proposed, message })
 }

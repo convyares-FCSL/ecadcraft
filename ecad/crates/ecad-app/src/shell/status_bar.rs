@@ -629,7 +629,7 @@ const PREVIEW_H: f32 = 198.0;
 /// A page number as the well shows it: a plain number padded to two digits (`2` → `02`), any
 /// other number as it is.
 fn padded(number: &str) -> String {
-    if !number.is_empty() && number.len() < 2 && number.chars().all(|c| c.is_ascii_digit()) { format!("{number:0>2}") } else { number.to_string() }
+    if number.len() < 2 && ecad_model::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
 }
 
 /// `text` cut to `room` px with an ellipsis.
