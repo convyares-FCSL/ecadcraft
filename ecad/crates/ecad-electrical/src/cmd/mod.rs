@@ -16,5 +16,6 @@ pub mod style;
 pub mod symbol;
 pub mod terminal;
 pub mod text;
+pub mod title_block;
 pub mod wire;
 pub mod xref;

@@ -66,8 +66,6 @@ const UNTYPED: &[&str] = &[
     "folderprops",
     "renumberpages",
     "deletepage",
-    "titleblocks",
-    "titleblock",
     "titleblockimport",
 ];
 
@@ -1192,4 +1190,65 @@ fn the_typed_location_commands_still_work() {
     assert_eq!(mv["changed"], json!(false), "{mv}");
     let sp = h.run("setprop", json!({"component": k, "key": "location", "value": "+CP2"})).unwrap_or_else(|e| json!(e));
     assert_eq!(sp["location"], json!("+CP2"), "{sp}");
+}
+
+/// Input refusals of the title block commands: one wording.
+#[test]
+fn the_title_block_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("titleblocks", json!({"id": "x"}), "`id` is not a parameter of this command; it takes none"),
+        ("titleblock", json!({"id": 5}), "`id` must be text, or null"),
+        ("titleblock", json!({"id": "sheet", "fields": 1}), "`fields` must be an object, or null"),
+        ("titleblock", json!({"new": {"sheet": "A3", "colour": 1}}), "`colour` is not a parameter of this command; it takes "),
+        ("titleblock", json!({"new": "A3"}), "`new` must be an object, or null"),
+    ];
+    let mut h = H::new(7048);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// Rule refusals of the title block commands keep their words.
+#[test]
+fn the_title_block_commands_keep_their_rule_words() {
+    let mut h = H::new(7049);
+    let made = h.run("titleblock", json!({"new": {"from": "sheet", "sheet": "A3", "name": "Mine"}})).unwrap_or_else(|e| json!(e));
+    let id = made["id"].clone();
+    let rows: &[(&str, Value, &str)] = &[
+        ("titleblock", json!({}), "Name a frame: `id` or `name` (`titleblocks` lists them)."),
+        ("titleblock", json!({"id": "sheet", "name": "New"}), "Built-in. Duplicate it to make your own"),
+        ("titleblock", json!({"id": id, "sheet": "Q9"}), ""),
+        ("titleblock", json!({"id": id, "body": {"nonsense": 1}}), "The body does not read as a title block: "),
+        ("titleblock", json!({"new": {"sheet": "A3", "name": "mine"}}), "A frame style is already called \"mine\"; choose another name."),
+        ("titleblock", json!({"new": {"sheet": "A3", "layer": "x"}}), "Unknown layer \"x\": project or standard."),
+        ("titleblock", json!({"new": {"sheet": "A3", "layer": "standard"}}), "This project uses IEC (built in)."),
+        ("titleblock", json!({"new": {"sheet": "A3", "name": ""}}), "A style needs a name (1 to 64 characters, no control characters)."),
+    ];
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(!e.is_empty() && e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed title block commands still work, and answer as before.
+#[test]
+fn the_typed_title_block_commands_still_work() {
+    let mut h = H::new(7050);
+    let list = h.run("titleblocks", json!({})).unwrap_or_else(|e| json!(e));
+    assert!(list["title_blocks"].as_array().is_some_and(|r| !r.is_empty()), "{list}");
+    let made = h.run("titleblock", json!({"new": {"from": "blank", "sheet": "A3"}})).unwrap_or_else(|e| json!(e));
+    assert_eq!((made["changed"].clone(), made["name"].clone()), (json!(true), json!("A3 title block")), "{made}");
+    let id = made["id"].clone();
+    let read = h.run("titleblock", json!({"name": "A3 title block"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(read["id"], id, "{read}");
+    let renamed = h.run("titleblock", json!({"id": id, "name": "Shop"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((renamed["name"].clone(), renamed["changed"].clone()), (json!("Shop"), json!(true)), "{renamed}");
+    let by_name = h.run("titleblock", json!({"name": "Shop", "rename": "Shop 2"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(by_name["name"], json!("Shop 2"), "{by_name}");
+    let body = by_name["body"].clone();
+    let same = h.run("titleblock", json!({"id": id, "body": body})).unwrap_or_else(|e| json!(e));
+    assert_eq!(same["changed"], json!(false), "{same}");
+    let second = h.run("titleblock", json!({"new": {"from": "blank", "sheet": "A3"}})).unwrap_or_else(|e| json!(e));
+    assert_eq!(second["name"], json!("A3 title block"), "{second}");
 }

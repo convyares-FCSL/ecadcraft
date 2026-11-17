@@ -184,7 +184,7 @@ impl Command for StylesParams {
 /// A field's value in `fields`: text, a number, or null (back to the inherited value).
 #[derive(Deserialize, JsonSchema)]
 #[serde(untagged)]
-enum FieldParam {
+pub(crate) enum FieldParam {
     /// Text.
     Text(String),
     /// A number.
@@ -192,33 +192,13 @@ enum FieldParam {
 }
 
 /// The `fields` of a typed call, in the rules' form.
-fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
+pub(crate) fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
     let input = |v: Option<FieldParam>| match v {
         None => FieldInput::Clear,
         Some(FieldParam::Text(t)) => FieldInput::Value(t),
         Some(FieldParam::Number(n)) => FieldInput::Value(n.to_string()),
     };
     fields.into_iter().flatten().map(|(k, v)| (k, input(v))).collect()
-}
-
-/// The `fields` of a JSON call, each checked against the catalogue (the title block commands,
-/// until they are typed).
-pub(crate) fn fields_param(doc: &Document, cat: &Catalogue, params: &Value) -> Result<Vec<(String, Option<String>)>, String> {
-    let Some(v) = params.get("fields").filter(|v| !v.is_null()) else { return Ok(Vec::new()) };
-    let o = v.as_object().ok_or("`fields` is an object of field: value | null.")?;
-    let given = o
-        .iter()
-        .map(|(k, v)| {
-            let input = match v {
-                Value::Null => FieldInput::Clear,
-                Value::String(s) => FieldInput::Value(s.clone()),
-                Value::Number(n) => FieldInput::Value(n.to_string()),
-                _ => FieldInput::Wrong,
-            };
-            (k.clone(), input)
-        })
-        .collect();
-    Ok(rules::fields(doc, cat, given)?)
 }
 
 // ---------------------------------------------------------------------------------------------
