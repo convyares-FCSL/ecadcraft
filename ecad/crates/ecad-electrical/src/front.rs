@@ -458,7 +458,6 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
             matches!(key.as_str(), crate::frames::TITLE | crate::frames::CUSTOMER | "site" | NOTES_KEY | WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
                 || key.starts_with("front.cover.")
-                || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
                 || (codes_on && crate::designations::Aspect::of_property(key).is_some())
@@ -475,8 +474,10 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
+        // Design 072 §5.3: the revision rows, or a code the cover shows.
         Op::ModifyProject { before, after } => {
-            codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a))
+            before.revisions != after.revisions
+                || (codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
         }
         Op::ModifyPage { before, after, .. } => {
             let ch = before.change(after);

@@ -802,7 +802,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
 }
 
 /// The project's own data (design 072 §5.3): each list merges entry by entry (an entry changed on
-/// both sides differently is a conflict), the defaults field by field.
+/// both sides differently is a conflict), the defaults field by field, the revision rows whole.
 fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project) -> crate::Project {
     crate::Project {
         locations: merge_list(ctx, obj, "location", &a.locations, &t.locations, &s.locations),
@@ -813,6 +813,15 @@ fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate:
         function: field(ctx, obj, "function", "Project · function".into(), &a.function, &t.function, &s.function, &|x| {
             x.map_or_else(|| "(none)".to_string(), crate::id::FunctionId::short)
         }),
+        // Revision rows are merged only where the filter allows (never into the release line; an
+        // update brings them unchanged), as one unit.
+        revisions: if (ctx.inp.keep_project_key)(crate::project::REVISIONS_KEY) {
+            field(ctx, obj, "revisions", "Project · revisions".into(), &a.revisions, &t.revisions, &s.revisions, &|x| {
+                format!("{} revisions", x.len())
+            })
+        } else {
+            t.revisions.clone()
+        },
     }
 }
 

@@ -8,14 +8,20 @@
 //!   of **descriptions** (description 1, description 2, …).
 //! - Pages, the project and (lane B) devices refer to an entry by its id, so renaming a code is one
 //!   edit of the list. An id with no entry (an entry a merge removed) shows `?`.
+//! - The revision rows (design 019 §7.2) are [`Revision`]s in issue order, numbered from 1; every
+//!   row but the last is issued, and the last is the pending one while it is not. The revision
+//!   table's columns and marker stay registry values (they have a standard level).
 //! - The whole project changes through one op, [`crate::Op::ModifyProject`].
 //!
 //! This module excludes what a code means for a device (ecad-electrical's `locations` and
 //! `designations`) and the commands.
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use crate::Word;
 use crate::id::{FunctionId, LocationId};
 use crate::text::Text;
 
@@ -77,7 +83,14 @@ pub struct Project {
     /// The function of every page that sets none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub function: Option<FunctionId>,
+    /// The revision rows, in issue order (row `n` is at `n - 1`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revisions: Vec<Revision>,
 }
+
+/// The project-property key a `keep_project_key` filter (Restore, merge) is asked about for the
+/// revision rows: rows are history, kept as they are now unless the filter accepts this key.
+pub const REVISIONS_KEY: &str = "rev.";
 
 impl Project {
     /// Whether nothing is set.
@@ -98,8 +111,18 @@ impl Project {
     /// Why the project is not well formed, if it is not: an id twice in a list, a code twice
     /// (ignoring case), a code without its list's sign (`+`, `=`), or too many descriptions.
     pub fn problem(&self) -> Option<String> {
-        list_problem(&self.locations, '+', "location").or_else(|| list_problem(&self.functions, '=', "function"))
+        list_problem(&self.locations, '+', "location")
+            .or_else(|| list_problem(&self.functions, '=', "function"))
+            .or_else(|| revisions_problem(&self.revisions))
     }
+}
+
+fn revisions_problem(rows: &[Revision]) -> Option<String> {
+    if rows.len() > MAX_REVISIONS {
+        return Some(format!("more than {MAX_REVISIONS} revisions"));
+    }
+    let last = rows.len().saturating_sub(1);
+    rows.iter().take(last).position(|r| r.issued.is_none()).map(|i| format!("revision {} is not issued but a later one exists", i + 1))
 }
 
 fn list_problem<I: Copy + Ord + std::fmt::Display>(list: &[ListEntry<I>], sign: char, what: &str) -> Option<String> {
@@ -120,4 +143,125 @@ fn list_problem<I: Copy + Ord + std::fmt::Display>(list: &[ListEntry<I>], sign: 
         }
     }
     None
+}
+
+// ---------------------------------------------------------------- revisions (design 072 §5.3)
+
+/// Most characters of a rev (`A`, `P3`).
+pub const MAX_REV: usize = 8;
+/// Most characters of a revision field's value.
+pub const MAX_REV_VALUE: usize = 200;
+/// Most characters of a custom revision field's name.
+pub const MAX_REV_FIELD: usize = 20;
+/// Most characters of a release folder as recorded.
+pub const MAX_RELEASED: usize = 1000;
+/// Most revisions a project holds (a bound on hostile files).
+pub const MAX_REVISIONS: usize = 10_000;
+
+/// A rev: 1 to 8 letters or digits.
+pub type Rev = Text<MAX_REV>;
+/// One revision field's value.
+pub type RevValue = Text<MAX_REV_VALUE>;
+
+crate::word_enum! {
+    /// A built-in revision field, in table order (design 019 §7.2).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum RevField {
+        Rev,
+        Date,
+        Description,
+        Drawn,
+        Checked,
+        Approved,
+    }
+}
+
+/// The name of a custom revision field (`ecr`): 1 to 20 of `a-z 0-9 _`, not a built-in field and
+/// not `issued` or `released`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct CustomField(Text<MAX_REV_FIELD>);
+
+impl CustomField {
+    /// `name`, if it may name a custom field.
+    pub fn new(name: &str) -> Option<CustomField> {
+        let ok = (1..=MAX_REV_FIELD).contains(&name.len())
+            && name.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
+            && RevField::parse(name).is_none()
+            && name != "issued"
+            && name != "released";
+        ok.then(|| Text::new(name).ok().map(CustomField)).flatten()
+    }
+
+    /// The name.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl<'de> Deserialize<'de> for CustomField {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        CustomField::new(&text).ok_or_else(|| serde::de::Error::custom(format!("\"{text}\" is not a custom revision field")))
+    }
+}
+
+/// One revision row (design 019 §7.2, 033 §7.2). Rows are numbered by their place in
+/// [`Project::revisions`], from 1; the last row is the pending one while it is not issued.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Revision {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rev: Option<Rev>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<RevValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<RevValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drawn: Option<RevValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<RevValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved: Option<RevValue>,
+    /// Custom fields (brief 033), by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub custom: BTreeMap<CustomField, RevValue>,
+    /// The version name it was issued as (`Rev A`); `None` while pending.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issued: Option<RevValue>,
+    /// The release folder, when a release issued it (brief 027), relative to the project file's
+    /// folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub released: Option<Text<MAX_RELEASED>>,
+}
+
+impl Revision {
+    /// The value of built-in field `f`.
+    pub fn field(&self, f: RevField) -> Option<&str> {
+        match f {
+            RevField::Rev => self.rev.as_ref().map(Text::as_str),
+            RevField::Date => self.date.as_ref().map(Text::as_str),
+            RevField::Description => self.description.as_ref().map(Text::as_str),
+            RevField::Drawn => self.drawn.as_ref().map(Text::as_str),
+            RevField::Checked => self.checked.as_ref().map(Text::as_str),
+            RevField::Approved => self.approved.as_ref().map(Text::as_str),
+        }
+    }
+
+    /// Set built-in field `f` other than `rev` (`None` clears it).
+    pub fn set_field(&mut self, f: RevField, v: Option<RevValue>) {
+        match f {
+            RevField::Rev => self.rev = v.and_then(|t| Rev::new(t.as_str()).ok()),
+            RevField::Date => self.date = v,
+            RevField::Description => self.description = v,
+            RevField::Drawn => self.drawn = v,
+            RevField::Checked => self.checked = v,
+            RevField::Approved => self.approved = v,
+        }
+    }
+
+    /// Whether nothing is set.
+    pub fn is_empty(&self) -> bool {
+        *self == Revision::default()
+    }
 }
