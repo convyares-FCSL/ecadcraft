@@ -222,7 +222,7 @@ impl Block {
 
     /// Whether it is on in `doc`.
     pub fn on(self, doc: &Document) -> bool {
-        crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word() != "off"
+        ecad_model::words::flag(crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word()) != Some(false)
     }
 }
 

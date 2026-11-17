@@ -94,7 +94,7 @@ const BUILTIN_HEADERS: [&str; 6] = ["Rev", "Date", "Description", "Drawn", "Chec
 /// not a built-in, not `issued` or `released`.
 pub fn is_custom_field(field: &str) -> bool {
     (1..=MAX_FIELD_CHARS).contains(&field.len())
-        && field.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && field.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
         && !FIELDS.contains(&field)
         && field != ISSUED
         && field != RELEASED
@@ -218,24 +218,24 @@ pub fn widths(cols: &[Column], total: f64) -> (Vec<f64>, bool) {
 
 // ---------------------------------------------------------------- pending marker (design 033 §6)
 
-/// How the title block marks a pending revision ([`PENDING_KEY`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PendingStyle {
-    /// `D*` (the default).
-    Star,
-    /// `E (draft)`.
-    Draft,
-    Off,
+ecad_model::word_enum! {
+    /// How the title block marks a pending revision ([`PENDING_KEY`]).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum PendingStyle {
+        /// `D*` (the default).
+        #[default]
+        Star,
+        /// `E (draft)`.
+        Draft,
+        Off,
+    }
 }
 
 impl PendingStyle {
     /// The project's style (registry `revisions.pending`).
     pub fn of(doc: &Document) -> PendingStyle {
-        match crate::defaults::resolve(doc, &crate::defaults::print::REVISION_PENDING, crate::defaults::Scope::project()).word() {
-            "draft" => PendingStyle::Draft,
-            "off" => PendingStyle::Off,
-            _ => PendingStyle::Star,
-        }
+        let word = crate::defaults::resolve(doc, &crate::defaults::print::REVISION_PENDING, crate::defaults::Scope::project()).word();
+        <PendingStyle as ecad_model::Word>::parse(word).unwrap_or_default()
     }
 }
 

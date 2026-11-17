@@ -86,7 +86,7 @@ impl Insulation {
         if t.eq_ignore_ascii_case("xlpe") {
             return Some(Insulation::Xlpe);
         }
-        if !t.is_empty() && t.len() <= 3 && t.bytes().all(|b| b.is_ascii_digit()) {
+        if t.len() <= 3 && ecad_model::words::is_digits(t) {
             return t.parse::<u16>().ok().filter(|n| (50..=250).contains(n)).and_then(|n| Insulation::of_max(f64::from(n)));
         }
         None
@@ -153,7 +153,7 @@ fn num(field: Option<&str>, what: &str, min: f64, max: f64) -> Result<f64, Strin
     if f.chars().nth(MAX_FIELD).is_some() {
         return Err(format!("{what} too long"));
     }
-    let ok = !f.is_empty() && f.bytes().all(|b| b.is_ascii_digit() || b == b'.') && f.bytes().filter(|b| *b == b'.').count() <= 1;
+    let ok = !f.is_empty() && f.bytes().all(|b| matches!(b, b'0'..=b'9' | b'.')) && f.bytes().filter(|b| *b == b'.').count() <= 1;
     let x = if ok { f.parse::<f64>().ok() } else { None };
     let shown: String = f.chars().take(12).collect();
     match x {

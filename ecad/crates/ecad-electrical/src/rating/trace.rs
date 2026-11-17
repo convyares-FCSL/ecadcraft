@@ -52,8 +52,7 @@ pub struct Found {
 
 /// The overcurrent device starters (design 057 §4.1). `rcd2` and `rcd4` are not: they are crossed.
 pub fn is_protective_key(key: &str) -> bool {
-    matches!(key, "mcb1" | "mcb2" | "rcbo2" | "fuse" | "fuseterm")
-        || key.strip_prefix("fusebank").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    matches!(key, "mcb1" | "mcb2" | "rcbo2" | "fuse" | "fuseterm") || key.strip_prefix("fusebank").is_some_and(ecad_model::words::is_digits)
 }
 
 /// The load-side pins of a protective starter (design 057 §4.2), from its pin labels
@@ -96,7 +95,7 @@ pub fn pair(label: &str) -> Option<String> {
     }
     let up = t.to_ascii_uppercase();
     for (a, b) in [("L", "T"), ("T", "L")] {
-        if let Some(d) = up.strip_prefix(a).filter(|d| d.len() == 1 && d.bytes().all(|x| x.is_ascii_digit())) {
+        if let Some(d) = up.strip_prefix(a).filter(|d| d.len() == 1 && ecad_model::words::is_digits(d)) {
             return Some(format!("{b}{d}"));
         }
     }
