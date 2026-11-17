@@ -17,7 +17,7 @@ static FIELDS: [Field; 5] = [
     Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), slot: Slot::new(), over: None },
     Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
     Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
-    Field { key: "label_style", label: "Label style", kind: Kind::Style("text"), slot: Slot::new(), over: None },
+    Field { key: "label_style", label: "Label style", kind: Kind::Style(ecad_model::StyleCatalogue::Text), slot: Slot::new(), over: None },
     Field { key: "fill", label: "Fill (reserved)", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
 ];
 
@@ -29,7 +29,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The location and box style catalogue.
 pub static CATALOGUE: Catalogue = Catalogue {
-    word: "location",
+    catalogue: ecad_model::StyleCatalogue::Location,
     plural: "Location boxes",
     one: "Location box style",
     fields: &FIELDS,
@@ -69,7 +69,7 @@ pub fn box_look(doc: &Document, c: ComponentId) -> BoxLook {
 
 /// The look of location style `id`.
 pub fn look_of(doc: &Document, id: &StyleRef) -> BoxLook {
-    let f = |k: &str| super::field_of(doc, "location", id, k, None);
+    let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Location, id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
     let lineweight = (mm * 100.0).round().clamp(0.0, 211.0) as i16;

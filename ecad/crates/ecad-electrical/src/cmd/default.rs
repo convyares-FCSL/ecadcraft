@@ -218,7 +218,7 @@ pub enum Chosen {
     /// The stored text (`None`: reset).
     Stored(Option<String>),
     /// A style of catalogue `.0`, by ID or name, resolved in the project ([`ops_for`]).
-    Style(&'static str, String),
+    Style(ecad_model::StyleCatalogue, String),
 }
 
 /// What `entry` is given: `value`, or `reset`.

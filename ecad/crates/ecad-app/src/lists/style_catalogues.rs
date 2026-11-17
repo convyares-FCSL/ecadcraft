@@ -192,7 +192,7 @@ impl TableSource for CatalogueSource {
     }
 
     fn row_label(&self, key: u16) -> String {
-        self.rows.get(usize::from(key)).map(|r| format!("{} {} ({})", self.catalogue.word, r.name, r.layer.badge())).unwrap_or_default()
+        self.rows.get(usize::from(key)).map(|r| format!("{} {} ({})", self.catalogue.catalogue, r.name, r.layer.badge())).unwrap_or_default()
     }
 
     fn chips(&self) -> &[&'static str] {
@@ -236,7 +236,7 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         .iter()
         .map(|f| {
             let r = styles::field(doc, cat, id, f, None);
-            let at = |l| styles::record(doc, l, cat.word, id).and_then(|rec| rec.fields.get(f.key)).cloned();
+            let at = |l| styles::record(doc, l, cat.catalogue, id).and_then(|rec| rec.fields.get(f.key)).cloned();
             let builtin = cat.builtin(id).and_then(|b| b.value(f.key)).unwrap_or_else(|| f.builtin());
             FieldDetail {
                 key: f.key,
@@ -249,12 +249,12 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
             }
         })
         .collect();
-    let c = styles::users(doc, cat.word, id);
-    let explicit = ecad_cadcraft::style_cmds::users_words(&styles::explicit_users(doc, cat.word, id));
+    let c = styles::users(doc, cat.catalogue, id);
+    let explicit = ecad_cadcraft::style_cmds::users_words(&styles::explicit_users(doc, cat.catalogue, id));
     let layer = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
     Detail {
         id: id.clone(),
-        name: styles::name(doc, cat.word, id),
+        name: styles::name(doc, cat.catalogue, id),
         layer,
         fields,
         has_standard: doc.standard.is_some(),
@@ -264,11 +264,11 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
 
 /// `31 objects use 24 V DC. Colour BU → RD.`: what a change does, said first (design 050 §7.2).
 pub fn consequence(cat: &Catalogue, d: &Detail, field: &str, from: &str, to: &str) -> String {
-    let noun = match cat.word {
-        "text" => "texts' owners",
-        "location" => "location boxes",
-        "frame" => "pages",
-        "wire" => "wires",
+    let noun = match cat.catalogue {
+        ecad_model::StyleCatalogue::Text => "texts' owners",
+        ecad_model::StyleCatalogue::Location => "location boxes",
+        ecad_model::StyleCatalogue::Frame => "pages",
+        ecad_model::StyleCatalogue::Wire => "wires",
         _ => "objects",
     };
     let label = cat.field(field).map_or(field, |f| f.label);
@@ -340,7 +340,7 @@ pub fn show_detail(
     } else {
         ui.label(RichText::new("Standard level: make a standard to change it.").small().weak());
     }
-    egui::Grid::new(("ecad.standards.style.fields", cat.word)).num_columns(4).spacing([10.0, 4.0]).show(ui, |ui| {
+    egui::Grid::new(("ecad.standards.style.fields", cat.catalogue)).num_columns(4).spacing([10.0, 4.0]).show(ui, |ui| {
         for f in &d.fields {
             ui.label(RichText::new(f.label).small());
             let chain = format!(
@@ -367,7 +367,7 @@ pub fn show_detail(
                     let value = if v.parse::<f64>().is_ok() { v.to_string() } else { quote(v) };
                     out.push(DetailAction::Run(format!(
                         "setstyle {{\"catalogue\":\"{}\",\"id\":{id},\"layer\":\"{level}\",\"fields\":{{\"{}\":{value}}}}}",
-                        cat.word, f.key
+                        cat.catalogue, f.key
                     )));
                     st.field = None;
                 }
@@ -378,7 +378,7 @@ pub fn show_detail(
                     if r.clicked() {
                         out.push(DetailAction::Run(format!(
                             "setstyle {{\"catalogue\":\"{}\",\"id\":{id},\"layer\":\"{level}\",\"fields\":{{\"{}\":null}}}}",
-                            cat.word, f.key
+                            cat.catalogue, f.key
                         )));
                     }
                 }
@@ -405,7 +405,7 @@ pub fn show_detail(
             && d.layer == Layer::Project
             && ui.add_enabled(writable, egui::Button::new("Promote to standard").small()).widget_info_named(PROMOTE).clicked()
         {
-            out.push(DetailAction::Run(format!("promote {{\"catalogue\":\"{}\",\"id\":{id}}}", cat.word)));
+            out.push(DetailAction::Run(format!("promote {{\"catalogue\":\"{}\",\"id\":{id}}}", cat.catalogue)));
         }
     });
     if let Some((new, text)) = &mut st.name {
@@ -422,9 +422,9 @@ pub fn show_detail(
         if go {
             let n = quote(text.trim());
             out.push(DetailAction::Run(if is_new {
-                format!("setstyle {{\"catalogue\":\"{}\",\"new\":true,\"name\":{n},\"copy_of\":{id},\"layer\":\"{level}\"}}", cat.word)
+                format!("setstyle {{\"catalogue\":\"{}\",\"new\":true,\"name\":{n},\"copy_of\":{id},\"layer\":\"{level}\"}}", cat.catalogue)
             } else {
-                format!("setstyle {{\"catalogue\":\"{}\",\"id\":{id},\"rename\":{n}}}", cat.word)
+                format!("setstyle {{\"catalogue\":\"{}\",\"id\":{id},\"rename\":{n}}}", cat.catalogue)
             }));
         }
         if go || cancel {
@@ -453,7 +453,7 @@ pub fn show_detail(
         });
         if go {
             let with = if users.is_empty() || pick.is_empty() { String::new() } else { format!(",\"replace_with\":{}", quote(pick)) };
-            out.push(DetailAction::Run(format!("deletesetstyle {{\"catalogue\":\"{}\",\"id\":{id}{with}}}", cat.word)));
+            out.push(DetailAction::Run(format!("deletesetstyle {{\"catalogue\":\"{}\",\"id\":{id}{with}}}", cat.catalogue)));
         }
         if go || cancel {
             st.replace = None;

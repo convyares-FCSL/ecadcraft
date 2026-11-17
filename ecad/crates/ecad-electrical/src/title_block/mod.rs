@@ -90,7 +90,7 @@ pub fn frame_reach(doc: &Document, op: &ecad_model::Op) -> Reach {
         }
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == sheet::FRAME_STYLE_KEY => Reach::Wide,
         Op::SetStandard { before, after } if before != after => Reach::Wide,
-        Op::SetStyle { catalogue, id, before, after, .. } if catalogue == sheet::FRAME_CATALOGUE => {
+        Op::SetStyle { catalogue, id, before, after, .. } if *catalogue == sheet::FRAME_CATALOGUE => {
             match (geometry(before.as_ref()), geometry(after.as_ref())) {
                 (Some(a), Some(b)) if a == b => Reach::Unchanged,
                 // A frame made or deleted: a choice naming it starts or stops resolving.

@@ -804,7 +804,7 @@ fn wiring_rows(doc: &Document, w: ConductorId) -> (Vec<Row>, Vec<Row>) {
     let look = crate::styles::wire::wire_look(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
-    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
     for (key, label, default) in [(wiring::CROSS_SECTION, "Cross-section", &cs_default), (wiring::COLOUR, "Colour", &colour_default)] {
         let shown = |v: &str| if key == wiring::COLOUR { doc.settings.wiring.colour(v) } else { v.to_string() };

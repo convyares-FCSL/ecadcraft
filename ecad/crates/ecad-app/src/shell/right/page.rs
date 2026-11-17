@@ -109,7 +109,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             kind,
             title: doc.pages.get(&page).map(|x| x.title.clone()).unwrap_or_default(),
             number: book.number(doc, page),
-            type_name: ecad_cadcraft::styles::name(doc, ecad_cadcraft::styles::page::WORD, &ty),
+            type_name: ecad_cadcraft::styles::name(doc, ecad_model::StyleCatalogue::Page, &ty),
             type_id: ty.text(),
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),

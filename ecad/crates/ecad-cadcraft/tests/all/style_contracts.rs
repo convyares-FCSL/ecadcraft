@@ -131,7 +131,7 @@ fn an_own_style_for_one_device_then_deleted_with_a_replacement() {
     assert_eq!(height(&t1, &mut h), Some(2.5));
     let doc = h.doc();
     assert_eq!(doc.components[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"));
-    assert!(!styles::exists(&doc, "text", &StyleRef::parse(&large).unwrap()));
+    assert!(!styles::exists(&doc, ecad_model::StyleCatalogue::Text, &StyleRef::parse(&large).unwrap()));
     // Built-in styles stay.
     assert!(h.run("deletestyle", json!({"catalogue": "text", "id": "tag"})).unwrap_err().contains("cannot be deleted"));
 }
@@ -147,8 +147,8 @@ fn promote_moves_a_project_style_to_the_standard_with_the_same_id() {
     h.run("promote", json!({"catalogue": "text", "id": large})).unwrap();
     let doc = h.doc();
     let id = StyleRef::parse(&large).unwrap();
-    assert!(styles::record(&doc, StyleLayer::Standard, "text", &id).is_some());
-    assert!(styles::record(&doc, StyleLayer::Project, "text", &id).is_none());
+    assert!(styles::record(&doc, StyleLayer::Standard, ecad_model::StyleCatalogue::Text, &id).is_some());
+    assert!(styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, &id).is_none());
     let tag = doc.components[&k1].properties["tag"].clone();
     assert_eq!(tag_texts(&mut h, page, &tag).first().map(|x| x.0), Some(5.0), "K1 still uses it");
     // A project value moves too; the standard's own differing value is refused.
@@ -254,7 +254,7 @@ fn a_style_change_marks_only_the_pages_of_its_users() {
     let doc = h.doc();
     let set = |id: StyleRef| Op::SetStyle {
         layer: StyleLayer::Project,
-        catalogue: "text".into(),
+        catalogue: ecad_model::StyleCatalogue::Text,
         id,
         before: None,
         after: Some(StyleRecord { name: String::new(), fields: [("height".to_string(), "4".to_string())].into(), body: None }),
@@ -282,7 +282,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
         for i in 0..2_000u128 {
             ops.push(Op::SetStyle {
                 layer: StyleLayer::Project,
-                catalogue: "text".into(),
+                catalogue: ecad_model::StyleCatalogue::Text,
                 id: StyleRef::Own(i + 1),
                 before: None,
                 after: Some(StyleRecord { name: format!("S{i}"), fields: Default::default(), body: None }),
@@ -291,19 +291,10 @@ fn a_hostile_style_document_opens_draws_and_reports() {
         let fields = (0..100).map(|i| (format!("f{i}"), "x".repeat(300))).collect();
         ops.push(Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "location".into(),
+            catalogue: ecad_model::StyleCatalogue::Location,
             id: StyleRef::Own(9),
             before: None,
             after: Some(StyleRecord { name: long.clone(), fields, body: None }),
-        });
-        ops.push(Op::SetStyle {
-            layer: StyleLayer::Project,
-            // A word reserved for no catalogue, here or later (a hyphen is refused by the model's
-            // invariant, so the unknown word must be a valid one).
-            catalogue: "zz_not_a_catalogue".into(),
-            id: StyleRef::Own(10),
-            before: None,
-            after: Some(StyleRecord { name: "Future".into(), fields: Default::default(), body: None }),
         });
         ops.push(Op::SetProperty {
             object: ObjectRef::Component(k1),
@@ -315,18 +306,17 @@ fn a_hostile_style_document_opens_draws_and_reports() {
         p.ledger.commit(ecad_model::Author::User, "hostile", ops).unwrap();
     });
     let doc = h.doc();
-    let cat = styles::catalogue("text").unwrap();
+    let cat = styles::catalogue(ecad_model::StyleCatalogue::Text);
     assert!(styles::rows(&doc, cat).len() <= 23 + ecad_model::style::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_cadcraft::checks::all(&doc, 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_cadcraft::checks::Kind::StyleLimits));
     assert!(rows.iter().filter(|c| c.kind == ecad_cadcraft::checks::Kind::StyleUnknown).count() >= 2);
-    let name = styles::name(&doc, "location", &StyleRef::Own(9));
+    let name = styles::name(&doc, ecad_model::StyleCatalogue::Location, &StyleRef::Own(9));
     assert!(name.chars().count() <= 64);
     // It draws (the page projected from the document, as a print does) and the reads answer.
     let fan = Default::default();
     let (d, _) = ecad_cadcraft::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
     assert!(!d.model.is_empty());
-    assert!(h.run("styles", json!({})).unwrap()["unknown_catalogues"].as_array().unwrap().iter().any(|c| c["catalogue"] == "zz_not_a_catalogue"));
     assert_eq!(text_style(&doc, TextKind::Tag).height, 2.5);
 }
 

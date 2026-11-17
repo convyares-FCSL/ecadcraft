@@ -269,7 +269,7 @@ impl crate::App {
             Fix::UseSize(c, size) => {
                 let _ = self.run_value("setprop", json!({"conductor": c.hex(), "key": "cross_section", "value": dataset::fmt_num(size)}));
             }
-            Fix::PickCableType(..) => self.open_standards_at("cable"),
+            Fix::PickCableType(..) => self.open_standards_at(ecad_model::StyleCatalogue::Cable),
             Fix::SetBasis(s, b) => {
                 let (what, id) = words(s);
                 let _ = self.run_value("rating", json!({what: id, "basis": b.word()}));
@@ -320,10 +320,12 @@ impl crate::App {
 /// source and rows (editable), Import CSV… and Export CSV; with no table focused, New. Standards ▸
 /// Cable types with nothing focused: New. Returns whether it drew the detail (else the shared
 /// style detail is drawn).
-pub(crate) fn catalogue_ui(t: &mut crate::App, ui: &mut egui::Ui, writable: bool, word: &str, focus: Option<ecad_model::StyleRef>) -> bool {
+pub(crate) fn catalogue_ui(
+    t: &mut crate::App, ui: &mut egui::Ui, writable: bool, word: ecad_model::StyleCatalogue, focus: Option<ecad_model::StyleRef>,
+) -> bool {
     use ecad_cadcraft::styles::ratingtable;
     let s = ecad_ui::SHELL;
-    if word == ratingtable::WORD {
+    if word == ecad_model::StyleCatalogue::RatingTable {
         ui.add(
             egui::Label::new(
                 egui::RichText::new("Enter only values you are licensed to use. ECAD ships no standard's tables.")
@@ -339,7 +341,7 @@ pub(crate) fn catalogue_ui(t: &mut crate::App, ui: &mut egui::Ui, writable: bool
     let mut msg: Option<String> = ui.data(|d| d.get_temp(msg_id));
     let Some(id) = focus else {
         let mut name: String = ui.data(|d| d.get_temp(new_id)).unwrap_or_default();
-        let one = if word == ratingtable::WORD { "rating table" } else { "cable type" };
+        let one = if word == ecad_model::StyleCatalogue::RatingTable { "rating table" } else { "cable type" };
         ui.label(egui::RichText::new(format!("Choose a {one}, or make one.")).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
         ui.horizontal(|ui| {
             ecad_ui::control::TextEntry::new(&mut name, "Name").placeholder("Name").read_only(!writable).width(180.0).show(ui);
@@ -350,7 +352,7 @@ pub(crate) fn catalogue_ui(t: &mut crate::App, ui: &mut egui::Ui, writable: bool
                 prim::Button::new(&new).small().disabled("Give it a name.")
             };
             if ui.add(button).clicked() {
-                let r = if word == ratingtable::WORD {
+                let r = if word == ecad_model::StyleCatalogue::RatingTable {
                     t.run_value("ratingtable", json!({"name": name.trim(), "csv": "# rows: kind,method/insulation,…\n"}))
                 } else {
                     t.run_value("setstyle", json!({"catalogue": word, "new": true, "name": name.trim()}))
@@ -363,7 +365,7 @@ pub(crate) fn catalogue_ui(t: &mut crate::App, ui: &mut egui::Ui, writable: bool
         show_msg(ui, msg_id, msg);
         return true;
     };
-    if word != ratingtable::WORD {
+    if word != ecad_model::StyleCatalogue::RatingTable {
         return false;
     }
     // The rows are user data of up to 256 KiB (FP8): read and parsed once per change, not per frame.

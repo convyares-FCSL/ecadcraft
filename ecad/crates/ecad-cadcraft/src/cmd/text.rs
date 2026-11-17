@@ -154,15 +154,15 @@ pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
         .iter()
         .map(|k| {
             let id = crate::text_style::style_of(doc, *k, Scope::project());
-            let f = |key: &str| crate::styles::field_of(doc, "text", &id, key, None);
+            let f = |key: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, key, None);
             let h = f("height").unwrap_or(Resolved { value: defaults::Value::Length(2.5), from: Source::Builtin });
             let w = f("weight").unwrap_or(Resolved { value: defaults::Value::Choice("regular"), from: Source::Builtin });
             let colour = f("colour").map(|r| r.text());
             let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
             let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
-            let cat = crate::styles::catalogue("text");
-            let b = |key: &str| cat.and_then(|c| c.builtin(&k.builtin_style())).and_then(|s| s.value(key));
+            let cat = crate::styles::catalogue(ecad_model::StyleCatalogue::Text);
+            let b = |key: &str| cat.builtin(&k.builtin_style()).and_then(|s| s.value(key));
             json!({
                 "kind": k.word(),
                 "style": id.text(),

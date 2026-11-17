@@ -15,7 +15,16 @@ const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 const SPG: &[Level] = &[Level::Standard, Level::Project, Level::Page];
 
 const fn text(key: &'static str, label: &'static str) -> Entry {
-    Entry { key, label, group: GROUP, brief: BRIEF, kind: Kind::Style("text"), slot: Slot::new(), levels: SPO, project: ProjectSource::Property }
+    Entry {
+        key,
+        label,
+        group: GROUP,
+        brief: BRIEF,
+        kind: Kind::Style(ecad_model::StyleCatalogue::Text),
+        slot: Slot::new(),
+        levels: SPO,
+        project: ProjectSource::Property,
+    }
 }
 
 pub static TAG: Entry = text("text.tag.style", "Tag style");
@@ -77,7 +86,7 @@ pub static LOCATION: Entry = Entry {
     label: "Location box style",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Style("location"),
+    kind: Kind::Style(ecad_model::StyleCatalogue::Location),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -89,7 +98,7 @@ pub static FRAME: Entry = Entry {
     label: "Frame style",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Style("frame"),
+    kind: Kind::Style(ecad_model::StyleCatalogue::Frame),
     slot: Slot::new(),
     levels: SPG,
     project: ProjectSource::Property,
@@ -101,7 +110,7 @@ pub static WIRE_CATEGORY: Entry = Entry {
     label: "Wire category",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Style("wire"),
+    kind: Kind::Style(ecad_model::StyleCatalogue::Wire),
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,

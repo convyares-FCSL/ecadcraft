@@ -220,9 +220,6 @@ impl Document {
         let layers = std::iter::once(&self.styles).chain(self.standard.as_ref().map(|s| &s.styles));
         for cats in layers {
             for (word, styles) in cats {
-                if !crate::style::is_word(word) {
-                    return bad(format!("style catalogue word {word:?} is not 1-32 characters of a-z, 0-9 and _"));
-                }
                 if styles.is_empty() {
                     return bad(format!("style catalogue {word} is listed with no styles"));
                 }

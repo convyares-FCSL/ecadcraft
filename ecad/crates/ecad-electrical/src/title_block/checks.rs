@@ -77,8 +77,8 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
         for (cat, records) in cats {
             for (id, r) in records.iter().take(ecad_model::style::MAX_STYLES_PER_CATALOGUE) {
                 let Some(body) = &r.body else { continue };
-                let name = crate::styles::name(doc, cat, id);
-                if cat != sheet::FRAME_CATALOGUE {
+                let name = crate::styles::name(doc, *cat, id);
+                if *cat != sheet::FRAME_CATALOGUE {
                     let which = format!("{name} carries a title block; only frames draw one.");
                     out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
                     continue;

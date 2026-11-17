@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::doc::{Document, LengthUnit};
 use crate::id::PageId;
-use crate::style::{StyleLayer, StyleRef};
+use crate::style::{StyleCatalogue, StyleLayer, StyleRef};
 
 /// The page property holding a page's own sheet spec (text, [`SheetSpec::parse`]).
 pub const SHEET_KEY: &str = "sheet";
@@ -245,8 +245,8 @@ pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
 
 /// Brief 055: the choice key of a page's frame style (`ecad-cadcraft`'s `print.frame.style`).
 pub const FRAME_STYLE_KEY: &str = "print.frame.style";
-/// The frame style catalogue's word.
-pub const FRAME_CATALOGUE: &str = "frame";
+/// The frame style catalogue.
+pub const FRAME_CATALOGUE: StyleCatalogue = StyleCatalogue::Frame;
 /// The built-in frame style's word.
 pub const BUILTIN_FRAME: &str = "sheet";
 /// The frame field holding the sheet a frame is drawn for (design 055 §1.4).
@@ -336,7 +336,7 @@ pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
     ops.iter().any(|op| match op {
         Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == PAGE_TYPE_KEY,
         Op::AddPage { page, .. } => page.properties.contains_key(PAGE_TYPE_KEY),
-        Op::SetStyle { catalogue, .. } => catalogue == PAGE_CATALOGUE,
+        Op::SetStyle { catalogue, .. } => *catalogue == PAGE_CATALOGUE,
         _ => false,
     })
 }
@@ -459,7 +459,7 @@ pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
 /// [`PAGE_CATALOGUE`].
 pub const PAGE_TYPE_KEY: &str = "page.type";
 /// The style catalogue of page types (brief 054, FP1).
-pub const PAGE_CATALOGUE: &str = "page";
+pub const PAGE_CATALOGUE: StyleCatalogue = StyleCatalogue::Page;
 /// The page property holding a generated page's kind (brief 024, FP1).
 pub const GENERATED_KEY: &str = "generated";
 /// The six built-in page types (design 054 §2.2), in table order.
@@ -501,7 +501,7 @@ pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
 /// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-cadcraft` reads them).
 fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::style::StyleRecord> {
     use crate::style::MAX_STYLES_PER_CATALOGUE;
-    let map = crate::style::layer_of(doc, layer)?.get(PAGE_CATALOGUE)?;
+    let map = crate::style::layer_of(doc, layer)?.get(&PAGE_CATALOGUE)?;
     let r = map.get(id)?;
     if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
         return None;

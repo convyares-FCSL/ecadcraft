@@ -1683,7 +1683,7 @@ impl Scope {
                     self.devices.extend(idx.devices_on(doc, *p));
                 }
                 // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
-                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                         for p in pages {
                             self.devices.extend(idx.devices_on(doc, p));
@@ -1705,7 +1705,7 @@ impl Scope {
                 }
                 // Brief 050a: a change of the text style the table text uses (its height, weight).
                 Op::SetStyle { catalogue, id, .. }
-                    if catalogue == "text"
+                    if *catalogue == ecad_model::StyleCatalogue::Text
                         && *id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
                 {
                     self.wide = true;
@@ -1742,7 +1742,7 @@ impl Scope {
                 {
                     self.names.extend(crate::continuations::names_on(doc, idx, *p));
                 }
-                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                         for p in pages {
                             self.names.extend(crate::continuations::names_on(doc, idx, p));
@@ -1757,7 +1757,7 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key) => {
                     self.arrows_wide = true;
                 }
-                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, catalogue, id) => {
+                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
                     self.arrows_wide = true;
                 }
                 _ => {}

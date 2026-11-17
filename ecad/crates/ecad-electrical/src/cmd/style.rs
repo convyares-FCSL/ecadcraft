@@ -38,7 +38,7 @@ fn no_catalogue(w: &str) -> CmdError {
 /// No catalogue has that word.
 pub fn catalogue(word: &str) -> Result<&'static Catalogue, CmdError> {
     let w = word.trim();
-    styles::catalogue(w).ok_or_else(|| no_catalogue(w))
+    <ecad_model::StyleCatalogue as ecad_model::Word>::parse(w).map(styles::catalogue).ok_or_else(|| no_catalogue(w))
 }
 
 /// The catalogue a call that may name none names (`promote {key}` names none).
@@ -56,7 +56,7 @@ pub fn required_catalogue(word: Option<&str>) -> Result<&'static Catalogue, CmdE
 /// Neither given, or no style of the catalogue has it (or two share the name).
 pub fn target(doc: &Document, cat: &Catalogue, id: Option<&str>, name: Option<&str>) -> Result<StyleRef, CmdError> {
     let t = id.or(name).map(str::trim).ok_or(CmdError::input("Name the style: `id` or `name`."))?;
-    styles::find(doc, cat.word, t)
+    styles::find(doc, cat.catalogue, t)
 }
 
 /// The layer a `setstyle` call writes: "project" (the default) or "standard".
@@ -186,7 +186,7 @@ pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleR
             out.push(Op::SetProperty { object: o, key: key.to_string(), before, after: Some(to.text()) });
         }
     };
-    for (key, o) in styles::explicit_users(doc, cat.word, id) {
+    for (key, o) in styles::explicit_users(doc, cat.catalogue, id) {
         put(o, key);
     }
     for e in (cat.choices)() {
@@ -253,7 +253,7 @@ fn clear_standard(doc: &Document) -> Vec<Op> {
     }
     for (cat, m) in &s.styles {
         for (id, r) in m {
-            ops.push(Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.clone(), id: id.clone(), before: Some(r.clone()), after: None });
+            ops.push(Op::SetStyle { layer: StyleLayer::Standard, catalogue: *cat, id: id.clone(), before: Some(r.clone()), after: None });
         }
     }
     ops.push(Op::SetStandard { before: Some(s.header.clone()), after: None });
@@ -311,13 +311,7 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
             }
             for (cat, m) in &src.styles {
                 for (id, r) in m.iter().take(MAX_STYLES_PER_CATALOGUE) {
-                    ops.push(Op::SetStyle {
-                        layer: StyleLayer::Standard,
-                        catalogue: cat.clone(),
-                        id: id.clone(),
-                        before: None,
-                        after: Some(r.clone()),
-                    });
+                    ops.push(Op::SetStyle { layer: StyleLayer::Standard, catalogue: *cat, id: id.clone(), before: None, after: Some(r.clone()) });
                 }
             }
             let label = format!("Copy standard {}", src.header.name);
@@ -328,28 +322,28 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
             let mut ops = Vec::new();
             // Explicit users of a standard-only own style need a replacement (design 050 §6.1).
             for cat in styles::CATALOGUES {
-                for (id, _) in styles::records(doc, StyleLayer::Standard, cat.word) {
-                    if cat.builtin(id).is_some() || styles::record(doc, StyleLayer::Project, cat.word, id).is_some() {
+                for (id, _) in styles::records(doc, StyleLayer::Standard, cat.catalogue) {
+                    if cat.builtin(id).is_some() || styles::record(doc, StyleLayer::Project, cat.catalogue, id).is_some() {
                         continue;
                     }
-                    let users = styles::explicit_users(doc, cat.word, id);
+                    let users = styles::explicit_users(doc, cat.catalogue, id);
                     if users.is_empty() && !chosen_by_levels(doc, cat, id) {
                         continue;
                     }
-                    let Some(w) = replace_with.get(cat.word) else {
+                    let Some(w) = replace_with.get(ecad_model::Word::word(cat.catalogue)) else {
                         let (who, verb) = who_uses(&users);
                         return Err(CmdError::refused(format!(
                             "{who} {verb} {}, which only the standard has; give replace_with {{\"{}\": style}}.",
-                            styles::name(doc, cat.word, id),
-                            cat.word
+                            styles::name(doc, cat.catalogue, id),
+                            cat.catalogue
                         )));
                     };
-                    let to = styles::find(doc, cat.word, w)?;
-                    let standard_only = cat.builtin(&to).is_none() && styles::record(doc, StyleLayer::Project, cat.word, &to).is_none();
+                    let to = styles::find(doc, cat.catalogue, w)?;
+                    let standard_only = cat.builtin(&to).is_none() && styles::record(doc, StyleLayer::Project, cat.catalogue, &to).is_none();
                     if standard_only {
                         return Err(CmdError::refused(format!(
                             "{} is the standard's too; replace it with a built-in or a project style.",
-                            styles::name(doc, cat.word, &to)
+                            styles::name(doc, cat.catalogue, &to)
                         )));
                     }
                     ops.extend(rewrite_users(doc, cat, id, &to));
@@ -419,7 +413,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         // Brief 057: a catalogue with no built-in styles (cable types, rating tables) starts an
         // empty style.
         let from = match copy_of {
-            Some(t) => Some(styles::find(doc, cat.word, &t)?),
+            Some(t) => Some(styles::find(doc, cat.catalogue, &t)?),
             None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
         };
         let id = StyleRef::Own(ids.fresh::<u128>());
@@ -427,7 +421,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         for f in cat.fields {
             let Some(from) = &from else { break };
             // 050b: a copy is no potential's default (one category per potential).
-            if cat.word == "wire" && f.key == "potential" {
+            if cat.catalogue == ecad_model::StyleCatalogue::Wire && f.key == "potential" {
                 continue;
             }
             let v = styles::field(doc, cat, from, f, None).text();
@@ -437,7 +431,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         }
         let rec = styles::with_fields(Some(&rec), None, &fields);
         styles::check_record(doc, cat, &id, layer, &rec)?;
-        let op = Op::SetStyle { layer, catalogue: cat.word.into(), id: id.clone(), before: None, after: Some(rec) };
+        let op = Op::SetStyle { layer, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) };
         return Ok(StylePlan { ops: vec![op], id, label: format!("New {} {name}", cat.one.to_lowercase()) });
     }
     let id = target(doc, cat, edit.id.as_deref(), name.as_deref())?;
@@ -457,7 +451,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         return Err(CmdError::input("Give `fields` to set, `rename`, or `new: true`."));
     }
     // A rename goes to the layer holding the style's name.
-    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.word, &id).is_some_and(|r| !r.name.is_empty()) {
+    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| !r.name.is_empty()) {
         StyleLayer::Standard
     } else {
         StyleLayer::Project
@@ -469,7 +463,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         if f.is_empty() && n.is_none() {
             continue;
         }
-        let before = styles::record(doc, l, cat.word, &id).cloned();
+        let before = styles::record(doc, l, cat.catalogue, &id).cloned();
         let rec = styles::with_fields(before.as_ref(), n, &f);
         // A built-in's override with nothing left is no record; an own style keeps its named
         // record.
@@ -479,7 +473,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
             styles::check_record(doc, cat, &id, l, r)?;
         }
         if after != before {
-            ops.push(Op::SetStyle { layer: l, catalogue: cat.word.into(), id: id.clone(), before, after });
+            ops.push(Op::SetStyle { layer: l, catalogue: cat.catalogue, id: id.clone(), before, after });
         }
     }
     // Design 050 §3.5: history names the style and the fields that changed
@@ -487,11 +481,11 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
     let changes: Vec<String> = fields
         .iter()
         .map(|(k, v)| {
-            let was = styles::field_of(doc, cat.word, &id, k, None).map(|r| r.text()).unwrap_or_default();
+            let was = styles::field_of(doc, cat.catalogue, &id, k, None).map(|r| r.text()).unwrap_or_default();
             format!("{k} {was} → {}", v.as_deref().unwrap_or("(reset)"))
         })
         .collect();
-    let name = rename.map_or_else(|| styles::name(doc, cat.word, &id), str::to_string);
+    let name = rename.map_or_else(|| styles::name(doc, cat.catalogue, &id), str::to_string);
     let label = if changes.is_empty() { format!("{} {name}", cat.one) } else { format!("{} {name}: {}", cat.one, changes.join(", ")) };
     Ok(StylePlan { ops, id, label })
 }
@@ -519,23 +513,23 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
     if id.is_builtin() {
         return Err(CmdError::refused(BUILTIN_KEPT));
     }
-    let name = styles::name(doc, cat.word, &id);
-    let users = styles::explicit_users(doc, cat.word, &id);
+    let name = styles::name(doc, cat.catalogue, &id);
+    let users = styles::explicit_users(doc, cat.catalogue, &id);
     let mut ops = Vec::new();
     if !users.is_empty() || chosen_by_levels(doc, cat, &id) {
         let Some(w) = replace_with.map(str::trim) else {
             let (who, verb) = who_uses(&users);
             return Err(CmdError::refused(format!("{who} {verb} {name}; give replace_with.")));
         };
-        let to = styles::find(doc, cat.word, w)?;
+        let to = styles::find(doc, cat.catalogue, w)?;
         if to == id {
             return Err(CmdError::refused("replace_with must be another style."));
         }
         ops.extend(rewrite_users(doc, cat, &id, &to));
     }
     for l in [StyleLayer::Project, StyleLayer::Standard] {
-        if let Some(r) = ecad_model::style::record(doc, l, cat.word, &id) {
-            ops.push(Op::SetStyle { layer: l, catalogue: cat.word.into(), id: id.clone(), before: Some(r.clone()), after: None });
+        if let Some(r) = ecad_model::style::record(doc, l, cat.catalogue, &id) {
+            ops.push(Op::SetStyle { layer: l, catalogue: cat.catalogue, id: id.clone(), before: Some(r.clone()), after: None });
         }
     }
     Ok(DeletePlan { ops, id, name, moved: users.len() })
@@ -595,14 +589,15 @@ pub fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Res
             "A built-in style is in every standard; set its fields at standard level instead (setstyle … layer: \"standard\").",
         ));
     }
-    if styles::record(doc, StyleLayer::Standard, cat.word, id).is_some() {
-        return Err(CmdError::refused(format!("{} is already in the standard.", styles::name(doc, cat.word, id))));
+    if styles::record(doc, StyleLayer::Standard, cat.catalogue, id).is_some() {
+        return Err(CmdError::refused(format!("{} is already in the standard.", styles::name(doc, cat.catalogue, id))));
     }
-    let rec = styles::record(doc, StyleLayer::Project, cat.word, id).cloned().ok_or(CmdError::refused("Only a project style can be promoted."))?;
-    let name = styles::name(doc, cat.word, id);
+    let rec =
+        styles::record(doc, StyleLayer::Project, cat.catalogue, id).cloned().ok_or(CmdError::refused("Only a project style can be promoted."))?;
+    let name = styles::name(doc, cat.catalogue, id);
     let ops = vec![
-        Op::SetStyle { layer: StyleLayer::Project, catalogue: cat.word.into(), id: id.clone(), before: Some(rec.clone()), after: None },
-        Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.word.into(), id: id.clone(), before: None, after: Some(rec) },
+        Op::SetStyle { layer: StyleLayer::Project, catalogue: cat.catalogue, id: id.clone(), before: Some(rec.clone()), after: None },
+        Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) },
     ];
     Ok((ops, name))
 }

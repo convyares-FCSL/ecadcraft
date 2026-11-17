@@ -684,7 +684,7 @@ pub fn hover_lines(doc: &Document, w: ConductorId) -> Vec<String> {
     // Brief 050b: the wire's own values, else its category's (named).
     let look = crate::styles::wire::wire_look(doc, w);
     let w = &doc.settings.wiring;
-    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {

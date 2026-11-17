@@ -572,8 +572,8 @@ impl Scope {
                 // Brief 050b (design 050 §10): a wire category reaches the rows of the conductors
                 // resolving to it: its explicit users, the wires of the potentials it names (before
                 // and after), and every wire when it is the project's or standard's choice.
-                Op::SetStyle { catalogue, id, before, after, .. } if catalogue == "wire" => {
-                    for (_, o) in crate::styles::explicit_users(doc, "wire", id) {
+                Op::SetStyle { catalogue, id, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Wire => {
+                    for (_, o) in crate::styles::explicit_users(doc, ecad_model::StyleCatalogue::Wire, id) {
                         if let ObjectRef::Conductor(c) = o {
                             self.conductors.insert(c);
                         }
@@ -583,7 +583,7 @@ impl Scope {
                             self.potentials.insert(pot.trim().to_lowercase());
                         }
                     }
-                    if let Some(r) = crate::styles::field_of(doc, "wire", id, "potential", None) {
+                    if let Some(r) = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None) {
                         self.potentials.insert(r.text().trim().to_lowercase());
                     }
                     if crate::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, crate::defaults::Scope::project()) == *id {
@@ -591,7 +591,7 @@ impl Scope {
                     }
                 }
                 // Brief 059 (design 059 §8): a cable type's cores, shield and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
                     self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Other style records and the standard header change no report row.

@@ -783,7 +783,7 @@ pub enum Op {
     /// Brief 050a (FP3): one whole style record; `null` is no record.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: m::StyleCatalogue,
         id: m::StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -1112,7 +1112,7 @@ impl From<&m::Op> for Op {
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
             m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
                 layer: layer(*l),
-                catalogue: catalogue.clone(),
+                catalogue: *catalogue,
                 id: id.clone(),
                 before: before.as_ref().map(Into::into),
                 after: after.as_ref().map(Into::into),

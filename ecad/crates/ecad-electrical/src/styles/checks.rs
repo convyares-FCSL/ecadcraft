@@ -59,27 +59,27 @@ pub fn touches(op: &Op) -> bool {
 
 /// The catalogue a choice key names a style of, for the keys this check covers (050b's
 /// `wire.category` has its own check).
-fn catalogue_of(key: &str) -> Option<&'static str> {
+fn catalogue_of(key: &str) -> Option<ecad_model::StyleCatalogue> {
     match key {
-        "location.style" => Some("location"),
-        "print.frame.style" => Some("frame"),
-        k if k.starts_with("text.") && k.ends_with(".style") => Some("text"),
+        "location.style" => Some(ecad_model::StyleCatalogue::Location),
+        "print.frame.style" => Some(ecad_model::StyleCatalogue::Frame),
+        k if k.starts_with("text.") && k.ends_with(".style") => Some(ecad_model::StyleCatalogue::Text),
         _ => None,
     }
 }
 
 /// Whether a stored choice is dangling.
-fn dangling(doc: &Document, catalogue: &str, value: &str) -> bool {
+fn dangling(doc: &Document, catalogue: ecad_model::StyleCatalogue, value: &str) -> bool {
     StyleRef::parse(value).is_none_or(|id| !crate::styles::exists(doc, catalogue, &id))
 }
 
 /// `Not found: drawn as Tag` words for a dangling choice of `key`.
 fn words(doc: &Document, key: &str, value: &str, whose: &str) -> String {
-    let next = crate::defaults::find(key).map(|e| {
+    let next = crate::defaults::find(key).and_then(|e| {
         let id = crate::styles::chosen(doc, e, crate::defaults::Scope::project());
-        crate::styles::name(doc, catalogue_of(key).unwrap_or_default(), &id)
+        catalogue_of(key).map(|c| crate::styles::name(doc, c, &id))
     });
-    let one = catalogue_of(key).and_then(crate::styles::catalogue).map_or("Style", |c| c.one);
+    let one = catalogue_of(key).map_or("Style", |c| crate::styles::catalogue(c).one);
     match next {
         Some(n) => format!("{whose}: {one} {value:?} not found; drawn as {n}"),
         None => format!("{whose}: {one} {value:?} not found"),
@@ -118,7 +118,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
                 at: None,
                 object: Object::None,
                 which: text.into(),
-                fix: Some(Fix::OpenStandards("text")),
+                fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Text)),
             });
         }
     }
@@ -141,12 +141,12 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             at: None,
             object: Object::None,
             which: "Potential colours and cross-sections set in an older build, now ignored: set them in Standards ▸ Wire categories".into(),
-            fix: Some(Fix::OpenStandards("wire")),
+            fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Wire)),
         });
     }
     // 050b: two categories default for one potential.
     for (pot, ids) in &super::wire::WireLooks::new(doc).twice {
-        let names: Vec<String> = ids.iter().map(|id| super::name(doc, "wire", id)).collect();
+        let names: Vec<String> = ids.iter().map(|id| super::name(doc, ecad_model::StyleCatalogue::Wire, id)).collect();
         let shown = doc.settings.wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
         out.push(Check {
             kind: Kind::CategoryPotentialTwice,
@@ -154,12 +154,12 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             at: None,
             object: Object::None,
             which: format!("Two wire categories are the default for {shown} ({}); the first is used", names.join(", ")),
-            fix: Some(Fix::OpenStandards("wire")),
+            fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Wire)),
         });
     }
     // 050b: a category on the BOM (a part number) with no allowance.
     for row in super::rows(doc, &super::wire::CATALOGUE) {
-        let f = |k: &str| super::field_of(doc, "wire", &row.id, k, None);
+        let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None);
         let has_part = f("part_number").is_some_and(|r| super::wire::filled(&r).is_some());
         if has_part && f("allowance").is_some_and(|r| r.number() <= 0.0) {
             out.push(Check {
@@ -168,7 +168,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
                 at: None,
                 object: Object::None,
                 which: format!("Wire length not set for {} (set an allowance in Standards)", row.name),
-                fix: Some(Fix::OpenStandards("wire")),
+                fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Wire)),
             });
         }
     }
@@ -176,7 +176,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     for (value, key, o) in doc.style_choices() {
         if key == ecad_model::wiring::WIRE_CATEGORY {
             if let ObjectRef::Conductor(c) = o
-                && dangling(doc, "wire", value)
+                && dangling(doc, ecad_model::StyleCatalogue::Wire, value)
             {
                 let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
                 out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Conductor(c), which: String::new(), fix: None });
@@ -227,7 +227,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     }
     // Bounds (design 050 §3.2).
     let mut past = 0usize;
-    let mut cats: Vec<&str> = Vec::new();
+    let mut cats: Vec<ecad_model::StyleCatalogue> = Vec::new();
     for layer in [StyleLayer::Standard, StyleLayer::Project] {
         let Some(layer_cats) = ecad_model::style::layer_of(doc, layer) else { continue };
         for (cat, styles) in layer_cats {
@@ -235,13 +235,13 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             for r in styles.values().take(MAX_STYLES_PER_CATALOGUE) {
                 let named_badly = !r.name.is_empty() && !is_name(&r.name);
                 let fields_badly =
-                    r.fields.len() > MAX_FIELDS_PER_STYLE || r.fields.iter().any(|(k, v)| v.chars().nth(crate::styles::field_cap(cat, k)).is_some());
+                    r.fields.len() > MAX_FIELDS_PER_STYLE || r.fields.iter().any(|(k, v)| v.chars().nth(crate::styles::field_cap(*cat, k)).is_some());
                 bad += usize::from(named_badly || fields_badly);
             }
             if bad > 0 {
                 past += bad;
-                if !cats.contains(&cat.as_str()) {
-                    cats.push(cat.as_str());
+                if !cats.contains(cat) {
+                    cats.push(*cat);
                 }
             }
         }
@@ -249,7 +249,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     // Brief 054 (design 054 §9): page types and folder start numbers.
     out.extend(crate::page_types::check_rows(doc));
     if past > 0 {
-        let first = cats.first().and_then(|c| crate::styles::catalogue(c)).map_or("text", |c| c.word);
+        let first = cats.first().copied().unwrap_or(ecad_model::StyleCatalogue::Text);
         out.push(Check {
             kind: Kind::StyleLimits,
             page: None,
@@ -258,7 +258,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             which: format!(
                 "{past} style record{} past the limits ignored ({}): at most {MAX_STYLES_PER_CATALOGUE} styles per catalogue, {MAX_FIELDS_PER_STYLE} fields, 64-character names, {MAX_FIELD_CHARS}-character values",
                 if past == 1 { "" } else { "s" },
-                cats.join(", ")
+                cats.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
             ),
             fix: Some(Fix::OpenStandards(first)),
         });

@@ -566,10 +566,11 @@ pub fn is_wide_key(key: &str) -> bool {
 
 /// Brief 050a: whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
-pub fn is_wide_style(doc: &Document, catalogue: &str, id: &ecad_model::StyleRef) -> bool {
+pub fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
     use crate::text_style::{TextKind, style_of};
     let at = crate::defaults::Scope::project();
-    catalogue == "text" && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
+    catalogue == ecad_model::StyleCatalogue::Text
+        && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
 }
 
 // ---------------------------------------------------------------- captions (design 049 §3.1)

@@ -44,7 +44,7 @@ pub static PAGE_TYPE: Entry = Entry {
     label: "Page type",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Style("page"),
+    kind: Kind::Style(ecad_model::StyleCatalogue::Page),
     slot: Slot::new(),
     levels: G,
     project: ProjectSource::Property,
