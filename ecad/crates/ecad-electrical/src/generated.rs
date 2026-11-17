@@ -84,7 +84,7 @@ pub fn has_bom_page(doc: &Document) -> bool {
 }
 
 /// The strip a `terminals` page shows, if it names one.
-pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::ComponentId> {
+pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::DeviceId> {
     doc.pages.get(&page)?.kind.strip()
 }
 

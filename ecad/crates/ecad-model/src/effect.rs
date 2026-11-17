@@ -12,8 +12,8 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, CableMember, Component, Conductor, Definition, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Conductor, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal};
+use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
 use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
@@ -47,14 +47,14 @@ pub enum Effect<'a> {
         before: Option<&'a Item>,
         after: Option<&'a Item>,
     },
-    Component {
-        id: ComponentId,
-        before: Option<&'a Component>,
-        after: Option<&'a Component>,
+    Device {
+        id: DeviceId,
+        before: Option<&'a Device>,
+        after: Option<&'a Device>,
     },
     /// A component's definition switched (`None`: no definition).
-    ComponentDefinition {
-        id: ComponentId,
+    DeviceDefinition {
+        id: DeviceId,
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
@@ -145,8 +145,8 @@ pub enum EffectKind {
     Page,
     Layer,
     Item,
-    Component,
-    ComponentDefinition,
+    Device,
+    DeviceDefinition,
     Terminal,
     Rep,
     Conductor,
@@ -168,8 +168,8 @@ impl EffectKind {
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
-        EffectKind::Component,
-        EffectKind::ComponentDefinition,
+        EffectKind::Device,
+        EffectKind::DeviceDefinition,
         EffectKind::Terminal,
         EffectKind::Rep,
         EffectKind::Conductor,
@@ -245,8 +245,8 @@ impl Effect<'_> {
             Effect::Page { .. } => EffectKind::Page,
             Effect::Layer { .. } => EffectKind::Layer,
             Effect::Item { .. } => EffectKind::Item,
-            Effect::Component { .. } => EffectKind::Component,
-            Effect::ComponentDefinition { .. } => EffectKind::ComponentDefinition,
+            Effect::Device { .. } => EffectKind::Device,
+            Effect::DeviceDefinition { .. } => EffectKind::DeviceDefinition,
             Effect::Terminal { .. } => EffectKind::Terminal,
             Effect::Rep { .. } => EffectKind::Rep,
             Effect::Conductor { .. } => EffectKind::Conductor,
@@ -370,9 +370,10 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::AddItem { id, item } => Effect::Item { id: *id, before: None, after: Some(item) },
         Op::ModifyItem { id, before, after } => Effect::Item { id: *id, before: Some(before), after: Some(after) },
         Op::RemoveItem { id, item } => Effect::Item { id: *id, before: Some(item), after: None },
-        Op::CreateComponent { id, component } => Effect::Component { id: *id, before: None, after: Some(component) },
-        Op::DeleteComponent { id, component } => Effect::Component { id: *id, before: Some(component), after: None },
-        Op::SetComponentDefinition { id, before, after } => Effect::ComponentDefinition { id: *id, before: *before, after: *after },
+        Op::CreateDevice { id, device } => Effect::Device { id: *id, before: None, after: Some(device) },
+        Op::DeleteDevice { id, device } => Effect::Device { id: *id, before: Some(device), after: None },
+        Op::ModifyDevice { id, before, after } => Effect::Device { id: *id, before: Some(before), after: Some(after) },
+        Op::SetDeviceDefinition { id, before, after } => Effect::DeviceDefinition { id: *id, before: *before, after: *after },
         Op::AddTerminal { id, terminal } => Effect::Terminal { id: *id, before: None, after: Some(terminal) },
         Op::RemoveTerminal { id, terminal } => Effect::Terminal { id: *id, before: Some(terminal), after: None },
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
@@ -421,8 +422,8 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         Effect::Page { .. }
         | Effect::Layer { .. }
         | Effect::Item { .. }
-        | Effect::Component { .. }
-        | Effect::ComponentDefinition { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
         | Effect::Terminal { .. }
         | Effect::Rep { .. }
         | Effect::Conductor { .. }

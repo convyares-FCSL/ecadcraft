@@ -23,8 +23,8 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 t.items.insert(*id);
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
-                t.components.insert(*id);
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                t.devices.insert(*id);
             }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
                 t.terminals.insert(*id);
@@ -45,8 +45,8 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.cables.insert(*cable);
             }
             Op::SetProperty { object, .. } => match object {
-                ObjectRef::Component(id) => {
-                    t.components.insert(*id);
+                ObjectRef::Device(id) => {
+                    t.devices.insert(*id);
                 }
                 ObjectRef::Conductor(id) => {
                     t.conductors.insert(*id);

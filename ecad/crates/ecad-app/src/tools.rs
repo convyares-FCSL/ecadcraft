@@ -6,7 +6,7 @@
 //! `CadApp::take_tool_requests`); everything ECAD about it is here:
 //! - **Start** buttons start the command's interactive form (brief 008: prompts, picks, previews,
 //!   Enter and Esc at CADCraft's command line), exactly as typing its bare name does. Convert to
-//!   Component converts the current selection at once, or asks to select objects.
+//!   Device converts the current selection at once, or asks to select objects.
 //! - **Run** buttons type the command into the same path as the ECAD command field, so the
 //!   command's own validation, transaction and undo apply.
 //! - **Template** buttons open the ECAD command field with an editable command line and a short
@@ -26,7 +26,7 @@ use std::collections::{BTreeSet, HashMap};
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_cadcraft::cad::Handle;
 use ecad_cadcraft::{Mapped, Project};
-use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, TerminalId};
+use ecad_model::{CableId, ConductorId, DeviceId, ItemId, PageId, Subject, TerminalId};
 
 /// The tab's name in the Tool Sets panel.
 pub const TAB: &str = "ECAD";
@@ -76,7 +76,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.convertcomponent",
         group: "Components",
-        label: "Convert to Component",
+        label: "Convert to Device",
         tooltip: "Make drawing objects one component (uses the selection, or asks you to select)",
         kind: Kind::Start("convertcomponent"),
     },
@@ -408,7 +408,7 @@ pub const MAX_PICKED: usize = 1_000;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Picked {
     pub handles: Vec<Handle>,
-    pub components: Vec<ComponentId>,
+    pub devices: Vec<DeviceId>,
     pub conductors: Vec<ConductorId>,
     /// Cables whose slashes or fan lines are selected.
     pub cables: Vec<CableId>,
@@ -453,7 +453,7 @@ impl Picked {
                 }
                 // A link line names its strip (brief 030).
                 Some(Mapped::Link(c, _)) => {
-                    subjects.insert(Subject::Component(c));
+                    subjects.insert(Subject::Device(c));
                 }
                 // A cable reference's text names its cable (brief 010); a device's tag text or
                 // terminal label names its device (brief 018).
@@ -474,7 +474,7 @@ impl Picked {
             page: p.page_of(uid),
             truncated: handles.len() > MAX_PICKED,
             handles,
-            components: subjects.iter().filter_map(|s| if let Subject::Component(c) = s { Some(*c) } else { None }).collect(),
+            devices: subjects.iter().filter_map(|s| if let Subject::Device(c) = s { Some(*c) } else { None }).collect(),
             conductors: subjects.iter().filter_map(|s| if let Subject::Conductor(c) = s { Some(*c) } else { None }).collect(),
             cables: subjects.iter().filter_map(|s| if let Subject::Cable(c) = s { Some(*c) } else { None }).collect(),
             terminals: terminals.into_iter().collect(),
@@ -492,7 +492,7 @@ fn one<T: Copy>(v: &[T]) -> Option<T> {
 /// The template line and its note for a template tool (`None` for a start or run tool, or an unknown
 /// id).
 pub fn template(id: &str, picked: &Picked) -> Option<(String, &'static str)> {
-    let component = one(&picked.components).map(ComponentId::hex);
+    let component = one(&picked.devices).map(DeviceId::hex);
     let conductor = one(&picked.conductors).map(ConductorId::hex);
     Some(match id {
         "ecad.setprop" => {

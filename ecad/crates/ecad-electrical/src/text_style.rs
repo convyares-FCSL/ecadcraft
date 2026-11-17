@@ -12,7 +12,7 @@
 //!
 //! This module draws nothing and stores nothing.
 
-use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
+use ecad_model::{ConductorId, DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
 
 use crate::defaults::{self, Entry, Scope, text as d};
 
@@ -447,7 +447,7 @@ pub enum RunRule {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TextTarget {
     pub page: Option<PageId>,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub representation: Option<RepresentationId>,
     pub conductor: Option<ConductorId>,
     /// The symbol's run rule (only for a tag).
@@ -782,7 +782,7 @@ pub fn to_local(pl: &ecad_model::Placement, p: ecad_model::Pt) -> Option<ecad_mo
 #[derive(Debug, Clone)]
 pub struct Block {
     pub rep: RepresentationId,
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub lo: ecad_model::Pt,
     pub hi: ecad_model::Pt,
     pub vertical: bool,
@@ -799,7 +799,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
     let clear = defaults::resolve(doc, &d::WIRE_CLEARANCE, Scope::project()).length(doc);
     for (_, r) in doc.representations_on(page) {
         match r.subject {
-            ecad_model::Subject::Component(_) if r.form == ecad_model::Form::Symbol => {
+            ecad_model::Subject::Device(_) if r.form == ecad_model::Form::Symbol => {
                 if let Some((def, pl)) = crate::devices::rep_definition(doc, r)
                     && let Some(b) = crate::devices::placed_box(def, &pl)
                 {
@@ -849,7 +849,7 @@ pub fn place_blocks(doc: &Document, page: PageId, blocks: &[Block], fixed: &[Tex
     // Moved blocks first (§6.4).
     for b in blocks {
         let stored = doc
-            .components
+            .devices
             .get(&b.component)
             .and_then(|c| c.properties.get(&format!("{}tag.at", symbol_prefix(b.rep))))
             .and_then(|v| parse_at(v))
@@ -909,7 +909,7 @@ const MAX_RUN_SYMBOLS: usize = 20_000;
 #[derive(Debug, Clone, Copy)]
 struct Placed {
     rep: RepresentationId,
-    component: ComponentId,
+    component: DeviceId,
     /// The run class: the same starter kind (strip terminals, PLC channels, or the starter itself).
     class: u64,
     centre: (f64, f64),
@@ -928,7 +928,7 @@ pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<Re
     let gap = defaults::resolve(doc, &d::RUN_GAP, Scope::project()).length(doc);
     let mut all: Vec<Placed> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
-        let ecad_model::Subject::Component(c) = r.subject else { continue };
+        let ecad_model::Subject::Device(c) = r.subject else { continue };
         if r.form != ecad_model::Form::Symbol {
             continue;
         }
@@ -953,7 +953,7 @@ pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<Re
     let mut placed_in_row: BTreeSet<RepresentationId> = BTreeSet::new();
     let mut firsts: BTreeSet<RepresentationId> = BTreeSet::new();
     // Groups: one device, one class.
-    let mut groups: std::collections::BTreeMap<(ComponentId, u64), Vec<Placed>> = std::collections::BTreeMap::new();
+    let mut groups: std::collections::BTreeMap<(DeviceId, u64), Vec<Placed>> = std::collections::BTreeMap::new();
     for p in &all {
         groups.entry((p.component, p.class)).or_default().push(*p);
     }
@@ -1061,7 +1061,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
 mod tests {
     use super::*;
     use crate::defaults::Value;
-    use ecad_model::{Component, LengthUnit, Page, Representation};
+    use ecad_model::{Device, LengthUnit, Page, Representation};
 
     /// Design 031 §3.2, written out here so a reader and its entry cannot drift.
     const TABLE: [(TextKind, f64, Weight); 23] = [
@@ -1150,14 +1150,14 @@ mod tests {
     fn shown_resolves_symbol_device_page_project_and_runs() {
         let mut doc = Document::default();
         let page = PageId(1);
-        let comp = ComponentId(2);
+        let comp = DeviceId(2);
         let rep = RepresentationId(3);
         doc.pages.insert(page, Page::titled("p").unwrap());
-        doc.components.insert(comp, Component::default());
+        doc.devices.insert(comp, Device::default());
         doc.representations.insert(
             rep,
             Representation {
-                subject: ecad_model::Subject::Component(comp),
+                subject: ecad_model::Subject::Device(comp),
                 page,
                 form: ecad_model::Form::Symbol,
                 role: String::new(),
@@ -1181,9 +1181,9 @@ mod tests {
         assert_eq!(text_shown(&doc, plain, TextKind::Description), Shown::Off);
         doc.pages.get_mut(&page).map(|p| p.display.insert("text.tag.show".into(), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
-        doc.components.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
+        doc.devices.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::Off);
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
+        doc.devices.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         // The project may turn the strip run rule off.
         let mut doc2 = Document::default();

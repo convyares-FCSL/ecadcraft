@@ -89,7 +89,7 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
     }
     log.get(seen..).unwrap_or_default().iter().flat_map(|tx| tx.ops.iter()).any(|op| match op {
         Op::SetProperty { key, .. } => designations::is_list_property(key) || Aspect::of_property(key).is_some(),
-        Op::CreateComponent { .. } | Op::DeleteComponent { .. } | Op::AddPage { .. } | Op::RemovePage { .. } => true,
+        Op::CreateDevice { .. } | Op::DeleteDevice { .. } | Op::AddPage { .. } | Op::RemovePage { .. } => true,
         Op::ModifyPage { before, after, .. } => before.change(after).display.iter().any(|k| Aspect::of_property(k).is_some()),
         _ => false,
     })

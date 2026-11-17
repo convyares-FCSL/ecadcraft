@@ -3,7 +3,7 @@
 
 use ecad_model::derive::terminal_positions;
 use ecad_model::{
-    Author, Color, Component, ComponentId, Definition, DefinitionId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, ObjectRef, Op, Page, PageId,
+    Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, ObjectRef, Op, Page, PageId,
     Placement, Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
 };
 
@@ -14,7 +14,7 @@ struct Fx {
     layer: ecad_model::LayerId,
     coil: DefinitionId,
     contact: DefinitionId,
-    k1: ComponentId,
+    k1: DeviceId,
 }
 
 fn def(name: &str, keys: [&str; 2]) -> Definition {
@@ -53,7 +53,7 @@ fn fixture() -> Fx {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::EmbedDefinition { id: coil, definition: def("coil", ["A1", "A2"]) },
             Op::EmbedDefinition { id: contact, definition: def("no", ["13", "14"]) },
-            Op::CreateComponent { id: k1, component: Component { properties: props, definition: Some(coil) } },
+            Op::CreateDevice { id: k1, device: Device { properties: props, definition: Some(coil), device_type: Default::default() } },
         ],
     )
     .unwrap();
@@ -79,7 +79,7 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
-                subject: Subject::Component(fx.k1),
+                subject: Subject::Device(fx.k1),
                 page: fx.page,
                 form: ecad_model::Form::Symbol,
                 role: "no".into(),
@@ -132,13 +132,13 @@ fn connection_points_of_a_symbol_follow_its_placement() {
 #[test]
 fn connection_points_must_name_the_components_own_terminals() {
     let mut fx = fixture();
-    let other: ComponentId = fx.ids.fresh();
+    let other: DeviceId = fx.ids.fresh();
     let foreign: TerminalId = fx.ids.fresh();
     fx.l.commit(
         Author::User,
         "other",
         vec![
-            Op::CreateComponent { id: other, component: Component::default() },
+            Op::CreateDevice { id: other, device: Device::default() },
             Op::AddTerminal { id: foreign, terminal: Terminal { component: other, label: None, key: None } },
         ],
     )
@@ -160,7 +160,7 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
     }
     assert!(fx.l.document().components_tagged("-K10").is_empty());
     let rename = |before: &str, after: &str| Op::SetProperty {
-        object: ObjectRef::Component(fx.k1),
+        object: ObjectRef::Device(fx.k1),
         key: "tag".into(),
         before: Some(before.into()),
         after: Some(after.into()),
@@ -174,8 +174,8 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
     assert_eq!(fx.l.document().components_tagged("-K01"), vec![fx.k1]);
     fx.l.document().check_index().unwrap();
     // Deleting the component takes its tag out of the index.
-    let c = fx.l.document().components.get(&fx.k1).cloned().unwrap();
-    fx.l.commit(Author::User, "Delete", vec![Op::DeleteComponent { id: fx.k1, component: c }]).unwrap();
+    let c = fx.l.document().devices.get(&fx.k1).cloned().unwrap();
+    fx.l.commit(Author::User, "Delete", vec![Op::DeleteDevice { id: fx.k1, device: c }]).unwrap();
     assert!(fx.l.document().components_tagged("-K01").is_empty());
     fx.l.document().check_index().unwrap();
 }

@@ -20,7 +20,7 @@ fn page_ops_round_trip_through_records() {
     let mut cover = Page::titled("Cover").unwrap();
     cover.kind = PageKind::Generated(GenKind::Cover);
     let mut strip = Page::titled("X1").unwrap();
-    strip.kind = PageKind::TerminalStrip { strip: ecad_model::ComponentId(0xabc) };
+    strip.kind = PageKind::TerminalStrip { strip: ecad_model::DeviceId(0xabc) };
     let renamed = Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..page.clone() };
     let ops = [
         Op::AddPage { id: PageId(1), page: page.clone(), index: 0 },

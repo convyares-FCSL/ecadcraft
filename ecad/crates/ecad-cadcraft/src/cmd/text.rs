@@ -8,7 +8,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
-use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, TerminalId};
+use ecad_model::{ConductorId, DeviceId, Document, PageId, RepresentationId, TerminalId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -242,7 +242,7 @@ pub(crate) struct DefaultsParams {
     page: Option<PageId>,
     /// Resolve for this device.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Resolve for this symbol (wins over `component` and `page`).
     #[serde(default)]
     representation: Option<RepresentationId>,
@@ -301,7 +301,7 @@ pub(crate) struct ShowtextParams {
     representation: Option<RepresentationId>,
     /// A device.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// A wire.
     #[serde(default)]
     conductor: Option<ConductorId>,
@@ -397,7 +397,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
             let w = width_in(look.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
             let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
-                ecad_model::Subject::Component(c) => Some(c.hex()),
+                ecad_model::Subject::Device(c) => Some(c.hex()),
                 _ => None,
             });
             let weight = match style.weight {

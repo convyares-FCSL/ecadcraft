@@ -18,11 +18,11 @@ fn setprop_on_several_connectors_through_mcp_refuses_what_one_refuses() {
         })
         .collect();
     let before = c.log().len();
-    let m = c.refused("execute", json!({"command": "setprop", "params": {"components": ids, "key": "pins", "value": "abc"}}));
+    let m = c.refused("execute", json!({"command": "setprop", "params": {"devices": ids, "key": "pins", "value": "abc"}}));
     assert!(m.contains("pins"), "{m}");
     assert_eq!(c.log().len(), before, "a refusal records nothing");
 
-    c.exec("setprop", json!({"components": ids, "key": "pins", "value": " 6 "}));
+    c.exec("setprop", json!({"devices": ids, "key": "pins", "value": " 6 "}));
     let log = c.log();
     assert_eq!(log.len(), before + 1, "one transaction for both");
     let last = log.last().unwrap();
@@ -38,5 +38,5 @@ fn setprop_on_several_connectors_through_mcp_refuses_what_one_refuses() {
     assert_eq!(set, ["6", "6"], "{:?}", last.ops);
 
     let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"components": ids, "key": "pins", "value": "6"}}));
+    r.refused("execute", json!({"command": "setprop", "params": {"devices": ids, "key": "pins", "value": "6"}}));
 }

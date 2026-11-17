@@ -330,15 +330,15 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{Component, ComponentId, Conductor, ConductorId, Ledger, Op, Page, PageId, Terminal, TerminalId};
+    use ecad_model::{Conductor, ConductorId, Device, DeviceId, Ledger, Op, Page, PageId, Terminal, TerminalId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
-    let comp: ComponentId = ids.fresh();
+    let comp: DeviceId = ids.fresh();
     let hub: TerminalId = ids.fresh();
     let mut ops = vec![
         Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
-        Op::CreateComponent { id: comp, component: Component::default() },
+        Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
     ];
     let mut leaves = Vec::with_capacity(wires);
@@ -478,7 +478,7 @@ fn draw_target(project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::
         let doc = p.ledger.document();
         let page = doc.page_order.first().copied()?;
         let (component, item) = doc.representations.values().find_map(|r| {
-            let Subject::Component(c) = r.subject else { return None };
+            let Subject::Device(c) = r.subject else { return None };
             let item = *r.items.first()?;
             let wired = doc.terminals_of(c).any(|(t, _)| !doc.ends_at(t).is_empty());
             (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
@@ -655,8 +655,8 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
             wires.push(x);
             run(&mut s, "u", json!({}))?;
             let b_tag: String = project.read(&mut s, |p, _| {
-                ecad_model::ComponentId::parse(&b)
-                    .and_then(|id| p.ledger.document().components.get(&id))
+                ecad_model::DeviceId::parse(&b)
+                    .and_then(|id| p.ledger.document().devices.get(&id))
                     .and_then(|c| c.properties.get("tag").cloned())
                     .unwrap_or_default()
             })?;
@@ -824,7 +824,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         step(ledger, b, "no", (x, 60.0), Target::Join(c))?;
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
-            let op = Op::SetProperty { object: ObjectRef::Component(c), key: "contacts".into(), before: None, after: Some("3P+1NO+1NC".into()) };
+            let op = Op::SetProperty { object: ObjectRef::Device(c), key: "contacts".into(), before: None, after: Some("3P+1NO+1NC".into()) };
             ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
         }
     }
@@ -969,7 +969,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             // A symbol of a device on this page, to go to from page 1.
             let found = project.read(&mut s, |p, _| {
                 p.ledger.document().representations_on(page).find_map(|(id, r)| match r.subject {
-                    ecad_model::Subject::Component(c) => Some((id, c)),
+                    ecad_model::Subject::Device(c) => Some((id, c)),
                     _ => None,
                 })
             })?;

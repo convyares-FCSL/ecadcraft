@@ -365,7 +365,7 @@ fn row(v: &ecad_cadcraft::props::PropsView, key: &str) -> String {
 fn wire_and_reference_properties_follow_the_objects_they_name() {
     let mut s = fixture();
     // A coil and a wire from its first connection point.
-    let coil: ecad_model::ComponentId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
+    let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
     let doc = s.h.doc();
     let (_, _, at) = ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].component == coil).unwrap();
     let w: ConductorId = id(&s.h.run("wire", json!({"points": [[at.x, at.y], [at.x + 40.0, at.y]]})).unwrap(), "conductor");

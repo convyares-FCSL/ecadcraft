@@ -32,7 +32,7 @@
 //! | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component it shows, or the components at its conductor's ends |
 //! | `AttachEnd`, `CreateConductor`, `DeleteConductor` | the components at the ends before and after |
 //! | `AddTerminal` / `RemoveTerminal` | that component (its labels) |
-//! | `CreateComponent` / `DeleteComponent` | that component |
+//! | `CreateDevice` / `DeleteDevice` | that component |
 //! | `SetProperty` component `contacts` or `mirror` | that component |
 //! | `SetProperty` page number or sheet | the devices with a member on that page |
 //! | page order (folder property, page and folder ops) | the devices with a member on a page whose book position changed |
@@ -49,7 +49,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::{
-    CableId, ComponentId, ContactMirror, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
+    CableId, ContactMirror, DeviceId, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
 };
 use serde_json::{Value, json};
 
@@ -197,8 +197,8 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
 
 /// What component `c` offers, when it says so readably (an unreadable stored value, from a file,
 /// counts as no offer).
-pub fn offer_of(doc: &Document, c: ComponentId) -> Option<(String, Vec<OfferedPole>)> {
-    let text = doc.components.get(&c)?.properties.get(CONTACTS_KEY)?;
+pub fn offer_of(doc: &Document, c: DeviceId) -> Option<(String, Vec<OfferedPole>)> {
+    let text = doc.devices.get(&c)?.properties.get(CONTACTS_KEY)?;
     parse_offer(text).ok().map(|p| (text.clone(), p))
 }
 
@@ -299,8 +299,8 @@ pub fn mirror_value(text: Option<&str>) -> Result<Option<String>, CmdError> {
 
 /// Where `c`'s table goes and whether the device says so itself (else the project default). An
 /// unreadable stored value counts as absent.
-pub fn placement_of(doc: &Document, c: ComponentId) -> (Placement, bool) {
-    match doc.components.get(&c).and_then(|x| x.properties.get(MIRROR_KEY)).and_then(|t| parse_mirror(t).ok()) {
+pub fn placement_of(doc: &Document, c: DeviceId) -> (Placement, bool) {
+    match doc.devices.get(&c).and_then(|x| x.properties.get(MIRROR_KEY)).and_then(|t| parse_mirror(t).ok()) {
         Some(p) => (p, true),
         None => (Placement::of_default(doc.settings.contact_mirror), false),
     }
@@ -312,10 +312,10 @@ pub fn placement_of(doc: &Document, c: ComponentId) -> (Placement, bool) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Group {
     Cable(CableId),
-    Device(ComponentId),
+    Device(DeviceId),
     /// Brief 049 (FP4): the continuation arrows of one name, keyed by the lowest component ID
     /// among them. Its edges are implicit: every member shows every other.
-    Continuation(ComponentId),
+    Continuation(DeviceId),
 }
 
 /// What a member of a group is.
@@ -392,7 +392,7 @@ pub struct DrawnPole {
 /// A device as the reference rule sees it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
-    pub component: ComponentId,
+    pub component: DeviceId,
     /// Its head ([`crate::reps::head`]: the first head symbol in book order, then top-left; never
     /// by ID or placement order, design 052 §3.4).
     pub head: Option<RepresentationId>,
@@ -429,7 +429,7 @@ fn bounds(pts: &[Pt]) -> Option<(Pt, Pt)> {
 
 /// The page positions of a representation's connection points, in its definition's terminal
 /// order.
-pub fn terminal_points(doc: &Document, c: ComponentId, r: &Representation) -> Vec<(ecad_model::TerminalId, Pt)> {
+pub fn terminal_points(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(ecad_model::TerminalId, Pt)> {
     let shown = crate::devices::shown_terminals(doc, c, r);
     match (r.form, crate::devices::rep_definition(doc, r)) {
         (Form::Symbol, Some((_, pl))) if pl.is_valid() => shown.into_iter().map(|(t, p)| (t, pl.apply(p))).filter(|(_, p)| p.is_finite()).collect(),
@@ -439,13 +439,13 @@ pub fn terminal_points(doc: &Document, c: ComponentId, r: &Representation) -> Ve
 }
 
 /// Device `c` as the reference rule sees it: O(its representations).
-pub fn device(doc: &Document, c: ComponentId) -> Device {
+pub fn device(doc: &Document, c: DeviceId) -> Device {
     // Brief 054 (design 054 §3.4): the first head on a page with checks and references on.
     let head =
         crate::reps::heads(doc, c).into_iter().find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::sheet::page_checks(doc, r.page)));
     let mut children = Vec::new();
     let mut poles = Vec::new();
-    for (rid, r) in doc.representations_of(Subject::Component(c)) {
+    for (rid, r) in doc.representations_of(Subject::Device(c)) {
         // Brief 054 (design 054 §3.4): a symbol on a Plain page has no references.
         if !ecad_model::sheet::page_checks(doc, r.page) {
             continue;
@@ -474,18 +474,18 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
         return Some((g, Class::Arrow));
     }
     // Brief 044: a connector's members.
-    if let Subject::Component(c) = r.subject
+    if let Subject::Device(c) = r.subject
         && crate::connectors::is_connector(doc, c)
     {
         return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
     }
     // Brief 054 (design 054 §3.4): a symbol on a Plain page is in no device's group.
-    if matches!(r.subject, Subject::Component(_)) && !ecad_model::sheet::page_checks(doc, r.page) {
+    if matches!(r.subject, Subject::Device(_)) && !ecad_model::sheet::page_checks(doc, r.page) {
         return None;
     }
     match r.subject {
         Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
-        Subject::Component(c) => match raw_class(doc, r) {
+        Subject::Device(c) => match raw_class(doc, r) {
             Class::Head => Some((Group::Device(c), if crate::reps::head(doc, c) == Some(rid) { Class::Head } else { Class::Other })),
             Class::Child => Some((Group::Device(c), Class::Child)),
             _ => None,
@@ -695,14 +695,14 @@ pub fn kind_words(power: bool, kind: PoleKind) -> String {
 /// The labels the next contact of kind `make` joining `c` takes from its offer (design 025 §4.3,
 /// owner answer Q4): the first offered auxiliary pole of that kind whose labels are free. `None`
 /// when `c` has no readable offer or no such pole is free.
-pub fn offer_labels(doc: &Document, c: ComponentId, make: bool, used: &BTreeSet<String>) -> Option<Vec<String>> {
+pub fn offer_labels(doc: &Document, c: DeviceId, make: bool, used: &BTreeSet<String>) -> Option<Vec<String>> {
     let (_, offer) = offer_of(doc, c)?;
     let kind = if make { PoleKind::No } else { PoleKind::Nc };
     offer.iter().find(|o| !o.power && o.kind == kind && !used.contains(&o.labels[0]) && !used.contains(&o.labels[1])).map(|o| o.labels.to_vec())
 }
 
 /// The echo after a join that went beyond the offer (design 025 §4.3), if it did.
-pub fn over_line(doc: &Document, c: ComponentId, labels: &[String], make: bool) -> Option<String> {
+pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> Option<String> {
     let (text, offer) = offer_of(doc, c)?;
     let dev = device(doc, c);
     let kind = if make { PoleKind::No } else { PoleKind::Nc };
@@ -899,7 +899,7 @@ pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
 /// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
 /// the free area starts at its top. A table the user placed (`at`) is never moved.
 pub fn settle(
-    doc: &Document, c: ComponentId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn TextMetrics,
+    doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn TextMetrics,
 ) -> (Pt, TableShown) {
     if matches!(placement, Placement::At(_) | Placement::Off) {
         return (top, TableShown::AsPlaced);
@@ -961,7 +961,7 @@ fn path_points(p: &Primitive) -> Option<Vec<Pt>> {
 
 /// Where the table of head `head` of device `c` goes, for `placement`; `None` for `off` or a
 /// head that cannot be drawn.
-pub fn table_top(doc: &Document, c: ComponentId, head: RepresentationId, placement: Placement) -> Option<Pt> {
+pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement) -> Option<Pt> {
     let r = doc.representations.get(&head)?;
     let k = unit(doc);
     let origin = anchor(doc, r)?;
@@ -1070,7 +1070,7 @@ pub const MAX_CONNECTOR_PLACES: usize = 3;
 
 /// The reference texts of connector `c` (design 044 §7): under each member with targets, their
 /// places (`/102.C4`), at most [`MAX_CONNECTOR_PLACES`] then `+n`. O(the connector's symbols).
-pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) -> Vec<(PageId, Part)> {
+pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: DeviceId) -> Vec<(PageId, Part)> {
     let list = crate::connectors::ref_classes(doc, c);
     let edges = crate::connectors::ref_edges(doc, c, &list);
     let mut targets: BTreeMap<RepresentationId, Vec<RepresentationId>> = BTreeMap::new();
@@ -1118,9 +1118,9 @@ pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: ComponentId) 
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads. O(the page's component representations and their groups).
 pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
-    let mut by_component: BTreeMap<ComponentId, Vec<RepresentationId>> = BTreeMap::new();
+    let mut by_component: BTreeMap<DeviceId, Vec<RepresentationId>> = BTreeMap::new();
     for (rid, r) in doc.representations_on(page) {
-        if let Subject::Component(c) = r.subject {
+        if let Subject::Device(c) = r.subject {
             by_component.entry(c).or_default().push(rid);
         }
     }
@@ -1222,9 +1222,9 @@ pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextMetrics) {
 /// tables on its page (review of #92, 2). O(devices on that page); for replies, not per commit.
 pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
     let own = table_measured(doc, places, dev, m)?;
-    let mut others: BTreeSet<ComponentId> = BTreeSet::new();
+    let mut others: BTreeSet<DeviceId> = BTreeSet::new();
     for (_, r) in doc.representations_on(own.page) {
-        if let Subject::Component(c) = r.subject
+        if let Subject::Device(c) = r.subject
             && c != dev.component
         {
             others.insert(c);
@@ -1245,7 +1245,7 @@ pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dy
 
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
-fn shown(doc: &Document, places: &mut Places<'_>, c: ComponentId, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
+fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     // Brief 044: a connector's references.
     if crate::connectors::is_connector(doc, c) {
@@ -1290,7 +1290,7 @@ impl RefIndex {
         for (rid, r) in &doc.representations {
             let (g, c) = match r.subject {
                 Subject::Cable(k) if crate::references::is_reference(r) => (Group::Cable(k), Class::End),
-                Subject::Component(c) => match raw_class(doc, r) {
+                Subject::Device(c) => match raw_class(doc, r) {
                     Class::Other => continue,
                     class => (Group::Device(c), class),
                 },
@@ -1305,7 +1305,7 @@ impl RefIndex {
             idx.insert_group(g, list);
         }
         // Brief 044: connectors' members and edges (design 044 §7).
-        for c in doc.components.keys() {
+        for c in doc.devices.keys() {
             if crate::connectors::is_connector(doc, *c) {
                 idx.insert_connector(doc, *c);
             }
@@ -1321,7 +1321,7 @@ impl RefIndex {
     }
 
     /// Add connector `c`'s group (design 044 §7): its halves and pins, and their edges.
-    fn insert_connector(&mut self, doc: &Document, c: ComponentId) {
+    fn insert_connector(&mut self, doc: &Document, c: DeviceId) {
         let list = crate::connectors::ref_classes(doc, c);
         if list.is_empty() {
             return;
@@ -1390,7 +1390,7 @@ impl RefIndex {
                 .collect(),
             Group::Device(c) => {
                 let mut head_seen = false;
-                doc.representations_of(Subject::Component(c))
+                doc.representations_of(Subject::Device(c))
                     // Brief 054 (design 054 §3.4): no references to or from a Plain page.
                     .filter(|(_, r)| ecad_model::sheet::page_checks(doc, r.page))
                     .filter_map(|(id, r)| match raw_class(doc, r) {
@@ -1465,7 +1465,7 @@ impl RefIndex {
             Subject::Cable(k) => {
                 out.insert(Group::Cable(k));
             }
-            Subject::Component(c) => {
+            Subject::Device(c) => {
                 out.insert(Group::Device(c));
                 // Brief 049: an arrow's name group.
                 out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
@@ -1485,7 +1485,7 @@ impl RefIndex {
                         of(r, &mut out);
                     }
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     out.insert(Group::Device(*id));
                 }
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
@@ -1575,7 +1575,7 @@ impl RefIndex {
     }
 
     /// The devices with a member on `page` (through the page index).
-    pub fn devices_on(&self, doc: &Document, page: PageId) -> BTreeSet<ComponentId> {
+    pub fn devices_on(&self, doc: &Document, page: PageId) -> BTreeSet<DeviceId> {
         doc.representations_on(page)
             .filter_map(|(r, _)| match self.member.get(&r) {
                 Some((Group::Device(c), _)) => Some(*c),
@@ -1613,7 +1613,7 @@ impl RefIndex {
 /// page with a device member (`wide`).
 #[derive(Debug, Clone, Default)]
 struct Scope {
-    devices: BTreeSet<ComponentId>,
+    devices: BTreeSet<DeviceId>,
     wide: bool,
     /// Brief 049 (design 049 §8.1): the continuation names whose arrows' texts and caption runs
     /// are compared, or every page with an arrow (`arrows_wide`).
@@ -1634,7 +1634,7 @@ impl Scope {
             }
         };
         let rep = |s: &mut Scope, r: &Representation| match r.subject {
-            Subject::Component(c) => {
+            Subject::Device(c) => {
                 s.devices.insert(c);
             }
             Subject::Conductor(w) => ends(s, w),
@@ -1671,10 +1671,10 @@ impl Scope {
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
                     self.devices.insert(terminal.component);
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
                     self.devices.insert(*c);
                 }
                 Op::ModifyPage { id: p, before, after } => {
@@ -1787,7 +1787,7 @@ pub struct Watch {
     cable_scope: Option<BTreeSet<CableId>>,
     cables: crate::references::Snapshot,
     scope: Scope,
-    before: BTreeMap<ComponentId, BTreeMap<PageId, Vec<Part>>>,
+    before: BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>,
     /// The pages with a device member before (only in the wide case).
     wide_pages: BTreeSet<PageId>,
     /// Brief 049: what the named continuations showed before, by page, and the pages with an
@@ -1814,7 +1814,7 @@ pub struct Outcome {
 }
 
 /// Texts and tables derived for some devices, by page.
-pub type Shown = BTreeMap<ComponentId, BTreeMap<PageId, Vec<Part>>>;
+pub type Shown = BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>;
 
 impl Watch {
     /// Before `ops` are committed on `doc`. `reuse` holds what the last commit derived, for
@@ -1998,11 +1998,11 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 /// # Errors
 /// Unknown component, cable or page.
 pub fn xrefs_json(
-    doc: &Document, idx: &RefIndex, component: Option<ComponentId>, cable: Option<CableId>, page: Option<PageId>, limit: usize, after: usize,
+    doc: &Document, idx: &RefIndex, component: Option<DeviceId>, cable: Option<CableId>, page: Option<PageId>, limit: usize, after: usize,
 ) -> Result<Value, CmdError> {
     let groups: BTreeSet<Group> = match (component, cable) {
         (Some(c), _) => {
-            if !doc.components.contains_key(&c) {
+            if !doc.devices.contains_key(&c) {
                 return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
             }
             // Brief 049 (design 049 §5.5): an arrow lists its other ends.
@@ -2034,7 +2034,7 @@ pub fn xrefs_json(
         references(doc, idx, &other).into_iter().filter(|r| page.is_none_or(|p| r.source_page == p || r.target_page == p)).collect();
     // The arrows whose rows are listed: the given arrow's, the arrows on `page`, or every arrow.
     let sources: Vec<(RepresentationId, usize)> = match (component, page) {
-        (Some(c), _) => doc.representations_of(Subject::Component(c)).map(|(r, _)| r).collect::<Vec<_>>(),
+        (Some(c), _) => doc.representations_of(Subject::Device(c)).map(|(r, _)| r).collect::<Vec<_>>(),
         (None, Some(p)) => doc.representations_on(p).map(|(r, _)| r).collect(),
         (None, None) => cont.iter().flat_map(|g| idx.members(*g)).collect(),
     }
@@ -2065,7 +2065,7 @@ pub fn xrefs_json(
         let next = at.saturating_add(*k);
         if next > after
             && let Some(sr) = doc.representations.get(s)
-            && let Subject::Component(c) = sr.subject
+            && let Subject::Device(c) = sr.subject
             && let Some(name) = crate::continuations::name_of(doc, c)
         {
             let sorted = ends.entry(name.clone()).or_insert_with(|| crate::continuations::ends_named(doc, &mut places, &name));
@@ -2096,13 +2096,13 @@ pub fn xrefs_json(
 ///
 /// # Errors
 /// Unknown component.
-pub fn contacts_json_measured(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Result<Value, CmdError> {
-    if !doc.components.contains_key(&c) {
+pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Result<Value, CmdError> {
+    if !doc.devices.contains_key(&c) {
         return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
     }
     let dev = device(doc, c);
     let offer = offer_of(doc, c);
-    let stored = doc.components.get(&c).and_then(|x| x.properties.get(CONTACTS_KEY)).cloned();
+    let stored = doc.devices.get(&c).and_then(|x| x.properties.get(CONTACTS_KEY)).cloned();
     let mut places = Places::new(doc);
     let rows = rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
     let over = rows.iter().filter(|r| r.state == State::Over).count();
@@ -2160,7 +2160,7 @@ pub fn goto_target(doc: &Document, idx: &RefIndex, source: RepresentationId, tar
 }
 
 /// Hover lines (design 025 §5.1) for contact `rep`: `Coil: 100-B-3  (page 100 "Supply")`.
-pub fn contact_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> Vec<String> {
+pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<String> {
     let dev = device(doc, c);
     if !dev.children.contains(&rep) {
         return Vec::new();
@@ -2183,7 +2183,7 @@ pub fn contact_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> V
 
 /// Hover lines for head `rep` of device `c`: `Contacts: 5 drawn, 1 spare (3P+1NO+1NC)` and up to
 /// six rows.
-pub fn head_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> Vec<String> {
+pub fn head_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<String> {
     let dev = device(doc, c);
     if dev.head != Some(rep) {
         return Vec::new();
@@ -2213,7 +2213,7 @@ pub fn head_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> Vec<
 }
 
 /// Hover lines for row `i` of head `head`'s table.
-pub fn row_lines(doc: &Document, c: ComponentId, i: usize, m: &dyn TextMetrics) -> Option<Vec<String>> {
+pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextMetrics) -> Option<Vec<String>> {
     let dev = device(doc, c);
     let mut places = Places::new(doc);
     let t = table_measured(doc, &mut places, &dev, m)?;
@@ -2231,7 +2231,7 @@ pub fn row_lines(doc: &Document, c: ComponentId, i: usize, m: &dyn TextMetrics) 
 
 /// The Checks rows of device `c` (design 025 §4.3): one `too-many-contacts` warning per kind drawn
 /// beyond the offer, ringed at the first over pole.
-pub fn count_checks(doc: &Document, c: ComponentId) -> Vec<(String, Option<PageId>, Option<Pt>)> {
+pub fn count_checks(doc: &Document, c: DeviceId) -> Vec<(String, Option<PageId>, Option<Pt>)> {
     let Some((text, offer)) = offer_of(doc, c) else { return Vec::new() };
     let dev = device(doc, c);
     // A device with no head shows no references and gets no check (design 025 §12 Q2).
@@ -2265,8 +2265,8 @@ pub fn table_text_key(key: &str) -> bool {
 
 /// The devices whose table the user placed (`at dx,dy`): the ones a sheet change can move onto
 /// or off the title block. O(components), on a project sheet change only.
-pub fn placed_tables(doc: &Document) -> Vec<ComponentId> {
-    doc.components
+pub fn placed_tables(doc: &Document) -> Vec<DeviceId> {
+    doc.devices
         .iter()
         .filter(|(_, c)| c.properties.get(MIRROR_KEY).is_some_and(|v| matches!(parse_mirror(v), Ok(Placement::At(_)))))
         .map(|(id, _)| *id)
@@ -2275,7 +2275,7 @@ pub fn placed_tables(doc: &Document) -> Vec<ComponentId> {
 
 /// The Checks row of a table the user placed over the title block (design 033 §4.1): its words,
 /// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
-pub fn title_check(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Option<(String, PageId, Pt)> {
+pub fn title_check(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Option<(String, PageId, Pt)> {
     let (placement, _) = placement_of(doc, c);
     if !matches!(placement, Placement::At(_)) {
         return None;

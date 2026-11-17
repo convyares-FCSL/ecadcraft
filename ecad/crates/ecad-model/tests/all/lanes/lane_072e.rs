@@ -80,7 +80,7 @@ fn page_kinds_and_their_words_round_trip() {
     for k in GenKind::ALL {
         assert_eq!(GenKind::parse(k.word()), Some(*k));
     }
-    let strip = ecad_model::ComponentId(0xabc);
+    let strip = ecad_model::DeviceId(0xabc);
     for kind in [PageKind::Schematic, PageKind::generated(GenKind::Cover), PageKind::TerminalStrip { strip }] {
         let mut p = Page::titled("p").unwrap();
         p.kind = kind;

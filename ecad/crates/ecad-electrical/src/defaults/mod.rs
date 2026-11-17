@@ -24,7 +24,7 @@
 //! in its catalogue.
 
 pub use data::{DefaultsError, Slot};
-use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
+use ecad_model::{ConductorId, DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): the words of
 /// [`ecad_model::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
@@ -173,7 +173,7 @@ impl std::fmt::Debug for ProjectSource {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Scope {
     pub page: Option<PageId>,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub rep: Option<RepresentationId>,
     pub conductor: Option<ConductorId>,
 }
@@ -190,7 +190,7 @@ impl Scope {
     }
 
     /// A component (device), with no page.
-    pub fn component(component: ComponentId) -> Self {
+    pub fn component(component: DeviceId) -> Self {
         Scope { component: Some(component), ..Scope::default() }
     }
 
@@ -199,7 +199,7 @@ impl Scope {
     pub fn symbol(doc: &Document, rep: RepresentationId) -> Self {
         let r = doc.representations.get(&rep);
         let component = r.and_then(|r| match r.subject {
-            Subject::Component(c) => Some(c),
+            Subject::Device(c) => Some(c),
             _ => None,
         });
         Scope { page: r.map(|r| r.page), component, rep: Some(rep), conductor: None }
@@ -424,7 +424,7 @@ pub fn find(key: &str) -> Option<&'static Entry> {
 pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> {
     let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
     if entry.allows(Level::Object) {
-        if let Some(c) = at.component.and_then(|c| doc.components.get(&c)) {
+        if let Some(c) = at.component.and_then(|c| doc.devices.get(&c)) {
             if let Some(value) = at.rep.and_then(|rep| stored(&c.properties, &symbol_key(entry.key, rep))) {
                 return Resolved { value, from: Source::Symbol };
             }
@@ -502,7 +502,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     if entry.allows(Level::Page) || page.is_some() {
         out.push((Source::Page, page.filter(|_| entry.allows(Level::Page))));
     }
-    let component = at.component.and_then(|c| doc.components.get(&c));
+    let component = at.component.and_then(|c| doc.devices.get(&c));
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
@@ -540,7 +540,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
         let px = resolve(doc, entry, Scope::project()).text();
         let px = px.trim().trim_start_matches('-').to_ascii_uppercase();
         return doc
-            .components
+            .devices
             .values()
             .filter_map(|c| c.properties.get(ecad_model::tag::TAG_KEY))
             .filter(|t| {
@@ -558,7 +558,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     }
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
-        "devices" => doc.components.values().filter(|c| !own(&c.properties)).count(),
+        "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
         "wires" => doc.conductors.values().filter(|c| !own(&c.properties)).count(),
         _ => doc.pages.len(),
     }
@@ -567,7 +567,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_model::{Component, Page};
+    use ecad_model::{Device, Page};
 
     fn key_ok(key: &str) -> bool {
         let parts: Vec<&str> = key.split('.').collect();
@@ -636,19 +636,19 @@ mod tests {
         let show = &text::TAG_SHOW;
         let mut doc = Document::default();
         let page = PageId(1);
-        let comp = ComponentId(2);
+        let comp = DeviceId(2);
         let rep = RepresentationId(3);
         doc.pages.insert(page, Page::titled("p").unwrap());
-        doc.components.insert(comp, Component { properties: Default::default(), definition: None });
+        doc.devices.insert(comp, Device::default());
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
         doc.properties.insert(show.key.into(), "no".into());
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Project });
         doc.pages.get_mut(&page).map(|p| p.display.insert(show.key.into(), "yes".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("yes"), from: Source::Page });
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
+        doc.devices.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Object });
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
+        doc.devices.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("first"), from: Source::Symbol });
         // The project-only scope still sees only the project.
         assert_eq!(resolve(&doc, show, Scope::project()).from, Source::Project);

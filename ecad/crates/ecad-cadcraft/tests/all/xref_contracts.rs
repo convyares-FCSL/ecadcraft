@@ -13,7 +13,7 @@ use common::{H, id, pts};
 use ecad_cadcraft::project::Mapped;
 use ecad_cadcraft::xref::{self, Group, RefIndex};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{ComponentId, ObjectRef, Op, PageId, RepresentationId};
+use ecad_model::{DeviceId, ObjectRef, Op, PageId, RepresentationId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 25;
@@ -22,12 +22,12 @@ struct X {
     h: H,
     p100: PageId,
     p105: PageId,
-    k1: ComponentId,
+    k1: DeviceId,
     coil: RepresentationId,
     power: RepresentationId,
     no: RepresentationId,
     nc: RepresentationId,
-    q1: ComponentId,
+    q1: DeviceId,
     mcb: RepresentationId,
     q_nc: RepresentationId,
 }
@@ -42,7 +42,7 @@ fn fixture() -> X {
     let p100 = h.first_page();
     h.run("pageprops", json!({"page": p100.hex(), "number": "100", "title": "Supply"})).unwrap();
     let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
-    let k1: ComponentId = id(&coil, "component");
+    let k1: DeviceId = id(&coil, "component");
     // A2 straight down to the 0V rail.
     h.run("wire", json!({"points": pts(&[(75.0, 170.0), (75.0, 150.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(40.0, 150.0), (200.0, 150.0)])})).unwrap();
@@ -51,7 +51,7 @@ fn fixture() -> X {
     let no = h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1.hex()})).unwrap();
     let nc = h.run("place", json!({"symbol": "nc", "at": [100, 100], "device": k1.hex()})).unwrap();
     let mcb = h.run("place", json!({"symbol": "mcb1", "at": [250, 150]})).unwrap();
-    let q1: ComponentId = id(&mcb, "component");
+    let q1: DeviceId = id(&mcb, "component");
     let q_nc = h.run("place", json!({"symbol": "nc", "at": [300, 150], "device": q1.hex()})).unwrap();
     X { p100, p105, k1, coil: rep(&coil), power: rep(&power), no: rep(&no), nc: rep(&nc), q1, mcb: rep(&mcb), q_nc: rep(&q_nc), h }
 }
@@ -73,7 +73,7 @@ fn contact_text(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> 
     drawn(h, page).into_iter().find(|(x, i, _)| *x == r && *i == 0).map(|(_, _, v)| v)
 }
 
-fn rows(h: &mut H, c: ComponentId) -> Vec<(String, String, String, String)> {
+fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String, String)> {
     let v = h.run("contacts", json!({"component": c.hex()})).unwrap();
     v["rows"]
         .as_array()
@@ -208,7 +208,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert_eq!(v["mirror"], json!("at -15,-60"), "{v}");
     assert_eq!(x.h.head(), head + 1);
     assert!(
-        matches!(x.h.p(|p| p.ledger.log().last().unwrap().ops.clone()).as_slice(), [Op::SetProperty { object: ObjectRef::Component(_), key, .. }] if key == "mirror")
+        matches!(x.h.p(|p| p.ledger.log().last().unwrap().ops.clone()).as_slice(), [Op::SetProperty { object: ObjectRef::Device(_), key, .. }] if key == "mirror")
     );
     let top = |h: &mut H| {
         h.p(|p| {
@@ -230,7 +230,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert!(contact_text(&mut x.h, x.p105, x.no).is_some());
     // Project default: cleared.
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "Project default (auto)"})).unwrap();
-    assert!(!x.h.doc().components[&x.k1].properties.contains_key("mirror"));
+    assert!(!x.h.doc().devices[&x.k1].properties.contains_key("mirror"));
     assert!(top(&mut x.h).is_some());
     // A bad value is refused with a way forward.
     let e = x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "at NaN,1"})).unwrap_err();
@@ -345,7 +345,7 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
     assert_eq!(h2.p(|p| p.xref.clone()), idx, "the index rebuilt on open is the kept one");
-    let c = &h2.doc().components[&x.k1];
+    let c = &h2.doc().devices[&x.k1];
     assert_eq!(c.properties.get("contacts").map(String::as_str), Some("3P+1NO+1NC"));
     assert_eq!(c.properties.get("mirror").map(String::as_str), Some("right"));
     drop(h2);
@@ -362,16 +362,16 @@ fn k_hostile_values() {
         assert!(x.h.run("setprop", json!({"component": x.k1.hex(), "key": key, "value": v})).is_err(), "{key} {v:.20}");
     }
     // Stored unreadable values (a hostile file) count as absent.
-    let before = x.h.doc().components[&x.k1].properties.clone();
+    let before = x.h.doc().devices[&x.k1].properties.clone();
     let ops = vec![
         Op::SetProperty {
-            object: ObjectRef::Component(x.k1),
+            object: ObjectRef::Device(x.k1),
             key: "contacts".into(),
             before: before.get("contacts").cloned(),
             after: Some("3X".into()),
         },
         Op::SetProperty {
-            object: ObjectRef::Component(x.k1),
+            object: ObjectRef::Device(x.k1),
             key: "mirror".into(),
             before: before.get("mirror").cloned(),
             after: Some("at inf,0".into()),

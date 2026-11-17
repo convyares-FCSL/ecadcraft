@@ -2,7 +2,7 @@
 //! for a placement in a live project, and keeping its conflicts waiting there afterwards. The
 //! rules are [`crate::proposals`].
 
-use ecad_model::{ComponentId, PageId, Pt};
+use ecad_model::{DeviceId, PageId, Pt};
 use serde_json::Value;
 
 use crate::designations::{Aspect, Pending};
@@ -16,7 +16,7 @@ use crate::proposals::*;
 /// # Errors
 /// A mode or a typed code that is not valid.
 pub(crate) fn plan_place(
-    p: &mut crate::project::Project, mut modes: [Mode; 2], c: ComponentId, page: PageId, at: Pt, half: Option<crate::symbols::Side>,
+    p: &mut crate::project::Project, mut modes: [Mode; 2], c: DeviceId, page: PageId, at: Pt, half: Option<crate::symbols::Side>,
 ) -> Result<Planned, String> {
     let half_mode = modes[1] == Mode::Half;
     if half_mode {
@@ -41,7 +41,7 @@ pub(crate) fn plan_place(
 /// After a placement committed: keep its conflicts waiting (Leave by default), echo what was set
 /// and what stayed, and add the proposal to the result `v`.
 pub(crate) fn finish_place(
-    p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, c: ComponentId, joined: bool, planned: &Planned, v: &mut Value,
+    p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, c: DeviceId, joined: bool, planned: &Planned, v: &mut Value,
 ) {
     p.conflicts = if planned.moved == 0 { planned.conflicts.clone() } else { Vec::new() };
     let doc = p.ledger.document();

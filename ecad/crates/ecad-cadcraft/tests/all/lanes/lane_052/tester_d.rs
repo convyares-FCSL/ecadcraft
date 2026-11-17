@@ -7,14 +7,14 @@ use crate::common::{H, id};
 
 use ecad_cadcraft::checks::{self, Kind};
 use ecad_cadcraft::locations;
-use ecad_model::{ComponentId, Document, PageId};
+use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
 
-fn loc(d: &Document, c: ComponentId) -> Option<String> {
+fn loc(d: &Document, c: DeviceId) -> Option<String> {
     locations::resolve(d, c).value
 }
 
-fn func(d: &Document, c: ComponentId) -> Option<String> {
+fn func(d: &Document, c: DeviceId) -> Option<String> {
     locations::resolve_function(d, c).value
 }
 
@@ -71,7 +71,7 @@ fn every_place_path_proposes_in_one_transaction_and_one_undo() {
         let head = h.head();
         let v = h.run("place", json!({"symbol": symbol, "at": [150, 160]})).unwrap();
         assert_eq!(h.head(), head + 1, "{symbol}: one transaction {v}");
-        let c: ComponentId = id(&v, "component");
+        let c: DeviceId = id(&v, "component");
         let d = h.doc();
         assert_eq!(loc(&d, c).as_deref(), Some("+CP1"), "{symbol}: location {v}");
         assert_eq!(func(&d, c).as_deref(), Some("=F1"), "{symbol}: function {v}");
@@ -87,7 +87,7 @@ fn a_project_symbol_device_is_listed_and_moved_like_any_other() {
     let mut h = H::new(0x52_d002);
     float_symbol(&mut h);
     let v = h.run("place", json!({"symbol": "float1", "at": [100, 160]})).unwrap();
-    let b: ComponentId = id(&v, "component");
+    let b: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": b.hex(), "value": "+CP2"})).unwrap();
     let v = h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 70], [200, 250]]})).unwrap();
     assert_eq!(loc(&h.doc(), b).as_deref(), Some("+CP2"), "never changed silently: {v}");
@@ -112,7 +112,7 @@ fn every_conflict_answer_is_one_step_and_undoes_exactly() {
     let mut ks = Vec::new();
     for x in [50, 100, 150] {
         let v = h.run("place", json!({"symbol": "coil", "at": [x, 150], "location": "keep", "function": "keep"})).unwrap();
-        let k: ComponentId = id(&v, "component");
+        let k: DeviceId = id(&v, "component");
         h.run("setlocation", json!({"component": k.hex(), "value": "+CP2"})).unwrap();
         ks.push(k);
     }
@@ -127,7 +127,7 @@ fn every_conflict_answer_is_one_step_and_undoes_exactly() {
     h.run("locationbox", json!({"location": "+CP1", "corners": [[30, 110], [190, 210]]})).unwrap();
     assert_eq!(conflicts(&mut h).len(), 3);
     let (before, head) = (h.doc(), h.head());
-    h.run("conflicts", json!({"answer": "move", "components": [ks[0].hex()]})).unwrap();
+    h.run("conflicts", json!({"answer": "move", "devices": [ks[0].hex()]})).unwrap();
     assert_eq!(h.head(), head + 1);
     let after = h.doc();
     assert_eq!(loc(&after, ks[0]).as_deref(), Some("+CP1"));
@@ -139,19 +139,19 @@ fn every_conflict_answer_is_one_step_and_undoes_exactly() {
 
 /// §10.21, §5.8: "Choose lets it take =F1 and keep its location": a device with both aspects in
 /// conflict can move one aspect's row and keep the other. The desktop app's per-row Move says
-/// "Set -K01's function to =F1" but sends only `components`.
+/// "Set -K01's function to =F1" but sends only `devices`.
 #[test]
 fn a_per_row_move_moves_only_that_aspect() {
     let mut h = H::new(0x52_d004);
     let v = h.run("place", json!({"symbol": "coil", "at": [300, 40], "location": "keep", "function": "keep"})).unwrap();
-    let m: ComponentId = id(&v, "component");
+    let m: DeviceId = id(&v, "component");
     h.run("setfunction", json!({"component": m.hex(), "value": "=F2"})).unwrap();
     h.run("setlocation", json!({"component": m.hex(), "value": "+CP2"})).unwrap();
     boxes(&mut h);
     h.run("place", json!({"symbol": "no", "at": [150, 160], "device": m.hex()})).unwrap();
     let rows = conflicts(&mut h);
     assert_eq!(rows.len(), 2, "one row per aspect: {rows:?}");
-    let r = h.run("conflicts", json!({"answer": "move", "components": [m.hex()], "aspect": "function"}));
+    let r = h.run("conflicts", json!({"answer": "move", "devices": [m.hex()], "aspect": "function"}));
     assert!(r.is_ok(), "{r:?}");
     let d = h.doc();
     assert_eq!(func(&d, m).as_deref(), Some("=F1"), "the function row moved");
@@ -168,17 +168,17 @@ fn half_sets_only_that_half_and_undoes_exactly() {
     assert!(e.contains("No connector half"), "{e}");
     assert_eq!(h.head(), head);
     let v = h.run("place", json!({"symbol": "pins", "at": [300, 40]})).unwrap();
-    let x: ComponentId = id(&v, "component");
+    let x: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": x.hex(), "value": "+CP1"})).unwrap();
     h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 100], [200, 220]]})).unwrap();
     h.run("place", json!({"symbol": "pinp", "device": x.hex(), "at": [75, 180]})).unwrap();
     let before = h.doc();
     h.run("conflicts", json!({"answer": "half"})).unwrap();
     let after = h.doc();
-    let (b, a) = (&before.components[&x].properties, &after.components[&x].properties);
+    let (b, a) = (&before.devices[&x].properties, &after.devices[&x].properties);
     let changed: Vec<&String> = a.keys().chain(b.keys()).filter(|k| a.get(*k) != b.get(*k)).collect();
     assert_eq!(changed, [&"location.plug".to_string()], "only the plug's location");
-    assert_eq!(before.components.len(), after.components.len());
+    assert_eq!(before.devices.len(), after.devices.len());
     undo_to(&mut h, 1, &before, "Half");
 }
 
@@ -189,7 +189,7 @@ fn half_sets_only_that_half_and_undoes_exactly() {
 fn an_undone_proposal_leaves_no_conflict_to_answer() {
     let mut h = H::new(0x52_d006);
     let v = h.run("place", json!({"symbol": "coil", "at": [50, 150], "location": "keep", "function": "keep"})).unwrap();
-    let k: ComponentId = id(&v, "component");
+    let k: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP2"})).unwrap();
     h.run("locationbox", json!({"location": "+NEW", "corners": [[20, 100], [200, 220]]})).unwrap();
     assert_eq!(conflicts(&mut h).len(), 1);
@@ -210,7 +210,7 @@ fn moving_a_box_over_a_device_sets_it_in_a_follow_up() {
     let mut h = H::new(0x52_d007);
     let page = h.first_page();
     let v = h.run("place", json!({"symbol": "coil", "at": [300, 150]})).unwrap();
-    let k: ComponentId = id(&v, "component");
+    let k: DeviceId = id(&v, "component");
     let v = h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 100], [200, 220]]})).unwrap();
     let item = id(&v, "item");
     let hd = h.handle_of(page, item);
@@ -233,15 +233,15 @@ fn page_and_project_values_propose_and_undo_exactly() {
     let mut h = H::new(0x52_d008);
     let p1 = h.first_page();
     let v = h.run("place", json!({"symbol": "coil", "at": [50, 150]})).unwrap();
-    let a: ComponentId = id(&v, "component");
+    let a: DeviceId = id(&v, "component");
     let v = h.run("place", json!({"symbol": "coil", "at": [100, 150]})).unwrap();
-    let b: ComponentId = id(&v, "component");
+    let b: DeviceId = id(&v, "component");
     // The page was +CP2 and -K02 took it; -K01 is unset.
     h.run("pageprops", json!({"page": p1.hex(), "location": "+CP2", "proposal": "keep"})).unwrap();
     h.run("setlocation", json!({"component": b.hex(), "value": "+CP2"})).unwrap();
     let p2: PageId = id(&h.run("newpage", json!({"title": "2"})).unwrap(), "page");
     let v = h.run("place", json!({"symbol": "coil", "at": [50, 150]})).unwrap();
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let before = h.doc();
     let head = h.head();
     let v = h.run("pageprops", json!({"page": p1.hex(), "location": "+P1"})).unwrap();
@@ -269,7 +269,7 @@ fn hostile_proposal_parameters_are_refused() {
     let mut h = H::new(0x52_d009);
     let p1 = h.first_page();
     let v = h.run("place", json!({"symbol": "coil", "at": [50, 150], "location": "keep", "function": "keep"})).unwrap();
-    let k: ComponentId = id(&v, "component");
+    let k: DeviceId = id(&v, "component");
     let long = "+".to_string() + &"Q".repeat(1_000);
     let cases: Vec<(&str, Value)> = vec![
         ("place", json!({"symbol": "coil", "at": [80, 150], "location": 5})),
@@ -284,7 +284,7 @@ fn hostile_proposal_parameters_are_refused() {
         ("projectprops", json!({"location": "+P9", "proposal": {"x": 1}})),
         ("conflicts", json!({"answer": "maybe"})),
         ("conflicts", json!({"answer": 5})),
-        ("conflicts", json!({"answer": "move", "components": "nope"})),
+        ("conflicts", json!({"answer": "move", "devices": "nope"})),
     ];
     let mut accepted = Vec::new();
     for (cmd, params) in cases {

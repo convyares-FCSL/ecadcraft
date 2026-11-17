@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::ComponentId;
+use crate::id::DeviceId;
 use crate::text::Text;
 
 /// The old page property naming a terminal plan's one strip; now [`PageKind::TerminalStrip`]
@@ -96,7 +96,7 @@ pub enum PageKind {
     Generated(GenKind),
     /// The terminal plan of one terminal strip (brief 028, FP3): a generated
     /// [`GenKind::Terminals`] page that shows only `strip`.
-    TerminalStrip { strip: ComponentId },
+    TerminalStrip { strip: DeviceId },
 }
 
 impl PageKind {
@@ -116,7 +116,7 @@ impl PageKind {
     }
 
     /// The one strip a terminal plan shows, if it is a one-strip plan.
-    pub fn strip(self) -> Option<ComponentId> {
+    pub fn strip(self) -> Option<DeviceId> {
         match self {
             PageKind::TerminalStrip { strip } => Some(strip),
             PageKind::Generated(_) | PageKind::Schematic => None,

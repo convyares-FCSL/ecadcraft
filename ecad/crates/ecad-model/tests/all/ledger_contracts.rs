@@ -1,7 +1,7 @@
 //! Contract tests for the ledger: TX-01..TX-04, UNDO-01..UNDO-03, SAVE-01/02, DOC-05..DOC-07.
 
 use ecad_model::{
-    Author, CableMember, Color, Component, Conductor, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId,
+    Author, CableMember, Color, Conductor, Device, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId,
     Primitive, Pt, Representation, Style, Subject, Terminal, TxKind,
 };
 
@@ -46,12 +46,12 @@ fn every_op_inverts_to_the_previous_state() {
     let rep = f.ids.fresh();
     let ops = vec![
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
-        Op::CreateComponent { id: comp, component: Component::default() },
+        Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
-                subject: Subject::Component(comp),
+                subject: Subject::Device(comp),
                 page: f.page,
                 form: ecad_model::Form::Drawn,
                 role: "main".into(),
@@ -63,7 +63,7 @@ fn every_op_inverts_to_the_previous_state() {
         Op::AttachEnd { conductor: cond, end: End::B, before: None, after: Some(term) },
         Op::CreateCable { id: cable, cable: Default::default() },
         Op::AddCableMember { cable, index: 0, member: CableMember { conductor: cond, core: None } },
-        Op::SetProperty { object: ecad_model::ObjectRef::Component(comp), key: "tag".into(), before: None, after: Some("-K1".into()) },
+        Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "tag".into(), before: None, after: Some("-K1".into()) },
     ];
     let before = f.ledger.document().clone();
     let after = f.ledger.preview(&ops).unwrap();
@@ -118,10 +118,10 @@ fn an_item_belongs_to_at_most_one_representation() {
     };
     let ops = vec![
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
-        Op::CreateComponent { id: c1, component: Component::default() },
-        Op::CreateComponent { id: c2, component: Component::default() },
-        Op::LinkRepresentation { id: f.ids.fresh(), rep: rep(Subject::Component(c1)) },
-        Op::LinkRepresentation { id: f.ids.fresh(), rep: rep(Subject::Component(c2)) },
+        Op::CreateDevice { id: c1, device: Device::default() },
+        Op::CreateDevice { id: c2, device: Device::default() },
+        Op::LinkRepresentation { id: f.ids.fresh(), rep: rep(Subject::Device(c1)) },
+        Op::LinkRepresentation { id: f.ids.fresh(), rep: rep(Subject::Device(c2)) },
     ];
     assert!(matches!(f.ledger.commit(Author::User, "x", ops), Err(ModelError::Invariant(_))));
 }
@@ -138,14 +138,14 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
             Author::User,
             "setup",
             vec![
-                Op::CreateComponent { id: comp, component: Component::default() },
+                Op::CreateDevice { id: comp, device: Device::default() },
                 Op::AddTerminal { id: term, terminal: t.clone() },
                 Op::CreateConductor { id: cond, conductor: Conductor::default() },
                 Op::AttachEnd { conductor: cond, end: End::A, before: None, after: Some(term) },
             ],
         )
         .unwrap();
-    let delete = vec![Op::RemoveTerminal { id: term, terminal: t.clone() }, Op::DeleteComponent { id: comp, component: Component::default() }];
+    let delete = vec![Op::RemoveTerminal { id: term, terminal: t.clone() }, Op::DeleteDevice { id: comp, device: Device::default() }];
     assert!(f.ledger.commit(Author::User, "delete without detaching", delete.clone()).is_err());
     let mut with_detach = vec![Op::AttachEnd { conductor: cond, end: End::A, before: Some(term), after: None }];
     with_detach.extend(delete);
@@ -205,7 +205,7 @@ fn unsaved_state_follows_head_and_persisted_position() {
     assert!(!f.ledger.is_unsaved());
     // A non-graphical edit moves the head.
     let comp = f.ids.fresh();
-    f.ledger.commit(Author::User, "component", vec![Op::CreateComponent { id: comp, component: Component::default() }]).unwrap();
+    f.ledger.commit(Author::User, "component", vec![Op::CreateDevice { id: comp, device: Device::default() }]).unwrap();
     assert!(f.ledger.is_unsaved());
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     // Undo back to saved content is still unsaved (SAVE-02).
@@ -241,12 +241,12 @@ fn ids_from_one_allocator_never_repeat() {
 
 #[test]
 fn ids_serialise_as_exact_hex_strings() {
-    let id = ecad_model::ComponentId(u128::MAX - 5);
+    let id = ecad_model::DeviceId(u128::MAX - 5);
     let json = serde_json::to_string(&id).unwrap();
     assert_eq!(json, format!("\"{:032x}\"", u128::MAX - 5));
-    assert_eq!(serde_json::from_str::<ecad_model::ComponentId>(&json).unwrap(), id);
+    assert_eq!(serde_json::from_str::<ecad_model::DeviceId>(&json).unwrap(), id);
     let mut doc = Document::default();
-    doc.components.insert(id, Component::default());
+    doc.devices.insert(id, Device::default());
     let back: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);
 }
@@ -290,12 +290,12 @@ fn a_symbol_must_show_its_components_own_definition() {
     let ops = vec![
         Op::EmbedDefinition { id: d1, definition: good.clone() },
         Op::EmbedDefinition { id: d2, definition: good },
-        Op::CreateComponent { id: c, component: Component { definition: Some(d1), ..Default::default() } },
+        Op::CreateDevice { id: c, device: Device { definition: Some(d1), ..Default::default() } },
         Op::AddItem { id: i, item },
         Op::LinkRepresentation {
             id: r,
             rep: Representation {
-                subject: Subject::Component(c),
+                subject: Subject::Device(c),
                 page: f.page,
                 form: ecad_model::Form::Symbol,
                 role: "main".into(),

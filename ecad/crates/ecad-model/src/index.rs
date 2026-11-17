@@ -20,8 +20,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Conductor, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
+use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -67,8 +67,8 @@ pub(crate) struct Index {
     pub(crate) terminal_ends: Multi<TerminalId, (ConductorId, End)>,
     /// Conductor → cables listing it.
     pub(crate) conductor_cables: Multi<ConductorId, CableId>,
-    /// Component → its terminals.
-    pub(crate) component_terminals: Multi<ComponentId, TerminalId>,
+    /// Device → its terminals.
+    pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
     /// Subject → representations depicting it.
     pub(crate) subject_reps: Multi<Subject, RepresentationId>,
     /// Page → representations on it.
@@ -84,15 +84,15 @@ pub(crate) struct Index {
     /// Definition → symbol-instance items placing it.
     pub(crate) definition_items: Multi<DefinitionId, ItemId>,
     /// Definition → components using it.
-    pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
+    pub(crate) definition_components: Multi<DefinitionId, DeviceId>,
     /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
-    pub(crate) tags: Multi<String, ComponentId>,
+    pub(crate) tags: Multi<String, DeviceId>,
     /// Tag key → cables whose `tag` property has it (brief 026: devices and cables share one tag
     /// namespace).
     pub(crate) cable_tags: Multi<String, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
     /// that name (brief 022).
-    pub(crate) continuations: Multi<String, ComponentId>,
+    pub(crate) continuations: Multi<String, DeviceId>,
     /// Folder → pages whose `folder` property names it (brief 019).
     pub(crate) folder_pages: Multi<FolderId, PageId>,
     /// Folder → folders whose parent it is (brief 019).
@@ -160,8 +160,8 @@ impl Index {
     /// Everything but items and representations.
     fn add_rest(&mut self, doc: &Document) {
         let rest = self;
-        for (id, c) in &doc.components {
-            rest.component(*id, c, Delta::Add);
+        for (id, c) in &doc.devices {
+            rest.device(*id, c, Delta::Add);
         }
         for (id, t) in &doc.terminals {
             rest.terminal(*id, t, Delta::Add);
@@ -218,7 +218,7 @@ impl Index {
         }
     }
 
-    pub(crate) fn component(&mut self, id: ComponentId, c: &Component, delta: Delta) {
+    pub(crate) fn device(&mut self, id: DeviceId, c: &Device, delta: Delta) {
         if let Some(d) = c.definition {
             bump(&mut self.definition_components, d, id, delta);
         }
@@ -228,16 +228,16 @@ impl Index {
         if let Some(k) = crate::connectivity::continuation_key(&c.properties) {
             self.continuation(id, k, delta);
         }
-        self.style_choices(ObjectRef::Component(id), &c.properties, delta);
+        self.style_choices(ObjectRef::Device(id), &c.properties, delta);
     }
 
     /// A continuation's name key is added or removed (brief 022).
-    pub(crate) fn continuation(&mut self, id: ComponentId, key: String, delta: Delta) {
+    pub(crate) fn continuation(&mut self, id: DeviceId, key: String, delta: Delta) {
         bump(&mut self.continuations, key, id, delta);
     }
 
     /// A component's tag `tag` (its stored value) is added or removed.
-    pub(crate) fn tag(&mut self, id: ComponentId, tag: &str, delta: Delta) {
+    pub(crate) fn tag(&mut self, id: DeviceId, tag: &str, delta: Delta) {
         bump(&mut self.tags, crate::tag::key(tag), id, delta);
     }
 

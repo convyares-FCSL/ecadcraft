@@ -15,8 +15,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Component, ComponentId, ConductorId, Definition, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op,
-    Origin, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    ConductorId, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin,
+    PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
     TextHAlign, TextSlot, TextVAlign,
 };
 
@@ -55,6 +55,8 @@ pub struct Content {
     pub slots: Vec<TextSlot>,
     pub defaults: BTreeMap<String, String>,
     pub bridges: Vec<Vec<String>>,
+    /// What a device this symbol starts is (design 072 §2.3).
+    pub device_type: ecad_model::DeviceType,
 }
 
 impl Content {
@@ -74,6 +76,7 @@ impl Content {
             texts: self.slots.clone(),
             defaults: self.defaults.clone(),
             derived_from: None,
+            device_type: self.device_type.clone(),
         }
     }
 
@@ -86,6 +89,7 @@ impl Content {
             slots: d.texts.clone(),
             defaults: d.defaults.clone(),
             bridges: d.bridges.clone(),
+            device_type: d.device_type.clone(),
         }
     }
 }
@@ -341,7 +345,7 @@ pub struct Row {
     pub rep: RepresentationId,
     pub item: ItemId,
     pub page: PageId,
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub tag: String,
     /// The version it shows now.
     pub from: DefinitionId,
@@ -359,7 +363,7 @@ fn copies_of(doc: &Document, defs: &[DefinitionId]) -> Vec<(ItemId, Representati
     for d in defs {
         for item in doc.items_using(*d) {
             let Some((rid, r)) = doc.representation_of_item(item) else { continue };
-            if r.form == Form::Symbol && matches!(r.subject, Subject::Component(_)) {
+            if r.form == Form::Symbol && matches!(r.subject, Subject::Device(_)) {
                 out.push((item, rid, r.page));
             }
         }
@@ -371,7 +375,7 @@ fn copies_of(doc: &Document, defs: &[DefinitionId]) -> Vec<(ItemId, Representati
 }
 
 /// The terminal of component `c` a representation shows for definition key `key`.
-fn shown_terminal(doc: &Document, c: ComponentId, r: &Representation, old: &Definition, key: &str) -> Option<TerminalId> {
+fn shown_terminal(doc: &Document, c: DeviceId, r: &Representation, old: &Definition, key: &str) -> Option<TerminalId> {
     if r.connection_points.is_empty() {
         return doc.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(key)).map(|(t, _)| t);
     }
@@ -405,7 +409,7 @@ fn wire_words(doc: &Document, t: TerminalId) -> String {
 /// The row of one copy (`item` in `rid`) moving from `old` to `new` (design 048 §6.2).
 fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId, old: &Definition, new: &Definition) -> Option<Row> {
     let r = doc.representations.get(&rid)?;
-    let Subject::Component(c) = r.subject else { return None };
+    let Subject::Device(c) = r.subject else { return None };
     let placement = match &doc.items.get(&item)?.kind {
         ItemKind::Symbol(s) => s.placement,
         ItemKind::Primitive(_) => return None,
@@ -508,7 +512,7 @@ pub fn impact(doc: &Document, defs: &[DefinitionId], new: &Definition) -> Vec<Ro
 fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: DefinitionId, new: &Definition) -> Result<Vec<Op>, CmdError> {
     const GONE: &str = "A copy is gone.";
     let mut ops = Vec::new();
-    let mut set_def: BTreeSet<ComponentId> = BTreeSet::new();
+    let mut set_def: BTreeSet<DeviceId> = BTreeSet::new();
     let mut moved_routes: BTreeMap<ItemId, Item> = BTreeMap::new();
     let mut route_before: BTreeMap<ItemId, Item> = BTreeMap::new();
     for row in rows {
@@ -520,12 +524,13 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         let old = doc.definitions.get(&inst.definition).ok_or(CmdError::refused("A copy's symbol is gone."))?;
         let r = doc.representations.get(&row.rep).ok_or(CmdError::refused(GONE))?;
         let c = row.component;
-        let comp = doc.components.get(&c).ok_or(CmdError::refused("A copy's device is gone."))?;
+        let comp = doc.devices.get(&c).ok_or(CmdError::refused("A copy's device is gone."))?;
         let mut after = item.clone();
         after.kind = ItemKind::Symbol(SymbolInstance { definition: new_id, placement: inst.placement });
         ops.push(Op::ModifyItem { id: row.item, before: item.clone(), after });
         if comp.definition == Some(inst.definition) && set_def.insert(c) {
-            ops.push(Op::SetComponentDefinition { id: c, before: comp.definition, after: Some(new_id) });
+            ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(new_id) });
+            ops.extend(crate::devices::retype(c, comp, new_id, &new.device_type));
         }
         let new_keys: BTreeMap<&str, &TerminalDef> = new.terminals.iter().map(|t| (t.key.as_str(), t)).collect();
         let mut cps = r.connection_points.clone();
@@ -607,7 +612,7 @@ fn superseded(doc: &Document, lineage: DefinitionId, keep: DefinitionId, ops: &[
             {
                 *leaving.entry(a.definition).or_default() += 1;
             }
-            Op::SetComponentDefinition { before: Some(d), .. } => *comps_leaving.entry(*d).or_default() += 1,
+            Op::SetDeviceDefinition { before: Some(d), .. } => *comps_leaving.entry(*d).or_default() += 1,
             _ => {}
         }
     }
@@ -798,6 +803,7 @@ pub fn plan_edit(
         let gone = superseded(doc, e.lineage, id, &ops);
         ops.extend(gone);
     }
+    ops.extend(symbols::prefix_follow(doc, &ops));
     let (updated, left) = (chosen.len(), rows.len().saturating_sub(chosen.len()));
     Ok(SymbolPlan { ops, label: format!("Edit symbol {}", content.name), id, updated, left })
 }
@@ -848,6 +854,7 @@ pub fn plan_update(
     let mut ops = update_ops(doc, ids, &chosen, target.id, target.def)?;
     let gone = superseded(doc, lin, versions.last().map_or(target.id, |v| v.id), &ops);
     ops.extend(gone.into_iter().filter(|o| !matches!(o, Op::RemoveDefinition { id, .. } if *id == target.id)));
+    ops.extend(symbols::prefix_follow(doc, &ops));
     Ok(SymbolPlan { ops, label: format!("Update symbol {}", target.def.name), id: target.id, updated: chosen.len(), left: 0 })
 }
 
@@ -896,7 +903,7 @@ pub fn shifted(p: &Primitive, o: Pt) -> Primitive {
 pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
         Some(Subject::Conductor(c)) => format!("Wire {}", wire_number(doc, c)),
-        Some(Subject::Component(c)) => crate::devices::tag_words(doc, c),
+        Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
         None => "Part of the selection".to_string(),
     };
@@ -908,7 +915,7 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Made {
     pub plan: SymbolPlan,
-    pub placed: Option<(ComponentId, RepresentationId, String)>,
+    pub placed: Option<(DeviceId, RepresentationId, String)>,
 }
 
 /// Where a made symbol goes.
@@ -988,9 +995,9 @@ pub struct Promoted {
 /// # Errors
 /// No such device, one that has symbols or no drawing, a drawing that holds more than plain
 /// shapes, or a rule the content breaks.
-pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: ComponentId, mut content: Content, fallback: Style) -> Result<Promoted, CmdError> {
-    let comp = doc.components.get(&c).ok_or(CmdError::NotFound(Noun::Device))?.clone();
-    let symbols_of: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Component(c)).collect();
+pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut content: Content, fallback: Style) -> Result<Promoted, CmdError> {
+    let comp = doc.devices.get(&c).ok_or(CmdError::NotFound(Noun::Device))?.clone();
+    let symbols_of: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Device(c)).collect();
     if symbols_of.iter().any(|(_, r)| r.form == Form::Symbol) || comp.definition.is_some() {
         return Err(CmdError::refused("Only a drawn component with no symbols can be made into a symbol."));
     }
@@ -1028,6 +1035,8 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: ComponentId, mut c
     for sl in &mut content.slots {
         sl.at = Pt::new(sl.at.x - origin.x, sl.at.y - origin.y);
     }
+    // The symbol made from the device's drawing declares the type the device has (design 072 §2.3).
+    content.device_type = comp.device_type.clone();
     refuse_problems(&content, &Rules { doc, lineage: None, grid: false })?;
     let (id, lineage, item, new_rep): (DefinitionId, DefinitionId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let def = version_definition(&content, lineage, 1, None)?;
@@ -1049,7 +1058,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: ComponentId, mut c
     ops.push(Op::LinkRepresentation {
         id: new_rep,
         rep: Representation {
-            subject: Subject::Component(c),
+            subject: Subject::Device(c),
             page: rep.page,
             form: Form::Symbol,
             role: rep.role.clone(),
@@ -1057,7 +1066,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: ComponentId, mut c
             connection_points: BTreeMap::new(),
         },
     });
-    ops.push(Op::SetComponentDefinition { id: c, before: comp.definition, after: Some(id) });
+    ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(id) });
     for (t, key) in rekey {
         if let Some(term) = doc.terminals.get(&t) {
             ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
@@ -1073,7 +1082,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: ComponentId, mut c
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedProject {
     pub ops: Vec<Op>,
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub representation: RepresentationId,
     pub tag: String,
 }
@@ -1087,7 +1096,7 @@ pub struct PlacedProject {
 #[allow(clippy::too_many_arguments)]
 pub fn plan_place(
     ledger: &Ledger, ids: &mut IdAllocator, tag_high: &mut TagHigh, page: PageId, style: Style, def_id: DefinitionId, def: &Definition,
-    pl: Placement, join: Option<ComponentId>, tag: Option<String>,
+    pl: Placement, join: Option<DeviceId>, tag: Option<String>,
 ) -> Result<PlacedProject, CmdError> {
     let key = def.defaults.get("key").cloned().unwrap_or_default();
     let (item, representation): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
@@ -1097,7 +1106,7 @@ pub fn plan_place(
     match (symbols::join_of(def), join) {
         (Join::Part, None) => Err(CmdError::refused(format!("{} is part of a device: name the `device` it joins.", def.name))),
         (_, Some(c)) => {
-            if !doc.components.contains_key(&c) {
+            if !doc.devices.contains_key(&c) {
                 return Err(CmdError::NotFound(Noun::Device));
             }
             // Unlabelled points count by their key.
@@ -1116,14 +1125,7 @@ pub fn plan_place(
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
                 id: representation,
-                rep: Representation {
-                    subject: Subject::Component(c),
-                    page,
-                    form: Form::Symbol,
-                    role: key,
-                    items: vec![item],
-                    connection_points: cps,
-                },
+                rep: Representation { subject: Subject::Device(c), page, form: Form::Symbol, role: key, items: vec![item], connection_points: cps },
             });
             Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tag_words(doc, c) })
         }
@@ -1135,7 +1137,7 @@ pub fn plan_place(
                     tag_high.next_auto(ledger, &prefix)?
                 }
             };
-            let c: ComponentId = ids.fresh();
+            let c: DeviceId = ids.fresh();
             let mut properties = ecad_model::Properties::new();
             properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
@@ -1143,7 +1145,7 @@ pub fn plan_place(
             if let Some(r) = field_value(doc, &key, def, Field::Rating) {
                 properties.insert(symbols::RATING_KEY.into(), r);
             }
-            ops.push(Op::CreateComponent { id: c, component: Component { properties, definition: Some(def_id) } });
+            ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(def_id), device_type: def.device_type.clone() } });
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
@@ -1152,7 +1154,7 @@ pub fn plan_place(
             ops.push(Op::LinkRepresentation {
                 id: representation,
                 rep: Representation {
-                    subject: Subject::Component(c),
+                    subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
                     role: key.clone(),

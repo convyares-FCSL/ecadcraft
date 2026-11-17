@@ -276,7 +276,7 @@ fn a_page_changed_elsewhere_gets_a_dot_without_a_rebuild_and_views_are_kept_per_
     h.state_mut().show_page(p3).unwrap();
     h.run_steps(3);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    let coil = doc(&mut h).components.keys().next().copied().expect("the coil");
+    let coil = doc(&mut h).devices.keys().next().copied().expect("the coil");
     h.state_mut().show_page(p1).unwrap();
     h.run_steps(3);
     assert_eq!(active(&mut h), Some(p1));
@@ -411,8 +411,8 @@ fn a_go_to_keeps_its_view_on_a_page_seen_before() {
     h.state_mut().show_page(p2).unwrap();
     h.run_steps(3);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    let coil = doc(&mut h).components.keys().next().copied().unwrap();
-    let rep = doc(&mut h).representations_of(ecad_model::Subject::Component(coil)).next().unwrap().0;
+    let coil = doc(&mut h).devices.keys().next().copied().unwrap();
+    let rep = doc(&mut h).representations_of(ecad_model::Subject::Device(coil)).next().unwrap().0;
     // Page 2 seen far from the coil, then page 1.
     let mut far = h.state().cad.session.state().unwrap().view();
     far.center = cadcraft_engine::geom::Vec2::new(5000.0, 5000.0);

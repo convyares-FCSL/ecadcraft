@@ -18,9 +18,9 @@ pub struct Fixture {
     pub layer: LayerId,
     pub d1: DefinitionId,
     pub d2: DefinitionId,
-    pub c1: ComponentId,
-    pub c2: ComponentId,
-    pub c3: ComponentId,
+    pub c1: DeviceId,
+    pub c2: DeviceId,
+    pub c3: DeviceId,
     pub t: Vec<TerminalId>,
     pub time: u64,
 }
@@ -60,11 +60,11 @@ impl Fixture {
     }
 
     /// Place an instance of `def` as component with two terminals; returns (component, terminals).
-    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (ComponentId, [TerminalId; 2]) {
-        let (c, t1, t2, item, rep): (ComponentId, TerminalId, TerminalId, ItemId, RepresentationId) =
+    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [TerminalId; 2]) {
+        let (c, t1, t2, item, rep): (DeviceId, TerminalId, TerminalId, ItemId, RepresentationId) =
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
-            Op::CreateComponent { id: c, component: Component { properties: Default::default(), definition: Some(def) } },
+            Op::CreateDevice { id: c, device: Device { properties: Default::default(), definition: Some(def), device_type: Default::default() } },
             Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".into()) } },
             Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".into()) } },
             Op::AddItem {
@@ -81,7 +81,7 @@ impl Fixture {
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
-                    subject: Subject::Component(c),
+                    subject: Subject::Device(c),
                     page: self.page,
                     form: Form::Symbol,
                     role: "main".into(),
@@ -105,9 +105,9 @@ pub fn fixture() -> Fixture {
         layer,
         d1,
         d2,
-        c1: ComponentId(0),
-        c2: ComponentId(0),
-        c3: ComponentId(0),
+        c1: DeviceId(0),
+        c2: DeviceId(0),
+        c3: DeviceId(0),
         t: Vec::new(),
         time: 1_760_000_000_000,
     };
@@ -206,10 +206,7 @@ pub fn fixture() -> Fixture {
     );
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).
     for (key, value) in [("tag", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
-        f.commit(
-            "Set property",
-            vec![Op::SetProperty { object: ObjectRef::Component(c1), key: key.into(), before: None, after: Some(value.into()) }],
-        );
+        f.commit("Set property", vec![Op::SetProperty { object: ObjectRef::Device(c1), key: key.into(), before: None, after: Some(value.into()) }]);
     }
     let at = f.ledger.head();
     f.commit("Name version", vec![Op::NameVersion { name: "review-1".into(), at, description: None }]);

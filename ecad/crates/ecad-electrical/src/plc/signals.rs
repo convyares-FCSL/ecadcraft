@@ -20,7 +20,7 @@
 use crate::CmdError;
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, ObjectRef, Op};
 use serde_json::{Value, json};
 
 use super::channels::{CH_PREFIX, ch_key, first_number};
@@ -110,7 +110,7 @@ pub fn safe_value(t: Option<CardType>, value: Option<&str>) -> Result<Option<Str
 
 /// The safe state channels of card `c` (type `t`) take when they have none: the registry's at the
 /// card's level. `None` for inputs.
-pub fn safe_default(doc: &Document, c: ComponentId, t: CardType) -> Option<String> {
+pub fn safe_default(doc: &Document, c: DeviceId, t: CardType) -> Option<String> {
     let e = safe_entry(t)?;
     let at = Scope { component: Some(c), ..Scope::project() };
     Some(defaults::resolve(doc, e, at).text()).filter(|w| !w.is_empty())
@@ -132,7 +132,7 @@ pub fn safe_words(v: &str) -> String {
 }
 
 /// The PLC a card belongs to: its rack, or `None` for the cards in no rack (one PLC together).
-pub fn plc_of(doc: &Document, c: ComponentId) -> Option<ComponentId> {
+pub fn plc_of(doc: &Document, c: DeviceId) -> Option<DeviceId> {
     match rack::rack_ref(doc, c) {
         RackRef::Rack(r) => Some(r),
         _ => None,
@@ -146,9 +146,9 @@ pub fn name_key(tag: &str) -> String {
 
 /// The tags of every channel in the PLC `plc` (a rack, or `None`: the cards in no rack), as (card,
 /// index, tag). One walk over the project's devices.
-pub fn tags_of_plc(doc: &Document, plc: Option<ComponentId>) -> Vec<(ComponentId, u32, String)> {
+pub fn tags_of_plc(doc: &Document, plc: Option<DeviceId>) -> Vec<(DeviceId, u32, String)> {
     let mut out = Vec::new();
-    for (id, x) in &doc.components {
+    for (id, x) in &doc.devices {
         let mut found = false;
         for (k, v) in x.properties.range(CH_PREFIX.to_string()..) {
             if !k.starts_with(CH_PREFIX) {
@@ -173,13 +173,13 @@ pub fn tags_of_plc(doc: &Document, plc: Option<ComponentId>) -> Vec<(ComponentId
 
 /// Another channel of the same PLC as card `c` that holds `tag` (compared without case), other than
 /// channel `i` of `c`.
-pub fn tag_holder(doc: &Document, c: ComponentId, i: u32, tag: &str) -> Option<(ComponentId, u32)> {
+pub fn tag_holder(doc: &Document, c: DeviceId, i: u32, tag: &str) -> Option<(DeviceId, u32)> {
     let key = name_key(tag);
     tags_of_plc(doc, plc_of(doc, c)).into_iter().find(|(x, j, t)| !(*x == c && *j == i) && name_key(t) == key).map(|(x, j, _)| (x, j))
 }
 
 /// `Tag "Valve_Inlet" is already -A03 channel 2 (%Q2.2).`
-pub fn duplicate_words(doc: &Document, tag: &str, holder: (ComponentId, u32)) -> String {
+pub fn duplicate_words(doc: &Document, tag: &str, holder: (DeviceId, u32)) -> String {
     let (c, j) = holder;
     let (auto, _) = super::address::of_channel(doc, c, j, None, &mut std::collections::BTreeMap::new());
     let (addr, _) = super::address::shown(doc, c, j, auto);
@@ -227,12 +227,12 @@ pub fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
 
 /// Whether device `c` passes a conductor through (a terminal or a connector half): it is not what a
 /// channel drives.
-pub fn is_pass_through(doc: &Document, c: ComponentId) -> bool {
+pub fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
     let kind_of = |s: &crate::symbols::Starter| matches!(s.kind, crate::symbols::Kind::Terminal | crate::symbols::Kind::ConnectorHalf { .. });
-    if let Some(s) = doc.components.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).and_then(crate::symbols::of_definition) {
+    if let Some(s) = doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).and_then(crate::symbols::of_definition) {
         return kind_of(s);
     }
-    doc.representations_of(ecad_model::Subject::Component(c)).find_map(|(_, r)| crate::devices::rep_starter(doc, r)).is_some_and(kind_of)
+    doc.representations_of(ecad_model::Subject::Device(c)).find_map(|(_, r)| crate::devices::rep_starter(doc, r)).is_some_and(kind_of)
 }
 
 /// What a channel drives (design 056 §4.5), from its row's targets: the targets that are not
@@ -297,10 +297,10 @@ impl TestState {
 
 /// The ops of **Make tags** on `cards`: every used or reserved channel with no tag gets one from its
 /// description, unique in its PLC. Returns the ops and how many tags per card.
-pub fn make_tags_ops(doc: &Document, cards: &[ComponentId]) -> (Vec<Op>, Vec<(ComponentId, usize)>) {
+pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(DeviceId, usize)>) {
     let mut ops = Vec::new();
     let mut counts = Vec::new();
-    let mut taken_by_plc: std::collections::BTreeMap<Option<ComponentId>, BTreeSet<String>> = std::collections::BTreeMap::new();
+    let mut taken_by_plc: std::collections::BTreeMap<Option<DeviceId>, BTreeSet<String>> = std::collections::BTreeMap::new();
     for c in cards {
         let plc = plc_of(doc, *c);
         let taken = taken_by_plc.entry(plc).or_insert_with(|| tags_of_plc(doc, plc).into_iter().map(|(_, _, t)| name_key(&t)).collect());
@@ -316,7 +316,7 @@ pub fn make_tags_ops(doc: &Document, cards: &[ComponentId]) -> (Vec<Op>, Vec<(Co
             let Some(base) = ch.text.as_deref().and_then(make_tag) else { continue };
             let t = unique_tag(&base, taken);
             taken.insert(name_key(&t));
-            ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: ch_key(*i, TAG), before: None, after: Some(t) });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: ch_key(*i, TAG), before: None, after: Some(t) });
             n += 1;
         }
         counts.push((*c, n));
@@ -325,6 +325,6 @@ pub fn make_tags_ops(doc: &Document, cards: &[ComponentId]) -> (Vec<Op>, Vec<(Co
 }
 
 /// The first channel number of card `c` (re-exported for callers holding only a card).
-pub fn shown_number(doc: &Document, c: ComponentId, i: u32) -> u32 {
+pub fn shown_number(doc: &Document, c: DeviceId, i: u32) -> u32 {
     i.saturating_add(first_number(doc, c))
 }

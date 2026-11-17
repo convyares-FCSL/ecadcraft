@@ -38,7 +38,7 @@ fn ok(h: &mut H, line: &str) {
 fn the_settings_card_lists_entries_and_acts_at_once() {
     let mut h = window();
     ok(&mut h, r#"place {"symbol": "coil", "at": [60, 150]}"#);
-    let c = doc(&mut h).components.iter().find(|(_, x)| x.properties.contains_key("tag")).map(|(id, _)| *id).unwrap();
+    let c = doc(&mut h).devices.iter().find(|(_, x)| x.properties.contains_key("tag")).map(|(id, _)| *id).unwrap();
     ok(&mut h, &format!(r#"setlocation {{"component": "{}", "value": "+CP1"}}"#, c.hex()));
     ok(&mut h, r#"designationadd {"aspect": "location", "code": "+SPARE"}"#);
     ok(&mut h, r#"projectprops {"location": "+CP1"}"#);

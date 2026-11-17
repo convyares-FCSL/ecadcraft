@@ -10,7 +10,7 @@ use ecad_cadcraft::Persistence;
 use ecad_cadcraft::checks::Kind;
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::wires::{self, LABEL_LAYER};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Op, PageId, Pt, Subject, TerminalId};
+use ecad_model::{CableId, ConductorId, DeviceId, Document, End, Op, PageId, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -60,7 +60,7 @@ fn last_tx(h: &mut H) -> ecad_model::Transaction {
 }
 
 /// The junction component whose connection point is at `at` on `page`, and that point.
-fn junction_at(doc: &Document, page: PageId, at: (f64, f64)) -> Option<(ComponentId, TerminalId)> {
+fn junction_at(doc: &Document, page: PageId, at: (f64, f64)) -> Option<(DeviceId, TerminalId)> {
     ecad_model::derive::terminal_positions(doc, page).into_iter().find_map(|(t, _, p)| {
         let comp = doc.terminals.get(&t)?.component;
         (p.near(Pt::new(at.0, at.1), 1e-6) && wires::kind_of(doc, comp) == Some("junction")).then_some((comp, t))
@@ -68,7 +68,7 @@ fn junction_at(doc: &Document, page: PageId, at: (f64, f64)) -> Option<(Componen
 }
 
 fn junctions(doc: &Document) -> usize {
-    doc.components.keys().filter(|c| wires::kind_of(doc, **c) == Some("junction")).count()
+    doc.devices.keys().filter(|c| wires::kind_of(doc, **c) == Some("junction")).count()
 }
 
 /// How many conductor ends are attached to terminal `t`.
@@ -87,7 +87,7 @@ fn fix_names(h: &mut H, kind: Kind) -> Vec<String> {
     ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == kind).map(|c| format!("{:?}", c.fix)).collect()
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (ComponentId, TerminalId, Pt) {
+fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, TerminalId, Pt) {
     let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
     let t: TerminalId = id(&r["terminals"][0], "terminal");
     let page = h.p(|p| p.active_page()).expect("an active page");
@@ -95,7 +95,7 @@ fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (ComponentId, TerminalId, P
     (id(&r, "component"), t, at)
 }
 
-fn continuation(h: &mut H, at: (f64, f64), name: &str, rotation: f64) -> ComponentId {
+fn continuation(h: &mut H, at: (f64, f64), name: &str, rotation: f64) -> DeviceId {
     let r = h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name, "rotation": rotation})).unwrap();
     id(&r, "component")
 }
@@ -534,7 +534,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     // set on the devices (a box would only propose).
     let doc = f.h.doc();
     let tagged = |pre: &str| -> Vec<String> {
-        doc.components
+        doc.devices
             .keys()
             .filter(|c| ecad_cadcraft::devices::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
             .map(|c| c.hex())
@@ -542,8 +542,8 @@ fn t13_a_cable_continued_on_a_second_page() {
     };
     let (near, far) = (tagged("-X0"), tagged("-X5"));
     assert_eq!((near.len(), far.len()), (3, 3), "fixture: -X01…03 and -X51…53");
-    f.h.run("setlocation", json!({"components": near, "value": "+CP1"})).unwrap();
-    f.h.run("setlocation", json!({"components": far, "value": "+FIELD"})).unwrap();
+    f.h.run("setlocation", json!({"devices": near, "value": "+CP1"})).unwrap();
+    f.h.run("setlocation", json!({"devices": far, "value": "+FIELD"})).unwrap();
     f.h.activate(f.p2);
     let before = f.h.doc();
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
@@ -855,10 +855,10 @@ fn t17b_update_map_chains_follow_continuation_names() {
     let doc = f.h.doc();
     // Rename page 2's A2 to Z9: core 2 is no longer a chain (2 + 1 members as cores).
     let a2 = doc
-        .components
+        .devices
         .iter()
         .find(|(c, x)| {
-            x.properties.get("name").map(String::as_str) == Some("A2") && doc.representations_of(Subject::Component(**c)).any(|(_, r)| r.page == f.p2)
+            x.properties.get("name").map(String::as_str) == Some("A2") && doc.representations_of(Subject::Device(**c)).any(|(_, r)| r.page == f.p2)
         })
         .map(|(c, _)| *c)
         .unwrap();

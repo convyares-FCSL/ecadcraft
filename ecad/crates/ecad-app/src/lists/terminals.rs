@@ -15,14 +15,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::strips::{PlanItem, SideCell, StripData, TermRow};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
 use serde_json::json;
 
 use super::ListAction;
 
 /// A row: its strip and its place in the strip's plan.
-pub type TermKey = (ComponentId, u32);
+pub type TermKey = (DeviceId, u32);
 
 pub const STRIP: ColumnId = ColumnId(0);
 pub const IN_TARGET: ColumnId = ColumnId(1);
@@ -94,7 +94,7 @@ pub struct TerminalsSource {
     keys: Vec<TermKey>,
     rows: HashMap<TermKey, PlanRow>,
     /// Each strip's keys, in plan order.
-    by_strip: BTreeMap<ComponentId, Vec<TermKey>>,
+    by_strip: BTreeMap<DeviceId, Vec<TermKey>>,
 }
 
 impl Default for TerminalsSource {
@@ -149,7 +149,7 @@ impl TerminalsSource {
 
     /// Replace strip `c`'s rows with `rows` (none: the strip went). Returns the keys touched: its
     /// old and new rows.
-    fn set_strip(&mut self, c: ComponentId, rows: Vec<PlanRow>) -> Vec<TermKey> {
+    fn set_strip(&mut self, c: DeviceId, rows: Vec<PlanRow>) -> Vec<TermKey> {
         let mut touched = self.by_strip.remove(&c).unwrap_or_default();
         for k in &touched {
             self.rows.remove(k);
@@ -168,7 +168,7 @@ impl TerminalsSource {
     }
 
     /// The strips in `order` (tag order), their keys laid end to end.
-    fn order(&mut self, order: &[ComponentId]) {
+    fn order(&mut self, order: &[DeviceId]) {
         self.keys = order.iter().filter_map(|c| self.by_strip.get(c)).flatten().copied().collect();
     }
 }
@@ -238,7 +238,7 @@ impl TableSource for TerminalsSource {
 }
 
 /// The command line an edit of `col` on `row` (of strip `c`) runs, `value` trimmed.
-pub fn edit_line(c: ComponentId, row: &TermRow, col: ColumnId, value: &str) -> Option<String> {
+pub fn edit_line(c: DeviceId, row: &TermRow, col: ColumnId, value: &str) -> Option<String> {
     let v = value.trim();
     let strip = c.hex();
     match col {
@@ -261,10 +261,10 @@ pub struct TerminalsView {
     pub source: TerminalsSource,
     pub table: Table<TermKey>,
     /// (project serial, models build, strip filter, accessories, reference style) of the build.
-    built: Option<(u64, u64, Option<ComponentId>, bool, u64)>,
+    built: Option<(u64, u64, Option<DeviceId>, bool, u64)>,
     /// The strips revision last read, and each strip's own.
     revision: u64,
-    strips: BTreeMap<ComponentId, u64>,
+    strips: BTreeMap<DeviceId, u64>,
     /// The cell whose edit is running (its refusal goes under it).
     pending: Option<(TermKey, ColumnId)>,
     /// Rebuilds and patched keys (tests).
@@ -289,13 +289,13 @@ impl TerminalsView {
     }
 
     /// Bring the view up to date with the models (the update map in the module docs).
-    pub fn sync(&mut self, serial: u64, o: &Outputs, strip: Option<ComponentId>, accessories: bool, style: ecad_model::ReferenceStyle) {
+    pub fn sync(&mut self, serial: u64, o: &Outputs, strip: Option<DeviceId>, accessories: bool, style: ecad_model::ReferenceStyle) {
         let key = (serial, o.build_id, strip, accessories, style as u64);
         let shown: Vec<&StripData> = match strip {
             Some(c) => o.strips.get(c).into_iter().collect(),
             None => o.strips.sorted(),
         };
-        let order: Vec<ComponentId> = shown.iter().map(|s| s.component).collect();
+        let order: Vec<DeviceId> = shown.iter().map(|s| s.component).collect();
         if self.built != Some(key) {
             self.source = TerminalsSource::default();
             for s in &shown {
@@ -317,7 +317,7 @@ impl TerminalsView {
         }
         self.revision = o.strips.revision;
         let mut touched = Vec::new();
-        let now: BTreeSet<ComponentId> = order.iter().copied().collect();
+        let now: BTreeSet<DeviceId> = order.iter().copied().collect();
         for s in &shown {
             let at = o.strips.changed_at(Some(s.component));
             if self.strips.get(&s.component) != Some(&at) {
@@ -325,7 +325,7 @@ impl TerminalsView {
                 touched.extend(self.source.set_strip(s.component, plan_rows(s, accessories, style)));
             }
         }
-        let gone: Vec<ComponentId> = self.strips.keys().copied().filter(|c| !now.contains(c)).collect();
+        let gone: Vec<DeviceId> = self.strips.keys().copied().filter(|c| !now.contains(c)).collect();
         for c in gone {
             self.strips.remove(&c);
             touched.extend(self.source.set_strip(c, Vec::new()));

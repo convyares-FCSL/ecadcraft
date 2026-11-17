@@ -64,7 +64,7 @@ fn ends_of(doc: &Document, c: ConductorId) -> [Option<ecad_model::TerminalId>; 2
 }
 
 fn junction_count(doc: &Document) -> usize {
-    doc.components.keys().filter(|c| ecad_cadcraft::wires::kind_of(doc, **c) == Some("junction")).count()
+    doc.devices.keys().filter(|c| ecad_cadcraft::wires::kind_of(doc, **c) == Some("junction")).count()
 }
 
 /// §12 item 2: end to end in one line drops the middle vertex; drawn onto end A, the wire keeps
@@ -566,7 +566,7 @@ fn renaming_a_continuation_recounts_the_cables_cores() {
     let a1 = doc
         .continuations_named("A1")
         .into_iter()
-        .find(|c| doc.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == f.p115))
+        .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
         .expect("A1 on page 115");
     f.h.run("setprop", json!({"component": a1.hex(), "key": "name", "value": "Z1"})).unwrap();
     assert_eq!(cores(&mut f.h, f.cable), 4, "the A1 core is two cores now");
@@ -698,7 +698,7 @@ fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
     let a2 = doc
         .continuations_named("A2")
         .into_iter()
-        .find(|c| doc.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == f.p115))
+        .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
         .unwrap();
     f.h.run("setprop", json!({"component": a2.hex(), "key": "name", "value": "Z2"})).unwrap();
     kept_equals_rebuild(&mut f.h, "continuation renamed");
@@ -721,14 +721,14 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
     let a1 = doc
         .continuations_named("A1")
         .into_iter()
-        .find(|c| doc.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == f.p115))
+        .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
         .unwrap();
     let cable = f.cable;
     let (kept, fresh) = f.h.cfg(|p| {
         p.outputs();
         let before = p.ledger.document().clone();
         let ops = vec![ecad_model::Op::SetProperty {
-            object: ecad_model::ObjectRef::Component(a1),
+            object: ecad_model::ObjectRef::Device(a1),
             key: "name".into(),
             before: Some("A1".into()),
             after: Some("Z1".into()),

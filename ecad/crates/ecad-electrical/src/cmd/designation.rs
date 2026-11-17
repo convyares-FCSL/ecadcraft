@@ -3,7 +3,7 @@
 //! the document (and the use index, [`Uses`], caught up by the caller) and returns the ops to
 //! commit and what to report.
 
-use ecad_model::{ComponentId, Document, IdAllocator, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op};
 
 use crate::designations::{self, Aspect, Entry, Uses};
 use crate::error::CmdError;
@@ -82,7 +82,7 @@ pub fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: &str, d
     if taken(doc, a, &code, None).is_some() {
         return Err(CmdError::refused(format!("{code} is already in the list.")));
     }
-    let id: ComponentId = ids.fresh();
+    let id: DeviceId = ids.fresh();
     let key = id.hex();
     let mut ops =
         vec![Op::SetProperty { object: ObjectRef::Project, key: designations::code_property(a, &key), before: None, after: Some(code.clone()) }];
@@ -142,7 +142,7 @@ pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan,
 /// The value of property `prop` on object `o`.
 fn property_of(doc: &Document, o: ObjectRef, prop: &str) -> Option<String> {
     match o {
-        ObjectRef::Component(c) => doc.components.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
+        ObjectRef::Device(c) => doc.devices.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
         ObjectRef::Page(pg) => doc.pages.get(&pg).and_then(|x| x.display.get(prop)).cloned(),
         ObjectRef::Project => doc.properties.get(prop).cloned(),
         _ => None,

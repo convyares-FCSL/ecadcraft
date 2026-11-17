@@ -19,7 +19,7 @@
 use ecad_cadcraft::cable_cmds::{self, CableField, Side, Source};
 use ecad_cadcraft::checks::{self, Severity};
 use ecad_cadcraft::designations::Aspect;
-use ecad_model::{CableId, ComponentId, ConductorId, Document, Op};
+use ecad_model::{CableId, ConductorId, DeviceId, Document, Op};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -99,16 +99,16 @@ fn unbounded(e: &str, what: &str) -> Option<String> {
 
 /// Two placed devices at (0, 100) and (0, -100), in `+CAB1` and `+JB1`, joined by one wire; returns
 /// (a, b, the slash's y and x).
-fn two_devices(h: &mut H, loc_a: &str, loc_b: &str) -> (ComponentId, ComponentId, f64, f64) {
-    let a = id::<ComponentId>(&h.run("place", json!({"at": [0, 100], "rotation": 90})).unwrap(), "component");
-    let b = id::<ComponentId>(&h.run("place", json!({"at": [0, -100], "rotation": 90})).unwrap(), "component");
+fn two_devices(h: &mut H, loc_a: &str, loc_b: &str) -> (DeviceId, DeviceId, f64, f64) {
+    let a = id::<DeviceId>(&h.run("place", json!({"at": [0, 100], "rotation": 90})).unwrap(), "component");
+    let b = id::<DeviceId>(&h.run("place", json!({"at": [0, -100], "rotation": 90})).unwrap(), "component");
     h.run("setlocation", json!({"component": a.hex(), "value": loc_a})).unwrap();
     h.run("setlocation", json!({"component": b.hex(), "value": loc_b})).unwrap();
     let doc = h.doc();
     let page = h.first_page();
     let tp = ecad_model::derive::terminal_positions(&doc, page);
-    let pos = |c: ComponentId| {
-        let (rid, _) = doc.representations_of(ecad_model::Subject::Component(c)).next().unwrap();
+    let pos = |c: DeviceId| {
+        let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
         tp.iter().find(|(_, r, _)| *r == rid).unwrap().2
     };
     let (pa, pb) = (pos(a), pos(b));
@@ -778,7 +778,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
     assert!(c.contains("all: false"), "checks scope: {c}");
     assert!(!c.contains(&format!("{other:?}")), "the other cable is not re-checked: {c}");
     assert!(!c.contains(&format!("{a:?}")) && !c.contains(&format!("{b:?}")), "no device is re-checked: {c}");
-    assert!(c.contains("conductors: {}") && c.contains("components: {}"), "an undrawn cable's edit reaches no wire or device: {c}");
+    assert!(c.contains("conductors: {}") && c.contains("devices: {}"), "an undrawn cable's edit reaches no wire or device: {c}");
     assert!(c.contains(&format!("{k:?}")), "the cable itself is re-checked: {c}");
     assert!(!o.contains(&format!("{other:?}")), "outputs: the other cable's row is not patched: {o}");
     assert!(o.contains(&format!("{k:?}")), "outputs: its row is patched: {o}");

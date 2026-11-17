@@ -53,7 +53,7 @@ fn page_commands_through_mcp_record_modify_page_by_the_agent() {
     let f = c.exec("terminals", json!({"from": [90, 150], "to": [130, 150]}));
     let strip = f["strip"].as_str().unwrap().to_string();
     let one = page_of(&c.exec("newpage", json!({"generated": "terminals", "strip": strip})));
-    let want = ecad_model::ComponentId::parse(&strip).unwrap();
+    let want = ecad_model::DeviceId::parse(&strip).unwrap();
     assert_eq!(c.doc().pages[&one].kind, PageKind::TerminalStrip { strip: want });
 
     let mut r = reader();

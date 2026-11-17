@@ -120,7 +120,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
         return Ok((None, Vec::new()));
     }
     let has_page = doc.page_order.iter().any(|pg| crate::generated::kind_of(doc, *pg) == Some(crate::generated::GenKind::PlcRack));
-    let other_rack = doc.components.keys().any(|c| crate::plc::rack::is_rack(doc, *c));
+    let other_rack = doc.devices.keys().any(|c| crate::plc::rack::is_rack(doc, *c));
     if has_page || other_rack {
         return Ok((None, Vec::new()));
     }

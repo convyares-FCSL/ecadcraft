@@ -274,9 +274,9 @@ fn reference_point(h: &mut Harness<'static, App>, page: PageId) -> cadcraft_engi
 /// Tag every untagged component on `page` (`name`) and every untagged wire there by its first y.
 fn tag_page(h: &mut Harness<'static, App>, page: PageId, name: &str) {
     let d = doc(h);
-    let comps: Vec<_> = d.components.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
+    let comps: Vec<_> = d.devices.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
     for c in comps {
-        let on_page = d.representations_of(ecad_model::Subject::Component(c)).any(|(_, r)| r.page == page);
+        let on_page = d.representations_of(ecad_model::Subject::Device(c)).any(|(_, r)| r.page == page);
         if on_page {
             ok(h, &format!(r#"setprop {{"component":"{}","key":"tag","value":"{name}"}}"#, c.hex()));
         }

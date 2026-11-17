@@ -65,8 +65,8 @@ fn component_and_coil(h: &mut Harness<'static, App>) {
     click(h, b);
     assert_eq!(h.state().cad.session.selection().len(), 4, "the four lines are selected");
     button(h, tools::TAB);
-    button(h, "Convert to Component");
-    assert_eq!(doc(h).components.len(), 1);
+    button(h, "Convert to Device");
+    assert_eq!(doc(h).devices.len(), 1);
     button(h, "Add Connection Point");
     assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
     type_enter(h, "40,10");
@@ -112,14 +112,14 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     assert!(h.state().cad.session.running.is_none(), "a click on a terminal finishes the wire");
     // The result: the quick-start's structure (IDs aside), drawn by clicks.
     let d = doc(&mut h);
-    assert_eq!(d.components.len(), 2);
+    assert_eq!(d.devices.len(), 2);
     assert_eq!(d.conductors.len(), 1);
     let page = d.page_order[0];
     let drawn = d
         .representations
         .values()
         .find_map(|r| match (r.form, r.subject) {
-            (Form::Drawn, Subject::Component(c)) => Some((c, r)),
+            (Form::Drawn, Subject::Device(c)) => Some((c, r)),
             _ => None,
         })
         .unwrap();
@@ -164,7 +164,7 @@ fn esc_drops_a_wire_being_drawn_and_u_undoes_the_last_terminal() {
     // One undo takes back the last object only: the coil.
     type_enter(&mut h, "u");
     let d = doc(&mut h);
-    assert_eq!(d.components.len(), 1, "the coil is undone");
+    assert_eq!(d.devices.len(), 1, "the coil is undone");
     assert_eq!(d.terminals.len(), 2, "the terminals stay");
 }
 

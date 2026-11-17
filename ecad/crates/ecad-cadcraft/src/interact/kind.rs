@@ -13,7 +13,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{CableId, ComponentId, ConductorId, Document, End, PageId, RepresentationId, Subject, TerminalId};
+use ecad_model::{CableId, ConductorId, DeviceId, Document, End, PageId, RepresentationId, Subject, TerminalId};
 
 use super::{capture, pick, pixel, pt, read, route_ends, terminal_name};
 use crate::kinds::ObjectKind;
@@ -28,7 +28,7 @@ pub struct Target {
     pub at: [f64; 2],
     /// What the wheel's chip names: `-K01`, `wire 24V-05`, `Page 3`.
     pub name: String,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub conductor: Option<ConductorId>,
     pub end: Option<End>,
     pub cable: Option<CableId>,
@@ -44,7 +44,7 @@ pub struct Target {
     /// click; otherwise (a key or Ctrl+K on the selection) the object is given by its handle.
     pub pointed: bool,
     /// Brief 048 (design 048 §4.2): a device's representation clicked is a drawing (from Convert
-    /// to Component), so its wheel offers Make symbol where a symbol's offers Edit symbol.
+    /// to Device), so its wheel offers Make symbol where a symbol's offers Edit symbol.
     pub drawn: bool,
 }
 
@@ -169,7 +169,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.kind = ObjectKind::Text;
             t.representation = Some(r);
             t.handles = vec![h];
-            if let Some(Subject::Component(c)) = doc.representations.get(&r).map(|x| x.subject) {
+            if let Some(Subject::Device(c)) = doc.representations.get(&r).map(|x| x.subject) {
                 t.component = Some(c);
                 t.name = format!("tag of {}", crate::devices::tag_words(doc, c));
             } else {
@@ -186,7 +186,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Marker(rep, term)) => match crate::strips::strip_of_terminal(doc, term) {
             Some(strip) => return terminal(p, page, t, strip, Some(term)),
             None => {
-                if let Some(Subject::Component(c)) = doc.representations.get(&rep).map(|r| r.subject) {
+                if let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) {
                     return device(p, page, t, c, Some(rep));
                 }
             }
@@ -194,8 +194,8 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
             Some((rid, r)) if crate::references::is_reference(r) => return reference(doc, map, page, t, rid),
             Some((rid, r)) => match r.subject {
-                Subject::Component(c) if crate::strips::is_strip(doc, c) => return terminal(p, page, t, c, None),
-                Subject::Component(c) => return device(p, page, t, c, Some(rid)),
+                Subject::Device(c) if crate::strips::is_strip(doc, c) => return terminal(p, page, t, c, None),
+                Subject::Device(c) => return device(p, page, t, c, Some(rid)),
                 Subject::Conductor(w) => {
                     t.kind = ObjectKind::Wire;
                     t.conductor = Some(w);
@@ -210,7 +210,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     t
 }
 
-fn device(p: &Project, page: PageId, mut t: Target, c: ComponentId, rep: Option<RepresentationId>) -> Target {
+fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<RepresentationId>) -> Target {
     let doc = p.ledger.document();
     t.kind = ObjectKind::Device;
     t.component = Some(c);
@@ -222,12 +222,12 @@ fn device(p: &Project, page: PageId, mut t: Target, c: ComponentId, rep: Option<
         .and_then(|r| doc.representations.get(&r))
         .map(|r| r.items.iter().filter_map(|i| map.and_then(|m| m.item(*i))).collect())
         .unwrap_or_default();
-    t.others = doc.representations_of(Subject::Component(c)).filter(|(_, r)| r.page != page).count();
+    t.others = doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page != page).count();
     t.drawn = rep.and_then(|r| doc.representations.get(&r)).is_some_and(|r| r.form == ecad_model::Form::Drawn);
     t
 }
 
-fn terminal(p: &Project, page: PageId, mut t: Target, strip: ComponentId, term: Option<TerminalId>) -> Target {
+fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Option<TerminalId>) -> Target {
     let doc = p.ledger.document();
     t.kind = ObjectKind::Terminal;
     t.component = Some(strip);
@@ -242,7 +242,7 @@ fn terminal(p: &Project, page: PageId, mut t: Target, strip: ComponentId, term: 
     // A terminal's own symbol (its marker's representation).
     t.handles = term
         .and_then(|x| {
-            doc.representations_of(Subject::Component(strip))
+            doc.representations_of(Subject::Device(strip))
                 .filter(|(_, r)| r.page == page)
                 .find_map(|(rid, r)| map.and_then(|m| m.marker(rid, x)).map(|h| (h, r)))
         })
@@ -271,7 +271,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
     if let Some(rep) = doc.representations.get(&r) {
         match rep.subject {
             Subject::Cable(k) => t.cable = Some(k),
-            Subject::Component(c) => t.component = Some(c),
+            Subject::Device(c) => t.component = Some(c),
             Subject::Conductor(_) => {}
         }
         if rep.page == page {

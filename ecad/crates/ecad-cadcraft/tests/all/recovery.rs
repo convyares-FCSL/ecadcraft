@@ -115,9 +115,9 @@ fn verification_catches_each_kind_of_disagreement() {
         f(&mut e);
         x.model.replace(e);
     };
-    let sym = map.item(doc.representations_of(ecad_model::Subject::Component(c2)).next().unwrap().1.items[0]).unwrap();
+    let sym = map.item(doc.representations_of(ecad_model::Subject::Device(c2)).next().unwrap().1.items[0]).unwrap();
     let route = map.item(ecad_model::derive::route_on_page(&doc, w, page).unwrap().0).unwrap();
-    let (rid, r) = doc.representations_of(ecad_model::Subject::Component(c1)).next().unwrap();
+    let (rid, r) = doc.representations_of(ecad_model::Subject::Device(c1)).next().unwrap();
     let marker = map.marker(rid, *r.connection_points.keys().next().unwrap()).unwrap();
     let line = map.item(r.items[0]).unwrap();
     let cases: Vec<(&str, ecad_cadcraft::verify::Verification)> = vec![

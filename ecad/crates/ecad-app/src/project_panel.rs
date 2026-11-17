@@ -125,7 +125,7 @@ pub enum Action {
     /// Devices tab: `setprop` of a device property (brief 018's rules; `merge` takes another
     /// device's tag by making this device part of it).
     SetDeviceProperty {
-        component: ecad_model::ComponentId,
+        component: ecad_model::DeviceId,
         key: &'static str,
         value: String,
         /// Brief 026: how a taken tag is resolved (`swap`, `merge`, `next`).
@@ -193,10 +193,10 @@ pub enum Action {
     /// Brief 020a: something the History tab asked for.
     History(crate::history_panel::Do),
     /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
-    UseContext(ecad_model::ComponentId, ecad_cadcraft::designations::Aspect),
+    UseContext(ecad_model::DeviceId, ecad_cadcraft::designations::Aspect),
     /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
     /// inspector shows its row.
-    GoToDevice(ecad_model::ComponentId),
+    GoToDevice(ecad_model::DeviceId),
     /// Brief 052: Checks' **Show in Settings**: Settings ▸ Project info.
     ShowDesignations,
     /// Brief 024: Checks' **Show**: Reports, BOM, Only ?.
@@ -213,8 +213,8 @@ pub enum Action {
     NewStripPage,
     /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
     /// **Show** (Reports ▸ Cables, Only ?).
-    OfferDrawn(ecad_model::ComponentId),
-    RenumberStrip(ecad_model::ComponentId),
+    OfferDrawn(ecad_model::DeviceId),
+    RenumberStrip(ecad_model::DeviceId),
     SetCores(ecad_model::CableId),
     NextFreeCore(ecad_model::ConductorId),
     ShowCables,
@@ -236,7 +236,7 @@ pub enum Action {
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_cadcraft::checks::Fix, usize),
     /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
-    PlaceMates(ecad_model::ComponentId, ecad_cadcraft::symbols::Side),
+    PlaceMates(ecad_model::DeviceId, ecad_cadcraft::symbols::Side),
     /// Brief 041: a page row's right-click opens its wheel here (screen point).
     PageWheel(PageId, egui::Pos2),
     /// UI rev 3 (board 1.03): the Devices panel's Project →, Project ▸ Device list.

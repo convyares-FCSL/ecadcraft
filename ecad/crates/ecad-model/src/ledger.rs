@@ -1371,8 +1371,8 @@ mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
     use super::*;
-    use crate::doc::{Cable, CableMember, Component, Conductor, End, Layer, Page, Terminal};
-    use crate::id::{CableId, ComponentId, ConductorId, LayerId, PageId, TerminalId};
+    use crate::doc::{Cable, CableMember, Conductor, Device, End, Layer, Page, Terminal};
+    use crate::id::{CableId, ConductorId, DeviceId, LayerId, PageId, TerminalId};
 
     fn json(doc: &Document) -> String {
         serde_json::to_string(doc).unwrap()
@@ -1381,14 +1381,14 @@ mod tests {
     /// A ledger with a component, two terminals, a conductor on the first and a cable holding it.
     fn ledger() -> Ledger {
         let mut l = Ledger::new(3);
-        let (c, w) = (ComponentId(3), ConductorId(6));
+        let (c, w) = (DeviceId(3), ConductorId(6));
         l.commit(
             Author::User,
             "setup",
             vec![
                 Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 },
                 Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
-                Op::CreateComponent { id: c, component: Component::default() },
+                Op::CreateDevice { id: c, device: Device::default() },
                 Op::AddTerminal { id: TerminalId(4), terminal: Terminal { component: c, label: None, key: None } },
                 Op::AddTerminal { id: TerminalId(5), terminal: Terminal { component: c, label: None, key: None } },
                 Op::CreateConductor { id: w, conductor: Conductor::default() },
@@ -1488,7 +1488,7 @@ mod tests {
         bad.seq = 3;
         bad.ops = vec![
             Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
-            Op::RemoveTerminal { id: TerminalId(5), terminal: Terminal { component: ComponentId(3), label: None, key: None } },
+            Op::RemoveTerminal { id: TerminalId(5), terminal: Terminal { component: DeviceId(3), label: None, key: None } },
         ];
         log.push(bad);
         hooks::FAIL_REVERT.with(|c| c.set(true));
@@ -1610,7 +1610,7 @@ mod tests {
         // A terminal written straight into the map: the full check passes, the index check does
         // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
         let mut l = ledger();
-        l.doc.terminals.insert(TerminalId(50), Terminal { component: ComponentId(3), label: None, key: None });
+        l.doc.terminals.insert(TerminalId(50), Terminal { component: DeviceId(3), label: None, key: None });
         let doc = json(l.document());
         let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
         match r {

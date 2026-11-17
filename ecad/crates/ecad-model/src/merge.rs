@@ -37,9 +37,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diff;
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal,
+    Cable, CableMember, Conductor, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal,
 };
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
 use crate::style::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
@@ -52,7 +52,7 @@ pub enum Obj {
     Folder(FolderId),
     Layer(LayerId),
     Definition(DefinitionId),
-    Component(ComponentId),
+    Device(DeviceId),
     Terminal(TerminalId),
     Representation(RepresentationId),
     Item(ItemId),
@@ -69,7 +69,7 @@ impl Obj {
             Obj::Folder(i) => i.hex(),
             Obj::Layer(i) => i.hex(),
             Obj::Definition(i) => i.hex(),
-            Obj::Component(i) => i.hex(),
+            Obj::Device(i) => i.hex(),
             Obj::Terminal(i) => i.hex(),
             Obj::Representation(i) => i.hex(),
             Obj::Item(i) => i.hex(),
@@ -86,7 +86,7 @@ impl Obj {
             Obj::Folder(_) => "folder",
             Obj::Layer(_) => "layer",
             Obj::Definition(_) => "symbol definition",
-            Obj::Component(_) => "device",
+            Obj::Device(_) => "device",
             Obj::Terminal(_) => "connection point",
             Obj::Representation(_) => "symbol",
             Obj::Item(_) => "drawing item",
@@ -129,7 +129,7 @@ impl Scope {
             + t.page_properties.len()
             + t.layers.len()
             + t.items.len()
-            + t.components.len()
+            + t.devices.len()
             + t.terminals.len()
             + t.representations.len()
             + t.conductors.len()
@@ -274,7 +274,7 @@ pub struct Inputs<'a> {
     pub edit_rule: &'a dyn Fn(Obj, &str, &str) -> Result<String, String>,
     /// The ops making device `from` part of device `into` in a state (018's device merge), or why
     /// they cannot be one (brief 026, Make them one). The state's index is current.
-    pub join: &'a dyn Fn(&Document, ComponentId, ComponentId) -> Result<Vec<Op>, String>,
+    pub join: &'a dyn Fn(&Document, DeviceId, DeviceId) -> Result<Vec<Op>, String>,
 }
 
 /// How a kept object uses another one (what "leave it unconnected / remove what uses it" does).
@@ -286,7 +286,7 @@ enum Use {
     PageFolder,
     FolderParent,
     RepItem,
-    ComponentDefinition,
+    DeviceDefinition,
     /// The object cannot exist without it: removed with it.
     Whole,
 }
@@ -354,10 +354,10 @@ fn shown_value<T: std::fmt::Display>(x: Option<&T>) -> String {
 pub fn value_words(docs: &[&Document], v: &str) -> String {
     let t = v.trim();
     if t.len() == 32
-        && let Some(c) = ComponentId::parse(t)
-        && docs.iter().any(|d| d.components.contains_key(&c))
+        && let Some(c) = DeviceId::parse(t)
+        && docs.iter().any(|d| d.devices.contains_key(&c))
     {
-        return name_of(docs, Obj::Component(c));
+        return name_of(docs, Obj::Device(c));
     }
     v.to_string()
 }
@@ -479,16 +479,15 @@ fn object<T: PartialEq + Clone>(
 
 /// The name of `obj` for texts, from whichever state holds it.
 pub fn name_of(docs: &[&Document], obj: Obj) -> String {
-    let tag_of = |c: ComponentId| {
-        docs.iter().find_map(|d| d.components.get(&c)).and_then(|c| c.properties.get(tag::TAG_KEY).cloned()).unwrap_or_else(|| c.short())
-    };
+    let tag_of =
+        |c: DeviceId| docs.iter().find_map(|d| d.devices.get(&c)).and_then(|c| c.properties.get(tag::TAG_KEY).cloned()).unwrap_or_else(|| c.short());
     let page_of = |p: PageId| {
         docs.iter()
             .find(|d| d.pages.contains_key(&p))
             .map_or_else(|| p.short(), |d| format!("Page {}", crate::book::stored_number(d, p).map_or_else(|| p.short(), str::to_string)))
     };
     match obj {
-        Obj::Component(c) => tag_of(c),
+        Obj::Device(c) => tag_of(c),
         Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
             Some(term) => format!("{}:{}", tag_of(term.component), term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short())),
             None => t.short(),
@@ -513,7 +512,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
         Obj::Representation(r) => match docs.iter().find_map(|d| d.representations.get(&r)) {
             Some(rep) => {
                 let subject = match rep.subject {
-                    Subject::Component(c) => tag_of(c),
+                    Subject::Device(c) => tag_of(c),
                     Subject::Conductor(c) => name_of(docs, Obj::Conductor(c)),
                     Subject::Cable(c) => name_of(docs, Obj::Cable(c)),
                 };
@@ -535,10 +534,10 @@ fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
         Obj::Page(p) => Some(p),
         Obj::Item(i) => doc.items.get(&i).map(|i| i.page),
         Obj::Representation(r) => doc.representations.get(&r).map(|r| r.page),
-        Obj::Component(c) => doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page).next(),
+        Obj::Device(c) => doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).next(),
         Obj::Conductor(c) => doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page).next(),
         Obj::Cable(c) => doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page).next(),
-        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, Obj::Component(t.component))),
+        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, Obj::Device(t.component))),
         _ => None,
     }
 }
@@ -552,7 +551,7 @@ fn scope_objects(scope: &Scope) -> Vec<Obj> {
     out.extend(t.folders.iter().map(|x| Obj::Folder(*x)));
     out.extend(t.layers.iter().map(|x| Obj::Layer(*x)));
     out.extend(t.definitions.iter().map(|x| Obj::Definition(*x)));
-    out.extend(t.components.iter().map(|x| Obj::Component(*x)));
+    out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
     out.extend(t.terminals.iter().map(|x| Obj::Terminal(*x)));
     out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
@@ -571,7 +570,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Folder(i) => a.folders.get(&i) != b.folders.get(&i),
         Obj::Layer(i) => a.layers.get(&i) != b.layers.get(&i),
         Obj::Definition(i) => a.definitions.get(&i) != b.definitions.get(&i),
-        Obj::Component(i) => a.components.get(&i) != b.components.get(&i),
+        Obj::Device(i) => a.devices.get(&i) != b.devices.get(&i),
         Obj::Terminal(i) => a.terminals.get(&i) != b.terminals.get(&i),
         Obj::Representation(i) => a.representations.get(&i) != b.representations.get(&i),
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
@@ -588,7 +587,7 @@ fn holds(doc: &Document, obj: Obj) -> bool {
         Obj::Folder(i) => doc.folders.contains_key(&i),
         Obj::Layer(i) => doc.layers.contains_key(&i),
         Obj::Definition(i) => doc.definitions.contains_key(&i),
-        Obj::Component(i) => doc.components.contains_key(&i),
+        Obj::Device(i) => doc.devices.contains_key(&i),
         Obj::Terminal(i) => doc.terminals.contains_key(&i),
         Obj::Representation(i) => doc.representations.contains_key(&i),
         Obj::Item(i) => doc.items.contains_key(&i),
@@ -611,7 +610,7 @@ fn copy(to: &mut Document, from: &Document, obj: Obj) {
         Obj::Folder(i) => put(&mut to.folders, &from.folders, i),
         Obj::Layer(i) => put(&mut to.layers, &from.layers, i),
         Obj::Definition(i) => put(&mut to.definitions, &from.definitions, i),
-        Obj::Component(i) => put(&mut to.components, &from.components, i),
+        Obj::Device(i) => put(&mut to.devices, &from.devices, i),
         Obj::Terminal(i) => put(&mut to.terminals, &from.terminals, i),
         Obj::Representation(i) => put(&mut to.representations, &from.representations, i),
         Obj::Item(i) => put(&mut to.items, &from.items, i),
@@ -636,14 +635,17 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
     for &obj in objects {
         let what = name_of(&docs, obj);
         match obj {
-            Obj::Component(id) => {
-                let v = object(ctx, obj, &what, a.components.get(&id), t.components.get(&id), s.components.get(&id), |ctx, a, t, s| Component {
+            Obj::Device(id) => {
+                let v = object(ctx, obj, &what, a.devices.get(&id), t.devices.get(&id), s.devices.get(&id), |ctx, a, t, s| Device {
                     properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                     definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
                         d.map_or_else(|| "(none)".into(), |d| name_of(&docs, Obj::Definition(d)))
                     }),
+                    device_type: field(ctx, obj, "device_type", format!("{what} · type"), &a.device_type, &t.device_type, &s.device_type, &|d| {
+                        d.group().label().into()
+                    }),
                 });
-                set(&mut m.components, id, v);
+                set(&mut m.devices, id, v);
             }
             Obj::Conductor(id) => {
                 let v = object(ctx, obj, &what, a.conductors.get(&id), t.conductors.get(&id), s.conductors.get(&id), |ctx, a, t, s| {
@@ -939,7 +941,7 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
     docs.iter().find_map(|d| {
         use crate::id::*;
         [
-            Obj::Component(ComponentId(id)),
+            Obj::Device(DeviceId(id)),
             Obj::Terminal(TerminalId(id)),
             Obj::Conductor(ConductorId(id)),
             Obj::Cable(CableId(id)),
@@ -958,10 +960,10 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
 /// What a device kept from the source brings back with it (design §5.2: "re-adds it with the
 /// branch's values and whatever it needs"): its connection points and its symbols (with their
 /// drawing items) that the source has and the result lacks.
-fn device_needs(m: &Document, s: &Document, c: ComponentId) -> Vec<Obj> {
+fn device_needs(m: &Document, s: &Document, c: DeviceId) -> Vec<Obj> {
     let mut out: Vec<Obj> =
         s.terminals.iter().filter(|(k, t)| t.component == c && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
-    for (r, rep) in s.representations.iter().filter(|(_, r)| r.subject == Subject::Component(c)) {
+    for (r, rep) in s.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)) {
         if !m.representations.contains_key(r) {
             out.push(Obj::Representation(*r));
             out.extend(rep.items.iter().filter(|i| !m.items.contains_key(i)).map(|i| Obj::Item(*i)));
@@ -978,12 +980,12 @@ fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
     let (t, s) = (ctx.inp.target, ctx.inp.source);
     let docs = [s, t, ctx.inp.ancestor];
     let mut out = BTreeSet::new();
-    let removed: Vec<(usize, ComponentId)> = ctx
+    let removed: Vec<(usize, DeviceId)> = ctx
         .conflicts
         .iter()
         .enumerate()
         .filter_map(|(i, k)| match k.object {
-            Obj::Component(c) if k.kind == ConflictKind::Removed && !t.components.contains_key(&c) && s.components.contains_key(&c) => Some((i, c)),
+            Obj::Device(c) if k.kind == ConflictKind::Removed && !t.devices.contains_key(&c) && s.devices.contains_key(&c) => Some((i, c)),
             _ => None,
         })
         .collect();
@@ -1005,7 +1007,7 @@ fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
                 k.source = format!("{} (brings back {})", k.source, parts.join(" and "));
             }
         }
-        if !m.components.contains_key(&c) {
+        if !m.devices.contains_key(&c) {
             continue;
         }
         for o in device_needs(m, s, c) {
@@ -1014,10 +1016,10 @@ fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
             if answered_out {
                 ctx.problems.push(format!(
                     "Keeping {} needs {}: keep {} too, or keep {} removed, first.",
-                    name_of(&docs, Obj::Component(c)),
+                    name_of(&docs, Obj::Device(c)),
                     name_of(&docs, o),
                     name_of(&docs, o),
-                    name_of(&docs, Obj::Component(c))
+                    name_of(&docs, Obj::Device(c))
                 ));
                 continue;
             }
@@ -1106,21 +1108,21 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 }
             }
         }
-        Obj::Component(c) => {
-            if let Some(d) = m.components.get(&c).and_then(|c| c.definition) {
-                out.push((Obj::Definition(d), Use::ComponentDefinition));
+        Obj::Device(c) => {
+            if let Some(d) = m.devices.get(&c).and_then(|c| c.definition) {
+                out.push((Obj::Definition(d), Use::DeviceDefinition));
             }
         }
         Obj::Terminal(t) => {
             if let Some(t) = m.terminals.get(&t) {
-                out.push((Obj::Component(t.component), Use::Whole));
+                out.push((Obj::Device(t.component), Use::Whole));
             }
         }
         Obj::Representation(r) => {
             if let Some(r) = m.representations.get(&r) {
                 out.push((
                     match r.subject {
-                        Subject::Component(c) => Obj::Component(c),
+                        Subject::Device(c) => Obj::Device(c),
                         Subject::Conductor(c) => Obj::Conductor(c),
                         Subject::Cable(c) => Obj::Cable(c),
                     },
@@ -1169,9 +1171,9 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
             all.extend(m.conductors.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(k, _)| Obj::Conductor(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.connection_points.contains_key(&t)).map(|(k, _)| Obj::Representation(*k)));
         }
-        Obj::Component(c) => {
+        Obj::Device(c) => {
             all.extend(m.terminals.iter().filter(|(_, t)| t.component == c).map(|(k, _)| Obj::Terminal(*k)));
-            all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Component(c)).map(|(k, _)| Obj::Representation(*k)));
+            all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Conductor(c) => {
             all.extend(m.cables.iter().filter(|(_, x)| x.members.iter().any(|mm| mm.conductor == c)).map(|(k, _)| Obj::Cable(*k)));
@@ -1191,7 +1193,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         Obj::Layer(l) => all.extend(m.items.iter().filter(|(_, x)| x.style.layer == l).map(|(k, _)| Obj::Item(*k))),
         Obj::Definition(d) => {
             all.extend(m.items.iter().filter(|(_, x)| matches!(&x.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(k, _)| Obj::Item(*k)));
-            all.extend(m.components.iter().filter(|(_, c)| c.definition == Some(d)).map(|(k, _)| Obj::Component(*k)));
+            all.extend(m.devices.iter().filter(|(_, c)| c.definition == Some(d)).map(|(k, _)| Obj::Device(*k)));
         }
         Obj::Folder(f) => {
             all.extend(m.folders.iter().filter(|(_, x)| x.parent == Some(f)).map(|(k, _)| Obj::Folder(*k)));
@@ -1229,8 +1231,8 @@ fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj
                 f.parent = None;
             }
         }
-        (Obj::Component(c), Use::ComponentDefinition) => {
-            if let Some(c) = m.components.get_mut(&c) {
+        (Obj::Device(c), Use::DeviceDefinition) => {
+            if let Some(c) = m.devices.get_mut(&c) {
                 c.definition = None;
             }
         }
@@ -1355,28 +1357,28 @@ fn next_tag(prefix: &str, high: &mut HighWater, style: tag::Style) -> String {
 /// What holds a tag in the merged state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Holder {
-    Device(ComponentId),
+    Device(DeviceId),
     Cable(CableId),
 }
 
 impl Holder {
     fn obj(self) -> Obj {
         match self {
-            Holder::Device(c) => Obj::Component(c),
+            Holder::Device(c) => Obj::Device(c),
             Holder::Cable(c) => Obj::Cable(c),
         }
     }
 
     fn tag(self, d: &Document) -> Option<&String> {
         match self {
-            Holder::Device(c) => d.components.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)),
+            Holder::Device(c) => d.devices.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)),
             Holder::Cable(c) => d.cables.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)),
         }
     }
 
     fn set_tag(self, m: &mut Document, t: String) {
         let props = match self {
-            Holder::Device(c) => m.components.get_mut(&c).map(|x| &mut x.properties),
+            Holder::Device(c) => m.devices.get_mut(&c).map(|x| &mut x.properties),
             Holder::Cable(c) => m.cables.get_mut(&c).map(|x| &mut x.properties),
         };
         if let Some(p) = props {
@@ -1390,12 +1392,12 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
     let mut out = BTreeSet::new();
     for op in ops {
         match op {
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
-                out.insert(Obj::Component(*id));
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                out.insert(Obj::Device(*id));
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 out.insert(Obj::Terminal(*id));
-                out.insert(Obj::Component(terminal.component));
+                out.insert(Obj::Device(terminal.component));
             }
             Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 out.insert(Obj::Representation(*id));
@@ -1403,8 +1405,8 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             Op::AttachEnd { conductor, .. } => {
                 out.insert(Obj::Conductor(*conductor));
             }
-            Op::SetProperty { object: ObjectRef::Component(c), .. } => {
-                out.insert(Obj::Component(*c));
+            Op::SetProperty { object: ObjectRef::Device(c), .. } => {
+                out.insert(Obj::Device(*c));
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(Obj::Cable(*id));
@@ -1421,7 +1423,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
 /// The highest provisional number of `prefix` in `m` (a scan: merges only).
 fn top_provisional(m: &Document, prefix: &str) -> u64 {
     let lo = format!("{prefix}?");
-    m.components
+    m.devices
         .values()
         .filter_map(|c| c.properties.get(tag::TAG_KEY))
         .chain(m.cables.values().filter_map(|c| c.properties.get(tag::TAG_KEY)))
@@ -1438,7 +1440,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
     let t = ctx.inp.target;
     let mut high = ctx.inp.high.clone();
     let present: Vec<String> = m
-        .components
+        .devices
         .values()
         .filter_map(|c| c.properties.get(tag::TAG_KEY))
         .chain(m.cables.values().filter_map(|c| c.properties.get(tag::TAG_KEY)))
@@ -1454,7 +1456,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
     let ours: Vec<Holder> = objects
         .iter()
         .filter_map(|o| match o {
-            Obj::Component(c) => Some(Holder::Device(*c)),
+            Obj::Device(c) => Some(Holder::Device(*c)),
             Obj::Cable(c) => Some(Holder::Cable(*c)),
             _ => None,
         })
@@ -1740,7 +1742,7 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
             && let Some(rep) = s.representations.get(&r).or_else(|| a.representations.get(&r))
         {
             let subject = match rep.subject {
-                Subject::Component(c) => Obj::Component(c),
+                Subject::Device(c) => Obj::Device(c),
                 Subject::Conductor(c) => Obj::Conductor(c),
                 Subject::Cable(c) => Obj::Cable(c),
             };
@@ -1781,7 +1783,7 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
 fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
     let props = |d: &Document| -> Option<Properties> {
         match obj {
-            Obj::Component(c) => d.components.get(&c).map(|x| x.properties.clone()),
+            Obj::Device(c) => d.devices.get(&c).map(|x| x.properties.clone()),
             Obj::Conductor(c) => d.conductors.get(&c).map(|x| x.properties.clone()),
             Obj::Cable(c) => d.cables.get(&c).map(|x| x.properties.clone()),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
@@ -1839,7 +1841,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
 fn clear_provisional_fixed(m: &mut Document, all: &BTreeSet<Obj>) {
     for o in all {
         let props = match *o {
-            Obj::Component(i) => m.components.get_mut(&i).map(|c| &mut c.properties),
+            Obj::Device(i) => m.devices.get_mut(&i).map(|c| &mut c.properties),
             Obj::Cable(i) => m.cables.get_mut(&i).map(|c| &mut c.properties),
             _ => None,
         };
@@ -1948,8 +1950,8 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
                 Obj::Definition(i) => {
                     scope.definitions.insert(i);
                 }
-                Obj::Component(i) => {
-                    scope.components.insert(i);
+                Obj::Device(i) => {
+                    scope.devices.insert(i);
                 }
                 Obj::Terminal(i) => {
                     scope.terminals.insert(i);
@@ -1996,9 +1998,9 @@ mod tests {
     fn doc_with(tags: &[(u128, &str)]) -> Document {
         let mut d = Document::default();
         for (id, t) in tags {
-            let mut c = Component::default();
+            let mut c = Device::default();
             c.properties.insert(tag::TAG_KEY.into(), (*t).into());
-            d.components.insert(ComponentId(*id), c);
+            d.devices.insert(DeviceId(*id), c);
         }
         d.rebuild_index();
         d
@@ -2009,13 +2011,13 @@ mod tests {
         let high = HighWater::new();
         let rule = |_: Obj, _: &str, v: &str| if v.trim().is_empty() { Err("empty".to_string()) } else { Ok(v.trim().to_string()) };
         // Two devices described "coil" cannot be one (a stand-in for 018's rules).
-        let join = |d: &Document, from: ComponentId, into: ComponentId| -> Result<Vec<Op>, String> {
-            let coil = |c: ComponentId| d.components.get(&c).and_then(|x| x.properties.get("description")).is_some_and(|v| v == "coil");
+        let join = |d: &Document, from: DeviceId, into: DeviceId| -> Result<Vec<Op>, String> {
+            let coil = |c: DeviceId| d.devices.get(&c).and_then(|x| x.properties.get("description")).is_some_and(|v| v == "coil");
             if coil(from) && coil(into) {
                 return Err("already has a coil.".into());
             }
-            let comp = d.components.get(&from).cloned().ok_or("no such device")?;
-            Ok(vec![Op::DeleteComponent { id: from, component: comp }])
+            let comp = d.devices.get(&from).cloned().ok_or("no such device")?;
+            Ok(vec![Op::DeleteDevice { id: from, device: comp }])
         };
         let inp = Inputs {
             ancestor: a,
@@ -2035,7 +2037,7 @@ mod tests {
     fn scope_of(ids: &[u128]) -> Scope {
         let mut s = Scope::default();
         for i in ids {
-            s.touched.components.insert(ComponentId(*i));
+            s.touched.devices.insert(DeviceId(*i));
         }
         s
     }
@@ -2044,10 +2046,10 @@ mod tests {
     fn one_sided_changes_merge_and_two_sided_ones_conflict() {
         let a = doc_with(&[(1, "-K01"), (2, "-K02")]);
         let mut t = a.clone();
-        t.components.get_mut(&ComponentId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
+        t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
         let mut s = a.clone();
-        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
-        s.components.get_mut(&ComponentId(2)).unwrap().properties.insert("description".into(), "Pump".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
+        s.devices.get_mut(&DeviceId(2)).unwrap().properties.insert("description".into(), "Pump".into());
         let scope = scope_of(&[1, 2]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts.len(), 1);
@@ -2063,15 +2065,15 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.components[&ComponentId(1)].properties["rating"], "20 A");
-        assert_eq!(doc.components[&ComponentId(2)].properties["description"], "Pump");
+        assert_eq!(doc.devices[&DeviceId(1)].properties["rating"], "20 A");
+        assert_eq!(doc.devices[&DeviceId(2)].properties["description"], "Pump");
         ch.insert(id, Choice::Value("25 A".into()));
         let p = run(&a, &t, &s, &scope, &ch);
         let mut doc = t.clone();
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.components[&ComponentId(1)].properties["rating"], "25 A");
+        assert_eq!(doc.devices[&DeviceId(1)].properties["rating"], "25 A");
     }
 
     #[test]
@@ -2091,8 +2093,8 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.components[&ComponentId(1)].properties["tag"], "-K05");
-        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K06");
+        assert_eq!(doc.devices[&DeviceId(1)].properties["tag"], "-K05");
+        assert_eq!(doc.devices[&DeviceId(2)].properties["tag"], "-K06");
     }
 
     #[test]
@@ -2110,12 +2112,12 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert!(doc.components.contains_key(&ComponentId(1)) && !doc.components.contains_key(&ComponentId(2)));
+        assert!(doc.devices.contains_key(&DeviceId(1)) && !doc.devices.contains_key(&DeviceId(2)));
         // Two coils cannot be one: the choice is left out, with the reason; renumbering still works.
         let mut t2 = doc_with(&[(1, "-K05")]);
         let mut s2 = doc_with(&[(2, "-K05")]);
         for (d, id) in [(&mut t2, 1), (&mut s2, 2)] {
-            d.components.get_mut(&ComponentId(id)).unwrap().properties.insert("description".into(), "coil".into());
+            d.devices.get_mut(&DeviceId(id)).unwrap().properties.insert("description".into(), "coil".into());
         }
         let p = run(&a, &t2, &s2, &scope, &BTreeMap::new());
         let c = p.conflicts.iter().find(|c| c.kind == ConflictKind::Tag).unwrap();
@@ -2128,7 +2130,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K06");
+        assert_eq!(doc.devices[&DeviceId(2)].properties["tag"], "-K06");
     }
 
     #[test]
@@ -2143,7 +2145,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K?2");
+        assert_eq!(doc.devices[&DeviceId(2)].properties["tag"], "-K?2");
     }
 
     #[test]
@@ -2151,7 +2153,7 @@ mod tests {
         let a = doc_with(&[(1, "-K01")]);
         let t = doc_with(&[]);
         let mut s = a.clone();
-        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("description".into(), "x".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("description".into(), "x".into());
         let scope = scope_of(&[1]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts[0].kind, ConflictKind::Removed);
@@ -2162,7 +2164,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert!(doc.components.contains_key(&ComponentId(1)));
+        assert!(doc.devices.contains_key(&DeviceId(1)));
     }
 
     // ---- each conflict kind with each of its answers (reviewer 020b, finding 10)
@@ -2181,11 +2183,11 @@ mod tests {
     }
 
     fn device(d: &mut Document, c: u128, tag_text: &str, terminals: &[u128]) {
-        let mut comp = Component::default();
+        let mut comp = Device::default();
         comp.properties.insert(tag::TAG_KEY.into(), tag_text.into());
-        d.components.insert(ComponentId(c), comp);
+        d.devices.insert(DeviceId(c), comp);
         for t in terminals {
-            d.terminals.insert(TerminalId(*t), Terminal { component: ComponentId(c), label: Some(format!("A{t}")), key: None });
+            d.terminals.insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None });
         }
     }
 
@@ -2197,7 +2199,7 @@ mod tests {
         let mut s = Scope::default();
         for o in ids {
             match *o {
-                Obj::Component(c) => s.touched.components.insert(c),
+                Obj::Device(c) => s.touched.devices.insert(c),
                 Obj::Terminal(t) => s.touched.terminals.insert(t),
                 Obj::Conductor(c) => s.touched.conductors.insert(c),
                 Obj::Page(p) => s.touched.pages.insert(p),
@@ -2211,13 +2213,13 @@ mod tests {
     fn a_value_conflict_keeps_main_and_an_empty_or_refused_edit_is_a_problem() {
         let a = doc_with(&[(1, "-K01")]);
         let mut t = a.clone();
-        t.components.get_mut(&ComponentId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
+        t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
         let mut s = a.clone();
-        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
         let scope = scope_of(&[1]);
-        let id = format!("{}/prop.rating", ComponentId(1).hex());
+        let id = format!("{}/prop.rating", DeviceId(1).hex());
         let p = run(&a, &t, &s, &scope, &one(&id, Choice::Target));
-        assert_eq!(applied(&t, &p).components[&ComponentId(1)].properties["rating"], "16 A");
+        assert_eq!(applied(&t, &p).devices[&DeviceId(1)].properties["rating"], "16 A");
         let p = run(&a, &t, &s, &scope, &one(&id, Choice::Value("  ".into())));
         assert!(p.problem.as_deref().is_some_and(|m| m.contains("Rating")), "{:?}", p.problem);
         assert!(p.ops.is_empty());
@@ -2229,18 +2231,18 @@ mod tests {
         device(&mut a, 1, "-K01", &[11, 12]);
         let t = Document::default();
         let mut s = a.clone();
-        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("description".into(), "Pump".into());
-        let scope = scope_all(&[Obj::Component(ComponentId(1)), Obj::Terminal(TerminalId(11)), Obj::Terminal(TerminalId(12))]);
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("description".into(), "Pump".into());
+        let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::Terminal(TerminalId(11)), Obj::Terminal(TerminalId(12))]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         let k = p.conflicts.iter().find(|c| c.kind == ConflictKind::Removed).unwrap();
         assert!(k.source.contains("connection points"), "{}", k.source);
         let id = k.id.clone();
         // Keep removed: nothing comes back.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, Choice::Target)));
-        assert!(doc.components.is_empty() && doc.terminals.is_empty());
+        assert!(doc.devices.is_empty() && doc.terminals.is_empty());
         // Keep the device: its connection points come back with it.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, Choice::Source)));
-        assert!(doc.components.contains_key(&ComponentId(1)));
+        assert!(doc.devices.contains_key(&DeviceId(1)));
         assert_eq!(doc.terminals.len(), 2);
     }
 
@@ -2272,10 +2274,10 @@ mod tests {
         s.conductors.get_mut(&ConductorId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
         let mut t = a.clone();
         t.terminals.clear();
-        t.components.clear();
-        let scope = scope_all(&[Obj::Conductor(ConductorId(5)), Obj::Terminal(TerminalId(11)), Obj::Component(ComponentId(1))]);
+        t.devices.clear();
+        let scope = scope_all(&[Obj::Conductor(ConductorId(5)), Obj::Terminal(TerminalId(11)), Obj::Device(DeviceId(1))]);
         let tid = format!("{}/needed", TerminalId(11).hex());
-        let cid = format!("{}/needed", ComponentId(1).hex());
+        let cid = format!("{}/needed", DeviceId(1).hex());
         // Leave unconnected: the end is loose, nothing comes back.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&tid, Choice::Drop)));
         assert_eq!(doc.conductors[&ConductorId(5)].end(End::B), None);
@@ -2283,7 +2285,7 @@ mod tests {
         // Bring back the point and its device.
         let both = BTreeMap::from([(tid.clone(), Choice::BringBack), (cid.clone(), Choice::BringBack)]);
         let doc = applied(&t, &run(&a, &t, &s, &scope, &both));
-        assert!(doc.terminals.contains_key(&TerminalId(11)) && doc.components.contains_key(&ComponentId(1)));
+        assert!(doc.terminals.contains_key(&TerminalId(11)) && doc.devices.contains_key(&DeviceId(1)));
         // Bring back the point but not what it needs: a problem with the way through, no ops.
         let contradiction = BTreeMap::from([(tid, Choice::BringBack), (cid, Choice::Drop)]);
         let p = run(&a, &t, &s, &scope, &contradiction);
@@ -2298,8 +2300,8 @@ mod tests {
         let s = doc_with(&[(2, "-K05")]);
         let p = run(&a, &t, &s, &scope_of(&[1, 2]), &one("rule/tag/K5", Choice::RenumberTarget));
         let doc = applied(&t, &p);
-        assert_eq!(doc.components[&ComponentId(1)].properties["tag"], "-K06");
-        assert_eq!(doc.components[&ComponentId(2)].properties["tag"], "-K05");
+        assert_eq!(doc.devices[&DeviceId(1)].properties["tag"], "-K06");
+        assert_eq!(doc.devices[&DeviceId(2)].properties["tag"], "-K05");
     }
 
     #[test]
@@ -2350,8 +2352,8 @@ mod tests {
     fn an_answer_for_a_conflict_not_raised_is_reported_as_ignored() {
         let a = doc_with(&[(1, "-K01")]);
         let mut s = a.clone();
-        s.components.get_mut(&ComponentId(1)).unwrap().properties.insert("description".into(), "Pump".into());
-        let p = run(&a, &a, &s, &scope_of(&[1]), &one(&format!("{}/prop.rating", ComponentId(1).hex()), Choice::Source));
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("description".into(), "Pump".into());
+        let p = run(&a, &a, &s, &scope_of(&[1]), &one(&format!("{}/prop.rating", DeviceId(1).hex()), Choice::Source));
         assert_eq!(p.ignored.len(), 1, "{:?}", p.ignored);
         assert!(p.ignored[0].starts_with("-K01"), "{:?}", p.ignored);
         assert!(!p.ops.is_empty(), "the merge itself goes ahead");

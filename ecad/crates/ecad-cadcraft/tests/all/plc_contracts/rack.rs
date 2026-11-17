@@ -3,7 +3,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::outputs::accessory_fix_commands;
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{Author, ComponentId, ObjectRef, Op};
+use ecad_model::{Author, DeviceId, ObjectRef, Op};
 use serde_json::{Value, json};
 
 use super::{checks_of, place, placed, prop, same_as_built, tag};
@@ -13,8 +13,8 @@ use crate::common::{H, id};
 /// `plciol`, `plcdq`, each placed with Enter's defaults.
 struct Rack {
     h: H,
-    cpu: ComponentId,
-    cards: Vec<ComponentId>,
+    cpu: DeviceId,
+    cards: Vec<DeviceId>,
 }
 
 fn rack(seed: u64) -> Rack {
@@ -27,11 +27,11 @@ fn rack(seed: u64) -> Rack {
     Rack { h, cpu, cards }
 }
 
-fn slot(h: &mut H, c: ComponentId) -> Option<String> {
+fn slot(h: &mut H, c: DeviceId) -> Option<String> {
     prop(h, c, "plc.slot")
 }
 
-fn rack_of(h: &mut H, c: ComponentId) -> Option<String> {
+fn rack_of(h: &mut H, c: DeviceId) -> Option<String> {
     prop(h, c, "plc.rack")
 }
 
@@ -39,8 +39,8 @@ fn hand_made(h: &mut H, ops: Vec<Op>) {
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
 }
 
-fn set(c: ComponentId, key: &str, before: Option<String>, after: Option<&str>) -> Op {
-    Op::SetProperty { object: ObjectRef::Component(c), key: key.into(), before, after: after.map(str::to_string) }
+fn set(c: DeviceId, key: &str, before: Option<String>, after: Option<&str>) -> Op {
+    Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after: after.map(str::to_string) }
 }
 
 /// The rows of `kind` a fresh build finds (hand-made files bypass the kept model's commit path).
@@ -68,7 +68,7 @@ fn a1_cards_take_the_next_free_slot_of_the_only_rack_one_transaction_each() {
         assert_eq!(h.head(), before + 1, "one transaction for {key}");
         assert_eq!(v["rack"], json!(cpu.hex()), "{v}");
         assert_eq!(v["slot"], json!(i + 1), "{v}");
-        let c: ComponentId = id(&v, "component");
+        let c: DeviceId = id(&v, "component");
         assert!(v["message"].as_str().unwrap().contains(&format!("in -A01 slot {}", i + 1)), "{v}");
         cards.push(c);
     }
@@ -93,7 +93,7 @@ fn a1_cards_take_the_next_free_slot_of_the_only_rack_one_transaction_each() {
     assert_eq!(v["slot"], 9);
     let v = place(&mut h, "plcdi", 440.0, 200.0, json!({"rack": null})).unwrap();
     assert!(v.get("rack").is_none());
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     assert_eq!(rack_of(&mut h, c), None);
     // A taken slot is refused with the way out.
     let e = place(&mut h, "plcdi", 480.0, 200.0, json!({"slot": 2})).unwrap_err();
@@ -158,7 +158,7 @@ fn a3_slot_rows_appear_and_every_fix_works() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["severity"], "error");
     assert!(rows[0]["which"].as_str().unwrap().contains("-A01 slot 4 holds -A04 and -A05"), "{rows:?}");
-    let c: ComponentId = ComponentId::parse(rows[0]["object"]["component"].as_str().unwrap()).unwrap();
+    let c: DeviceId = DeviceId::parse(rows[0]["object"]["component"].as_str().unwrap()).unwrap();
     run_fix(&mut h, Fix::Plc(c, ecad_cadcraft::plc::PlcFix::NextFreeSlot), 0);
     assert!(checks_of(&mut h, "slot-twice").is_empty());
     same_as_built(&mut h);
@@ -167,7 +167,7 @@ fn a3_slot_rows_appear_and_every_fix_works() {
     let rows = checks_of(&mut h, "unracked");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["which"], "1 PLC card is in no rack");
-    run_fix(&mut h, Fix::Plc(ComponentId(0), ecad_cadcraft::plc::PlcFix::Unracked), 0);
+    run_fix(&mut h, Fix::Plc(DeviceId(0), ecad_cadcraft::plc::PlcFix::Unracked), 0);
     assert!(checks_of(&mut h, "unracked").is_empty());
     assert_eq!(rack_of(&mut h, cards[5]), Some(cpu.hex()));
     same_as_built(&mut h);
@@ -221,18 +221,18 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
     let mut h = H { s, project, trail: Vec::new() };
     let d = h.doc();
     for c in &cards {
-        assert_eq!(d.components.get(c).map(|x| &x.properties), saved.components.get(c).map(|x| &x.properties), "{c:?}");
+        assert_eq!(d.devices.get(c).map(|x| &x.properties), saved.devices.get(c).map(|x| &x.properties), "{c:?}");
     }
     assert_eq!(rack_of(&mut h, cards[0]), Some(cpu.hex()), "plc.rack round-trips as the rack's ID");
     assert_eq!(prop(&mut h, cards[1], "plc.channels"), Some("32".into()));
     let r = h.run("plcracks", json!({})).unwrap();
     assert_eq!(r["racks"][0]["cards"][1]["channels"], 32);
     // Retag the rack: no card property changes; captions follow.
-    let props: Vec<_> = cards.iter().map(|c| d.components.get(c).map(|x| x.properties.clone())).collect();
+    let props: Vec<_> = cards.iter().map(|c| d.devices.get(c).map(|x| x.properties.clone())).collect();
     h.run("setprop", json!({"component": cpu.hex(), "key": "tag", "value": "-A10"})).unwrap();
     let d = h.doc();
     for (c, p) in cards.iter().zip(props) {
-        let now = d.components.get(c).map(|x| x.properties.clone());
+        let now = d.devices.get(c).map(|x| x.properties.clone());
         assert_eq!(now, p, "a retag changes no card property");
     }
     let page = h.first_page();
@@ -255,9 +255,9 @@ fn a4_the_caption_pattern_and_show_rule_come_from_the_registry() {
     let Rack { mut h, cards, .. } = rack(4506);
     let page = h.first_page();
     // Brief 051 (design 051 §2.6): the caption is the second line of the card's name block.
-    let caption = |h: &mut H, c: ComponentId| {
+    let caption = |h: &mut H, c: DeviceId| {
         let d = h.doc();
-        let rep = d.representations_of(ecad_model::Subject::Component(c)).next().map(|(r, _)| r);
+        let rep = d.representations_of(ecad_model::Subject::Device(c)).next().map(|(r, _)| r);
         ecad_cadcraft::plc::look::parts_on_page(&d, page)
             .into_iter()
             .filter(|p| Some(p.rep) == rep)
@@ -291,7 +291,7 @@ fn a5_card_bodies_placed_before_a_rack_are_cards_in_no_rack() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["severity"], "info");
     let cpu = placed(&mut h, "plccpu", 50.0, 200.0);
-    run_fix(&mut h, Fix::Plc(ComponentId(0), ecad_cadcraft::plc::PlcFix::Unracked), 0);
+    run_fix(&mut h, Fix::Plc(DeviceId(0), ecad_cadcraft::plc::PlcFix::Unracked), 0);
     assert_eq!((rack_of(&mut h, di), slot(&mut h, di)), (Some(cpu.hex()), Some("1".into())));
     assert!(checks_of(&mut h, "unracked").is_empty());
     same_as_built(&mut h);
@@ -311,7 +311,7 @@ fn a6_deleting_a_rack_takes_its_cards_out_in_the_same_transaction() {
     assert_eq!(checks_of(&mut h, "unracked").len(), 1);
     same_as_built(&mut h);
     h.cmdline("u");
-    assert!(h.doc().components.contains_key(&cpu));
+    assert!(h.doc().devices.contains_key(&cpu));
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), Some(cpu.hex()), "undo restores both");
     }
@@ -320,7 +320,7 @@ fn a6_deleting_a_rack_takes_its_cards_out_in_the_same_transaction() {
     let page = h.first_page();
     let handles = h.rep_handles(page, cpu);
     h.run("erase", json!({"handles": handles})).unwrap();
-    assert!(!h.doc().components.contains_key(&cpu));
+    assert!(!h.doc().devices.contains_key(&cpu));
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), None);
     }
@@ -397,7 +397,7 @@ fn fp1_merge_and_diff_words_show_the_racks_tag_never_its_id() {
     assert!(line.starts_with("plcslot ") && line.contains("\"rack\":null"), "{line}");
 }
 
-fn placed_card(h: &mut H) -> ComponentId {
+fn placed_card(h: &mut H) -> DeviceId {
     placed(h, "plcdi", 600.0, 200.0)
 }
 
@@ -447,7 +447,7 @@ fn a1_place_symbol_asks_rack_and_slot_for_a_card_and_enter_takes_both() {
     assert!(h.s.running.is_none());
     let d = h.doc();
     let slots: Vec<(String, Option<String>, Option<String>)> = d
-        .components
+        .devices
         .values()
         .filter(|c| c.properties.get("description").is_some_and(|x| x.contains("digital input card")))
         .map(|c| (c.properties.get("tag").cloned().unwrap_or_default(), c.properties.get("plc.rack").cloned(), c.properties.get("plc.slot").cloned()))

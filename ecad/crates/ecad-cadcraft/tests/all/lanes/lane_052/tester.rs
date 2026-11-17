@@ -15,7 +15,7 @@ use ecad_cadcraft::checks::{self, Kind};
 use ecad_cadcraft::designations::{self, Aspect};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::{Persistence, ProjectHandle, generated, locations};
-use ecad_model::{Author, ComponentId, Document, ObjectRef, Op, PageId};
+use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
 struct TempDir(PathBuf);
@@ -53,11 +53,11 @@ fn page(h: &mut H, number: &str) -> PageId {
 }
 
 /// Place with proposals off (`keep`, brief 052d): these fixtures set every value themselves.
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> ComponentId {
+fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
     id(&h.run("place", json!({"symbol": symbol, "at": [at.0, at.1], "location": "keep", "function": "keep"})).unwrap(), "component")
 }
 
-fn code(d: &Document, c: ComponentId) -> Option<String> {
+fn code(d: &Document, c: DeviceId) -> Option<String> {
     locations::resolve(d, c).value
 }
 
@@ -100,16 +100,16 @@ fn designations_now(h: &mut H) -> Value {
 /// A project as v0.2.0 wrote it: a coil with `location +CP1` and `function =F1` stored as codes, a
 /// contact with role `main`, a connector with the retired `half.s.location`, a box `+FIELD`, a page
 /// and the project at `+CP1`. Built with raw ops, saved and reopened.
-fn old_project(dir: &TempDir) -> (H, ComponentId, ComponentId, ComponentId, PageId, Document) {
+fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Document) {
     let mut h = H::new(0x52_7001);
     let p1 = h.first_page();
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
     let k = place(&mut h, "coil", (75.0, 180.0));
     let p2 = page(&mut h, "105");
     let no = h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
-    let x: ComponentId =
+    let x: DeviceId =
         id(&h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [200, 50]})).unwrap(), "component");
-    let bx: ComponentId = id(
+    let bx: DeviceId = id(
         &h.run("locationbox", json!({"location": "+TMP", "page": p2.hex(), "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(),
         "component",
     );
@@ -121,12 +121,12 @@ fn old_project(dir: &TempDir) -> (H, ComponentId, ComponentId, ComponentId, Page
         after.role = "main".into();
         let set =
             |o: ObjectRef, key: &str, before: Option<String>, v: &str| Op::SetProperty { object: o, key: key.into(), before, after: Some(v.into()) };
-        let box_before = d.components[&bx].properties.get("location").cloned();
+        let box_before = d.devices[&bx].properties.get("location").cloned();
         let ops = vec![
-            set(ObjectRef::Component(k), "location", None, "+CP1"),
-            set(ObjectRef::Component(k), "function", None, "=F1"),
-            set(ObjectRef::Component(x), "half.s.location", None, "+CP2"),
-            set(ObjectRef::Component(bx), "location", box_before, "+FIELD"),
+            set(ObjectRef::Device(k), "location", None, "+CP1"),
+            set(ObjectRef::Device(k), "function", None, "=F1"),
+            set(ObjectRef::Device(x), "half.s.location", None, "+CP2"),
+            set(ObjectRef::Device(bx), "location", box_before, "+FIELD"),
             set(ObjectRef::Page(p1), "location", None, "+CP1"),
             set(ObjectRef::Project, "location", None, "+CP1"),
             Op::ModifyRepresentation { id: no_rep, before, after },
@@ -154,7 +154,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     // The retired half key is not read (FP4, Q9), and the property is still in the file.
     let rows = ecad_cadcraft::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
     assert!(rows.iter().all(|r| r.location.value.is_none()), "half.s.location is not read");
-    assert_eq!(d.components[&x].properties.get("half.s.location").map(String::as_str), Some("+CP2"));
+    assert_eq!(d.devices[&x].properties.get("half.s.location").map(String::as_str), Some("+CP2"));
     // Checks: the device's two values and the box.
     let rows = checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
@@ -186,9 +186,9 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
 /// the project default, all `+CP01`; and an entry `+CP1` with a description.
 struct Users {
     h: H,
-    k: ComponentId,
-    x: ComponentId,
-    bx: ComponentId,
+    k: DeviceId,
+    x: DeviceId,
+    bx: DeviceId,
     p1: PageId,
     p2: PageId,
     p3: PageId,
@@ -201,14 +201,14 @@ fn users(seed: u64) -> Users {
     let k = place(&mut h, "coil", (75.0, 180.0));
     let p2 = page(&mut h, "105");
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
-    let x: ComponentId =
+    let x: DeviceId =
         id(&h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [250, 50]})).unwrap(), "component");
     let p3 = page(&mut h, "110");
     place(&mut h, "coil", (75.0, 180.0));
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP01"})).unwrap();
     h.run("setlocation", json!({"component": x.hex(), "type": "plug", "value": "+CP01"})).unwrap();
     h.run("setlocation", json!({"component": x.hex(), "value": "+CP2"})).unwrap();
-    let bx: ComponentId = id(
+    let bx: DeviceId = id(
         &h.run("locationbox", json!({"location": "+CP01", "page": p1.hex(), "corners": [[300, 100], [380, 180]], "proposal": "keep"})).unwrap(),
         "component",
     );
@@ -234,14 +234,14 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     let after = h.doc();
     let k1 = key(&after, Aspect::Location, "+CP1");
     assert!(designations::find(&after, Aspect::Location, "+CP01").is_none());
-    assert_eq!(after.components[&u.k].properties.get("location"), Some(&k1));
-    assert_eq!(after.components[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
-    assert_eq!(after.components[&u.bx].properties.get("location"), Some(&k1), "the box follows");
+    assert_eq!(after.devices[&u.k].properties.get("location"), Some(&k1));
+    assert_eq!(after.devices[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
+    assert_eq!(after.devices[&u.bx].properties.get("location"), Some(&k1), "the box follows");
     assert_eq!(after.pages[&u.p1].display.get("location"), Some(&k1), "the page follows");
     assert_eq!(after.properties.get("location"), Some(&k1), "the project default follows");
     // No stored value anywhere still names the removed key.
     let old = key(&before, Aspect::Location, "+CP01");
-    let dangling = after.components.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
+    let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
     assert!(dangling.chain(after.properties.values()).all(|v| *v != old), "a value still names +CP01's key");
     same_as_built(h, "after merge");
     let locs: Vec<Option<String>> = h.cfg(|p| p.outputs().bom(Group::Location).into_iter().map(|r| r.location).collect());
@@ -283,9 +283,9 @@ fn the_use_index_follows_undo_redo_and_equals_a_reopen() {
     h.run("designationmerge", json!({"aspect": "location", "from": "+CP01", "into": "+CP1"})).unwrap();
     let d = h.doc();
     let k1 = key(&d, Aspect::Location, "+CP1");
-    assert_eq!(d.components[&u.x].properties.get("location.plug"), Some(&k1));
+    assert_eq!(d.devices[&u.x].properties.get("location.plug"), Some(&k1));
     assert_eq!(d.properties.get("location"), Some(&k1));
-    // A new device on +CP1, then undo both steps (a SetProperty and a CreateComponent undone).
+    // A new device on +CP1, then undo both steps (a SetProperty and a CreateDevice undone).
     let q = place(h, "coil", (150.0, 150.0));
     h.run("setlocation", json!({"component": q.hex(), "value": "+CP1"})).unwrap();
     h.cmdline("u");
@@ -406,8 +406,8 @@ fn refusals_write_nothing_and_add_no_entry() {
     h.run("setfunction", json!({"component": k.hex(), "value": "=F1"})).unwrap();
     let long = format!("+{}", "A".repeat(ecad_cadcraft::devices::MAX_PROPERTY_CHARS + 1));
     let cases: Vec<(&str, Value)> = vec![
-        ("setlocation", json!({"components": [k.hex(), "fffffffffffffffffffffff"], "value": "+NEW1"})),
-        ("setlocation", json!({"components": [k.hex(), strip.hex()], "type": "terminal", "value": "+NEW2"})),
+        ("setlocation", json!({"devices": [k.hex(), "fffffffffffffffffffffff"], "value": "+NEW1"})),
+        ("setlocation", json!({"devices": [k.hex(), strip.hex()], "type": "terminal", "value": "+NEW2"})),
         ("setlocation", json!({"component": k.hex(), "value": long})),
         ("setlocation", json!({"component": k.hex(), "value": "+CP\u{7}9"})),
         ("setlocation", json!({"component": k.hex(), "value": 12})),
@@ -445,14 +445,14 @@ fn refusals_write_nothing_and_add_no_entry() {
     }
 }
 
-/// One device named twice in `components` is set once (one op, one device in the answer), not
+/// One device named twice in `devices` is set once (one op, one device in the answer), not
 /// refused or double-counted.
 #[test]
 fn a_device_named_twice_is_set_once() {
     let mut h = H::new(0x52_7302);
     let k = place(&mut h, "coil", (75.0, 180.0));
     let head = h.head();
-    let v = h.run("setlocation", json!({"components": [k.hex(), k.hex()], "value": "+CP1"})).unwrap();
+    let v = h.run("setlocation", json!({"devices": [k.hex(), k.hex()], "value": "+CP1"})).unwrap();
     assert_eq!(h.head(), head + 1);
     assert_eq!(v["devices"], 1, "{v}");
     assert_eq!(code(&h.doc(), k).as_deref(), Some("+CP1"));
@@ -474,7 +474,7 @@ fn a_code_without_its_sign_names_the_entry_in_the_list_commands() {
     assert!(r.is_ok(), "designationremove names +CP2 by CP2: {r:?}");
 }
 
-/// Bounded input: a `components` list over the handle limit is refused before any work; a huge
+/// Bounded input: a `devices` list over the handle limit is refused before any work; a huge
 /// description is refused; the list commands survive hostile keys.
 #[test]
 fn oversized_input_is_refused() {
@@ -482,7 +482,7 @@ fn oversized_input_is_refused() {
     let k = place(&mut h, "coil", (75.0, 180.0));
     let many: Vec<String> = (0..=10_000usize).map(|_| k.hex()).collect();
     let head = h.head();
-    let e = h.run("setlocation", json!({"components": many, "value": "+CP1"})).unwrap_err();
+    let e = h.run("setlocation", json!({"devices": many, "value": "+CP1"})).unwrap_err();
     assert!(!e.to_lowercase().contains("internal error"), "{e}");
     assert_eq!(h.head(), head);
     let big = "x".repeat(100_000);
@@ -504,7 +504,7 @@ fn oversized_input_is_refused() {
 #[test]
 fn a_box_location_style_is_not_a_missing_location() {
     let mut h = H::new(0x52_7401);
-    let bx: ComponentId =
+    let bx: DeviceId =
         id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(), "component");
     let style = h.run("styles", json!({"catalogue": "location"})).unwrap();
     let ids: Vec<String> = style["styles"]
@@ -519,7 +519,7 @@ fn a_box_location_style_is_not_a_missing_location() {
     h.run("setdefault", json!({"key": "location.style", "level": "object", "component": bx.hex(), "value": pick})).unwrap();
     h.run("setdefault", json!({"key": "location.style", "level": "project", "value": pick})).unwrap();
     let d = h.doc();
-    assert!(d.components[&bx].properties.contains_key("location.style"), "the box stores its style");
+    assert!(d.devices[&bx].properties.contains_key("location.style"), "the box stores its style");
     let rows = checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
     assert!(missing.is_empty(), "a style is not a location: {missing:?}");

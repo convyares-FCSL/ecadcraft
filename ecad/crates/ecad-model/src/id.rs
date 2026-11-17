@@ -93,7 +93,7 @@ typed_id!(/// A layer.
 typed_id!(/// A drawn item: a primitive or a symbol instance.
     ItemId, "itm");
 typed_id!(/// A component.
-    ComponentId, "cmp");
+    DeviceId, "cmp");
 typed_id!(/// A terminal of a component.
     TerminalId, "trm");
 typed_id!(/// A representation (depiction) of a component, conductor or cable.
@@ -123,10 +123,10 @@ typed_id!(/// A standard (brief 050a, FP1): kept when a project copies it.
 ///
 /// # Example
 /// ```rust
-/// use ecad_model::{ComponentId, IdAllocator};
+/// use ecad_model::{DeviceId, IdAllocator};
 /// let mut ids = IdAllocator::seeded(7);
-/// let a: ComponentId = ids.fresh();
-/// let b: ComponentId = ids.fresh();
+/// let a: DeviceId = ids.fresh();
+/// let b: DeviceId = ids.fresh();
 /// assert_ne!(a, b);
 /// ```
 #[derive(Debug, Clone)]

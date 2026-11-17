@@ -8,7 +8,7 @@
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::sheet as rules;
-use ecad_model::{ComponentId, FolderId, PageId};
+use ecad_model::{DeviceId, FolderId, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -58,7 +58,7 @@ pub(crate) struct NewpageParams {
     generated: Option<String>,
     /// The one terminal strip a terminal plan shows.
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// A terminal plan's style: "table" or "graphic".
     #[serde(default)]
     style: Option<String>,

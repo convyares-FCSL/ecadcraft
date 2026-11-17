@@ -8,7 +8,7 @@
 //!
 //! **Update map.** Nothing of its own: it shows what the tab's view holds this frame.
 
-use ecad_model::{ComponentId, PageId, Pt, RepresentationId};
+use ecad_model::{DeviceId, PageId, Pt, RepresentationId};
 use ecad_ui::panel;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::{space, ui_type};
@@ -20,7 +20,7 @@ use crate::shell::ListsView;
 /// The selected row of the tab shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selected {
-    Device(ComponentId),
+    Device(DeviceId),
     Terminal(super::terminals::TermKey),
     Card(usize),
     /// Brief 056 (design 056 §5): a channel row of Project ▸ PLC.
@@ -175,7 +175,7 @@ fn nonempty(s: &str) -> String {
     if s.trim().is_empty() || s == "?" { super::report::DASH.into() } else { s.to_string() }
 }
 
-fn device(t: &App, c: ComponentId) -> Option<Detail> {
+fn device(t: &App, c: DeviceId) -> Option<Detail> {
     let r = t.panel.devices.source.row(c)?;
     let e = &r.entry;
     let prop = |i: usize| e.properties.get(i).cloned().flatten().unwrap_or_default();

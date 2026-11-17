@@ -14,7 +14,8 @@
 //! PLC card bodies) and adds text anchors for lane T ([`anchors`]), the rating rule
 //! ([`setprop_rule`]) and quiet points ([`is_quiet`]).
 //!
-//! The catalogue reads no project; only [`setprop_rule`] reads one, to find a fuse bank's fuses.
+//! The catalogue reads no project; [`setprop_rule`] reads one to find a fuse bank's fuses, and the
+//! project-symbol helpers read its symbol versions.
 //! Nothing here changes a project.
 
 #![deny(clippy::wildcard_enum_match_arm)]
@@ -23,7 +24,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use crate::CmdError;
-use ecad_model::{Definition, DefinitionId, Document, LibraryId, ObjectRef, Origin, Primitive, Pt, Subject, TerminalDef, Word};
+use ecad_model::{
+    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, Primitive, Pt, Subject, TerminalDef, Word,
+};
 
 /// The library ID of the starter symbols.
 pub const STARTER_LIBRARY: LibraryId = LibraryId(0x0000_ecad_0018_5ea1_0000_0000_0000_0001);
@@ -257,6 +260,105 @@ ecad_model::word_enum! {
 use StarterKey as K;
 
 impl StarterKey {
+    /// The group a device this starter begins belongs to (design 072 §2.2): what the starter
+    /// declares in its definition's [`Definition::device_type`]. Junctions and continuations are
+    /// `General` until lane F makes them drawing aids.
+    pub fn device_group(self) -> DeviceGroup {
+        match self {
+            K::Psu | K::Trafo => DeviceGroup::PowerSupply,
+            K::Fuse
+            | K::Mcb1
+            | K::Mcb2
+            | K::Rcbo2
+            | K::Rcd2
+            | K::Rcd4
+            | K::Fuseterm
+            | K::Fusebank4
+            | K::Fusebank6
+            | K::Fusebank8
+            | K::Fusebank10
+            | K::Fusebank12 => DeviceGroup::Protection,
+            K::Coil | K::No | K::Nc | K::Co | K::Power3 | K::Power4 | K::Ssrin | K::Ssrout | K::Pbno | K::Pbnc | K::Sel | K::Swco => {
+                DeviceGroup::Switching
+            }
+            K::Prox3 | K::Floatno | K::Floatnc | K::Rollerno | K::Rollernc | K::Interlockno | K::Interlocknc | K::Tc => DeviceGroup::Sensor,
+            K::Motor1 | K::Motor3 => DeviceGroup::Motor,
+            K::Heater | K::Valve | K::Valve2 => DeviceGroup::Load,
+            K::Lamp => DeviceGroup::Indicator,
+            K::Terminal
+            | K::Terminalpe
+            | K::Term2L1
+            | K::Term2L2
+            | K::Term2
+            | K::Term2bL1
+            | K::Term2bL2
+            | K::Term2b
+            | K::Term3L1
+            | K::Term3L2
+            | K::Term3L3
+            | K::Term3
+            | K::TermlnpeL1
+            | K::TermlnpeL2
+            | K::TermlnpeL3
+            | K::Termlnpe
+            | K::TermsensorL1
+            | K::TermsensorL2
+            | K::TermsensorL3
+            | K::Termsensor
+            | K::Termdisc
+            | K::Termfuse => DeviceGroup::TerminalStrip,
+            K::Socket2
+            | K::Socket3
+            | K::Socket4
+            | K::Socket6
+            | K::Socket8
+            | K::Socket12
+            | K::Plug2
+            | K::Plug3
+            | K::Plug4
+            | K::Plug6
+            | K::Plug8
+            | K::Plug12
+            | K::Dsub9s
+            | K::Dsub15s
+            | K::Dsub25s
+            | K::Dsub9p
+            | K::Dsub15p
+            | K::Dsub25p
+            | K::M12s4
+            | K::M12s5
+            | K::M12s8
+            | K::M12p4
+            | K::M12p5
+            | K::M12p8
+            | K::Rj45
+            | K::Usba
+            | K::Usbb
+            | K::Pinpair
+            | K::Pins
+            | K::Pinp => DeviceGroup::Connector,
+            K::Plccpu | K::Plcim => DeviceGroup::PlcRack,
+            K::Plcps
+            | K::Plcpm
+            | K::Plccm
+            | K::Plcdi
+            | K::Plcdq
+            | K::Plcai
+            | K::Plcao
+            | K::Plcrtd
+            | K::Plciol
+            | K::Di
+            | K::Do
+            | K::Chdi
+            | K::Chdq
+            | K::Chai
+            | K::Chao
+            | K::Chrtd
+            | K::Chiol => DeviceGroup::PlcModule,
+            K::Junction | K::Continuation => DeviceGroup::General,
+        }
+    }
+
     /// The ways of a fuse bank key (`fusebank8` → 8); `None` for any other key.
     pub fn fuse_bank_ways(self) -> Option<usize> {
         match self {
@@ -474,12 +576,18 @@ impl Starter {
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
+            device_type: DeviceType::of_group(self.key.device_group()),
             ..Default::default()
         };
         let content_hash =
             ecad_file::definition_hash(&d).map_err(|e| CmdError::refused(format!("The symbol {} could not be prepared ({e}).", self.name)))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: self.library_seq(), content_hash });
         Ok(d)
+    }
+
+    /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
+    pub fn device_type(&self) -> DeviceType {
+        DeviceType::of_group(self.key.device_group())
     }
 
     /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves brief
@@ -1226,6 +1334,48 @@ pub fn project_by_key<'a>(doc: &'a Document, key: &str) -> Option<Version<'a>> {
     project_symbols(doc).into_iter().find(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
 }
 
+/// Whether some version of a project symbol has key `key` (case-insensitive).
+pub fn has_project_key(doc: &Document, key: &str) -> bool {
+    let k = key.trim();
+    project_versions(doc).any(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
+}
+
+/// The op that keeps the project's tag prefixes on project symbols (design 072 F5) true after
+/// `ops`: a prefix whose key no version holds any more moves to the new key of the symbol that had
+/// it (a rename), or is cleared (its versions removed). `None` when nothing changes.
+///
+/// # Semantics
+/// Reads only the project's symbol versions and `ops`' `EmbedDefinition`/`RemoveDefinition`, so
+/// it goes last in the plan. A rename onto a key that already has a prefix keeps that one.
+pub fn prefix_follow(doc: &Document, ops: &[Op]) -> Option<Op> {
+    use ecad_model::prefix::PrefixOf;
+    let removed: BTreeSet<DefinitionId> = ops.iter().filter_map(|o| if let Op::RemoveDefinition { id, .. } = o { Some(*id) } else { None }).collect();
+    let embedded: Vec<Version<'_>> =
+        ops.iter().filter_map(|o| if let Op::EmbedDefinition { id, definition } = o { Version::of(*id, definition) } else { None }).collect();
+    let lower = |k: &str| k.trim().to_ascii_lowercase();
+    let mut after: BTreeSet<String> = project_versions(doc).filter(|v| !removed.contains(&v.id)).filter_map(|v| v.key().map(lower)).collect();
+    after.extend(embedded.iter().filter_map(|v| v.key().map(lower)));
+    let before = doc.settings.clone();
+    let mut next = before.clone();
+    for (of, prefix) in &before.tag_prefixes {
+        let PrefixOf::Project(k) = of else { continue };
+        if after.contains(&lower(k)) {
+            continue;
+        }
+        next.tag_prefixes.remove(of);
+        let lineages: BTreeSet<DefinitionId> =
+            project_versions(doc).filter(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k.trim()))).map(|v| v.lineage).collect();
+        let renamed = embedded.iter().filter(|v| lineages.contains(&v.lineage)).max_by_key(|v| v.seq).and_then(|v| v.key());
+        if let Some(new) = renamed.filter(|k| PrefixOf::project_form(k)).map(|k| PrefixOf::Project(k.into()))
+            && !before.tag_prefixes.contains_key(&new)
+            && !next.tag_prefixes.contains_key(&new)
+        {
+            next.tag_prefixes.insert(new, prefix.clone());
+        }
+    }
+    (next != before).then_some(Op::SetProjectSettings { before, after: next })
+}
+
 /// The key a symbol's registry entries use: a starter's catalogue key, else a project symbol's own.
 pub fn registry_key(d: &Definition) -> Option<String> {
     if let Some(s) = of_definition(d) {
@@ -1340,8 +1490,8 @@ pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixe
 
 /// The output labels of device `c`'s fuse bank (its head), which are not contact labels; empty
 /// when its head is not a fuse bank.
-pub fn bank_outputs(doc: &Document, c: ecad_model::ComponentId) -> BTreeSet<String> {
-    doc.representations_of(Subject::Component(c))
+pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String> {
+    doc.representations_of(Subject::Device(c))
         .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
         .find(|s| s.kind == Kind::Fixed { exclusive: true })
         .filter(|s| is_fuse_bank(s))
@@ -1384,7 +1534,7 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
 /// A value the 018 rules refuse; `rating.<n>` on a device that is not a fuse bank, or for a fuse
 /// it does not have (`-F01 has no fuse 13.`).
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    let ObjectRef::Component(c) = object else { return Ok(value.map(str::to_string)) };
+    let ObjectRef::Device(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
         return Ok(value.map(str::to_string));
     }
@@ -1409,7 +1559,7 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         }
         // The device's head (its one exclusive symbol), and only when that is a fuse bank.
         let bank = doc
-            .representations_of(Subject::Component(c))
+            .representations_of(Subject::Device(c))
             .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
             .find(|s| s.kind == Kind::Fixed { exclusive: true })
             .filter(|s| is_fuse_bank(s));
@@ -2652,25 +2802,25 @@ mod tests {
     #[test]
     fn the_basic_starters_keep_their_content_hashes() {
         let want: &[(&str, &str)] = &[
-            ("coil", "a38469fe64864a4a602f678c8bb2fae900c64b75c555a3b58b65b98029437db3"),
-            ("no", "82317c626ba389fa1deb1ecbefc1457e0b958da637780813198b4969e6d4cc31"),
-            ("nc", "8861d1f37368786878b2c860ce0bec1e98f4b8fb4b264fdf6b897cd01a38717c"),
-            ("power3", "7554cf8d849ccf964912b5ceef2248e342c00351cd386f88bd00f27aff9c599b"),
-            ("mcb1", "60a708b75ab297e22e8ee0e3e5b99163660dbf7f941ca0eba4d7009095042ecb"),
-            ("mcb2", "907da0b24254cc9520f359285988b9706420730a46e626c73abf20a3434ddd73"),
-            ("fuse", "92a1eb42f8036488fa6e127903f9381488777bb1314c272c97c7fb6c565f0f93"),
-            ("psu", "7ab24232dfdaa94a6b28556544b3be0b128146f6cd314f7a2e4fef86df03bc6c"),
-            ("pbno", "6fcb99af92cd7290c81fb4e05291bef164c4354e358a959490d4b1dece901148"),
-            ("pbnc", "eb97ba69342ae1de571c128a9086531e499581436fb5cc8c0f223c98d881479f"),
-            ("sel", "ee747f4614ce340e0500223ec3f23a1463c80ef9ec42f5e425be6449dedf3023"),
-            ("lamp", "654a895a70d7a93b61a1dfd279243afcd45628a7835bc7ca7baf3419e6af3e5a"),
-            ("motor3", "74fba3648ea65faed6d0f2d6122333c8ddbe82593551300b8b39b84e2783db94"),
-            ("motor1", "97d78f1600e761449dda417ba7a0d8818d1fc0a7576bd56f5a68bd2665714dcb"),
-            ("trafo", "7546ea16e7c4b9d68527ee6e022ad642a825844ab7441c699c2200015d736016"),
-            ("terminal", "140b3e17fdb18a4889a5816b1f3aa34f9c9714643d25f518470cd800310290a7"),
-            ("terminalpe", "950f2596fe76913d2ac50cc894697b3ca80e10cfb3bcbe136dccbc61af844a3c"),
-            ("di", "691b84067c9c64dd0ab9de2a9a6bef23fb05c71a485264cf463f245ef39fc1eb"),
-            ("do", "736535bf22162769b6420f790efd350383060df36447dcee6d29cf1f86f1ff92"),
+            ("coil", "2af1b6d8286ce742810433538c9d705fd4d803259ff4302a4a335b8d791b95b0"),
+            ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
+            ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
+            ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
+            ("mcb1", "0449072e772d3becc698699b2168dbe8e85039ddc0ec60d67f28c0232cb2ce6a"),
+            ("mcb2", "577a656074a2f6685ab58cc4a12eca204a34367881c0dd37017399357f8867cf"),
+            ("fuse", "97e67e1b287d5c724cf004c2f84bcf55a24ce963ad8c0381d57014d744503766"),
+            ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
+            ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
+            ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
+            ("sel", "1e9c869fcf4da31ff024f9d60f1e06168aa1757f2f2b2d4a66681e0af4ee5600"),
+            ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
+            ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
+            ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
+            ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
+            ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
+            ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
+            ("di", "418a6aab8d5818614ba43098c08872d64592926ca89ab42557f185476425f06a"),
+            ("do", "a7d39c8d471f7b36a469fff10c05eaa40ee4f93e921349a265a23e34cda6461f"),
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];

@@ -4,20 +4,20 @@
 
 use ecad_cadcraft::connectors;
 use ecad_cadcraft::symbols::{self, Side};
-use ecad_model::{ComponentId, ConductorId, Document, PageId, TerminalId};
+use ecad_model::{ConductorId, DeviceId, Document, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
 /// The connector's terminals by (side key, pin name).
-fn pins(d: &Document, c: ComponentId) -> Vec<(String, String, TerminalId)> {
+fn pins(d: &Document, c: DeviceId) -> Vec<(String, String, TerminalId)> {
     let mut v: Vec<(String, String, TerminalId)> =
         d.terminals_of(c).map(|(t, x)| (x.key.clone().unwrap_or_default(), x.label.clone().unwrap_or_default(), t)).collect();
     v.sort();
     v
 }
 
-fn pin(d: &Document, c: ComponentId, key: &str, name: &str) -> TerminalId {
+fn pin(d: &Document, c: DeviceId, key: &str, name: &str) -> TerminalId {
     pins(d, c).into_iter().find(|(k, n, _)| k == key && n == name).map(|(_, _, t)| t).unwrap_or_else(|| panic!("no {key} {name}"))
 }
 
@@ -45,7 +45,7 @@ fn row_both_makes_one_connector_with_two_halves_in_one_transaction() {
     let before = h.head();
     let v = row(&mut h, json!({}));
     assert_eq!(h.head(), before + 1, "one transaction");
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let d = h.doc();
     let keys: Vec<(String, String)> = pins(&d, c).into_iter().map(|(k, n, _)| (k, n)).collect();
     let want: Vec<(String, String)> = [".p", ".s"].iter().flat_map(|k| (1..=4).map(move |n| (k.to_string(), n.to_string()))).collect();
@@ -67,13 +67,13 @@ fn row_both_makes_one_connector_with_two_halves_in_one_transaction() {
     assert_eq!(embeds, vec![2, 2]);
     // `u` removes it all.
     h.cmdline("u");
-    assert!(!h.doc().components.contains_key(&c));
+    assert!(!h.doc().devices.contains_key(&c));
 }
 
 #[test]
 fn mated_pins_are_one_net_and_nothing_else_joins() {
     let mut h = H::new(4402);
-    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({})), "component");
     let d = h.doc();
     let (s3, p3, s4) = (pin(&d, c, ".s", "3"), pin(&d, c, ".p", "3"), pin(&d, c, ".s", "4"));
     assert!(net(&d, s3).is_some());
@@ -85,11 +85,11 @@ fn mated_pins_are_one_net_and_nothing_else_joins() {
 #[test]
 fn halves_on_two_pages_still_mate() {
     let mut h = H::new(4403);
-    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket"})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({"halves": "socket"})), "component");
     let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
     let v = row(&mut h, json!({"halves": "plug", "device": c.hex(), "family": null, "pins": null}));
-    assert_eq!(id::<ComponentId>(&v, "component"), c);
+    assert_eq!(id::<DeviceId>(&v, "component"), c);
     let d = h.doc();
     assert_eq!(net(&d, pin(&d, c, ".s", "2")), net(&d, pin(&d, c, ".p", "2")));
     // A second socket half is refused, with a way forward.
@@ -109,9 +109,9 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
         )
         .unwrap();
     assert_eq!(h.head(), before + 1);
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let d = h.doc();
-    assert_eq!(d.components[&c].properties.get("pins").map(String::as_str), Some("4"));
+    assert_eq!(d.devices[&c].properties.get("pins").map(String::as_str), Some("4"));
     assert_eq!(v["split"].as_array().map(Vec::len), Some(3));
     for (i, n) in ["1", "2", "3"].iter().enumerate() {
         let (s, p) = (pin(&d, c, ".s", n), pin(&d, c, ".p", n));
@@ -134,7 +134,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
 fn pins_fill_mates_first() {
     let mut h = H::new(4405);
     let v = h.run("place", json!({"symbol": "pins", "at": [10, 10]})).unwrap();
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     h.run("setprop", json!({"component": c.hex(), "key": "pins", "value": "3"})).unwrap();
     for x in [20, 30] {
         h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [x, 10]})).unwrap();
@@ -160,7 +160,7 @@ fn pins_fill_mates_first() {
 #[test]
 fn mismatched_halves_and_refusals() {
     let mut h = H::new(4406);
-    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
     // A plug half of another family and size is placed, with two warnings.
     h.run("place", json!({"symbol": "m12p5", "device": c.hex(), "at": [50, 150]})).unwrap();
     let rows = ecad_cadcraft::checks::all(&h.doc(), 1e-6);
@@ -168,7 +168,7 @@ fn mismatched_halves_and_refusals() {
     assert!(family.which.contains("D-sub socket") && family.which.contains("M12 plug"), "{}", family.which);
     assert!(rows.iter().any(|r| r.kind.name() == "connector-size"));
     // A half joined to a device that is not a connector.
-    let k: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [200, 200]})).unwrap(), "component");
+    let k: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [200, 200]})).unwrap(), "component");
     let e = h.run("place", json!({"symbol": "plug4", "device": k.hex(), "at": [0, 0]})).unwrap_err();
     assert!(e.contains("is not a connector") && e.contains("Enter for a new one"), "{e}");
     // A size that is not one of the type's.
@@ -185,7 +185,7 @@ fn mismatched_halves_and_refusals() {
 fn half_tags_follow_the_registry_at_project_and_connector_level() {
     let mut h = H::new(4407);
     let v = row(&mut h, json!({}));
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let tag = v["tag"].as_str().unwrap().to_string();
     h.run("setdefault", json!({"key": "connector.side.socket", "value": "F"})).unwrap();
     h.run("setdefault", json!({"key": "connector.side.plug", "value": "M"})).unwrap();
@@ -207,7 +207,7 @@ fn half_tags_follow_the_registry_at_project_and_connector_level() {
 fn typed_names_resolve_and_ambiguous_ones_are_refused() {
     let mut h = H::new(4408);
     let v = row(&mut h, json!({}));
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let tag = v["tag"].as_str().unwrap().to_string();
     let d = h.doc();
     let p3 = pin(&d, c, ".p", "3");
@@ -217,7 +217,7 @@ fn typed_names_resolve_and_ambiguous_ones_are_refused() {
     assert_eq!(e.to_string(), format!("{tag} has pin 3 on both halves. Type {tag}.S:3 or {tag}.P:3."));
     assert_eq!(connectors::resolve(&d, "-K99"), None);
     // Another device cannot take a half's tag (design 044 §5.1).
-    let k: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [200, 200]})).unwrap(), "component");
+    let k: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [200, 200]})).unwrap(), "component");
     let e = h.run("setprop", json!({"component": k.hex(), "key": "tag", "value": format!("{tag}.S")})).unwrap_err();
     assert!(e.contains(&format!("is the socket half of {tag}")), "{e}");
 }
@@ -225,7 +225,7 @@ fn typed_names_resolve_and_ambiguous_ones_are_refused() {
 #[test]
 fn bom_has_one_row_per_drawn_half() {
     let mut h = H::new(4409);
-    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({})), "component");
     h.run("setprop", json!({"component": c.hex(), "key": "half.s.part_number", "value": "SKT-4"})).unwrap();
     h.run("setprop", json!({"component": c.hex(), "key": "half.s.location", "value": "+FIELD"})).unwrap();
     let rows = h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
@@ -237,7 +237,7 @@ fn bom_has_one_row_per_drawn_half() {
     // An unknown side letter is refused; a lone half gives one row.
     let e = h.run("setprop", json!({"component": c.hex(), "key": "half.x.maker", "value": "ACME"})).unwrap_err();
     assert!(e.contains("has no half \"x\""), "{e}");
-    let lone: ComponentId = id(&h.run("place", json!({"symbol": "dsub9p", "at": [200, 50]})).unwrap(), "component");
+    let lone: DeviceId = id(&h.run("place", json!({"symbol": "dsub9p", "at": [200, 50]})).unwrap(), "component");
     let rows = h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
     let n = rows.iter().filter(|r| r["devices"].as_array().is_some_and(|a| a.contains(&json!(lone.hex())))).count();
     assert_eq!(n, 1);
@@ -246,7 +246,7 @@ fn bom_has_one_row_per_drawn_half() {
 #[test]
 fn halves_reference_each_other_across_pages() {
     let mut h = H::new(4410);
-    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket"})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({"halves": "socket"})), "component");
     let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
     row(&mut h, json!({"halves": "plug", "device": c.hex()}));
@@ -264,7 +264,7 @@ fn halves_reference_each_other_across_pages() {
 #[test]
 fn pinlabel_renames_a_pin_on_both_halves() {
     let mut h = H::new(4411);
-    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({})), "component");
     let d0 = h.doc();
     let (s3, p3) = (pin(&d0, c, ".s", "3"), pin(&d0, c, ".p", "3"));
     let before = h.head();
@@ -298,7 +298,7 @@ fn hostile_input_is_refused_without_a_panic() {
         assert!(h.run("connector", p.clone()).is_err(), "{p}");
     }
     assert!(h.run("pinlabel", json!({"device": "nothing", "pin": "1", "to": "2"})).is_err());
-    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({})), "component");
     for v in ["0", "65", "-1", "1e9", "x"] {
         assert!(h.run("setprop", json!({"component": c.hex(), "key": "pins", "value": v})).is_err(), "{v}");
     }
@@ -309,7 +309,7 @@ fn hostile_input_is_refused_without_a_panic() {
 #[test]
 fn a_connector_pin_is_never_read_as_a_strip_level() {
     let mut h = H::new(4413);
-    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({})), "component");
     let d = h.doc();
     let t = pin(&d, c, ".s", "2");
     let tag = ecad_cadcraft::devices::tag_words(&d, c);
@@ -336,7 +336,7 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
         let id: ecad_model::DefinitionId = p.ids.fresh();
         p.ledger.commit(ecad_model::Author::User, "old", vec![ecad_model::Op::EmbedDefinition { id, definition: old.clone() }]).unwrap();
     });
-    let c: ComponentId = id(&h.run("place", json!({"symbol": "socket4", "at": [0, 0]})).unwrap(), "component");
+    let c: DeviceId = id(&h.run("place", json!({"symbol": "socket4", "at": [0, 0]})).unwrap(), "component");
     let d = h.doc();
     assert!(connectors::is_connector(&d, c));
     assert_eq!(
@@ -366,7 +366,7 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
 #[test]
 fn a_half_location_is_its_override_else_the_connector_not_its_page() {
     let mut h = H::new(4420);
-    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket"})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({"halves": "socket"})), "component");
     let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
     row(&mut h, json!({"halves": "plug", "device": c.hex()}));
@@ -417,8 +417,8 @@ fn half_row_groups_are_kept_not_regrouped() {
 #[test]
 fn the_connector_index_is_kept_from_the_ops() {
     let mut h = H::new(4422);
-    let a: ComponentId = id(&row(&mut h, json!({})), "component");
-    let b: ComponentId = id(&row(&mut h, json!({"at": [50, 150]})), "component");
+    let a: DeviceId = id(&row(&mut h, json!({})), "component");
+    let b: DeviceId = id(&row(&mut h, json!({"at": [50, 150]})), "component");
     h.run("setprop", json!({"component": b.hex(), "key": "connector.side.socket", "value": "F"})).unwrap();
     let key = ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key;
     let inh = h.p(|p| p.connectors.inheriting(key));
@@ -448,15 +448,15 @@ fn a_typed_pin_list_is_kept_in_order() {
     let v = h
         .run("connector", json!({"halves": "socket", "pins": 4, "names": ["L", "N", "PE", "SH"], "layout": "pins", "line": [[90, 200], [125, 200]]}))
         .unwrap();
-    let c: ComponentId = id(&v, "component");
-    assert_eq!(h.doc().components[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,SH"));
+    let c: DeviceId = id(&v, "component");
+    assert_eq!(h.doc().devices[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,SH"));
     let v = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [200, 50]})).unwrap();
     assert_eq!(v["terminals"][0]["pin"], "PE", "the next listed name, never lost");
     h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [220, 50]})).unwrap();
     let e = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [240, 50]})).unwrap_err();
     assert!(e.contains("(L, N, PE, SH)"), "names in pin order: {e}");
     h.run("pinlabel", json!({"device": c.hex(), "pin": "SH", "to": "S"})).unwrap();
-    assert_eq!(h.doc().components[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,S"));
+    assert_eq!(h.doc().devices[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,S"));
 }
 
 /// Fix round 1: Ignore and Place mates on the Checks rows; Ctrl+K's device search finds a typed
@@ -464,7 +464,7 @@ fn a_typed_pin_list_is_kept_in_order() {
 #[test]
 fn checks_fixes_and_typed_search() {
     let mut h = H::new(4424);
-    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
     h.run("place", json!({"symbol": "m12p5", "device": c.hex(), "at": [50, 150]})).unwrap();
     let rows = ecad_cadcraft::checks::all(&h.doc(), 1e-6);
     let fam = rows.iter().find(|r| r.kind.name() == "connector-family").expect("family row");
@@ -484,7 +484,7 @@ fn checks_fixes_and_typed_search() {
 #[test]
 fn pin_names_and_ignore_keys_round_trip() {
     let mut h = H::new(4425);
-    let c: ComponentId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({"halves": "socket", "family": "dsub", "pins": 9})), "component");
     h.run("setprop", json!({"component": c.hex(), "key": "pin_names", "value": "A,B,C,D,E,F,G,H,J"})).unwrap();
     h.run("setprop", json!({"component": c.hex(), "key": "ignore.connector-family", "value": "yes"})).unwrap();
     let dir = std::env::temp_dir().join(format!("ecad-044-roundtrip-{}", std::process::id()));
@@ -492,7 +492,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     let path = dir.join("roundtrip.ecad").display().to_string();
     h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
-    let before = h.doc().components[&c].properties.clone();
+    let before = h.doc().devices[&c].properties.clone();
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -500,7 +500,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 4426).unwrap();
     let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
-    let after = &doc.components[&c].properties;
+    let after = &doc.devices[&c].properties;
     assert_eq!(after.get("pin_names"), before.get("pin_names"));
     assert_eq!(after.get("ignore.connector-family").map(String::as_str), Some("yes"));
     assert_eq!(connectors::pin_names(&doc, c), Some(["A", "B", "C", "D", "E", "F", "G", "H", "J"].map(String::from).to_vec()));
@@ -515,7 +515,7 @@ fn pin_names_and_ignore_keys_round_trip() {
 #[test]
 fn part_lines_go_under_their_half() {
     let mut h = H::new(4427);
-    let c: ComponentId = id(&row(&mut h, json!({})), "component");
+    let c: DeviceId = id(&row(&mut h, json!({})), "component");
     h.run("setprop", json!({"component": c.hex(), "key": "half.p.location", "value": "+FIELD"})).unwrap();
     h.run("partline", json!({"component": c.hex(), "add": {"part_number": "CRIMP-1", "description": "Crimp contact", "qty": "4"}})).unwrap();
     h.run("setprop", json!({"component": c.hex(), "key": "part.1.half", "value": "p"})).unwrap();
@@ -532,5 +532,5 @@ fn part_lines_go_under_their_half() {
     let plug = at(&|r: &Value| r["tags"].as_str().is_some_and(|t| t == format!("{tag}.P"))).unwrap_or_else(|| panic!("{nested:?}"));
     let crimp = at(&|r: &Value| r["part_number"] == "CRIMP-1").unwrap_or_else(|| panic!("{nested:?}"));
     assert_eq!(crimp, plug + 1, "the line follows the plug half's row: {nested:?}");
-    assert_eq!(h.p(|p| p.ledger.document().components[&c].properties.get("part.1.half").cloned()).as_deref(), Some("p"));
+    assert_eq!(h.p(|p| p.ledger.document().devices[&c].properties.get("part.1.half").cloned()).as_deref(), Some("p"));
 }

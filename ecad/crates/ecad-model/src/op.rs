@@ -8,17 +8,17 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{
-    Cable, CableMember, Component, Conductor, Definition, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal,
+    Cable, CableMember, Conductor, Definition, Device, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal,
 };
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::Delta;
 use crate::style::{Standard, StandardHeader, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ObjectRef {
-    Component(ComponentId),
+    Device(DeviceId),
     Conductor(ConductorId),
     Cable(CableId),
     /// A page's properties (brief 019, decision FP1).
@@ -78,18 +78,25 @@ pub enum Op {
         id: ItemId,
         item: Item,
     },
-    CreateComponent {
-        id: ComponentId,
-        component: Component,
+    CreateDevice {
+        id: DeviceId,
+        device: Device,
     },
-    DeleteComponent {
-        id: ComponentId,
-        component: Component,
+    DeleteDevice {
+        id: DeviceId,
+        device: Device,
+    },
+    /// Change a device's stored fields, its type among them (design 072 F13): the whole device
+    /// before and after, so the inverse swaps them.
+    ModifyDevice {
+        id: DeviceId,
+        before: Device,
+        after: Device,
     },
     /// Change which embedded definition a component's symbols use (brief 048, FP5), keeping
     /// its properties, terminals and representations.
-    SetComponentDefinition {
-        id: ComponentId,
+    SetDeviceDefinition {
+        id: DeviceId,
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
@@ -248,9 +255,10 @@ impl Op {
             Op::AddItem { id, item } => Op::RemoveItem { id, item },
             Op::RemoveItem { id, item } => Op::AddItem { id, item },
             Op::ModifyItem { id, before, after } => Op::ModifyItem { id, before: after, after: before },
-            Op::CreateComponent { id, component } => Op::DeleteComponent { id, component },
-            Op::DeleteComponent { id, component } => Op::CreateComponent { id, component },
-            Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id, before: after, after: before },
+            Op::CreateDevice { id, device } => Op::DeleteDevice { id, device },
+            Op::DeleteDevice { id, device } => Op::CreateDevice { id, device },
+            Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id, before: after, after: before },
+            Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id, before: after, after: before },
             Op::AddTerminal { id, terminal } => Op::RemoveTerminal { id, terminal },
             Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
@@ -387,27 +395,34 @@ impl Op {
                     doc.index.item(*id, &old, Delta::Remove);
                 }
             }
-            Op::CreateComponent { id, component } => {
-                absent(&doc.components, *id, "component")?;
-                doc.index.component(*id, component, Delta::Add);
-                doc.components.insert(*id, component.clone());
+            Op::CreateDevice { id, device } => {
+                absent(&doc.devices, *id, "device")?;
+                doc.index.device(*id, device, Delta::Add);
+                doc.devices.insert(*id, device.clone());
             }
-            Op::DeleteComponent { id, component } => {
-                holds(&doc.components, *id, component, "component", checked)?;
-                if let Some(old) = doc.components.remove(id) {
-                    doc.index.component(*id, &old, Delta::Remove);
+            Op::DeleteDevice { id, device } => {
+                holds(&doc.devices, *id, device, "device", checked)?;
+                if let Some(old) = doc.devices.remove(id) {
+                    doc.index.device(*id, &old, Delta::Remove);
                 }
             }
-            Op::SetComponentDefinition { id, before, after } => {
-                let c = doc.components.get(id).ok_or_else(|| pre(format!("component {id} does not exist")))?;
+            Op::ModifyDevice { id, before, after } => {
+                holds(&doc.devices, *id, before, "device", checked)?;
+                if let Some(old) = doc.devices.insert(*id, after.clone()) {
+                    doc.index.device(*id, &old, Delta::Remove);
+                }
+                doc.index.device(*id, after, Delta::Add);
+            }
+            Op::SetDeviceDefinition { id, before, after } => {
+                let c = doc.devices.get(id).ok_or_else(|| pre(format!("device {id} does not exist")))?;
                 if checked && c.definition != *before {
-                    return Err(pre(format!("component {id}'s definition differs from the recorded value")));
+                    return Err(pre(format!("device {id}'s definition differs from the recorded value")));
                 }
-                if let Some(old) = doc.components.remove(id) {
-                    doc.index.component(*id, &old, Delta::Remove);
-                    let new = Component { definition: *after, ..old };
-                    doc.index.component(*id, &new, Delta::Add);
-                    doc.components.insert(*id, new);
+                if let Some(old) = doc.devices.remove(id) {
+                    doc.index.device(*id, &old, Delta::Remove);
+                    let new = Device { definition: *after, ..old };
+                    doc.index.device(*id, &new, Delta::Add);
+                    doc.devices.insert(*id, new);
                 }
             }
             Op::AddTerminal { id, terminal } => {
@@ -495,7 +510,7 @@ impl Op {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
                 }
                 let props = match object {
-                    ObjectRef::Component(id) => doc.components.get_mut(id).map(|c| &mut c.properties),
+                    ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Conductor(id) => doc.conductors.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.display),
@@ -511,7 +526,7 @@ impl Op {
                     None => props.remove(key),
                 };
                 // A continuation's name is indexed (brief 022).
-                if let ObjectRef::Component(id) = object
+                if let ObjectRef::Device(id) = object
                     && (key == crate::connectivity::KIND || key == crate::connectivity::NAME)
                 {
                     let mut before_props = props.clone();
@@ -531,7 +546,7 @@ impl Op {
                     }
                 }
                 // A component's tag is indexed (brief 018).
-                if let ObjectRef::Component(id) = object
+                if let ObjectRef::Device(id) = object
                     && key == crate::tag::TAG_KEY
                 {
                     if let Some(old) = &old {
@@ -663,9 +678,10 @@ impl Op {
             Op::AddItem { .. } => "AddItem",
             Op::ModifyItem { .. } => "ModifyItem",
             Op::RemoveItem { .. } => "RemoveItem",
-            Op::CreateComponent { .. } => "CreateComponent",
-            Op::DeleteComponent { .. } => "DeleteComponent",
-            Op::SetComponentDefinition { .. } => "SetComponentDefinition",
+            Op::CreateDevice { .. } => "CreateDevice",
+            Op::DeleteDevice { .. } => "DeleteDevice",
+            Op::ModifyDevice { .. } => "ModifyDevice",
+            Op::SetDeviceDefinition { .. } => "SetDeviceDefinition",
             Op::AddTerminal { .. } => "AddTerminal",
             Op::RemoveTerminal { .. } => "RemoveTerminal",
             Op::LinkRepresentation { .. } => "LinkRepresentation",

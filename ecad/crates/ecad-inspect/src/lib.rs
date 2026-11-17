@@ -160,7 +160,7 @@ pub struct LiveFacts {
 fn label_of(doc: &Document, s: Subject) -> String {
     let tag = |p: &ecad_model::Properties| p.get("tag").cloned();
     match s {
-        Subject::Component(c) => doc.components.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged component".into()),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged device".into()),
         Subject::Conductor(c) => doc.conductors.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged conductor".into()),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
     }
@@ -175,11 +175,11 @@ fn index(doc: &Document) -> Vec<Value> {
     for (id, p) in &doc.pages {
         push("page", format!("{:032x}", id.0), id.short(), p.title.to_string());
     }
-    for id in doc.components.keys() {
-        push("component", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Component(*id)));
+    for id in doc.devices.keys() {
+        push("device", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Device(*id)));
     }
     for (id, t) in &doc.terminals {
-        let owner = label_of(doc, Subject::Component(t.component));
+        let owner = label_of(doc, Subject::Device(t.component));
         let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| id.short());
         push("terminal", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }

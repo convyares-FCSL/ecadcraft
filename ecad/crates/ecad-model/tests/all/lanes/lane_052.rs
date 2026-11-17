@@ -3,8 +3,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::doc::{Component, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
-use ecad_model::id::{ComponentId, DefinitionId, ItemId, LayerId, PageId, RepresentationId};
+use ecad_model::doc::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
+use ecad_model::id::{DefinitionId, DeviceId, ItemId, LayerId, PageId, RepresentationId};
 use ecad_model::numbering::{self, Kind, Request, Scope};
 use ecad_model::tag::{HighWater, TAG_KEY};
 use ecad_model::{Document, Placement, Pt, Subject};
@@ -19,9 +19,9 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
     }
     let style = Style { layer: LayerId(1), color: ecad_model::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (rid, c, tag, page, x, y, role) in syms {
-        let mut comp = Component::default();
+        let mut comp = Device::default();
         comp.properties.insert(TAG_KEY.into(), (*tag).into());
-        d.components.entry(ComponentId(*c)).or_insert(comp);
+        d.devices.entry(DeviceId(*c)).or_insert(comp);
         let item = ItemId(5000 + rid);
         let pg = d.page_order[*page];
         let kind = ItemKind::Symbol(SymbolInstance {
@@ -30,7 +30,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
         });
         d.items.insert(item, Item { page: pg, style: style.clone(), kind });
         let rep = Representation {
-            subject: Subject::Component(ComponentId(*c)),
+            subject: Subject::Device(DeviceId(*c)),
             page: pg,
             form: Form::Symbol,
             role: (*role).into(),
@@ -60,7 +60,7 @@ fn tags(d: &Document, rank: numbering::Rank<'_>) -> BTreeMap<u128, String> {
     for op in &p.ops {
         op.apply(&mut x).unwrap();
     }
-    x.components.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (id.0, t.clone()))).collect()
+    x.devices.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (id.0, t.clone()))).collect()
 }
 
 /// Device 1: a contact at the top-left of page 0 and its coil on page 1. Device 2: a coil on page
@@ -93,9 +93,9 @@ fn a_main_role_is_not_read() {
     assert_eq!(format!("{:?}", n.ops), format!("{:?}", m.ops));
     // Checks' anchor: the first in drawing order, whatever the roles.
     let want = Some((PageId(1000), Pt::new(50.0, 200.0)));
-    assert_eq!(numbering::rep_anchor(&a, Subject::Component(ComponentId(1))), want);
-    assert_eq!(numbering::rep_anchor(&b, Subject::Component(ComponentId(1))), want);
+    assert_eq!(numbering::rep_anchor(&a, Subject::Device(DeviceId(1))), want);
+    assert_eq!(numbering::rep_anchor(&b, Subject::Device(DeviceId(1))), want);
     // The coil (role main in an old file) on page 1 is not preferred over page 0.
     let c = fixture(&[(11, 1, "-K09", 1, 50.0, 200.0, "main"), (12, 1, "-K09", 0, 300.0, 100.0, "no")]);
-    assert_eq!(numbering::rep_anchor(&c, Subject::Component(ComponentId(1))), Some((PageId(1000), Pt::new(300.0, 100.0))));
+    assert_eq!(numbering::rep_anchor(&c, Subject::Device(DeviceId(1))), Some((PageId(1000), Pt::new(300.0, 100.0))));
 }
