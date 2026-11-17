@@ -19,6 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
 use ecad_model::{ComponentId, Document, IdAllocator, Ledger, ObjectRef, Op};
 
@@ -193,8 +194,9 @@ pub fn key_of_code(doc: &Document, a: Aspect, code: &str) -> Option<String> {
 ///
 /// # Errors
 /// Empty, too long or a control character.
-pub fn normalise(doc: &Document, a: Aspect, text: &str) -> Result<String, String> {
-    crate::devices::property_value(doc, a.property(), Some(text))?.ok_or_else(|| format!("A {} needs a code, such as {}.", a.word(), example(a)))
+pub fn normalise(doc: &Document, a: Aspect, text: &str) -> Result<String, CmdError> {
+    crate::devices::property_value(doc, a.property(), Some(text))?
+        .ok_or_else(|| CmdError::refused(format!("A {} needs a code, such as {}.", a.word(), example(a))))
 }
 
 /// An example code (`+CP1`, `=F1`).
@@ -241,7 +243,7 @@ impl Pending {
     ///
     /// # Errors
     /// As [`normalise`].
-    pub fn store(&mut self, doc: &Document, ids: &mut IdAllocator, a: Aspect, text: &str, ops: &mut Vec<Op>) -> Result<String, String> {
+    pub fn store(&mut self, doc: &Document, ids: &mut IdAllocator, a: Aspect, text: &str, ops: &mut Vec<Op>) -> Result<String, CmdError> {
         let code = normalise(doc, a, text)?;
         if let Some(k) = key_of_code(doc, a, &code) {
             return Ok(k);

@@ -107,7 +107,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop
     let mut pending = designations::Pending::default();
     let key = match text.map(str::trim).filter(|t| !t.is_empty()) {
         Some(t) => {
-            let k = pending.store(doc, ids, a, t, &mut out.ops).map_err(CmdError::refused)?;
+            let k = pending.store(doc, ids, a, t, &mut out.ops)?;
             let code = designations::code_of(doc, a, &k).or_else(|| pending.new_codes.last().map(|(_, c)| c.clone())).unwrap_or_default();
             out.value = Some((k.clone(), code));
             Some(k)

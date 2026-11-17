@@ -42,7 +42,7 @@ fn set(object: ObjectRef, props: Option<&Properties>, key: &str, after: Option<S
 /// A value under the 018 §6.1 rules (trimmed, 200 characters, no control characters; `function`
 /// starts with `=`, `location` with `+`; empty clears).
 fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, CmdError> {
-    Ok(crate::devices::property_value(doc, key, v)?)
+    crate::devices::property_value(doc, key, v)
 }
 
 /// The `proposal` word of a page's or the project's function or location (brief 052d):
@@ -390,7 +390,7 @@ pub fn new_page_type(
     if after.is_some_and(|a| !doc.pages.contains_key(&a)) {
         return Err(CmdError::refused("No such page to add after."));
     }
-    let page_type = crate::page_types::newpage_type(doc, ty, kind.generated).map_err(CmdError::refused)?;
+    let page_type = crate::page_types::newpage_type(doc, ty, kind.generated)?;
     // A page with no kind is titled after its type (design 054 §4.2).
     let title = match (&page_type, kind.generated) {
         (Some(t), None) => Some(crate::styles::name(doc, crate::styles::page::WORD, t)),

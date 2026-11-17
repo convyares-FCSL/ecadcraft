@@ -649,7 +649,7 @@ pub fn plan_new(doc: &Document, ids: &mut IdAllocator, content: &Content, from: 
             Some(d) => d.origin.clone().filter(|o| o.library != PROJECT_SYMBOLS),
             None => {
                 let s = symbols::STARTERS.iter().find(|s| s.id == f).ok_or(CmdError::refused("No such definition to copy from."))?;
-                s.definition().map_err(CmdError::refused)?.origin.clone()
+                s.definition()?.origin.clone()
             }
         },
     };
@@ -1132,7 +1132,7 @@ pub fn plan_place(
                 Some(t) => t,
                 None => {
                     let prefix = field_value(doc, &key, def, Field::Prefix).unwrap_or_else(|| "X".into());
-                    tag_high.next_auto(ledger, &prefix).map_err(CmdError::refused)?
+                    tag_high.next_auto(ledger, &prefix)?
                 }
             };
             let c: ComponentId = ids.fresh();

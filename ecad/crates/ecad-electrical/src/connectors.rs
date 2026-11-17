@@ -916,7 +916,7 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
         if field.is_empty() || field.chars().count() > 32 || !field.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
             return Some(Err(CmdError::refused(format!("A half's field is a word such as {}: half.{letter}.description.", HALF_FIELDS.join(", ")))));
         }
-        return Some(crate::devices::property_value(doc, "description", value).map_err(CmdError::from));
+        return Some(crate::devices::property_value(doc, "description", value));
     }
     if crate::defaults::connectors::is_naming_key(key) {
         if !is_connector(doc, c) {

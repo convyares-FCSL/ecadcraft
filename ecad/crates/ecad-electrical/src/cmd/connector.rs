@@ -317,10 +317,9 @@ fn wire_point(doc: &Document, page: PageId, w: ConductorId) -> Option<Pt> {
 fn place_bulkhead(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: f64,
 ) -> Result<Made, CmdError> {
-    let starter = crate::devices::starter(key).map_err(CmdError::refused)?;
+    let starter = crate::devices::starter(key)?;
     let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
-    let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))
-        .map_err(CmdError::refused)?;
+    let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
     Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), dropped: Vec::new(), ops: plan.ops })
 }
 
@@ -390,7 +389,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
     let mut made: Option<(ComponentId, String, bool)> = device.map(|c| (c, crate::devices::tag_words(doc, c), false));
     for side in sides {
         let key = family.half_key(side, n).ok_or_else(|| CmdError::refused(family.size_refusal()))?;
-        let starter = crate::devices::starter(&key).map_err(CmdError::refused)?;
+        let starter = crate::devices::starter(&key)?;
         let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
         let origin = if side == Side::Socket && halves == Side::Both { Pt::new(at.x - sin * up, at.y + cos * up) } else { at };
         let placement = if swap {
@@ -466,7 +465,7 @@ fn place_pins(
         Side::Socket => "pins",
         Side::Plug => "pinp",
     };
-    let starter: &Starter = crate::devices::starter(key).map_err(CmdError::refused)?;
+    let starter: &Starter = crate::devices::starter(key)?;
     let mut ops = Vec::new();
     let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
     // A new connector: its names first, then numbers past them (Numbers only).

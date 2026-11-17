@@ -48,7 +48,7 @@ pub fn named_key_or_code(doc: &Document, a: Aspect, key: Option<&str>, code: Opt
 
 /// A description as typed: trimmed; empty clears it.
 fn description_value(doc: &Document, t: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::devices::property_value(doc, "description", t).map_err(CmdError::refused)
+    crate::devices::property_value(doc, "description", t)
 }
 
 fn set(key: String, before: Option<String>, after: Option<String>) -> Option<Op> {
@@ -78,7 +78,7 @@ pub struct ListPlan {
 /// # Errors
 /// A code that does not read or another entry has, or a description that does not read.
 pub fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: &str, description: Option<&str>) -> Result<ListPlan, CmdError> {
-    let code = designations::normalise(doc, a, typed).map_err(CmdError::refused)?;
+    let code = designations::normalise(doc, a, typed)?;
     if taken(doc, a, &code, None).is_some() {
         return Err(CmdError::refused(format!("{code} is already in the list.")));
     }
@@ -122,7 +122,7 @@ pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan,
     let mut label = format!("Describe {} {}", a.word(), e.code);
     let mut code = e.code.clone();
     if let Some(t) = new_code.as_deref() {
-        code = designations::normalise(doc, a, t).map_err(CmdError::refused)?;
+        code = designations::normalise(doc, a, t)?;
         if let Some(other) = taken(doc, a, &code, Some(&e.key)) {
             return Err(CmdError::refused(format!("{} is already in the list. Merge {} into it instead?", other.code, e.code)));
         }

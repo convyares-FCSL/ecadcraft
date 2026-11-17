@@ -55,7 +55,7 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
         return Ok(d);
     }
     let d: DefinitionId = ids.fresh();
-    ops.push(Op::EmbedDefinition { id: d, definition: s.definition().map_err(CmdError::refused)?.clone() });
+    ops.push(Op::EmbedDefinition { id: d, definition: s.definition()?.clone() });
     Ok(d)
 }
 
@@ -143,7 +143,7 @@ pub fn plan_fence_typed(
         return Err(CmdError::refused(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len())));
     }
     let legacy = kind.ty.legacy();
-    let starter = crate::devices::starter(&kind.ty.starter_key(kind.level)).map_err(CmdError::refused)?;
+    let starter = crate::devices::starter(&kind.ty.starter_key(kind.level))?;
     if let Some(c) = strip
         && !strips::is_strip(doc, c)
     {
@@ -176,7 +176,7 @@ pub fn plan_fence_typed(
         None => {
             let c: ComponentId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
-            let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter)).map_err(CmdError::refused)?;
+            let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             let mut properties = ecad_model::Properties::new();
             properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
             properties.insert("description".into(), "Terminal".into());
@@ -225,7 +225,7 @@ pub fn level_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: ComponentId, position: &str,
     placement: Placement, ops: &mut Vec<Op>,
 ) -> Result<Vec<(String, TerminalId, Pt)>, CmdError> {
-    let d = starter.definition().map_err(CmdError::refused)?;
+    let d = starter.definition()?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut cps = BTreeMap::new();
     let mut out = Vec::new();

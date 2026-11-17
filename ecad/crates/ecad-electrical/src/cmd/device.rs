@@ -45,7 +45,7 @@ pub fn tag_settings(padding: Option<u64>, prefixes: impl IntoIterator<Item = (St
     };
     let mut changes = Vec::new();
     for (k, v) in prefixes {
-        let symbol = devices::starter(&k).map_err(CmdError::refused)?;
+        let symbol = devices::starter(&k)?;
         let prefix = match v {
             None => None,
             Some(t) => Some(

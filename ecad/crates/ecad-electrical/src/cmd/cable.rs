@@ -301,7 +301,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
     if let Some(t) = typed_tag.as_deref() {
         refuse_taken(doc, t, None)?;
     }
-    let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref()).map_err(CmdError::refused)?;
+    let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref())?;
     props.insert(CableField::Tag.key().to_string(), tag.clone());
     let id: CableId = ids.fresh();
     ops.push(Op::CreateCable { id, cable: ecad_model::Cable { properties: props, members: Vec::new() } });

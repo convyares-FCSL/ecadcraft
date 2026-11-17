@@ -44,7 +44,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
 /// # Errors
 /// Unknown component.
 pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
-    crate::xref::contacts_json_measured(doc, c, &EngineMetrics)
+    crate::xref::contacts_json_measured(doc, c, &EngineMetrics).map_err(String::from)
 }
 
 /// The refusal of an edit of a drawn cross-reference: the contact text's or the table's.

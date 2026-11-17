@@ -285,7 +285,7 @@ pub fn plan_toposition(
         }
     };
     let stag = crate::devices::tag_words(doc, strip);
-    let starter = crate::devices::starter("termfuse").map_err(CmdError::refused)?;
+    let starter = crate::devices::starter("termfuse")?;
     let ty = tt::by_code("fuse").ok_or(CmdError::refused("no fuse type"))?;
     let mut ops = Vec::new();
     let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
@@ -312,7 +312,7 @@ pub fn plan_toposition(
         si.definition = def;
     }
     ops.push(Op::ModifyItem { id: item, before: item_before, after: item_after });
-    let d = starter.definition().map_err(CmdError::refused)?;
+    let d = starter.definition()?;
     let mut cps = BTreeMap::new();
     for td in &d.terminals {
         cps.insert(if td.key.ends_with('i') { tin } else { tout }, td.at);
