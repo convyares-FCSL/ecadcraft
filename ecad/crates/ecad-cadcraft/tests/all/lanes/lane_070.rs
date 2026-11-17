@@ -53,7 +53,6 @@ const UNTYPED: &[&str] = &[
     "undomerge",
     "agentaccess",
     "canvassheet",
-    "titleblockimport",
 ];
 
 #[test]
@@ -1581,4 +1580,23 @@ fn the_typed_setdefault_still_works() {
     assert_eq!(reset["changed"], json!(true), "{reset}");
     let px = h.run("setdefault", json!({"key": "symbol.coil.prefix", "value": "q"})).unwrap_or_else(|e| json!(e));
     assert_eq!(px["changed"], json!(true), "{px}");
+}
+
+/// `titleblockimport` reads its input strictly at the edge; the DXF reader's refusals keep their
+/// words.
+#[test]
+fn titleblockimport_refuses_input_uniformly_and_keeps_its_rule_words() {
+    let input: &[(Value, &str)] = &[
+        (json!({"dxf": 5}), "`dxf` must be text, or null"),
+        (json!({"dxf": "0\nEOF\n", "item": "x"}), "`item` must be a whole number, or null"),
+        (json!({"path": "a.dxf", "colour": 1}), "`colour` is not a parameter of this command; it takes `dxf`, `id`, `item`, `name`, `path`, `sheet`"),
+    ];
+    let mut h = H::new(7069);
+    for (params, says) in input {
+        assert_eq!(h.run("titleblockimport", params.clone()).err().as_deref(), Some(*says), "{params}");
+    }
+    let e = h.run("titleblockimport", json!({"sheet": "A3"})).err().unwrap_or_default();
+    assert_eq!(e, "Give `path` or `dxf` (the file's text).");
+    let schema = schema_of("titleblockimport").unwrap_or(Value::Null);
+    assert_eq!(schema["properties"]["item"]["type"], json!(["integer", "null"]), "{schema}");
 }

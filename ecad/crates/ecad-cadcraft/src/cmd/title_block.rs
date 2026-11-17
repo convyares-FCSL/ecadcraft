@@ -9,8 +9,9 @@
 //!
 //! `titleblocks` and `titleblock` are thin shims (brief 070): their params structs read the JSON,
 //! the rules in [`ecad_electrical::cmd::title_block`] decide, and the shim lays out built-in blocks
-//! with this machine's fonts, commits the ops and answers in JSON. `titleblockimport` is the DXF
-//! reader's own ([`crate::title_block::dxf::run_import`]).
+//! with this machine's fonts, commits the ops and answers in JSON. `titleblockimport` reads its
+//! input through [`TitleblockimportParams`] and runs the DXF reader's own
+//! ([`crate::title_block::dxf::run_import`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -22,20 +23,24 @@ use ecad_model::style::StyleRef;
 use ecad_model::title_block::TitleBlockLayout;
 use ecad_model::{Document, PageId};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::cmd::input::{Command, Typed};
-use crate::cmd::on_project;
 use crate::cmd::style::{FieldParam, field_inputs};
+use crate::cmd::{err, on_project};
 use crate::frame::FrameText;
 use crate::styles::{self, Layer};
 use crate::title_block::{bind, house};
 
 pub use rules::{BLANK_SIZE, BUILTIN_READ_ONLY, NOT_A_FRAME};
 
-/// The commands of this module with a typed input (`titleblockimport` reads its own).
-pub const TYPED: &[Typed] = &[Typed::of::<TitleblocksParams>("titleblocks"), Typed::of::<TitleblockParams>("titleblock")];
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<TitleblocksParams>("titleblocks"),
+    Typed::of::<TitleblockParams>("titleblock"),
+    Typed::of::<TitleblockimportParams>("titleblockimport"),
+];
 
 /// The commands of this module, registered through [`crate::lanes`].
 pub fn specs() -> Vec<CommandSpec> {
@@ -49,7 +54,7 @@ pub fn specs() -> Vec<CommandSpec> {
 {new: {from: id|\"blank\", sheet, name?, layer?}} (a new own frame); one transaction",
             )
             .noundo(),
-        CommandSpec::new("titleblockimport", "Import Title Block", crate::title_block::dxf::run_import)
+        CommandSpec::new("titleblockimport", "Import Title Block", crate::cmd::input::typed::<TitleblockimportParams>)
             .params("{path | dxf, sheet, name?} (a new frame from a DXF) | {id | name, item, path | dxf} (a logo into item); one transaction")
             .noundo(),
     ]
@@ -265,4 +270,41 @@ fn run_new(s: &mut Session, new: NewParams) -> cadcraft_engine::Result<Value> {
         p.apply_edit(pg, "titleblock", &format!("New title block {name}"), ops)?;
         Ok(json!({"changed": true, "id": id.text(), "name": name}))
     })
+}
+
+/// `titleblockimport {path | dxf, sheet?, name?}` makes a new frame from a DXF drawing;
+/// `{id | name, item, path | dxf}` puts a DXF drawing into a logo item. One transaction.
+///
+/// The import itself is the DXF reader's ([`crate::title_block::dxf::run_import`], lane 066d's
+/// drawing code), which still takes JSON: [`Command::run`] writes the read parameters back
+/// (`serde_json::to_value`) and calls it, so the input is checked strictly here. Lane 066d may take
+/// this struct directly later.
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TitleblockimportParams {
+    /// The DXF file to read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    /// The DXF file's text (instead of `path`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dxf: Option<String>,
+    /// A new frame: the sheet it is drawn for (default the project's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sheet: Option<String>,
+    /// A new frame: its name; a logo: the frame (or `id`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    /// A logo: the frame (an id or a name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    /// A logo: the logo item's number (from 0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    item: Option<u64>,
+}
+
+impl Command for TitleblockimportParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let params = serde_json::to_value(&self).map_err(|e| err(e.to_string()))?;
+        crate::title_block::dxf::run_import(s, &params)
+    }
 }
