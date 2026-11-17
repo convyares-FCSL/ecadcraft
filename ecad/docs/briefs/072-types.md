@@ -1,9 +1,9 @@
 # Brief 072: The typed object model
 
-Status: **Draft** (designer, 2026-11-16; widened by the owner the same day; revised 2026-11-17 with
-the owner's answers). Needs the owner's four calls in design 072 §17 before it is approved. Every
-format and op change is approved by the overseer (design §11: F1–F37 and the revisions F15′, F19′,
-F25′, F27′, F28′, 2026-11-16/17); A15 applies to every new op and record.
+Status: **Approved (owner, 2026-11-17).** Designer 2026-11-16, widened by the owner the same day,
+revised 2026-11-17 with the owner's answers to every call (design §17). Every format and op change
+is approved (design §11: F1–F42 and the revisions F15′, F19′, F25′, F27′, F28′); A15 applies to
+every new op and record.
 Phase: 0.2.3 tidy-up; no PRs: the overseer merges each lane into `refactor/0.2.3` when it is green.
 Designer: **yes** (`docs/design/072-types.md`, the spec; read Part I and the sections your lane
 names) · Size: XL, as eight lanes.
@@ -70,10 +70,11 @@ the first two areas so the overseer can check the pattern.
 symbols declaring their type: **merge this step** so C can start. (2) Common fields, `Text<N>`, part
 lines. (3) One group per commit: Protection, Switching, Sensor, Motor, Load, Indicator,
 PowerSupply, TerminalStrip, Connector: fields into the variant, trait methods implemented, readers
-and commands moved, keys to `RESERVED`. (4) Roles, `SlotText`, `SymbolDefaults`. (5) User fields,
+and commands moved, keys to `RESERVED`. (4) Roles, `SlotText`, `SymbolDefaults`, conductors accepted per point (`TerminalDef.accepts`, `Terminal.accepts`, F38; the check and the star rule are lane F's). (5) User fields,
 device links. (6) Predicates deleted after the oracle A7 (recorded since step 1).
 
-**C.** (1) Stations (`PlcRack` with `RackHead`), modules, channel groups; today's CPU cards become
+**C.** (1) Stations (`PlcRack` with `RackHead`), modules with `ModuleFunction` and
+`ModuleAttributes` (F41, F42; design §3's starter mapping, A19), channel groups; today's CPU cards become
 stations with a CPU head, head modules stations with a coupler (A11). (2) Address blocks, I/O list
 and station overview as methods. (3) `PointKey::Channel`; `body_type`, `of_body`, `is_rack` go.
 
@@ -86,8 +87,11 @@ code, tag and descriptions, revisions, `ModifyProject`; pages refer by id. (3) `
 Title block strictness.
 
 **F.** (1) Routes and `ModifyRoute`; today's conductor drawings become routes (F31). (2) Ordered
-wires: `net_order`, `order_fixed`, the proposal rule (§17 call 1), the rewrite on point changes,
-hand reordering; `AttachEnd` goes (F32, A12). (3) Junction dots, T indicators and **Show wire
+wires: `net`, `conductor`, `net_order`, `order_fixed`; the drawing-order proposal (a T-join links
+from the nearest end), the rewrite on point changes, hand reordering; `AttachEnd` goes (F32, F39,
+A12, A17, A18). (2b) Conductors accepted per point: the star rule at points accepting more than two
+and the over-capacity error check (F38, A17); the `wiring.number_by` setting, per net or per
+conductor (F40, A18). (3) Junction dots, T indicators and **Show wire
 order** drawn from routes and order; junction components removed. (4) Drawing aids
 (continuations, boxes), `Subject::Aid`, `TerminalOwner::Aid`. (5) Boxes and the `fixed` rule, the
 "Symbol tied to multiple locations" check (A13). (6) Loose parts. Ends with G4, G6, G11, G12, G13
@@ -114,8 +118,8 @@ once at the end of each lane).
 - A device whose new group differs from what today's predicates imply (A7).
 - A field that belongs to more than one group, or a holder the design didn't list.
 - A drawn form (`Form::Drawn`) that needs its starter, which the role no longer carries.
-- A net whose wires can't be made a chain (a point with more than two wires today) before the
-  owner's call 2 is answered.
+- A point in today's projects with more conductors than its symbol accepts (it becomes an error
+  after the change): report the count before regenerating fixtures.
 - Any stored field, word or op not in design §11.
 - A guard that can't reach 0 without a change outside the lane.
 

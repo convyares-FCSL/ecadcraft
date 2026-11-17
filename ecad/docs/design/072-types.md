@@ -1,10 +1,9 @@
 # Design 072: The typed object model
 
-Status: **Draft** (designer, 2026-11-16, widened by the owner the same day; revised 2026-11-17 with
-the owner's answers). The owner's spec is decided; this design turns it into types, lanes and
-steps. Waiting for the owner's four calls in §17. Every format and op change is approved by the
-overseer (§11): F1–F37 and the revisions F15′, F19′, F25′, F27′, F28′, 2026-11-16/17 (F12
-superseded by F13; F30 approved with the owner's answer on styles). Brief:
+Status: **Approved (owner, 2026-11-17).** Designer 2026-11-16, widened by the owner the same day,
+revised 2026-11-17 with the owner's answers; every owner call is answered (§17). Every format and op
+change is approved by the overseer (§11): F1–F42 and the revisions F15′, F19′, F25′, F27′, F28′
+(F12 superseded by F13; F30 approved with the owner's answer on styles). Brief:
 `docs/briefs/072-types.md`.
 
 **Goal (one sentence).** What every stored object is, and how it relates to other objects, is held
@@ -162,13 +161,13 @@ Each group exists because it has fields and methods no other group has. Groups s
 earlier list of fourteen: **Heater** has only a power and a demand, so it is a plain **Load**;
 **Solenoid** likewise (its valve positions are a description, not a calculation); **Relay** and
 **Switch** share contacts, the contact table and every switching method, and differ only in what
-operates them, so they are one **Switching** group with an `operator` (§17 call 3).
+operates them, so they are one **Switching** group with an `operator` (owner, 2026-11-17).
 
 | # | Group | IEC 81346-2 | Starters today | Own fields | Traits and methods |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `PowerSupply` | G (generating: PSUs, batteries), T (converting: transformers) | `psu`, `trafo` | input and output `RatedVoltage`, output current `Amps` or power `Watts`, `ratio` for a transformer | `Supply::available_power()`, `available_current()`, `output()`; `Load::demand()` on its input (output ÷ efficiency) |
 | 2 | `Protection` | F (protecting), Q's protective switches (MCB, RCD, RCBO, fuse switch) | `fuse`, `mcb1`, `mcb2`, `rcbo2`, `rcd2`, `rcd4`, `fuseterm`, `fusebank4…12` | `device` (Fuse, Mcb, Rcd, Rcbo, FuseBank), `rated_current`, `curve`, `residual` (mA), `breaking` (kA), `poles`, `outputs` (a fuse bank's per-output rating), `rating_text` | `Protects::rated_current()`, `trips(current, time)`, `protects(circuit)` (057's coordination), `Switching::contacts()` for auxiliaries |
-| 3 | `Switching` | K (relays, contactors, SSR, timers), S (manual control: push buttons, selectors, switch-disconnectors) | `coil`, `power3`, `power4`, `co`, `ssrin`, `ssrout`, `pbno`, `pbnc`, `sel`, `swco` | `operator: Operator { Coil(Coil { voltage, power }), Manual(Actuator) }`, `contacts: ContactSet`, `contact_table: TablePosition` | `Switching::contacts()`, `contact_table()`, `free_contacts(doc)` (offered minus drawn); `Load::demand()` when operated by a coil |
+| 3 | `Switching` | K (relays, contactors, SSR, timers), S (manual control: push buttons, selectors, switch-disconnectors) | `coil`, `power3`, `power4`, `co`, `ssrin`, `ssrout`, `pbno`, `pbnc`, `sel`, `swco` | `operator: Operator { Coil(Coil { voltage, power }), Manual(Actuator), Timer(Timer { function: OnDelay \| OffDelay \| …, coil: Coil }), … }`, `contacts: ContactSet`, `contact_table: TablePosition` | `Switching::contacts()`, `contact_table()`, `free_contacts(doc)` (offered minus drawn); `Load::demand()` when operated by a coil |
 | 4 | `Sensor` | B (converting a variable to a signal) | `prox3`, `floatno/nc`, `rollerno/nc`, `interlockno/nc`, `tc` | `sensing` (Proximity, Float, Limit, Interlock, Temperature…), `output` (Contact, Pnp, Npn, Analogue { range }), supply `RatedVoltage` | `Senses::signal()` (what a PLC input must accept: the "sensor on the wrong channel type" check), `Load::demand()` |
 | 5 | `Motor` | M (mechanical energy) | `motor1`, `motor3` | `phases`, `rated_power`, `rated_current`, `power_factor`, `efficiency`, `starting` (Direct, StarDelta, Soft, Vfd) | `Load::demand()`, `full_load_current()`, `starting_current()` (protection and cable sizing) |
 | 6 | `Load` | E (heat, light as energy), MB (valves, solenoids, brakes), other consumers | `heater`, `valve`, `valve2` | `rated_power: Watts` | `Load::demand()` |
@@ -232,8 +231,10 @@ Schematic versus panel is one device with two representations, not a relationshi
 
 ### 2.7 Connection points
 
-`Terminal { owner: TerminalOwner { Device | Aid }, label, key: PointKey }`,
+`Terminal { owner: TerminalOwner { Device | Aid }, label, key: PointKey, accepts: u8 }`,
 `PointKey { Def(String), Side(Side), Channel { index, role }, Level { position, level, io } }`.
+`accepts` is how many conductors the point takes, copied from `TerminalDef.accepts` in the symbol
+(default 2; PE bars and earth studs more) when the point is made (§4.4).
 
 ### 2.8 Project-defined user fields
 
@@ -253,18 +254,32 @@ pub struct PlcRack {                          // a station on a network
 }
 pub enum RackHead {
     Cpu { family: Option<Text<32>> },         // usually one per project
-    Coupler { protocol: Fieldbus },           // EtherCAT (an EK1100), Profinet, EtherNet/IP, Modbus TCP, …
+    Coupler { protocol: Fieldbus },           // a fieldbus head: EtherCAT, Profinet, EtherNet/IP, Modbus TCP, …
 }
 pub struct PlcModule {
     pub rack: Option<DeviceId>,               // parent station
     pub slot: Option<u16>,
-    pub function: ModuleFunction,             // Di, Do, Ai, Aq, Psu, Accessory, Mixed(Vec<ChannelGroup>)
-    pub groups: Vec<ChannelGroup>,            // one group for a single-function module
+    pub function: ModuleFunction,
+    pub attributes: ModuleAttributes,
     pub address: AddressPin { start: Option<Text<16>>, size: Option<u32> },
     pub supply: Option<RatedVoltage>,
 }
-pub struct ChannelGroup { pub function: ChannelFunction, pub count: u16, pub channels: BTreeMap<u16, Channel> }
-pub enum ChannelFunction { Di, Do, Ai, Aq, Rtd, IoLink, Supply24V, Ethernet, … }
+/// What a module does (owner, 2026-11-17): generic names, never a vendor's. An enum with data.
+pub enum ModuleFunction {
+    DigitalIn(ChannelGroup), DigitalOut(ChannelGroup),
+    AnalogIn(ChannelGroup),  AnalogOut(ChannelGroup),
+    Mixed(Vec<ChannelGroup>),                                   // several groups on one module
+    Position(Position { kind: Encoder | Ssi | Counter | …, channels: ChannelGroup }),
+    Drive(Drive { kind: Stepper | Servo | DcMotor | …, axes: u8 }),
+    Communication(Communication { protocol: Protocol, ports: Vec<Port>, role: Gateway | Serial | Fieldbus }),
+    Measurement(Measurement { kind: PowerMeasurement | Vibration | Strain | …, channels: ChannelGroup }),   // DAQ
+    SafetyLogic(SafetyLogic { channels: Option<ChannelGroup> }),
+    System(SystemModule { kind: PowerFeed | PotentialDistribution | Fusing | EndCap | Shield | … }),
+}
+/// Properties of a module or its channels, not functions (owner): a safe DI is still `DigitalIn`.
+pub struct ModuleAttributes { pub safety_rated: bool, pub intrinsically_safe: bool, pub calibration_certificate: bool }
+pub struct ChannelGroup { pub signal: Signal, pub count: u16, pub channels: BTreeMap<u16, Channel> }
+pub enum Signal { Dc24V, Ac230V, Relay, Current4_20, Voltage0_10, Rtd, Thermocouple, IoLink, … }
 pub struct Channel { pub text: Option<Text<80>>, pub address: Option<Text<32>>, pub tag: Option<Tag>, pub safe: Option<SafeState> }
 ```
 
@@ -273,9 +288,36 @@ pub struct Channel { pub text: Option<Text<80>>, pub address: Option<Text<32>>, 
 - **Today's CPU or head-module card becomes a station** whose head is a CPU (`plccpu`) or a Coupler
   (`plcim`), keeping its tag, description, manufacturer and part number (the head's part). No
   separate CPU module.
-- Modules: DI, DO, AI, AQ, PSU, accessory, or mixed (a list of channel groups). RTD and IO-Link are
-  channel functions inside an AI or mixed module. The communication module (`plccm`) has no
-  function in the owner's list (§17 call 4).
+- **Modules** carry a `ModuleFunction` with its data. RTD, thermocouple and IO-Link are signal kinds
+  of a channel group, not module functions. Today's starters map: `plcdi` → `DigitalIn`, `plcdq` →
+  `DigitalOut`, `plcai` → `AnalogIn`, `plcao` → `AnalogOut`, `plcrtd` → `AnalogIn` (RTD signal),
+  `plciol` → `Communication` (IO-Link master), `plcps` and `plcpm` → `System` (power feed), `plccm`
+  → `Communication`.
+- **Safety-rated, intrinsically safe (Ex i) and a calibration certificate are attributes**, never
+  functions.
+- **Communication modules appear in the station overview**, with protocol and ports.
+
+**Sanity check: one fieldbus terminal range.** A broad modular I/O range (EtherCAT terminals,
+public product categories) maps onto one function plus attributes each:
+
+| Public category | Station head or function | Attributes |
+| --- | --- | --- |
+| Bus coupler | head `Coupler { protocol: EtherCAT }` | — |
+| Digital input terminals | `DigitalIn` | — |
+| Digital output terminals | `DigitalOut` | — |
+| Analog input terminals (voltage, current, RTD, thermocouple) | `AnalogIn` (signal per group) | calibration certificate where offered |
+| Analog output terminals | `AnalogOut` | — |
+| Position measurement (encoder, SSI, counter) | `Position` | — |
+| Communication terminals (serial, gateway, sub-bus, IO-Link master) | `Communication` | — |
+| Drive terminals (stepper, servo, DC motor) | `Drive` | — |
+| Multi-functional I/O | `Mixed` | — |
+| System terminals (power feed, potential distribution, fusing, end cap, shield) | `System` | — |
+| Measurement terminals (power measurement, condition monitoring) | `Measurement` | calibration certificate where offered |
+| Safety terminals: safe inputs, safe outputs | `DigitalIn` / `DigitalOut` | safety-rated |
+| Safety terminals: safety logic | `SafetyLogic` | safety-rated |
+| Ex i terminals (intrinsically safe I/O) | the function of their signal (`DigitalIn`, `AnalogIn`, …) | intrinsically safe |
+
+Every category lands on one function; nothing needs a vendor-specific variant.
 - The 056 card fields move: rack, slot, accessories into the module; ID (tag), description,
   manufacturer, part number are common device fields.
 - Addresses, the I/O list and the station overview are methods (`PlcModule::address_block`,
@@ -297,8 +339,9 @@ The new model, after the behaviour of established electrical CAD tools (clean ro
 - **Routes** are what a person draws: lines on a page that connect connection points and each
   other. They decide *which points are on one net*, nothing more.
 - **Wires** are the physical conductors: each runs between **two connection points** of the net,
-  never to a T or a dot. A net with points P1…Pn has n−1 wires, in a **stored order**:
-  1 = P1→P2, 2 = P2→P3, and so on (a chain).
+  never to a T or a dot. A net with points P1…Pn has n−1 wires, in a **stored order**: by default a
+  chain (1 = P1→P2, 2 = P2→P3, …), fanning out (a star) only at points that accept more than two
+  conductors (§4.4).
 - **ECAD proposes the order**; the person can **reorder by hand**; a button (**Show wire order**)
   draws the numbers 1, 2, 3 beside the wires on the page.
 - **Junction dots and the T indicators** (a small triangle at a T showing which way the order runs)
@@ -310,13 +353,15 @@ The new model, after the behaviour of established electrical CAD tools (clean ro
 
 ```rust
 pub struct Wire {
-    pub net_order: u16,                          // its place in its net's chain, 1-based
+    pub net: NetId,                              // the net it belongs to (stored, stable)
+    pub conductor: ConductorId,                  // this conductor's own number in the project (stable)
+    pub net_order: u16,                          // its place in its net's order, 1-based
     pub ends: [TerminalId; 2],                   // two connection points of one net
     pub order_fixed: bool,                       // the person reordered this net by hand
-    pub wire_type: Option<StyleRef>,             // §4.4
+    pub wire_type: Option<StyleRef>,             // §4.6
     pub size: Option<WireSize>,                  // overrides the type's: Mm2 | Awg
-    pub colours: Option<Vec<ConductorColour>>,           // overrides the type's
-    pub number: Option<WireNumber>,              // typed numbering as today
+    pub colours: Option<Vec<ConductorColour>>,   // overrides the type's
+    pub number: Option<WireNumber>,              // the shown number, per the project setting below
     pub potential: Option<Text<24>>,
     pub rating: CircuitInputs, pub load: Option<Amps>, pub protected_by: Option<DeviceId>,
 }
@@ -324,6 +369,16 @@ pub struct Wire {
 
 Wires are listed by net and order everywhere a wire list is made (wire list, cable cores, BOM
 lengths, the order numbers on the page).
+
+- **`net` and `conductor` are both stored on every wire** (owner, 2026-11-17), so either numbering
+  convention can be shown. A `NetId` is given when a net first appears and kept through edits;
+  when two nets join, the one with more wires keeps its id (ties: the lower id); when a net splits,
+  the part with more wires keeps it and the other gets a new one. A `ConductorId` is given when the
+  wire is made and never reused.
+- **The visible wire number is a project setting**, `wiring.number_by`: **per net** (potential
+  numbering, today's behaviour: every wire of a net shows the net's number) or **per conductor**
+  (each wire shows its own). The number's text still follows today's numbering schemes
+  (`wiring::Scheme`); only what it counts changes.
 
 ### 4.3 Route
 
@@ -337,16 +392,26 @@ redrawing routes is an ordinary edit of routes (`AddRoute`, `RemoveRoute`, `Modi
 
 ### 4.4 The order: proposed, kept, reordered
 
+- **The proposal is drawing order** (owner, 2026-11-17): each new connection becomes the next
+  wire. A route ending on the middle of an existing route joins from the **nearest end** of the
+  wire that route carries: draw A–B, then C onto the middle of A–B, and the wires are 1 = A–B,
+  2 = B–C (B being the end nearer to where C's route lands). "Shortest total wire" is a later
+  button, not this lane.
 - **When a net's set of points changes** (a route added, removed or moved so that a point joins or
   leaves the net, two nets joined, one split), the same transaction rewrites that net's wires: the
   points still on the net keep their order, a point that left is cut out (its two neighbours become
-  one wire), a new point is inserted where ECAD proposes (§17 call 1). Nets whose points didn't
-  change keep their wires untouched, even when the routes are redrawn.
+  one wire), a new point is added by the drawing-order rule. Nets whose points didn't change keep
+  their wires untouched, even when the routes are redrawn.
 - **Reordering by hand** (a list of the net's points the person drags, or picking points in turn on
   the page) rewrites the net's wires and sets `order_fixed`; a fixed net keeps its order when it
-  gains a point and only inserts the new one.
-- **Capacity.** A chain gives each point at most two wires; a terminal level that takes more, or a
-  point a person wants to star from, is §17 call 2.
+  gains a point and only adds the new one.
+- **Conductors accepted per point are data** (owner, 2026-11-17). Every connection point stores how
+  many conductors it accepts, from its symbol or part: `TerminalDef.accepts` in the definition,
+  copied to `Terminal.accepts` when the point is made (default 2; PE bars and earth studs N). The
+  proposal chains by default and fans out (a star) only at points that accept more than two: the
+  next wire starts from such a point instead of from the last one in the chain.
+- **New check, an error:** a point with more conductors than it accepts ("`-X1:3` takes 2
+  conductors; 3 are connected").
 - **Continuations** are aids, not device points: a wire runs from a device point on one page to a
   device point on another when a continuation joins the net; the order spans the pages.
 - **Junction dots** are drawn where three or more route ends meet or a route ends on another route;
@@ -602,7 +667,7 @@ ordered wires instead of junctions, the boxes' fixed flag, the loose parts list)
 | # | Was | Now |
 | --- | --- | --- |
 | F15′ | 14 device groups | 12 groups (§2.2): Heater and Solenoid merged into `Load`, Relay and Switch into `Switching`, Lamp → `Indicator` |
-| F19′ | a CPU card becomes a rack device plus a CPU module | a CPU or head-module card becomes a **station** whose `head` is `Cpu` or `Coupler`; no CPU module; `PlcRack { network, address, head, address_style }`; module functions DI, DO, AI, AQ, PSU, accessory, mixed |
+| F19′ | a CPU card becomes a rack device plus a CPU module | a CPU or head-module card becomes a **station** whose `head` is `Cpu` or `Coupler`; no CPU module; `PlcRack { network, address, head, address_style }`; module functions per F41 (as refined by the owner's answer of 2026-11-17) |
 | F25′ | `Attach::Wire` (a wire end on another wire) | **withdrawn**; replaced by F31–F32. Junction components are still removed |
 | F27′ | boxes write location and `placed_in` | boxes write location and function only on devices with `fixed = false`; no box id stored (F33) |
 | F28′ | loose parts "per the owner's call" | `Project.loose_parts`, implementing `Bom` (§6.4) |
@@ -624,6 +689,17 @@ colour and wire-type records), on a normal project and on one opened read-only.
 | F35 | `ConductorColour` (§4.6), one primitive for wires and cable cores, with every form (name, 2-letter, 3-letter, display hex) as built-in data in `ecad-model/defaults/colours.toml`; wire and core colours as ordered lists stored by 2-letter code (`GNYE` → `GN/YE`); `wiring.colour_style` words become `code2`, `code3`, `name` (were `iec`, `three-letter`); an indicator's colour is a separate `IndicatorColour` | **words change** (`GNYE` becomes a two-colour list; the setting's words) and built-in data | A1 (type and data), D, G |
 | F36 | `Wire.wire_type` (today's `wire.category`), `size`, `colours` as overrides; wire types gain `insulation`; the `wire` catalogue's user-facing name becomes **wire types** | record shape, one new field | D, G |
 | F37 | Default cable-type core colour schemes and the 230 V L/N wire types in the defaults TOML | built-in data | G |
+
+**From the owner's answers to the four calls: approved (owner, 2026-11-17): F38–F42.** A15 applies
+to each (the inspector shows every new field).
+
+| # | Change | Op or on disk | Lane |
+| --- | --- | --- | --- |
+| F38 | **Conductors accepted per point**: `TerminalDef.accepts` in every symbol and `Terminal.accepts` on every connection point (default 2) | new field on definitions and connection points | B (field), F (the check and the star rule) |
+| F39 | **`net: NetId` and `conductor: ConductorId` on every wire**, both stable (§4.2) | new fields | F |
+| F40 | **Wire-number setting** `wiring.number_by`: `net` (per net, potential numbering, today's behaviour) or `conductor` | new settings field | F |
+| F41 | **`ModuleFunction`** as an enum with data (§3): `DigitalIn`, `DigitalOut`, `AnalogIn`, `AnalogOut`, `Mixed`, `Position`, `Drive`, `Communication`, `Measurement`, `SafetyLogic`, `System`; station head `Cpu` or `Coupler`; `Signal` per channel group | record shape | C |
+| F42 | **`ModuleAttributes`**: safety-rated, intrinsically safe (Ex i), calibration certificate | new fields | C |
 
 ---
 
@@ -716,6 +792,9 @@ colour sequences as facts in our TOML, in our own words, with no layout or text 
 | A14 | regenerated fixtures have the §11 shapes; no shims | each lane |
 | A15 | the inspector's Raw and Readable views show every new struct, field and op, and a read-only project's offending record with its reason (hard rule) | each lane |
 | A16 | every guard at 0 | end of F and G |
+| A17 | drawing order: A–B then C onto the middle of A–B gives 1 = A–B, 2 = B–C (nearest end); a point accepting N > 2 fans out; a point with more conductors than it accepts is an error with the point named | F |
+| A18 | `net` and `conductor` ids: stable across unrelated edits; a join keeps the larger net's id, a split gives the smaller part a new one; `wiring.number_by` switches every shown number between per-net and per-conductor in one edit | F |
+| A19 | modules: each of today's PLC starters gives its `ModuleFunction` (§3 mapping); safety and Ex i are attributes; a communication module shows in the station overview | C |
 
 Bench as before: `views.setprop_tag`, `views.move_symbol` ≤ +10%; a route move with no change of
 points rewrites no wire; open ≤ +5%; op log ≤ +10%.
@@ -739,42 +818,19 @@ parts on the project; styles in lane G now; validated text everywhere; colours a
 
 ---
 
-## 17. Owner decisions
+## 17. Owner decisions (all answered, 2026-11-17)
 
-### Going ahead unless you object
-
-Devices fall into twelve groups, each with fields and calculations of its own (table in §2.2):
-power supplies, protection, switching (relays, contactors and hand-operated switches), sensors,
-motors, plain loads (heaters, valves), indicators (lamps, beacons, buzzers), terminal strips,
-connectors, PLC stations, PLC modules, and General for the rest. A PLC station is on a network with
-an address and a CPU or coupler head; today's CPU and head cards become stations; modules are DI,
-DO, AI, AQ, PSU, accessory or mixed. What a person draws decides which points are connected; the
-physical wires between them are a stored, numbered order that ECAD proposes and the person can
-change, and a button shows the numbers on the drawing; dots and T marks are drawn, not stored.
-Location and function are picks from the project's lists with a "fixed" mark as you described.
-Wire types are today's wire categories, renamed, typed and given insulation; cable types share the
-colour list, with default core colours written as our own data. Every text a person types refuses
-hidden characters. Styles are typed in parallel now.
-
-### Needs your call
-
-1. **How ECAD proposes a wire order.** When points are first connected, or a new point joins a
-   net, ECAD has to pick where it goes in the order. (a) Follow the drawing: start from the point
-   the drawn lines reach first from the top-left, and walk the lines, so the order matches how the
-   drawing reads; a new point goes next to the point its line is drawn from. (b) Shortest wiring:
-   pick the order that gives the shortest total wire length on the page. *Recommended: (a)*: it is
-   predictable and matches what a person sees; (b) can be a button later.
-2. **Only chains, or also stars?** A chain gives every point at most two wires (in and out). Some
-   points take more (a terminal with three wires, a common feed to several devices). (a) Chains
-   only; a point that must take three wires gets them by being visited twice in the order. (b)
-   Allow a point to be marked as a star, where several wires start from it. *Recommended: (a)* for
-   0.3.0: it keeps every wire list and number simple; (b) can follow once real projects need it.
-3. **Relays and hand switches as one group.** Your list named a Relay group. Relays, contactors
-   and hand-operated switches (push buttons, selectors) share their contacts and contact tables and
-   every check on them; only what operates them differs (a coil, or a hand). (a) One **Switching**
-   group with the operator as a choice inside it. (b) Separate Relay and Switch groups.
-   *Recommended: (a)*: one place for every contact rule.
-4. **Communication modules.** Your module list is DI, DO, AI, AQ, PSU, accessory and mixed. Today
-   there is also a PLC communication module (a fieldbus or serial card in a station). (a) Add a
-   **Communication** module function. (b) Treat it as an accessory. *Recommended: (a)*: it has its
-   own data (protocol, ports) and shows in the station overview.
+1. **Wire order: drawing order.** Each new connection becomes the next wire; a route joining the
+   middle of an existing one links from the nearest end (A–B, then C onto A–B: 1 = A–B, 2 = B–C).
+   The person can reorder; "shortest total wire" is a later button (§4.4).
+2. **Chains versus stars: data.** Every connection point stores how many conductors it accepts,
+   from its symbol or part (normally 2; PE bars and earth studs N). The order chains by default and
+   fans out only at points that accept more than two. A point with more conductors than it accepts
+   is an error. Every wire stores its net and its own conductor id, and a project setting chooses
+   whether the visible wire number counts per net or per conductor (§4.2, §4.4).
+3. **Switching:** one group, with the operator (coil, hand, timer, …) as a choice inside it (§2.2).
+4. **PLC modules:** the function is an enum with data in generic names (digital in and out, analog
+   in and out, mixed, position, drive, communication, measurement, safety logic, system); the
+   station head is CPU or coupler; safety-rated, intrinsically safe and a calibration certificate
+   are attributes; communication modules show in the station overview. A broad fieldbus terminal
+   range maps onto one function plus attributes each (§3).
