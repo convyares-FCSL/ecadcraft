@@ -16,7 +16,8 @@
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
 //! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
-//! - [`words`] and [`units`]: the shared word readers and the unit types (design 072 §9).
+//! - [`words`], [`units`] and [`keys`]: the shared word readers, the unit types and the property
+//!   key list (design 072 §9).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod book;
@@ -31,6 +32,7 @@ pub mod geom;
 pub mod id;
 mod index;
 pub mod invariant;
+pub mod keys;
 pub mod ledger;
 pub mod links;
 pub mod merge;
