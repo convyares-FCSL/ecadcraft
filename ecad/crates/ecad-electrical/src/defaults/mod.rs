@@ -26,33 +26,10 @@
 pub use data::{DefaultsError, Slot};
 use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
-/// The areas a key may start with (overseer ruling, 2026-11-12): `text.`, `wiring.`, `wire.`,
-/// `tags.`, `revisions.`, `print.`, `symbol.`, `terminal.` (brief 036), `connector.` (brief 044),
-/// `strippage.` (brief 046, design 046 §7.2), `bom.` (brief 047), `plc.` (brief 045) and
-/// `continuation.` (brief 049). Keys already approved before the registry keep their names; the
-/// key-rule test reads this one list.
-/// One area per line (review of #81, 3): lanes add a line each, and `ecad/.gitattributes` merges
-/// this file with `merge=union`.
-#[rustfmt::skip]
-pub const AREAS: &[&str] = &[
-    "text",
-    "wiring",
-    "wire",
-    "tags",
-    "revisions",
-    "print",
-    "symbol",
-    "terminal",
-    "connector",
-    "strippage",
-    "bom",
-    "location",
-    "continuation",
-    "plc",
-    "page",
-    "front",
-    "rating",
-];
+/// The areas a key may start with (overseer ruling, 2026-11-12): the words of
+/// [`ecad_model::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
+/// before the registry keep their names; the key-rule test reads this one list.
+pub const AREAS: &[&str] = <ecad_model::keys::Area as ecad_model::Word>::WORDS.split_at(ecad_model::keys::Area::REGISTRY.len()).0;
 
 pub mod bom;
 pub mod connectors;

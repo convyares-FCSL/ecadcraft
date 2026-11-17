@@ -28,6 +28,7 @@ pub mod cmd;
 pub mod connectors;
 pub mod continuations;
 pub mod defaults;
+pub mod derived;
 pub mod designations;
 pub mod device_list;
 pub mod devices;

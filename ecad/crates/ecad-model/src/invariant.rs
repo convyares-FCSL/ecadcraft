@@ -55,6 +55,7 @@ use crate::doc::{
     Cable, Component, Conductor, DEFINITION_DEFAULT_KEYS, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal,
     TextSlot,
 };
+use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::referrers;
@@ -91,47 +92,49 @@ impl Touched {
     /// What `ops` touch, together.
     pub fn of(ops: &[Op]) -> Self {
         let mut t = Touched::default();
-        for op in ops {
-            t.add(op);
+        for e in &Effects::of(ops) {
+            t.add_effect(e);
         }
         t
     }
 
     /// Add what `op` touches.
     pub fn add(&mut self, op: &Op) {
-        match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+        for e in &Effects::of(std::slice::from_ref(op)) {
+            self.add_effect(e);
+        }
+    }
+
+    /// Add what `effect` touches (design 064 §3.1: the invariant check and the derived views share
+    /// one classifier).
+    pub fn add_effect(&mut self, effect: &Effect<'_>) {
+        match effect {
+            Effect::Page { id, .. } => {
                 self.page_order = true;
                 self.pages.insert(*id);
             }
-            Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => {
+            Effect::Layer { id, .. } => {
                 self.layers.insert(*id);
             }
-            Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
+            Effect::Item { id, .. } => {
                 self.items.insert(*id);
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+            Effect::Component { id, .. } | Effect::ComponentDefinition { id, .. } => {
                 self.components.insert(*id);
             }
-            Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
+            Effect::Terminal { id, .. } => {
                 self.terminals.insert(*id);
             }
-            Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
+            Effect::Rep { id, .. } => {
                 self.representations.insert(*id);
             }
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } => {
+            Effect::Conductor { id, .. } | Effect::End { conductor: id, .. } => {
                 self.conductors.insert(*id);
             }
-            Op::AttachEnd { conductor, .. } => {
-                self.conductors.insert(*conductor);
-            }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
                 self.cables.insert(*id);
             }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                self.cables.insert(*cable);
-            }
-            Op::SetProperty { object, .. } => match object {
+            Effect::Prop { object, .. } => match object {
                 ObjectRef::Component(id) => {
                     self.components.insert(*id);
                 }
@@ -146,18 +149,18 @@ impl Touched {
                 }
                 ObjectRef::Project | ObjectRef::Standard => {}
             },
-            Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
+            Effect::Definition { id, .. } => {
                 self.definitions.insert(*id);
             }
-            Op::SetProjectSettings { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
-            Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } => {
-                self.folder_order = true;
+            Effect::Settings { .. } | Effect::Version { .. } => {}
+            Effect::Folder { id, index_before, index_after, .. } => {
+                // An add or a remove changes the folder order; a change in place does not.
+                if index_before.is_some() || index_after.is_some() {
+                    self.folder_order = true;
+                }
                 self.folders.insert(*id);
             }
-            Op::ModifyFolder { id, .. } => {
-                self.folders.insert(*id);
-            }
-            Op::SetStyle { .. } | Op::SetStandard { .. } => self.styles = true,
+            Effect::Style { .. } | Effect::Standard { .. } => self.styles = true,
         }
     }
 }

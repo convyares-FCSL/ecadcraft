@@ -12,7 +12,7 @@ use ecad_model::{
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
 /// names every variant to the deserializer, so a new op is in this list without anyone adding it,
 /// and the tables below must cover it. `Op::name` (an exhaustive `match`) gives the same words.
-fn all_ops() -> BTreeSet<&'static str> {
+pub(crate) fn all_ops() -> BTreeSet<&'static str> {
     use serde::de::{self, Deserialize, Visitor};
 
     /// A deserializer that only records the variant names it is handed.
@@ -63,19 +63,19 @@ fn line(page: PageId, layer: LayerId, x: f64) -> Item {
 }
 
 /// A valid document holding one of everything, built through the ledger, and the objects in it.
-struct Base {
+pub(crate) struct Base {
     ledger: Ledger,
-    ids: IdAllocator,
-    page: PageId,
-    page_v: Page,
+    pub(crate) ids: IdAllocator,
+    pub(crate) page: PageId,
+    pub(crate) page_v: Page,
     layer: LayerId,
     layer_v: Layer,
     def: ecad_model::DefinitionId,
     def_v: Definition,
     comp: ecad_model::ComponentId,
     comp_v: Component,
-    term: ecad_model::TerminalId,
-    term_v: Terminal,
+    pub(crate) term: ecad_model::TerminalId,
+    pub(crate) term_v: Terminal,
     sym: ecad_model::ItemId,
     item: ecad_model::ItemId,
     item_v: Item,
@@ -88,11 +88,11 @@ struct Base {
     wire2: ecad_model::ConductorId,
     cable: ecad_model::CableId,
     cable_v: Cable,
-    folder: ecad_model::FolderId,
-    folder_v: Folder,
+    pub(crate) folder: ecad_model::FolderId,
+    pub(crate) folder_v: Folder,
 }
 
-fn base() -> Base {
+pub(crate) fn base() -> Base {
     let mut ids = IdAllocator::seeded(13);
     let mut ledger = Ledger::new(5);
     let page = ids.fresh();
@@ -207,7 +207,7 @@ fn bytes(doc: &Document) -> Vec<u8> {
 }
 
 /// One op of every type that applies to the base document (invariants aside).
-fn applicable(b: &mut Base) -> Vec<Op> {
+pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
     let moved = line(b.page, b.layer, 7.0);
     let mut rep_after = b.rep_wire_v.clone();
     rep_after.role = "moved".into();
