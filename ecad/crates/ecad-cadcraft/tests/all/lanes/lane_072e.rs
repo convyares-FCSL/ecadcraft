@@ -28,3 +28,23 @@ fn a_pages_type_is_the_same_through_the_registry_and_page_type_of() {
     }
     h.check();
 }
+
+/// Design 072 §5.3: a page's location id and the project's function id reach its title block as
+/// codes; renaming the entry renames what the block shows.
+#[test]
+fn a_pages_location_and_the_projects_function_show_in_the_title_block() {
+    use ecad_cadcraft::frames::{FrameInput, FrameText};
+    let mut h = H::new(0x72e2);
+    let page = h.first_page();
+    h.run("pageprops", json!({"page": page.hex(), "location": "+CP7", "proposal": "keep"})).unwrap();
+    h.run("projectprops", json!({"function": "=F1", "proposal": "keep"})).unwrap();
+    let frame = |h: &mut H| {
+        let doc = h.doc();
+        let book = ecad_model::book::Book::of(&doc);
+        let inp = FrameInput::with(&doc, page, &book, FrameText::sizes(&doc));
+        (inp.location, inp.function)
+    };
+    assert_eq!(frame(&mut h), ("+CP7".to_string(), "=F1".to_string()));
+    h.run("designationedit", json!({"aspect": "location", "code": "+CP7", "to": "+CP8"})).unwrap();
+    assert_eq!(frame(&mut h).0, "+CP8");
+}
