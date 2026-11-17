@@ -11,6 +11,7 @@
 //! Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //! Properties and Devices (048c).
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::Handle;
@@ -195,7 +196,7 @@ impl ContentFields {
                 Some(VParam::Middle) => TextVAlign::Middle,
                 Some(VParam::Top) => TextVAlign::Top,
             },
-            rotation: s.rotation.unwrap_or(0.0),
+            rotation: Radians(s.rotation.unwrap_or(0.0)),
         });
         rules::content(ContentInput {
             name: self.name,
@@ -573,7 +574,7 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
         // does for built-in symbols; devices and cables share one namespace (brief 026).
         let (device, tag) = ecad_electrical::cmd::place::project_target(doc, device, tag.as_deref())?;
-        let pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let pl = Placement { origin: at, rotation: Radians::from(Degrees(degrees)), mirror, scale: 1.0 };
         let style = plain_style(p);
         let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };

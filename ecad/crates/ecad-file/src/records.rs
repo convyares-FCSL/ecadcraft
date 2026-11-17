@@ -117,7 +117,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: m::units::Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_left")]
         halign: m::TextHAlign,
@@ -141,8 +141,8 @@ fn is_baseline(v: &m::TextVAlign) -> bool {
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub origin: Pt,
-    /// Radians, counter-clockwise.
-    pub rotation: f64,
+    /// Counter-clockwise.
+    pub rotation: m::units::Radians,
     pub mirror: bool,
     pub scale: f64,
 }
@@ -295,13 +295,13 @@ pub struct TextSlot {
     #[serde(default, skip_serializing_if = "is_baseline")]
     pub v: m::TextVAlign,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: f64,
+    pub rotation: m::units::Radians,
 }
 
-fn is_zero(x: &f64) -> bool {
+fn is_zero(x: &m::units::Radians) -> bool {
     // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
     // that the read-back value (0.0, left out) does not match.
-    *x == 0.0
+    x.0 == 0.0
 }
 
 fn origin(o: &m::Origin) -> Origin {

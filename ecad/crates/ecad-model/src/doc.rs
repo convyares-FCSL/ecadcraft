@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
+use crate::units::Radians;
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
@@ -102,7 +103,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_default")]
         halign: TextHAlign,
@@ -520,9 +521,9 @@ pub struct TextSlot {
     pub h: TextHAlign,
     #[serde(default, skip_serializing_if = "is_default")]
     pub v: TextVAlign,
-    /// Radians, counter-clockwise.
+    /// Counter-clockwise.
     #[serde(default, skip_serializing_if = "is_default")]
-    pub rotation: f64,
+    pub rotation: Radians,
 }
 
 impl TextSlot {

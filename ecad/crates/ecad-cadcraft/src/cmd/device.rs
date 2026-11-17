@@ -7,6 +7,7 @@
 //! which device a symbol joins, each form's planner builds the ops, and the shim commits and
 //! answers in JSON.
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeMap;
 
 use cadcraft_engine::doc::Handle;
@@ -182,7 +183,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
         let landing = (starter.kind == crate::symbols::Kind::Terminal).then(|| crate::cmd::terminal::landing_point(doc, page, at)).flatten();
         let origin = landing.map_or(at, |on| on.at);
-        let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin, rotation: Radians::from(Degrees(degrees)), mirror, scale: 1.0 };
         let style = style(p);
         // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
@@ -289,7 +290,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
             ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
             terminals.push(json!({"key": td.key, "terminal": t.hex()}));
         }
-        let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin: at, rotation: Radians::from(Degrees(degrees)), mirror, scale: 1.0 };
         ops.push(Op::AddItem {
             id: item,
             item: Item { page, style: plain_style(p), kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement }) },

@@ -4,6 +4,7 @@
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::plc as rules;
+use ecad_model::units::{Degrees, Radians};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -58,7 +59,7 @@ pub(crate) fn place_channel(
         } else {
             join(doc, card, starter, named, &BTreeSet::new(), &BTreeSet::new())?
         };
-        let mut pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let mut pl = Placement { origin: at, rotation: Radians::from(Degrees(degrees)), mirror, scale: 1.0 };
         // Pack re-run, bug 5: a cell placed near the line of its card's cells on this page goes onto
         // that line, so the card keeps one frame.
         if !new && let Some(q) = first_point(starter, &pl) {

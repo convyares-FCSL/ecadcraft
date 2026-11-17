@@ -7,6 +7,7 @@
 //! Excludes: the kept model (`plcracks`, `iolist`, `plcexport` and `plcimport` read it in the
 //! engine crate) and the tag file formats ([`crate::plc::exchange`]).
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::Book;
@@ -497,7 +498,7 @@ pub fn plan_rest(
         let pins = pins_for(doc, Some(c), t, n, *i, &roles, &mut used);
         let j = Join { index: *i, pins: roles.iter().copied().zip(pins).collect() };
         let dx = width * k as f64;
-        let pl = Placement { origin: Pt::new(start.x + dx, start.y), rotation: 0.0, mirror: false, scale: 1.0 };
+        let pl = Placement { origin: Pt::new(start.x + dx, start.y), rotation: Radians(0.0), mirror: false, scale: 1.0 };
         plan_cell(ids, page, style.clone(), def, starter, c, &j, pl, &mut ops)?;
     }
     Ok(ChannelsPlan { ops, card: c, tag, ty: t, starter: starter.key, placed: missing, first, pins: Vec::new() })
@@ -786,7 +787,7 @@ pub fn plan_page_contents(
             let x = l + LEFT_MM + w * col as f64 + w / 2.0;
             let pins = pins_for(doc, Some(card), ty, pc.n, *i, &roles, &mut used);
             let join = Join { index: *i, pins: roles.iter().copied().zip(pins).collect() };
-            let pl = Placement { origin: Pt::new(x * k, y * k), rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
+            let pl = Placement { origin: Pt::new(x * k, y * k), rotation: Radians::from(Degrees(degrees)), mirror: false, scale: 1.0 };
             plan_cell(ids, id, style.clone(), def, starter, card, &join, pl, ops)?;
             x_next = x + w / 2.0;
             cell_point = Some(pl.apply(local));
@@ -798,7 +799,7 @@ pub fn plan_page_contents(
         let (bw, _) = starter.size();
         // Its points on the line of the cells' points (it is the run's power end).
         let local = def.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
-        let rot = degrees.to_radians();
+        let rot = Radians::from(Degrees(degrees));
         let x = x_next + bw / 2.0;
         let origin = match cell_point {
             Some(q) => {

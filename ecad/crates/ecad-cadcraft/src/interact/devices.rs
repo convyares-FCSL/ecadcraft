@@ -8,6 +8,7 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
+use ecad_model::units::{Degrees, Radians};
 use ecad_model::{ComponentId, Placement, Subject};
 use serde_json::{Value, json};
 
@@ -196,7 +197,7 @@ impl Place {
     }
 
     fn placement(&self, at: Vec2) -> Placement {
-        Placement { origin: pt(at), rotation: f64::from(self.rotation).to_radians(), mirror: self.mirror, scale: 1.0 }
+        Placement { origin: pt(at), rotation: Radians::from(Degrees(f64::from(self.rotation))), mirror: self.mirror, scale: 1.0 }
     }
 
     /// What the next click makes: `new device -K03` or `joins -K01 as 13/14`, with the tag and

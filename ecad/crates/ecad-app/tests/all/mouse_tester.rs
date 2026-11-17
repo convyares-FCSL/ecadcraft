@@ -134,7 +134,7 @@ fn canon(d: &Document) -> Vec<String> {
                     "symbol at {},{} rot {} mirror {} scale {}",
                     r6(s.placement.origin.x),
                     r6(s.placement.origin.y),
-                    r6(s.placement.rotation),
+                    r6(s.placement.rotation.0),
                     s.placement.mirror,
                     s.placement.scale
                 ),

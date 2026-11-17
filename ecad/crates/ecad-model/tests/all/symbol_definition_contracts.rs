@@ -165,7 +165,7 @@ fn embed(d: Definition) -> Result<(), String> {
 }
 
 fn slot(text: &str, x: f64) -> TextSlot {
-    TextSlot { text: text.into(), at: Pt::new(x, 0.0), h: Default::default(), v: Default::default(), rotation: 0.0 }
+    TextSlot { text: text.into(), at: Pt::new(x, 0.0), h: Default::default(), v: Default::default(), rotation: ecad_model::units::Radians(0.0) }
 }
 
 #[test]
@@ -175,7 +175,11 @@ fn invariant_i7_covers_slots_defaults_and_derived_from() {
         ("plain", |_| {}, None),
         ("tag and rating slots", |d| d.texts = vec![slot("tag", 0.0), slot("rating", 2.0), slot("rating.A1", 4.0)], None),
         ("a NaN slot", |d| d.texts = vec![slot("tag", f64::NAN)], Some("non-finite")),
-        ("an infinite rotation", |d| d.texts = vec![TextSlot { rotation: f64::INFINITY, ..slot("tag", 0.0) }], Some("non-finite")),
+        (
+            "an infinite rotation",
+            |d| d.texts = vec![TextSlot { rotation: ecad_model::units::Radians(f64::INFINITY), ..slot("tag", 0.0) }],
+            Some("non-finite"),
+        ),
         ("two tag slots", |d| d.texts = vec![slot("tag", 0.0), slot("tag", 1.0)], Some("two slots")),
         ("an unknown text", |d| d.texts = vec![slot("colour", 0.0)], Some("not a device text")),
         ("an empty rating label", |d| d.texts = vec![slot("rating.", 0.0)], Some("not a device text")),

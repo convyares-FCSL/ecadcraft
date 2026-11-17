@@ -2,6 +2,7 @@
 //! numbers, potentials and categories, the wiring settings, junctions, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
@@ -296,11 +297,11 @@ fn open_end(doc: &Document, net: &NetData) -> Option<(ConductorId, End, PageId, 
 }
 
 /// The rotation that points a continuation's arrow along `d` (snapped to 90°).
-fn arrow_rotation(d: Pt) -> f64 {
+fn arrow_rotation(d: Pt) -> Radians {
     // The arrow runs to local (0, −5): rotation θ maps it to (sin θ, −cos θ).
     let theta = d.x.atan2(-d.y);
     let q = std::f64::consts::FRAC_PI_2;
-    (theta / q).round() * q
+    Radians((theta / q).round() * q)
 }
 
 /// The number the net `choice` names has now, to fix it as it is (the Properties panel's Fixed
@@ -698,7 +699,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
                 wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
             })
             .unwrap_or(at);
-        let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
+        let placement = Placement { origin: snapped, rotation: Radians(0.0), mirror: false, scale: 1.0 };
         let t = wires::plan_tagless(doc, ids, page, style, starter, placement, props)?;
         let done = Junctioned { junction: t.component, terminal: t.terminal, conductor: None, at: snapped, attached: Some(t.attached.len()) };
         return Ok((t.ops, done));

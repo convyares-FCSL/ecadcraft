@@ -14,6 +14,7 @@ use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
 pub use ecad_electrical::cmd::terminal::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
 };
+use ecad_model::units::{Degrees, Radians};
 use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -245,7 +246,7 @@ pub(crate) fn place_level(
         };
         let landing = landing_point(doc, page, at);
         let origin = landing.map_or(at, |on| on.at);
-        let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin, rotation: Radians::from(Degrees(degrees)), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(land_level(doc, &mut p.ids, page, on, &shown, placement)?),

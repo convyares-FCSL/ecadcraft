@@ -664,6 +664,7 @@ pub fn arrows_among(doc: &Document, cs: &[ComponentId]) -> (Vec<ComponentId>, us
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecad_model::units::{Degrees, Radians};
 
     #[test]
     fn the_caption_rule() {
@@ -678,12 +679,13 @@ mod tests {
 
     #[test]
     fn the_directions() {
-        let at = |deg: f64, mirror: bool| direction(&Placement { origin: Pt::new(10.0, 10.0), rotation: deg.to_radians(), mirror, scale: 1.0 });
+        let at =
+            |deg: f64, mirror: bool| direction(&Placement { origin: Pt::new(10.0, 10.0), rotation: Radians::from(Degrees(deg)), mirror, scale: 1.0 });
         assert_eq!(at(0.0, false), Some(Direction::Down));
         assert_eq!(at(180.0, false), Some(Direction::Up));
         assert_eq!(at(90.0, false), Some(Direction::Right));
         assert_eq!(at(270.0, false), Some(Direction::Left));
-        assert_eq!(direction(&Placement { origin: Pt::new(0.0, 0.0), rotation: 0.0, mirror: false, scale: 0.0 }), None);
+        assert_eq!(direction(&Placement { origin: Pt::new(0.0, 0.0), rotation: Radians(0.0), mirror: false, scale: 0.0 }), None);
     }
 
     #[test]

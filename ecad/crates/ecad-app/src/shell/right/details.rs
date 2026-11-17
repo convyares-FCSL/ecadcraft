@@ -129,7 +129,7 @@ pub fn build(doc: &Document, c: ComponentId, rep: RepresentationId, kinds: &[Tex
             ecad_model::ItemKind::Symbol(s) if s.placement.origin.is_finite() && s.placement.rotation.is_finite() => Some(Placed {
                 x: s.placement.origin.x,
                 y: s.placement.origin.y,
-                rotation: s.placement.rotation.rem_euclid(360.0),
+                rotation: ecad_model::units::Degrees::from(s.placement.rotation).0.rem_euclid(360.0),
                 mirror: s.placement.mirror,
             }),
             _ => None,

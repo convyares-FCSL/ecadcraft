@@ -11,6 +11,7 @@
 //!
 //! [`Project::apply_edit`]: crate::project::Project::apply_edit
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
 use cadcraft_engine::{CommandSpec, Session};
@@ -237,7 +238,7 @@ pub(crate) fn place_half(
         let origin = landing.map_or(at, |on| on.at);
         let rotation = match landing {
             Some(on) if degrees == 0.0 => rules::along_wire(doc, page, &on),
-            _ => degrees.to_radians(),
+            _ => Radians::from(Degrees(degrees)),
         };
         let placement = Placement { origin, rotation, mirror, scale: 1.0 };
         let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, &mut ops)?;

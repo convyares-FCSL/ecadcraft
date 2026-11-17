@@ -4,6 +4,7 @@
 //! to commit and what to report; the engine crate's shims read the parameters, commit and answer
 //! in JSON.
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
 use ecad_model::{ComponentId, ConductorId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId};
@@ -318,7 +319,7 @@ fn place_bulkhead(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: f64,
 ) -> Result<Made, CmdError> {
     let starter = crate::devices::starter(key)?;
-    let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
+    let placement = Placement { origin: at, rotation: Radians::from(Degrees(degrees)), mirror: false, scale: 1.0 };
     let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
     Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), dropped: Vec::new(), ops: plan.ops })
 }
@@ -381,7 +382,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
         Some(c) if !matches!(names, Names::List(_)) => join_names(doc, c, n),
         _ => cn::names_for(names, n)?,
     };
-    let rot = r.degrees.to_radians();
+    let rot = Radians::from(Degrees(r.degrees));
     let (sin, cos) = rot.sin_cos();
     let up = if swap { -5.0 } else { 5.0 };
     let mut ops = Vec::new();
@@ -393,7 +394,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
         let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
         let origin = if side == Side::Socket && halves == Side::Both { Pt::new(at.x - sin * up, at.y + cos * up) } else { at };
         let placement = if swap {
-            Placement { origin, rotation: rot + std::f64::consts::PI, mirror: true, scale: 1.0 }
+            Placement { origin, rotation: Radians(rot.0 + std::f64::consts::PI), mirror: true, scale: 1.0 }
         } else {
             Placement { origin, rotation: rot, mirror: false, scale: 1.0 }
         };
@@ -414,11 +415,11 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
 }
 
 /// The rotation of a pin symbol on a wire segment: its points along the wire.
-pub fn along_wire(doc: &Document, page: PageId, on: &crate::wires::OnWire) -> f64 {
-    let Some((_, _, v)) = crate::wires::route_vertices(doc, on.conductor, page) else { return 0.0 };
+pub fn along_wire(doc: &Document, page: PageId, on: &crate::wires::OnWire) -> Radians {
+    let Some((_, _, v)) = crate::wires::route_vertices(doc, on.conductor, page) else { return Radians(0.0) };
     match (v.get(on.segment), v.get(on.segment + 1)) {
-        (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => std::f64::consts::FRAC_PI_2,
-        _ => 0.0,
+        (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => Radians(std::f64::consts::FRAC_PI_2),
+        _ => Radians(0.0),
     }
 }
 
