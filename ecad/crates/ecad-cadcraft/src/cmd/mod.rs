@@ -310,6 +310,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::reference::TYPED,
         crate::cmd::page::TYPED,
         crate::history::TYPED,
+        crate::merging::TYPED,
     ]
     .concat()
 }
