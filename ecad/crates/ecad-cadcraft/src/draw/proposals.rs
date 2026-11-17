@@ -9,15 +9,15 @@ use crate::designations::{Aspect, Pending};
 use crate::proposals::*;
 
 /// Plan a placement's proposal (design 052 §5.3) for the symbol of device `c` at `at` on `page`,
-/// with `params`' `location` / `function` modes. `half`: the side a connector half or pin draws
-/// (its location conflict can then be answered **Half**; JSON `location: "half"` answers it).
+/// with the `function` and `location` modes the place gave (function first). `half`: the side a
+/// connector half or pin draws (its location conflict can then be answered **Half**; JSON
+/// `location: "half"` answers it).
 ///
 /// # Errors
 /// A mode or a typed code that is not valid.
 pub(crate) fn plan_place(
-    p: &mut crate::project::Project, params: &Value, c: ComponentId, page: PageId, at: Pt, half: Option<crate::symbols::Side>,
+    p: &mut crate::project::Project, mut modes: [Mode; 2], c: ComponentId, page: PageId, at: Pt, half: Option<crate::symbols::Side>,
 ) -> Result<Planned, String> {
-    let mut modes = Mode::both(params)?;
     let half_mode = modes[1] == Mode::Half;
     if half_mode {
         modes[1] = Mode::Propose;

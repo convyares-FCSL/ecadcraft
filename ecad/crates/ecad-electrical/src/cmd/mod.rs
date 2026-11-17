@@ -3,6 +3,31 @@
 //! `ecad_cadcraft::cmd` read the parameters, take the project, call these functions, commit the
 //! ops and answer in JSON.
 
+pub mod accessory;
+pub mod bom;
+pub mod cable;
+pub mod cable_draw;
+pub mod connect;
+pub mod connector;
+pub mod continuation;
+pub mod default;
+pub mod designation;
+pub mod device;
+pub mod level;
+pub mod location;
+pub mod numbering;
 pub mod output;
+pub mod page_type;
+pub mod place;
+pub mod plc;
+pub mod prop;
+pub mod rating;
+pub mod reference;
 pub mod sheet;
+pub mod style;
+pub mod symbol;
+pub mod terminal;
+pub mod text;
+pub mod title_block;
 pub mod wire;
+pub mod xref;

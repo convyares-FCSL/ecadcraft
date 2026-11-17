@@ -17,34 +17,25 @@ use std::sync::{Arc, RwLock};
 use redb::{Builder, ConcurrencyMode, ReadOnlyDatabase, ReadTransaction, ReadableDatabase, StorageBackend, WriteTransaction};
 
 /// Why the database could not be opened, read or written.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DbError {
     /// The engine reported a failure (I/O, a damaged page, a lock).
+    #[error("{0}")]
     Engine(String),
     /// Another process has the database open for writing.
+    #[error("the file is open for writing in another process")]
     Busy,
     /// A new database was asked for where a file already exists; it is never overwritten.
+    #[error("{0} already exists; it is never overwritten")]
     Exists(String),
     /// An earlier write failed and the engine refuses this handle until it is reopened (done
     /// once, automatically).
+    #[error("an earlier write to the file failed; the file was reopened")]
     PreviousIo,
     /// The database was opened read-only.
+    #[error("the file was opened read-only")]
     ReadOnly,
 }
-
-impl std::fmt::Display for DbError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DbError::Engine(e) => f.write_str(e),
-            DbError::Busy => f.write_str("the file is open for writing in another process"),
-            DbError::Exists(p) => write!(f, "{p} already exists; it is never overwritten"),
-            DbError::PreviousIo => f.write_str("an earlier write to the file failed; the file was reopened"),
-            DbError::ReadOnly => f.write_str("the file was opened read-only"),
-        }
-    }
-}
-
-impl std::error::Error for DbError {}
 
 /// An engine failure, in words.
 pub fn engine(e: impl std::fmt::Display) -> DbError {

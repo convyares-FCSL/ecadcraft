@@ -23,12 +23,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
 use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_model::merge::{self, Choice, ConflictKind, Inputs, Obj, Plan, Scope};
 use ecad_model::{BranchPoint, Document, StepPoint, TxKind};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, with_any_page, with_project};
+use crate::access::Pages;
+use crate::cmd::input::{Command, Typed, typed};
+use crate::cmd::{on_any_page, on_project};
 use crate::history::{self, NodeKind, Point};
 use crate::project::Project;
 
@@ -140,7 +145,7 @@ pub struct Prepared {
 /// target records the target's head (`A2`); the newer of them, else the fork.
 fn ancestor(p: &Project, s: &Sides) -> Result<(BranchId, u64), String> {
     let v = p.file.v2().ok_or("Branches live in the project file. Save it first.")?;
-    let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) };
+    let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) }.map_err(|e| e.to_string());
     // A1: into the target from the source, at target step m, of source head s1.
     let a1 = rows(s.target)?.into_iter().filter(|m| m.source == s.source).max_by_key(|m| m.seq);
     // A2: into the source from the target, at source step u, of target head t2.
@@ -457,21 +462,38 @@ pub fn prepared(p: &mut Project, sides: Sides) -> Result<Arc<Prepared>, String> 
     Ok(prep)
 }
 
-/// The choices in a command's `choices` object: `main` / `branch` name the parent's and the
-/// child's side (design §10), plus `loose`, `remove`, `bringback`, `renumber_branch`,
-/// `renumber_main` and `{"value": text}`.
+/// One conflict's choice as a command gives it: a word, or `{"value": text}`.
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ChoiceParam {
+    /// `main`, `branch`, `loose`, `bringback`, `renumber_branch`, `renumber_main` or `one`.
+    Word(String),
+    /// A value typed for the conflict.
+    Typed(TypedChoice),
+}
+
+/// A value typed for a conflict.
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TypedChoice {
+    /// The value.
+    pub value: String,
+}
+
+/// The choices of a command's `choices`: `main` / `branch` name the parent's and the child's side
+/// (design §10), plus `loose`, `remove`, `bringback`, `renumber_branch`, `renumber_main` and
+/// `{"value": text}`.
 ///
 /// # Errors
-/// A choice that is not one of these, in words.
-pub fn parse_choices(s: &Sides, v: Option<&Value>) -> Result<BTreeMap<String, Choice>, String> {
+/// A word that is not one of these, in words.
+pub fn parse_choices(s: &Sides, given: &BTreeMap<String, ChoiceParam>) -> Result<BTreeMap<String, Choice>, CmdError> {
     let mut out = BTreeMap::new();
-    let Some(obj) = v.and_then(Value::as_object) else { return Ok(out) };
     let (parent, child) = if s.parent_is_target() { (Choice::Target, Choice::Source) } else { (Choice::Source, Choice::Target) };
     let (renumber_parent, renumber_child) =
         if s.parent_is_target() { (Choice::RenumberTarget, Choice::RenumberSource) } else { (Choice::RenumberSource, Choice::RenumberTarget) };
-    for (id, c) in obj {
+    for (id, c) in given {
         let choice = match c {
-            Value::String(w) => match w.as_str() {
+            ChoiceParam::Word(w) => match w.as_str() {
                 "main" | "parent" => parent.clone(),
                 "branch" | "child" => child.clone(),
                 "target" => Choice::Target,
@@ -482,16 +504,12 @@ pub fn parse_choices(s: &Sides, v: Option<&Value>) -> Result<BTreeMap<String, Ch
                 "renumber_main" | "rename_main" => renumber_parent.clone(),
                 "one" => Choice::MakeOne,
                 other => {
-                    return Err(format!(
+                    return Err(CmdError::refused(format!(
                         "\"{other}\" is not a choice for {id}: use main, branch, loose, bringback, renumber_branch, renumber_main or one."
-                    ));
+                    )));
                 }
             },
-            Value::Object(o) => match o.get("value").and_then(Value::as_str) {
-                Some(t) => Choice::Value(t.to_string()),
-                None => return Err(format!("A typed choice for {id} is {{\"value\": text}}.")),
-            },
-            _ => return Err(format!("The choice for {id} is a word or {{\"value\": text}}.")),
+            ChoiceParam::Typed(t) => Choice::Value(t.value.clone()),
         };
         out.insert(id.clone(), choice);
     }
@@ -620,16 +638,19 @@ fn prep_latest_revision(prep: &Prepared) -> String {
     prep.crossing.last().cloned().unwrap_or_else(|| format!("step {}", prep.key.0))
 }
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[Typed::of::<MergeParams>("merge"), Typed::of::<UndomergeParams>("undomerge")];
+
 /// The commands this module adds (design §10).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("merge", "Merge", run_merge)
+        CommandSpec::new("merge", "Merge", typed::<MergeParams>)
             .params(
                 "{from, into?, preview?: bool, choices?: {<conflict id>: \"main\"|\"branch\"|\"loose\"|\"bringback\"|\"renumber_branch\"|\"renumber_main\"|{\"value\": text}}, close?: true} \
                  (merges a branch into its parent, or updates a branch from its parent: one step on the target; preview only reads)",
             )
             .noundo(),
-        CommandSpec::new("undomerge", "Undo Merge", run_undomerge).params("{} (undoes the last step when it is a merge, as u asks)").noundo(),
+        CommandSpec::new("undomerge", "Undo Merge", typed::<UndomergeParams>).params("{} (undoes the last step when it is a merge, as u asks)").noundo(),
     ]
 }
 
@@ -645,100 +666,131 @@ fn unanswered_refusal(prep: &Prepared, plan: &Plan) -> String {
     )
 }
 
-fn run_merge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let from = params.get("from").and_then(Value::as_str).ok_or_else(|| err("`from` is required (the branch to merge)"))?.to_string();
-    let into = params.get("into").and_then(Value::as_str).map(str::to_string);
-    let preview = params.get("preview").and_then(Value::as_bool) == Some(true);
-    if preview {
-        return with_any_page(s, |p, _| {
-            if p.file.v2().is_none() {
-                return Err("Branches live in the project file. Save it first.".into());
-            }
-            let sides = sides(p, &from, into.as_deref())?;
-            let choices = parse_choices(&sides, params.get("choices"))?;
-            let prep = prepared(p, sides)?;
-            let plan = plan(p, &prep, &choices);
-            Ok(preview_json(&prep, &plan))
-        });
-    }
-    with_any_page(s, |p, pg| {
-        crate::history::branch_file(p)?;
-        let sides = sides(p, &from, into.as_deref())?;
-        let choices = parse_choices(&sides, params.get("choices"))?;
-        let close = !sides.update && params.get("close").and_then(Value::as_bool).unwrap_or(true);
-        let mut said = String::new();
-        // The merge runs on the target (owner answer 6): switch there, saving first.
-        if sides.target != history::current(p) {
-            let left = history::current_name(p);
-            let was_unsaved = p.unsaved();
-            p.save_pending(pg)?;
-            history::switch_to(p, pg, sides.target)?;
-            if was_unsaved {
-                said = format!("\"{left}\" was saved; now on {}. ", sides.target_name);
-            } else {
-                said = format!("Now on {}. ", sides.target_name);
-            }
-        }
-        let prep = prepared(p, sides.clone())?;
-        let plan = plan(p, &prep, &choices);
-        if !plan.unanswered.is_empty() {
-            return Err(format!("{said}{}", unanswered_refusal(&prep, &plan)));
-        }
-        if let Some(problem) = &plan.problem {
-            return Err(format!("{said}{problem}"));
-        }
-        // Nothing to merge only when the branch changed nothing; keeping main's side of every
-        // conflict is still a merge (tester 020b, defect 4): it is recorded, so the next merge
-        // starts from it, and it closes the branch like any other.
-        if plan.ops.is_empty() && plan.changes.is_empty() && plan.conflicts.is_empty() {
-            let mut line = format!("{said}\"{}\" has no changes since {}.", sides.source_name, prep.ancestor_text);
-            if sides.update {
-                line = format!("{said}This branch already has {}'s changes.", sides.source_name);
-            } else if close && params.get("close").and_then(Value::as_bool) == Some(true) {
-                let head = p.ledger.head();
-                let v = p.file.v2_mut().ok_or("no file")?;
-                v.mark_merged(sides.source, sides.target, head).map_err(|e| e.to_string())?;
-                p.note_branch_change();
-                line.push_str(&format!(" Branch \"{}\" closed.", sides.source_name));
-            }
-            pg.echo(line.clone());
-            return Ok(json!({"merged": false, "message": line}));
-        }
-        let v = p.file.v2().ok_or("no file")?;
-        let source_head = prep.key.0;
-        let kind = TxKind::Merge {
-            source: sides.source.0,
-            source_head: StepPoint { seq: source_head, chain: v.chain_of(sides.source, source_head)? },
-            ancestor: BranchPoint { branch: prep.ancestor.0.0, seq: prep.ancestor.1, chain: v.chain_of(prep.ancestor.0, prep.ancestor.1)? },
-        };
-        let changes = plan.changes.len();
-        let resolved = plan.conflicts.len();
-        let tx = p.apply_merge(pg, &label(&prep), kind, plan.ops.clone())?;
-        if close && let Some(v) = p.file.v2_mut() {
-            v.close_on_save(tx, sides.source);
-        }
-        p.merge_cache = None;
-        p.note_branch_change();
-        let resolved_text =
-            if resolved > 0 { format!(", {resolved} conflict{} resolved", if resolved == 1 { "" } else { "s" }) } else { String::new() };
-        let ignored = if plan.ignored.is_empty() { String::new() } else { format!(" Ignored: {}.", plan.ignored.join("; ")) };
-        let line = if sides.update {
-            format!("{said}Updated \"{}\" from {} ({}). Save to keep it.{ignored}", sides.target_name, sides.source_name, prep_latest_revision(&prep))
-        } else {
-            format!(
-                "{said}Merged \"{}\" into {} ({changes} change{}{resolved_text}). Save to keep it.{ignored}",
-                sides.source_name,
-                sides.target_name,
-                if changes == 1 { "" } else { "s" }
-            )
-        };
-        pg.echo(line.clone());
-        Ok(json!({
-            "merged": true, "transaction": p.ledger.head(), "from": sides.source_name, "into": sides.target_name,
-            "changes": changes, "conflicts": resolved, "closes": close, "message": line,
-        }))
-    })
+/// `merge {from, into?, preview?, choices?, close?}` (design §10): merge a branch into its parent,
+/// or update a branch from its parent: one step on the target. `preview` only reads.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MergeParams {
+    /// The branch to merge: its ID or name.
+    from: String,
+    /// The branch it goes into (default its parent).
+    #[serde(default)]
+    into: Option<String>,
+    /// Only what the merge would do; nothing is recorded.
+    #[serde(default)]
+    preview: Option<bool>,
+    /// Per conflict ID: "main", "branch", "loose", "bringback", "renumber_branch",
+    /// "renumber_main", "one", or {"value": text}.
+    #[serde(default)]
+    choices: Option<BTreeMap<String, ChoiceParam>>,
+    /// Close the merged branch (default true).
+    #[serde(default)]
+    close: Option<bool>,
 }
+
+impl Command for MergeParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let given = self.choices.unwrap_or_default();
+        if self.preview == Some(true) {
+            return on_any_page(s, |p, _| {
+                if p.file.v2().is_none() {
+                    return Err(CmdError::refused("Branches live in the project file. Save it first."));
+                }
+                let sides = sides(p, &self.from, self.into.as_deref()).map_err(CmdError::refused)?;
+                let choices = parse_choices(&sides, &given)?;
+                let prep = prepared(p, sides).map_err(CmdError::refused)?;
+                let plan = plan(p, &prep, &choices);
+                Ok(preview_json(&prep, &plan))
+            });
+        }
+        on_any_page(s, |p, pg| merge(p, pg, &self.from, self.into.as_deref(), &given, self.close))
+    }
+}
+
+/// `merge`'s work (not a preview).
+fn merge(
+    p: &mut Project, pg: &mut Pages<'_>, from: &str, into: Option<&str>, given: &BTreeMap<String, ChoiceParam>, close: Option<bool>,
+) -> Result<Value, CmdError> {
+    crate::history::branch_file(p).map_err(CmdError::refused)?;
+    let sides = sides(p, from, into).map_err(CmdError::refused)?;
+    let choices = parse_choices(&sides, given)?;
+    let asked_close = close;
+    let close = !sides.update && close.unwrap_or(true);
+    let mut said = String::new();
+    // The merge runs on the target (owner answer 6): switch there, saving first.
+    if sides.target != history::current(p) {
+        let left = history::current_name(p);
+        let was_unsaved = p.unsaved();
+        p.save_pending(pg).map_err(CmdError::refused)?;
+        history::switch_to(p, pg, sides.target).map_err(CmdError::refused)?;
+        if was_unsaved {
+            said = format!("\"{left}\" was saved; now on {}. ", sides.target_name);
+        } else {
+            said = format!("Now on {}. ", sides.target_name);
+        }
+    }
+    let prep = prepared(p, sides.clone()).map_err(CmdError::refused)?;
+    let plan = plan(p, &prep, &choices);
+    if !plan.unanswered.is_empty() {
+        return Err(CmdError::refused(format!("{said}{}", unanswered_refusal(&prep, &plan))));
+    }
+    if let Some(problem) = &plan.problem {
+        return Err(CmdError::refused(format!("{said}{problem}")));
+    }
+    // Nothing to merge only when the branch changed nothing; keeping main's side of every
+    // conflict is still a merge (tester 020b, defect 4): it is recorded, so the next merge
+    // starts from it, and it closes the branch like any other.
+    if plan.ops.is_empty() && plan.changes.is_empty() && plan.conflicts.is_empty() {
+        let mut line = format!("{said}\"{}\" has no changes since {}.", sides.source_name, prep.ancestor_text);
+        if sides.update {
+            line = format!("{said}This branch already has {}'s changes.", sides.source_name);
+        } else if close && asked_close == Some(true) {
+            let head = p.ledger.head();
+            let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+            v.mark_merged(sides.source, sides.target, head).map_err(|e| CmdError::refused(e.to_string()))?;
+            p.note_branch_change();
+            line.push_str(&format!(" Branch \"{}\" closed.", sides.source_name));
+        }
+        pg.echo(line.clone());
+        return Ok(json!({"merged": false, "message": line}));
+    }
+    let v = p.file.v2().ok_or(CmdError::refused(NO_FILE))?;
+    let source_head = prep.key.0;
+    let chain = |b, seq| v.chain_of(b, seq).map_err(CmdError::from);
+    let kind = TxKind::Merge {
+        source: sides.source.0,
+        source_head: StepPoint { seq: source_head, chain: chain(sides.source, source_head)? },
+        ancestor: BranchPoint { branch: prep.ancestor.0.0, seq: prep.ancestor.1, chain: chain(prep.ancestor.0, prep.ancestor.1)? },
+    };
+    let changes = plan.changes.len();
+    let resolved = plan.conflicts.len();
+    let tx = p.apply_merge(pg, &label(&prep), kind, plan.ops.clone()).map_err(CmdError::refused)?;
+    if close && let Some(v) = p.file.v2_mut() {
+        v.close_on_save(tx, sides.source);
+    }
+    p.merge_cache = None;
+    p.note_branch_change();
+    let resolved_text = if resolved > 0 { format!(", {resolved} conflict{} resolved", if resolved == 1 { "" } else { "s" }) } else { String::new() };
+    let ignored = if plan.ignored.is_empty() { String::new() } else { format!(" Ignored: {}.", plan.ignored.join("; ")) };
+    let line = if sides.update {
+        format!("{said}Updated \"{}\" from {} ({}). Save to keep it.{ignored}", sides.target_name, sides.source_name, prep_latest_revision(&prep))
+    } else {
+        format!(
+            "{said}Merged \"{}\" into {} ({changes} change{}{resolved_text}). Save to keep it.{ignored}",
+            sides.source_name,
+            sides.target_name,
+            if changes == 1 { "" } else { "s" }
+        )
+    };
+    pg.echo(line.clone());
+    Ok(json!({
+        "merged": true, "transaction": p.ledger.head(), "from": sides.source_name, "into": sides.target_name,
+        "changes": changes, "conflicts": resolved, "closes": close, "message": line,
+    }))
+}
+
+/// The file went away under a merge.
+const NO_FILE: &str = "no file";
 
 /// The question `u` asks before undoing a merge (design §4.3), or `None` when the last step is
 /// not a merge.
@@ -798,27 +850,38 @@ pub fn undo_question(p: &Project) -> Option<String> {
     Some(format!("The last step merged {name} into {} ({changes}).\nUndo the merge?{reopened}", history::current_name(p)))
 }
 
-fn run_undomerge(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, pg, _| {
-        if undo_question(p).is_none() {
-            return Err("The last step is not a merge; use Undo.".into());
-        }
-        let label = p.ledger.undo_top().map(|t| t.label.clone()).unwrap_or_default();
-        let reopens = closed_by_top(p).is_some();
-        p.confirm_merge_undo = true;
-        let r = p.undo_step(pg);
-        p.confirm_merge_undo = false;
-        r?;
-        p.merge_cache = None;
-        p.note_branch_change();
-        // Worded for what changed (reviewer 020b, finding 9): only a merge that closed its branch
-        // reopens it.
-        let line = match label.strip_prefix("Merge ").and_then(|r| r.split(" (based on").next()) {
-            Some(name) if reopens => format!("Merge of {name} undone; the branch is open again (saved with the next Save)."),
-            Some(name) => format!("Merge of {name} undone."),
-            None => format!("{label} undone."),
-        };
-        pg.echo(line.clone());
-        Ok(json!({"undone": true, "message": line}))
-    })
+/// `undomerge {}`: undo the last step when it is a merge, as `u` asks.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct UndomergeParams {}
+
+impl Command for UndomergeParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_project(s, undo_merge)
+    }
+}
+
+/// `undomerge`'s work.
+fn undo_merge(p: &mut Project, pg: &mut Pages<'_>, _page: ecad_model::PageId) -> Result<Value, CmdError> {
+    if undo_question(p).is_none() {
+        return Err(CmdError::refused("The last step is not a merge; use Undo."));
+    }
+    let label = p.ledger.undo_top().map(|t| t.label.clone()).unwrap_or_default();
+    let reopens = closed_by_top(p).is_some();
+    p.confirm_merge_undo = true;
+    let r = p.undo_step(pg);
+    p.confirm_merge_undo = false;
+    r.map_err(CmdError::refused)?;
+    p.merge_cache = None;
+    p.note_branch_change();
+    // Worded for what changed (reviewer 020b, finding 9): only a merge that closed its branch
+    // reopens it.
+    let line = match label.strip_prefix("Merge ").and_then(|r| r.split(" (based on").next()) {
+        Some(name) if reopens => format!("Merge of {name} undone; the branch is open again (saved with the next Save)."),
+        Some(name) => format!("Merge of {name} undone."),
+        None => format!("{label} undone."),
+    };
+    pg.echo(line.clone());
+    Ok(json!({"undone": true, "message": line}))
 }

@@ -2,7 +2,7 @@
 //!
 //! Cable types here are synthetic (made-up names and values).
 
-use ecad_cadcraft::cable_cmds::{self, CableError, Side};
+use ecad_cadcraft::cable_cmds::{self, Side};
 use ecad_cadcraft::checks::{self, Severity};
 use ecad_model::{CableId, ConductorId, Op};
 use serde_json::{Value, json};
@@ -80,7 +80,7 @@ fn cablenew_refuses_a_tag_a_device_holds_and_writes_nothing() {
     assert!(e.contains("already the tag of") && e.contains("(device)"), "{e}");
     assert_eq!(h.head(), head, "nothing written");
     let e = h.run("cablenew", json!({"colour": 1})).unwrap_err();
-    assert!(e.contains("unknown field"), "{e}");
+    assert!(e.contains("is not a parameter of this command"), "{e}");
     assert_eq!(h.head(), head);
 }
 
@@ -104,7 +104,7 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
         (json!({"cores": "4Q1.5"}), "Cores:"),
         (json!({"cable_type": "H07X"}), "No cable type"),
         (json!({"from": {"gland": "M20 and a very long text"}}), "at most 16"),
-        (json!({"colour": 1}), "unknown field"),
+        (json!({"colour": 1}), "is not a parameter of this command"),
     ] {
         let e = h.run("cableedit", json!({"cable": k.hex(), "set": set})).unwrap_err();
         assert!(e.contains(words), "{set}: {e}");
@@ -172,12 +172,12 @@ fn cableremove_deletes_a_cable_not_drawn_and_refuses_a_drawn_one() {
     assert_eq!(h.head(), head);
     let doc = h.doc();
     let page = h.first_page();
-    match cable_cmds::check_remove(&doc, w) {
-        Err(CableError::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
+    match cable_cmds::drawn(&doc, w) {
+        Some(cable_cmds::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
         other => panic!("{other:?}"),
     }
     let e = h.run("cableremove", json!({"cable": w.hex(), "drawn": "unassign"})).unwrap_err();
-    assert!(e.contains("unknown field"), "{e}");
+    assert!(e.contains("is not a parameter of this command"), "{e}");
 }
 
 #[test]

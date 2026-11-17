@@ -13,6 +13,7 @@ workspace = true
 # The project file's engine: `db` opens the database and runs its transactions; the memory and
 # power-loss backends implement its storage backend.
 redb = { workspace = true }
+thiserror = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # File identity (device and inode on Unix, volume serial and file index on Windows) without

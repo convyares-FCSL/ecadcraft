@@ -535,7 +535,7 @@ impl Place {
                     Input::Enter => Some(self.default_rack(s)),
                     Input::Keyword(k) | Input::Text(k) if k.trim().eq_ignore_ascii_case("none") => Some(None),
                     Input::Keyword(k) | Input::Text(k) => {
-                        let r = read(s, |p, _| crate::plc::rack::rack_param(p.ledger.document(), &json!(k))).map_err(other)?;
+                        let r = read(s, |p, _| crate::plc::rack::rack_named(p.ledger.document(), &k).map_err(String::from)).map_err(other)?;
                         Some(Some(r))
                     }
                     _ => None,
@@ -557,11 +557,10 @@ impl Place {
                     self.stage = Stage::Point;
                     return Ok(Step::Continue);
                 };
-                let params = match &typed {
-                    Some(v) => json!({"rack": r.hex(), "slot": v.trim()}),
-                    None => json!({"rack": r.hex()}),
-                };
-                let at = read(s, |p, _| crate::plc::rack::place_target(p.ledger.document(), &params, None)).map_err(other)?;
+                let rack = r.hex();
+                let slot = typed.as_deref().map(str::trim);
+                let at = read(s, |p, _| crate::plc::rack::place_target(p.ledger.document(), Some(Some(&rack)), slot, None).map_err(String::from))
+                    .map_err(other)?;
                 self.slot = at.map(|(_, n)| n);
                 self.stage = Stage::Point;
                 Ok(Step::Continue)

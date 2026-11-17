@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::cmd::input::{Command, Typed, nullable};
-use crate::cmd::{err, id, on_any_page, on_project, opt_id, with_project};
+use crate::cmd::{err, on_any_page, on_project};
 use crate::project::Project;
 pub use crate::revisions::folder_path;
 use crate::revisions::{self, FIELDS};
@@ -243,7 +243,7 @@ pub(crate) struct MovefolderParams {
     folder: FolderId,
     /// The folder it goes in, or null for the top level.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required)]
+    #[schemars(required, with = "crate::cmd::input::OrNull<FolderId>")]
     parent: Option<Option<FolderId>>,
     /// Its place among its new siblings, 1 = first (default last).
     #[serde(default)]
@@ -286,22 +286,6 @@ impl Command for DeletefolderParams {
 
 // ---------------------------------------------------------------- pages
 
-/// `movepage {page, folder, index?}` (design 019 §5.3). Part of `movepage`, which moves to a typed
-/// input with `cmd/mod.rs`.
-pub(crate) fn run_movepage_folder(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let page: PageId = id(params, "page").map_err(err)?;
-    let folder = opt_id::<FolderId>(params, "folder").map_err(err)?;
-    let index = params.get("index").and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok());
-    with_project(s, |p, pg, _| {
-        let ops = rules::move_page_ops(p.ledger.document(), page, folder, index)?;
-        if ops.is_empty() {
-            return Ok(json!({"page": page.hex(), "changed": false}));
-        }
-        p.apply_edit(pg, "movepage", "Move page", ops)?;
-        Ok(json!({"page": page.hex(), "folder": folder.map(FolderId::hex), "changed": true}))
-    })
-}
-
 /// Where a new page goes (brief 054, design 054 §4.2): right after `after` in its folder, else
 /// last in `folder`. Its folder, its index in the page order, and (the page before it, its book
 /// position).
@@ -310,10 +294,10 @@ pub(crate) fn run_movepage_folder(s: &mut Session, params: &Value) -> cadcraft_e
 /// No such page to add after.
 pub fn new_page_at(
     doc: &Document, book: &Book, folder: Option<FolderId>, after: Option<PageId>,
-) -> Result<(Option<FolderId>, usize, (Option<PageId>, usize)), String> {
+) -> Result<(Option<FolderId>, usize, (Option<PageId>, usize)), CmdError> {
     Ok(match after {
         Some(a) => {
-            let i = doc.page_order.iter().position(|x| *x == a).ok_or("No such page to add after.")?;
+            let i = doc.page_order.iter().position(|x| *x == a).ok_or(CmdError::refused("No such page to add after."))?;
             let f = book::folder_of(doc, a).filter(|f| doc.folders.contains_key(f));
             (f, i + 1, (Some(a), book.position(a).unwrap_or(0) + 1))
         }
@@ -338,7 +322,7 @@ pub fn next_number(
 /// number takes it (design 054 §4.3).
 pub(crate) fn new_page_ops_at(
     p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>, after: Option<PageId>,
-) -> Result<(PageId, String, Vec<Op>), String> {
+) -> Result<(PageId, String, Vec<Op>), CmdError> {
     if crate::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
@@ -848,9 +832,8 @@ fn plan_issue_of(p: &Project, f: &RevisionFields) -> Result<IssuePlan, CmdError>
 ///
 /// # Errors
 /// As `issuerevision`, in words.
-pub fn plan_issue(p: &Project, params: &Value) -> Result<IssuePlan, String> {
-    let f = crate::cmd::input::parse::<RevisionParams>(params)?.fields();
-    Ok(plan_issue_of(p, &f)?)
+pub fn plan_issue(p: &Project) -> Result<IssuePlan, CmdError> {
+    plan_issue_of(p, &revision_fields([None, None, None, None, None, None], None, None))
 }
 
 /// `issuerevision {rev?, date?, description?, drawn?, checked?, approved?, provisional?}`: issues
@@ -885,14 +868,13 @@ pub(crate) struct IssuerevisionParams {
 impl Command for IssuerevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let f = revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], None, None);
-        let way = json!({"provisional": self.provisional});
         on_project(s, |p, pg, _| {
             // Checked before anything is written.
             plan_issue_of(p, &f)?;
             // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their
             // own transaction), or issued as they are, as asked; without an answer the ways forward
             // are named.
-            let note = crate::cmd::numbering::before_issue(p, pg, &way)?;
+            let note = crate::cmd::numbering::before_issue(p, pg, self.provisional.as_deref())?;
             let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &f)?;
             p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
             let tx = p.ledger.head();

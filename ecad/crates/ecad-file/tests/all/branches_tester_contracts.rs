@@ -139,8 +139,8 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
         let c_rec = proj.store().reader().map_err(|e| e.to_string())?.branch(ids["C"]).map_err(|e| e.to_string())?.ok_or("no C")?;
         let kind = TxKind::Merge {
             source: ids["C"].0,
-            source_head: StepPoint { seq: c_rec.head.seq, chain: c_rec.head.hash()? },
-            ancestor: BranchPoint { branch: main.0, seq: 0, chain: proj.chain_of(main, 0)? },
+            source_head: StepPoint { seq: c_rec.head.seq, chain: c_rec.head.hash().map_err(|e| e.to_string())? },
+            ancestor: BranchPoint { branch: main.0, seq: 0, chain: proj.chain_of(main, 0).map_err(|e| e.to_string())? },
         };
         let page = ledger.document().page_order[0];
         let layer = *ledger.document().layers.keys().next().unwrap();
@@ -206,7 +206,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
 fn observe(o: &ecad_file::OpenedV2) -> Result<Expect, String> {
     let mut branches = BTreeMap::new();
     for (id, rec) in o.project.branches().map_err(|e| e.to_string())? {
-        let doc = o.project.point_state(id, rec.head.seq)?;
+        let doc = o.project.point_state(id, rec.head.seq).map_err(|e| e.to_string())?;
         branches.insert(rec.name.clone(), (rec.status, doc));
     }
     let active = o.project.branch_record().name.clone();

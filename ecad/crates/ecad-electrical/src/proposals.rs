@@ -22,6 +22,7 @@ use ecad_model::{ComponentId, Document, IdAllocator, ObjectRef, Op, PageId, Pt};
 use serde_json::{Value, json};
 
 use crate::designations::{self, Aspect, Pending};
+use crate::error::CmdError;
 use crate::locations::{self, LocBox};
 
 /// What a JSON call asks for one aspect (design 052 §5.3).
@@ -42,31 +43,28 @@ pub enum Mode {
 }
 
 impl Mode {
-    /// The mode `params[aspect]` names (absent: [`Mode::Propose`]).
+    /// The mode `word` names for aspect `a` (absent: [`Mode::Propose`]).
     ///
     /// # Errors
-    /// Not a string, or an empty one.
-    pub fn of(params: &Value, a: Aspect) -> Result<Mode, String> {
-        match params.get(a.word()) {
-            None | Some(Value::Null) => Ok(Mode::Propose),
-            Some(Value::String(t)) => match t.trim().to_ascii_lowercase().as_str() {
-                "" => Err(format!("`{}` is \"propose\", \"move\", \"keep\" or a code", a.word())),
-                "propose" => Ok(Mode::Propose),
-                "move" => Ok(Mode::Move),
-                "keep" => Ok(Mode::Keep),
-                "half" if a == Aspect::Location => Ok(Mode::Half),
-                _ => Ok(Mode::Value(t.trim().to_string())),
-            },
-            Some(_) => Err(format!("`{}` is \"propose\", \"move\", \"keep\" or a code", a.word())),
+    /// An empty word.
+    pub fn of(word: Option<&str>, a: Aspect) -> Result<Mode, CmdError> {
+        let Some(t) = word else { return Ok(Mode::Propose) };
+        match t.trim().to_ascii_lowercase().as_str() {
+            "" => Err(CmdError::refused(format!("`{}` is \"propose\", \"move\", \"keep\" or a code", a.word()))),
+            "propose" => Ok(Mode::Propose),
+            "move" => Ok(Mode::Move),
+            "keep" => Ok(Mode::Keep),
+            "half" if a == Aspect::Location => Ok(Mode::Half),
+            _ => Ok(Mode::Value(t.trim().to_string())),
         }
     }
 
-    /// Both aspects' modes, function first.
+    /// Both aspects' modes, function first, from the words given for each.
     ///
     /// # Errors
     /// As [`Mode::of`].
-    pub fn both(params: &Value) -> Result<[Mode; 2], String> {
-        Ok([Mode::of(params, Aspect::Function)?, Mode::of(params, Aspect::Location)?])
+    pub fn both(function: Option<&str>, location: Option<&str>) -> Result<[Mode; 2], CmdError> {
+        Ok([Mode::of(function, Aspect::Function)?, Mode::of(location, Aspect::Location)?])
     }
 }
 

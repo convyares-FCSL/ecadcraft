@@ -317,7 +317,7 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
     let log = c.log();
     let rows: Vec<(&str, Value, &str)> = vec![
         ("cablecore", json!({"cable": "<c1>", "cores": ["a"]}), "`cores` must list one label (or null) per member"),
-        ("cablecore", json!({"conductor": "zz", "core": "a"}), "`conductor` (hex id) is required"),
+        ("cablecore", json!({"conductor": "zz", "core": "a"}), "`conductor` must be a hex id"),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 1.5}), "`at` as a fraction must be from 0 to 1"),
         ("cablefan", json!({"cable": "<c1>", "at": [1e300, 0]}), "Point out of range."),
         ("cableref", json!({"cable": "<c1>", "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
@@ -326,11 +326,11 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
         ("cablecontinue", json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}), "Cable -C01 already continues to another page"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": "<w0>"}), "no such reference"),
-        ("cablerefs", json!({"cable": "nope"}), "`cable` (hex id) is required"),
+        ("cablerefs", json!({"cable": "nope"}), "`cable` must be a hex id"),
         ("renamepage", json!({"page": "<supply>", "title": "   "}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": "<supply>", "title": "x".repeat(10_000)}), "`title` must be a non-empty string"),
         ("movepage", json!({"page": "<supply>", "index": 0}), "`index` must be a whole number from 1 to 2"),
-        ("movepage", json!({"page": "<supply>", "index": 1e20}), "`index` must be a whole number from 1 to 2"),
+        ("movepage", json!({"page": "<supply>", "index": 1e20}), "`index` must be a whole number"),
     ];
     for (cmd, params, want) in rows {
         let params = fill(&doc, &params);

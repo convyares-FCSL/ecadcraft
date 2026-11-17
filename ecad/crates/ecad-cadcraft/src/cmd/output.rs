@@ -521,9 +521,9 @@ impl Command for PrintbookParams {
         let path = self.path;
         // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by
         // default).
-        let colour = json!({"colour": self.colour});
+        let colour = self.colour;
         let v = on_any_page(s, |p, _| {
-            let mono = crate::defaults::print::mono_param(p.ledger.document(), &colour)?;
+            let mono = crate::defaults::print::mono_word(p.ledger.document(), colour.as_deref())?;
             Ok(print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)?)
         })?;
         if let Some(m) = v.get("message").and_then(Value::as_str) {

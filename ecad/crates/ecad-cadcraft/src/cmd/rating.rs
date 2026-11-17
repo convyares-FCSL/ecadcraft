@@ -10,25 +10,33 @@
 //! - `ratings {wire | cable | {}}` reads the results the panel shows. It records nothing.
 //!
 //! Programmatic calls never prompt.
+//!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::rating`] decide, and the shim reads or writes the CSV file, commits the
+//! ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::{CableId, ConductorId, Document, Op};
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::rating::{self as rules, RatingItem, TableWrite};
+use ecad_model::Document;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, with_any_page, with_project};
-use crate::rating::{self, Basis, RatedSubject, Rating, dataset, parse};
-use crate::styles::{self, cable, ratingtable};
+use crate::cmd::input::{Bounded, Command, TextOrNumber, Typed, nullable};
+use crate::cmd::{err, on_any_page, on_project};
+use crate::rating::{self, RatedSubject, Rating, dataset};
 
-/// Most subjects one `rating {many}` call sets.
-pub const MAX_MANY: usize = 500;
-/// Most results one `ratings {}` call returns.
-pub const PAGE: usize = 200;
+pub use rules::{MAX_MANY, PAGE};
+
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] =
+    &[Typed::of::<RatingParams>("rating"), Typed::of::<RatingtableParams>("ratingtable"), Typed::of::<RatingsParams>("ratings")];
 
 /// The commands of this module, registered through [`crate::lanes`].
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("rating", "Rating", run_rating)
+        CommandSpec::new("rating", "Rating", crate::cmd::input::typed::<RatingParams>)
             .params(
                 "{wire: conductor id or wire number | cable: tag or id | many: [{wire|cable, …}], basis?: \"datasheet\"|\"table\"|\"manual\", \
 manual?, bundling?: \"0.8\"|\"3 bunched\", load?, protected_by?: \"-Q01\"|\"-F01:3\", method?, ambient?, grouped?, voltage?, system?: \
@@ -36,367 +44,345 @@ manual?, bundling?: \"0.8\"|\"3 bunched\", load?, protected_by?: \"-Q01\"|\"-F01
 temperature, on its location boxes; null clears; one transaction)",
             )
             .noundo(),
-        CommandSpec::new("ratingtable", "Rating Table", run_ratingtable)
+        CommandSpec::new("ratingtable", "Rating Table", crate::cmd::input::typed::<RatingtableParams>)
             .params("{name, source?, csv, layer?: \"project\"|\"standard\"} (creates or replaces; one transaction) | {import: path, name?, source?} | {export: path, name?}")
             .noundo(),
-        CommandSpec::new("ratings", "Ratings", run_ratings).params("{wire?: id or number, cable?: tag or id, from?: n} (read only)").noundo(),
+        CommandSpec::new("ratings", "Ratings", crate::cmd::input::typed::<RatingsParams>)
+            .params("{wire?: id or number, cable?: tag or id, from?: n} (read only)")
+            .noundo(),
     ]
-}
-
-// ---------------------------------------------------------------------------------------------
-// Subjects
-
-/// The conductors `text` names: a conductor ID, or every panel wire carrying that wire number.
-fn wires(doc: &Document, text: &str) -> Result<Vec<ConductorId>, String> {
-    let t = text.trim();
-    if let Some(c) = ConductorId::parse(t).filter(|c| doc.conductors.contains_key(c)) {
-        return Ok(vec![c]);
-    }
-    let conn = doc.connectivity();
-    let mut out: Vec<ConductorId> = conn.nets_numbered(t).filter_map(|(n, _)| conn.net(n)).flat_map(|n| n.conductors.iter().copied()).collect();
-    out.retain(|c| rating::is_panel_wire(doc, *c));
-    out.sort();
-    out.dedup();
-    if out.is_empty() {
-        let shown: String = t.chars().take(32).collect();
-        return Err(format!("No panel wire {shown:?} (give a wire number or a conductor ID; a cable's cores are rated with the cable)."));
-    }
-    Ok(out)
-}
-
-/// The cable `text` names: a tag or an ID.
-fn cable_named(doc: &Document, text: &str) -> Result<CableId, String> {
-    let t = text.trim();
-    if let Some(k) = CableId::parse(t).filter(|k| doc.cables.contains_key(k)) {
-        return Ok(k);
-    }
-    doc.cables_tagged(t).into_iter().next().ok_or_else(|| format!("No cable {:?}.", t.chars().take(32).collect::<String>()))
-}
-
-fn subjects_of(doc: &Document, item: &Value) -> Result<Vec<RatedSubject>, String> {
-    match (item.get("wire").and_then(Value::as_str), item.get("cable").and_then(Value::as_str)) {
-        (Some(w), None) => Ok(wires(doc, w)?.into_iter().map(RatedSubject::Conductor).collect()),
-        (None, Some(c)) => Ok(vec![RatedSubject::Cable(cable_named(doc, c)?)]),
-        (Some(_), Some(_)) => Err("Give `wire` or `cable`, not both.".into()),
-        (None, None) => Err("Give `wire` (a wire number or conductor ID) or `cable` (a tag or ID).".into()),
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
 // rating
 
-/// The keys `rating` takes: (JSON key, property key, for wires, for cables).
-const KEYS: &[(&str, &str, bool, bool)] = &[
-    ("basis", rating::BASIS, true, true),
-    ("manual", rating::MANUAL, true, true),
-    ("bundling", rating::BUNDLING, true, false),
-    ("load", rating::LOAD, true, true),
-    ("protected_by", rating::PROTECTED_BY, true, true),
-    ("method", rating::METHOD, false, true),
-    ("ambient", rating::AMBIENT, false, true),
-    ("grouped", rating::GROUPED, false, true),
-    ("voltage", rating::VOLTAGE, false, true),
-    ("system", rating::SYSTEM, false, true),
-    ("vd_limit", rating::VD_LIMIT, false, true),
-    ("cable_type", cable::CABLE_TYPE, false, true),
-];
+/// A rating key's value: text or a number (`35` reads as `"35"`), or null to clear it.
+type KeyValue = Option<Option<TextOrNumber>>;
 
-/// A JSON value as the text it stands for (`35` → `"35"`).
-fn as_text(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(s.trim().to_string()),
-        Value::Number(n) => Some(n.to_string()),
-        _ => None,
+/// The keys given, in [`rules::KEYS`] order: (JSON key, value; `None` clears).
+fn sets_of(given: [(&'static str, &KeyValue); 12]) -> Vec<(&'static str, Option<String>)> {
+    given.into_iter().filter_map(|(k, v)| v.as_ref().map(|v| (k, v.as_ref().map(|t| t.text().trim().to_string())))).collect()
+}
+
+/// The rating keys of a params struct, in [`rules::KEYS`] order.
+macro_rules! keys_of {
+    ($p:expr) => {
+        [
+            ("basis", &$p.basis),
+            ("manual", &$p.manual),
+            ("bundling", &$p.bundling),
+            ("load", &$p.load),
+            ("protected_by", &$p.protected_by),
+            ("method", &$p.method),
+            ("ambient", &$p.ambient),
+            ("grouped", &$p.grouped),
+            ("voltage", &$p.voltage),
+            ("system", &$p.system),
+            ("vd_limit", &$p.vd_limit),
+            ("cable_type", &$p.cable_type),
+        ]
+    };
+}
+
+/// One subject of `rating {many}`: a wire or a cable, and the keys to set (null clears a key).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RatingItemParams {
+    /// A panel wire: its conductor id or wire number.
+    #[serde(default)]
+    wire: Option<String>,
+    /// A cable: its tag or id.
+    #[serde(default)]
+    cable: Option<String>,
+    /// How the rating is found: datasheet, table or manual.
+    #[serde(default, deserialize_with = "nullable")]
+    basis: KeyValue,
+    /// The rated current (A) when the basis is manual.
+    #[serde(default, deserialize_with = "nullable")]
+    manual: KeyValue,
+    /// Panel wires: a factor 0.30 to 1.00, or a circuit count ("3 bunched").
+    #[serde(default, deserialize_with = "nullable")]
+    bundling: KeyValue,
+    /// The load current (A).
+    #[serde(default, deserialize_with = "nullable")]
+    load: KeyValue,
+    /// The protecting device: a tag such as -Q01, or -F01:3 for a fuse of a bank.
+    #[serde(default, deserialize_with = "nullable")]
+    protected_by: KeyValue,
+    /// Cables: the IEC 60364-5-52 installation method.
+    #[serde(default, deserialize_with = "nullable")]
+    method: KeyValue,
+    /// Cables: the ambient temperature (°C).
+    #[serde(default, deserialize_with = "nullable")]
+    ambient: KeyValue,
+    /// Cables: the circuits grouped, 1 to 20.
+    #[serde(default, deserialize_with = "nullable")]
+    grouped: KeyValue,
+    /// Cables: the voltage (V), for the voltage drop.
+    #[serde(default, deserialize_with = "nullable")]
+    voltage: KeyValue,
+    /// Cables: ac1, ac3 or dc.
+    #[serde(default, deserialize_with = "nullable")]
+    system: KeyValue,
+    /// Cables: the voltage drop limit (%).
+    #[serde(default, deserialize_with = "nullable")]
+    vd_limit: KeyValue,
+    /// Cables: the cable type, an id or a name.
+    #[serde(default, deserialize_with = "nullable")]
+    cable_type: KeyValue,
+}
+
+impl RatingItemParams {
+    fn item(&self) -> RatingItem {
+        RatingItem { wire: self.wire.clone(), cable: self.cable.clone(), sets: sets_of(keys_of!(self)) }
     }
 }
 
-/// Check `value` for `key` (design 057 §6.1) and give the text stored.
-///
-/// # Errors
-/// The key and its range, in words.
-pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, String> {
-    let v = value.trim();
-    let shown: String = v.chars().take(32).collect();
-    match key {
-        "basis" => Basis::parse(v).map(|b| b.word().to_string()).ok_or_else(|| "basis is datasheet, table or manual.".into()),
-        "manual" | "load" => {
-            parse::current(v).map(|_| v.to_string()).ok_or_else(|| format!("{key} is a current above 0 and up to 6300 A, not {shown:?}."))
-        }
-        "bundling" => parse::bundling(v)
-            .map(|_| v.to_string())
-            .ok_or_else(|| "bundling is a factor 0.30 to 1.00, or a circuit count 1 to 20 (\"3 bunched\").".into()),
-        "protected_by" => match rating::trace::named(doc, v) {
-            Some((c, fuse)) => {
-                let tag = rating::trace::device_words(doc, c, fuse.as_deref());
-                if rating::trace::amps_of(doc, c, fuse.as_deref()).is_none() {
-                    return Err(format!("{tag}'s rating has no current; write it as 16 A first."));
-                }
-                Ok(tag)
-            }
-            None => Err(format!("There is no device or fuse {shown:?}; give a tag such as -Q01, or -F01:3 for a fuse of a bank.")),
-        },
-        "method" => {
-            dataset::method(v).map(str::to_string).ok_or_else(|| format!("method is an IEC 60364-5-52 name: {}.", dataset::METHODS.join(", ")))
-        }
-        "ambient" => parse::ambient(v).map(|_| v.to_string()).ok_or_else(|| "ambient is \u{2212}40 to 90 \u{b0}C.".into()),
-        "grouped" => parse::count(v).map(|n| n.to_string()).ok_or_else(|| "grouped is a circuit count 1 to 20.".into()),
-        "voltage" => parse::voltage(v).map(|_| v.to_string()).ok_or_else(|| "voltage is 1 to 1000 V.".into()),
-        "system" => {
-            ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v)).map(str::to_string).ok_or_else(|| "system is ac1, ac3 or dc.".into())
-        }
-        "vd_limit" => parse::percent(v).map(|_| v.to_string()).ok_or_else(|| "vd_limit is 0.5 to 20 %.".into()),
-        "cable_type" => styles::find(doc, cable::WORD, v).map(|id| id.text()),
-        _ => Err(format!("{key} is not a rating key.")),
+/// `rating {wire | cable | many, …}` sets a subject's rating properties in one transaction (null
+/// clears a key, an absent key is untouched); `{location, temperature}` sets a location's panel
+/// temperature on its location boxes.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RatingParams {
+    /// A panel wire: its conductor id or wire number.
+    #[serde(default)]
+    wire: Option<String>,
+    /// A cable: its tag or id.
+    #[serde(default)]
+    cable: Option<String>,
+    /// Several subjects at once (at most 500), each `{wire | cable, …}`.
+    #[serde(default)]
+    many: Option<Bounded<RatingItemParams, 0, MAX_MANY>>,
+    /// How the rating is found: datasheet, table or manual.
+    #[serde(default, deserialize_with = "nullable")]
+    basis: KeyValue,
+    /// The rated current (A) when the basis is manual.
+    #[serde(default, deserialize_with = "nullable")]
+    manual: KeyValue,
+    /// Panel wires: a factor 0.30 to 1.00, or a circuit count ("3 bunched").
+    #[serde(default, deserialize_with = "nullable")]
+    bundling: KeyValue,
+    /// The load current (A).
+    #[serde(default, deserialize_with = "nullable")]
+    load: KeyValue,
+    /// The protecting device: a tag such as -Q01, or -F01:3 for a fuse of a bank.
+    #[serde(default, deserialize_with = "nullable")]
+    protected_by: KeyValue,
+    /// Cables: the IEC 60364-5-52 installation method.
+    #[serde(default, deserialize_with = "nullable")]
+    method: KeyValue,
+    /// Cables: the ambient temperature (°C).
+    #[serde(default, deserialize_with = "nullable")]
+    ambient: KeyValue,
+    /// Cables: the circuits grouped, 1 to 20.
+    #[serde(default, deserialize_with = "nullable")]
+    grouped: KeyValue,
+    /// Cables: the voltage (V), for the voltage drop.
+    #[serde(default, deserialize_with = "nullable")]
+    voltage: KeyValue,
+    /// Cables: ac1, ac3 or dc.
+    #[serde(default, deserialize_with = "nullable")]
+    system: KeyValue,
+    /// Cables: the voltage drop limit (%).
+    #[serde(default, deserialize_with = "nullable")]
+    vd_limit: KeyValue,
+    /// Cables: the cable type, an id or a name.
+    #[serde(default, deserialize_with = "nullable")]
+    cable_type: KeyValue,
+    /// A location (such as +CAB1) whose panel temperature is set, with `temperature`.
+    #[serde(default)]
+    location: Option<String>,
+    /// With `location`: the panel temperature (°C), or null to clear it.
+    #[serde(default, deserialize_with = "nullable")]
+    temperature: KeyValue,
+}
+
+impl RatingParams {
+    fn single(&self) -> RatingItem {
+        RatingItem { wire: self.wire.clone(), cable: self.cable.clone(), sets: sets_of(keys_of!(self)) }
+    }
+
+    /// The parameters given besides `location` and `temperature`, in name order.
+    fn others(&self) -> Vec<&'static str> {
+        let mut given: Vec<&'static str> = [("cable", self.cable.is_some()), ("many", self.many.is_some()), ("wire", self.wire.is_some())]
+            .into_iter()
+            .filter(|g| g.1)
+            .map(|g| g.0)
+            .collect();
+        given.extend(self.single().sets.iter().map(|(k, _)| *k));
+        given.sort_unstable();
+        given
     }
 }
 
-/// The ops one item of `rating` asks for.
-fn item_ops(doc: &Document, item: &Value) -> Result<(Vec<Op>, Vec<RatedSubject>), String> {
-    let subjects = subjects_of(doc, item)?;
-    let cable = matches!(subjects.first(), Some(RatedSubject::Cable(_)));
-    let mut sets: Vec<(&'static str, Option<String>)> = Vec::new();
-    for (json_key, prop, for_wire, for_cable) in KEYS {
-        let Some(v) = item.get(*json_key) else { continue };
-        if (cable && !for_cable) || (!cable && !for_wire) {
-            return Err(format!("{json_key} is for {}.", if *for_wire { "panel wires" } else { "cables" }));
+impl Command for RatingParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        if let Some(loc) = &self.location {
+            return run_location(s, loc, &self);
         }
-        let after = match v {
-            Value::Null => None,
-            other => {
-                let t = as_text(other).ok_or_else(|| format!("{json_key} is text or a number, or null to clear it."))?;
-                Some(check_value(doc, json_key, &t)?)
-            }
-        };
-        sets.push((prop, after));
-    }
-    if let Some(o) = item.as_object()
-        && let Some(k) = o.keys().find(|k| !matches!(k.as_str(), "wire" | "cable") && !KEYS.iter().any(|(j, ..)| j == k))
-    {
-        return Err(format!("{k} is not a rating key; the keys are {}.", KEYS.iter().map(|k| k.0).collect::<Vec<_>>().join(", ")));
-    }
-    let mut ops = Vec::new();
-    for s in &subjects {
-        let props = match s {
-            RatedSubject::Conductor(c) => doc.conductors.get(c).map(|x| &x.properties),
-            RatedSubject::Cable(k) => doc.cables.get(k).map(|x| &x.properties),
-        };
-        for (key, after) in &sets {
-            let before = props.and_then(|p| p.get(*key)).cloned();
-            if before != *after {
-                ops.push(Op::SetProperty { object: s.object(), key: (*key).to_string(), before, after: after.clone() });
-            }
+        if self.temperature.is_some() {
+            return Err(err(rules::not_a_key("temperature").to_string()));
         }
+        let items: Vec<RatingItem> = match &self.many {
+            Some(many) => many.0.iter().map(RatingItemParams::item).collect(),
+            None => vec![self.single()],
+        };
+        on_project(s, |p, pg, _| {
+            let planned = rules::plan_rating(p.ledger.document(), &items)?;
+            let changed = !planned.ops.is_empty();
+            if changed {
+                p.apply_edit(pg, "rating", &planned.label, planned.ops)?;
+            }
+            let doc = p.ledger.document();
+            let results: Vec<Value> = planned.subjects.iter().take(PAGE).map(|s| rating_json(doc, &rating::rating_of(doc, *s))).collect();
+            Ok(json!({"changed": changed, "ratings": results}))
+        })
     }
-    Ok((ops, subjects))
 }
 
 /// `rating {location, temperature}` (design 057 FP6; tester F1): the location boxes of
 /// `location` take `rating.temperature`, written here (034's `setprop` rule reads `rating.<n>` as a
 /// fuse bank's and refuses it on a box).
-fn run_location(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let loc = params
-        .get("location")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .ok_or_else(|| err("`location` names a location, such as +CAB1."))?;
-    if let Some(o) = params.as_object()
-        && let Some(k) = o.keys().find(|k| !matches!(k.as_str(), "location" | "temperature"))
-    {
+fn run_location(s: &mut Session, loc: &str, params: &RatingParams) -> cadcraft_engine::Result<Value> {
+    let typed = loc.trim().to_string();
+    if typed.is_empty() {
+        return Err(err("`location` names a location, such as +CAB1."));
+    }
+    if let Some(k) = params.others().first() {
         return Err(err(format!("{k} is not a location rating key; give `temperature`.")));
     }
-    let after = match params.get("temperature") {
-        Some(Value::Null) => None,
-        Some(v) => {
-            let t = as_text(v).ok_or_else(|| err("temperature is a number in \u{b0}C, or null to clear it."))?;
-            if parse::ambient(&t).is_none() {
-                return Err(err("temperature is \u{2212}40 to 90 \u{b0}C."));
-            }
-            Some(t)
-        }
+    let after = match &params.temperature {
+        Some(None) => None,
+        Some(Some(t)) => Some(rules::check_temperature(&t.text()).map_err(|e| err(e.to_string()))?),
         None => return Err(err("Give `temperature` (\u{b0}C), or null to clear it.")),
     };
-    let typed = loc.to_string();
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
-        let entry = crate::designations::find(doc, crate::designations::Aspect::Location, &typed);
-        let loc = entry.as_ref().map_or_else(|| typed.clone(), |e| e.code.clone());
-        let boxes: Vec<ecad_model::ComponentId> = match &entry {
-            None => Vec::new(),
-            Some(e) => doc
-                .components
-                .iter()
-                .filter(|(_, x)| {
-                    crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == e.key)
-                })
-                .map(|(c, _)| *c)
-                .collect(),
-        };
-        if boxes.is_empty() {
-            return Err(format!("No location box is {loc}; draw one with Location Box first."));
-        }
-        let mut ops = Vec::new();
-        for c in &boxes {
-            let before = doc.components.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
-            if before != after {
-                ops.push(Op::SetProperty {
-                    object: ecad_model::ObjectRef::Component(*c),
-                    key: rating::TEMPERATURE.into(),
-                    before,
-                    after: after.clone(),
-                });
-            }
-        }
-        let changed = !ops.is_empty();
+    on_project(s, |p, pg, _| {
+        let planned = rules::plan_temperature(p.ledger.document(), &typed, after.as_deref())?;
+        let changed = !planned.ops.is_empty();
         if changed {
-            let words = after.as_deref().map_or_else(|| "project default".to_string(), |t| format!("{t} \u{b0}C"));
-            p.apply_edit(pg, "rating", &format!("Panel temperature {loc}: {words}"), ops)?;
+            p.apply_edit(pg, "rating", &planned.label, planned.ops)?;
         }
-        Ok(json!({"changed": changed, "location": loc, "boxes": boxes.len(), "temperature": after}))
-    })
-}
-
-fn run_rating(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("location").is_some() {
-        return run_location(s, params);
-    }
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let items: Vec<&Value> = match params.get("many") {
-            Some(Value::Array(a)) if a.len() <= MAX_MANY => a.iter().collect(),
-            Some(Value::Array(_)) => return Err(format!("`many` takes at most {MAX_MANY} subjects.")),
-            Some(_) => return Err("`many` is a list.".into()),
-            None => vec![params],
-        };
-        let mut ops = Vec::new();
-        let mut all = Vec::new();
-        for item in items {
-            let (o, s) = item_ops(doc, item)?;
-            ops.extend(o);
-            all.extend(s);
-        }
-        let changed = !ops.is_empty();
-        if changed {
-            let who: Vec<String> = all.iter().take(3).map(|s| s.words(doc)).collect();
-            let more = if all.len() > 3 { format!(" and {} more", all.len() - 3) } else { String::new() };
-            p.apply_edit(pg, "rating", &format!("Rating {}{more}", who.join(", ")), ops)?;
-        }
-        let doc = p.ledger.document();
-        let results: Vec<Value> = all.iter().take(PAGE).map(|s| rating_json(doc, &rating::rating_of(doc, *s))).collect();
-        Ok(json!({"changed": changed, "ratings": results}))
+        Ok(json!({"changed": changed, "location": planned.location, "boxes": planned.boxes, "temperature": after}))
     })
 }
 
 // ---------------------------------------------------------------------------------------------
 // ratingtable
 
-fn run_ratingtable(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let text = |k: &str| params.get(k).and_then(Value::as_str).map(str::trim);
-    if let Some(path) = text("export") {
-        let path = path.to_string();
-        let name = text("name").map(str::to_string);
-        return with_any_page(s, |p, _| {
-            let doc = p.ledger.document();
-            let id = match &name {
-                Some(n) => styles::find(doc, ratingtable::WORD, n)?,
-                None => ratingtable::chosen(doc).ok_or("No rating table chosen; give `name`.")?,
-            };
-            let t = ratingtable::read(doc, &id);
-            std::fs::write(&path, dataset::to_csv(&t.data)).map_err(|e| format!("Could not write {path}: {e}"))?;
-            Ok(json!({"exported": path, "rows": t.data.rows.len()}))
-        });
-    }
-    let (csv, from_file) = match (text("import"), params.get("csv").and_then(Value::as_str)) {
-        (Some(path), None) => {
-            let meta = std::fs::metadata(path).map_err(|e| err(format!("Could not read {path}: {e}")))?;
-            if meta.len() > dataset::MAX_BYTES as u64 {
-                return Err(err(format!("The table is over {} KiB. Nothing was written.", dataset::MAX_BYTES / 1024)));
+/// `ratingtable {name, source?, csv, layer?}` creates or replaces a rating table (one
+/// `SetStyle`); `{import: path, name?, source?}` reads a CSV file, `{export: path, name?}` writes
+/// one.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RatingtableParams {
+    /// The table's name (default: the imported file's name, or "Rating table"); with `export`, the
+    /// table to write (default: the one chosen).
+    #[serde(default)]
+    name: Option<String>,
+    /// Where the values come from (at most 200 characters).
+    #[serde(default)]
+    source: Option<String>,
+    /// The rows, as CSV.
+    #[serde(default)]
+    csv: Option<String>,
+    /// project (the default) or standard.
+    #[serde(default)]
+    layer: Option<String>,
+    /// Read the rows from this CSV file.
+    #[serde(default)]
+    import: Option<String>,
+    /// Write the table to this CSV file.
+    #[serde(default)]
+    export: Option<String>,
+}
+
+impl Command for RatingtableParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let trim = |v: &Option<String>| v.as_deref().map(|t| t.trim().to_string());
+        let name = trim(&self.name);
+        if let Some(path) = trim(&self.export) {
+            return on_any_page(s, |p, _| {
+                let t = rules::export_table(p.ledger.document(), name.as_deref())?;
+                std::fs::write(&path, dataset::to_csv(&t.data)).map_err(|e| CmdError::refused(format!("Could not write {path}: {e}")))?;
+                Ok(json!({"exported": path, "rows": t.data.rows.len()}))
+            });
+        }
+        let (csv, from_file) = match (trim(&self.import), self.csv) {
+            (Some(path), None) => {
+                let meta = std::fs::metadata(&path).map_err(|e| err(format!("Could not read {path}: {e}")))?;
+                if meta.len() > dataset::MAX_BYTES as u64 {
+                    return Err(err(rules::too_big().to_string()));
+                }
+                (std::fs::read_to_string(&path).map_err(|e| err(format!("Could not read {path} as text: {e}")))?, Some(path))
             }
-            (std::fs::read_to_string(path).map_err(|e| err(format!("Could not read {path} as text: {e}")))?, Some(path.to_string()))
-        }
-        (None, Some(c)) => (c.to_string(), None),
-        (Some(_), Some(_)) => return Err(err("Give `csv` or `import`, not both.")),
-        (None, None) => return Err(err("Give `csv` (the rows), `import` (a CSV file) or `export` (a CSV file).")),
-    };
-    let data = dataset::parse_strict(&csv).map_err(err)?;
-    let default_name = from_file
-        .as_deref()
-        .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
-        .map(str::to_string)
-        .unwrap_or_else(|| "Rating table".to_string());
-    let name = text("name").map(str::to_string).unwrap_or(default_name);
-    if !is_name(&name) {
-        return Err(err("A rating table needs a name (1 to 64 characters, no control characters)."));
+            (None, Some(c)) => (c, None),
+            (Some(_), Some(_)) => return Err(err("Give `csv` or `import`, not both.")),
+            (None, None) => return Err(err("Give `csv` (the rows), `import` (a CSV file) or `export` (a CSV file).")),
+        };
+        let default_name = from_file
+            .as_deref()
+            .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+            .map(str::to_string)
+            .unwrap_or_else(|| "Rating table".to_string());
+        let w = TableWrite { csv, name: name.unwrap_or(default_name), source: trim(&self.source), layer: ecad_model::style::StyleLayer::Project };
+        // The rows, name and source are checked before the layer and the project (as before).
+        rules::check_table(&w).map_err(|e| err(e.to_string()))?;
+        let w = TableWrite { layer: rules::table_layer(self.layer.as_deref()).map_err(|e| err(e.to_string()))?, ..w };
+        on_project(s, |p, pg, _| {
+            let plan = rules::plan_table(p.ledger.document(), &mut p.ids, &w)?;
+            let changed = !plan.ops.is_empty();
+            if changed {
+                p.apply_edit(pg, "ratingtable", &plan.label, plan.ops)?;
+            }
+            Ok(json!({"id": plan.id.text(), "name": w.name, "rows": plan.rows, "changed": changed, "odd": plan.odd}))
+        })
     }
-    let source = text("source").map(str::to_string);
-    if source.as_ref().is_some_and(|s| s.chars().count() > ratingtable::MAX_SOURCE_CHARS || s.chars().any(char::is_control)) {
-        return Err(err(format!("source is at most {} characters, no control characters.", ratingtable::MAX_SOURCE_CHARS)));
-    }
-    let layer = match text("layer") {
-        None | Some("project") => StyleLayer::Project,
-        Some("standard") => StyleLayer::Standard,
-        Some(_) => return Err(err("layer is project or standard.")),
-    };
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        if layer == StyleLayer::Standard && doc.standard.is_none() {
-            return Err(crate::cmd::style::STANDARD_FIRST.into());
-        }
-        let cat = &ratingtable::CATALOGUE;
-        let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&name)).map(|r| r.id);
-        let id = existing.clone().unwrap_or_else(|| StyleRef::Own(p.ids.fresh::<u128>()));
-        let before = styles::record(doc, layer, cat.word, &id).cloned();
-        let mut rec = before.clone().unwrap_or(StyleRecord { name: name.clone(), fields: Default::default(), body: None });
-        if rec.name.is_empty() && existing.is_none() {
-            rec.name = name.clone();
-        }
-        rec.fields.insert(ratingtable::ROWS.into(), csv.clone());
-        if let Some(src) = &source {
-            rec.fields.insert(ratingtable::SOURCE.into(), src.clone());
-        }
-        styles::check_record(doc, cat, &id, layer, &rec)?;
-        let changed = before.as_ref() != Some(&rec);
-        if changed {
-            let label = format!("Rating table {name}: {} row{}", data.rows.len(), if data.rows.len() == 1 { "" } else { "s" });
-            p.apply_edit(
-                pg,
-                "ratingtable",
-                &label,
-                vec![Op::SetStyle { layer, catalogue: cat.word.into(), id: id.clone(), before, after: Some(rec) }],
-            )?;
-        }
-        Ok(json!({"id": id.text(), "name": name, "rows": data.rows.len(), "changed": changed, "odd": data.odd()}))
-    })
 }
 
 // ---------------------------------------------------------------------------------------------
 // ratings
 
-fn run_ratings(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let from = params.get("from").and_then(Value::as_u64).unwrap_or(0) as usize;
-    with_any_page(s, |p, _| {
-        let doc = p.ledger.document();
-        let subjects: Vec<RatedSubject> = if params.get("wire").is_some() || params.get("cable").is_some() {
-            subjects_of(doc, params)?
-        } else {
-            let ctx = rating::Context::new(doc);
-            rating::subjects(doc, &ctx)
-        };
-        let total = subjects.len();
-        let mut ctx = rating::Context::new(doc);
-        let out: Vec<Value> = subjects
-            .iter()
-            .skip(from)
-            .take(PAGE)
-            .map(|s| {
-                let found = rating::trace::trace_subject(doc, *s);
-                rating_json(doc, &rating::evaluate(doc, &mut ctx, *s, &found))
-            })
-            .collect();
-        let next = (from + PAGE < total).then_some(from + PAGE);
-        Ok(json!({"ratings": out, "total": total, "next": next}))
-    })
+/// `ratings {wire? | cable?, from?}` (read only): the results the panel shows, a page at a time.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RatingsParams {
+    /// Only this panel wire: its conductor id or wire number.
+    #[serde(default)]
+    wire: Option<String>,
+    /// Only this cable: its tag or id.
+    #[serde(default)]
+    cable: Option<String>,
+    /// Skip this many (the `next` of the last call).
+    #[serde(default)]
+    from: Option<u64>,
+}
+
+impl Command for RatingsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let from = usize::try_from(self.from.unwrap_or(0)).unwrap_or(usize::MAX);
+        on_any_page(s, |p, _| {
+            let doc = p.ledger.document();
+            let subjects: Vec<RatedSubject> = if self.wire.is_some() || self.cable.is_some() {
+                rules::subjects_of(doc, self.wire.as_deref(), self.cable.as_deref())?
+            } else {
+                let ctx = rating::Context::new(doc);
+                rating::subjects(doc, &ctx)
+            };
+            let total = subjects.len();
+            let mut ctx = rating::Context::new(doc);
+            let out: Vec<Value> = subjects
+                .iter()
+                .skip(from)
+                .take(PAGE)
+                .map(|s| {
+                    let found = rating::trace::trace_subject(doc, *s);
+                    rating_json(doc, &rating::evaluate(doc, &mut ctx, *s, &found))
+                })
+                .collect();
+            let next = (from.saturating_add(PAGE) < total).then_some(from.saturating_add(PAGE));
+            Ok(json!({"ratings": out, "total": total, "next": next}))
+        })
+    }
 }
 
 /// One result as `ratings` returns it (design 057 §8.2): the object the panel shows.

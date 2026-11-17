@@ -1,211 +1,171 @@
 //! The cross-reference commands (brief 025, design 025 §4.4, §5.3, §5.4): `xrefs` and `contacts`
 //! (read only), `refgoto` (opens a page, records nothing) and `mirrormove` (one `setprop` of the
 //! device's `mirror`). Their interactive forms are in [`crate::interact`].
+//!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::xref`] decide, and the shim opens the page or commits the ops and
+//! answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::{CableId, ComponentId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::xref as rules;
+use ecad_model::{CableId, ComponentId, PageId, RepresentationId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, id, opt_id, point, with_any_page, with_project};
-use crate::xref::{self, Placement};
+use crate::cmd::input::{Command, Point, Typed};
+use crate::cmd::{on_any_page, on_project};
+use crate::xref;
 
 /// Most references `xrefs` returns per call by default, and at most.
 pub const DEFAULT_LIMIT: usize = 200;
 pub const MAX_LIMIT: usize = 2000;
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<XrefsParams>("xrefs"),
+    Typed::of::<ContactsParams>("contacts"),
+    Typed::of::<RefgotoParams>("refgoto"),
+    Typed::of::<MirrormoveParams>("mirrormove"),
+];
+
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("xrefs", "List References", run_xrefs)
+        CommandSpec::new("xrefs", "List References", crate::cmd::input::typed::<XrefsParams>)
             .params("{component?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable and device references; read only)")
             .noundo(),
-        CommandSpec::new("contacts", "Device Contacts", run_contacts)
+        CommandSpec::new("contacts", "Device Contacts", crate::cmd::input::typed::<ContactsParams>)
             .params("{component: id} (the device's contact table: offer, head, placement, rows; read only)")
             .noundo(),
-        CommandSpec::new("refgoto", "Go to Reference", run_refgoto)
+        CommandSpec::new("refgoto", "Go to Reference", crate::cmd::input::typed::<RefgotoParams>)
             .params("{source: id, target?: id} (a cable reference end, a contact, a coil or a continuation arrow: opens the place it shows; records nothing)")
             .noundo(),
-        CommandSpec::new("mirrormove", "Move Mirror Table", run_mirrormove)
+        CommandSpec::new("mirrormove", "Move Mirror Table", crate::cmd::input::typed::<MirrormoveParams>)
             .params("{component: id, at?: [x,y], placement?: \"auto\"|\"below\"|\"right\"|\"off\"} (where the device's contact table goes)")
             .interactive(crate::interact::mirrormove)
             .noundo(),
     ]
 }
 
-fn run_xrefs(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let component: Option<ComponentId> = opt_id(params, "component").map_err(err)?;
-    let cable: Option<CableId> = opt_id(params, "cable").map_err(err)?;
-    let page: Option<PageId> = opt_id(params, "page").map_err(err)?;
-    let limit = match params.get("limit") {
-        None | Some(Value::Null) => DEFAULT_LIMIT,
-        Some(v) => v.as_u64().map(|n| usize::try_from(n).unwrap_or(MAX_LIMIT).clamp(1, MAX_LIMIT)).ok_or_else(|| err("`limit` must be a number"))?,
-    };
-    let after = match params.get("after") {
-        None | Some(Value::Null) => 0,
-        Some(v) => v.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| err("`after` must be a number"))?,
-    };
-    with_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), &p.xref, component, cable, page, limit, after))
+/// `xrefs {component?, cable?, page?, limit?, after?}` (read only): cable and device references,
+/// a page at a time.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct XrefsParams {
+    /// Only this device's references.
+    #[serde(default)]
+    component: Option<ComponentId>,
+    /// Only this cable's references.
+    #[serde(default)]
+    cable: Option<CableId>,
+    /// Only references on this page.
+    #[serde(default)]
+    page: Option<PageId>,
+    /// At most this many (default 200, at most 2000).
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Skip this many (the `next` of the last call).
+    #[serde(default)]
+    after: Option<u64>,
 }
 
-fn run_contacts(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let c: ComponentId = id(params, "component").map_err(err)?;
-    with_any_page(s, |p, _| xref::contacts_json(p.ledger.document(), c))
-}
-
-/// Where `refgoto` goes: the page, the point to centre, the item to select, and the words.
-struct Jump {
-    page: PageId,
-    at: Pt,
-    item: Option<ecad_model::ItemId>,
-    target: RepresentationId,
-    message: String,
-}
-
-fn run_refgoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let source: RepresentationId = id(params, "source").map_err(err)?;
-    let target: Option<RepresentationId> = opt_id(params, "target").map_err(err)?;
-    let (uid, jump, opened) = with_any_page(s, |p, pg| {
-        let doc = p.ledger.document();
-        let r = doc.representations.get(&source).ok_or("no such reference")?;
-        let arrow = matches!(p.xref.member(source), Some((xref::Group::Continuation(_), _)));
-        let none = match r.subject {
-            // Brief 049: a lonely continuation arrow.
-            Subject::Component(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
-            Subject::Component(_) => "This symbol shows no reference: its device has no coil or no contacts.",
-            Subject::Cable(_) => "this reference has no other end",
-            Subject::Conductor(_) => "That is not a reference.",
+impl Command for XrefsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let limit = self.limit.map_or(DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(MAX_LIMIT).clamp(1, MAX_LIMIT));
+        let after = match self.after {
+            None => 0,
+            Some(n) => usize::try_from(n).map_err(|_| crate::cmd::err("`after` must be a number"))?,
         };
-        if p.xref.member(source).is_none() {
-            return Err(none.into());
-        }
-        // Brief 049 (design 049 §5.3): an arrow goes to its first other end, then the next on
-        // repeat (after the place the last go-to ringed), wrapping.
-        let t = if arrow {
-            crate::continuations::goto(doc, source, target, p.goto_ring.map(|(page, at, _)| (page, at))).ok_or(none)?
-        } else {
-            xref::goto_target(doc, &p.xref, source, target).ok_or(none)?
-        };
-        let tr = doc.representations.get(&t).ok_or("the other end cannot be located")?;
-        let at = xref::anchor(doc, tr)
-            .or_else(|| {
-                tr.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
-                    ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
-                    _ => None,
-                })
-            })
-            .ok_or("the other end cannot be located")?;
-        let mut places = xref::Places::new(doc);
-        let place = places.text(tr.page, Some(at));
-        let what = match tr.subject {
-            Subject::Component(c) if crate::continuations::is_continuation(doc, c) => {
-                format!(
-                    "continuation {}",
-                    doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default()
-                )
-            }
-            Subject::Component(c) => match xref::device(doc, c).head {
-                Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
-                _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
-            },
-            Subject::Cable(k) => format!("the other end of cable {}", crate::cables::cable_title(doc, k)),
-            Subject::Conductor(_) => "the reference".into(),
-        };
-        let message = format!("{}, {what} ({place}).", crate::references::page_words(doc, tr.page).replacen("page", "Page", 1));
-        let jump = Jump { page: tr.page, at, item: tr.items.first().copied(), target: t, message };
-        let opened = p.pages.get(&jump.page).and_then(|v| v.uid).is_none();
-        let uid = p.open_page(pg, jump.page)?;
-        // The go-to ring (display only, until the next change), as the Checks tab's.
-        p.goto_ring = Some((jump.page, jump.at, crate::checks::Severity::Info));
-        Ok((uid, jump, opened))
-    })?;
-    if opened {
-        let _ = s.zoom_extents();
+        let (component, cable, page) = (self.component, self.cable, self.page);
+        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), &p.xref, component, cable, page, limit, after).map_err(CmdError::refused))
     }
-    if let Ok(st) = s.state_mut() {
-        let height = st.view().height;
-        let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(jump.at.x, jump.at.y), height, twist: 0.0 });
-    }
-    let page = jump.page;
-    let item = jump.item;
-    let handle = with_any_page(s, |p, _| Ok(item.and_then(|i| p.pages.get(&page).and_then(|v| v.map.item(i)))))?;
-    if let Some(h) = handle {
-        s.set_selection(vec![h]);
-    }
-    Ok(json!({
-        "page": jump.page.hex(),
-        "document": uid,
-        "target": jump.target.hex(),
-        "item": jump.item.map(|i| i.hex()),
-        "message": jump.message,
-    }))
 }
 
-/// The `mirror` value `mirrormove` writes for `params` on device `c` of `doc`.
-///
-/// # Errors
-/// Neither `at` nor `placement`, both, an unreadable word, or a point too far from the coil.
-pub(crate) fn mirror_for(doc: &ecad_model::Document, c: ComponentId, params: &Value) -> Result<Option<String>, String> {
-    let at = match params.get("at") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(point(v).ok_or("`at` must be [x, y] with finite numbers")?),
-    };
-    let word = params.get("placement").filter(|v| !v.is_null());
-    let placement = match (at, word) {
-        (Some(_), Some(_)) => return Err("give `at` or `placement`, not both".into()),
-        (None, None) => return Err("`at` ([x, y]) or `placement` (auto, below, right, off) is required".into()),
-        (None, Some(w)) => {
-            let w = w.as_str().ok_or("`placement` must be auto, below, right or off")?;
-            match xref::parse_mirror(w)? {
-                Placement::At(_) => return Err("`placement` must be auto, below, right or off; use `at` for a point".into()),
-                p => p,
-            }
-        }
-        (Some(p), None) => {
-            let dev = xref::device(doc, c);
-            let head =
-                dev.head.and_then(|h| doc.representations.get(&h)).ok_or("This device has no coil (or other head symbol) to put a table under.")?;
-            let origin = xref::anchor(doc, head).ok_or("This device's coil cannot be located.")?;
-            let k = match doc.settings.length_unit {
-                ecad_model::LengthUnit::Millimetre => 1.0,
-                ecad_model::LengthUnit::Inch => 25.4,
-            };
-            let d = Pt::new((p.x - origin.x) * k, (p.y - origin.y) * k);
-            if !(d.x.abs() <= xref::MAX_OFFSET_MM && d.y.abs() <= xref::MAX_OFFSET_MM) {
-                return Err(format!("Put the table within {} mm of its coil.", xref::MAX_OFFSET_MM));
-            }
-            Placement::At(d)
-        }
-    };
-    Ok(match placement {
-        // The project default is `auto` unless the project says otherwise: `auto` writes `auto`
-        // only when the project's default differs.
-        Placement::Auto if doc.settings.contact_mirror == ecad_model::ContactMirror::Auto => None,
-        p => Some(p.word()),
-    })
+/// `contacts {component}` (read only): the device's contact table: offer, head, placement, rows.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ContactsParams {
+    /// The device.
+    component: ComponentId,
 }
 
-fn run_mirrormove(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let c: ComponentId = id(params, "component").map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let comp = doc.components.get(&c).ok_or("no such component")?;
-        let after = mirror_for(doc, c, params)?;
-        let before = comp.properties.get(xref::MIRROR_KEY).cloned();
-        let tag = crate::devices::tag_words(doc, c);
-        if before == after {
-            return Ok(json!({"changed": false, "mirror": after}));
+impl Command for ContactsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| xref::contacts_json(p.ledger.document(), self.component).map_err(CmdError::refused))
+    }
+}
+
+/// `refgoto {source, target?}`: opens the place a cable reference end, a contact, a coil or a
+/// continuation arrow shows; records nothing.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RefgotoParams {
+    /// The reference clicked (a representation).
+    source: RepresentationId,
+    /// Which of its other ends (default: the first, or the next after the last go-to).
+    #[serde(default)]
+    target: Option<RepresentationId>,
+}
+
+impl Command for RefgotoParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let (uid, jump, opened) = on_any_page(s, |p, pg| {
+            let ring = p.goto_ring.map(|(page, at, _)| (page, at));
+            let jump = rules::goto(p.ledger.document(), &p.xref, self.source, self.target, ring)?;
+            let opened = p.pages.get(&jump.page).and_then(|v| v.uid).is_none();
+            let uid = p.open_page(pg, jump.page).map_err(CmdError::refused)?;
+            // The go-to ring (display only, until the next change), as the Checks tab's.
+            p.goto_ring = Some((jump.page, jump.at, crate::checks::Severity::Info));
+            Ok((uid, jump, opened))
+        })?;
+        if opened {
+            let _ = s.zoom_extents();
         }
-        p.apply_edit(
-            pg,
-            "mirrormove",
-            "Move contact table",
-            vec![Op::SetProperty { object: ObjectRef::Component(c), key: xref::MIRROR_KEY.into(), before, after: after.clone() }],
-        )?;
-        let words = match after.as_deref() {
-            None => "follows the project default".to_string(),
-            Some("off") => "is hidden".to_string(),
-            Some(w) if w.starts_with("at ") => "is moved".to_string(),
-            Some(w) => format!("is placed {w}"),
-        };
-        Ok(json!({"changed": true, "mirror": after, "message": format!("{tag}'s contact table {words}.")}))
-    })
+        if let Ok(st) = s.state_mut() {
+            let height = st.view().height;
+            let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(jump.at.x, jump.at.y), height, twist: 0.0 });
+        }
+        let page = jump.page;
+        let item = jump.item;
+        let handle = on_any_page(s, |p, _| Ok(item.and_then(|i| p.pages.get(&page).and_then(|v| v.map.item(i)))))?;
+        if let Some(h) = handle {
+            s.set_selection(vec![h]);
+        }
+        Ok(json!({
+            "page": jump.page.hex(),
+            "document": uid,
+            "target": jump.target.hex(),
+            "item": jump.item.map(|i| i.hex()),
+            "message": jump.message,
+        }))
+    }
+}
+
+/// `mirrormove {component, at? | placement?}`: where the device's contact table goes.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MirrormoveParams {
+    /// The device.
+    component: ComponentId,
+    /// A page point for the table.
+    #[serde(default)]
+    at: Option<Point>,
+    /// Or a placement: auto, below, right or off.
+    #[serde(default)]
+    placement: Option<String>,
+}
+
+impl Command for MirrormoveParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let at = self.at.map(|a| a.0);
+        on_project(s, |p, pg, _| {
+            let m = rules::plan_mirrormove(p.ledger.document(), self.component, at, self.placement.as_deref())?;
+            if m.ops.is_empty() {
+                return Ok(json!({"changed": false, "mirror": m.mirror}));
+            }
+            p.apply_edit(pg, "mirrormove", "Move contact table", m.ops)?;
+            Ok(json!({"changed": true, "mirror": m.mirror, "message": m.message}))
+        })
+    }
 }

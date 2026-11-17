@@ -9,6 +9,8 @@
 
 use std::io::Read;
 
+use crate::FileError;
+
 /// Flag byte: the body is stored as it is.
 pub const RAW: u8 = 0;
 /// Flag byte: the body is a Zstandard frame.
@@ -45,11 +47,11 @@ pub fn pack(bytes: &[u8]) -> (u8, Vec<u8>) {
 }
 
 /// Read all of `r`, refusing more than [`MAX_BODY`] bytes.
-fn read_capped(r: impl Read) -> Result<Vec<u8>, String> {
+fn read_capped(r: impl Read) -> Result<Vec<u8>, FileError> {
     let mut out = Vec::new();
-    r.take(MAX_BODY as u64 + 1).read_to_end(&mut out).map_err(|e| format!("damaged compressed body: {e}"))?;
+    r.take(MAX_BODY as u64 + 1).read_to_end(&mut out).map_err(|e| FileError::Compressed(e.to_string()))?;
     if out.len() > MAX_BODY {
-        return Err(format!("a compressed body expands to more than {MAX_BODY} bytes"));
+        return Err(FileError::Expands);
     }
     Ok(out)
 }
@@ -59,8 +61,8 @@ fn read_capped(r: impl Read) -> Result<Vec<u8>, String> {
 ///
 /// # Errors
 /// A damaged frame, or more than [`MAX_BODY`] bytes.
-pub fn decode_ruzstd(body: &[u8]) -> Result<Vec<u8>, String> {
-    let d = ruzstd::decoding::StreamingDecoder::new(body).map_err(|e| format!("damaged compressed body: {e}"))?;
+pub fn decode_ruzstd(body: &[u8]) -> Result<Vec<u8>, FileError> {
+    let d = ruzstd::decoding::StreamingDecoder::new(body).map_err(|e| FileError::Compressed(e.to_string()))?;
     read_capped(d)
 }
 
@@ -73,15 +75,12 @@ thread_local! {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn decode(body: &[u8]) -> Result<Vec<u8>, String> {
-    let damaged = |e: &dyn std::fmt::Display| format!("damaged compressed body: {e}");
+fn decode(body: &[u8]) -> Result<Vec<u8>, FileError> {
+    let damaged = |e: &dyn std::fmt::Display| FileError::Compressed(e.to_string());
     match zstd::zstd_safe::get_frame_content_size(body) {
         // The frame says its size (every frame this build writes does): decode in one call.
         Ok(Some(n)) => {
-            let n = usize::try_from(n)
-                .ok()
-                .filter(|n| *n <= MAX_BODY)
-                .ok_or_else(|| format!("a compressed body expands to more than {MAX_BODY} bytes"))?;
+            let n = usize::try_from(n).ok().filter(|n| *n <= MAX_BODY).ok_or(FileError::Expands)?;
             let run = |d: &mut zstd::bulk::Decompressor<'static>| d.decompress(body, n).map_err(|e| damaged(&e));
             let out = DCTX.with(|cell| match cell.try_borrow_mut() {
                 Ok(mut slot) => {
@@ -90,7 +89,7 @@ fn decode(body: &[u8]) -> Result<Vec<u8>, String> {
                     }
                     match slot.as_mut() {
                         Some(d) => run(d),
-                        None => Err("no decompression context".to_string()),
+                        None => Err(FileError::NoContext),
                     }
                 }
                 Err(_) => zstd::bulk::Decompressor::new().map_err(|e| damaged(&e)).and_then(|mut d| run(&mut d)),
@@ -107,7 +106,7 @@ fn decode(body: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn decode(body: &[u8]) -> Result<Vec<u8>, String> {
+fn decode(body: &[u8]) -> Result<Vec<u8>, FileError> {
     decode_ruzstd(body)
 }
 
@@ -115,12 +114,12 @@ fn decode(body: &[u8]) -> Result<Vec<u8>, String> {
 ///
 /// # Errors
 /// An unknown flag, a damaged Zstandard frame, or a body larger than [`MAX_BODY`].
-pub fn unpack(flag: u8, body: &[u8]) -> Result<Vec<u8>, String> {
+pub fn unpack(flag: u8, body: &[u8]) -> Result<Vec<u8>, FileError> {
     match flag {
         RAW if body.len() <= MAX_BODY => Ok(body.to_vec()),
-        RAW => Err(format!("a stored body is larger than {MAX_BODY} bytes")),
+        RAW => Err(FileError::StoredTooLarge),
         ZSTD => decode(body),
-        other => Err(format!("unknown compression flag {other}")),
+        other => Err(FileError::Flag(other)),
     }
 }
 

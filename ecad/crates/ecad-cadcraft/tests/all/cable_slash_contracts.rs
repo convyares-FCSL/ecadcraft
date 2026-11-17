@@ -314,13 +314,13 @@ fn refusals_write_nothing_and_say_why() {
             json!({"from": [10, 13], "to": [10, 17]}),
             "The slash crosses no wires; nothing was created. It crosses 1 object that is not a wire.".into(),
         ),
-        ("no from", json!({"to": [1, 1]}), "`from` [x,y] is required".into()),
-        ("no to", json!({"from": [1, 1]}), "`to` [x,y] is required".into()),
+        ("no from", json!({"to": [1, 1]}), "`from` (point [x, y]) is required".into()),
+        ("no to", json!({"from": [1, 1]}), "`to` (point [x, y]) is required".into()),
         ("equal points", json!({"from": [1, 1], "to": [1, 1]}), "`from` and `to` must differ".into()),
-        ("not a point", json!({"from": "x", "to": [1, 1]}), "`\"x\"` is not a finite [x,y] point".into()),
-        ("NaN", json!({"from": [f64::NAN, 0], "to": [1, 1]}), "is not a finite [x,y] point".into()),
+        ("not a point", json!({"from": "x", "to": [1, 1]}), "`from` must be a point [x, y]".into()),
+        ("NaN", json!({"from": [f64::NAN, 0], "to": [1, 1]}), "`from` must be a point [x, y]".into()),
         ("beyond 1e12", json!({"from": [1e13, 0], "to": [1, 1]}), "is not a finite [x,y] point".into()),
-        ("tag not a string", json!({"from": [28, -3], "to": [32, 18], "tag": 123}), "`tag` must be a string".into()),
+        ("tag not a string", json!({"from": [28, -3], "to": [32, 18], "tag": 123}), "`tag` must be text".into()),
     ];
     for (name, params, message) in cases {
         let head = f.h.head();

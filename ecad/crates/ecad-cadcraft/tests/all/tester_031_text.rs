@@ -546,9 +546,11 @@ fn t4_wire_label_height_is_written_to_the_wiring_settings() {
 fn t4_textstyle_refusals_write_nothing() {
     let mut h = H::new(0x7031_0403);
     let height = "A text height is 0.5 to 10 mm.";
-    for bad in [json!(0.4), json!(10.5), json!(0), json!(-1), json!("abc"), json!(1e300)] {
+    for bad in [json!(0.4), json!(10.5), json!(0), json!(-1), json!(1e300)] {
         refused(&mut h, "textstyle", json!({"kind": "tag", "height": bad}), height);
     }
+    // Brief 070: a value of the wrong kind is an input refusal, in the uniform wording.
+    refused(&mut h, "textstyle", json!({"kind": "tag", "height": "abc"}), "`height` must be a number, or null");
     refused(&mut h, "textstyle", json!({"kind": "x", "height": 3}), "Unknown text kind \"x\". Kinds: tag, point_label");
     refused(&mut h, "textstyle", json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold.");
     refused(&mut h, "textstyle", json!({"kind": "point_label", "show": "first"}), "Shown is on, off or first (first: tag only).");
@@ -1058,8 +1060,9 @@ fn t10_movetext_label_undo_redo_and_refusals() {
     assert_eq!(model_parts(&f.h.doc()), model_parts(&after));
     // Refusals.
     let r = rep.hex();
-    refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": ["a", 0]}), "A text position must be a finite point.");
-    refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": [1]}), "A text position must be a finite point.");
+    refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": ["a", 0]}), "`to` must be a point [x, y], or null");
+    refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag", "to": [1]}), "`to` must be a point [x, y], or null");
+    refused(&mut f.h, "movetext", json!({"representation": r, "kind": "tag"}), "A text position must be a finite point.");
     refused(
         &mut f.h,
         "movetext",

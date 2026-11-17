@@ -18,8 +18,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, Point, Typed, lenient, nullable};
-use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style, with_project};
+use crate::cmd::input::{Bounded, Command, Point, Typed, nullable};
+use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style};
 use crate::project::Project;
 use crate::symbols::Starter;
 use crate::wires;
@@ -114,8 +114,7 @@ pub(crate) struct NetsParams {
     #[serde(default)]
     terminal: Option<TerminalId>,
     /// Also nets without a wire.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     all: Option<bool>,
     /// At most this many (default 200, at most 2000).
     #[serde(default)]
@@ -199,8 +198,7 @@ pub(crate) struct WirenumberParams {
     #[serde(default, deserialize_with = "nullable")]
     value: Option<Option<String>>,
     /// Without `value`: true fixes the net's current number, false releases it.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     fixed: Option<bool>,
     /// When another net uses the number.
     #[serde(default)]
@@ -268,7 +266,7 @@ pub(crate) struct PotentialParams {
     conductor: ConductorId,
     /// The potential (24V, L1…), or null to clear it.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required)]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 
@@ -308,7 +306,7 @@ pub(crate) struct CategoryParams {
     conductors: Option<Bounded<ConductorId, 0, { MAX_HANDLES }>>,
     /// The wire category (its ID or name), or null to clear the wires' own.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required)]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 
@@ -670,37 +668,15 @@ pub(crate) fn join_by_default(doc: &Document) -> bool {
 
 // ---------------------------------------------------------------- place (the continuation form)
 
-fn opt_str<'a>(p: &'a Value, key: &str) -> Result<Option<&'a str>, String> {
-    match p.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) => Ok(Some(s.as_str())),
-        Some(_) => Err(format!("`{key}` must be a string")),
-    }
-}
-
-/// `place {symbol: "continuation" | "junction", at, rotation?, mirror?, name?}`: a tagless
-/// component (design 022 §3.2). Part of `place`, which moves to a typed input with `cmd/device.rs`.
+/// `place {symbol: "continuation" | "junction", at, rotation?, mirror?, name?, caption?}`: a
+/// tagless component (design 022 §3.2), part of `place` ([`crate::cmd::device::PlaceParams`]).
 pub(crate) fn place_tagless(
-    s: &mut Session, params: &Value, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
-    if params.get("device").is_some_and(|v| !v.is_null()) || params.get("tag").is_some_and(|v| !v.is_null()) {
-        return Err(err(format!("A {} has no tag and is not part of a device.", starter.name.to_lowercase())));
-    }
-    let name = match opt_str(params, "name").map_err(err)? {
-        Some(n) => Some(wires::valid_name(n).map_err(err)?),
-        None => None,
-    };
-    if starter.key == CONTINUATION && name.is_none() {
-        return Err(err("`name` is required for a continuation (the potential or signal it carries, e.g. 24V)"));
-    }
-    // Brief 049 (design 049 §5.1): a continuation may be placed with its caption.
-    let caption = match params.get(crate::continuations::CAPTION_KEY) {
-        None | Some(Value::Null) => None,
-        Some(_) if starter.key != CONTINUATION => return Err(err("Only continuation arrows have a caption; that is a junction.")),
-        Some(Value::String(t)) => crate::continuations::caption_text(Some(t)).map_err(err)?,
-        Some(_) => return Err(err("`caption` must be text")),
-    };
-    with_project(s, |p, pg, page| {
+    let joins = params.device.is_some() || params.tag.is_some();
+    let (name, caption) =
+        ecad_electrical::cmd::place::tagless(starter, joins, params.name.as_deref(), params.caption.as_deref()).map_err(|e| err(e.to_string()))?;
+    on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
         let mut props = ecad_model::Properties::new();

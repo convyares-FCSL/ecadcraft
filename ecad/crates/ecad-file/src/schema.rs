@@ -16,6 +16,7 @@ use redb::TableDefinition;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::FileError;
 use crate::chain::{self, Hash};
 
 /// `meta`: name → JSON value.
@@ -165,8 +166,8 @@ impl Point {
     ///
     /// # Errors
     /// Not 64 hex digits.
-    pub fn hash(&self) -> Result<Hash, String> {
-        chain::parse_hex(&self.chain).ok_or_else(|| format!("{:?} is not a chain value", self.chain))
+    pub fn hash(&self) -> Result<Hash, FileError> {
+        chain::parse_hex(&self.chain).ok_or_else(|| FileError::ChainValue(self.chain.clone()))
     }
 }
 
@@ -428,9 +429,9 @@ pub fn tx_value(flag: u8, chain: &Hash, body: &[u8]) -> Vec<u8> {
 ///
 /// # Errors
 /// Shorter than its fixed chunk.
-pub fn split_tx_value(v: &[u8]) -> Result<(u8, Hash, &[u8]), String> {
+pub fn split_tx_value(v: &[u8]) -> Result<(u8, Hash, &[u8]), FileError> {
     let (Some(flag), Some(chain), Some(body)) = (v.first(), v.get(1..33), v.get(33..)) else {
-        return Err(format!("a transaction row of {} bytes is too short", v.len()));
+        return Err(FileError::TxRowShort(v.len()));
     };
     let mut c = [0u8; 32];
     c.copy_from_slice(chain);
@@ -441,8 +442,8 @@ pub fn split_tx_value(v: &[u8]) -> Result<(u8, Hash, &[u8]), String> {
 ///
 /// # Errors
 /// A media type longer than 255 bytes.
-pub fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let len = u16::try_from(media.len()).ok().filter(|l| *l <= 255).ok_or("a media type is too long")?;
+pub fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, FileError> {
+    let len = u16::try_from(media.len()).ok().filter(|l| *l <= 255).ok_or(FileError::MediaTooLong)?;
     let mut v = Vec::with_capacity(2 + media.len() + bytes.len());
     v.extend_from_slice(&len.to_be_bytes());
     v.extend_from_slice(media.as_bytes());
@@ -454,14 +455,14 @@ pub fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
 ///
 /// # Errors
 /// A malformed value, or a media type over 255 bytes.
-pub fn split_asset_value(v: &[u8]) -> Result<(String, &[u8]), String> {
-    let len = v.get(..2).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or("an asset row is too short")?;
+pub fn split_asset_value(v: &[u8]) -> Result<(String, &[u8]), FileError> {
+    let len = v.get(..2).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or(FileError::AssetRowShort)?;
     // EEP-0005 read limits: a media type is at most 255 bytes.
     if len > 255 {
-        return Err("an asset's media type is longer than 255 bytes".into());
+        return Err(FileError::AssetMediaLong);
     }
-    let media = v.get(2..2 + len).ok_or("an asset row is too short")?;
-    let media = std::str::from_utf8(media).map_err(|_| "an asset's media type is not UTF-8")?;
+    let media = v.get(2..2 + len).ok_or(FileError::AssetRowShort)?;
+    let media = std::str::from_utf8(media).map_err(|_| FileError::AssetMediaUtf8)?;
     Ok((media.to_string(), v.get(2 + len..).unwrap_or_default()))
 }
 
