@@ -220,3 +220,38 @@ fn a_route_is_well_formed_and_lands_on_what_exists() {
     let e = l.commit(Author::User, "rm", vec![Op::RemoveTerminal { id: a, terminal: term }]).unwrap_err();
     assert!(e.to_string().contains("route"), "{e}");
 }
+
+#[test]
+fn routes_join_the_points_they_land_on_into_one_net() {
+    use ecad_model::{Pt, Route, RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(33);
+    let mut l = Ledger::new(33);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (_, c, _) = page_with_points(&mut l, &mut ids);
+    let net = |l: &Ledger, t: TerminalId| l.document().connectivity().net_of_terminal(t);
+    // The device bridges nothing: only routes join its points.
+    assert_ne!(net(&l, a), net(&l, b));
+    let (r1, r2): (RouteId, RouteId) = (ids.fresh(), ids.fresh());
+    let ab = Route::new(p, vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0)], [RouteEnd::Point(a), RouteEnd::Point(b)]);
+    l.commit(Author::User, "a-b", vec![Op::AddRoute { id: r1, route: ab.clone() }]).unwrap();
+    assert_eq!(net(&l, a), net(&l, b));
+    assert_ne!(net(&l, a), net(&l, c));
+    // C joins by a T onto the middle of A–B.
+    let tee = Route::new(p, vec![Pt::new(5.0, 9.0), Pt::new(5.0, 0.0)], [RouteEnd::Point(c), RouteEnd::On { route: r1, at: Pt::new(5.0, 0.0) }]);
+    l.commit(Author::User, "tee", vec![Op::AddRoute { id: r2, route: tee.clone() }]).unwrap();
+    assert_eq!(net(&l, a), net(&l, c));
+    l.document().check_index().unwrap();
+    // Freeing the T's landing splits C off again.
+    let freed = Route { ends: [RouteEnd::Point(c), RouteEnd::Free], ..tee.clone() };
+    l.commit(Author::User, "lift", vec![Op::ModifyRoute { id: r2, before: tee, after: freed.clone() }]).unwrap();
+    assert_ne!(net(&l, a), net(&l, c));
+    assert_eq!(net(&l, a), net(&l, b));
+    l.document().check_index().unwrap();
+    // Erasing A–B splits A from B.
+    l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r1, route: ab }]).unwrap();
+    assert_ne!(net(&l, a), net(&l, b));
+    l.document().check_index().unwrap();
+    l.undo(Author::User).unwrap();
+    assert_eq!(net(&l, a), net(&l, b));
+    l.document().check_index().unwrap();
+}
