@@ -6,7 +6,7 @@ use cadcraft_engine::geom::Vec2;
 use ecad_app::App;
 use ecad_app::actions::ObjectKind;
 use ecad_app::shell::{Workspace, intent, tool_strip};
-use ecad_model::{ComponentId, PageId, WireId};
+use ecad_model::{DeviceId, PageId, WireId};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -70,7 +70,7 @@ fn pointer(h: &mut H, at: Pos2, button: PointerButton, pressed: bool) {
 
 struct F {
     h: H,
-    k1: ComponentId,
+    k1: DeviceId,
     wire: WireId,
     /// On `-K01`'s A2 lead, away from the wire; on its A1 (the wire's start).
     coil_at: Vec2,
@@ -88,7 +88,7 @@ fn fixture_with(deltas: Option<crate::mouse_tester::Deltas>) -> F {
     let t = h.state_mut();
     t.cad.session.viewport_px = (1280.0, 800.0);
     let k1 = t.cad.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap()["component"].as_str().unwrap().to_string();
-    let k1 = ComponentId(u128::from_str_radix(&k1, 16).unwrap());
+    let k1 = DeviceId(u128::from_str_radix(&k1, 16).unwrap());
     let d = doc(&mut h);
     let page1 = d.page_order[0];
     let pos = |label: &str| {
@@ -111,8 +111,8 @@ fn fixture_with(deltas: Option<crate::mouse_tester::Deltas>) -> F {
     F { h, k1, wire, coil_at, a1, page2 }
 }
 
-fn exists(h: &mut H, k1: ComponentId) -> bool {
-    doc(h).components.contains_key(&k1)
+fn exists(h: &mut H, k1: DeviceId) -> bool {
+    doc(h).devices.contains_key(&k1)
 }
 
 #[test]

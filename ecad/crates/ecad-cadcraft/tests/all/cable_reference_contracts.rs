@@ -323,7 +323,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let keep: Vec<String> = doc
         .representations
         .values()
-        .filter(|x| x.page == r.field && matches!(x.subject, Subject::Component(_)))
+        .filter(|x| x.page == r.field && matches!(x.subject, Subject::Device(_)))
         .flat_map(|x| x.items.iter())
         .map(|i| r.h.handle_of(r.field, *i).hex())
         .collect();
@@ -1080,7 +1080,7 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     let keep: Vec<cadcraft_engine::doc::Handle> = doc
         .representations
         .values()
-        .filter(|x| x.page == r.field && matches!(x.subject, Subject::Component(_)))
+        .filter(|x| x.page == r.field && matches!(x.subject, Subject::Device(_)))
         .flat_map(|x| x.items.iter())
         .map(|i| r.h.handle_of(r.field, *i))
         .collect();

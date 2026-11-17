@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::links::{self, Positions};
-use ecad_model::{ComponentId, Document, ObjectRef, Op, Properties};
+use ecad_model::{DeviceId, Document, ObjectRef, Op, Properties};
 
 use crate::CmdError;
 use crate::strips::TermRow;
@@ -320,7 +320,7 @@ fn is_type_article_project_key(key: &str) -> bool {
 }
 
 /// Every position label of strip `c` in plan order: drawn labels and the offer's positions.
-pub fn positions(doc: &Document, c: ComponentId) -> Vec<String> {
+pub fn positions(doc: &Document, c: DeviceId) -> Vec<String> {
     let mut labels: BTreeSet<String> =
         crate::strips::drawn_terminals(doc, c).into_iter().map(|(t, _, _)| crate::terminal_types::position_label(doc, t)).collect();
     if let Some(o) = crate::strips::offer_of(doc, c) {
@@ -334,7 +334,7 @@ pub fn positions(doc: &Document, c: ComponentId) -> Vec<String> {
 ///
 /// # Errors
 /// Unreadable text, or fewer than 2 positions.
-pub fn link_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub fn link_value(doc: &Document, c: DeviceId, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let p = links::parse(v)?;
     let order = positions(doc, c);
@@ -383,7 +383,7 @@ pub fn drop_items(text: &str, drop: &[String]) -> String {
 ///
 /// # Errors
 /// A placement or link key on a device that is not a strip, and every refusal of the value.
-pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
+pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     let strip = crate::strips::is_strip(doc, c);
     let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
     if key.starts_with(ACC_PREFIX) {
@@ -872,9 +872,9 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
 
 /// The labels a renumber plan `ops` (`RemoveTerminal` + `AddTerminal` of one ID) changes, per
 /// component: old label → new label.
-pub fn relabels(ops: &[Op]) -> BTreeMap<ComponentId, BTreeMap<String, String>> {
-    let mut removed: BTreeMap<ecad_model::TerminalId, (ComponentId, Option<String>)> = BTreeMap::new();
-    let mut maps: BTreeMap<ComponentId, BTreeMap<String, String>> = BTreeMap::new();
+pub fn relabels(ops: &[Op]) -> BTreeMap<DeviceId, BTreeMap<String, String>> {
+    let mut removed: BTreeMap<ecad_model::TerminalId, (DeviceId, Option<String>)> = BTreeMap::new();
+    let mut maps: BTreeMap<DeviceId, BTreeMap<String, String>> = BTreeMap::new();
     for op in ops {
         match op {
             Op::RemoveTerminal { id, terminal } => {
@@ -896,11 +896,11 @@ pub fn relabels(ops: &[Op]) -> BTreeMap<ComponentId, BTreeMap<String, String>> {
 }
 
 /// One strip's part of [`renumber_ops`]: `map` is its relabels (old → new).
-fn renumber_strip(doc: &Document, c: ComponentId, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>) {
+fn renumber_strip(doc: &Document, c: DeviceId, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>) {
     if !crate::strips::is_strip(doc, c) {
         return;
     }
-    let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { return };
+    let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return };
     let tag = crate::devices::tag_words(doc, c);
     let moved = |l: &str| map.get(l).cloned().unwrap_or_else(|| l.to_string());
     // Placement keys: the end state, then the difference.
@@ -969,7 +969,7 @@ fn renumber_strip(doc: &Document, c: ComponentId, map: &BTreeMap<String, String>
     for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {
         let (b, a) = (was.get(k).cloned(), now.get(k).cloned());
         if b != a {
-            out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k.clone(), before: b, after: a });
+            out.push(Op::SetProperty { object: ObjectRef::Device(c), key: k.clone(), before: b, after: a });
         }
     }
     // Links: labels rewritten, re-collapsed in the new plan order.
@@ -1011,7 +1011,7 @@ fn renumber_strip(doc: &Document, c: ComponentId, map: &BTreeMap<String, String>
             let after = parts.join(", ");
             if after != before {
                 lines.push(format!("{tag}: link {before} \u{2192} {after}"));
-                out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
+                out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
             }
             continue;
         };
@@ -1026,7 +1026,7 @@ fn renumber_strip(doc: &Document, c: ComponentId, map: &BTreeMap<String, String>
                 lines.push(format!("{tag}: link {before} removed ({why})"));
                 for k in std::iter::once(key.clone()).chain(FIELDS.iter().map(|f| format!("{key}.{f}"))) {
                     if let Some(b) = props.get(&k).cloned() {
-                        out.push(Op::SetProperty { object: ObjectRef::Component(c), key: k, before: Some(b), after: None });
+                        out.push(Op::SetProperty { object: ObjectRef::Device(c), key: k, before: Some(b), after: None });
                     }
                 }
                 continue;
@@ -1039,7 +1039,7 @@ fn renumber_strip(doc: &Document, c: ComponentId, map: &BTreeMap<String, String>
         let after = crate::terminal_types::link_text(&refs, &new_order, level, point);
         if after != before {
             lines.push(format!("{tag}: link {before} \u{2192} {after}"));
-            out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before), after: Some(after) });
+            out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
         }
     }
 }

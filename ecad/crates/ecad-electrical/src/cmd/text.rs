@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ComponentId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, StyleLayer, StyleRef, Subject, TerminalId, TextHAlign,
-    TextVAlign, WireId,
+    DeviceId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, StyleLayer, StyleRef, Subject, TerminalId, TextHAlign, TextVAlign,
+    WireId,
 };
 
 use crate::defaults::{self, Scope};
@@ -264,7 +264,7 @@ pub fn textstyle_ops(doc: &Document, c: &TextStyleChanges) -> Vec<Op> {
 ///
 /// # Errors
 /// A representation, component or page the project does not have.
-pub fn scope(doc: &Document, rep: Option<RepresentationId>, component: Option<ComponentId>, page: Option<PageId>) -> Result<Scope, CmdError> {
+pub fn scope(doc: &Document, rep: Option<RepresentationId>, component: Option<DeviceId>, page: Option<PageId>) -> Result<Scope, CmdError> {
     if let Some(r) = rep {
         if !doc.representations.contains_key(&r) {
             return Err(CmdError::refused(format!("No representation {}.", r.hex())));
@@ -273,7 +273,7 @@ pub fn scope(doc: &Document, rep: Option<RepresentationId>, component: Option<Co
     }
     let mut at = Scope::project();
     if let Some(c) = component {
-        if !doc.components.contains_key(&c) {
+        if !doc.devices.contains_key(&c) {
             return Err(CmdError::refused(format!("No component {}.", c.hex())));
         }
         at.component = Some(c);
@@ -303,8 +303,8 @@ pub fn default_key(doc: &Document, key: &str) -> Result<(), CmdError> {
 /// The level a `showtext` call writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowLevel {
-    Symbol(RepresentationId, ComponentId),
-    Device(ComponentId),
+    Symbol(RepresentationId, DeviceId),
+    Device(DeviceId),
     Wire(WireId),
     Page(PageId),
     Project,
@@ -327,7 +327,7 @@ impl ShowLevel {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ShowTarget {
     pub representation: Option<RepresentationId>,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub conductor: Option<WireId>,
     pub page: Option<PageId>,
 }
@@ -346,8 +346,8 @@ fn kinds_at(level: ShowLevel) -> &'static [TextKind] {
 pub fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)> {
     let entry = kind.show_entry()?;
     Some(match level {
-        ShowLevel::Symbol(rep, c) => (ObjectRef::Component(c), defaults::symbol_key(entry.key, rep)),
-        ShowLevel::Device(c) => (ObjectRef::Component(c), entry.key.to_string()),
+        ShowLevel::Symbol(rep, c) => (ObjectRef::Device(c), defaults::symbol_key(entry.key, rep)),
+        ShowLevel::Device(c) => (ObjectRef::Device(c), entry.key.to_string()),
         ShowLevel::Wire(c) => (ObjectRef::Wire(c), entry.key.to_string()),
         ShowLevel::Page(p) => (ObjectRef::Page(p), entry.key.to_string()),
         ShowLevel::Project => (ObjectRef::Project, entry.key.to_string()),
@@ -374,16 +374,12 @@ pub fn show_level(doc: &Document, t: &ShowTarget) -> Result<ShowLevel, CmdError>
     if let Some(r) = t.representation {
         let x = doc.representations.get(&r).ok_or_else(|| CmdError::refused(format!("No representation {}.", r.hex())))?;
         return match x.subject {
-            Subject::Component(c) if x.form == Form::Symbol => Ok(ShowLevel::Symbol(r, c)),
+            Subject::Device(c) if x.form == Form::Symbol => Ok(ShowLevel::Symbol(r, c)),
             _ => Err(CmdError::refused(NOT_A_SYMBOL)),
         };
     }
     if let Some(c) = t.component {
-        return doc
-            .components
-            .contains_key(&c)
-            .then_some(ShowLevel::Device(c))
-            .ok_or_else(|| CmdError::refused(format!("No component {}.", c.hex())));
+        return doc.devices.contains_key(&c).then_some(ShowLevel::Device(c)).ok_or_else(|| CmdError::refused(format!("No component {}.", c.hex())));
     }
     if let Some(c) = t.conductor {
         return doc.wires.contains_key(&c).then_some(ShowLevel::Wire(c)).ok_or_else(|| CmdError::refused(format!("No conductor {}.", c.hex())));
@@ -409,7 +405,7 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
     }
     let (object, key) = show_key(level, kind).ok_or(CmdError::refused(BAD_SHOW))?;
     let props = match object {
-        ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
+        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
         ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),
         ObjectRef::Project => Some(&doc.properties),
@@ -463,7 +459,7 @@ pub fn justify(code: Option<&str>) -> Result<Option<(TextHAlign, TextVAlign)>, C
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveTarget {
     /// The symbol's device.
-    pub component: ComponentId,
+    pub component: DeviceId,
     /// The device property its place is stored under.
     pub key: String,
     /// Which text of the symbol it is.
@@ -480,7 +476,7 @@ pub struct MoveTarget {
 pub fn move_target(doc: &Document, rep: RepresentationId, kind: TextKind, terminal: Option<TerminalId>) -> Result<MoveTarget, CmdError> {
     let r = doc.representations.get(&rep).ok_or_else(|| CmdError::refused(format!("No representation {}.", rep.hex())))?;
     let c = match r.subject {
-        Subject::Component(c) if r.form == Form::Symbol => c,
+        Subject::Device(c) if r.form == Form::Symbol => c,
         _ => return Err(CmdError::refused(NOT_A_SYMBOL)),
     };
     let (key, of) = match kind {
@@ -528,12 +524,12 @@ pub fn plan_move(
         }
     };
     let c = t.component;
-    let before = doc.components.get(&c).and_then(|x| x.properties.get(&t.key)).cloned();
+    let before = doc.devices.get(&c).and_then(|x| x.properties.get(&t.key)).cloned();
     let what = match kind {
         TextKind::Tag => format!("tag {}", devices::tag_words(doc, c)),
         _ => "label".to_string(),
     };
     let label = if after.is_some() { format!("Move {what}") } else { format!("Reset {what}") };
-    let op = (before != after).then(|| Op::SetProperty { object: ObjectRef::Component(c), key: t.key.clone(), before, after: after.clone() });
+    let op = (before != after).then(|| Op::SetProperty { object: ObjectRef::Device(c), key: t.key.clone(), before, after: after.clone() });
     Ok(MovePlan { op, label, after })
 }

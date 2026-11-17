@@ -146,7 +146,7 @@ fn canon(d: &Document) -> Vec<String> {
         let mut pts: Vec<String> = r.connection_points.iter().map(|(t, p)| format!("{}@{},{}", label(*t), r6(p.x), r6(p.y))).collect();
         pts.sort();
         let subject = match r.subject {
-            Subject::Component(_) => "component".to_string(),
+            Subject::Device(_) => "component".to_string(),
             Subject::Wire(c) => {
                 let ends: Vec<String> = End::BOTH.iter().map(|e| d.wires.get(&c).and_then(|x| x.end(*e)).map_or("loose".into(), label)).collect();
                 format!("wire ends {ends:?}")
@@ -169,8 +169,8 @@ fn component_by_clicks(h: &mut Harness<'static, App>) {
     click(h, b);
     assert_eq!(h.state().cad.session.selection().len(), 4);
     button(h, tools::TAB);
-    button(h, "Convert to Component");
-    assert_eq!(doc(h).components.len(), 1);
+    button(h, "Convert to Device");
+    assert_eq!(doc(h).devices.len(), 1);
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(2);
     button(h, "Add Connection Point");
@@ -396,7 +396,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
     pointer_to(&mut h, p);
     h.run_steps(3);
     assert!(h.state().hover_lines().is_none(), "the tooltip goes while a command runs");
-    assert!(h.query_by_label("Component (no tag)").is_none());
+    assert!(h.query_by_label("Device (no tag)").is_none());
     h.key_press(Key::Escape);
     h.run_steps(2);
     drop(h);
@@ -605,7 +605,7 @@ fn ac6_reference_screenshots() {
     click(&mut h, a);
     click(&mut h, b);
     button(&mut h, tools::TAB);
-    button(&mut h, "Convert to Component");
+    button(&mut h, "Convert to Device");
     button(&mut h, "Add Connection Point");
     type_enter(&mut h, "40,10");
     type_enter(&mut h, "0,10");

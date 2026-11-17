@@ -32,8 +32,8 @@ use std::collections::BTreeMap;
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
 use ecad_model::{
-    Component, ComponentId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Primitive, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
+    DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Primitive, Pt, Representation,
+    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -79,8 +79,8 @@ pub fn continuation_starter() -> Option<&'static Starter> {
 }
 
 /// What a tagless component is (`junction`, `continuation`), from its `kind` property.
-pub fn kind_of(doc: &Document, c: ComponentId) -> Option<&str> {
-    doc.components.get(&c)?.properties.get(KIND).map(String::as_str)
+pub fn kind_of(doc: &Document, c: DeviceId) -> Option<&str> {
+    doc.devices.get(&c)?.properties.get(KIND).map(String::as_str)
 }
 
 /// A continuation name as typed, checked: trimmed, 1-16 letters, digits or `+ - / . _`.
@@ -365,12 +365,12 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
 /// The text beside a continuation symbol (design 022 §3.2): its name; `None` when `c` is not a
 /// continuation. Its other ends' places are reference parts since brief 049
 /// ([`crate::continuations`]).
-pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
+pub fn continuation_texts(doc: &Document, c: DeviceId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
     if kind_of(doc, c) != Some(CONTINUATION) {
         return None;
     }
     let mut out = Vec::new();
-    let name = doc.components.get(&c)?.properties.get(NAME).cloned().unwrap_or_default();
+    let name = doc.devices.get(&c)?.properties.get(NAME).cloned().unwrap_or_default();
     let at = pl.apply(Pt::new(2.5, -4.0));
     if !at.is_finite() {
         return Some(out);
@@ -395,7 +395,7 @@ pub fn continuation_texts(doc: &Document, c: ComponentId, rep: RepresentationId,
 #[derive(Debug, Clone)]
 pub struct Tagless {
     pub ops: Vec<Op>,
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub terminal: TerminalId,
     pub item: ItemId,
     pub representation: RepresentationId,
@@ -444,15 +444,15 @@ pub fn plan_tagless(
             d
         }
     };
-    let (component, terminal, item, representation): (ComponentId, TerminalId, ItemId, RepresentationId) =
+    let (component, terminal, item, representation): (DeviceId, TerminalId, ItemId, RepresentationId) =
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateComponent { id: component, component: Component { properties: props, definition: Some(definition) } });
+    ops.push(Op::CreateDevice { id: component, device: Device { properties: props, definition: Some(definition), device_type: s.device_type() } });
     ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()) } });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,
         rep: Representation {
-            subject: Subject::Component(component),
+            subject: Subject::Device(component),
             page,
             form: Form::Symbol,
             role: s.key.to_string(),
@@ -551,7 +551,7 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
     }
     let (item_id, item, v) = route_vertices(doc, c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
     for (_, r) in doc.representations_on(page) {
-        let Subject::Component(j) = r.subject else { continue };
+        let Subject::Device(j) = r.subject else { continue };
         if kind_of(doc, j) != Some(JUNCTION) {
             continue;
         }
@@ -616,7 +616,7 @@ pub fn point_words(doc: &Document, t: TerminalId) -> String {
     match kind_of(doc, c) {
         Some(JUNCTION) => return "junction".into(),
         Some(CONTINUATION) => {
-            let name = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
+            let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
             return format!("\u{2192}{name}");
         }
         _ => {}
@@ -722,7 +722,7 @@ enum Meets {
     Merge { conductor: WireId, end: End, route: (ItemId, Item, Vec<Pt>) },
     /// A new junction there: its ops, its terminal and component, how many other wire ends it
     /// joins, the wire it splits (if any) and the conductors whose ends it attaches.
-    Junction { ops: Vec<Op>, terminal: TerminalId, component: ComponentId, others: usize, split: Option<WireId>, touched: Vec<WireId> },
+    Junction { ops: Vec<Op>, terminal: TerminalId, component: DeviceId, others: usize, split: Option<WireId>, touched: Vec<WireId> },
 }
 
 /// A planned `wire` (design 032 §2.3): its ops and what the result reports.
@@ -743,9 +743,9 @@ pub struct WirePlan {
     /// Ends attached to a connection point that was already there.
     pub attached: Vec<(End, TerminalId)>,
     /// Junctions placed at the ends: (end, junction, point).
-    pub junctions: Vec<(End, ComponentId, Pt)>,
+    pub junctions: Vec<(End, DeviceId, Pt)>,
     /// Reverse T: (point, junction, the new wire piece that starts there).
-    pub splits: Vec<(Pt, ComponentId, WireId)>,
+    pub splits: Vec<(Pt, DeviceId, WireId)>,
 }
 
 /// The other end of a wire.

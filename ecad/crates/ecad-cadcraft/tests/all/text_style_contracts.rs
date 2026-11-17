@@ -5,7 +5,7 @@ use crate::common::{H, id};
 
 use cadcraft_engine::doc::{Entity, EntityKind, Lineweight};
 use ecad_cadcraft::text_style::{self, STYLE_BOLD, STYLE_REGULAR, TextKind};
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
 const SEED: u64 = 31;
@@ -30,7 +30,7 @@ fn a_new_project_draws_tags_bold_and_labels_small() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c: ComponentId = id(&r, "component");
+    let c: DeviceId = id(&r, "component");
     let tag = h.p(|p| ecad_cadcraft::devices::tag_words(p.ledger.document(), c));
     let fonts = h.p(|p| text_style::Fonts::resolve(p.ledger.document()));
     let bold_lw = fonts.bold_lineweight.map_or(Lineweight::ByLayer, Lineweight::Mm100);
@@ -77,7 +77,7 @@ fn textstyle_redraws_the_open_page_in_one_transaction() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c: ComponentId = id(&r, "component");
+    let c: DeviceId = id(&r, "component");
     let tag = h.p(|p| ecad_cadcraft::devices::tag_words(p.ledger.document(), c));
     let head = h.head();
     h.run("textstyle", json!({"kind": "tag", "height": 3, "weight": "regular"})).unwrap();
@@ -137,7 +137,7 @@ fn a_kind_may_have_its_own_font() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c: ComponentId = id(&r, "component");
+    let c: DeviceId = id(&r, "component");
     let tag = h.p(|p| ecad_cadcraft::devices::tag_words(p.ledger.document(), c));
     let head = h.head();
     h.run("textstyle", json!({"kind": "tag", "font": "Kind Font 031"})).unwrap();

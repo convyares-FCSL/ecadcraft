@@ -261,7 +261,7 @@ impl App {
             out.push(String::new());
             out.push(format!(
                 "Counts: {} components, {} connection points, {} conductors, {} items, {} representations, {} definitions.",
-                doc.components.len(),
+                doc.devices.len(),
                 doc.terminals.len(),
                 doc.wires.len(),
                 doc.items.len(),

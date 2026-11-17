@@ -48,7 +48,7 @@ pub fn touches(op: &Op) -> bool {
         Op::SetProperty { object: ObjectRef::Project, key, .. } => is_choice_key(key) || is_old_key(key),
         Op::SetProperty { key, .. } => is_choice_key(key),
         // A deleted object takes its choices with it.
-        Op::DeleteComponent { component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
+        Op::DeleteDevice { device: component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
         Op::DeleteWire { conductor, .. } => conductor.display.keys().any(|k| is_choice_key(k)),
         Op::RemovePage { page, .. } => page.properties.keys().any(|k| is_choice_key(k)),
         // Brief 054: the page type and folder rows.
@@ -192,9 +192,9 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             continue;
         }
         let (object, page, whose) = match o {
-            ObjectRef::Component(c) => {
+            ObjectRef::Device(c) => {
                 let page = crate::reps::goto_place_in(&mut places, c).map(|(p, _)| p);
-                (Object::Component(c), page, crate::devices::tag_words(doc, c))
+                (Object::Device(c), page, crate::devices::tag_words(doc, c))
             }
             ObjectRef::Wire(c) => {
                 let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);

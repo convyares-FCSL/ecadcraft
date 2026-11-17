@@ -13,7 +13,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use ecad_cadcraft::{Mapped, ProjectHandle};
 use ecad_model::derive::terminal_positions;
-use ecad_model::{ComponentId, Document, PageId, Subject};
+use ecad_model::{DeviceId, Document, PageId, Subject};
 
 fn page_items(doc: &Document, page: PageId) -> BTreeMap<String, String> {
     doc.items.iter().filter(|(_, it)| it.page == page).map(|(id, it)| (format!("{id:?}"), format!("{:?}", it.kind))).collect()
@@ -23,7 +23,7 @@ fn ends(doc: &Document) -> BTreeMap<String, String> {
     doc.wires.iter().map(|(id, c)| (format!("{id:?}"), format!("{:?}", c.ends))).collect()
 }
 
-fn chosen_first(picks: &[(Handle, ComponentId, [f64; 2], usize)]) -> ComponentId {
+fn chosen_first(picks: &[(Handle, DeviceId, [f64; 2], usize)]) -> DeviceId {
     picks[0].1
 }
 
@@ -72,11 +72,11 @@ fn move_components_with_wires_on_the_kept_small_project() {
             let page = *doc.page_order.first().unwrap();
             let map = &p.pages[&page].map;
             let pos = terminal_positions(doc, page);
-            let mut picks: Vec<(Handle, ComponentId, [f64; 2], usize)> = Vec::new();
+            let mut picks: Vec<(Handle, DeviceId, [f64; 2], usize)> = Vec::new();
             for e in pg.entities_of(p, page) {
                 let Some(Mapped::Item(item)) = map.get(e.handle) else { continue };
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
-                let Subject::Component(c) = r.subject else { continue };
+                let Subject::Device(c) = r.subject else { continue };
                 if r.items.first() != Some(&item) {
                     continue;
                 }

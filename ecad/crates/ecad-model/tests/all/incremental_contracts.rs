@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Author, Cable, CableMember, Color, Component, Definition, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
+    Author, Cable, CableMember, Color, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
     LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
     StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched, Wire,
 };
@@ -72,8 +72,8 @@ pub(crate) struct Base {
     layer_v: Layer,
     def: ecad_model::DefinitionId,
     def_v: Definition,
-    comp: ecad_model::ComponentId,
-    comp_v: Component,
+    comp: ecad_model::DeviceId,
+    comp_v: Device,
     pub(crate) term: ecad_model::TerminalId,
     pub(crate) term_v: Terminal,
     sym: ecad_model::ItemId,
@@ -109,7 +109,7 @@ pub(crate) fn base() -> Base {
         ..Default::default()
     };
     let comp = ids.fresh();
-    let mut comp_v = Component { definition: Some(def), ..Component::default() };
+    let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("tag".into(), "K1".into());
     let term = ids.fresh();
     let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
@@ -119,7 +119,7 @@ pub(crate) fn base() -> Base {
     let item_v = line(page, layer, 5.0);
     let rep_sym = ids.fresh();
     let rep_sym_v = Representation {
-        subject: Subject::Component(comp),
+        subject: Subject::Device(comp),
         page,
         form: Form::Symbol,
         role: "main".into(),
@@ -150,7 +150,7 @@ pub(crate) fn base() -> Base {
                 Op::AddPage { id: page, page: page_v.clone(), index: 0 },
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
-                Op::CreateComponent { id: comp, component: comp_v.clone() },
+                Op::CreateDevice { id: comp, device: comp_v.clone() },
                 Op::AddTerminal { id: term, terminal: term_v.clone() },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
@@ -219,8 +219,13 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: moved },
         Op::RemoveItem { id: b.item, item: b.item_v.clone() },
-        Op::CreateComponent { id: b.ids.fresh(), component: Component::default() },
-        Op::DeleteComponent { id: b.comp, component: b.comp_v.clone() },
+        Op::CreateDevice { id: b.ids.fresh(), device: Device::default() },
+        Op::DeleteDevice { id: b.comp, device: b.comp_v.clone() },
+        Op::ModifyDevice {
+            id: b.comp,
+            before: b.comp_v.clone(),
+            after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
+        },
         Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { component: b.comp, label: None, key: None } },
         Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
@@ -234,7 +239,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: Some("2".into()) } },
         Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember { conductor: b.wire, core: None } },
-        Op::SetProperty { object: ObjectRef::Component(b.comp), key: "tag".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: b.ids.fresh(), definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
         Op::SetProjectSettings {
@@ -243,7 +248,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         },
         Op::NameVersion { name: "w".into(), at: 2, description: None },
         Op::UnnameVersion { name: "v".into(), at: 1, description: None },
-        Op::SetComponentDefinition { id: b.comp, before: Some(b.def), after: None },
+        Op::SetDeviceDefinition { id: b.comp, before: Some(b.def), after: None },
         Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder) }, index: 1 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
         Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
@@ -275,8 +280,10 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::AddItem { id: b.item, item: b.item_v.clone() },
         Op::ModifyItem { id: b.item, before: line(b.page, b.layer, 99.0), after: b.item_v.clone() },
         Op::RemoveItem { id: missing_item, item: b.item_v.clone() },
-        Op::CreateComponent { id: b.comp, component: Component::default() },
-        Op::DeleteComponent { id: b.comp, component: Component::default() },
+        Op::CreateDevice { id: b.comp, device: Device::default() },
+        Op::DeleteDevice { id: b.comp, device: Device::default() },
+        Op::ModifyDevice { id: b.comp, before: Device::default(), after: b.comp_v.clone() },
+        Op::ModifyDevice { id: missing_comp, before: Device::default(), after: Device::default() },
         Op::AddTerminal { id: b.term, terminal: b.term_v.clone() },
         Op::RemoveTerminal { id: b.ids.fresh(), terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
@@ -291,8 +298,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::DeleteCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 5, member: CableMember { conductor: b.wire2, core: None } },
         Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember { conductor: b.wire2, core: None } },
-        Op::SetProperty { object: ObjectRef::Component(b.comp), key: "tag".into(), before: None, after: None },
-        Op::SetProperty { object: ObjectRef::Component(missing_comp), key: "tag".into(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "tag".into(), before: None, after: None },
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
         Op::SetProjectSettings {
@@ -301,8 +308,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         },
         Op::NameVersion { name: "v".into(), at: 1, description: None },
         Op::UnnameVersion { name: "v".into(), at: 2, description: None },
-        Op::SetComponentDefinition { id: b.comp, before: None, after: Some(b.def) },
-        Op::SetComponentDefinition { id: missing_comp, before: None, after: None },
+        Op::SetDeviceDefinition { id: b.comp, before: None, after: Some(b.def) },
+        Op::SetDeviceDefinition { id: missing_comp, before: None, after: None },
         Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
         Op::AddFolder { id: b.ids.fresh(), folder: b.folder_v.clone(), index: 5 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 1 },
@@ -409,7 +416,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let term = b.ids.fresh();
     let wire = b.ids.fresh();
     let ops = vec![
-        Op::CreateComponent { id: comp, component: Component::default() },
+        Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
         Op::CreateWire { id: wire, conductor: Wire::default() },
         Op::AttachEnd { conductor: wire, end: End::A, before: None, after: Some(term) },
@@ -465,7 +472,7 @@ fn queries_answer_from_the_index_as_a_scan_would() {
     assert!(doc.cables_of(b.wire2).is_empty());
     assert_eq!(doc.representation_of_item(b.sym).map(|(id, _)| id), Some(b.rep_sym));
     assert_eq!(doc.representation_of_item(b.item).map(|(id, _)| id), Some(b.rep_wire));
-    assert_eq!(doc.representations_of(Subject::Component(b.comp)).map(|(id, _)| id).collect::<Vec<_>>(), vec![b.rep_sym]);
+    assert_eq!(doc.representations_of(Subject::Device(b.comp)).map(|(id, _)| id).collect::<Vec<_>>(), vec![b.rep_sym]);
     // A deserialised document rebuilds its index.
     let back: Document = serde_json::from_slice(&bytes(doc)).unwrap();
     back.check_index().unwrap();
@@ -543,7 +550,7 @@ struct Pools {
     pages: Vec<PageId>,
     layers: Vec<LayerId>,
     items: Vec<ecad_model::ItemId>,
-    comps: Vec<ecad_model::ComponentId>,
+    comps: Vec<ecad_model::DeviceId>,
     terms: Vec<ecad_model::TerminalId>,
     reps: Vec<ecad_model::RepresentationId>,
     conds: Vec<ecad_model::WireId>,
@@ -579,7 +586,7 @@ impl Gen {
     fn def(&mut self) -> ecad_model::DefinitionId {
         self.rng.pick(&self.pools.defs).unwrap_or_else(|| fresh_in!(self, defs))
     }
-    fn comp(&mut self) -> ecad_model::ComponentId {
+    fn comp(&mut self) -> ecad_model::DeviceId {
         self.rng.pick(&self.pools.comps).unwrap_or_else(|| fresh_in!(self, comps))
     }
     fn term(&mut self) -> Option<ecad_model::TerminalId> {
@@ -607,7 +614,7 @@ impl Gen {
     fn rep(&mut self, doc: &Document) -> Representation {
         // Half the time, aim for a valid symbol representation of a component with a definition.
         if self.rng.chance(50)
-            && let Some((cid, c)) = doc.components.iter().nth(self.rng.below(doc.components.len()))
+            && let Some((cid, c)) = doc.devices.iter().nth(self.rng.below(doc.devices.len()))
             && let Some(def) = c.definition
             && let Some((iid, it)) = doc
                 .items
@@ -615,7 +622,7 @@ impl Gen {
                 .find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == def) && doc.representation_of_item(**i).is_none())
         {
             return Representation {
-                subject: Subject::Component(*cid),
+                subject: Subject::Device(*cid),
                 page: it.page,
                 form: Form::Symbol,
                 role: "main".into(),
@@ -626,7 +633,7 @@ impl Gen {
         // Sometimes a symbol of any definition with connection points of the component's own
         // terminals (I14 as relaxed for brief 018: valid with any embedded definition).
         if self.rng.chance(30)
-            && let Some((cid, _)) = doc.components.iter().nth(self.rng.below(doc.components.len()))
+            && let Some((cid, _)) = doc.devices.iter().nth(self.rng.below(doc.devices.len()))
             && let Some(t) = doc.terminals_of(*cid).map(|(t, _)| t).next()
             && let Some((iid, it)) =
                 doc.items.iter().find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
@@ -634,7 +641,7 @@ impl Gen {
             let mut connection_points = std::collections::BTreeMap::new();
             connection_points.insert(t, Pt::new(0.0, 10.0));
             return Representation {
-                subject: Subject::Component(*cid),
+                subject: Subject::Device(*cid),
                 page: it.page,
                 form: Form::Symbol,
                 role: "no".into(),
@@ -643,7 +650,7 @@ impl Gen {
             };
         }
         let subject = match self.rng.below(3) {
-            0 => Subject::Component(self.comp()),
+            0 => Subject::Device(self.comp()),
             1 => Subject::Wire(self.cond()),
             _ => Subject::Cable(self.rng.pick(&self.pools.cables).unwrap_or_else(|| fresh_in!(self, cables))),
         };
@@ -665,7 +672,7 @@ impl Gen {
             }
         }
         let mut connection_points = std::collections::BTreeMap::new();
-        if let (Subject::Component(c), true) = (subject, self.rng.chance(50)) {
+        if let (Subject::Device(c), true) = (subject, self.rng.chance(50)) {
             let t = if self.rng.chance(80) { doc.terminals_of(c).map(|(t, _)| t).next() } else { self.term() };
             if let Some(t) = t {
                 let y = if self.rng.chance(5) { f64::INFINITY } else { 1.0 };
@@ -744,14 +751,14 @@ impl Gen {
             },
             13..=14 => {
                 let definition = if self.rng.chance(50) { None } else { Some(self.rng.pick_key(&doc.definitions).unwrap_or_else(|| self.def())) };
-                Op::CreateComponent { id: fresh_in!(self, comps), component: Component { definition, ..Component::default() } }
+                Op::CreateDevice { id: fresh_in!(self, comps), device: Device { definition, ..Device::default() } }
             }
-            15 => match self.rng.pick_key(&doc.components) {
-                Some(id) => Op::DeleteComponent { id, component: doc.components.get(&id).cloned().unwrap_or_default() },
-                None => Op::CreateComponent { id: fresh_in!(self, comps), component: Component::default() },
+            15 => match self.rng.pick_key(&doc.devices) {
+                Some(id) => Op::DeleteDevice { id, device: doc.devices.get(&id).cloned().unwrap_or_default() },
+                None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
             },
             16..=17 => {
-                let component = if self.rng.chance(85) { self.rng.pick_key(&doc.components).unwrap_or_else(|| self.comp()) } else { self.comp() };
+                let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
                 Op::AddTerminal { id: fresh_in!(self, terms), terminal: Terminal { component, label: None, key: None } }
             }
             18 => match self.rng.pick_key(&doc.terminals) {
@@ -828,9 +835,9 @@ impl Gen {
                     None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
                 }
             }
-            35 => match self.rng.pick_key(&doc.components) {
+            35 => match self.rng.pick_key(&doc.devices) {
                 Some(id) => {
-                    let current = doc.components.get(&id).and_then(|c| c.properties.get("tag").cloned());
+                    let current = doc.devices.get(&id).and_then(|c| c.properties.get("tag").cloned());
                     let before = if spoil { Some("spoilt".into()) } else { current };
                     // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
                     let after = match self.rng.below(3) {
@@ -838,9 +845,9 @@ impl Gen {
                         1 => Some(format!("K{}", self.rng.below(9))),
                         _ => Some(format!("-K0{}", self.rng.below(9))),
                     };
-                    Op::SetProperty { object: ObjectRef::Component(id), key: "tag".into(), before, after }
+                    Op::SetProperty { object: ObjectRef::Device(id), key: "tag".into(), before, after }
                 }
-                None => Op::CreateComponent { id: fresh_in!(self, comps), component: Component::default() },
+                None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
             },
             36..=37 => Op::EmbedDefinition { id: fresh_in!(self, defs), definition: self.definition() },
             38 => match self.rng.pick_key(&doc.definitions) {
@@ -986,7 +993,7 @@ fn a_refused_transaction_holding_nan_rolls_back() {
     let ops = vec![
         Op::AddItem { id: b.ids.fresh(), item: nan },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: moved },
-        Op::SetProperty { object: ObjectRef::Component(b.comp), key: "tag".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: None },
     ];
     let r = b.ledger.commit(Author::User, "nan", ops);
     assert!(matches!(r, Err(ModelError::Invariant(_))), "{r:?}");
@@ -1057,7 +1064,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
         Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: None } },
-        Op::SetProperty { object: ObjectRef::Component(b.comp), key: "tag".into(), before: Some("K1".into()), after: Some("K2".into()) },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: Some("K2".into()) },
         Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
     ];
     let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];

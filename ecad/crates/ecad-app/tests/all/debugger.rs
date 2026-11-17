@@ -146,7 +146,7 @@ is not counted as a change until the project has a file."
     t.debugger.follow_selection(0);
     let focus = t.debugger.focus().to_vec();
     assert!(matches!(focus[0], ObjectId::Item(_)));
-    assert!(focus.iter().any(|i| matches!(i, ObjectId::Component(_))));
+    assert!(focus.iter().any(|i| matches!(i, ObjectId::Device(_))));
     assert_eq!(focus.iter().filter(|i| matches!(i, ObjectId::Terminal(_))).count(), 2, "the coil's terminals");
     assert_eq!(t.debugger.touching(), vec![2]);
     t.debugger.select_tx(Some(2));
@@ -154,7 +154,7 @@ is not counted as a change until the project has a file."
     let place = &t.debugger.log()[1];
     assert_eq!(place.label, "Place symbol");
     let names: Vec<&str> = place.ops.iter().map(ecad_model::Op::name).collect();
-    assert!(names.contains(&"CreateComponent") && names.contains(&"LinkRepresentation"), "{names:?}");
+    assert!(names.contains(&"CreateDevice") && names.contains(&"LinkRepresentation"), "{names:?}");
     assert_eq!(t.debugger.snapshot().unwrap().record_state(2), RecordState::Pending);
     t.debugger.read_row();
     assert!(t.debugger.record().unwrap().as_ref().unwrap_err().contains("no file yet"));

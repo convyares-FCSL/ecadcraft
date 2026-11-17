@@ -1,7 +1,7 @@
 //! The drawing-pack re-run's bugs (2026-11-14), one test or more per bug, each from a generic
 //! repro: project symbols, tags, contact tables, references and PLC card drawing.
 
-use ecad_model::{ComponentId, Document, PageId};
+use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -21,12 +21,12 @@ fn earth(h: &mut H) {
     .unwrap();
 }
 
-fn placed(h: &mut H, params: Value) -> ComponentId {
+fn placed(h: &mut H, params: Value) -> DeviceId {
     id(&h.run("place", params).unwrap(), "component")
 }
 
-fn tag(d: &Document, c: ComponentId) -> String {
-    d.components.get(&c).and_then(|x| x.properties.get("tag").cloned()).unwrap_or_default()
+fn tag(d: &Document, c: DeviceId) -> String {
+    d.devices.get(&c).and_then(|x| x.properties.get("tag").cloned()).unwrap_or_default()
 }
 
 /// Every text value derived on `page`, shown or not.
@@ -51,7 +51,7 @@ fn bug_1_an_unlabelled_point_never_prints_its_id_after_a_merge() {
     let ta = tag(&h.doc(), a);
     h.run("setprop", json!({"component": b.hex(), "key": "tag", "value": ta, "merge": true})).unwrap();
     let d = h.doc();
-    assert!(!d.components.contains_key(&b), "the second earth merged into the first");
+    assert!(!d.devices.contains_key(&b), "the second earth merged into the first");
     for t in page_texts(&mut h, page) {
         assert!(!is_hex_id(&t), "a text prints a 32-digit ID: {t}");
     }
@@ -156,7 +156,7 @@ fn table_boxes(h: &mut H, page: PageId) -> Vec<(ecad_model::Pt, ecad_model::Pt)>
 fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
     let mut h = H::new(9104);
     let page = h.first_page();
-    let coils: Vec<ComponentId> = [100.0, 115.0, 130.0, 145.0].iter().map(|x| placed(&mut h, json!({"symbol": "coil", "at": [x, 70.0]}))).collect();
+    let coils: Vec<DeviceId> = [100.0, 115.0, 130.0, 145.0].iter().map(|x| placed(&mut h, json!({"symbol": "coil", "at": [x, 70.0]}))).collect();
     h.run("newpage", json!({"title": "Contacts"})).unwrap();
     for (i, k) in coils.iter().enumerate() {
         let x = 60.0 + 30.0 * i as f64;
@@ -226,7 +226,7 @@ fn wires(h: &mut H, xs: &[f64]) {
     }
 }
 
-fn card_of(v: &Value) -> ComponentId {
+fn card_of(v: &Value) -> DeviceId {
     id(v, "card")
 }
 
@@ -295,7 +295,7 @@ fn bug_7_raising_a_cards_channel_count_addresses_the_new_channels() {
 }
 
 /// The key of the card's point that wire `x` (vertical, through y 200) is attached to.
-fn landed_on(h: &mut H, card: ComponentId, page: PageId, x: f64) -> Vec<String> {
+fn landed_on(h: &mut H, card: DeviceId, page: PageId, x: f64) -> Vec<String> {
     let d = h.doc();
     d.terminals_of(card)
         .filter(|(t, _)| !d.ends_at(*t).is_empty())

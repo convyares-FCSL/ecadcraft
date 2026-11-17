@@ -197,8 +197,8 @@ the brief's precondition fails (§9, step 0).
 | `AddPage` / `RemovePage` | `Page` (after / before). **A `RemovePage` and an `AddPage` of one id in one transaction fold into one `Page` with both sides**: a rename keeps the index, a move changes it. This replaces the pair detection in `frame::touches` and `front_after_history`'s callers. |
 | `AddLayer` / `RemoveLayer` | `Layer` |
 | `AddItem` / `ModifyItem` / `RemoveItem` | `Item` |
-| `CreateComponent` / `DeleteComponent` | `Component` |
-| `SetComponentDefinition` | `ComponentDefinition` |
+| `CreateDevice` / `DeleteDevice` / `ModifyDevice` | `Device` (design 072: renamed from `Component`; a type change is a `ModifyDevice`) |
+| `SetDeviceDefinition` | `DeviceDefinition` |
 | `AddTerminal` / `RemoveTerminal` | `Terminal`. **A remove and an add of one id fold** (brief 028's relabel). |
 | `LinkRepresentation` / `ModifyRepresentation` / `UnlinkRepresentation` | `Rep` |
 | `CreateConductor` / `DeleteConductor` | `Conductor` |

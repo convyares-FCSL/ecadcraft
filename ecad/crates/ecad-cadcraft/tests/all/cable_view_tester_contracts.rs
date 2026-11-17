@@ -1135,7 +1135,7 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
         eprintln!("setvar clayer ECAD-CABLES refused: {r:?}");
     }
     g.h.check();
-    // ECAD picks on a fan line: Disconnect, Add Connection Point, Convert to Component.
+    // ECAD picks on a fan line: Disconnect, Add Connection Point, Convert to Device.
     for cmd in ["disconnect", "connect"] {
         g.h.s.start(cmd).unwrap();
         let p0 = prompt(&g.h);

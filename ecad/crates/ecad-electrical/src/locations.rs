@@ -32,7 +32,7 @@ use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
 use ecad_model::connectivity::KIND;
 use ecad_model::{
-    Color, Component, ComponentId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Op, PageId, Primitive, Pt, Representation,
+    Color, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Op, PageId, Primitive, Pt, Representation,
     RepresentationId, Style, Subject,
 };
 
@@ -62,7 +62,7 @@ pub const NOT_CLOSED: &str = "Pick a closed polyline (an open one can be closed 
 /// One location box on a page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocBox {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub rep: RepresentationId,
     pub item: ItemId,
     pub page: PageId,
@@ -81,28 +81,28 @@ pub struct LocBox {
 }
 
 /// Whether component `c` is a location box.
-pub fn is_box(doc: &Document, c: ComponentId) -> bool {
-    doc.components.get(&c).is_some_and(is_box_component)
+pub fn is_box(doc: &Document, c: DeviceId) -> bool {
+    doc.devices.get(&c).is_some_and(is_box_component)
 }
 
 /// Whether `c` is a location box component.
-pub fn is_box_component(c: &Component) -> bool {
+pub fn is_box_component(c: &Device) -> bool {
     c.properties.get(KIND).is_some_and(|k| k == KIND_VALUE)
 }
 
 /// A device in the sense of locations and the BOM (design 024 §6.1): a component with a tag and
 /// no `kind`.
-pub fn is_device(doc: &Document, c: ComponentId) -> bool {
-    doc.components.get(&c).is_some_and(|x| x.properties.contains_key(ecad_model::tag::TAG_KEY) && !x.properties.contains_key(KIND))
+pub fn is_device(doc: &Document, c: DeviceId) -> bool {
+    doc.devices.get(&c).is_some_and(|x| x.properties.contains_key(ecad_model::tag::TAG_KEY) && !x.properties.contains_key(KIND))
 }
 
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
 pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> Option<LocBox> {
-    let Subject::Component(c) = r.subject else { return None };
+    let Subject::Device(c) = r.subject else { return None };
     if r.form != Form::Drawn || r.role != ROLE {
         return None;
     }
-    let comp = doc.components.get(&c).filter(|x| is_box_component(x))?;
+    let comp = doc.devices.get(&c).filter(|x| is_box_component(x))?;
     let item = *r.items.first()?;
     let vertices = match &doc.items.get(&item)?.kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) => vertices.clone(),
@@ -282,7 +282,7 @@ pub enum Source {
     /// The device's override for a type of its symbols (`location.<type>`).
     Override,
     /// A location box on a page.
-    Box { component: ComponentId, page: PageId },
+    Box { component: DeviceId, page: PageId },
     /// A page's `location`.
     Page(PageId),
     /// The project's `location`.
@@ -412,10 +412,10 @@ pub fn box_holding(doc: &Document, r: &Representation, cache: &mut BoxCache) -> 
 
 /// The code of the one context of aspect `a` all of device `c`'s symbols share, if they share
 /// one that has a value (the Checks row's **Use it**, design 052 §6).
-pub fn shared_context(doc: &Document, c: ComponentId, a: Aspect) -> Option<String> {
+pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> {
     let mut cache = BoxCache::default();
     let mut shared: Option<Located> = None;
-    for (_, r) in doc.representations_of(Subject::Component(c)) {
+    for (_, r) in doc.representations_of(Subject::Device(c)) {
         let x = rep_context_in(doc, a, r, &mut cache);
         match &shared {
             None => shared = Some(x),
@@ -427,8 +427,8 @@ pub fn shared_context(doc: &Document, c: ComponentId, a: Aspect) -> Option<Strin
 }
 
 /// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own property, else none.
-pub fn resolve_in(doc: &Document, c: ComponentId, a: Aspect) -> Located {
-    match doc.components.get(&c).and_then(|x| x.properties.get(a.property())) {
+pub fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
+    match doc.devices.get(&c).and_then(|x| x.properties.get(a.property())) {
         Some(k) => Located::of(doc, a, k, Source::Device),
         None => Located::none(),
     }
@@ -436,17 +436,17 @@ pub fn resolve_in(doc: &Document, c: ComponentId, a: Aspect) -> Located {
 
 /// Device `c`'s location: its stored `location`, else none (no inheritance, FP2). `cache` is not
 /// read; it stays for callers that also read contexts.
-pub fn resolve_with(doc: &Document, c: ComponentId, _cache: &mut BoxCache) -> Located {
+pub fn resolve_with(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Located {
     resolve_in(doc, c, Aspect::Location)
 }
 
 /// Device `c`'s location.
-pub fn resolve(doc: &Document, c: ComponentId) -> Located {
+pub fn resolve(doc: &Document, c: DeviceId) -> Located {
     resolve_in(doc, c, Aspect::Location)
 }
 
 /// Device `c`'s function.
-pub fn resolve_function(doc: &Document, c: ComponentId) -> Located {
+pub fn resolve_function(doc: &Document, c: DeviceId) -> Located {
     resolve_in(doc, c, Aspect::Function)
 }
 
@@ -470,11 +470,11 @@ pub fn override_type_ok(t: &str) -> bool {
 
 /// Representation `r`'s location (design 052 §5.2), first match wins: a strip's own (a strip has
 /// no overrides); the device's override for `r`'s type; the device's; none.
-pub fn rep_location(doc: &Document, c: ComponentId, r: &Representation) -> Located {
+pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located {
     if crate::strips::is_strip(doc, c) {
         return resolve(doc, c);
     }
-    let props = doc.components.get(&c).map(|x| &x.properties);
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     if let Some(k) = override_key(doc, r).and_then(|key| props.and_then(|p| p.get(&key))) {
         return Located::of(doc, Aspect::Location, k, Source::Override);
     }
@@ -483,9 +483,9 @@ pub fn rep_location(doc: &Document, c: ComponentId, r: &Representation) -> Locat
 
 /// The location of half `side` of connector `c` (design 052 §5.2): `location.socket` /
 /// `location.plug`, else the connector's.
-pub fn half_location(doc: &Document, c: ComponentId, side: crate::symbols::Side) -> Located {
+pub fn half_location(doc: &Document, c: DeviceId, side: crate::symbols::Side) -> Located {
     let key = format!("{LOCATION_KEY}.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
-    match doc.components.get(&c).and_then(|x| x.properties.get(&key)) {
+    match doc.devices.get(&c).and_then(|x| x.properties.get(&key)) {
         Some(k) => Located::of(doc, Aspect::Location, k, Source::Override),
         None => resolve(doc, c),
     }
@@ -494,7 +494,7 @@ pub fn half_location(doc: &Document, c: ComponentId, side: crate::symbols::Side)
 /// The tag a symbol representation `r` of device `c` shows (design 024 §3.3, design 052 §5.8):
 /// the tag after the device's function and its representation's location, each where the
 /// symbol's context for that aspect differs (`=F1+CP1-K01`). Reads `r`'s page only.
-pub fn shown_tag(doc: &Document, c: ComponentId, r: &Representation, tag: &str, cache: &mut BoxCache) -> String {
+pub fn shown_tag(doc: &Document, c: DeviceId, r: &Representation, tag: &str, cache: &mut BoxCache) -> String {
     let mut prefix = String::new();
     for a in Aspect::ALL {
         let own = match a {
@@ -584,7 +584,7 @@ pub fn check_outline(v: &[Pt]) -> Result<(), CmdError> {
 /// What a planned box will be.
 #[derive(Debug, Clone)]
 pub struct Planned {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub rep: RepresentationId,
     pub item: ItemId,
     pub ops: Vec<Op>,
@@ -616,7 +616,7 @@ fn box_props(
 pub const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or +CP1.";
 
 /// The ops of a new location box `location` drawn on `page` with outline `vertices`
-/// (design 024 §7): `CreateComponent`, `AddItem` (closed polyline), `LinkRepresentation`.
+/// (design 024 §7): `CreateDevice`, `AddItem` (closed polyline), `LinkRepresentation`.
 ///
 /// # Errors
 /// As [`plan_box_with`].
@@ -640,16 +640,19 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
     let props = box_props(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
     ops.extend(list_ops);
-    let component: ComponentId = ids.fresh();
+    let component: DeviceId = ids.fresh();
     let item: ItemId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
     let style = box_style_for(layer, &props);
-    ops.push(Op::CreateComponent { id: component, component: Component { properties: props, definition: None } });
+    ops.push(Op::CreateDevice {
+        id: component,
+        device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
+    });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) } });
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(component),
+            subject: Subject::Device(component),
             page,
             form: Form::Drawn,
             role: ROLE.into(),
@@ -677,8 +680,8 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     let it = doc.items.get(&item).ok_or(CmdError::refused("no such item"))?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
-            Subject::Component(c) if is_box(doc, c) => "another location box".to_string(),
-            Subject::Component(c) => crate::devices::tag_words(doc, c),
+            Subject::Device(c) if is_box(doc, c) => "another location box".to_string(),
+            Subject::Device(c) => crate::devices::tag_words(doc, c),
             Subject::Wire(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
         };
@@ -694,17 +697,20 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     let props = box_props(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
     ops.extend(list_ops);
-    let component: ComponentId = ids.fresh();
+    let component: DeviceId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
     let after = Item { style: box_style_for(layer, &props), ..it.clone() };
-    ops.push(Op::CreateComponent { id: component, component: Component { properties: props, definition: None } });
+    ops.push(Op::CreateDevice {
+        id: component,
+        device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
+    });
     if after != *it {
         ops.push(Op::ModifyItem { id: item, before: it.clone(), after });
     }
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(component),
+            subject: Subject::Device(component),
             page: it.page,
             form: Form::Drawn,
             role: ROLE.into(),
@@ -722,7 +728,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
     let mut page = None;
     for op in &p.ops {
         match op {
-            Op::CreateComponent { id, component } if *id == p.component => props = Some(component.properties.clone()),
+            Op::CreateDevice { id, device: component } if *id == p.component => props = Some(component.properties.clone()),
             Op::AddItem { id, item } | Op::ModifyItem { id, after: item, .. } if *id == p.item => {
                 page = Some(item.page);
                 if let ItemKind::Primitive(Primitive::Polyline { vertices: v, .. }) = &item.kind {
@@ -773,7 +779,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
 /// box's outline cannot be opened or cut below three points. The words give the way out.
 pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<String> {
     let (_, r) = doc.representation_of_item(id)?;
-    let Subject::Component(c) = r.subject else { return None };
+    let Subject::Device(c) = r.subject else { return None };
     if r.role != ROLE || !is_box(doc, c) {
         return None;
     }
@@ -794,7 +800,7 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
     let mut cache = BoxCache::default();
     let (mut n, mut keeps) = (0, 0);
     for (_, r) in doc.representations_on(b.page) {
-        let Subject::Component(c) = r.subject else { continue };
+        let Subject::Device(c) = r.subject else { continue };
         if !is_device(doc, c) {
             continue;
         }
@@ -804,7 +810,7 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
         }
         n += 1;
         if b.location_key.is_some()
-            && doc.components.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location_key.as_ref())
+            && doc.devices.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location_key.as_ref())
         {
             keeps += 1;
         }
@@ -813,7 +819,7 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
 }
 
 /// The JSON of a device's location (`devices` results gain these, design 024 §3.4).
-pub fn json_fields(doc: &Document, c: ComponentId) -> (serde_json::Value, &'static str) {
+pub fn json_fields(doc: &Document, c: DeviceId) -> (serde_json::Value, &'static str) {
     let l = resolve(doc, c);
     (l.value.map_or(serde_json::Value::Null, serde_json::Value::String), l.source.word())
 }

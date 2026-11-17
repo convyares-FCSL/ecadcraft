@@ -6,18 +6,18 @@ use crate::common;
 use cadcraft_engine::doc::Space;
 use common::{H, id, pts};
 use ecad_inspect::EventKind;
-use ecad_model::{ComponentId, WireId};
+use ecad_model::{DeviceId, WireId};
 use serde_json::{Value, json};
 
 /// A small project: a drawn component with a terminal, a placed symbol, a wire between them.
-fn fixture() -> (H, ComponentId, ComponentId, WireId) {
+fn fixture() -> (H, DeviceId, DeviceId, WireId) {
     let mut h = H::new(77);
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let first = h.first_page();
     let lines = h.lines_on(first);
-    let c1: ComponentId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
+    let c1: DeviceId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
     h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
-    let c2: ComponentId = id(&h.run("place", json!({"at": [100, 0]})).unwrap(), "component");
+    let c2: DeviceId = id(&h.run("place", json!({"at": [100, 0]})).unwrap(), "component");
     let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap(), "conductor");
     (h, c1, c2, w)
 }

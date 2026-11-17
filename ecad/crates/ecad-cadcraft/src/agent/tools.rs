@@ -51,7 +51,7 @@ pub fn instructions(writes: bool, agent: &str, live: bool) -> String {
     let where_ = if live { " ECAD may be headless (no window) or live (the person watches). Call ecad_connection to know which." } else { "" };
     format!(
         "ECAD electrical design project (headless; CADCraft drawing engine).{where_} Read it with ecad_project (pages, \
-         components, terminals, conductors, cables, nets), ecad_history (transactions and their authors) and \
+         devices, terminals, conductors, cables, nets), ecad_history (transactions and their authors) and \
          ecad_inspect, and look at the active page with render, query_entities and inspect_drawing. Change it only with \
          `execute` and an ECAD command (list_commands shows them with their parameters: wire, place, \
          convertcomponent, addterminal, connect, disconnect, cableslash, cableview, newpage, openpage, setprop, \
@@ -209,7 +209,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
                 "open": p.pages.get(id).is_some_and(|v| v.uid.is_some()),
             })
         });
-        let components = doc.components.iter().map(|(id, c)| {
+        let devices = doc.devices.iter().map(|(id, c)| {
             let terminals: Vec<Value> = doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
             json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
         });
@@ -246,7 +246,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             "unsaved": p.unsaved(),
             "unsavedTransactions": p.unsaved_transactions(),
             "pages": listed(pages, doc.page_order.len(), limit),
-            "components": listed(components, doc.components.len(), limit),
+            "devices": listed(devices, doc.devices.len(), limit),
             "conductors": listed(conductors, doc.wires.len(), limit),
             "cables": listed(cables, doc.cables.len(), limit),
             "nets": listed(nets, net_count, limit),

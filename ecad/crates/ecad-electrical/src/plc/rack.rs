@@ -15,7 +15,7 @@
 use crate::CmdError;
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, ObjectRef, Op, Subject};
+use ecad_model::{DeviceId, Document, ObjectRef, Op, Subject};
 
 use crate::defaults::{self, Scope};
 
@@ -185,12 +185,12 @@ impl CardType {
 }
 
 /// The type of device `c` from its card body (its head), if it has one.
-pub fn body_type(doc: &Document, c: ComponentId) -> Option<CardType> {
-    doc.representations_of(Subject::Component(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).find_map(|s| CardType::of_body(s.key))
+pub fn body_type(doc: &Document, c: DeviceId) -> Option<CardType> {
+    doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).find_map(|s| CardType::of_body(s.key))
 }
 
 /// Whether device `c` is a rack.
-pub fn is_rack(doc: &Document, c: ComponentId) -> bool {
+pub fn is_rack(doc: &Document, c: DeviceId) -> bool {
     body_type(doc, c).is_some_and(CardType::is_rack)
 }
 
@@ -212,21 +212,21 @@ pub enum RackRef {
     /// No `plc.rack`.
     None,
     /// A rack of this project.
-    Rack(ComponentId),
+    Rack(DeviceId),
     /// An ID that is not a rack of this project (deleted, never one, or not a rack device).
-    Missing(ComponentId),
+    Missing(DeviceId),
     /// A value that is not an ID.
     Bad,
 }
 
 /// What card `c`'s `plc.rack` names.
-pub fn rack_ref(doc: &Document, c: ComponentId) -> RackRef {
-    let Some(v) = doc.components.get(&c).and_then(|x| x.properties.get(RACK_KEY)) else { return RackRef::None };
+pub fn rack_ref(doc: &Document, c: DeviceId) -> RackRef {
+    let Some(v) = doc.devices.get(&c).and_then(|x| x.properties.get(RACK_KEY)) else { return RackRef::None };
     let t = v.trim();
     if t.len() != 32 {
         return RackRef::Bad;
     }
-    match ComponentId::parse(t) {
+    match DeviceId::parse(t) {
         Some(r) if r != c && is_rack(doc, r) => RackRef::Rack(r),
         Some(r) => RackRef::Missing(r),
         None => RackRef::Bad,
@@ -234,12 +234,12 @@ pub fn rack_ref(doc: &Document, c: ComponentId) -> RackRef {
 }
 
 /// Card `c`'s slot, when `plc.slot` holds one.
-pub fn slot_of(doc: &Document, c: ComponentId) -> Option<u32> {
-    doc.components.get(&c).and_then(|x| x.properties.get(SLOT_KEY)).and_then(|v| parse_slot(v))
+pub fn slot_of(doc: &Document, c: DeviceId) -> Option<u32> {
+    doc.devices.get(&c).and_then(|x| x.properties.get(SLOT_KEY)).and_then(|v| parse_slot(v))
 }
 
 /// A rack's slot range: its first slot and how many (registry, rack level allowed).
-pub fn slot_range(doc: &Document, rack: ComponentId) -> (u32, u32) {
+pub fn slot_range(doc: &Document, rack: DeviceId) -> (u32, u32) {
     let at = Scope { component: Some(rack), ..Scope::project() };
     let n = defaults::resolve(doc, &defaults::plc::SLOTS, at).number();
     let first = defaults::resolve(doc, &defaults::plc::SLOT_FIRST, at).word();
@@ -249,8 +249,8 @@ pub fn slot_range(doc: &Document, rack: ComponentId) -> (u32, u32) {
 }
 
 /// Card `c`'s channel count: its own `plc.channels`, else its type's registry value.
-pub fn channel_count(doc: &Document, c: ComponentId, ty: CardType) -> u32 {
-    if let Some(n) = doc.components.get(&c).and_then(|x| x.properties.get(CHANNELS_KEY)).and_then(|v| parse_channels(v)) {
+pub fn channel_count(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
+    if let Some(n) = doc.devices.get(&c).and_then(|x| x.properties.get(CHANNELS_KEY)).and_then(|v| parse_channels(v)) {
         return n;
     }
     let Some(e) = ty.channels_entry() else { return 0 };
@@ -260,8 +260,8 @@ pub fn channel_count(doc: &Document, c: ComponentId, ty: CardType) -> u32 {
 
 /// The racks of the project, by tag (the order every list uses). Reads every component's head;
 /// for prompts and commands, not per frame.
-pub fn racks(doc: &Document) -> Vec<ComponentId> {
-    let mut v: Vec<(String, ComponentId)> =
+pub fn racks(doc: &Document) -> Vec<DeviceId> {
+    let mut v: Vec<(String, DeviceId)> =
         doc.tagged().map(|(_, c)| c).filter(|c| is_rack(doc, *c)).map(|c| (crate::devices::tag_words(doc, c), c)).collect();
     v.sort();
     v.dedup_by_key(|x| x.1);
@@ -281,11 +281,11 @@ pub fn scans() -> u64 {
 
 /// The cards whose `plc.rack` names `rack` (valid or not), with their slots. Walks every
 /// component: commands and checks of one edit only; kept-model paths use `crate::plc::Plc`.
-pub fn cards_naming(doc: &Document, rack: ComponentId) -> Vec<(ComponentId, Option<u32>)> {
+pub fn cards_naming(doc: &Document, rack: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
     SCANS.with(|n| n.set(n.get() + 1));
     let hex = rack.hex();
-    let mut v: Vec<(ComponentId, Option<u32>)> = doc
-        .components
+    let mut v: Vec<(DeviceId, Option<u32>)> = doc
+        .devices
         .iter()
         .filter(|(_, x)| x.properties.get(RACK_KEY).is_some_and(|v| v.trim().eq_ignore_ascii_case(&hex)))
         .map(|(c, _)| (*c, slot_of(doc, *c)))
@@ -295,19 +295,19 @@ pub fn cards_naming(doc: &Document, rack: ComponentId) -> Vec<(ComponentId, Opti
 }
 
 /// Which card of `rack` (other than `except`) holds `slot`.
-pub fn holder_of_slot(doc: &Document, rack: ComponentId, slot: u32, except: Option<ComponentId>) -> Option<ComponentId> {
+pub fn holder_of_slot(doc: &Document, rack: DeviceId, slot: u32, except: Option<DeviceId>) -> Option<DeviceId> {
     cards_naming(doc, rack).into_iter().find(|(c, s)| *s == Some(slot) && Some(*c) != except).map(|(c, _)| c)
 }
 
 /// The lowest free slot of `rack`, `except` not counting as holding one.
-pub fn next_free_slot(doc: &Document, rack: ComponentId, except: Option<ComponentId>) -> Option<u32> {
+pub fn next_free_slot(doc: &Document, rack: DeviceId, except: Option<DeviceId>) -> Option<u32> {
     let taken: BTreeSet<u32> = cards_naming(doc, rack).into_iter().filter(|(c, _)| Some(*c) != except).filter_map(|(_, s)| s).collect();
     let (first, n) = slot_range(doc, rack);
     (first..first.saturating_add(n)).find(|s| !taken.contains(s))
 }
 
 /// `DI 16`: a card's type and channel count.
-pub fn type_words(doc: &Document, c: ComponentId) -> String {
+pub fn type_words(doc: &Document, c: DeviceId) -> String {
     match body_type(doc, c).or_else(|| crate::plc::card_type_of(doc, c)) {
         Some(t) if t.has_channels() => format!("{} {}", t.code(), channel_count(doc, c, t)),
         Some(t) => t.code().to_string(),
@@ -316,7 +316,7 @@ pub fn type_words(doc: &Document, c: ComponentId) -> String {
 }
 
 /// The refusal of a taken slot, with the way out (design 045 §2.4).
-pub fn taken_words(doc: &Document, rack: ComponentId, slot: u32, holder: ComponentId) -> String {
+pub fn taken_words(doc: &Document, rack: DeviceId, slot: u32, holder: DeviceId) -> String {
     // The card's own slot counts as taken: Enter offers a slot it is not in.
     let next = next_free_slot(doc, rack, None).map_or_else(|| "none is free".to_string(), |s| s.to_string());
     format!(
@@ -328,8 +328,8 @@ pub fn taken_words(doc: &Document, rack: ComponentId, slot: u32, holder: Compone
 }
 
 /// The ops putting `card` in `rack` at `slot` (or taking it out with `None`), only what changes.
-pub fn slot_ops(doc: &Document, card: ComponentId, to: Option<(ComponentId, u32)>) -> Vec<Op> {
-    let props = doc.components.get(&card).map(|c| &c.properties);
+pub fn slot_ops(doc: &Document, card: DeviceId, to: Option<(DeviceId, u32)>) -> Vec<Op> {
+    let props = doc.devices.get(&card).map(|c| &c.properties);
     let before = |k: &str| props.and_then(|p| p.get(k)).cloned();
     let (r, s) = match to {
         Some((r, s)) => (Some(r.hex()), Some(s.to_string())),
@@ -339,7 +339,7 @@ pub fn slot_ops(doc: &Document, card: ComponentId, to: Option<(ComponentId, u32)
     for (key, after) in [(RACK_KEY, r), (SLOT_KEY, s)] {
         let b = before(key);
         if b != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(card), key: key.into(), before: b, after });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(card), key: key.into(), before: b, after });
         }
     }
     ops
@@ -348,7 +348,7 @@ pub fn slot_ops(doc: &Document, card: ComponentId, to: Option<(ComponentId, u32)
 /// What deleting rack `rack` adds (design 045 §2.2, Q1, FP1 condition 2): `plc.rack` and
 /// `plc.slot` removed from every card naming it, and how many cards that is. Nothing when `rack` is
 /// not named by any card.
-pub fn release_cards(doc: &Document, rack: ComponentId) -> (Vec<Op>, usize) {
+pub fn release_cards(doc: &Document, rack: DeviceId) -> (Vec<Op>, usize) {
     let cards = cards_naming(doc, rack);
     let mut ops = Vec::new();
     for (c, _) in &cards {
@@ -366,9 +366,9 @@ pub fn released_words(n: usize) -> String {
 ///
 /// # Errors
 /// No device of that name ("No device -A9.").
-fn device_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
+fn device_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let t = t.trim();
-    if let Some(c) = ComponentId::parse(t).filter(|c| t.len() == 32 && doc.components.contains_key(c)) {
+    if let Some(c) = DeviceId::parse(t).filter(|c| t.len() == 32 && doc.devices.contains_key(c)) {
         return Ok(c);
     }
     let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());
@@ -379,7 +379,7 @@ fn device_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
 ///
 /// # Errors
 /// Nothing of that name, or it is not a rack.
-pub fn rack_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
+pub fn rack_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let c = device_named(doc, t)?;
     if !is_rack(doc, c) {
         return Err(CmdError::refused(format!("{} is not a rack; a rack is a CPU or a head module.", crate::devices::tag_words(doc, c))));
@@ -391,7 +391,7 @@ pub fn rack_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
 ///
 /// # Errors
 /// Nothing of that name, a rack, or a device that is not a PLC card.
-pub fn card_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
+pub fn card_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let c = device_named(doc, t)?;
     match crate::plc::card_type_of(doc, c) {
         Some(t) if t.is_rack() => {
@@ -406,7 +406,7 @@ pub fn card_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
 ///
 /// # Errors
 /// No rack, or several and none named.
-pub fn default_rack(doc: &Document, card: Option<ComponentId>) -> Result<ComponentId, CmdError> {
+pub fn default_rack(doc: &Document, card: Option<DeviceId>) -> Result<DeviceId, CmdError> {
     if let Some(RackRef::Rack(r)) = card.map(|c| rack_ref(doc, c)) {
         return Ok(r);
     }
@@ -434,7 +434,7 @@ pub fn slot_number(text: &str) -> Result<u32, CmdError> {
 ///
 /// # Errors
 /// The refusals of §2.4: no rack, a taken slot (unless `swap`), a slot outside the rack.
-pub fn plan_slot(doc: &Document, card: ComponentId, rack: Option<ComponentId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, CmdError> {
+pub fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, CmdError> {
     let rack = match rack {
         Some(r) => r,
         None => default_rack(doc, Some(card))?,
@@ -471,7 +471,7 @@ pub fn plan_slot(doc: &Document, card: ComponentId, rack: Option<ComponentId>, s
 }
 
 /// `-A01 slot 5`, or `no rack`.
-pub fn place_words(doc: &Document, card: ComponentId) -> String {
+pub fn place_words(doc: &Document, card: DeviceId) -> String {
     match (rack_ref(doc, card), slot_of(doc, card)) {
         (RackRef::Rack(r), Some(s)) => format!("{} slot {s}", crate::devices::tag_words(doc, r)),
         (RackRef::Rack(r), None) => format!("{} (no slot)", crate::devices::tag_words(doc, r)),
@@ -486,8 +486,8 @@ pub fn place_words(doc: &Document, card: ComponentId) -> String {
 /// # Errors
 /// An unknown rack, a slot that is not a number or not in the rack, a taken slot.
 pub fn place_target(
-    doc: &Document, rack: Option<Option<&str>>, slot: Option<&str>, last_card: Option<ComponentId>,
-) -> Result<Option<(ComponentId, u32)>, CmdError> {
+    doc: &Document, rack: Option<Option<&str>>, slot: Option<&str>, last_card: Option<DeviceId>,
+) -> Result<Option<(DeviceId, u32)>, CmdError> {
     let rack = match rack {
         Some(None) => return Ok(None),
         Some(Some(t)) => rack_named(doc, t)?,
@@ -524,10 +524,10 @@ pub fn place_target(
 
 /// The ops of a new card placed in a slot: its two properties, set on the component the place
 /// transaction creates.
-pub fn new_card_ops(card: ComponentId, rack: ComponentId, slot: u32) -> Vec<Op> {
+pub fn new_card_ops(card: DeviceId, rack: DeviceId, slot: u32) -> Vec<Op> {
     vec![
-        Op::SetProperty { object: ObjectRef::Component(card), key: RACK_KEY.into(), before: None, after: Some(rack.hex()) },
-        Op::SetProperty { object: ObjectRef::Component(card), key: SLOT_KEY.into(), before: None, after: Some(slot.to_string()) },
+        Op::SetProperty { object: ObjectRef::Device(card), key: RACK_KEY.into(), before: None, after: Some(rack.hex()) },
+        Op::SetProperty { object: ObjectRef::Device(card), key: SLOT_KEY.into(), before: None, after: Some(slot.to_string()) },
     ]
 }
 
@@ -536,7 +536,7 @@ pub fn new_card_ops(card: ComponentId, rack: ComponentId, slot: u32) -> Vec<Op> 
 ///
 /// # Errors
 /// A value that is not of the key's form; `plc.rack` naming something that is not a rack.
-pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     Some(match key {
         RACK_KEY => match v {
@@ -566,7 +566,7 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
 /// What merging device `from` into `into` adds for the cards of rack `from` (FP1 condition 2):
 /// their `plc.rack` re-pointed to `into`, which takes `from`'s rack body (a slot clash then shows
 /// as `slot-twice`, with its fix). Nothing when `from` is not a rack.
-pub fn merge_ops(doc: &Document, from: ComponentId, into: ComponentId) -> Vec<Op> {
+pub fn merge_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec<Op> {
     if !is_rack(doc, from) {
         return Vec::new();
     }
@@ -579,8 +579,8 @@ pub fn merge_ops(doc: &Document, from: ComponentId, into: ComponentId) -> Vec<Op
             ops.extend(slot_ops(doc, c, None));
             continue;
         }
-        let before = doc.components.get(&c).and_then(|x| x.properties.get(RACK_KEY)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: RACK_KEY.into(), before, after: Some(into.hex()) });
+        let before = doc.devices.get(&c).and_then(|x| x.properties.get(RACK_KEY)).cloned();
+        ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: RACK_KEY.into(), before, after: Some(into.hex()) });
     }
     ops
 }

@@ -201,7 +201,7 @@ impl Key {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdOf {
     /// `{"component": id}`.
-    Component,
+    Device,
     /// `{"conductor": id}`.
     Wire,
     /// `{"cable": id}`.
@@ -577,7 +577,7 @@ pub const ACTIONS: &[Action] = &[
     slot("device.properties", "deviceprops", Params::App(App::Properties), "Properties", Icon::Properties, &[(K::Device, S::TopRight)], ok),
     slot("device.goto", "contacts", Params::App(App::GotoOther), "Go to contacts", Icon::GoTo, &[(K::Device, S::Right)], has_other),
     slot("device.row", "", Params::App(App::DeviceRow), "Show row", Icon::ShowRow, &[(K::Device, S::BottomRight)], ok),
-    slot("device.delete", "devicedelete", Params::Id(IdOf::Component), "Delete device", Icon::Delete, &[(K::Device, S::Bottom)], write),
+    slot("device.delete", "devicedelete", Params::Id(IdOf::Device), "Delete device", Icon::Delete, &[(K::Device, S::Bottom)], write),
     // ---- On the selection (and on the wheels of the kinds they turn or copy).
     Action {
         id: "edit.duplicate",

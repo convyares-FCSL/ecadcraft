@@ -327,13 +327,13 @@ fn record_bytes_are_shown_as_text_with_control_bytes_escaped() {
 fn relations_lead_from_a_definition_to_its_instances_and_from_a_terminal_to_its_wires() {
     let (mut h, c1, c2, w) = small_project(48);
     let doc = h.doc();
-    let def = doc.components[&c2].definition.unwrap();
+    let def = doc.devices[&c2].definition.unwrap();
     let users = debug::used_by(&doc, ObjectId::Definition(def));
-    assert!(users.contains(&ObjectId::Component(c2)));
+    assert!(users.contains(&ObjectId::Device(c2)));
     assert!(users.iter().any(|u| matches!(u, ObjectId::Item(_))), "the symbol instance");
     let t = doc.wires[&w].ends[0].unwrap();
     assert_eq!(debug::used_by(&doc, ObjectId::Terminal(t)), vec![ObjectId::Wire(w)]);
-    let of_c1 = debug::used_by(&doc, ObjectId::Component(c1));
+    let of_c1 = debug::used_by(&doc, ObjectId::Device(c1));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Terminal(_))));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Representation(_))));
 }

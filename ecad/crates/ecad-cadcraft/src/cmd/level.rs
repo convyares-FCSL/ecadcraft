@@ -10,7 +10,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::level::{self as rules, MoveTo, TermlabelInput};
-use ecad_model::{ComponentId, TerminalId};
+use ecad_model::{DeviceId, TerminalId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -66,7 +66,7 @@ pub(crate) struct TermlabelParams {
     terminal: Option<TerminalId>,
     /// The strip (with `at`).
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// The position's current label.
     #[serde(default)]
     at: Option<String>,
@@ -121,10 +121,10 @@ impl Command for TermlabelParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct TopositionParams {
     /// The fuse terminal device.
-    device: ComponentId,
+    device: DeviceId,
     /// The strip (default: the nearest strip on its page).
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// The position's label (default the next free one).
     #[serde(default)]
     position: Option<String>,

@@ -45,7 +45,7 @@ use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
 use cadcraft_engine::{EngineError, Session};
 use ecad_model::derive::terminal_positions;
-use ecad_model::{CableId, ComponentId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId, WireId};
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
@@ -215,7 +215,7 @@ pub(crate) fn terminal_for(s: &Session, p: Vec2) -> Option<(TerminalId, Pt, Stri
 
 /// The default name of the next terminal of component `c`: the smallest positive integer not
 /// already used as a label among its terminals (owner answer Q2).
-pub fn next_terminal_name(doc: &Document, c: ComponentId) -> String {
+pub fn next_terminal_name(doc: &Document, c: DeviceId) -> String {
     let used: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let mut n: u64 = 1;
     // At most one more than the labels in use: bounded by the component's terminals.
@@ -452,13 +452,13 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         }
         // A device's tag text or terminal label (brief 018): the device's lens.
         Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
-            Subject::Component(c) => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
+            Subject::Device(c) => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             _ => return None,
         },
         // A device cross-reference (brief 025): a table row's pole, the table's contacts, or the
         // contact's lens with its coil.
         Mapped::Xref(r) => {
-            let Subject::Component(c) = doc.representations.get(&r)?.subject else { return None };
+            let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
             // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
             if crate::continuations::is_continuation(doc, c) {
                 let rep = if crate::continuations::arrow(doc, r).is_some() { r } else { return None };
@@ -484,12 +484,10 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
                 // A device (a tagged component, brief 018): design 018 §6.4's lens.
-                Subject::Component(c) if crate::devices::tag_of(doc, c).is_some() => {
-                    with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid))
-                }
+                Subject::Device(c) if crate::devices::tag_of(doc, c).is_some() => with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid)),
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
-                Subject::Component(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
-                Subject::Component(c) => component_lines(doc, c),
+                Subject::Device(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
+                Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
@@ -597,9 +595,9 @@ fn capped(lines: &mut Vec<String>) {
     }
 }
 
-fn component_lines(doc: &Document, c: ComponentId) -> Vec<String> {
-    let component = doc.components.get(&c);
-    let mut lines = vec![format!("Component {}", component.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", c.hex())];
+fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
+    let component = doc.devices.get(&c);
+    let mut lines = vec![format!("Device {}", component.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", c.hex())];
     let terminals: Vec<(TerminalId, String)> =
         doc.terminals_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
     lines.push(format!("Connection points: {}", terminals.len()));
@@ -614,7 +612,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     let term = doc.terminals.get(&t);
     let of = term
         .map(|x| {
-            let c = doc.components.get(&x.component);
+            let c = doc.devices.get(&x.component);
             c.and_then(|c| tag(&c.properties)).map_or_else(|| x.component.hex(), str::to_string)
         })
         .unwrap_or_default();
@@ -708,7 +706,7 @@ fn wire_lines(doc: &Document, w: WireId, page: PageId) -> Vec<String> {
                     .terminals
                     .get(&t)
                     .map(|x| {
-                        let c = doc.components.get(&x.component);
+                        let c = doc.devices.get(&x.component);
                         c.and_then(|c| tag(&c.properties)).map_or_else(|| short(&x.component.hex()).to_string(), str::to_string)
                     })
                     .unwrap_or_default();
@@ -748,7 +746,7 @@ fn wire_lines(doc: &Document, w: WireId, page: PageId) -> Vec<String> {
 
 /// A device's lens (design 018 §6.4) with its cross-reference lines (design 025 §5.1): the coil's
 /// place on a contact, the table's contacts on a coil, before the lens's last (`id`) line.
-fn with_xrefs(doc: &ecad_model::Document, c: ComponentId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
+fn with_xrefs(doc: &ecad_model::Document, c: DeviceId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
     let mut extra = crate::xref::contact_lines(doc, c, rep);
     extra.extend(crate::xref::head_lines(doc, c, rep));
     let at = lines.len().saturating_sub(1);
@@ -760,7 +758,7 @@ fn with_xrefs(doc: &ecad_model::Document, c: ComponentId, rep: ecad_model::Repre
 
 /// The drawn component `h` is an outline item of, with the item's primitive, or the reason it is
 /// not one (design §5's wording).
-pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(ComponentId, Primitive), String> {
+pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(DeviceId, Primitive), String> {
     let map = &p.pages.get(&page).ok_or("page view not found")?.map;
     let doc = p.ledger.document();
     let item = match map.get(h) {
@@ -772,7 +770,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(C
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };
-    let Subject::Component(c) = rep.subject else { return Err(NOT_OUTLINE.into()) };
+    let Subject::Device(c) = rep.subject else { return Err(NOT_OUTLINE.into()) };
     if rep.form != Form::Drawn {
         return Err("connection points of placed symbols come from their definition".into());
     }

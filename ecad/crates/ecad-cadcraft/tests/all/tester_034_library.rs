@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::checks::{self, Object};
 use ecad_cadcraft::symbols::{self, STARTER_LIBRARY, STARTERS};
-use ecad_model::{ComponentId, Document, Pt, TerminalId, Word};
+use ecad_model::{DeviceId, Document, Pt, TerminalId, Word};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -218,7 +218,7 @@ fn place(h: &mut H, key: &str, at: (f64, f64)) -> Value {
     h.run("place", json!({"symbol": key, "at": [at.0, at.1]})).unwrap_or_else(|e| panic!("place {key}: {e}"))
 }
 
-fn join(h: &mut H, key: &str, at: (f64, f64), device: ComponentId) -> Result<Value, String> {
+fn join(h: &mut H, key: &str, at: (f64, f64), device: DeviceId) -> Result<Value, String> {
     h.run("place", json!({"symbol": key, "at": [at.0, at.1], "device": device.hex()}))
 }
 
@@ -234,7 +234,7 @@ fn term(v: &Value, label: &str) -> TerminalId {
 }
 
 /// Every label of a device's points, sorted.
-fn device_labels(d: &Document, c: ComponentId) -> BTreeSet<String> {
+fn device_labels(d: &Document, c: DeviceId) -> BTreeSet<String> {
     d.terminals.values().filter(|t| t.component == c).filter_map(|t| t.label.clone()).collect()
 }
 
@@ -242,8 +242,8 @@ fn set(v: &[&str]) -> BTreeSet<String> {
     v.iter().map(|s| (*s).to_string()).collect()
 }
 
-fn prop(h: &mut H, c: ComponentId, key: &str) -> Option<String> {
-    h.doc().components.get(&c).and_then(|x| x.properties.get(key).cloned())
+fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
+    h.doc().devices.get(&c).and_then(|x| x.properties.get(key).cloned())
 }
 
 fn tag(n: usize, prefix: &str) -> String {
@@ -296,12 +296,12 @@ fn refused(h: &mut H, cmd: &str, params: Value, want: &str) -> String {
     e
 }
 
-fn setprop(h: &mut H, c: ComponentId, key: &str, value: Value) -> Result<Value, String> {
+fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, String> {
     h.run("setprop", json!({"component": c.hex(), "key": key, "value": value}))
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
+    (&d.devices, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
 }
 
 /// Grid position of the i-th placement, far enough apart that no two symbols touch.
@@ -456,7 +456,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
             assert_eq!(v["joined"], json!(false), "{}", e.key);
             let want: Vec<&str> = e.points.iter().map(|p| p.0.as_str()).collect();
             assert_eq!(labels(&v), want, "{}: labels in definition order", e.key);
-            let c: ComponentId = id(&v, "component");
+            let c: DeviceId = id(&v, "component");
             // A connector half or pin makes a connector device, whose own description is the
             // registry's `Connector` (design 044 §4.6); the half's BOM description is the half's
             // own (§2.4), not the component's.
@@ -499,7 +499,7 @@ fn b2_undo_takes_the_embed_back_and_redo_restores_it() {
 #[test]
 fn c_change_over_takes_the_next_sequence_digit() {
     let mut h = H::new(0x7034_0005);
-    let k1: ComponentId = id(&place(&mut h, "coil", (50.0, 150.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (50.0, 150.0)), "component");
     let mut docs = vec![h.doc()];
     for (key, x, want) in [("co", 80.0, vec!["11", "12", "14"]), ("no", 110.0, vec!["23", "24"]), ("co", 140.0, vec!["31", "32", "34"])] {
         let head = h.head();
@@ -530,12 +530,12 @@ fn c_change_over_takes_the_next_sequence_digit() {
 #[test]
 fn c2_change_over_after_a_make_contact_and_on_a_switch() {
     let mut h = H::new(0x7034_0006);
-    let k1: ComponentId = id(&place(&mut h, "coil", (50.0, 150.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (50.0, 150.0)), "component");
     join(&mut h, "no", (80.0, 150.0), k1).unwrap();
     assert_eq!(labels(&join(&mut h, "co", (110.0, 150.0), k1).unwrap()), ["21", "22", "24"]);
     let s1v = place(&mut h, "pbno", (200.0, 150.0));
     assert_eq!(s1v["tag"], json!("-S01"));
-    let s1: ComponentId = id(&s1v, "component");
+    let s1: DeviceId = id(&s1v, "component");
     assert_eq!(labels(&join(&mut h, "swco", (230.0, 150.0), s1).unwrap()), ["21", "22", "24"]);
     let lone = place(&mut h, "co", (300.0, 150.0));
     assert_eq!(lone["tag"], json!("-K02"));
@@ -550,7 +550,7 @@ fn c2_change_over_after_a_make_contact_and_on_a_switch() {
 #[test]
 fn d_after_the_ninth_contact_a_change_over_is_refused() {
     let mut h = H::new(0x7034_0007);
-    let k1: ComponentId = id(&place(&mut h, "coil", (20.0, 150.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (20.0, 150.0)), "component");
     for i in 0..8 {
         join(&mut h, "no", (50.0 + 30.0 * i as f64, 150.0), k1).unwrap();
     }
@@ -558,7 +558,7 @@ fn d_after_the_ninth_contact_a_change_over_is_refused() {
     refused(&mut h, "place", json!({"symbol": "co", "at": [330, 150], "device": k1.hex()}), "-K01 already has 9 contacts.");
     refused(&mut h, "place", json!({"symbol": "swco", "at": [330, 150], "device": k1.hex()}), "-K01 already has 9 contacts.");
     // Nine `no` first, then a `co`: the same refusal.
-    let k2: ComponentId = id(&place(&mut h, "coil", (20.0, 50.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (20.0, 50.0)), "component");
     for i in 0..9 {
         join(&mut h, "no", (50.0 + 30.0 * i as f64, 50.0), k2).unwrap();
     }
@@ -577,22 +577,22 @@ fn e_fixed_symbols_join_by_the_018_rules() {
     let ssr = place(&mut h, "ssrin", (50.0, 150.0));
     assert_eq!(ssr["tag"], json!("-K01"));
     assert_eq!(labels(&ssr), ["A1", "A2"]);
-    let k1: ComponentId = id(&ssr, "component");
+    let k1: DeviceId = id(&ssr, "component");
     let out = join(&mut h, "ssrout", (80.0, 150.0), k1).unwrap();
     assert_eq!(labels(&out), ["1", "2"]);
     assert_eq!(device_labels(&h.doc(), k1), set(&["A1", "A2", "1", "2"]));
     refused(&mut h, "place", json!({"symbol": "ssrout", "at": [110, 150], "device": k1.hex()}), "already has connection point 1");
 
-    let k2: ComponentId = id(&place(&mut h, "coil", (150.0, 150.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (150.0, 150.0)), "component");
     assert_eq!(labels(&join(&mut h, "power4", (200.0, 150.0), k2).unwrap()), ["1", "2", "3", "4", "5", "6", "7", "8"]);
     refused(&mut h, "place", json!({"symbol": "power4", "at": [260, 150], "device": k2.hex()}), "already has connection point");
     refused(&mut h, "place", json!({"symbol": "power3", "at": [260, 150], "device": k2.hex()}), "already has connection point");
 
     // Exclusive heads: a second head on the same device is refused with 018's words.
-    let q1: ComponentId = id(&place(&mut h, "rcbo2", (50.0, 50.0)), "component");
+    let q1: DeviceId = id(&place(&mut h, "rcbo2", (50.0, 50.0)), "component");
     refused(&mut h, "place", json!({"symbol": "rcbo2", "at": [100, 50], "device": q1.hex()}), "-Q01 already has a");
     refused(&mut h, "place", json!({"symbol": "rcd2", "at": [100, 50], "device": q1.hex()}), "-Q01 already has");
-    let f1: ComponentId = id(&place(&mut h, "fusebank4", (200.0, 50.0)), "component");
+    let f1: DeviceId = id(&place(&mut h, "fusebank4", (200.0, 50.0)), "component");
     refused(&mut h, "place", json!({"symbol": "fuseterm", "at": [300, 50], "device": f1.hex()}), "-F01 already has");
     // A fault-signal contact on the bank is 13/14 (§3 notes).
     assert_eq!(labels(&join(&mut h, "no", (300.0, 50.0), f1).unwrap()), ["13", "14"]);
@@ -601,14 +601,14 @@ fn e_fixed_symbols_join_by_the_018_rules() {
     let b = place(&mut h, "rollerno", (50.0, 250.0));
     assert_eq!(b["tag"], json!("-B01"));
     assert_eq!(labels(&b), ["13", "14"]);
-    let b1: ComponentId = id(&b, "component");
+    let b1: DeviceId = id(&b, "component");
     assert_eq!(labels(&join(&mut h, "rollernc", (80.0, 250.0), b1).unwrap()), ["21", "22"]);
     assert_eq!(labels(&join(&mut h, "interlocknc", (110.0, 250.0), b1).unwrap()), ["31", "32"]);
 
     // §13 check 8: a DI card takes two channels.
     let a = place(&mut h, "plcdi", (250.0, 250.0));
     assert_eq!(a["tag"], json!("-A01"));
-    let a1: ComponentId = id(&a, "component");
+    let a1: DeviceId = id(&a, "component");
     // Brief 045 (FP7): channels are labelled with pins.
     assert_eq!(labels(&join(&mut h, "di", (240.0, 200.0), a1).unwrap()), ["1"]);
     assert_eq!(labels(&join(&mut h, "di", (260.0, 200.0), a1).unwrap()), ["2"]);
@@ -680,12 +680,12 @@ fn h_bulkhead_pin_joins_both_sides() {
 #[test]
 fn i_ratings_set_and_refused_as_designed() {
     let mut h = H::new(0x7034_000c);
-    let q1: ComponentId = id(&place(&mut h, "rcbo2", (50.0, 150.0)), "component");
-    let f1: ComponentId = id(&place(&mut h, "fusebank8", (150.0, 150.0)), "component");
-    let f2: ComponentId = id(&place(&mut h, "fuseterm", (300.0, 150.0)), "component");
-    let e1: ComponentId = id(&place(&mut h, "heater", (50.0, 50.0)), "component");
-    let b1: ComponentId = id(&place(&mut h, "tc", (100.0, 50.0)), "component");
-    let k1: ComponentId = id(&place(&mut h, "coil", (150.0, 50.0)), "component");
+    let q1: DeviceId = id(&place(&mut h, "rcbo2", (50.0, 150.0)), "component");
+    let f1: DeviceId = id(&place(&mut h, "fusebank8", (150.0, 150.0)), "component");
+    let f2: DeviceId = id(&place(&mut h, "fuseterm", (300.0, 150.0)), "component");
+    let e1: DeviceId = id(&place(&mut h, "heater", (50.0, 50.0)), "component");
+    let b1: DeviceId = id(&place(&mut h, "tc", (100.0, 50.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (150.0, 50.0)), "component");
 
     // `rating` on any device, one transaction each; trimmed; `null` and empty clear.
     for (c, value) in [(q1, "13A C 30mA"), (e1, "235W"), (b1, "K"), (f2, "6.3A T"), (k1, "24V DC"), (f1, "16A")] {
@@ -779,8 +779,8 @@ fn j_quiet_spare_points_are_not_flagged() {
 fn k_bom_one_row_per_device() {
     let mut h = fixture_all(0x7034_000e);
     let d = h.doc();
-    let devices: BTreeSet<ComponentId> =
-        d.components.iter().filter(|(_, c)| c.properties.get("tag").is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
+    let devices: BTreeSet<DeviceId> =
+        d.devices.iter().filter(|(_, c)| c.properties.get("tag").is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -799,7 +799,7 @@ fn k_bom_one_row_per_device() {
             seen.get(&c.hex()).copied(),
             Some(1),
             "{} on one BOM row: {rows:?}",
-            d.components[c].properties.get("tag").cloned().unwrap_or_default()
+            d.devices[c].properties.get("tag").cloned().unwrap_or_default()
         );
     }
     assert_eq!(seen.len(), devices.len(), "nothing but devices on the BOM: {seen:?}");
@@ -813,28 +813,28 @@ fn k_bom_one_row_per_device() {
 /// thermocouple, heater, connector halves, bulkheads, a DI card with two channels, a CPU.
 fn fixture_all(seed: u64) -> H {
     let mut h = H::new(seed);
-    let k1: ComponentId = id(&place(&mut h, "coil", (20.0, 250.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (20.0, 250.0)), "component");
     join(&mut h, "co", (50.0, 250.0), k1).unwrap();
     join(&mut h, "no", (80.0, 250.0), k1).unwrap();
     join(&mut h, "co", (110.0, 250.0), k1).unwrap();
     join(&mut h, "power4", (160.0, 250.0), k1).unwrap();
-    let k2: ComponentId = id(&place(&mut h, "ssrin", (220.0, 250.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "ssrin", (220.0, 250.0)), "component");
     join(&mut h, "ssrout", (250.0, 250.0), k2).unwrap();
-    let q: ComponentId = id(&place(&mut h, "rcbo2", (300.0, 250.0)), "component");
+    let q: DeviceId = id(&place(&mut h, "rcbo2", (300.0, 250.0)), "component");
     setprop(&mut h, q, "rating", json!("13A C 30mA")).unwrap();
     place(&mut h, "rcd2", (350.0, 250.0));
     place(&mut h, "rcd4", (400.0, 250.0));
     place(&mut h, "fuseterm", (20.0, 180.0));
-    let f: ComponentId = id(&place(&mut h, "fusebank6", (70.0, 180.0)), "component");
+    let f: DeviceId = id(&place(&mut h, "fusebank6", (70.0, 180.0)), "component");
     setprop(&mut h, f, "rating.2", json!("2A")).unwrap();
     place(&mut h, "prox3", (200.0, 180.0));
-    let b: ComponentId = id(&place(&mut h, "rollerno", (250.0, 180.0)), "component");
+    let b: DeviceId = id(&place(&mut h, "rollerno", (250.0, 180.0)), "component");
     join(&mut h, "rollernc", (280.0, 180.0), b).unwrap();
     place(&mut h, "floatno", (320.0, 180.0));
     place(&mut h, "interlocknc", (360.0, 180.0));
     place(&mut h, "valve", (20.0, 110.0));
     place(&mut h, "valve2", (80.0, 110.0));
-    let tc: ComponentId = id(&place(&mut h, "tc", (140.0, 110.0)), "component");
+    let tc: DeviceId = id(&place(&mut h, "tc", (140.0, 110.0)), "component");
     setprop(&mut h, tc, "rating", json!("K")).unwrap();
     place(&mut h, "heater", (180.0, 110.0));
     place(&mut h, "socket4", (220.0, 110.0));
@@ -843,7 +843,7 @@ fn fixture_all(seed: u64) -> H {
     place(&mut h, "m12p5", (370.0, 110.0));
     place(&mut h, "rj45", (20.0, 40.0));
     place(&mut h, "usba", (100.0, 40.0));
-    let a: ComponentId = id(&place(&mut h, "plcdi", (180.0, 40.0)), "component");
+    let a: DeviceId = id(&place(&mut h, "plcdi", (180.0, 40.0)), "component");
     join(&mut h, "di", (170.0, 0.0), a).unwrap();
     join(&mut h, "di", (190.0, 0.0), a).unwrap();
     place(&mut h, "plccpu", (250.0, 40.0));
@@ -909,8 +909,8 @@ fn n_default_prefixes_and_a_project_override() {
 #[test]
 fn o_hostile_input_never_panics() {
     let mut h = H::new(0x7034_0012);
-    let f1: ComponentId = id(&place(&mut h, "fusebank4", (100.0, 150.0)), "component");
-    let k1: ComponentId = id(&place(&mut h, "coil", (200.0, 150.0)), "component");
+    let f1: DeviceId = id(&place(&mut h, "fusebank4", (100.0, 150.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (200.0, 150.0)), "component");
     let f = f1.hex();
     let huge = format!("rating.{}", "9".repeat(10_000));
     for (cmd, params) in [
@@ -956,31 +956,31 @@ fn o_hostile_input_never_panics() {
 // ---------------------------------------------------------------------------------------------
 // §13 check 12: the 21 starters are unchanged
 
-/// §13 check 12: no content hash of an existing starter changes. The hashes are the ones the
-/// starters have on `daeb0652` (= `dev` `6729c8f1` plus docs), computed by compiling that
-/// commit's `symbols.rs` beside the build, not copied from the worker's unit test.
+/// §13 check 12: no content hash of an existing starter changes unless its definition does. The
+/// hashes were the ones the starters had on `daeb0652`; design 072 (F15) added each starter's
+/// declared `device_type` to its definition, and they are re-pinned to that.
 #[test]
 fn p_old_starters_keep_their_content_hash() {
     const PINNED: &[(&str, &str)] = &[
-        ("coil", "a38469fe64864a4a602f678c8bb2fae900c64b75c555a3b58b65b98029437db3"),
-        ("no", "82317c626ba389fa1deb1ecbefc1457e0b958da637780813198b4969e6d4cc31"),
-        ("nc", "8861d1f37368786878b2c860ce0bec1e98f4b8fb4b264fdf6b897cd01a38717c"),
-        ("power3", "7554cf8d849ccf964912b5ceef2248e342c00351cd386f88bd00f27aff9c599b"),
-        ("mcb1", "60a708b75ab297e22e8ee0e3e5b99163660dbf7f941ca0eba4d7009095042ecb"),
-        ("mcb2", "907da0b24254cc9520f359285988b9706420730a46e626c73abf20a3434ddd73"),
-        ("fuse", "92a1eb42f8036488fa6e127903f9381488777bb1314c272c97c7fb6c565f0f93"),
-        ("psu", "7ab24232dfdaa94a6b28556544b3be0b128146f6cd314f7a2e4fef86df03bc6c"),
-        ("pbno", "6fcb99af92cd7290c81fb4e05291bef164c4354e358a959490d4b1dece901148"),
-        ("pbnc", "eb97ba69342ae1de571c128a9086531e499581436fb5cc8c0f223c98d881479f"),
-        ("sel", "ee747f4614ce340e0500223ec3f23a1463c80ef9ec42f5e425be6449dedf3023"),
-        ("lamp", "654a895a70d7a93b61a1dfd279243afcd45628a7835bc7ca7baf3419e6af3e5a"),
-        ("motor3", "74fba3648ea65faed6d0f2d6122333c8ddbe82593551300b8b39b84e2783db94"),
-        ("motor1", "97d78f1600e761449dda417ba7a0d8818d1fc0a7576bd56f5a68bd2665714dcb"),
-        ("trafo", "7546ea16e7c4b9d68527ee6e022ad642a825844ab7441c699c2200015d736016"),
-        ("terminal", "140b3e17fdb18a4889a5816b1f3aa34f9c9714643d25f518470cd800310290a7"),
-        ("terminalpe", "950f2596fe76913d2ac50cc894697b3ca80e10cfb3bcbe136dccbc61af844a3c"),
-        ("di", "691b84067c9c64dd0ab9de2a9a6bef23fb05c71a485264cf463f245ef39fc1eb"),
-        ("do", "736535bf22162769b6420f790efd350383060df36447dcee6d29cf1f86f1ff92"),
+        ("coil", "2af1b6d8286ce742810433538c9d705fd4d803259ff4302a4a335b8d791b95b0"),
+        ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
+        ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
+        ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
+        ("mcb1", "0449072e772d3becc698699b2168dbe8e85039ddc0ec60d67f28c0232cb2ce6a"),
+        ("mcb2", "577a656074a2f6685ab58cc4a12eca204a34367881c0dd37017399357f8867cf"),
+        ("fuse", "97e67e1b287d5c724cf004c2f84bcf55a24ce963ad8c0381d57014d744503766"),
+        ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
+        ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
+        ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
+        ("sel", "1e9c869fcf4da31ff024f9d60f1e06168aa1757f2f2b2d4a66681e0af4ee5600"),
+        ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
+        ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
+        ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
+        ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
+        ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
+        ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
+        ("di", "418a6aab8d5818614ba43098c08872d64592926ca89ab42557f185476425f06a"),
+        ("do", "a7d39c8d471f7b36a469fff10c05eaa40ee4f93e921349a265a23e34cda6461f"),
         ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
         ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
     ];

@@ -4,7 +4,7 @@
 //! a dead end); merging an already merged branch; undo and redo across a merge; the file verifies.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{ComponentId, TxKind, WireId};
+use ecad_model::{DeviceId, TxKind, WireId};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{Client, TempDir};
@@ -25,8 +25,8 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String, String) {
 }
 
 fn prop(c: &mut Client, coil: &str, key: &str) -> Option<String> {
-    let id = ComponentId::parse(coil).unwrap();
-    c.doc().components.get(&id).and_then(|x| x.properties.get(key).cloned())
+    let id = DeviceId::parse(coil).unwrap();
+    c.doc().devices.get(&id).and_then(|x| x.properties.get(key).cloned())
 }
 
 fn branches(c: &mut Client) -> Vec<Value> {
@@ -52,7 +52,7 @@ fn verify(path: &str) {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    let mut t: Vec<String> = c.doc().components.values().filter_map(|x| x.properties.get("tag").cloned()).collect();
+    let mut t: Vec<String> = c.doc().devices.values().filter_map(|x| x.properties.get("tag").cloned()).collect();
     t.sort();
     t
 }
@@ -237,9 +237,9 @@ fn a_device_removed_on_main_and_changed_on_the_branch_offers_a_way_through() {
     c.exec("devicedelete", json!({"component": coil}));
     let pv = c.exec("merge", json!({"from": "Option R", "preview": true}));
     eprintln!("removed vs changed preview: {pv}");
-    let id = ComponentId::parse(&coil).unwrap();
+    let id = DeviceId::parse(&coil).unwrap();
     let tried = every_choice_merges(&mut c, "Option R", &mut |c, _, ch| {
-        let present = c.doc().components.contains_key(&id);
+        let present = c.doc().devices.contains_key(&id);
         eprintln!("  choice {ch}: device present = {present}");
     });
     assert!(tried >= 2, "keep it removed / keep the device");

@@ -19,7 +19,7 @@ fn locations_boxes_and_generated_pages_record_as_the_agent_and_reports_read_with
     let (k, q) = (k["component"].as_str().unwrap().to_string(), q["component"].as_str().unwrap().to_string());
     let steps = vec![
         ("setprop", json!({"component": k, "key": "location", "value": "+CP2"})),
-        ("setprop", json!({"components": [k, q], "key": "location", "value": "+CP3"})),
+        ("setprop", json!({"devices": [k, q], "key": "location", "value": "+CP3"})),
         ("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [200, 130]]})),
         ("locationbox", json!({"location": "+JB2", "points": [[0, 200], [60, 200], [60, 260], [0, 260]]})),
         ("newpage", json!({"generated": "bom-location"})),

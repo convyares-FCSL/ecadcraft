@@ -155,8 +155,8 @@ fn oops_of_objects_with_a_meaning_is_refused_with_a_reason() {
         let (mut h, plain, w) = fixture();
         let page = h.first_page();
         let doc = h.doc();
-        let c1 = *doc.components.keys().next().unwrap();
-        let c2 = *doc.components.keys().nth(1).unwrap();
+        let c1 = *doc.devices.keys().next().unwrap();
+        let c2 = *doc.devices.keys().nth(1).unwrap();
         let target: Vec<String> = match what {
             "wire" => vec![h.route_handle(page, w).hex()],
             "component line" => vec![h.rep_handles(page, c1)[0].clone()],
@@ -218,12 +218,12 @@ fn classic_array_copies_are_recorded_as_copies() {
         (
             "symbol",
             |h, _, _| {
-                let c2 = *h.doc().components.keys().nth(1).unwrap();
+                let c2 = *h.doc().devices.keys().nth(1).unwrap();
                 let item = h.symbol_item(c2);
                 let page = h.first_page();
                 json!({"handles": [h.handle_of(page, item).hex()], "rows": 1, "cols": 2, "colSpacing": 60})
             },
-            &["CreateComponent", "LinkRepresentation"],
+            &["CreateDevice", "LinkRepresentation"],
         ),
         (
             "wire",
@@ -238,7 +238,7 @@ fn classic_array_copies_are_recorded_as_copies() {
         let (mut h, plain, w) = fixture();
         let p = params(&mut h, plain, w);
         let head = h.head();
-        let components = h.doc().components.len();
+        let devices = h.doc().devices.len();
         let conductors = h.doc().wires.len();
         h.run("-array", p).unwrap();
         assert_eq!(h.head(), head + 1, "{what}: one transaction");
@@ -249,9 +249,9 @@ fn classic_array_copies_are_recorded_as_copies() {
         }
         let doc = h.doc();
         match what {
-            "symbol" => assert_eq!(doc.components.len(), components + 1, "a copied device"),
+            "symbol" => assert_eq!(doc.devices.len(), devices + 1, "a copied device"),
             "wire" => assert_eq!(doc.wires.len(), conductors + 1, "a copied wire"),
-            _ => assert_eq!((doc.components.len(), doc.wires.len()), (components, conductors)),
+            _ => assert_eq!((doc.devices.len(), doc.wires.len()), (devices, conductors)),
         }
         h.check();
         // One undo takes the whole array back.

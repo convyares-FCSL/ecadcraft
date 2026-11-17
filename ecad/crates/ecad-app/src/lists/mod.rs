@@ -66,9 +66,9 @@ pub enum ListAction {
     Scope(bool),
     Reveal(plc::IoKey),
     /// Brief 051: show this page at the card's first drawing on it.
-    GoToCard(ecad_model::PageId, Option<ecad_model::ComponentId>),
+    GoToCard(ecad_model::PageId, Option<ecad_model::DeviceId>),
     /// Brief 051: the Check list, filtered to this device.
-    ChecksOf(ecad_model::ComponentId),
+    ChecksOf(ecad_model::DeviceId),
     /// Brief 051: Place Symbol for a card body, for this free slot.
     PlaceCard(u32),
     /// Brief 056 (design 056 §3.1, §4.1, §6 as the owner changed it): Add a rack, Import an I/O

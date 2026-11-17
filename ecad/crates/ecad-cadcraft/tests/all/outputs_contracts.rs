@@ -4,24 +4,24 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::locations::{self, Source};
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{ComponentId, Document, PageId, WireId};
+use ecad_model::{DeviceId, Document, PageId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> ComponentId {
+fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
     let r = h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap();
     id(&r, "component")
 }
 
-fn loc(doc: &Document, c: ComponentId) -> (Option<String>, &'static str) {
+fn loc(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
     let l = locations::resolve(doc, c);
     (l.value, l.source.word())
 }
 
 /// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
 /// project, or none.
-fn ctx(doc: &Document, c: ComponentId) -> (Option<String>, &'static str) {
+fn ctx(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
     let r = ecad_cadcraft::reps::goto(doc, c, None).unwrap();
     let l = locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default());
     (l.value, l.source.word())
@@ -70,7 +70,7 @@ fn a_device_stores_its_location_and_unset_devices_take_a_new_project_location() 
     assert_eq!(loc(&h.doc(), k), (s("+CP1"), "device"), "a stored value is never changed by a page location");
     assert_eq!(ctx(&h.doc(), k), (s("+FIELD"), "page"));
     let head = h.head();
-    h.run("setprop", json!({"components": [k.hex(), q.hex()], "key": "location", "value": "CP3"})).unwrap();
+    h.run("setprop", json!({"devices": [k.hex(), q.hex()], "key": "location", "value": "CP3"})).unwrap();
     assert_eq!(h.head(), head + 1, "several devices: one transaction");
     assert_eq!(loc(&h.doc(), k), (s("+CP3"), "device"));
     assert_eq!(loc(&h.doc(), q), (s("+CP3"), "device"));
@@ -100,14 +100,14 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
         p.outputs();
     });
     // Placed keeping no location (the page would propose +FIELD), so the box has unset devices.
-    let m: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [100, 100], "location": "keep"})).unwrap(), "component");
-    let x: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [140, 100], "location": "keep"})).unwrap(), "component");
+    let m: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [100, 100], "location": "keep"})).unwrap(), "component");
+    let x: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [140, 100], "location": "keep"})).unwrap(), "component");
     assert_eq!((loc(&h.doc(), m).0, loc(&h.doc(), x).0), (None, None));
     let head = h.head();
     let r = h.run("locationbox", json!({"location": "JB1", "corners": [[80, 80], [160, 130]]})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     assert_eq!(r["inside"], 2, "{r}");
-    let boxc: ComponentId = id(&r, "component");
+    let boxc: DeviceId = id(&r, "component");
     let doc = h.doc();
     assert_eq!(loc(&doc, m), (s("+JB1"), "device"), "the unset devices inside take the box's");
     assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
@@ -154,7 +154,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     let hd = h.handle_of(page, item);
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(!doc.components.contains_key(&boxc), "the box component goes with its outline");
+    assert!(!doc.devices.contains_key(&boxc), "the box component goes with its outline");
     assert_eq!(ctx(&doc, x), (s("+FIELD"), "page"));
     same_as_built(&mut h);
 }
@@ -175,7 +175,7 @@ fn a_box_needs_room_and_a_closed_polyline() {
     let made = h.run("locationbox", json!({"location": "+JB9", "item": item.hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(doc.items[&item].style.linetype, "DASHED");
-    assert!(doc.components.contains_key(&id::<ComponentId>(&made, "component")));
+    assert!(doc.devices.contains_key(&id::<DeviceId>(&made, "component")));
     // The same outline again: it belongs to a box now.
     let e = h.run("locationbox", json!({"location": "+JB8", "item": item.hex()})).unwrap_err();
     assert!(e.contains("belongs to another location box"), "{e}");
@@ -224,9 +224,9 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
     let a = h.run("place", json!({"symbol": "terminal", "at": [0, 0], "tag": "X1"})).unwrap();
     let b = h.run("place", json!({"symbol": "terminal", "at": [60, 0], "tag": "X2"})).unwrap();
-    let (a, b): (ComponentId, ComponentId) = (id(&a, "component"), id(&b, "component"));
+    let (a, b): (DeviceId, DeviceId) = (id(&a, "component"), id(&b, "component"));
     // Brief 052: the project's location proposes; the devices store theirs.
-    h.run("setlocation", json!({"components": [a.hex(), b.hex()], "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"devices": [a.hex(), b.hex()], "value": "+CP1"})).unwrap();
     let w = wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)]);
     h.run("setprop", json!({"component": a.hex(), "key": "maker", "value": "Phoenix"})).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "part_number", "value": "UT 2.5"})).unwrap();
@@ -307,7 +307,7 @@ fn generated_pages_follow_the_project_and_print() {
     }
     // Brief 052: the project's location proposes; the devices store theirs.
     let hexes: Vec<String> = coils.iter().map(|c| c.hex()).collect();
-    h.run("setlocation", json!({"components": hexes, "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::generated::sheets(&doc, bom_page, Some(&Outputs::build(&doc))), 2);
     let parts = ecad_cadcraft::generated::parts_of(&doc, bom_page, None);

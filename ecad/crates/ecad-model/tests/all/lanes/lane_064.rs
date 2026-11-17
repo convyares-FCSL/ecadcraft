@@ -11,8 +11,8 @@ fn expected(op: &Op) -> EffectKind {
         "AddPage" | "RemovePage" => EffectKind::Page,
         "AddLayer" | "RemoveLayer" => EffectKind::Layer,
         "AddItem" | "ModifyItem" | "RemoveItem" => EffectKind::Item,
-        "CreateComponent" | "DeleteComponent" => EffectKind::Component,
-        "SetComponentDefinition" => EffectKind::ComponentDefinition,
+        "CreateDevice" | "DeleteDevice" | "ModifyDevice" => EffectKind::Device,
+        "SetDeviceDefinition" => EffectKind::DeviceDefinition,
         "AddTerminal" | "RemoveTerminal" => EffectKind::Terminal,
         "LinkRepresentation" | "ModifyRepresentation" | "UnlinkRepresentation" => EffectKind::Rep,
         "CreateWire" | "DeleteWire" | "ModifyWire" => EffectKind::Wire,
@@ -113,8 +113,8 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 t.items.insert(*id);
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
-                t.components.insert(*id);
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                t.devices.insert(*id);
             }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
                 t.terminals.insert(*id);
@@ -135,8 +135,8 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.cables.insert(*cable);
             }
             Op::SetProperty { object, .. } => match object {
-                ObjectRef::Component(id) => {
-                    t.components.insert(*id);
+                ObjectRef::Device(id) => {
+                    t.devices.insert(*id);
                 }
                 ObjectRef::Wire(id) => {
                     t.wires.insert(*id);

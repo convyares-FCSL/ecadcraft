@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
 
 use crate::connectors::{self as cn, Family, Names, Shown};
 use crate::defaults::{self, Scope};
@@ -21,13 +21,13 @@ pub const NEEDS_AT: &str = "connector needs at for a row, or line or wire for pi
 ///
 /// # Errors
 /// A tag that does not read, or names no device.
-pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<ComponentId>, CmdError> {
+pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, CmdError> {
     let Some(t) = device else { return Ok(None) };
     let t = t.trim();
     if let Ok(n) = u128::from_str_radix(t, 16)
-        && doc.components.contains_key(&ComponentId::from(n))
+        && doc.devices.contains_key(&DeviceId::from(n))
     {
-        return Ok(Some(ComponentId::from(n)));
+        return Ok(Some(DeviceId::from(n)));
     }
     let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
     crate::devices::holder_of(doc, &tag, None).map(Some).ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
@@ -158,7 +158,7 @@ pub fn span(names: &[String]) -> String {
 /// What a placement made, for the result and the echo.
 #[derive(Debug, Clone)]
 pub struct Made {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub tag: String,
     pub new: bool,
     pub shown: Vec<Shown>,
@@ -325,7 +325,7 @@ fn place_bulkhead(
 
 /// The names a whole half of `n` pins takes on connector `c`: its drawn names in order, then the
 /// next numbers not used.
-pub fn join_names(doc: &Document, c: ComponentId, n: usize) -> Vec<String> {
+pub fn join_names(doc: &Document, c: DeviceId, n: usize) -> Vec<String> {
     let d = cn::drawn(doc, c);
     let mut out: Vec<String> = d.order.iter().take(n).cloned().collect();
     let mut k = 1usize;
@@ -341,7 +341,7 @@ pub fn join_names(doc: &Document, c: ComponentId, n: usize) -> Vec<String> {
 
 /// What a row places.
 struct Row<'a> {
-    device: Option<ComponentId>,
+    device: Option<DeviceId>,
     halves: Side,
     family: Family,
     pins: Option<usize>,
@@ -386,7 +386,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
     let up = if swap { -5.0 } else { 5.0 };
     let mut ops = Vec::new();
     let mut shown = Vec::new();
-    let mut made: Option<(ComponentId, String, bool)> = device.map(|c| (c, crate::devices::tag_words(doc, c), false));
+    let mut made: Option<(DeviceId, String, bool)> = device.map(|c| (c, crate::devices::tag_words(doc, c), false));
     for side in sides {
         let key = family.half_key(side, n).ok_or_else(|| CmdError::refused(family.size_refusal()))?;
         let starter = crate::devices::starter(&key)?;
@@ -424,7 +424,7 @@ pub fn along_wire(doc: &Document, page: PageId, on: &crate::wires::OnWire) -> f6
 
 /// What a pins placement places.
 struct Pins<'a> {
-    device: Option<ComponentId>,
+    device: Option<DeviceId>,
     halves: Side,
     pins: Option<usize>,
     names: &'a Names,
@@ -564,11 +564,11 @@ pub struct PinlabelInput {
 #[derive(Debug, Clone)]
 pub enum Pinlabel {
     /// The pin already has that name.
-    Unchanged { component: ComponentId, to: String },
+    Unchanged { component: DeviceId, to: String },
     /// One drawn pin moves to its half's next free pin.
-    Moved { component: ComponentId, from: String, to: String, ops: Vec<Op>, label: String, message: String },
+    Moved { component: DeviceId, from: String, to: String, ops: Vec<Op>, label: String, message: String },
     /// The pin is renamed on both halves; [`renamed_message`] says so after the commit.
-    Renamed { component: ComponentId, tag: String, from: String, to: String, ops: Vec<Op>, label: String },
+    Renamed { component: DeviceId, tag: String, from: String, to: String, ops: Vec<Op>, label: String },
 }
 
 /// Plan `pinlabel` (design 044 §5.3).
@@ -630,15 +630,15 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         && list.contains(&old)
     {
         let after: Vec<String> = list.iter().map(|n| if *n == old { to.clone() } else { n.clone() }).collect();
-        let before = doc.components.get(&c).and_then(|x| x.properties.get(cn::PIN_NAMES_KEY)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: cn::PIN_NAMES_KEY.into(), before, after: Some(after.join(",")) });
+        let before = doc.devices.get(&c).and_then(|x| x.properties.get(cn::PIN_NAMES_KEY)).cloned();
+        ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: cn::PIN_NAMES_KEY.into(), before, after: Some(after.join(",")) });
     }
     let label = format!("Rename pin {tag}:{old}");
     Ok(Pinlabel::Renamed { component: c, tag, from: old, to, ops, label })
 }
 
 /// The echo of a rename, read from the document with it in.
-pub fn renamed_message(doc: &Document, c: ComponentId, tag: &str, from: &str, to: &str) -> String {
+pub fn renamed_message(doc: &Document, c: DeviceId, tag: &str, from: &str, to: &str) -> String {
     let d = cn::drawn(doc, c);
     let both = d.socket.contains_key(to) && d.plug.contains_key(to);
     format!("{tag}:{from} is now {tag}:{to}{}.", if both { " (both halves)" } else { "" })

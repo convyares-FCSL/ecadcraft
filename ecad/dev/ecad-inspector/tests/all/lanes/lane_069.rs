@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, CableMember, Color, Component, Definition, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
+    Author, Cable, CableMember, Color, Definition, Device, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
     ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef,
     Subject, SymbolInstance, Terminal, TerminalDef, Wire,
 };
@@ -85,8 +85,8 @@ fn every_op_ledger() -> Ledger {
         terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0) }],
         ..Default::default()
     };
-    let comp: ecad_model::ComponentId = ids.fresh();
-    let mut comp_v = Component { definition: Some(def), ..Component::default() };
+    let comp: ecad_model::DeviceId = ids.fresh();
+    let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("tag".into(), "K1".into());
     let term: ecad_model::TerminalId = ids.fresh();
     let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
@@ -96,7 +96,7 @@ fn every_op_ledger() -> Ledger {
     let item_v = line(page, layer, 5.0);
     let rep_sym: ecad_model::RepresentationId = ids.fresh();
     let rep_sym_v = Representation {
-        subject: Subject::Component(comp),
+        subject: Subject::Device(comp),
         page,
         form: Form::Symbol,
         role: "main".into(),
@@ -127,7 +127,7 @@ fn every_op_ledger() -> Ledger {
                 Op::AddPage { id: page, page: page_v.clone(), index: 0 },
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
-                Op::CreateComponent { id: comp, component: comp_v.clone() },
+                Op::CreateDevice { id: comp, device: comp_v.clone() },
                 Op::AddTerminal { id: term, terminal: term_v.clone() },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
@@ -153,8 +153,13 @@ fn every_op_ledger() -> Ledger {
         Op::AddItem { id: ids.fresh(), item: line(page, layer, 1.0) },
         Op::ModifyItem { id: item, before: item_v.clone(), after: moved },
         Op::RemoveItem { id: item, item: item_v.clone() },
-        Op::CreateComponent { id: ids.fresh(), component: Component::default() },
-        Op::DeleteComponent { id: comp, component: comp_v.clone() },
+        Op::CreateDevice { id: ids.fresh(), device: Device::default() },
+        Op::DeleteDevice { id: comp, device: comp_v.clone() },
+        Op::ModifyDevice {
+            id: comp,
+            before: comp_v.clone(),
+            after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..comp_v.clone() },
+        },
         Op::AddTerminal { id: ids.fresh(), terminal: Terminal { component: comp, label: None, key: None } },
         Op::RemoveTerminal { id: term, terminal: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
@@ -168,7 +173,7 @@ fn every_op_ledger() -> Ledger {
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
         Op::AddCableMember { cable, index: 1, member: CableMember { conductor: wire2, core: Some("2".into()) } },
         Op::RemoveCableMember { cable, index: 0, member: CableMember { conductor: wire, core: None } },
-        Op::SetProperty { object: ObjectRef::Component(comp), key: "tag".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(comp), key: "tag".into(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },
         Op::SetProjectSettings {
@@ -177,7 +182,7 @@ fn every_op_ledger() -> Ledger {
         },
         Op::NameVersion { name: "w".into(), at: 2, description: None },
         Op::UnnameVersion { name: "v".into(), at: 1, description: None },
-        Op::SetComponentDefinition { id: comp, before: Some(def), after: None },
+        Op::SetDeviceDefinition { id: comp, before: Some(def), after: None },
         Op::AddFolder { id: ids.fresh(), folder: Folder { name: "G".into(), parent: Some(folder) }, index: 1 },
         Op::RemoveFolder { id: folder, folder: folder_v.clone(), index: 0 },
         Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },

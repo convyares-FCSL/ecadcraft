@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, IdAllocator, ObjectRef, Op, PageId, Pt};
+use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op, PageId, Pt};
 use serde_json::{Value, json};
 
 use crate::designations::{self, Aspect, Pending};
@@ -71,7 +71,7 @@ impl Mode {
 /// One device whose stored value differs from what is proposed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Conflict {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub aspect: Aspect,
     /// Its stored code (`?` for a key with no entry).
     pub from: String,
@@ -91,7 +91,7 @@ pub struct Planned {
     /// `SetProperty` ops (and list entries for typed codes).
     pub ops: Vec<Op>,
     /// The devices set: (device, aspect, code).
-    pub set: Vec<(ComponentId, Aspect, String)>,
+    pub set: Vec<(DeviceId, Aspect, String)>,
     /// The devices left with another value (unless moved: see `moved`).
     pub conflicts: Vec<Conflict>,
     /// The conflicting devices moved (JSON `move`).
@@ -103,7 +103,7 @@ pub struct Planned {
 /// One symbol a proposal is for: its device, page and anchor.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Spot {
-    pub device: ComponentId,
+    pub device: DeviceId,
     pub page: PageId,
     pub at: Option<Pt>,
 }
@@ -142,7 +142,7 @@ pub fn plan(
         }
         for (i, a) in Aspect::ALL.into_iter().enumerate() {
             let mode = modes.get(i).cloned().unwrap_or_default();
-            let stored = doc.components.get(&s.device).and_then(|x| x.properties.get(a.property())).cloned();
+            let stored = doc.devices.get(&s.device).and_then(|x| x.properties.get(a.property())).cloned();
             let (key, code) = match &mode {
                 Mode::Keep => continue,
                 Mode::Value(t) => {
@@ -174,7 +174,7 @@ pub fn plan(
                 }
             }
             if set {
-                out.ops.push(Op::SetProperty { object: ObjectRef::Component(s.device), key: a.property().into(), before: stored, after: Some(key) });
+                out.ops.push(Op::SetProperty { object: ObjectRef::Device(s.device), key: a.property().into(), before: stored, after: Some(key) });
                 out.set.push((s.device, a, code));
             }
         }
@@ -184,8 +184,8 @@ pub fn plan(
 }
 
 /// Whether every symbol of device `c` has `key` as its context of aspect `a`.
-fn all_in(doc: &Document, a: Aspect, c: ComponentId, key: &str, extra: &[LocBox], cache: &mut locations::BoxCache) -> bool {
-    doc.representations_of(ecad_model::Subject::Component(c)).all(|(_, r)| {
+fn all_in(doc: &Document, a: Aspect, c: DeviceId, key: &str, extra: &[LocBox], cache: &mut locations::BoxCache) -> bool {
+    doc.representations_of(ecad_model::Subject::Device(c)).all(|(_, r)| {
         let s = Spot { device: c, page: r.page, at: locations::anchor(doc, r) };
         context(doc, a, &s, extra, cache).key.as_deref() == Some(key)
     })
@@ -205,7 +205,7 @@ pub fn plan_change(doc: &Document, a: Aspect, candidates: &[Spot], old_key: Opti
         if !seen.insert(s.device) {
             continue;
         }
-        let stored = doc.components.get(&s.device).and_then(|x| x.properties.get(a.property())).cloned();
+        let stored = doc.devices.get(&s.device).and_then(|x| x.properties.get(a.property())).cloned();
         let set = match stored.as_deref() {
             None => true,
             Some(k) if k == new_key => false,
@@ -228,7 +228,7 @@ pub fn plan_change(doc: &Document, a: Aspect, candidates: &[Spot], old_key: Opti
         };
         if set {
             out.ops.push(Op::SetProperty {
-                object: ObjectRef::Component(s.device),
+                object: ObjectRef::Device(s.device),
                 key: a.property().into(),
                 before: stored,
                 after: Some(new_key.to_string()),
@@ -245,7 +245,7 @@ pub fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot> {
     let boxes = locations::boxes_on(doc, page);
     doc.representations_on(page)
         .filter_map(|(_, r)| {
-            let ecad_model::Subject::Component(c) = r.subject else { return None };
+            let ecad_model::Subject::Device(c) = r.subject else { return None };
             if !locations::is_device(doc, c) {
                 return None;
             }
@@ -264,7 +264,7 @@ pub fn spots_of_project(doc: &Document, a: Aspect) -> Vec<Spot> {
 /// A device symbol a CADCraft edit moves, with its contexts before the edit (function, location).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Moved {
-    pub device: ComponentId,
+    pub device: DeviceId,
     pub rep: ecad_model::RepresentationId,
     pub before: [Option<String>; 2],
 }
@@ -284,7 +284,7 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
         };
         for id in ids {
             let Some((rid, r)) = doc.representation_of_item(id) else { continue };
-            let ecad_model::Subject::Component(c) = r.subject else { continue };
+            let ecad_model::Subject::Device(c) = r.subject else { continue };
             if locations::is_box(doc, c) {
                 box_pages.insert(r.page);
             } else if locations::is_device(doc, c) {
@@ -295,7 +295,7 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
     for p in box_pages {
         reps.extend(
             doc.representations_on(p)
-                .filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(c) if locations::is_device(doc, c)))
+                .filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(c) if locations::is_device(doc, c)))
                 .map(|(id, _)| id),
         );
     }
@@ -303,7 +303,7 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
     reps.into_iter()
         .filter_map(|rid| {
             let r = doc.representations.get(&rid)?;
-            let ecad_model::Subject::Component(c) = r.subject else { return None };
+            let ecad_model::Subject::Device(c) = r.subject else { return None };
             let before = Aspect::ALL.map(|a| locations::rep_context_in(doc, a, r, &mut cache).key);
             Some(Moved { device: c, rep: rid, before })
         })
@@ -347,7 +347,7 @@ pub fn after_move(doc: &Document, ids: &mut IdAllocator, moved: &[Moved]) -> Res
 
 /// The label of a move's follow-up: `Set location +FIELD`, or `Set location (3 devices)`.
 pub fn follow_up_label(p: &Planned) -> String {
-    let devices: BTreeSet<ComponentId> = p.set.iter().map(|(c, _, _)| *c).collect();
+    let devices: BTreeSet<DeviceId> = p.set.iter().map(|(c, _, _)| *c).collect();
     let values: BTreeSet<(Aspect, &str)> = p.set.iter().map(|(_, a, v)| (*a, v.as_str())).collect();
     let what = match values.iter().collect::<Vec<_>>().as_slice() {
         [(a, v)] => format!("Set {} {v}", a.word()),
@@ -361,7 +361,7 @@ pub fn follow_up_label(p: &Planned) -> String {
 pub fn spots_inside(doc: &Document, b: &LocBox) -> Vec<Spot> {
     doc.representations_on(b.page)
         .filter_map(|(_, r)| {
-            let ecad_model::Subject::Component(c) = r.subject else { return None };
+            let ecad_model::Subject::Device(c) = r.subject else { return None };
             if !locations::is_device(doc, c) {
                 return None;
             }
@@ -399,7 +399,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
     if conflicts.is_empty() {
         return Vec::new();
     }
-    let devices: BTreeSet<ComponentId> = conflicts.iter().map(|c| c.component).collect();
+    let devices: BTreeSet<DeviceId> = conflicts.iter().map(|c| c.component).collect();
     let aspects: BTreeSet<Aspect> = conflicts.iter().map(|c| c.aspect).collect();
     let what = match aspects.iter().copied().collect::<Vec<_>>().as_slice() {
         [Aspect::Location] => "location",
@@ -418,7 +418,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
 
 /// The echo of a placement's proposal (design 052 §5.3): `Placed -K01 in +CP1.`, `Placed -K01 (no
 /// location).`, `-K01 is now in +CP1.`, and the conflict rows with what stayed.
-pub fn place_words(doc: &Document, c: ComponentId, joined: bool, p: &Planned) -> Vec<String> {
+pub fn place_words(doc: &Document, c: DeviceId, joined: bool, p: &Planned) -> Vec<String> {
     let tag = crate::devices::tag_words(doc, c);
     let values: Vec<String> =
         Aspect::ALL.into_iter().filter_map(|a| p.set.iter().find(|(x, y, _)| *x == c && *y == a).map(|(_, _, code)| code.clone())).collect();
@@ -439,7 +439,7 @@ pub fn place_words(doc: &Document, c: ComponentId, joined: bool, p: &Planned) ->
 
 /// The label of the transaction moving `conflicts`: `Set location +CP1 (2 devices)`.
 pub fn move_label(conflicts: &[Conflict]) -> String {
-    let devices: BTreeSet<ComponentId> = conflicts.iter().map(|c| c.component).collect();
+    let devices: BTreeSet<DeviceId> = conflicts.iter().map(|c| c.component).collect();
     let n = devices.len();
     let what = match conflicts {
         [first, rest @ ..] if rest.iter().all(|c| c.aspect == first.aspect && c.to_key == first.to_key) => {
@@ -470,9 +470,9 @@ pub fn half_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
         .filter_map(|c| {
             let side = c.half?;
             let key = format!("location.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
-            let before = doc.components.get(&c.component)?.properties.get(&key).cloned();
+            let before = doc.devices.get(&c.component)?.properties.get(&key).cloned();
             (before.as_deref() != Some(c.to_key.as_str())).then(|| Op::SetProperty {
-                object: ObjectRef::Component(c.component),
+                object: ObjectRef::Device(c.component),
                 key,
                 before,
                 after: Some(c.to_key.clone()),
@@ -508,7 +508,7 @@ pub fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
     conflicts
         .iter()
         .filter(|c| {
-            let Some(comp) = doc.components.get(&c.component) else { return false };
+            let Some(comp) = doc.devices.get(&c.component) else { return false };
             designations::code_of(doc, c.aspect, &c.to_key).is_some() && comp.properties.get(c.aspect.property()) != Some(&c.to_key)
         })
         .cloned()
@@ -520,9 +520,9 @@ pub fn move_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
     conflicts
         .iter()
         .filter_map(|c| {
-            let before = doc.components.get(&c.component)?.properties.get(c.aspect.property()).cloned();
+            let before = doc.devices.get(&c.component)?.properties.get(c.aspect.property()).cloned();
             (before.as_deref() != Some(c.to_key.as_str())).then(|| Op::SetProperty {
-                object: ObjectRef::Component(c.component),
+                object: ObjectRef::Device(c.component),
                 key: c.aspect.property().into(),
                 before,
                 after: Some(c.to_key.clone()),

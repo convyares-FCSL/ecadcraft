@@ -5,7 +5,7 @@
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ComponentId, RepresentationId, Subject};
+use ecad_model::{DeviceId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -18,14 +18,14 @@ const NOTHING_THERE: &str = "Nothing there. Click a coil or its contact table.";
 const PLACEMENTS: [&str; 4] = ["Auto", "Below", "Right", "Off"];
 
 /// The device whose table a mapped object names: a table part, or a head symbol (its item or tag).
-fn table_named(p: &Project, m: Mapped) -> Option<ComponentId> {
+fn table_named(p: &Project, m: Mapped) -> Option<DeviceId> {
     let doc = p.ledger.document();
     let rep = match m {
         Mapped::Xref(r) | Mapped::Tag(r) | Mapped::Marker(r, _) => r,
         Mapped::Item(i) => doc.representation_of_item(i)?.0,
         _ => return None,
     };
-    let Subject::Component(c) = doc.representations.get(&rep)?.subject else { return None };
+    let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
     (xref::device(doc, c).head == Some(rep)).then_some(c)
 }
 
@@ -44,7 +44,7 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
     let target = match (m, class) {
         (Mapped::Xref(_), xref::Class::Head) => {
             let (_, i) = map.xref_part(h)?;
-            let Subject::Component(c) = doc.representations.get(&rep)?.subject else { return None };
+            let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
             let dev = xref::device(doc, c);
             let mut places = xref::Places::new(doc);
             let t = xref::table(doc, &mut places, &dev)?;
@@ -77,18 +77,18 @@ pub(crate) fn mirrormove(s: &Session) -> R<Box<dyn Interactive>> {
 
 #[derive(Default)]
 struct MirrorMove {
-    device: Option<ComponentId>,
+    device: Option<DeviceId>,
 }
 
 impl MirrorMove {
-    fn choose(s: &Session, h: Handle) -> Result<ComponentId, String> {
+    fn choose(s: &Session, h: Handle) -> Result<DeviceId, String> {
         read(s, |p, page| {
             let m = p.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(NOT_A_TABLE)?;
             table_named(p, m).ok_or_else(|| NOT_A_TABLE.to_string())
         })
     }
 
-    fn commit(s: &mut Session, c: ComponentId, params: Value) -> R<Step> {
+    fn commit(s: &mut Session, c: DeviceId, params: Value) -> R<Step> {
         let mut params = params;
         params["component"] = json!(c.hex());
         let v = commit(s, "mirrormove", &params)?;
@@ -130,7 +130,7 @@ impl Interactive for MirrorMove {
     /// One selected coil or table part chooses the device at once.
     fn begin(&mut self, s: &mut Session) -> R<Step> {
         safely(s, "mirrormove", |s| {
-            let found: std::collections::BTreeSet<ComponentId> =
+            let found: std::collections::BTreeSet<DeviceId> =
                 s.selection().iter().take(crate::cmd::MAX_HANDLES).filter_map(|h| Self::choose(s, *h).ok()).collect();
             if found.len() == 1 {
                 self.device = found.into_iter().next();

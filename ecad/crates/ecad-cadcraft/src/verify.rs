@@ -345,7 +345,7 @@ pub fn verify_page_pending(
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: BTreeSet<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
         members.extend(r.connection_points.keys().filter_map(|t| map.marker(*rid, *t)));
-        if !matches!(r.subject, Subject::Component(_)) || members.len() < 2 {
+        if !matches!(r.subject, Subject::Device(_)) || members.len() < 2 {
             continue;
         }
         wanted_groups += 1;

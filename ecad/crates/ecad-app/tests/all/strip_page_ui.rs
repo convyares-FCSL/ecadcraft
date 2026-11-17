@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use ecad_app::{App, project_panel};
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
@@ -39,14 +39,14 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 }
 
 /// Fixture G (design 046 §11), as `ecad-cadcraft`'s `strip_page_contracts` builds it.
-fn fixture_g(h: &mut H) -> ComponentId {
+fn fixture_g(h: &mut H) -> DeviceId {
     exec(h, "locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]}));
     exec(h, "locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]}));
-    let k1: ComponentId = hex_id(&exec(h, "place", json!({"symbol": "coil", "at": [100, 220]})), "component");
-    let k2: ComponentId = hex_id(&exec(h, "place", json!({"symbol": "coil", "at": [150, 220]})), "component");
+    let k1: DeviceId = hex_id(&exec(h, "place", json!({"symbol": "coil", "at": [100, 220]})), "component");
+    let k2: DeviceId = hex_id(&exec(h, "place", json!({"symbol": "coil", "at": [150, 220]})), "component");
     exec(h, "place", json!({"symbol": "no", "at": [200, 220], "device": k1.hex()}));
     exec(h, "place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()}));
-    let m1: ComponentId = hex_id(&exec(h, "place", json!({"symbol": "motor3", "at": [110, 50]})), "component");
+    let m1: DeviceId = hex_id(&exec(h, "place", json!({"symbol": "motor3", "at": [110, 50]})), "component");
     exec(h, "setprop", json!({"component": m1.hex(), "key": "description", "value": "Pump"}));
     exec(h, "place", json!({"symbol": "pbno", "at": [250, 60]}));
     for r in [
@@ -61,7 +61,7 @@ fn fixture_g(h: &mut H) -> ComponentId {
     let cable = v["cable"].as_str().unwrap().to_string();
     exec(h, "setprop", json!({"cable": cable, "key": "type", "value": "YSLY-JZ 7G1.5"}));
     let v = exec(h, "terminals", json!({"from": [90, 170], "to": [260, 170]}));
-    let x1: ComponentId = hex_id(&v, "strip");
+    let x1: DeviceId = hex_id(&v, "strip");
     let terms: Vec<String> = v["terminals"].as_array().unwrap().iter().map(|t| t["terminal"].as_str().unwrap().to_string()).collect();
     for x in [300, 340] {
         exec(h, "wire", json!({"points": [[x, 260], [x, 160]]}));

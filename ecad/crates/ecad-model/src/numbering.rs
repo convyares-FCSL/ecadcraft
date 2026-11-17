@@ -33,7 +33,7 @@ use crate::book::Book;
 use crate::connectivity::{self, NetData, NetId, split_number};
 use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, ComponentId, FolderId, PageId, TerminalId, WireId};
+use crate::id::{CableId, DeviceId, FolderId, PageId, TerminalId, WireId};
 use crate::op::{ObjectRef, Op};
 use crate::sheet::Grid;
 use crate::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
@@ -78,7 +78,7 @@ pub enum Scope {
     /// number or none.
     All,
     /// These devices, cables and the nets of these conductors.
-    Selection { components: BTreeSet<ComponentId>, cables: BTreeSet<CableId>, conductors: BTreeSet<WireId> },
+    Selection { devices: BTreeSet<DeviceId>, cables: BTreeSet<CableId>, conductors: BTreeSet<WireId> },
     /// Tags with these letters (`K`); nets of this potential (`24V`).
     Prefix(String),
     /// Items anchored on a page of this folder or its subfolders.
@@ -99,12 +99,12 @@ pub struct Request {
     /// Digits for this run (default: the project's tag padding, or the wire digits).
     pub digits: Option<u8>,
     /// Brief 028: the strips whose terminals [`Kind::Terminals`] numbers, chosen by the caller.
-    pub strips: BTreeSet<ComponentId>,
+    pub strips: BTreeSet<DeviceId>,
     /// Brief 036 (FP8c): per strip, the caller's position groups (the terminals of one position).
     /// The planner numbers groups, each anchored at its earliest symbol in drawing order, and gives
     /// every terminal of a group the group's new label. A strip with no groups is numbered one
     /// terminal per group, as brief 028 did.
-    pub positions: BTreeMap<ComponentId, Vec<Vec<TerminalId>>>,
+    pub positions: BTreeMap<DeviceId, Vec<Vec<TerminalId>>>,
 }
 
 /// What a row does (design §3, row marks).
@@ -546,7 +546,7 @@ pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'
 
 fn object_hex(o: ObjectRef) -> u128 {
     match o {
-        ObjectRef::Component(c) => c.0,
+        ObjectRef::Device(c) => c.0,
         ObjectRef::Cable(c) => c.0,
         ObjectRef::Wire(c) => c.0,
         ObjectRef::Page(p) => p.0,
@@ -561,17 +561,17 @@ fn plan_tags(
 ) {
     // Every device (tagless junctions and continuations aside) and every tagged cable.
     let mut items: Vec<Tagged> = Vec::new();
-    for (id, c) in &doc.components {
+    for (id, c) in &doc.devices {
         if c.properties.contains_key(connectivity::KIND) {
             continue;
         }
         let tag = c.properties.get(TAG_KEY).cloned();
-        let has_reps = doc.representations_of(Subject::Component(*id)).next().is_some();
+        let has_reps = doc.representations_of(Subject::Device(*id)).next().is_some();
         if tag.is_none() && !has_reps {
             continue;
         }
         items.push(Tagged {
-            object: ObjectRef::Component(*id),
+            object: ObjectRef::Device(*id),
             kind: Kind::Devices,
             tag,
             fixed: is_fixed(&c.properties),
@@ -608,15 +608,15 @@ fn plan_tags(
         let in_scope = wanted_kind && {
             match &req.scope {
                 Scope::All => true,
-                Scope::Selection { components, cables, .. } => match it.object {
-                    ObjectRef::Component(c) => components.contains(&c),
+                Scope::Selection { devices, cables, .. } => match it.object {
+                    ObjectRef::Device(c) => devices.contains(&c),
                     ObjectRef::Cable(c) => cables.contains(&c),
                     _ => false,
                 },
                 Scope::Prefix(p) => prefix.as_deref() == Some(p.trim_start_matches('-').to_ascii_uppercase().as_str()),
                 Scope::Folder(_) | Scope::Pages(_) => {
                     let subject = match it.object {
-                        ObjectRef::Component(c) => Subject::Component(c),
+                        ObjectRef::Device(c) => Subject::Device(c),
                         ObjectRef::Cable(c) => Subject::Cable(c),
                         _ => continue,
                     };
@@ -636,7 +636,7 @@ fn plan_tags(
         }
         if in_scope && it.anchor.is_none() {
             let subject = match it.object {
-                ObjectRef::Component(c) => Subject::Component(c),
+                ObjectRef::Device(c) => Subject::Device(c),
                 ObjectRef::Cable(c) => Subject::Cable(c),
                 _ => continue,
             };
@@ -732,12 +732,12 @@ fn plan_tags(
 fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
     let start = req.start.unwrap_or(1);
     for strip in &req.strips {
-        let Some(comp) = doc.components.get(strip) else { continue };
+        let Some(comp) = doc.devices.get(strip) else { continue };
         let tag = comp.properties.get(TAG_KEY).cloned().unwrap_or_else(|| "?".into());
         // Each terminal once, anchored at the symbol that shows it.
         let mut seen: BTreeSet<TerminalId> = BTreeSet::new();
         let mut list: Vec<(TerminalId, PageId, Pt, Order)> = Vec::new();
-        for (_, r) in doc.representations_of(Subject::Component(*strip)) {
+        for (_, r) in doc.representations_of(Subject::Device(*strip)) {
             let Some(at) = places.rep_point(r) else { continue };
             let shown: Vec<TerminalId> = if r.connection_points.is_empty() {
                 let keys: BTreeSet<&str> = match doc.items.get(r.items.first().unwrap_or(&crate::id::ItemId(0))).map(|i| &i.kind) {
@@ -805,7 +805,7 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
                 ops.push(Op::AddTerminal { id: *m, terminal: after });
             }
             rows.push(Row {
-                object: ObjectRef::Component(*strip),
+                object: ObjectRef::Device(*strip),
                 kind: Kind::Terminals,
                 old: format!("{tag}:{old_label}"),
                 new: format!("{tag}:{new_label}"),
@@ -968,7 +968,7 @@ pub fn object_id(o: ObjectRef) -> u128 {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::doc::{Component, Form, Item, Page, Style, SymbolInstance};
+    use crate::doc::{Device, Form, Item, Page, Style, SymbolInstance};
     use crate::geom::Placement;
     use crate::id::{DefinitionId, ItemId, LayerId, RepresentationId};
 
@@ -982,12 +982,12 @@ mod tests {
         }
         let style = Style { layer: LayerId(1), color: crate::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         for (id, t, page, x, y, fixed) in devs {
-            let mut c = Component::default();
+            let mut c = Device::default();
             c.properties.insert(TAG_KEY.into(), (*t).into());
             if *fixed {
                 c.properties.insert(FIXED_KEY.into(), "yes".into());
             }
-            d.components.insert(ComponentId(*id), c);
+            d.devices.insert(DeviceId(*id), c);
             let item = ItemId(5000 + id);
             let pg = d.page_order[*page];
             d.items.insert(
@@ -1004,7 +1004,7 @@ mod tests {
             d.representations.insert(
                 RepresentationId(7000 + id),
                 Representation {
-                    subject: Subject::Component(ComponentId(*id)),
+                    subject: Subject::Device(DeviceId(*id)),
                     page: pg,
                     form: Form::Symbol,
                     role: "main".into(),
@@ -1033,7 +1033,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut x).unwrap();
         }
-        x.components.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (id.0, t.clone()))).collect()
+        x.devices.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (id.0, t.clone()))).collect()
     }
 
     #[test]
@@ -1075,7 +1075,7 @@ mod tests {
         let t = after(&d, &p);
         // -K01 (page 2) is out of scope: its number is taken, so -K07 becomes -K02.
         assert_eq!((t[&1].as_str(), t[&2].as_str()), ("-K02", "-K01"));
-        let sel = Scope::Selection { components: [ComponentId(2)].into_iter().collect(), cables: BTreeSet::new(), conductors: BTreeSet::new() };
+        let sel = Scope::Selection { devices: [DeviceId(2)].into_iter().collect(), cables: BTreeSet::new(), conductors: BTreeSet::new() };
         let p = plan(&d, &Request { start: Some(5), ..req(sel) }, &HighWater::new()).unwrap();
         let t = after(&d, &p);
         assert_eq!((t[&1].as_str(), t[&2].as_str()), ("-K07", "-K05"));

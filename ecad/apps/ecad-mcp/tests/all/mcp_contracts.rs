@@ -884,7 +884,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     let a = c.exec("place", json!({"symbol": "coil", "at": [200, 200]}))["component"].clone();
     let b = c.exec("place", json!({"symbol": "coil", "at": [250, 200]}))["component"].clone();
     let before = c.log().len();
-    let v = c.exec("setprop", json!({"components": [a, b], "key": "maker", "value": "Generic"}));
+    let v = c.exec("setprop", json!({"devices": [a, b], "key": "maker", "value": "Generic"}));
     assert_eq!(v["devices"], json!(2));
     let log = c.log();
     assert_eq!(log.len(), before + 1, "one transaction for both");
@@ -907,7 +907,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         ("revision", json!({"description": "x"})),
         ("issuerevision", json!({})),
         ("undoissue", json!({})),
-        ("setprop", json!({"components": ["1", "2"], "key": "maker", "value": "x"})),
+        ("setprop", json!({"devices": ["1", "2"], "key": "maker", "value": "x"})),
     ] {
         let m = r.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
@@ -960,11 +960,9 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
 
     // `junction`: a tagless component on the wire, which is split; both halves keep the number.
     let (j, t) = one(&mut c, "junction", json!({"at": [30, 0]}));
-    assert!(
-        t.ops.iter().any(
-            |op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))
-        )
-    );
+    assert!(t.ops.iter().any(
+        |op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))
+    ));
     let net = c.exec("net", json!({"conductor": j["conductor"]}));
     assert_eq!(net["number"], json!("24V-01"));
     assert_eq!(net["conductors"].as_array().unwrap().len(), 2);
@@ -980,7 +978,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     assert!(
         t.ops
             .iter()
-            .any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
+            .any(|op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
     );
     let (r, _) = one(&mut c, "wire", json!({"points": [[100, 0], [100, 40]]}));
     assert_eq!(r["number"], json!("0V-01"), "a net named by a continuation takes its potential");

@@ -236,7 +236,7 @@ fn row_json(doc: &Document, r: &numbering::Row) -> Value {
 /// A row's Desc: the device's description, `Cable, 3 wires`, or the net's potential.
 fn desc(doc: &Document, o: ObjectRef) -> String {
     match o {
-        ObjectRef::Component(c) => devices::description(doc, c),
+        ObjectRef::Device(c) => devices::description(doc, c),
         ObjectRef::Cable(k) => {
             let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
             format!("Cable, {}", plural(n, "wire", "wires"))

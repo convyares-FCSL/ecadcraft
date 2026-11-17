@@ -5,7 +5,7 @@
 
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::units::Amps;
-use ecad_model::{CableId, ComponentId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
+use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
 
 use crate::error::CmdError;
 use crate::rating::{self, Basis, RatedSubject, dataset, parse};
@@ -263,10 +263,10 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
     // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
     let entry = crate::designations::find(doc, crate::designations::Aspect::Location, typed);
     let loc = entry.as_ref().map_or_else(|| typed.to_string(), |e| e.code.clone());
-    let boxes: Vec<ComponentId> = match &entry {
+    let boxes: Vec<DeviceId> = match &entry {
         None => Vec::new(),
         Some(e) => doc
-            .components
+            .devices
             .iter()
             .filter(|(_, x)| {
                 crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == e.key)
@@ -280,9 +280,9 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
     let after = after.map(str::to_string);
     let mut ops = Vec::new();
     for c in &boxes {
-        let before = doc.components.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
+        let before = doc.devices.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
         if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: rating::TEMPERATURE.into(), before, after: after.clone() });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: rating::TEMPERATURE.into(), before, after: after.clone() });
         }
     }
     let words = after.as_deref().map_or_else(|| "project default".to_string(), |t| format!("{t} \u{b0}C"));

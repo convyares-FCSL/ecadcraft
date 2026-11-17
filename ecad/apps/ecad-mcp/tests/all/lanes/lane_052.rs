@@ -34,7 +34,7 @@ fn location_and_list_commands_through_execute() {
         ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("designation.l."))),
         "entry added"
     );
-    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), key, .. } if key == "location")));
+    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "location")));
     c.exec("setfunction", json!({"component": k, "value": "=F1"}));
     assert_eq!(last_by_agent(&mut c).0, "Set function =F1");
     c.exec("designationadd", json!({"aspect": "location", "code": "+CP2", "description": "Field"}));
@@ -66,7 +66,7 @@ fn proposals_through_execute() {
     let n = hex(&c.exec("place", json!({"symbol": "coil", "at": [75, 180]})), "component");
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Place symbol");
-    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), key, .. } if key == "location")), "{ops:?}");
+    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "location")), "{ops:?}");
     // Joining -K (at +CP2) inside the box: `move` moves it, `keep` for function proposes nothing.
     let v = c.exec("place", json!({"symbol": "no", "at": [120, 160], "device": k, "location": "move", "function": "keep"}));
     assert_eq!(v["location"]["conflicts"][0]["proposed"], "+CP1", "{v}");

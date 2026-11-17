@@ -79,6 +79,36 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
 (ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
 
+## Lane B: devices have a type
+
+What changed for someone using the app:
+
+- **Every device stores what it is**: power supply, protection, switching, sensor, motor, load,
+  indicator, terminal strip, connector, PLC station, PLC module or general. The symbol it was
+  first placed from decides it; placing another symbol onto the same tag keeps it.
+- In files, commands and the agent's tools a device is now a `device`: the ops are
+  `CreateDevice`, `DeleteDevice`, `SetDeviceDefinition` and the new `ModifyDevice`; `setprop`,
+  `setlocation`, `conflicts` and `partline` take several devices as `devices` (was
+  `components`), and `ecad_project` lists them under `devices`. Projects saved by an earlier
+  0.3.0-dev build do not open.
+- Nothing changes in how the app looks or behaves yet.
+
+### Try it
+
+1. Start the app, place a **Contactor / relay coil** and an **MCB**.
+2. Open the inspector (`cargo run -p ecad-inspector -- <file>` after saving) and look at the
+   project's devices: the coil's device shows `"device_type": {"switching": {}}`, the MCB's
+   `{"protection": {}}`.
+
+The headless tests (automated, not tried by hand):
+
+```sh
+cargo test -p ecad-model --test all lane_072b
+cargo test -p ecad-cadcraft --test all lane_072b
+cargo test -p ecad-inspector --test all lane_072b
+cargo test -p ecad-mcp --test all lane_072b
+```
+
 ## Lane D: wires carry typed values
 
 A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the

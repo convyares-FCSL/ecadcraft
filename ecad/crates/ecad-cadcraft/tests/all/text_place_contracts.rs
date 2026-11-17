@@ -4,15 +4,15 @@
 
 use crate::common::{H, id};
 
-use ecad_model::{ComponentId, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 const SEED: u64 = 0x31_02;
 
-fn place(h: &mut H, symbol: &str, at: [f64; 2]) -> (ComponentId, RepresentationId) {
+fn place(h: &mut H, symbol: &str, at: [f64; 2]) -> (DeviceId, RepresentationId) {
     let v = h.run("place", json!({"symbol": symbol, "at": at})).unwrap();
-    let c: ComponentId = id(&v, "component");
-    let r = h.doc().representations_of(Subject::Component(c)).map(|(r, _)| r).next().unwrap();
+    let c: DeviceId = id(&v, "component");
+    let r = h.doc().representations_of(Subject::Device(c)).map(|(r, _)| r).next().unwrap();
     (c, r)
 }
 
@@ -120,9 +120,9 @@ fn hostile_stored_places_draw_the_automatic_place() {
     let key = format!("text.{}.tag.at", r.hex());
     for bad in ["a,b,ZZ", "1e999,0,LT", "1,2", "1,2,LT,9", &"9".repeat(10_000)] {
         let op = ecad_model::Op::SetProperty {
-            object: ecad_model::ObjectRef::Component(c),
+            object: ecad_model::ObjectRef::Device(c),
             key: key.clone(),
-            before: h.doc().components[&c].properties.get(&key).cloned(),
+            before: h.doc().devices[&c].properties.get(&key).cloned(),
             after: Some(bad.to_string()),
         };
         h.project.apply_ops(&mut h.s, "hostile", vec![op]).unwrap();

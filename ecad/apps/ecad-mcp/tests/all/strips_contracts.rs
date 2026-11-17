@@ -61,7 +61,7 @@ fn terminal_strip_commands_through_execute() {
     // The offers.
     c.exec("setprop", json!({"component": strip, "key": "terminals", "value": "8+1PE"}));
     assert!(
-        matches!(&last_by_agent(&mut c).1[..], [Op::SetProperty { object: ObjectRef::Component(_), key, after: Some(v), .. }] if key == "terminals" && v == "8+1PE")
+        matches!(&last_by_agent(&mut c).1[..], [Op::SetProperty { object: ObjectRef::Device(_), key, after: Some(v), .. }] if key == "terminals" && v == "8+1PE")
     );
     c.exec("setprop", json!({"cable": cable, "key": "cores", "value": "5G"}));
     assert!(

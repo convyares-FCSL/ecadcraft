@@ -23,8 +23,8 @@ use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::derive::{route_on_page, terminal_positions};
 use ecad_model::{
-    Component, ComponentId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Pt, Representation, RepresentationId, Subject,
-    Terminal, TerminalId, Wire, WireId,
+    Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Pt, Representation, RepresentationId, Subject, Terminal,
+    TerminalId, Wire, WireId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
@@ -310,7 +310,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     }
     // Reference texts erased (brief 010): each erases its reference, after the loop.
     let mut erased_refs: Vec<RepresentationId> = Vec::new();
-    let mut erased_links: BTreeSet<(ecad_model::ComponentId, u32)> = BTreeSet::new();
+    let mut erased_links: BTreeSet<(ecad_model::DeviceId, u32)> = BTreeSet::new();
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -352,14 +352,14 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
     for (c, n) in erased_links {
-        let props = cx.doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+        let props = cx.doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::links::key(n);
         if let Some(v) = props.get(&key) {
             t.notes.push(format!("Deleted link {} {v}.", crate::devices::tag_words(cx.doc, c)));
         }
         for k in std::iter::once(key.clone()).chain(crate::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {
-                t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key: k, before: Some(before), after: None });
+                t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: k, before: Some(before), after: None });
             }
         }
     }
@@ -528,7 +528,7 @@ fn copy_batch(
 
     // Whole component representations: independent copies.
     for (rid, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
-        let Subject::Component(src_comp) = r.subject else { continue };
+        let Subject::Device(src_comp) = r.subject else { continue };
         let item_handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         let marker_handles: Vec<(TerminalId, Handle)> =
             r.connection_points.keys().filter_map(|tm| smap.marker(*rid, *tm).map(|h| (*tm, h))).collect();
@@ -539,14 +539,14 @@ fn copy_batch(
         if !all_copied || item_handles.is_empty() {
             continue;
         }
-        let comp = sdoc.components.get(&src_comp).cloned().ok_or("source component missing")?;
+        let comp = sdoc.devices.get(&src_comp).cloned().ok_or("source component missing")?;
         if let Some(def) = comp.definition
             && !cx.doc.definitions.contains_key(&def)
         {
             let d = sdoc.definitions.get(&def).cloned().ok_or("source definition missing")?;
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
         }
-        let new_comp: ComponentId = cx.ids.fresh();
+        let new_comp: DeviceId = cx.ids.fresh();
         // A copied device gets the next tag of its prefix (design 018 §3.3).
         let mut comp = comp;
         if comp.properties.contains_key(ecad_model::tag::TAG_KEY) {
@@ -555,7 +555,7 @@ fn copy_batch(
                 None => comp.properties.remove(ecad_model::tag::TAG_KEY),
             };
         }
-        t.ops.push(Op::CreateComponent { id: new_comp, component: Component { ..comp } });
+        t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
         for (src_t, term) in sdoc.terminals_of(src_comp) {
             let nt: TerminalId = cx.ids.fresh();
             term_map.insert(src_t, nt);
@@ -591,7 +591,7 @@ fn copy_batch(
         }
         // Brief 031 (FP5): the copy keeps its symbol's own text keys, under the new representation.
         for op in t.ops.iter_mut().rev() {
-            if let Op::CreateComponent { id, component } = op
+            if let Op::CreateDevice { id, device: component } = op
                 && *id == new_comp
             {
                 crate::text_style::copy_symbol_keys(&mut component.properties, *rid, new_rep);
@@ -601,7 +601,7 @@ fn copy_batch(
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,
             rep: Representation {
-                subject: Subject::Component(new_comp),
+                subject: Subject::Device(new_comp),
                 page: cx.page,
                 form: r.form,
                 role: r.role.clone(),

@@ -13,6 +13,7 @@
 //! - [`op`]: self-inverting ops that record resolved intent.
 //! - [`ledger`]: transactions applied in place with rollback, linear project-wide undo/redo
 //!   derived from the log, unsaved state.
+//! - [`device`]: what a device is, its [`DeviceType`] (design 072 §2).
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
 //! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
 //! - [`wire`]: the wire and its typed values (design 072 §4.2).
@@ -27,6 +28,7 @@ pub mod colour;
 pub mod connectivity;
 pub mod derive;
 mod dev;
+pub mod device;
 pub mod diff;
 pub mod doc;
 pub mod effect;
@@ -56,16 +58,17 @@ pub mod words;
 
 pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetId, Node};
+pub use device::{DeviceGroup, DeviceType};
 pub use doc::{
-    Cable, CableMember, Color, Component, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form, Item,
-    ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
-    SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
+    Cable, CableMember, Color, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End, Folder, Form, Item, ItemKind,
+    Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject, SymbolInstance,
+    Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ComponentId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId, StandardId,
-    TerminalId, TxId, WireId,
+    CableId, DefinitionId, DeviceId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId, StandardId, TerminalId,
+    TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};

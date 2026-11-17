@@ -13,17 +13,18 @@ Code, file and command names may differ, as noted.
 | **terminal strip** | A group of terminals with one tag, side by side on a rail. | `-X01` with terminals 1, 2, 3 |
 
 **In code and files** the connection point is still `Terminal` / `TerminalId`, the op is
-`AddTerminal`, the command `addterminal`, and JSON parameters say `terminal`. They stay until the
-next major format version: op names are written in `.ecad` files. MCP command names stay as they
-are. A conductor is a `Wire` / `WireId` in code (design 072, F20), its ops `CreateWire` and
-`DeleteWire`, its record kind `wire`; command parameters still say `conductor`.
+`AddTerminal`, the command `addterminal`, and JSON parameters say `terminal`. A device is `Device` /
+`DeviceId`, with the ops `CreateDevice`, `DeleteDevice`, `SetDeviceDefinition` and `ModifyDevice`
+(design 072, F13, F14; it was `Component` before 0.2.3); what it is lives in its `DeviceType`. A
+conductor is a `Wire` / `WireId` in code (design 072, F20), its ops `CreateWire`, `DeleteWire` and
+`ModifyWire`, its record kind `wire`; command parameters still say `conductor`. MCP command names
+stay as they are.
 
 ## Devices and what draws them
 
 | Word | Means |
 | --- | --- |
-| **device** | A real part with a tag (`-K01`), its properties (description, maker, part number, location `+`, function `=`) and its connection points. In code: a component with a `tag` property. |
-| **component** | The model object a device is. A component without a tag (an outline converted with **Convert to Component**) is listed under "No tag". |
+| **device** | A real part with a tag (`-K01`), its properties (description, maker, part number, location `+`, function `=`), its type (`DeviceType`: power supply, protection, switching, …) and its connection points. A device without a tag (an outline converted with **Convert to Component**) is listed under "No tag". In code: `Device`. |
 | **symbol** | The drawing of a device, or part of one, on a page: a coil, a contact, a terminal. One device can be drawn by several symbols on several pages (`-K01`'s coil on page 2, its contacts on pages 2 and 3). |
 | **representation** | The model's link between a subject (a device, a conductor, a cable) and what draws it on one page: a symbol, a drawn outline, a wire's route, a cable's slash or reference. |
 | **definition** | A symbol's shape and its connection points, embedded in the project (81 symbols come built in). |

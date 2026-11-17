@@ -250,6 +250,6 @@ fn fp1_merge_preview_names_racks_by_tag() {
     let id = hex(k, "id");
     c.exec("merge", json!({"from": "Option R", "choices": {id: "branch"}}));
     let d = c.doc();
-    let cid = ecad_model::ComponentId::parse(&card).unwrap();
-    assert_eq!(d.components[&cid].properties.get("plc.rack").map(String::as_str), Some(a20.as_str()));
+    let cid = ecad_model::DeviceId::parse(&card).unwrap();
+    assert_eq!(d.devices[&cid].properties.get("plc.rack").map(String::as_str), Some(a20.as_str()));
 }

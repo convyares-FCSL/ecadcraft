@@ -22,7 +22,7 @@
 use std::collections::BTreeMap;
 
 use cadcraft_engine::Session;
-use ecad_model::{CableId, ComponentId, Document, PageId, Pt, Subject, WireId};
+use ecad_model::{CableId, DeviceId, Document, PageId, Pt, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::{Project, ProjectHandle};
@@ -76,7 +76,7 @@ pub struct Built {
     /// The project's first page.
     pub first_page: PageId,
     /// Devices placed with a tag, by tag.
-    pub devices: BTreeMap<String, ComponentId>,
+    pub devices: BTreeMap<String, DeviceId>,
     /// The wires drawn, in order.
     pub wires: Vec<WireId>,
     /// The cables made with [`ProjectBuilder::cable`], in order.
@@ -169,7 +169,7 @@ impl Built {
     }
 
     /// The device placed with `tag`.
-    pub fn device(&self, tag: &str) -> ComponentId {
+    pub fn device(&self, tag: &str) -> DeviceId {
         *self.devices.get(tag).unwrap_or_else(|| panic!("no device placed with tag {tag}"))
     }
 
@@ -184,7 +184,7 @@ impl Built {
                 let c = self.device(tag);
                 let doc = self.doc();
                 let (rid, r) =
-                    doc.representations_of(Subject::Component(c)).next().unwrap_or_else(|| panic!("device {tag} has no drawn representation"));
+                    doc.representations_of(Subject::Device(c)).next().unwrap_or_else(|| panic!("device {tag} has no drawn representation"));
                 let page = r.page;
                 ecad_model::derive::terminal_positions(&doc, page)
                     .into_iter()

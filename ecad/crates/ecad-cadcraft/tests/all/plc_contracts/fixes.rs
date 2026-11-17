@@ -2,18 +2,18 @@
 //! the I/O list follows target changes that are not a tag or a wire property, kept-model paths
 //! walk no project, and `plcslot {card}` takes the next free slot.
 
-use ecad_model::{ComponentId, PageId, Subject};
+use ecad_model::{DeviceId, PageId, Subject};
 use serde_json::{Value, json};
 
 use super::{placed, prop};
 use crate::common::{H, id, pts};
 
-fn rack_of(h: &mut H, c: ComponentId) -> Option<String> {
+fn rack_of(h: &mut H, c: DeviceId) -> Option<String> {
     prop(h, c, "plc.rack")
 }
 
 /// A CPU `-A01` with two DI cards in slots 1 and 2, and a contact-only device `-K01` (no head).
-fn rack_and_contact(seed: u64) -> (H, ComponentId, Vec<ComponentId>, ComponentId) {
+fn rack_and_contact(seed: u64) -> (H, DeviceId, Vec<DeviceId>, DeviceId) {
     let mut h = H::new(seed);
     let cpu = placed(&mut h, "plccpu", 50.0, 400.0);
     let cards = vec![placed(&mut h, "plcdi", 100.0, 400.0), placed(&mut h, "plcdi", 140.0, 400.0)];
@@ -29,7 +29,7 @@ fn fp1_merging_a_rack_by_tag_re_points_its_cards_in_the_same_transaction() {
     h.run("setprop", json!({"component": cpu.hex(), "key": "tag", "value": ktag, "merge": true})).unwrap();
     assert_eq!(h.head(), before + 1, "one transaction");
     let d = h.doc();
-    assert!(!d.components.contains_key(&cpu), "the rack device merged away");
+    assert!(!d.devices.contains_key(&cpu), "the rack device merged away");
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), Some(k.hex()), "re-pointed to the device that took the rack body");
     }
@@ -51,7 +51,7 @@ fn fp1_make_them_one_re_points_the_cards_too() {
     let ops = h.cfg(|p| ecad_cadcraft::devices::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
     for c in &cards {
         let repointed = ops.iter().any(|op| {
-            matches!(op, ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Component(x), key, after, .. }
+            matches!(op, ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Device(x), key, after, .. }
                 if x == c && key == "plc.rack" && after.as_deref() == Some(k.hex().as_str()))
         });
         assert!(repointed, "card re-pointed in the merge's ops");
@@ -64,14 +64,14 @@ fn fp1_make_them_one_re_points_the_cards_too() {
 }
 
 /// A DI card `-A02` whose channel 0 is wired through strip terminal `-X01` to lamp `-P01`.
-fn wired_through_a_strip(seed: u64) -> (H, ComponentId, ComponentId, PageId) {
+fn wired_through_a_strip(seed: u64) -> (H, DeviceId, DeviceId, PageId) {
     let mut h = H::new(seed);
     placed(&mut h, "plccpu", 50.0, 400.0);
     let di = placed(&mut h, "plcdi", 100.0, 400.0);
     placed(&mut h, "lamp", 100.0, 260.0);
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
     let v = h.run("terminals", json!({"from": [95.0, 230.0], "to": [105.0, 230.0]})).unwrap();
-    let strip: ComponentId = id(&v, "strip");
+    let strip: DeviceId = id(&v, "strip");
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "iolist"})).unwrap(), "page");
     (h, di, strip, page)
@@ -112,7 +112,7 @@ fn review_2_renaming_a_continuation_patches_the_cards_io_rows() {
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let b = h.run("place", json!({"symbol": "continuation", "at": [300, 250], "name": "B"})).unwrap();
-    let b: ComponentId = id(&b, "component");
+    let b: DeviceId = id(&b, "component");
     placed(&mut h, "lamp", 300.0, 160.0);
     h.run("wire", json!({"points": pts(&[(300.0, 250.0), (300.0, 170.0)])})).unwrap();
     h.run("newpage", json!({"generated": "iolist"})).unwrap();
@@ -148,8 +148,7 @@ fn review_3_kept_model_paths_walk_no_project() {
     // The inspector on a cell.
     let page = h.first_page();
     let d = h.doc();
-    let cell =
-        d.representations_of(Subject::Component(di)).find(|(_, r)| r.role == "chdi").and_then(|(_, r)| r.items.first().copied()).expect("a cell");
+    let cell = d.representations_of(Subject::Device(di)).find(|(_, r)| r.role == "chdi").and_then(|(_, r)| r.items.first().copied()).expect("a cell");
     let handle = h.handle_of(page, cell);
     let v = h.pv(|p, _| ecad_cadcraft::props::view(p, Some(page), &[handle]));
     let row = v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.label == "Address").cloned().expect("an Address row");
@@ -165,7 +164,7 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
     for (i, key) in ["plcdi", "plcai", "plcdq"].iter().enumerate() {
         placed(&mut h, key, 100.0 + 40.0 * i as f64, 400.0);
     }
-    let di = h.doc().components.iter().find(|(_, c)| c.properties.get("tag").map(String::as_str) == Some("-A02")).map(|(c, _)| *c).unwrap();
+    let di = h.doc().devices.iter().find(|(_, c)| c.properties.get("tag").map(String::as_str) == Some("-A02")).map(|(c, _)| *c).unwrap();
     for n in ["16", "64", "120"] {
         h.run("setprop", json!({"component": di.hex(), "key": "plc.channels", "value": n})).unwrap();
         let (kept, laid) = h.cfg(|p| {

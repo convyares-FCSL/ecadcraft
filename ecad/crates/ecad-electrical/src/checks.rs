@@ -15,7 +15,7 @@
 //! | --- | --- |
 //! | `CreateWire` / `DeleteWire` / `AttachEnd` | that conductor; the connection points at its ends before and after; their nets (before and after) and the nets sharing their numbers |
 //! | `AddTerminal` / `RemoveTerminal` | that point and its net |
-//! | `CreateComponent` / `DeleteComponent` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
+//! | `CreateDevice` / `DeleteDevice` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
 //! | `SetProperty` conductor | that conductor's net, and the nets sharing its old and new number |
 //! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that conductor; loose ends near its old and new route |
 //! | the same of a component symbol | conductors attached to its points ("drawn away"); continuations with its name |
@@ -33,7 +33,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{CableId, ComponentId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -359,7 +359,7 @@ impl Kind {
 pub enum Object {
     Wire(WireId),
     Terminal(TerminalId),
-    Component(ComponentId),
+    Device(DeviceId),
     /// A cable reference end (brief 027).
     Reference(ecad_model::RepresentationId),
     Cable(ecad_model::CableId),
@@ -379,17 +379,17 @@ pub enum Fix {
     Finalise,
     /// Brief 052 (design 052 §6): **Use +CP1**: set the device's value of the aspect to the one
     /// context all its symbols share (`setlocation`).
-    UseContext(ComponentId, crate::designations::Aspect),
+    UseContext(DeviceId, crate::designations::Aspect),
     /// Brief 052: **Set location** / **Set function**: the inspector's row of that device or box.
-    SetDesignation(ComponentId, crate::designations::Aspect),
+    SetDesignation(DeviceId, crate::designations::Aspect),
     /// Brief 052: **Show in Settings**: Settings ▸ Project info ▸ Functions and locations.
     ShowDesignations,
     /// Brief 024: open Reports on the BOM tab with Only ? on.
     ShowReports,
     /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
-    OfferDrawn(ComponentId),
+    OfferDrawn(DeviceId),
     /// Brief 028: renumber the strip's terminals (`renumber {kind: "terminals"}`).
-    RenumberStrip(ComponentId),
+    RenumberStrip(DeviceId),
     /// Brief 028: focus Properties ▸ Cores on the cable.
     SetCores(ecad_model::CableId),
     /// Brief 028: give the member the next free core (`cablecore`).
@@ -398,16 +398,16 @@ pub enum Fix {
     ShowCables,
     /// Brief 030: the strip's orphan key (index into its kept orphans): **Move to end** (items
     /// appended to `acc.end`, key cleared) or **Remove** (key cleared).
-    AccessoryOrphan(ComponentId, u16),
+    AccessoryOrphan(DeviceId, u16),
     /// Brief 030: link `n` crossing the partition after position index `at`: **Split link at**
     /// (`jumper split_at`) or **Remove partition** (`accessory remove [partition]`).
-    LinkAcrossPartition(ComponentId, u16, u16),
+    LinkAcrossPartition(DeviceId, u16, u16),
     /// Brief 030: link `n` names missing positions: **Drop missing positions** or **Delete link**.
-    LinkOrphan(ComponentId, u16),
+    LinkOrphan(DeviceId, u16),
     /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
-    LinkOnNonStrip(ComponentId),
+    LinkOnNonStrip(DeviceId),
     /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
-    MoveTable(ComponentId),
+    MoveTable(DeviceId),
     /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
     RenumberPage(PageId),
     /// Brief 036: **Move to next free** (the level drawn twice, to the next position of its type
@@ -417,28 +417,28 @@ pub enum Fix {
     /// move_to: "new"}`).
     MoveToNewPosition(TerminalId),
     /// Brief 036: link `n` names missing levels: **Drop missing levels** or **Delete link**.
-    LevelMissing(ComponentId, u16),
+    LevelMissing(DeviceId, u16),
     /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).
     FuseDevices,
     /// Brief 045 (design 045 §9): a PLC row's buttons, from the kept PLC model
     /// (`crate::plc::Plc::fix_commands`).
-    Plc(ComponentId, crate::plc::PlcFix),
+    Plc(DeviceId, crate::plc::PlcFix),
     /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
     ConnectorNextPin(TerminalId),
     /// Brief 044: **Set pins to n** (`setprop pins`).
-    SetPins(ComponentId, u32),
+    SetPins(DeviceId, u32),
     /// Brief 044: **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
     /// the lone pins lack (§4.4 gives them first).
-    PlaceMates(ComponentId, crate::symbols::Side),
+    PlaceMates(DeviceId, crate::symbols::Side),
     /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
-    IgnoreConnector(ComponentId, Kind),
+    IgnoreConnector(DeviceId, Kind),
     /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
     /// `n` of the component (`article`).
-    UseArticle(ComponentId, u8),
+    UseArticle(DeviceId, u8),
     /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
     /// (`partline set for`).
-    DropMissingFor(ComponentId, u8),
+    DropMissingFor(DeviceId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(&'static str),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
@@ -559,7 +559,7 @@ impl Check {
         let object = match self.object {
             Object::Wire(c) => json!({"conductor": c.hex()}),
             Object::Terminal(t) => json!({"terminal": t.hex()}),
-            Object::Component(c) => json!({"component": c.hex()}),
+            Object::Device(c) => json!({"component": c.hex()}),
             Object::Reference(r) => json!({"reference": r.hex()}),
             Object::Cable(k) => json!({"cable": k.hex()}),
             Object::None => Value::Null,
@@ -594,7 +594,7 @@ pub enum Key {
     Net(NetId),
     Wire(WireId),
     Terminal(TerminalId),
-    Component(ComponentId),
+    Device(DeviceId),
     /// The reference ends of a cable (brief 027: orphans).
     CableReferences(CableId),
     Cable(ecad_model::CableId),
@@ -844,7 +844,7 @@ pub fn conductor_place(doc: &Document, c: WireId, end: Option<End>) -> (Option<P
 fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>) {
     let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return (None, None) };
     for page in &doc.page_order {
-        let shown = doc.representations_of(Subject::Component(c)).any(|(_, r)| r.page == *page);
+        let shown = doc.representations_of(Subject::Device(c)).any(|(_, r)| r.page == *page);
         if shown && let Some(at) = ecad_model::derive::terminal_position(doc, *page, t) {
             return (Some(*page), Some(at));
         }
@@ -875,7 +875,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
         let (page, at, object) = match cont {
             Some(t) => {
                 let (p, a) = terminal_place(doc, *t);
-                (p, a, doc.terminals.get(t).map_or(Object::None, |x| Object::Component(x.component)))
+                (p, a, doc.terminals.get(t).map_or(Object::None, |x| Object::Device(x.component)))
             }
             None => (page, at, object),
         };
@@ -923,14 +923,14 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
         }
         let cont = net.terminals.iter().find_map(|t| {
             let x = doc.terminals.get(t)?;
-            let c = doc.components.get(&x.component)?;
+            let c = doc.devices.get(&x.component)?;
             (ecad_model::connectivity::continuation_key(&c.properties).as_ref() == Some(key)).then_some((*t, x.component))
         });
         let (p, a, o, which) = match cont {
             Some((t, c)) => {
                 let (p, a) = terminal_place(doc, t);
-                let name = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).cloned();
-                (p, a, Object::Component(c), name.unwrap_or_else(|| key.clone()))
+                let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned();
+                (p, a, Object::Device(c), name.unwrap_or_else(|| key.clone()))
             }
             None => (page, at, object, key.clone()),
         };
@@ -1022,7 +1022,7 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
 /// `Unconnected` check. Every other check on it still runs.
 fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
     let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return false };
-    doc.representations_of(Subject::Component(c)).any(|(_, r)| {
+    doc.representations_of(Subject::Device(c)).any(|(_, r)| {
         let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
         let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
         crate::devices::shown_terminals(doc, c, r)
@@ -1053,13 +1053,13 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
 
 /// The checks of component `c`: a junction with fewer than three wires, a continuation with no
 /// partner.
-pub fn component_checks(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Vec<Check> {
+pub fn component_checks(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Vec<Check> {
     component_checks_in(&mut Places::new(doc), c, m)
 }
 
 /// As [`component_checks`], reading the book and grids through `places`, shared across a Checks
 /// pass so the book is built at most once (review of #105, 1).
-pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn TextMetrics) -> Vec<Check> {
+pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMetrics) -> Vec<Check> {
     let doc = places.doc();
     let mut out = Vec::new();
     designation_checks(places, c, &mut out);
@@ -1069,15 +1069,15 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn Text
             let wires_here: usize = doc.terminals_of(c).map(|(t, _)| doc.ends_at(t).len()).sum();
             if wires_here < 3 {
                 let (page, at) = place();
-                out.push(Check { kind: Kind::ThinJunction, page, at, object: Object::Component(c), which: format!("{wires_here} wires"), fix: None });
+                out.push(Check { kind: Kind::ThinJunction, page, at, object: Object::Device(c), which: format!("{wires_here} wires"), fix: None });
             }
         }
         Some(CONTINUATION) => {
-            let name = doc.components.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
+            let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
             let partners = doc.continuations_named(&name_key(&name)).len();
             if partners < 2 {
                 let (page, at) = place();
-                out.push(Check { kind: Kind::LonelyContinuation, page, at, object: Object::Component(c), which: name, fix: None });
+                out.push(Check { kind: Kind::LonelyContinuation, page, at, object: Object::Device(c), which: name, fix: None });
             }
         }
         _ => {
@@ -1092,7 +1092,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn Text
                         kind: Kind::ProvisionalTag,
                         page,
                         at,
-                        object: Object::Component(c),
+                        object: Object::Device(c),
                         which: t.to_string(),
                         fix: Some(Fix::Finalise),
                     });
@@ -1102,7 +1102,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn Text
                         kind: Kind::DuplicateTag,
                         page,
                         at,
-                        object: Object::Component(c),
+                        object: Object::Device(c),
                         which: format!("A cable and a device share {t}"),
                         fix: None,
                     });
@@ -1112,7 +1112,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn Text
     }
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
     for (which, page, at) in crate::xref::count_checks(doc, c) {
-        out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Component(c), which, fix: None });
+        out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Device(c), which, fix: None });
     }
     // Brief 044 (design 044 §6.3): a connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
@@ -1122,7 +1122,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn Text
             kind: Kind::TableOverTitle,
             page: Some(page),
             at: Some(at),
-            object: Object::Component(c),
+            object: Object::Device(c),
             which,
             fix: Some(Fix::MoveTable(c)),
         });
@@ -1133,17 +1133,17 @@ pub fn component_checks_in(places: &mut Places<'_>, c: ComponentId, m: &dyn Text
 /// The rows of design 052 §6 for component `c`: a stored function or location naming no entry
 /// (devices and boxes); for a device, a value none of its symbols' contexts has, and two heads.
 /// O(its representations and their pages' boxes).
-fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Check>) {
+fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>) {
     use crate::designations::{self as d, Aspect};
     let doc = places.doc();
-    let Some(comp) = doc.components.get(&c) else { return };
+    let Some(comp) = doc.devices.get(&c) else { return };
     let is_box = crate::locations::is_box_component(comp);
     if !is_box && !crate::locations::is_device(doc, c) {
         return;
     }
     let who = if is_box { "A box".to_string() } else { crate::devices::tag_words(doc, c) };
     let (page, at) = if is_box {
-        doc.representations_of(Subject::Component(c)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)))
+        doc.representations_of(Subject::Device(c)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)))
     } else {
         crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a))
     };
@@ -1154,7 +1154,7 @@ fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Che
                 kind: Kind::DesignationMissing,
                 page,
                 at,
-                object: Object::Component(c),
+                object: Object::Device(c),
                 which: format!("{who}'s {} is no longer in the list", a.word()),
                 fix: Some(Fix::SetDesignation(c, a)),
             });
@@ -1163,7 +1163,7 @@ fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Che
     if is_box {
         return;
     }
-    let reps: Vec<&ecad_model::Representation> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r).collect();
+    let reps: Vec<&ecad_model::Representation> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r).collect();
     if reps.is_empty() {
         return;
     }
@@ -1182,7 +1182,7 @@ fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Che
             kind: if a == Aspect::Location { Kind::LocationUnused } else { Kind::FunctionUnused },
             page,
             at,
-            object: Object::Component(c),
+            object: Object::Device(c),
             which: format!("{who} is {code}, but none of its symbols is in {code}{use_words}"),
             fix: contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).map(|_| Fix::UseContext(c, a)),
         });
@@ -1198,7 +1198,7 @@ fn designation_checks(places: &mut Places<'_>, c: ComponentId, out: &mut Vec<Che
             kind: Kind::TwoHeads,
             page: Some(r.page),
             at: crate::xref::anchor(doc, r),
-            object: Object::Component(c),
+            object: Object::Device(c),
             which: format!("{who} has two {}s ({})", crate::devices::head_noun(doc, *second), wheres.join(", ")),
             fix: None,
         });
@@ -1335,7 +1335,7 @@ pub struct Scope {
     wires: BTreeSet<WireId>,
     routes: BTreeSet<WireId>,
     terminals: BTreeSet<TerminalId>,
-    components: BTreeSet<ComponentId>,
+    devices: BTreeSet<DeviceId>,
     /// Cables whose reference ends to re-check (brief 027: orphans).
     cable_references: BTreeSet<CableId>,
     /// Cables to re-check (brief 026: provisional and shared tags).
@@ -1404,28 +1404,37 @@ impl Scope {
                 }
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.terminals.insert(*id);
-                    self.components.insert(terminal.component);
+                    self.devices.insert(terminal.component);
                     node(self, Node::Terminal(*id));
                 }
                 // Brief 048: another definition may bridge other points.
-                Op::SetComponentDefinition { id, .. } => {
-                    self.components.insert(*id);
+                Op::SetDeviceDefinition { id, .. } => {
+                    self.devices.insert(*id);
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
                     }
                 }
-                Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
-                    self.tag_holders(doc, component.properties.get(ecad_model::tag::TAG_KEY));
-                    self.component(doc, *id, component.properties.get(NAME).map(String::as_str));
+                Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => {
+                    self.tag_holders(doc, device.properties.get(ecad_model::tag::TAG_KEY));
+                    self.component(doc, *id, device.properties.get(NAME).map(String::as_str));
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, before, after } => {
+                Op::ModifyDevice { id, before, after } => {
+                    for device in [before, after] {
+                        self.tag_holders(doc, device.properties.get(ecad_model::tag::TAG_KEY));
+                        self.component(doc, *id, device.properties.get(NAME).map(String::as_str));
+                    }
+                    for (t, _) in doc.terminals_of(*id) {
+                        node(self, Node::Terminal(t));
+                    }
+                }
+                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
                     // Brief 052 (design 052 §6): a box's value is a context for the devices on its
                     // pages.
                     if crate::locations::is_box(doc, *c) {
-                        for p in doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                        for p in doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page).collect::<Vec<_>>() {
                             self.devices_on(doc, p);
                         }
                     }
@@ -1494,7 +1503,7 @@ impl Scope {
                 }
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     for c in doc.components_using(*id) {
-                        self.components.insert(c);
+                        self.devices.insert(c);
                         for (t, _) in doc.terminals_of(c) {
                             self.terminals.insert(t);
                             node(self, Node::Terminal(t));
@@ -1508,7 +1517,7 @@ impl Scope {
                     // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
                     // title block when the project's sheet changes.
                     if before.sheet != after.sheet {
-                        self.components.extend(crate::xref::placed_tables(doc));
+                        self.devices.extend(crate::xref::placed_tables(doc));
                     }
                     let (b, a) = (&before.wiring, &after.wiring);
                     if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials
@@ -1526,8 +1535,8 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == ecad_model::sheet::SHEET_KEY => {
                     self.relocate = true;
                     for (_, r) in doc.representations_on(*p) {
-                        if let Subject::Component(c) = r.subject {
-                            self.components.insert(c);
+                        if let Subject::Device(c) = r.subject {
+                            self.devices.insert(c);
                         }
                     }
                 }
@@ -1540,7 +1549,7 @@ impl Scope {
                 }
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
                     self.relocate = true;
-                    self.components.extend(doc.components.keys().copied());
+                    self.devices.extend(doc.devices.keys().copied());
                 }
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
                     self.relocate = true;
@@ -1548,9 +1557,9 @@ impl Scope {
                     if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
                         // Brief 059: the cables planning an end there (their rows name its code).
                         self.cables.extend(crate::cables::planning(doc, entry));
-                        for (c, x) in &doc.components {
+                        for (c, x) in &doc.devices {
                             if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                                self.components.insert(*c);
+                                self.devices.insert(*c);
                             }
                         }
                     }
@@ -1585,10 +1594,10 @@ impl Scope {
     /// Every device with a symbol on `page` (brief 052: their contexts may have changed).
     fn devices_on(&mut self, doc: &Document, page: PageId) {
         for (_, r) in doc.representations_on(page) {
-            if let Subject::Component(c) = r.subject
+            if let Subject::Device(c) = r.subject
                 && crate::locations::is_device(doc, c)
             {
-                self.components.insert(c);
+                self.devices.insert(c);
             }
         }
     }
@@ -1596,23 +1605,23 @@ impl Scope {
     /// Every device and cable holding one of `tags` (a shared tag's rows on both sides).
     fn tag_holders<'t>(&mut self, doc: &Document, tags: impl IntoIterator<Item = &'t String>) {
         for t in tags {
-            self.components.extend(doc.components_tagged(t));
+            self.devices.extend(doc.components_tagged(t));
             self.cables.extend(doc.cables_tagged(t));
         }
     }
 
     fn component_of(&mut self, doc: &Document, t: TerminalId) {
         if let Some(c) = doc.terminals.get(&t).map(|x| x.component) {
-            self.components.insert(c);
+            self.devices.insert(c);
         }
     }
 
     /// A component and, for a continuation name, every continuation with that name.
-    fn component(&mut self, doc: &Document, c: ComponentId, name: Option<&str>) {
-        self.components.insert(c);
-        let name = name.map(str::to_string).or_else(|| doc.components.get(&c).and_then(|x| x.properties.get(NAME).cloned()));
+    fn component(&mut self, doc: &Document, c: DeviceId, name: Option<&str>) {
+        self.devices.insert(c);
+        let name = name.map(str::to_string).or_else(|| doc.devices.get(&c).and_then(|x| x.properties.get(NAME).cloned()));
         if let Some(n) = name {
-            self.components.extend(doc.continuations_named(&name_key(&n)));
+            self.devices.extend(doc.continuations_named(&name_key(&n)));
         }
         for (t, _) in doc.terminals_of(c) {
             self.terminals.insert(t);
@@ -1633,7 +1642,7 @@ impl Scope {
                 self.wires.insert(c);
                 self.routes.insert(c);
             }
-            Subject::Component(c) => {
+            Subject::Device(c) => {
                 // Brief 052: a box drawn, moved or erased changes the contexts on its page.
                 if crate::locations::is_box(doc, c) {
                     self.devices_on(doc, r.page);

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use ecad_bench::generate::{Generated, REFERENCE_ROLE, Tier, Variant, generate, tier};
 use ecad_model::{Document, Subject};
 
-const TINY: Tier = Tier { name: "tiny", pages: 3, components: 9, wires: 18, cables: 6 };
+const TINY: Tier = Tier { name: "tiny", pages: 3, devices: 9, wires: 18, cables: 6 };
 
 fn opened(g: &Generated) -> (Document, u64) {
     let bytes = g.file_bytes().unwrap();
@@ -21,8 +21,8 @@ fn check_shape(g: &Generated, doc: &Document) {
     let t = g.tier;
     assert_eq!(doc.page_order, g.pages);
     assert_eq!(doc.pages.len(), t.pages);
-    assert_eq!(doc.components.len(), t.components);
-    assert_eq!(doc.terminals.len(), 2 * t.components);
+    assert_eq!(doc.devices.len(), t.devices);
+    assert_eq!(doc.terminals.len(), 2 * t.devices);
     assert_eq!(doc.wires.len(), t.wires);
     assert_eq!(doc.cables.len(), t.cables);
     assert!(doc.wires.values().all(|c| c.ends.iter().all(Option::is_some)), "every wire attached at both ends");
@@ -30,13 +30,13 @@ fn check_shape(g: &Generated, doc: &Document) {
 
     let nets = ecad_model::derive::nets(doc);
     assert_eq!(nets.len(), g.nets.len());
-    assert_eq!(nets.len(), t.components, "one net per pair of neighbouring components");
+    assert_eq!(nets.len(), t.devices, "one net per pair of neighbouring components");
     for (got, want) in nets.iter().zip(&g.nets) {
         assert_eq!(got.terminals, want.terminals);
         assert_eq!(got.wires, want.wires);
     }
 
-    let per_pair = t.wires / t.components;
+    let per_pair = t.wires / t.devices;
     for cable in doc.cables.values() {
         assert_eq!(cable.members.len(), per_pair);
         let cores: Vec<_> = cable.members.iter().map(|m| m.core.clone()).collect();
@@ -100,7 +100,7 @@ fn lean_and_churned_replay_to_the_same_intended_document() {
 #[test]
 fn the_small_tier_has_the_shape_the_brief_names() {
     let t = tier("small").unwrap();
-    assert_eq!((t.pages, t.components, t.wires, t.cables), (10, 100, 500, 50));
+    assert_eq!((t.pages, t.devices, t.wires, t.cables), (10, 100, 500, 50));
     let g = generate(t, Variant::Lean).unwrap();
     let (doc, _) = opened(&g);
     check_shape(&g, &doc);

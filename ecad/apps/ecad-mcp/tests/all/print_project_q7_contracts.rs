@@ -169,7 +169,7 @@ fn ac10_revision_columns_and_custom_fields() {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    c.doc().components.values().filter_map(|x| x.properties.get("tag").cloned()).collect()
+    c.doc().devices.values().filter_map(|x| x.properties.get("tag").cloned()).collect()
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
     // As typed: nothing rewritten; a tag typed now keeps its case.
     let v = c.exec("projectprops", json!({"tag_case": "typed"}));
     assert_eq!(v["message"], json!("Tags typed from now on keep their case; existing tags are unchanged."));
-    let k1 = *c.doc().components.keys().next().unwrap();
+    let k1 = *c.doc().devices.keys().next().unwrap();
     c.exec("setprop", json!({"component": k1.hex(), "key": "tag", "value": "M02a"}));
     assert!(tags(&mut c).contains(&"-M02a".to_string()), "{:?}", tags(&mut c));
     // Back to upper case: every tag upper-cased in the same transaction.

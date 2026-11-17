@@ -47,8 +47,8 @@ fn embedded_definitions_follow_the_owner_requirements() {
     let mut f = fixture();
     let doc = f.ledger.document().clone();
     // Embed once, many instances: c1 and c2 share d1; every terminal has its own ID.
-    assert_eq!(doc.components[&f.c1].definition, Some(f.d1));
-    assert_eq!(doc.components[&f.c2].definition, Some(f.d1));
+    assert_eq!(doc.devices[&f.c1].definition, Some(f.d1));
+    assert_eq!(doc.devices[&f.c2].definition, Some(f.d1));
     let ids: std::collections::BTreeSet<_> = f.t.iter().collect();
     assert_eq!(ids.len(), 6);
     // Versions coexist: d1 (library version 7) and d2 (version 9), different content hashes.
@@ -66,7 +66,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
     let mut ops = Vec::new();
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
-        let (rid, rep) = doc.representations_of(Subject::Component(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
+        let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
         for (w, cond) in doc.wires.iter() {
             for end in End::BOTH {
                 if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
@@ -79,7 +79,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         for (t, term) in doc.terminals_of(c) {
             ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
         }
-        ops.push(Op::DeleteComponent { id: c, component: doc.components[&c].clone() });
+        ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
     }
     ops.push(Op::RemoveDefinition { id: f.d1, definition: doc.definitions[&f.d1].clone() });
     f.commit("Remove old version", ops);

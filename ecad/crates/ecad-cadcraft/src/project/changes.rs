@@ -65,7 +65,7 @@ impl Project {
             return None;
         }
         for c in self.changes.iter().filter(|c| c.n > n) {
-            out.components.extend(c.devices.components.iter().copied());
+            out.devices.extend(c.devices.devices.iter().copied());
             out.pages |= c.devices.pages;
             out.settings |= c.devices.settings;
         }
@@ -516,7 +516,7 @@ pub(super) struct Old {
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
     changes.pages.union(PageSet::from_option(old.pages));
     changes.named.extend(old.named);
-    changes.devices.components.extend(old.devices.components);
+    changes.devices.devices.extend(old.devices.devices);
     changes.devices.pages |= old.devices.pages;
     changes.devices.settings |= old.devices.settings;
     changes.props = match (changes.props.take(), old.props) {

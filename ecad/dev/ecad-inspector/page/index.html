@@ -152,11 +152,11 @@ function render() {
 
   const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
   const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
-  h += `<h2>Components and terminals</h2><div class="wrap"><table><tr><th>Component</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
-  for (const [c, comp] of Object.entries(d.components)) {
+  h += `<h2>Devices and connection points</h2><div class="wrap"><table><tr><th>Device</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
+  for (const [c, comp] of Object.entries(d.devices)) {
     const ts = termsOf(c);
     if (!match([c, ...ts.map(([t]) => t)])) continue;
-    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Component === c);
+    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Device === c);
     h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
       <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
   }

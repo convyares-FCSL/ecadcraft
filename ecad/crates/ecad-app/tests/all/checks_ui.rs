@@ -233,7 +233,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let rows = h.state().panel.checks.rows().to_vec();
     assert!(rows.iter().all(|r| r.check.kind != Kind::LooksConnected), "{rows:?}");
     let d = doc(&mut h);
-    assert!(d.components.values().any(|c| c.properties.get("kind").is_some_and(|k| k == "junction")));
+    assert!(d.devices.values().any(|c| c.properties.get("kind").is_some_and(|k| k == "junction")));
     save(&h, &deltas, "022-tee-fixed.png");
     ok(&mut h, "u");
     let rows = h.state().panel.checks.rows().to_vec();

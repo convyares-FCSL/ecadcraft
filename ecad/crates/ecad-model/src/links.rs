@@ -23,7 +23,7 @@ use std::cmp::Ordering;
 
 use crate::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
-use crate::id::{ComponentId, TerminalId};
+use crate::id::{DeviceId, TerminalId};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "link.";
@@ -442,7 +442,7 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
 /// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    let Some(comp) = doc.components.get(&term.component) else { return Vec::new() };
+    let Some(comp) = doc.devices.get(&term.component) else { return Vec::new() };
     let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
         let m = Matcher::of(&p);
@@ -459,7 +459,7 @@ pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
 }
 
 /// The terminals of `component` a link value names (unreadable: none).
-pub fn terminals_named(doc: &Document, component: ComponentId, value: Option<&str>) -> Vec<TerminalId> {
+pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<TerminalId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);
     doc.terminals_of(component).filter(|(_, x)| m.matches_terminal(x)).map(|(id, _)| id).collect()

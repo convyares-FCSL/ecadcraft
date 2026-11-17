@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::Persistence;
-use ecad_model::{Author, ComponentId, Document, ObjectRef, Op, PageId, TerminalId};
+use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -39,21 +39,21 @@ pub(crate) fn num(v: &Value) -> Option<u64> {
     v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
 }
 
-pub(crate) fn prop(d: &Document, c: ComponentId, k: &str) -> Option<String> {
-    d.components.get(&c).and_then(|x| x.properties.get(k).cloned())
+pub(crate) fn prop(d: &Document, c: DeviceId, k: &str) -> Option<String> {
+    d.devices.get(&c).and_then(|x| x.properties.get(k).cloned())
 }
 
-pub(crate) fn tag(d: &Document, c: ComponentId) -> String {
+pub(crate) fn tag(d: &Document, c: DeviceId) -> String {
     prop(d, c, "tag").unwrap_or_default()
 }
 
 /// The component whose tag is `t`.
-pub(crate) fn by_tag(d: &Document, t: &str) -> ComponentId {
-    d.components.iter().find(|(_, c)| c.properties.get("tag").map(String::as_str) == Some(t)).map(|(id, _)| *id).unwrap_or_else(|| panic!("no {t}"))
+pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
+    d.devices.iter().find(|(_, c)| c.properties.get("tag").map(String::as_str) == Some(t)).map(|(id, _)| *id).unwrap_or_else(|| panic!("no {t}"))
 }
 
 /// A card's channel points: key (`.3.in`) to (label, terminal).
-pub(crate) fn channel_points(d: &Document, card: ComponentId) -> BTreeMap<String, (String, TerminalId)> {
+pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, TerminalId)> {
     d.terminals
         .iter()
         .filter(|(_, t)| t.component == card && t.key.as_deref().is_some_and(|k| k.starts_with('.')))
@@ -62,12 +62,12 @@ pub(crate) fn channel_points(d: &Document, card: ComponentId) -> BTreeMap<String
 }
 
 /// The pin (label) at `.<i>.<role>`.
-pub(crate) fn pin(d: &Document, card: ComponentId, i: u32, role: &str) -> Option<String> {
+pub(crate) fn pin(d: &Document, card: DeviceId, i: u32, role: &str) -> Option<String> {
     channel_points(d, card).get(&format!(".{i}.{role}")).map(|(l, _)| l.clone())
 }
 
 /// The channel indexes drawn on `card`.
-pub(crate) fn drawn_channels(d: &Document, card: ComponentId) -> Vec<u32> {
+pub(crate) fn drawn_channels(d: &Document, card: DeviceId) -> Vec<u32> {
     let mut v: Vec<u32> = channel_points(d, card).keys().filter_map(|k| k.split('.').nth(1)?.parse().ok()).collect();
     v.sort_unstable();
     v.dedup();
@@ -89,7 +89,7 @@ pub(crate) fn rows_have_a_way_out(h: &mut H, kind: &str) {
 }
 
 pub(crate) fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
+    (&d.devices, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it, `redo` the one after.
@@ -203,9 +203,9 @@ pub(crate) fn raw(h: &mut H, ops: Vec<Op>) {
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops)).unwrap();
 }
 
-pub(crate) fn raw_setprop(h: &mut H, c: ComponentId, key: &str, value: Option<&str>) {
+pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>) {
     let before = prop(&h.doc(), c, key);
-    raw(h, vec![Op::SetProperty { object: ObjectRef::Component(c), key: key.into(), before, after: value.map(str::to_string) }]);
+    raw(h, vec![Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after: value.map(str::to_string) }]);
 }
 
 /// Relabel or rekey a terminal by hand: Remove + Add.
@@ -257,7 +257,7 @@ pub(crate) struct P {
     pub(crate) analogue: PageId,
     pub(crate) outputs: PageId,
     pub(crate) iolink: PageId,
-    pub(crate) rack: ComponentId,
+    pub(crate) rack: DeviceId,
 }
 
 pub(crate) fn fixture_p(seed: u64) -> P {
@@ -265,7 +265,7 @@ pub(crate) fn fixture_p(seed: u64) -> P {
     let cpu_page = h.first_page();
     h.run("renamepage", json!({"page": cpu_page.hex(), "title": "PLC CPU"})).unwrap();
     let r = h.run("place", json!({"symbol": "plccpu", "at": [100, 200]})).unwrap();
-    let rack: ComponentId = id(&r, "component");
+    let rack: DeviceId = id(&r, "component");
     let inputs: PageId = id(&h.run("newpage", json!({"title": "Inputs"})).unwrap(), "page");
     h.activate(inputs);
     drops(&mut h, &IN_XS);
@@ -295,13 +295,13 @@ pub(crate) fn place_card(h: &mut H, symbol: &str, x: f64, extra: Value) -> Value
 }
 
 /// Fixture P with the six cards in slots 1…6 of `-A01`: returns the cards by tag.
-pub(crate) fn with_cards(seed: u64) -> (P, BTreeMap<&'static str, ComponentId>) {
+pub(crate) fn with_cards(seed: u64) -> (P, BTreeMap<&'static str, DeviceId>) {
     let mut p = fixture_p(seed);
     p.h.activate(p.cpu_page);
     let mut cards = BTreeMap::new();
     for (i, (sym, t, _)) in CARDS.iter().enumerate() {
         let v = place_card(&mut p.h, sym, 140.0 + 40.0 * i as f64, json!({}));
-        let c: ComponentId = id(&v, "component");
+        let c: DeviceId = id(&v, "component");
         assert_eq!(tag(&p.h.doc(), c), *t, "fixture P tags in order: {v}");
         cards.insert(*t, c);
     }
@@ -309,7 +309,7 @@ pub(crate) fn with_cards(seed: u64) -> (P, BTreeMap<&'static str, ComponentId>) 
 }
 
 /// The DI fence of check F: card `-A03` across the eight input drops at y 200.
-pub(crate) fn fence_inputs(p: &mut P, card: ComponentId) -> Value {
+pub(crate) fn fence_inputs(p: &mut P, card: DeviceId) -> Value {
     p.h.activate(p.inputs);
     p.h.run("plcchannels", json!({"card": card.hex(), "from": [90, 200], "to": [260, 200]})).unwrap_or_else(|e| panic!("plcchannels fence: {e}"))
 }

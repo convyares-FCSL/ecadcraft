@@ -27,8 +27,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, CableMember, Color, Component, ComponentId, Definition, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId,
-    ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
+    Author, Cable, CableId, CableMember, Color, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind,
+    Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
     RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire, WireId,
 };
 
@@ -54,22 +54,22 @@ const MAX_OBJECTS: usize = 1_000_000;
 pub struct Tier {
     pub name: &'static str,
     pub pages: usize,
-    pub components: usize,
+    pub devices: usize,
     pub wires: usize,
     pub cables: usize,
 }
 
 /// The three measured tiers (brief 012 §2).
 pub const TIERS: [Tier; 3] = [
-    Tier { name: "small", pages: 10, components: 100, wires: 500, cables: 50 },
-    Tier { name: "medium", pages: 100, components: 1_000, wires: 5_000, cables: 500 },
-    Tier { name: "large", pages: 500, components: 5_000, wires: 25_000, cables: 2_500 },
+    Tier { name: "small", pages: 10, devices: 100, wires: 500, cables: 50 },
+    Tier { name: "medium", pages: 100, devices: 1_000, wires: 5_000, cables: 500 },
+    Tier { name: "large", pages: 500, devices: 5_000, wires: 25_000, cables: 2_500 },
 ];
 
 /// The 25-page project Print Book and release are measured on (owner, 2026-11-12: printing is
 /// timed on a book of a real panel's size, never on the 100- or 500-page tiers). The small tier's
 /// density, so per page it is the same drawing.
-pub const PRINT_TIER: Tier = Tier { name: "print", pages: 25, components: 250, wires: 1_250, cables: 125 };
+pub const PRINT_TIER: Tier = Tier { name: "print", pages: 25, devices: 250, wires: 1_250, cables: 125 };
 
 /// The tier called `name`.
 pub fn tier(name: &str) -> Option<Tier> {
@@ -282,19 +282,19 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
     let shape_err = || {
         format!(
             "tier {}: pages must be at least 1, every count must divide by the pages, cables per page may not \
-             exceed components per page, and no count may exceed {MAX_OBJECTS}",
+             exceed devices per page, and no count may exceed {MAX_OBJECTS}",
             tier.name
         )
     };
-    let counts = [tier.pages, tier.components, tier.wires, tier.cables];
+    let counts = [tier.pages, tier.devices, tier.wires, tier.cables];
     if p_count == 0
         || counts.iter().any(|c| *c > MAX_OBJECTS || c % p_count != 0)
-        || tier.cables / p_count > tier.components / p_count
-        || (tier.wires > 0 && tier.components == 0)
+        || tier.cables / p_count > tier.devices / p_count
+        || (tier.wires > 0 && tier.devices == 0)
     {
         return Err(shape_err());
     }
-    let (n, m, k) = (tier.components / p_count, tier.wires / p_count, tier.cables / p_count);
+    let (n, m, k) = (tier.devices / p_count, tier.wires / p_count, tier.cables / p_count);
 
     let mut ids = IdAllocator::seeded(SEED);
     let mut b = Builder {
@@ -348,17 +348,17 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
 
         // Components (`place`): terminals A1 and A2 of each, in placement order.
         let mut terminals: Vec<(TerminalId, TerminalId, Pt)> = Vec::with_capacity(n);
-        let mut comp_ids: Vec<ComponentId> = Vec::with_capacity(n);
+        let mut comp_ids: Vec<DeviceId> = Vec::with_capacity(n);
         for i in 0..n {
             comp_no += 1;
-            let (c, item, rep): (ComponentId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+            let (c, item, rep): (DeviceId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
             let mut ops = Vec::new();
             if comp_no == 1 {
                 ops.push(Op::EmbedDefinition { id: definition, definition: def.clone() });
             }
-            let mut component = Component { definition: Some(definition), ..Component::default() };
+            let mut component = Device { definition: Some(definition), ..Device::default() };
             component.properties.insert("tag".into(), format!("-K{comp_no}"));
-            ops.push(Op::CreateComponent { id: c, component });
+            ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
@@ -372,7 +372,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             ops.push(Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
-                    subject: Subject::Component(c),
+                    subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
                     role: "coil".into(),

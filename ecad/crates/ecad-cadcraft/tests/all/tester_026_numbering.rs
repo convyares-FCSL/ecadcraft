@@ -10,7 +10,7 @@ use cadcraft_engine::Session;
 use common::{H, id};
 use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::sheet::Grid;
-use ecad_model::{Author, CableId, ComponentId, ObjectRef, Op, PageId, tag};
+use ecad_model::{Author, CableId, DeviceId, ObjectRef, Op, PageId, tag};
 use serde_json::{Value, json};
 
 fn cell(h: &mut H, page: PageId, col: u32, row: u32) -> [f64; 2] {
@@ -20,7 +20,7 @@ fn cell(h: &mut H, page: PageId, col: u32, row: u32) -> [f64; 2] {
     })
 }
 
-fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> Result<ComponentId, String> {
+fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> Result<DeviceId, String> {
     let mut p = json!({"symbol": "coil", "at": at});
     if let Some(t) = tag {
         p["tag"] = json!(t);
@@ -28,28 +28,25 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> Result<ComponentId, Strin
     h.run("place", p).map(|v| id(&v, "component"))
 }
 
-fn tag_of(h: &mut H, c: ComponentId) -> Option<String> {
-    h.doc().components.get(&c).and_then(|x| x.properties.get("tag").cloned())
+fn tag_of(h: &mut H, c: DeviceId) -> Option<String> {
+    h.doc().devices.get(&c).and_then(|x| x.properties.get("tag").cloned())
 }
 
-fn fixed(h: &mut H, c: ComponentId) -> bool {
-    h.doc().components.get(&c).is_some_and(|x| x.properties.get("tag_fixed").is_some_and(|v| v == "yes"))
+fn fixed(h: &mut H, c: DeviceId) -> bool {
+    h.doc().devices.get(&c).is_some_and(|x| x.properties.get("tag_fixed").is_some_and(|v| v == "yes"))
 }
 
 /// The tags of the fixed devices among `cs`.
-fn fixed_tags(h: &mut H, cs: &[ComponentId]) -> BTreeMap<ComponentId, Option<String>> {
+fn fixed_tags(h: &mut H, cs: &[DeviceId]) -> BTreeMap<DeviceId, Option<String>> {
     let doc = h.doc();
     cs.iter()
         .filter_map(|c| {
-            doc.components
-                .get(c)
-                .filter(|x| x.properties.get("tag_fixed").is_some_and(|v| v == "yes"))
-                .map(|x| (*c, x.properties.get("tag").cloned()))
+            doc.devices.get(c).filter(|x| x.properties.get("tag_fixed").is_some_and(|v| v == "yes")).map(|x| (*c, x.properties.get("tag").cloned()))
         })
         .collect()
 }
 
-fn erase_device(h: &mut H, page: PageId, c: ComponentId) {
+fn erase_device(h: &mut H, page: PageId, c: DeviceId) {
     let item = h.symbol_item(c);
     let hd = h.handle_of(page, item);
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
@@ -60,9 +57,9 @@ fn assert_unique(h: &mut H, step: &str) -> BTreeMap<String, ObjectRef> {
     let doc = h.doc();
     let mut seen: BTreeMap<String, ObjectRef> = BTreeMap::new();
     let all = doc
-        .components
+        .devices
         .iter()
-        .filter_map(|(c, x)| x.properties.get("tag").map(|t| (t.clone(), ObjectRef::Component(*c))))
+        .filter_map(|(c, x)| x.properties.get("tag").map(|t| (t.clone(), ObjectRef::Device(*c))))
         .chain(doc.cables.iter().filter_map(|(k, x)| x.properties.get("tag").map(|t| (t.clone(), ObjectRef::Cable(*k)))));
     for (t, o) in all {
         if let Some(prev) = seen.insert(tag::key(&t), o) {
@@ -74,7 +71,7 @@ fn assert_unique(h: &mut H, step: &str) -> BTreeMap<String, ObjectRef> {
 
 fn k_numbers(h: &mut H) -> BTreeSet<u64> {
     let doc = h.doc();
-    doc.components.values().filter_map(|c| c.properties.get("tag")).filter_map(|t| tag::parse(t)).filter(|(p, _)| p == "K").map(|(_, n)| n).collect()
+    doc.devices.values().filter_map(|c| c.properties.get("tag")).filter_map(|t| tag::parse(t)).filter(|(p, _)| p == "K").map(|(_, n)| n).collect()
 }
 
 /// A small, seeded generator (no dependency).
@@ -133,7 +130,7 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
             slots.push(cell(&mut h, page, col, row));
         }
     }
-    let mut used_slots: BTreeMap<usize, ComponentId> = BTreeMap::new();
+    let mut used_slots: BTreeMap<usize, DeviceId> = BTreeMap::new();
     // One model per transaction on the undo stack, so undo / redo restore it.
     let mut undo: Vec<Model> = Vec::new();
     let mut redo: Vec<Model> = Vec::new();
@@ -142,17 +139,17 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
     // A renumber was undone since the last renumber in effect (non-strict runs skip the check).
     let mut undone_renumber = false;
     for step in 0..steps {
-        let live: Vec<ComponentId> = {
+        let live: Vec<DeviceId> = {
             let doc = h.doc();
-            used_slots.values().copied().filter(|c| doc.components.contains_key(c)).collect()
+            used_slots.values().copied().filter(|c| doc.devices.contains_key(c)).collect()
         };
-        let pick = |rng: &mut Rng, v: &[ComponentId]| v.get(rng.below(v.len() as u64) as usize).copied();
+        let pick = |rng: &mut Rng, v: &[DeviceId]| v.get(rng.below(v.len() as u64) as usize).copied();
         let head = h.head();
         let fixed_before = fixed_tags(&mut h, &live);
         let op = rng.below(11);
         let mut what = String::new();
         let mut is_renumber = false;
-        let mut auto_placed: Option<ComponentId> = None;
+        let mut auto_placed: Option<DeviceId> = None;
         let mut fixed_must_hold = false;
         match op {
             0..=2 => {
@@ -219,7 +216,7 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
         // Fixed tags of the devices that are still there do not move under Renumber or Next.
         if fixed_must_hold {
             for (c, t) in &fixed_before {
-                if h.doc().components.contains_key(c) {
+                if h.doc().devices.contains_key(c) {
                     // A Next on the fixed device itself rewrites its own tag (typed).
                     if what.starts_with("setprop") && what.contains(&format!("{t:?}")) {
                         continue;
@@ -277,7 +274,7 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
 
 /// Three automatic coils `-K01`…`-K03` in columns A, C, E of the first page, and `-K04` placed
 /// and deleted (the mark is 4).
-fn three_and_a_deleted_fourth(seed: u64) -> (H, PageId, ComponentId, ComponentId, ComponentId) {
+fn three_and_a_deleted_fourth(seed: u64) -> (H, PageId, DeviceId, DeviceId, DeviceId) {
     let mut h = H::new(seed);
     let page = h.first_page();
     let at: Vec<[f64; 2]> = [0, 2, 4, 6].iter().map(|c| cell(&mut h, page, *c, 1)).collect();
@@ -292,7 +289,7 @@ fn three_and_a_deleted_fourth(seed: u64) -> (H, PageId, ComponentId, ComponentId
 
 /// Exchange two tags out of drawing order and release the typed one's fixed flag, so a renumber
 /// has something to change.
-fn scramble(h: &mut H, a: ComponentId, b: ComponentId) {
+fn scramble(h: &mut H, a: DeviceId, b: DeviceId) {
     let tb = tag_of(h, b).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "tag", "value": tb, "conflict": "swap"})).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "tag_fixed", "value": null})).unwrap();
@@ -525,7 +522,7 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_tw
         let at = p.ledger.document().versions.values().copied().max().unwrap_or(0);
         p.ledger.state_at(at).unwrap()
     });
-    assert_eq!(rev_doc.components[&k].properties.get("tag").map(String::as_str), Some("-K01"), "the revision point holds the finalised tag");
+    assert_eq!(rev_doc.devices[&k].properties.get("tag").map(String::as_str), Some("-K01"), "the revision point holds the finalised tag");
     // A rev issued before: refused before Finalise writes.
     let at = cell(&mut h, page, 3, 1);
     let k2 = coil(&mut h, at, None).unwrap();
@@ -633,7 +630,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     assert_eq!(t4, "-W04", "-W01…-W03 were given before the old tags were typed");
     let doc = h2.doc();
     let mut seen = BTreeSet::new();
-    for t in doc.components.values().filter_map(|c| c.properties.get("tag")).chain(doc.cables.values().filter_map(|c| c.properties.get("tag"))) {
+    for t in doc.devices.values().filter_map(|c| c.properties.get("tag")).chain(doc.cables.values().filter_map(|c| c.properties.get("tag"))) {
         if t != "W0" {
             assert!(seen.insert(tag::key(t)), "duplicate {t}");
         }

@@ -131,7 +131,7 @@ impl Review {
     pub fn describe(&mut self, doc: &ecad_model::Document) {
         for r in &mut self.rows {
             let rep = u128::from_str_radix(&r.rep, 16).ok().map(ecad_model::RepresentationId::from);
-            if let Some(ecad_model::Subject::Component(c)) = rep.and_then(|x| doc.representations.get(&x)).map(|x| x.subject) {
+            if let Some(ecad_model::Subject::Device(c)) = rep.and_then(|x| doc.representations.get(&x)).map(|x| x.subject) {
                 r.description = ecad_cadcraft::devices::description(doc, c);
             }
         }

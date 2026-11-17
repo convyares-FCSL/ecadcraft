@@ -1,13 +1,13 @@
 //! The rules of `setprop` (brief 070 item 3; design 018 §6.1, 026 §4 and §7, 052 §5.7; brief 060):
 //! [`PROP_RULES`], one table saying, per property key, which rule checks the value and builds the
-//! change. `setprop` on one object and on several devices (`components`) both walk it
+//! change. `setprop` on one object and on several devices (`devices`) both walk it
 //! ([`rule_for`]), so the two paths cannot drift apart.
 //!
 //! Excludes: reading the JSON, locking the project, committing and answering (the engine crate's
 //! `setprop` shim), and the function and location codes themselves ([`super::location`]).
 
 use ecad_model::tag::{self, FIXED_KEY, TAG_KEY};
-use ecad_model::{CableId, ComponentId, Document, IdAllocator, ObjectRef, Op, Properties, Subject};
+use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject};
 
 use crate::devices::{self, Holder, TagHigh};
 use crate::error::CmdError;
@@ -157,17 +157,17 @@ pub fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&
 }
 
 fn is_component(o: ObjectRef) -> bool {
-    matches!(o, ObjectRef::Component(_))
+    matches!(o, ObjectRef::Device(_))
 }
 
-fn component(o: ObjectRef) -> Option<ComponentId> {
+fn component(o: ObjectRef) -> Option<DeviceId> {
     match o {
-        ObjectRef::Component(c) => Some(c),
+        ObjectRef::Device(c) => Some(c),
         _ => None,
     }
 }
 
-fn strip(doc: &Document, o: ObjectRef) -> Option<ComponentId> {
+fn strip(doc: &Document, o: ObjectRef) -> Option<DeviceId> {
     component(o).filter(|c| crate::strips::is_strip(doc, *c))
 }
 
@@ -175,7 +175,7 @@ fn strip(doc: &Document, o: ObjectRef) -> Option<ComponentId> {
 /// continuation, an item).
 fn tagged(doc: &Document, o: ObjectRef) -> bool {
     match o {
-        ObjectRef::Component(c) => crate::wires::kind_of(doc, c).is_none(),
+        ObjectRef::Device(c) => crate::wires::kind_of(doc, c).is_none(),
         ObjectRef::Cable(_) => true,
         _ => false,
     }
@@ -293,7 +293,7 @@ pub fn reserved(key: &str) -> Result<(), CmdError> {
 /// The key `setprop` writes on component `c` for a typed `key`: on a PLC card with channels,
 /// `channels` is its channel count (`plc.channels`, pack re-run bug 7), as `terminals` is a strip's
 /// offer; on anything else the key as typed.
-pub fn component_key(doc: &Document, c: ComponentId, key: &str) -> String {
+pub fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
     if key.trim() == "channels" && crate::plc::card_type_of(doc, c).is_some_and(|t| t.has_channels()) {
         crate::plc::rack::CHANNELS_KEY.to_string()
     } else {
@@ -327,7 +327,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         Build::Tag => device_value,
         Build::Fixed | Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
-    if let ObjectRef::Component(c) = object {
+    if let ObjectRef::Device(c) = object {
         crate::bom::refuse_on_item(doc, c, key, value)?;
     }
     check(doc, object, key, value)
@@ -335,7 +335,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
     match o {
-        ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
+        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
         ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
         ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
@@ -363,7 +363,7 @@ pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&s
         return Ok(ValueSet { op: None, note: None });
     }
     let note = match (object, &after) {
-        (ObjectRef::Component(c), Some(_)) if ecad_model::links::link_number(key).is_some() => {
+        (ObjectRef::Device(c), Some(_)) if ecad_model::links::link_number(key).is_some() => {
             typed.and_then(|v| crate::terminal_types::dotted_position_words(doc, c, v))
         }
         _ => None,
@@ -371,21 +371,21 @@ pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&s
     Ok(ValueSet { op: Some(Op::SetProperty { object, key: key.to_string(), before, after }), note })
 }
 
-/// `setprop {components: [id…], key, value}`: a property written to several devices in one
+/// `setprop {devices: [id…], key, value}`: a property written to several devices in one
 /// transaction (design 019 §8.2). Each device walks [`PROP_RULES`] as one would on its own
 /// (brief 060): a refusal on any refuses all. A tag is one per device, so `tag` is refused.
 ///
 /// # Errors
 /// [`ONE_TAG_PER_DEVICE`], [`NO_SUCH_OBJECT`], or the first rule that refuses.
-pub fn plan_many(doc: &Document, cs: &[ComponentId], key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
+pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
     if key == TAG_KEY {
         return Err(CmdError::refused(ONE_TAG_PER_DEVICE));
     }
     let mut ops = Vec::new();
     for c in cs {
-        let comp = doc.components.get(c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+        let comp = doc.devices.get(c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
         let key = component_key(doc, *c, key);
-        let o = ObjectRef::Component(*c);
+        let o = ObjectRef::Device(*c);
         match rule_for(doc, o, &key).build {
             Build::Fixed => {
                 ops.extend(plan_fixed(doc, o, typed)?.op);
@@ -416,7 +416,7 @@ pub enum DeviceSet {
     /// One op, with its undo label.
     Set { op: Box<Op>, label: &'static str, value: Option<String> },
     /// The device becomes part of `holder` (a tag another device holds, with `merge`).
-    Merged { ops: Vec<Op>, holder: ComponentId, into: String, before: Option<String> },
+    Merged { ops: Vec<Op>, holder: DeviceId, into: String, before: Option<String> },
 }
 
 /// `setprop {component, key, value, merge?}` of a device property (design 018 §6, owner decisions
@@ -426,10 +426,10 @@ pub enum DeviceSet {
 /// # Errors
 /// [`NO_SUCH_OBJECT`]; the value rule's refusal; a taken tag without `merge`.
 pub fn plan_device(
-    doc: &Document, ids: &mut IdAllocator, tag_high: &TagHigh, c: ComponentId, key: &str, typed: Option<&str>, merge: bool,
+    doc: &Document, ids: &mut IdAllocator, tag_high: &TagHigh, c: DeviceId, key: &str, typed: Option<&str>, merge: bool,
 ) -> Result<DeviceSet, CmdError> {
-    let component = doc.components.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
-    let value = value(doc, ObjectRef::Component(c), key, typed)?;
+    let component = doc.devices.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+    let value = value(doc, ObjectRef::Device(c), key, typed)?;
     let before = component.properties.get(key).cloned();
     if key == TAG_KEY
         && let Some(t) = &value
@@ -451,16 +451,16 @@ pub fn plan_device(
         return Ok(DeviceSet::Unchanged(value));
     }
     let label = if key == TAG_KEY { "Set tag" } else { "Set property" };
-    let op = Op::SetProperty { object: ObjectRef::Component(c), key: key.to_string(), before, after: value.clone() };
+    let op = Op::SetProperty { object: ObjectRef::Device(c), key: key.to_string(), before, after: value.clone() };
     Ok(DeviceSet::Set { op: Box::new(op), label, value })
 }
 
 /// The echo after a merge (with the merged document): `-K2 is now part of -K1 (3 symbols on 1, 2).`
-pub fn merged_device_words(doc: &Document, before: Option<&str>, holder: ComponentId, into: &str) -> String {
+pub fn merged_device_words(doc: &Document, before: Option<&str>, holder: DeviceId, into: &str) -> String {
     format!(
         "{} is now part of {into} ({} symbols on {}).",
         before.unwrap_or("The device"),
-        doc.representations_of(Subject::Component(holder)).count(),
+        doc.representations_of(Subject::Device(holder)).count(),
         devices::pages_words(doc, holder)
     )
 }
@@ -494,7 +494,7 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
 
 fn tag_props(doc: &Document, o: ObjectRef) -> Option<&Properties> {
     match o {
-        ObjectRef::Component(_) | ObjectRef::Cable(_) => props_of(doc, o),
+        ObjectRef::Device(_) | ObjectRef::Cable(_) => props_of(doc, o),
         _ => None,
     }
 }
@@ -529,7 +529,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 fn taken_words(doc: &Document, tag_high: &TagHigh, o: ObjectRef, t: &str, holder: Holder) -> String {
     let next = tag::prefix_of(t).and_then(|px| tag_high.peek(doc, &px).ok());
     let next = next.map_or_else(|| "another tag".to_string(), |n| n.to_string());
-    let same_kind = matches!((o, holder), (ObjectRef::Component(_), Holder::Device(_)) | (ObjectRef::Cable(_), Holder::Cable(_)));
+    let same_kind = matches!((o, holder), (ObjectRef::Device(_), Holder::Device(_)) | (ObjectRef::Cable(_), Holder::Cable(_)));
     let ways = if same_kind {
         format!("Give conflict: \"swap\" (exchange the two tags), \"merge\" (make this the same {}) or \"next\" (use {next}).", noun(o))
     } else {
@@ -584,7 +584,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
     let typed_fixed = !tag::is_provisional(&t);
     // Brief 044 (design 044 §5.1): a connector's half tag is not free for another device.
     if let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &t)
-        && ObjectRef::Component(c) != o
+        && ObjectRef::Device(c) != o
     {
         return Err(CmdError::refused(format!("{t} is the {} half of {}. Pick another tag.", side.word(), devices::tag_words(doc, c))));
     }
@@ -595,7 +595,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
         }
         return Ok(TagSet::Set { ops, value: Some(t), fixed: Some(typed_fixed) });
     };
-    let same_kind = matches!((o, holder), (ObjectRef::Component(_), Holder::Device(_)) | (ObjectRef::Cable(_), Holder::Cable(_)));
+    let same_kind = matches!((o, holder), (ObjectRef::Device(_), Holder::Device(_)) | (ObjectRef::Cable(_), Holder::Cable(_)));
     match conflict {
         None => Err(CmdError::refused(taken_words(doc, tag_high, o, &t, holder))),
         Some(Conflict::Swap) => {

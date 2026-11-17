@@ -5,7 +5,7 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ComponentId, Pt};
+use ecad_model::{DeviceId, Pt};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -75,7 +75,7 @@ const DRAW_WORDS: &[&str] = &["Row", "Pins"];
 struct PlaceConnector {
     stage: Stage,
     /// The connector added to (`None`: a new one) and its tag.
-    device: Option<(ComponentId, String)>,
+    device: Option<(DeviceId, String)>,
     /// The tag a new connector gets.
     next: String,
     halves: Side,
@@ -262,7 +262,7 @@ impl PlaceConnector {
             && let (Some(c), Some(t)) = (v.get("component").and_then(Value::as_str), v.get("tag").and_then(Value::as_str))
             && let Ok(n) = u128::from_str_radix(c, 16)
         {
-            self.device = Some((ComponentId::from(n), t.to_string()));
+            self.device = Some((DeviceId::from(n), t.to_string()));
         }
         self.drawn += 1;
         self.first = None;

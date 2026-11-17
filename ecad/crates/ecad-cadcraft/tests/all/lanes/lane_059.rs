@@ -231,15 +231,15 @@ fn a_wire_already_in_a_cable_is_refused_when_assigning() {
 #[test]
 fn a_drawn_cable_end_off_its_plan_warns_for_that_end_only() {
     let mut h = H::new(5910);
-    let a = id::<ecad_model::ComponentId>(&h.run("place", json!({"at": [0, 100], "rotation": 90})).unwrap(), "component");
-    let b = id::<ecad_model::ComponentId>(&h.run("place", json!({"at": [0, -100], "rotation": 90})).unwrap(), "component");
+    let a = id::<ecad_model::DeviceId>(&h.run("place", json!({"at": [0, 100], "rotation": 90})).unwrap(), "component");
+    let b = id::<ecad_model::DeviceId>(&h.run("place", json!({"at": [0, -100], "rotation": 90})).unwrap(), "component");
     h.run("setlocation", json!({"component": a.hex(), "value": "+CAB1"})).unwrap();
     h.run("setlocation", json!({"component": b.hex(), "value": "+JB1"})).unwrap();
     let doc = h.doc();
     let page = h.first_page();
     let tp = ecad_model::derive::terminal_positions(&doc, page);
-    let pos = |c: ecad_model::ComponentId| {
-        let (rid, _) = doc.representations_of(ecad_model::Subject::Component(c)).next().unwrap();
+    let pos = |c: ecad_model::DeviceId| {
+        let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
         tp.iter().find(|(_, r, _)| *r == rid).unwrap().2
     };
     let (pa, pb) = (pos(a), pos(b));

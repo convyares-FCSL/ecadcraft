@@ -1054,7 +1054,7 @@ impl<'a> PageIndex<'a> {
                     }
                 }
                 Subject::Cable(k) => idx.cables.entry(k).or_default().push((id, r)),
-                Subject::Component(_) => {}
+                Subject::Device(_) => {}
             }
         }
         idx
@@ -1265,7 +1265,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
     map.tag_text_handles()
         .filter(|h| {
             let Some((rep, crate::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
-            let Some(Subject::Component(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
+            let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
             crate::devices::tag_of(doc, c).is_some_and(ecad_model::tag::is_provisional)
         })
         .collect()
