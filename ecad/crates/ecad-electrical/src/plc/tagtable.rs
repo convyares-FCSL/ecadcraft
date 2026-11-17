@@ -18,6 +18,7 @@
 //!
 //! Pure functions; no I/O. Never panics on any input.
 
+use crate::CmdError;
 use std::collections::BTreeSet;
 
 /// One tag of a tag table.
@@ -128,12 +129,12 @@ pub trait TagFormat: Sync {
     ///
     /// # Errors
     /// The file is not this format, too large, or has too many I/O tags; in words.
-    fn read(&self, bytes: &[u8], caps: &Caps) -> Result<Read, String>;
+    fn read(&self, bytes: &[u8], caps: &Caps) -> Result<Read, CmdError>;
     /// Write rows.
     ///
     /// # Errors
     /// A row the format cannot hold.
-    fn write(&self, rows: &[TagRow]) -> Result<Vec<u8>, String>;
+    fn write(&self, rows: &[TagRow]) -> Result<Vec<u8>, CmdError>;
     /// Whether the format can hold this name (design 056 §7.4); a name it cannot is left out of an
     /// export and counted.
     fn name_ok(&self, name: &str) -> bool {
@@ -211,21 +212,21 @@ impl TagFormat for GenericCsv {
         h.iter().any(|f| f == "name" || f == "address")
     }
 
-    fn read(&self, bytes: &[u8], caps: &Caps) -> Result<Read, String> {
+    fn read(&self, bytes: &[u8], caps: &Caps) -> Result<Read, CmdError> {
         if bytes.len() > caps.bytes {
-            return Err(format!("The file is {} MB; at most {} MB is read.", bytes.len() >> 20, caps.bytes >> 20));
+            return Err(CmdError::refused(format!("The file is {} MB; at most {} MB is read.", bytes.len() >> 20, caps.bytes >> 20)));
         }
         let text = text_of(bytes).ok_or(UNKNOWN)?;
         if text.trim().is_empty() {
-            return Err("The file is empty.".into());
+            return Err(CmdError::refused("The file is empty."));
         }
         let (head, sep) = header(text);
         let col = |name: &str| head.iter().position(|f| f == name);
         if col("name").is_none() && col("address").is_none() {
-            return Err(UNKNOWN.into());
+            return Err(CmdError::refused(UNKNOWN));
         }
-        let name_at = col("name").ok_or("The file has no \"name\" column.")?;
-        let addr_at = col("address").ok_or("The file has no \"address\" column.")?;
+        let name_at = col("name").ok_or(CmdError::refused("The file has no \"name\" column."))?;
+        let addr_at = col("address").ok_or(CmdError::refused("The file has no \"address\" column."))?;
         let type_at = col("type");
         let comment_at = col("comment");
         let mut out = Read::default();
@@ -283,12 +284,12 @@ impl TagFormat for GenericCsv {
             });
         }
         if over > 0 {
-            return Err(format!("The file has {} I/O tags; at most {} are read.", out.rows.len().saturating_add(over), caps.rows));
+            return Err(CmdError::refused(format!("The file has {} I/O tags; at most {} are read.", out.rows.len().saturating_add(over), caps.rows)));
         }
         Ok(out)
     }
 
-    fn write(&self, rows: &[TagRow]) -> Result<Vec<u8>, String> {
+    fn write(&self, rows: &[TagRow]) -> Result<Vec<u8>, CmdError> {
         let extra = rows.iter().any(|r| r.extra.is_some());
         let cols = if extra { &CSV_COLUMNS[..] } else { &CSV_COLUMNS[..4] };
         let mut s = cols.join(",");
@@ -564,10 +565,10 @@ mod tests {
     #[test]
     fn a_missing_column_is_named() {
         let e = GenericCsv.read(b"name,type,comment\nA,Bool,x\n", &Caps::default()).unwrap_err();
-        assert_eq!(e, "The file has no \"address\" column.");
+        assert_eq!(e.to_string(), "The file has no \"address\" column.");
         assert!(GenericCsv.sniff(b"name,type,comment\n"));
         let e = GenericCsv.read(b"address,type\n%Q0.0,Bool\n", &Caps::default()).unwrap_err();
-        assert_eq!(e, "The file has no \"name\" column.");
+        assert_eq!(e.to_string(), "The file has no \"name\" column.");
     }
 
     #[test]

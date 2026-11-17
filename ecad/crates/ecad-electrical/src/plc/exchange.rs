@@ -16,6 +16,7 @@
 //! - Exported fields that a spreadsheet would run as a formula are written with a leading `'`
 //!   ([`super::tagtable::neutral`]), which the reader takes off again.
 
+use crate::CmdError;
 use std::collections::BTreeMap;
 
 use ecad_model::{ComponentId, Document, ObjectRef, Op};
@@ -145,13 +146,13 @@ pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<ComponentId>, f: &dyn
 ///
 /// # Errors
 /// No format reads it, or the format's own refusal; in words.
-pub fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) -> Result<Read, String> {
+pub fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) -> Result<Read, CmdError> {
     let f = match format {
         Some(f) => f,
         None => tagtable::sniff(bytes).ok_or(tagtable::UNKNOWN)?,
     };
     if !f.sniff(bytes) {
-        return Err(tagtable::UNKNOWN.into());
+        return Err(CmdError::refused(tagtable::UNKNOWN));
     }
     f.read(bytes, &Caps::default())
 }
@@ -201,7 +202,7 @@ impl Fill {
 ///
 /// # Errors
 /// Two channels of one PLC would share a tag; in words, naming both.
-pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: bool) -> Result<Fill, String> {
+pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: bool) -> Result<Fill, CmdError> {
     // Every channel by its normalised address, per card in list order.
     let mut at: BTreeMap<String, (ComponentId, u32)> = BTreeMap::new();
     for card in iolist::cards_in_order(plc) {
@@ -269,11 +270,11 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
                         let a = a.map(|a| format!(" ({a})")).unwrap_or_default();
                         format!("{}{a}", super::channels::channel_words(doc, c, j))
                     };
-                    return Err(format!(
+                    return Err(CmdError::refused(format!(
                         "The import would give two channels the tag \"{tag}\": {} and {}. Nothing was imported.",
                         words(first),
                         words((card.id, i))
-                    ));
+                    )));
                 }
             }
         }
