@@ -10,7 +10,7 @@ use crate::common;
 use cadcraft_engine::doc::{Handle, Space};
 use common::{H, pts, small_project};
 use ecad_inspect::EventKind;
-use ecad_model::{ConductorId, PageId, TxKind};
+use ecad_model::{PageId, TxKind, WireId};
 use serde_json::{Value, json};
 
 /// What a refusal must leave as it was.
@@ -57,7 +57,7 @@ fn last_tx(h: &mut H) -> (String, Vec<&'static str>) {
 }
 
 /// The small project plus a plain line from (50, 30) to (80, 30), its handle, and the wire.
-fn fixture() -> (H, Handle, ConductorId) {
+fn fixture() -> (H, Handle, WireId) {
     let (mut h, _, _, w) = small_project(23);
     let page = h.first_page();
     h.run("line", json!({"points": pts(&[(50.0, 30.0), (80.0, 30.0)])})).unwrap();
@@ -213,7 +213,7 @@ fn oops_after_undo_or_on_another_page_is_refused() {
 
 #[test]
 fn classic_array_copies_are_recorded_as_copies() {
-    let cases: [(&str, fn(&mut H, Handle, ConductorId) -> Value, &[&str]); 3] = [
+    let cases: [(&str, fn(&mut H, Handle, WireId) -> Value, &[&str]); 3] = [
         ("plain line", |_, plain, _| json!({"handles": [plain.hex()], "rows": 2, "cols": 2, "rowSpacing": 10, "colSpacing": 50}), &["AddItem"]),
         (
             "symbol",
@@ -231,7 +231,7 @@ fn classic_array_copies_are_recorded_as_copies() {
                 let page = h.first_page();
                 json!({"handles": [h.route_handle(page, w).hex()], "rows": 2, "cols": 1, "rowSpacing": 30})
             },
-            &["CreateConductor", "LinkRepresentation"],
+            &["CreateWire", "LinkRepresentation"],
         ),
     ];
     for (what, params, expect) in cases {
@@ -239,7 +239,7 @@ fn classic_array_copies_are_recorded_as_copies() {
         let p = params(&mut h, plain, w);
         let head = h.head();
         let devices = h.doc().devices.len();
-        let conductors = h.doc().conductors.len();
+        let conductors = h.doc().wires.len();
         h.run("-array", p).unwrap();
         assert_eq!(h.head(), head + 1, "{what}: one transaction");
         let (label, ops) = last_tx(&mut h);
@@ -250,8 +250,8 @@ fn classic_array_copies_are_recorded_as_copies() {
         let doc = h.doc();
         match what {
             "symbol" => assert_eq!(doc.devices.len(), devices + 1, "a copied device"),
-            "wire" => assert_eq!(doc.conductors.len(), conductors + 1, "a copied wire"),
-            _ => assert_eq!((doc.devices.len(), doc.conductors.len()), (devices, conductors)),
+            "wire" => assert_eq!(doc.wires.len(), conductors + 1, "a copied wire"),
+            _ => assert_eq!((doc.devices.len(), doc.wires.len()), (devices, conductors)),
         }
         h.check();
         // One undo takes the whole array back.

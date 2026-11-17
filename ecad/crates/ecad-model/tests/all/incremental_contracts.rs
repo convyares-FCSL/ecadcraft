@@ -4,9 +4,9 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Author, Cable, CableMember, Color, Conductor, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId,
-    Ledger, LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
-    StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched,
+    Author, Cable, CableMember, Color, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
+    LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
+    StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched, Wire,
 };
 
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
@@ -83,9 +83,9 @@ pub(crate) struct Base {
     rep_sym_v: Representation,
     rep_wire: ecad_model::RepresentationId,
     rep_wire_v: Representation,
-    wire: ecad_model::ConductorId,
-    wire_v: Conductor,
-    wire2: ecad_model::ConductorId,
+    wire: ecad_model::WireId,
+    wire_v: Wire,
+    wire2: ecad_model::WireId,
     cable: ecad_model::CableId,
     cable_v: Cable,
     pub(crate) folder: ecad_model::FolderId,
@@ -96,7 +96,7 @@ pub(crate) fn base() -> Base {
     let mut ids = IdAllocator::seeded(13);
     let mut ledger = Ledger::new(5);
     let page = ids.fresh();
-    let page_v = Page::new("1");
+    let page_v = Page::titled("1").unwrap();
     let layer = ids.fresh();
     let layer_v = Layer { name: "0".into() };
     let def = ids.fresh();
@@ -127,11 +127,11 @@ pub(crate) fn base() -> Base {
         connection_points: Default::default(),
     };
     let wire = ids.fresh();
-    let wire_v = Conductor { ends: [Some(term), None], ..Conductor::default() };
+    let wire_v = Wire { ends: [Some(term), None], ..Wire::default() };
     let wire2 = ids.fresh();
     let rep_wire = ids.fresh();
     let rep_wire_v = Representation {
-        subject: Subject::Conductor(wire),
+        subject: Subject::Wire(wire),
         page,
         form: Form::Drawn,
         role: "route".into(),
@@ -155,8 +155,8 @@ pub(crate) fn base() -> Base {
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-                Op::CreateConductor { id: wire, conductor: wire_v.clone() },
-                Op::CreateConductor { id: wire2, conductor: Conductor::default() },
+                Op::CreateWire { id: wire, conductor: wire_v.clone() },
+                Op::CreateWire { id: wire2, conductor: Wire::default() },
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
@@ -212,7 +212,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
     let mut rep_after = b.rep_wire_v.clone();
     rep_after.role = "moved".into();
     vec![
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 },
         Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "x".into() } },
         Op::RemoveLayer { id: b.layer, layer: b.layer_v.clone() },
@@ -231,8 +231,9 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
-        Op::CreateConductor { id: b.ids.fresh(), conductor: Conductor { ends: [Some(b.term), Some(b.term)], ..Conductor::default() } },
-        Op::DeleteConductor { id: b.wire, conductor: b.wire_v.clone() },
+        Op::CreateWire { id: b.ids.fresh(), conductor: Wire { ends: [Some(b.term), Some(b.term)], ..Wire::default() } },
+        Op::DeleteWire { id: b.wire, conductor: b.wire_v.clone() },
+        Op::ModifyWire { id: b.wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
         Op::AttachEnd { conductor: b.wire2, end: End::B, before: None, after: Some(b.term) },
         Op::CreateCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
@@ -251,6 +252,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder) }, index: 1 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
         Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
+        Op::ModifyPage { id: b.page, before: b.page_v.clone(), after: Page { number: ecad_model::PageNo::parse("9"), ..b.page_v.clone() } },
         Op::SetStyle {
             layer: StyleLayer::Project,
             catalogue: "line".into(),
@@ -270,9 +272,9 @@ fn failing(b: &mut Base) -> Vec<Op> {
     let missing_comp = b.ids.fresh();
     vec![
         // Not atomic before brief 013: the page went in before the index was rejected.
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 9 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 9 },
         Op::AddPage { id: b.page, page: b.page_v.clone(), index: 0 },
-        Op::RemovePage { id: b.page, page: Page::new("other"), index: 0 },
+        Op::RemovePage { id: b.page, page: Page::titled("other").unwrap(), index: 0 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 1 },
         Op::AddLayer { id: b.layer, layer: b.layer_v.clone() },
         Op::RemoveLayer { id: b.layer, layer: Layer { name: "other".into() } },
@@ -288,8 +290,9 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::LinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_sym_v.clone(), after: b.rep_wire_v.clone() },
         Op::UnlinkRepresentation { id: b.ids.fresh(), rep: b.rep_sym_v.clone() },
-        Op::CreateConductor { id: b.wire, conductor: Conductor::default() },
-        Op::DeleteConductor { id: b.wire, conductor: Conductor::default() },
+        Op::CreateWire { id: b.wire, conductor: Wire::default() },
+        Op::DeleteWire { id: b.wire, conductor: Wire::default() },
+        Op::ModifyWire { id: missing_conductor, before: Wire::default(), after: Wire::default() },
         Op::AttachEnd { conductor: b.wire, end: End::A, before: None, after: Some(b.term) },
         Op::AttachEnd { conductor: missing_conductor, end: End::A, before: None, after: Some(b.term) },
         Op::CreateCable { id: b.cable, cable: Cable::default() },
@@ -313,6 +316,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 1 },
         Op::RemoveFolder { id: b.folder, folder: Folder { name: "other".into(), parent: None }, index: 0 },
         Op::ModifyFolder { id: b.folder, before: Folder { name: "other".into(), parent: None }, after: b.folder_v.clone() },
+        // Lane 072 E: a page not as recorded.
+        Op::ModifyPage { id: b.page, before: Page::titled("other").unwrap(), after: b.page_v.clone() },
         // The project has no standard, so a Standard-layer style and a header change both fail.
         Op::SetStyle {
             layer: StyleLayer::Standard,
@@ -392,7 +397,7 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     let mut b = base();
     // Rename the page by removing and re-adding it: in between, every item and representation on
     // it points at a missing page.
-    let renamed = Page::new("renamed");
+    let renamed = Page::titled("renamed").unwrap();
     let ops = vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 0 }];
     b.ledger.commit(Author::User, "rename", ops).unwrap();
     assert_eq!(b.ledger.document().pages.get(&b.page), Some(&renamed));
@@ -416,7 +421,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
-        Op::CreateConductor { id: wire, conductor: Conductor::default() },
+        Op::CreateWire { id: wire, conductor: Wire::default() },
         Op::AttachEnd { conductor: wire, end: End::A, before: None, after: Some(term) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: wire, core: None } },
     ];
@@ -434,7 +439,7 @@ fn a_transaction_failing_at_op_three_leaves_the_document_byte_identical() {
     let head = b.ledger.head();
     let missing = b.ids.fresh();
     let ops = vec![
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::AttachEnd { conductor: b.wire2, end: End::A, before: None, after: Some(b.term) },
         Op::RemoveItem { id: missing, item: b.item_v.clone() },
         Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "never".into() } },
@@ -551,7 +556,7 @@ struct Pools {
     comps: Vec<ecad_model::DeviceId>,
     terms: Vec<ecad_model::TerminalId>,
     reps: Vec<ecad_model::RepresentationId>,
-    conds: Vec<ecad_model::ConductorId>,
+    conds: Vec<ecad_model::WireId>,
     cables: Vec<ecad_model::CableId>,
     defs: Vec<ecad_model::DefinitionId>,
 }
@@ -590,7 +595,7 @@ impl Gen {
     fn term(&mut self) -> Option<ecad_model::TerminalId> {
         if self.rng.chance(30) { None } else { self.rng.pick(&self.pools.terms) }
     }
-    fn cond(&mut self) -> ecad_model::ConductorId {
+    fn cond(&mut self) -> ecad_model::WireId {
         self.rng.pick(&self.pools.conds).unwrap_or_else(|| fresh_in!(self, conds))
     }
 
@@ -649,7 +654,7 @@ impl Gen {
         }
         let subject = match self.rng.below(3) {
             0 => Subject::Device(self.comp()),
-            1 => Subject::Conductor(self.cond()),
+            1 => Subject::Wire(self.cond()),
             _ => Subject::Cable(self.rng.pick(&self.pools.cables).unwrap_or_else(|| fresh_in!(self, cables))),
         };
         let page = self.rng.pick_key(&doc.pages).unwrap_or_else(|| self.page());
@@ -707,14 +712,14 @@ impl Gen {
             0..=1 => {
                 let id = if spoil { self.rng.pick(&self.pools.pages).unwrap_or_else(|| fresh_in!(self, pages)) } else { fresh_in!(self, pages) };
                 let index = self.rng.below(doc.page_order.len() + 1 + usize::from(spoil));
-                Op::AddPage { id, page: Page::new("p"), index }
+                Op::AddPage { id, page: Page::titled("p").unwrap(), index }
             }
             2 => match self.rng.pick(&doc.page_order) {
                 Some(id) => {
                     let index = doc.page_order.iter().position(|p| *p == id).unwrap_or(0) + usize::from(spoil);
-                    Op::RemovePage { id, page: doc.pages.get(&id).cloned().unwrap_or(Page::new("?")), index }
+                    Op::RemovePage { id, page: doc.pages.get(&id).cloned().unwrap_or(Page::titled("?").unwrap()), index }
                 }
-                None => Op::AddPage { id: fresh_in!(self, pages), page: Page::new("p"), index: 0 },
+                None => Op::AddPage { id: fresh_in!(self, pages), page: Page::titled("p").unwrap(), index: 0 },
             },
             3 => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
             4 => match self.rng.pick_key(&doc.layers) {
@@ -787,20 +792,20 @@ impl Gen {
             },
             24..=26 => {
                 let ends = [self.term(), self.term()];
-                Op::CreateConductor { id: fresh_in!(self, conds), conductor: Conductor { ends, ..Conductor::default() } }
+                Op::CreateWire { id: fresh_in!(self, conds), conductor: Wire { ends, ..Wire::default() } }
             }
-            27 => match self.rng.pick_key(&doc.conductors) {
-                Some(id) => Op::DeleteConductor { id, conductor: doc.conductors.get(&id).cloned().unwrap_or_default() },
-                None => Op::CreateConductor { id: fresh_in!(self, conds), conductor: Conductor::default() },
+            27 => match self.rng.pick_key(&doc.wires) {
+                Some(id) => Op::DeleteWire { id, conductor: doc.wires.get(&id).cloned().unwrap_or_default() },
+                None => Op::CreateWire { id: fresh_in!(self, conds), conductor: Wire::default() },
             },
-            28..=29 => match self.rng.pick_key(&doc.conductors) {
+            28..=29 => match self.rng.pick_key(&doc.wires) {
                 Some(conductor) => {
                     let end = if self.rng.chance(50) { End::A } else { End::B };
-                    let current = doc.conductors.get(&conductor).and_then(|c| c.end(end));
+                    let current = doc.wires.get(&conductor).and_then(|c| c.end(end));
                     let before = if spoil { self.term() } else { current };
                     Op::AttachEnd { conductor, end, before, after: self.term() }
                 }
-                None => Op::CreateConductor { id: fresh_in!(self, conds), conductor: Conductor::default() },
+                None => Op::CreateWire { id: fresh_in!(self, conds), conductor: Wire::default() },
             },
             30 => {
                 let mut members = Vec::new();
@@ -1008,7 +1013,7 @@ struct Snapshot {
     head: u64,
     undo: Option<String>,
     redo: Option<String>,
-    ends: Vec<(ecad_model::ConductorId, End)>,
+    ends: Vec<(ecad_model::WireId, End)>,
     cables: Vec<ecad_model::CableId>,
 }
 
@@ -1063,7 +1068,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: None } },
         Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: Some("K2".into()) },
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
     ];
     let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];
     for op in applicable(&mut b) {

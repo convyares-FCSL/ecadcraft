@@ -336,7 +336,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
         ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
     }
@@ -392,11 +392,7 @@ pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>
                 continue;
             }
             Build::Record(plan) => {
-                // Several devices' changes in one transaction: each against the devices as the
-                // ops so far leave them.
-                if let Some(op) = plan(doc, o, &key, typed)? {
-                    ops.push(op);
-                }
+                ops.extend(plan(doc, o, &key, typed)?);
                 continue;
             }
             Build::Aspect | Build::Tag | Build::Device(_) | Build::Value(_) => {}

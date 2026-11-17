@@ -61,7 +61,7 @@ fn pages(n: usize) -> Document {
     Op::AddLayer { id: layer, layer: ecad_model::Layer { name: "0".into() } }.apply(&mut doc).unwrap();
     for i in 0..n {
         let id = PageId(0x1000 + i as u128);
-        Op::AddPage { id, page: ecad_model::Page::new(format!("{}", 100 + i)), index: i }.apply(&mut doc).unwrap();
+        Op::AddPage { id, page: ecad_model::Page::titled(format!("{}", 100 + i)).unwrap(), index: i }.apply(&mut doc).unwrap();
     }
     doc
 }

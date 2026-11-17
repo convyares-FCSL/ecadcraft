@@ -181,7 +181,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     t.answer(Answer::Save);
     assert!(t.dialog().is_none() && !t.project_open());
     t.open_project(&d.path("closing.ecad")).unwrap();
-    assert_eq!(doc(&mut t).conductors.len(), 2, "both wires were saved");
+    assert_eq!(doc(&mut t).wires.len(), 2, "both wires were saved");
     // Discard: closed; the file keeps its last saved state.
     edit(&mut t);
     t.close_project();
@@ -189,7 +189,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     assert!(!t.project_open());
     assert!(t.cad.session.log.iter().any(|l| l.contains("keeps its last saved state")));
     t.open_project(&d.path("closing.ecad")).unwrap();
-    assert_eq!(doc(&mut t).conductors.len(), 2);
+    assert_eq!(doc(&mut t).wires.len(), 2);
 }
 
 #[test]
@@ -418,7 +418,7 @@ fn the_quick_start_runs_headless() {
     // 3. Connect the two terminals with a wire.
     ok(&mut t, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     let dc = doc(&mut t);
-    let (cid, c) = dc.conductors.iter().next().unwrap();
+    let (cid, c) = dc.wires.iter().next().unwrap();
     let cid = *cid;
     assert!(c.ends.iter().all(Option::is_some), "both ends attached");
     let page = dc.page_order[0];

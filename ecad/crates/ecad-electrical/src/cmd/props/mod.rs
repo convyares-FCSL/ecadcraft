@@ -3,6 +3,7 @@
 //! shared table. The phase-end tidy-up folds them into it.
 
 pub mod c;
+pub mod d;
 
 /// The lanes' row tables, in brief order.
-pub static LANES: &[(&str, &[super::prop::PropRule])] = &[("072c", c::RULES)];
+pub static LANES: &[(&str, &[super::prop::PropRule])] = &[("072c", c::RULES), ("072d", d::RULES)];

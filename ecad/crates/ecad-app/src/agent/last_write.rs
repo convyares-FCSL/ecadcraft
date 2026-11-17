@@ -184,7 +184,7 @@ impl App {
                 for o in touched.iter().take(MAX_OUTLINED) {
                     let object = match o {
                         ObjectRef::Device(c) => Object::Device(*c),
-                        ObjectRef::Conductor(c) => Object::Conductor(*c),
+                        ObjectRef::Wire(c) => Object::Wire(*c),
                         ObjectRef::Cable(c) => Object::Cable(*c),
                         ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => continue,
                     };

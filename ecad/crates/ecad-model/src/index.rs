@@ -18,11 +18,10 @@
 //!
 //! This module holds no invariant logic and no I/O.
 
-use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, CableMember, Conductor, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
-use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -65,9 +64,9 @@ pub(crate) fn referrers<'a, K: Ord, V: Copy + 'a>(map: &'a Multi<K, V>, key: &K)
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Index {
     /// Terminal → conductor ends attached to it.
-    pub(crate) terminal_ends: Multi<TerminalId, (ConductorId, End)>,
-    /// Conductor → cables listing it.
-    pub(crate) conductor_cables: Multi<ConductorId, CableId>,
+    pub(crate) terminal_ends: Multi<TerminalId, (WireId, End)>,
+    /// Wire → cables listing it.
+    pub(crate) conductor_cables: Multi<WireId, CableId>,
     /// Device → its terminals.
     pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
     /// PLC station → the modules naming it (design 072 §3).
@@ -169,7 +168,7 @@ impl Index {
         for (id, t) in &doc.terminals {
             rest.terminal(*id, t, Delta::Add);
         }
-        for (id, c) in &doc.conductors {
+        for (id, c) in &doc.wires {
             rest.conductor(*id, c, Delta::Add);
         }
         for (id, c) in &doc.cables {
@@ -184,10 +183,13 @@ impl Index {
     }
 
     pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {
-        if let Some(f) = p.properties.text(crate::keys::FOLDER) {
-            self.page_folder(id, f, delta);
+        if let Some(f) = p.folder {
+            bump(&mut self.folder_pages, f, id, delta);
         }
-        self.style_choices(ObjectRef::Page(id), &p.properties, delta);
+        if let Some(t) = &p.page_type {
+            self.style_choice(ObjectRef::Page(id), crate::sheet::PAGE_TYPE_KEY, &t.to_string(), delta);
+        }
+        self.style_choices(ObjectRef::Page(id), &p.display, delta);
     }
 
     /// Every style choice among `props` (brief 050a).
@@ -201,14 +203,6 @@ impl Index {
     pub(crate) fn style_choice(&mut self, object: ObjectRef, key: &str, value: &str, delta: Delta) {
         if crate::style::is_choice_key(key) {
             bump(&mut self.style_users, (value.trim().to_string(), key.to_string()), object, delta);
-        }
-    }
-
-    /// A page's `folder` property `value` (its stored text) is added or removed. Text that is no
-    /// folder ID is indexed under no folder (the invariant check refuses it).
-    pub(crate) fn page_folder(&mut self, id: PageId, value: &str, delta: Delta) {
-        if let Some(f) = FolderId::parse(value) {
-            bump(&mut self.folder_pages, f, id, delta);
         }
     }
 
@@ -269,14 +263,14 @@ impl Index {
         }
     }
 
-    pub(crate) fn conductor(&mut self, id: ConductorId, c: &Conductor, delta: Delta) {
+    pub(crate) fn conductor(&mut self, id: WireId, c: &Wire, delta: Delta) {
         for end in End::BOTH {
             self.conductor_end(id, end, c.end(end), delta);
         }
-        self.style_choices(ObjectRef::Conductor(id), &c.properties, delta);
+        self.style_choices(ObjectRef::Wire(id), &c.display, delta);
     }
 
-    pub(crate) fn conductor_end(&mut self, id: ConductorId, end: End, terminal: Option<TerminalId>, delta: Delta) {
+    pub(crate) fn conductor_end(&mut self, id: WireId, end: End, terminal: Option<TerminalId>, delta: Delta) {
         if let Some(t) = terminal {
             bump(&mut self.terminal_ends, t, (id, end), delta);
         }

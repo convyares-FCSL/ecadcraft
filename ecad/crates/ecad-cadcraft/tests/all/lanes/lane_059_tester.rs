@@ -19,7 +19,7 @@
 use ecad_cadcraft::cable_cmds::{self, CableField, Side, Source};
 use ecad_cadcraft::checks::{self, Severity};
 use ecad_cadcraft::designations::Aspect;
-use ecad_model::{CableId, ConductorId, DeviceId, Document, Op};
+use ecad_model::{CableId, DeviceId, Document, Op, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -42,7 +42,7 @@ fn last_tx(h: &mut H) -> (String, Vec<Op>) {
 }
 
 /// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, with no ends attached.
-fn wires(h: &mut H, n: usize) -> Vec<ConductorId> {
+fn wires(h: &mut H, n: usize) -> Vec<WireId> {
     (0..n)
         .map(|i| {
             let x = 10.0 * i as f64;
@@ -413,7 +413,7 @@ fn r6_assign_follows_the_crossing_order_and_the_core_labels() {
     let r = slash_across(&mut h, (25.0, 25.0), (-5.0, 25.0), Some(k)).unwrap();
     assert_eq!(r["assigned"], json!(true), "{r}");
     let doc = h.doc();
-    let members: Vec<(ConductorId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     // The spare core reads "not assigned".
     let open = checks_of(&mut h, "core-open");
@@ -778,7 +778,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
     assert!(c.contains("all: false"), "checks scope: {c}");
     assert!(!c.contains(&format!("{other:?}")), "the other cable is not re-checked: {c}");
     assert!(!c.contains(&format!("{a:?}")) && !c.contains(&format!("{b:?}")), "no device is re-checked: {c}");
-    assert!(c.contains("conductors: {}") && c.contains("devices: {}"), "an undrawn cable's edit reaches no wire or device: {c}");
+    assert!(c.contains("wires: {}") && c.contains("devices: {}"), "an undrawn cable's edit reaches no wire or device: {c}");
     assert!(c.contains(&format!("{k:?}")), "the cable itself is re-checked: {c}");
     assert!(!o.contains(&format!("{other:?}")), "outputs: the other cable's row is not patched: {o}");
     assert!(o.contains(&format!("{k:?}")), "outputs: its row is patched: {o}");
@@ -915,7 +915,7 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
     assert_eq!(label, "Cable slash");
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
     let doc = h.doc();
-    let members: Vec<(ConductorId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     h.run("u", json!({})).unwrap();
     assert!(!cable_cmds::is_drawn(&h.doc(), k), "one undo: not drawn again");

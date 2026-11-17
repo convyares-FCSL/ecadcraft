@@ -26,7 +26,7 @@
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, ConductorId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
+use ecad_model::{CableId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject, WireId};
 
 /// Most wires one cable may hold (input-derived sizes are capped, never trusted).
 pub const MAX_CABLE_MEMBERS: usize = 10_000;
@@ -34,7 +34,7 @@ pub const MAX_CABLE_MEMBERS: usize = 10_000;
 /// A conductor the slash takes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Crossing {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     /// Its first crossing point on the slash.
     pub at: Pt,
     /// The distance from the slash's first point to `at`.
@@ -49,7 +49,7 @@ pub struct Crossings {
     /// Lines and polylines that are not conductor routes (C7), in crossing order, with where.
     pub ignored: Vec<(ItemId, Pt)>,
     /// Conductors met only at a route end or along a segment (C4, C5), in ID order.
-    pub touched: Vec<ConductorId>,
+    pub touched: Vec<WireId>,
 }
 
 /// How a slash meets one segment.
@@ -140,10 +140,10 @@ fn usable(tol: f64) -> f64 {
 }
 
 /// The conductor routes shown on `page`: route item → conductor.
-fn routes(doc: &Document, page: PageId) -> BTreeMap<ItemId, ConductorId> {
+fn routes(doc: &Document, page: PageId) -> BTreeMap<ItemId, WireId> {
     let mut out = BTreeMap::new();
     for r in doc.representations.values().filter(|r| r.page == page) {
-        if let Subject::Conductor(c) = r.subject {
+        if let Subject::Wire(c) = r.subject {
             out.extend(r.items.iter().map(|i| (*i, c)));
         }
     }
@@ -207,7 +207,7 @@ pub fn crossings(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Cr
         return out;
     }
     let routes = routes(doc, page);
-    let mut meets: BTreeMap<ConductorId, Meets> = BTreeMap::new();
+    let mut meets: BTreeMap<WireId, Meets> = BTreeMap::new();
     let mut ignored: Vec<(f64, ItemId, Pt)> = Vec::new();
     for (id, item) in doc.items.iter().filter(|(_, i)| i.page == page) {
         let ItemKind::Primitive(prim) = &item.kind else { continue };
@@ -247,8 +247,8 @@ pub fn crossings(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Cr
 
 /// The crossed conductors that are already in a cable, each with the first such cable.
 pub fn blocked(doc: &Document, members: &[Crossing]) -> Vec<(Crossing, CableId)> {
-    let wanted: BTreeSet<ConductorId> = members.iter().map(|m| m.conductor).collect();
-    let mut cable_of: BTreeMap<ConductorId, CableId> = BTreeMap::new();
+    let wanted: BTreeSet<WireId> = members.iter().map(|m| m.conductor).collect();
+    let mut cable_of: BTreeMap<WireId, CableId> = BTreeMap::new();
     for (k, cable) in &doc.cables {
         for m in &cable.members {
             if wanted.contains(&m.conductor) {
@@ -283,7 +283,7 @@ pub fn member_crossing_points(doc: &Document, page: PageId, tol: f64) -> Vec<Pt>
 pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, shown: impl Fn(ItemId) -> bool) -> Vec<Pt> {
     let tol = usable(tol);
     let routes = routes(doc, page);
-    let mut by_conductor: BTreeMap<ConductorId, Vec<&Primitive>> = BTreeMap::new();
+    let mut by_conductor: BTreeMap<WireId, Vec<&Primitive>> = BTreeMap::new();
     for (i, c) in &routes {
         if let Some(ItemKind::Primitive(prim)) = doc.items.get(i).map(|x| &x.kind) {
             by_conductor.entry(*c).or_default().push(prim);
@@ -310,10 +310,10 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
 /// Where each slash of `cable` on `page` crosses one of its own members (the
 /// [`member_crossing_points`] rules), with the member and the direction of its route segment there
 /// (design 009 §6): one entry per member and slash, in slash order then member order.
-pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Vec<(ConductorId, Pt, Pt)> {
+pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Vec<(WireId, Pt, Pt)> {
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
     let routes = routes(doc, page);
-    let mut by_conductor: BTreeMap<ConductorId, Vec<&Primitive>> = BTreeMap::new();
+    let mut by_conductor: BTreeMap<WireId, Vec<&Primitive>> = BTreeMap::new();
     for (i, w) in &routes {
         if let Some(ItemKind::Primitive(prim)) = doc.items.get(i).map(|x| &x.kind) {
             by_conductor.entry(*w).or_default().push(prim);
@@ -327,8 +327,8 @@ pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f6
 /// primitives there (`prims`), already gathered by the caller (one index per page, brief 009
 /// review S4).
 pub fn member_crossings_with<'p>(
-    c: &ecad_model::Cable, slashes: &[(Pt, Pt)], prims: impl Fn(ConductorId) -> &'p [&'p Primitive], tol: f64,
-) -> Vec<(ConductorId, Pt, Pt)> {
+    c: &ecad_model::Cable, slashes: &[(Pt, Pt)], prims: impl Fn(WireId) -> &'p [&'p Primitive], tol: f64,
+) -> Vec<(WireId, Pt, Pt)> {
     let tol = usable(tol);
     let mut out = Vec::new();
     for (from, to) in slashes.iter().copied() {
@@ -371,9 +371,9 @@ fn short(hex: &str) -> &str {
     hex.get(..8).unwrap_or(hex)
 }
 
-/// A wire's name: its `tag` property, else `wire <first 8 hex>…`.
-pub fn wire_name(doc: &Document, c: ConductorId) -> String {
-    match doc.conductors.get(&c).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+/// A wire's name: its number, else `wire <first 8 hex>…`.
+pub fn wire_name(doc: &Document, c: WireId) -> String {
+    match doc.wires.get(&c).and_then(|x| x.number_text()) {
         Some(t) => t.to_string(),
         None => format!("wire {}…", short(&c.hex())),
     }
@@ -421,16 +421,16 @@ pub fn too_many() -> String {
     format!("The slash crosses more than {MAX_CABLE_MEMBERS} wires; nothing was created.")
 }
 
-/// A wire after the word "Wire": its tag, else `8a3f19c0…` (so it never reads "Wire wire …").
-fn bare_wire_name(doc: &Document, c: ConductorId) -> String {
-    match doc.conductors.get(&c).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+/// A wire after the word "Wire": its number, else `8a3f19c0…` (so it never reads "Wire wire …").
+fn bare_wire_name(doc: &Document, c: WireId) -> String {
+    match doc.wires.get(&c).and_then(|x| x.number_text()) {
         Some(t) => t.to_string(),
         None => format!("{}…", short(&c.hex())),
     }
 }
 
 /// Refusal: some wires are already in a cable. `tail` ends the message (`Nothing was created.`).
-pub fn already_in_cable(doc: &Document, blocked: &[(ConductorId, CableId)], tail: &str) -> String {
+pub fn already_in_cable(doc: &Document, blocked: &[(WireId, CableId)], tail: &str) -> String {
     match blocked {
         [(w, k)] => format!("Wire {} is already in {}; a wire can be in only one cable. {tail}", bare_wire_name(doc, *w), cable_label(doc, *k)),
         _ => {
@@ -450,7 +450,7 @@ fn cable_label(doc: &Document, k: CableId) -> String {
 
 /// The echo after a slash (§5.3): the first line, then one line each for ignored objects and
 /// touched wires when there are any.
-pub fn created_lines(doc: &Document, cable: CableId, members: &[ConductorId], ignored: usize, touched: usize) -> Vec<String> {
+pub fn created_lines(doc: &Document, cable: CableId, members: &[WireId], ignored: usize, touched: usize) -> Vec<String> {
     let names: Vec<String> = members.iter().map(|c| wire_name(doc, *c)).collect();
     let mut out = vec![format!("Cable {} created with {}: {}.", cable.hex(), wires(members.len()), name_list(&names))];
     match ignored {

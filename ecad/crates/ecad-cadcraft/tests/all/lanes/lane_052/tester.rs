@@ -237,11 +237,11 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     assert_eq!(after.devices[&u.k].properties.get("location"), Some(&k1));
     assert_eq!(after.devices[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
     assert_eq!(after.devices[&u.bx].properties.get("location"), Some(&k1), "the box follows");
-    assert_eq!(after.pages[&u.p1].properties.get("location"), Some(&k1), "the page follows");
+    assert_eq!(after.pages[&u.p1].display.get("location"), Some(&k1), "the page follows");
     assert_eq!(after.properties.get("location"), Some(&k1), "the project default follows");
     // No stored value anywhere still names the removed key.
     let old = key(&before, Aspect::Location, "+CP01");
-    let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.properties.values()));
+    let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
     assert!(dangling.chain(after.properties.values()).all(|v| *v != old), "a value still names +CP01's key");
     same_as_built(h, "after merge");
     let locs: Vec<Option<String>> = h.cfg(|p| p.outputs().bom(Group::Location).into_iter().map(|r| r.location).collect());

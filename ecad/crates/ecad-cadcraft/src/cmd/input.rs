@@ -300,18 +300,18 @@ pub(crate) fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_model::ConductorId;
+    use ecad_model::WireId;
     use serde_json::json;
 
     #[derive(Deserialize, JsonSchema)]
     #[serde(deny_unknown_fields)]
     #[allow(dead_code)]
     struct P {
-        conductor: ConductorId,
+        conductor: WireId,
         #[serde(default)]
         at: Option<Point>,
         #[serde(default)]
-        many: Option<Bounded<ConductorId, 0, 2>>,
+        many: Option<Bounded<WireId, 0, 2>>,
         #[serde(default)]
         on: Option<bool>,
         #[serde(default, deserialize_with = "nullable")]

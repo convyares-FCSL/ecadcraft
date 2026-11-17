@@ -83,3 +83,31 @@ fn the_symbol_declares_the_type_and_joining_keeps_it() {
     let lamp = STARTERS.iter().find(|s| s.key == StarterKey::Lamp).unwrap();
     assert_eq!(lamp.definition().unwrap().device_type.group(), DeviceGroup::Indicator);
 }
+
+/// Design 072 F5 (A2 hand-over): a project symbol's tag prefix follows its key when an edit
+/// renames it and its old version goes; a prefix naming no project symbol is a read error.
+#[test]
+fn a_project_prefix_follows_a_renamed_symbol_key() {
+    use ecad_model::prefix::PrefixOf;
+    let mut h = H::new(0x72_b9);
+    let shape = json!({"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true});
+    let symbol = |key: &str| {
+        json!({
+            "name": "Float switch", "key": key, "graphics": [shape.clone()],
+            "points": [{"key": "1", "at": [0, 5]}, {"key": "2", "at": [0, -5]}],
+            "slots": [{"text": "tag", "at": [-4, 0]}],
+            "defaults": {"prefix": "B", "description": "Float switch", "join": "device"},
+        })
+    };
+    let def: ecad_model::DefinitionId = id(&h.run("symbolnew", symbol("float1")).unwrap(), "definition");
+    h.run("setdefault", json!({"key": "symbol.float1.prefix", "value": "S"})).unwrap();
+    assert!(h.doc().settings.tag_prefixes.contains_key(&PrefixOf::Project("float1".into())));
+    let mut edit = symbol("float2");
+    edit["definition"] = json!(def.hex());
+    h.run("symboledit", edit).unwrap();
+    let prefixes = h.doc().settings.tag_prefixes;
+    assert!(!prefixes.contains_key(&PrefixOf::Project("float1".into())), "{prefixes:?}");
+    assert_eq!(prefixes.get(&PrefixOf::Project("float2".into())).map(|p| p.to_string()), Some("S".into()));
+    // Nothing names a project symbol that is not there: the open check finds nothing.
+    assert!(ecad_electrical::words_check::check(&h.doc()).is_empty());
+}

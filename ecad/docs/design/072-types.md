@@ -507,6 +507,14 @@ title_block, location: Option<LocationId>, function: Option<FunctionId>, descrip
 strip, form }, PlcDetail { module } }`. Place on a page: `Place { page: PageNo, column:
 PageColumn, row: PageRow }`.
 
+**Deviations in lane E (overseer, 2026-11-17).** The title is `Text<200>`, today's limit, not 80.
+`PageKind` is `{ Schematic, Generated(GenKind), TerminalStrip { strip } }`: the one strip lives on
+the variant that needs it; there is no `Panel` (the page type `panel` says that), no `StripPage`
+(the graphic or table form stays the registry's `terminal.plan.style`, which has a project level)
+and no `PlcDetail` (no such page exists yet). `page.type` (page level only) is
+`Page.page_type`; `print.frame.style` (standard, project and page levels) stays a display value,
+so there is no `Page.frame`.
+
 ### 5.2 Folder
 
 `Folder { name, parent, start: Option<PageNo> }`.

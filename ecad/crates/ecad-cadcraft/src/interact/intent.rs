@@ -44,7 +44,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 let h = picked?;
                 let Some(Mapped::Item(i)) = p.pages.get(&page)?.map.get(h) else { return None };
                 match doc.representation_of_item(i)?.1.subject {
-                    Subject::Conductor(w) => Some(format!("joins {} with a junction", super::kind::wire_words(doc, w))),
+                    Subject::Wire(w) => Some(format!("joins {} with a junction", super::kind::wire_words(doc, w))),
                     _ => None,
                 }
             }
@@ -72,6 +72,6 @@ fn point_words(doc: &Document, t: TerminalId) -> String {
 }
 
 /// A wire on `page` with an end within `aperture` of `at`.
-fn wire_ending_at(doc: &Document, page: PageId, at: ecad_model::Pt, aperture: f64) -> Option<ecad_model::ConductorId> {
+fn wire_ending_at(doc: &Document, page: PageId, at: ecad_model::Pt, aperture: f64) -> Option<ecad_model::WireId> {
     route_ends(doc, page).into_iter().find(|(_, a, b)| a.dist(at) <= aperture || b.dist(at) <= aperture).map(|(w, _, _)| w)
 }

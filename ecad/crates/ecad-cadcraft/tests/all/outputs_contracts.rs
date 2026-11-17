@@ -4,7 +4,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::locations::{self, Source};
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{ConductorId, DeviceId, Document, PageId};
+use ecad_model::{DeviceId, Document, PageId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -209,7 +209,7 @@ fn a_contact_away_from_its_coil_shows_the_location_prefix() {
     assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LocationUnused));
 }
 
-fn wire(h: &mut H, points: &[(f64, f64)]) -> ConductorId {
+fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
     id(&h.run("wire", json!({"points": pts(points)})).unwrap(), "conductor")
 }
 

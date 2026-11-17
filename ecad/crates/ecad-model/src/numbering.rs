@@ -33,7 +33,7 @@ use crate::book::Book;
 use crate::connectivity::{self, NetData, NetId, split_number};
 use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, ConductorId, DeviceId, FolderId, PageId, TerminalId};
+use crate::id::{CableId, DeviceId, FolderId, PageId, TerminalId, WireId};
 use crate::op::{ObjectRef, Op};
 use crate::sheet::Grid;
 use crate::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
@@ -78,7 +78,7 @@ pub enum Scope {
     /// number or none.
     All,
     /// These devices, cables and the nets of these conductors.
-    Selection { devices: BTreeSet<DeviceId>, cables: BTreeSet<CableId>, conductors: BTreeSet<ConductorId> },
+    Selection { devices: BTreeSet<DeviceId>, cables: BTreeSet<CableId>, conductors: BTreeSet<WireId> },
     /// Tags with these letters (`K`); nets of this potential (`24V`).
     Prefix(String),
     /// Items anchored on a page of this folder or its subfolders.
@@ -368,7 +368,7 @@ impl<'a> Places<'a> {
         let doc = self.doc;
         let first = net.first_conductor()?;
         let mut best: Option<(PageId, Pt, Order)> = None;
-        for (_, r) in doc.representations_of(Subject::Conductor(first)) {
+        for (_, r) in doc.representations_of(Subject::Wire(first)) {
             let Some((a, _)) = crate::derive::route_ends_on(doc, first, r.page) else { continue };
             if !a.is_finite() {
                 continue;
@@ -526,15 +526,19 @@ pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'
             let keep = r.page.is_none_or(|p| !off.contains(&p));
             if !keep {
                 dropped.insert(r.object);
-                if let ObjectRef::Conductor(c) = r.object
+                if let ObjectRef::Wire(c) = r.object
                     && let Some(net) = conn.net_of_conductor(c).and_then(|n| conn.net(n))
                 {
-                    dropped.extend(net.conductors.iter().map(|x| ObjectRef::Conductor(*x)));
+                    dropped.extend(net.wires.iter().map(|x| ObjectRef::Wire(*x)));
                 }
             }
             keep
         });
-        ops.retain(|op| !matches!(op, Op::SetProperty { object, .. } if dropped.contains(object)));
+        ops.retain(|op| match op {
+            Op::SetProperty { object, .. } => !dropped.contains(object),
+            Op::ModifyWire { id, .. } => !dropped.contains(&ObjectRef::Wire(*id)),
+            _ => true,
+        });
     }
     rows.sort_by(|a, b| a.mark.group().cmp(&b.mark.group()).then(a.kind.cmp(&b.kind)).then(a.order.cmp(&b.order)));
     Ok(Plan { rows, ops })
@@ -544,7 +548,7 @@ fn object_hex(o: ObjectRef) -> u128 {
     match o {
         ObjectRef::Device(c) => c.0,
         ObjectRef::Cable(c) => c.0,
-        ObjectRef::Conductor(c) => c.0,
+        ObjectRef::Wire(c) => c.0,
         ObjectRef::Page(p) => p.0,
         ObjectRef::Project | ObjectRef::Standard => 0,
     }
@@ -839,10 +843,10 @@ fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Opt
         _ => None,
     };
     for (id, net) in conn.nets() {
-        if net.conductors.is_empty() {
+        if net.wires.is_empty() {
             continue;
         }
-        let unnumbered = net.numbers.is_empty() || net.conductors.iter().any(|c| wiring::unnumbered(doc, *c));
+        let unnumbered = net.numbers.is_empty() || net.wires.iter().any(|c| wiring::unnumbered(doc, *c));
         let mut anchor = None;
         let in_scope = match &req.scope {
             Scope::All => true,
@@ -882,7 +886,7 @@ fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Opt
             (Some(pg), Some(p)) => places.text(pg, p),
             _ => String::new(),
         };
-        let object = ObjectRef::Conductor(net.first_conductor().unwrap_or(ConductorId(0)));
+        let object = ObjectRef::Wire(net.first_conductor().unwrap_or(WireId(0)));
         Row { object, kind: Kind::Wires, old, new, at, page, point, mark, terminal: None, order }
     };
     for (_, net, anchor) in fixed_rows {
@@ -973,7 +977,7 @@ mod tests {
         let mut d = Document::default();
         for i in 0..3u128 {
             let p = PageId(1000 + i);
-            d.pages.insert(p, Page::new(format!("P{i}")));
+            d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
             d.page_order.push(p);
         }
         let style = Style { layer: LayerId(1), color: crate::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };

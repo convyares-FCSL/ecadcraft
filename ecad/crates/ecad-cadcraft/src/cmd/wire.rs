@@ -13,7 +13,7 @@ use ecad_electrical::cmd::wire::{
 };
 use ecad_model::connectivity::{KIND, NAME};
 use ecad_model::wiring;
-use ecad_model::{ConductorId, Document, PageId, Placement, Pt, TerminalId};
+use ecad_model::{Document, PageId, Placement, Pt, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -53,7 +53,7 @@ fn net_json(n: &NetView) -> Value {
         "fixed": n.fixed,
         "potential": n.potential,
         "category": n.category.as_ref().map(cat),
-        "conductors": n.conductors.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+        "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
         "points": n.points.iter().map(|(t, label)| json!({"terminal": t.hex(), "label": label})).collect::<Vec<_>>(),
         "continuations": n.continuations,
         "pages": n.pages.iter().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
@@ -109,7 +109,7 @@ pub(crate) struct NetsParams {
     number: Option<String>,
     /// The net of this wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// The net of this connection point.
     #[serde(default)]
     terminal: Option<TerminalId>,
@@ -150,7 +150,7 @@ impl Command for NetsParams {
 pub(crate) struct NetParams {
     /// The net of this wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// The net of this connection point.
     #[serde(default)]
     terminal: Option<TerminalId>,
@@ -187,7 +187,7 @@ enum ConflictParam {
 pub(crate) struct WirenumberParams {
     /// A wire of the net.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A connection point of the net.
     #[serde(default)]
     terminal: Option<TerminalId>,
@@ -263,7 +263,7 @@ impl Command for WirenumberParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct PotentialParams {
     /// A wire of the net.
-    conductor: ConductorId,
+    conductor: WireId,
     /// The potential (24V, L1…), or null to clear it.
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
@@ -297,13 +297,13 @@ impl Command for PotentialParams {
 pub(crate) struct CategoryParams {
     /// One wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A wire whose whole net takes the category.
     #[serde(default)]
-    net: Option<ConductorId>,
+    net: Option<WireId>,
     /// These wires.
     #[serde(default)]
-    conductors: Option<Bounded<ConductorId, 0, { MAX_HANDLES }>>,
+    conductors: Option<Bounded<WireId, 0, { MAX_HANDLES }>>,
     /// The wire category (its ID or name), or null to clear the wires' own.
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
@@ -326,7 +326,7 @@ impl Command for CategoryParams {
             if changed {
                 p.apply_edit(pg, "category", &done.label, done.ops)?;
             }
-            Ok(json!({"changed": changed, "conductors": done.conductors, "category": done.category.map(|i| i.text()), "message": done.message}))
+            Ok(json!({"changed": changed, "conductors": done.wires, "category": done.category.map(|i| i.text()), "message": done.message}))
         })
     }
 }

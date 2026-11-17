@@ -112,7 +112,7 @@ fn an_edit_after_issue_finalise_in_one_line_is_refused() {
     let doc = c.doc();
     assert_eq!(tag_of(&doc, &a).as_deref(), Some("-K01"));
     assert_eq!(doc.versions.len(), 1);
-    assert!(doc.conductors.is_empty(), "the wire was taken back");
+    assert!(doc.wires.is_empty(), "the wire was taken back");
 }
 
 /// Only `issuerevision` with `provisional: "finalise"` gets the second transaction: the same

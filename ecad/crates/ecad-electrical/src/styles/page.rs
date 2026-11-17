@@ -157,14 +157,15 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
 /// The type of `page` (design 054 §2.3).
 pub fn type_of(doc: &Document, page: PageId) -> StyleRef {
     match doc.pages.get(&page) {
-        Some(p) => msheet::page_type_of(doc, &p.properties),
+        Some(p) => msheet::page_type_of(doc, p),
         None => StyleRef::Builtin(SCHEMATIC.to_string()),
     }
 }
 
 /// The type a page of generated kind `kind` (or a drawn page, `None`) has with no `page.type`.
 pub fn derived(kind: Option<GenKind>) -> StyleRef {
-    StyleRef::Builtin(msheet::derived_page_type(kind.map(GenKind::value)).to_string())
+    let kind = kind.map_or(ecad_model::PageKind::Schematic, ecad_model::PageKind::generated);
+    StyleRef::Builtin(msheet::derived_page_type(kind).to_string())
 }
 
 /// The frame style `page` is drawn with: `ecad_model::sheet::frame_style`, the one resolver (the
@@ -215,14 +216,14 @@ pub fn ordered(doc: &Document) -> Vec<super::Row> {
 pub fn counts(doc: &Document) -> std::collections::BTreeMap<StyleRef, usize> {
     let mut out = std::collections::BTreeMap::new();
     for p in doc.pages.values() {
-        *out.entry(msheet::page_type_of(doc, &p.properties)).or_insert(0) += 1;
+        *out.entry(msheet::page_type_of(doc, p)).or_insert(0) += 1;
     }
     out
 }
 
 /// The pages of type `id`, in page order.
 pub fn pages_of(doc: &Document, id: &StyleRef) -> Vec<PageId> {
-    doc.page_order.iter().copied().filter(|p| doc.pages.get(p).is_some_and(|x| msheet::page_type_of(doc, &x.properties) == *id)).collect()
+    doc.page_order.iter().copied().filter(|p| doc.pages.get(p).is_some_and(|x| msheet::page_type_of(doc, x) == *id)).collect()
 }
 
 /// The pages a `SetStyle` of catalogue `page` reaches (design 054 §10.2), worked out on the
@@ -239,11 +240,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
         .page_order
         .iter()
         .copied()
-        .filter(|p| {
-            doc.pages.get(p).is_some_and(|x| {
-                x.properties.get(msheet::PAGE_TYPE_KEY).is_some_and(|v| v.trim() == text) || msheet::page_type_of(doc, &x.properties) == *id
-            })
-        })
+        .filter(|p| doc.pages.get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
         .collect();
     let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("sheet").cloned());
     // A new or removed record can also make a `page.type` start or stop naming a type.
@@ -263,7 +260,7 @@ pub fn kind_refusal(kind: GenKind) -> String {
 /// The refusal for a generated-only type with no `generated` (design 054 §4.2).
 pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
     let pos = look_of(doc, id).holds;
-    let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", k.value())).collect();
+    let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", ecad_model::Word::word(*k))).collect();
     let words = match list.as_slice() {
         [] => String::new(),
         [one] => one.clone(),

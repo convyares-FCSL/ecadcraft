@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, CableMember, Color, Conductor, Definition, Device, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
-    LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
-    StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef,
+    Author, Cable, CableMember, Color, Definition, Device, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
+    ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef,
+    Subject, SymbolInstance, Terminal, TerminalDef, Wire,
 };
 use serde_json::{Value, json};
 
@@ -75,7 +75,7 @@ fn every_op_ledger() -> Ledger {
     let mut ids = IdAllocator::seeded(0x069);
     let mut ledger = Ledger::new(0x069);
     let page: PageId = ids.fresh();
-    let page_v = Page::new("1");
+    let page_v = Page::titled("1").unwrap();
     let layer: LayerId = ids.fresh();
     let layer_v = Layer { name: "0".into() };
     let def: ecad_model::DefinitionId = ids.fresh();
@@ -103,12 +103,12 @@ fn every_op_ledger() -> Ledger {
         items: vec![sym],
         connection_points: Default::default(),
     };
-    let wire: ecad_model::ConductorId = ids.fresh();
-    let wire_v = Conductor { ends: [Some(term), None], ..Conductor::default() };
-    let wire2: ecad_model::ConductorId = ids.fresh();
+    let wire: ecad_model::WireId = ids.fresh();
+    let wire_v = Wire { ends: [Some(term), None], ..Wire::default() };
+    let wire2: ecad_model::WireId = ids.fresh();
     let rep_wire: ecad_model::RepresentationId = ids.fresh();
     let rep_wire_v = Representation {
-        subject: Subject::Conductor(wire),
+        subject: Subject::Wire(wire),
         page,
         form: Form::Drawn,
         role: "route".into(),
@@ -132,8 +132,8 @@ fn every_op_ledger() -> Ledger {
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-                Op::CreateConductor { id: wire, conductor: wire_v.clone() },
-                Op::CreateConductor { id: wire2, conductor: Conductor::default() },
+                Op::CreateWire { id: wire, conductor: wire_v.clone() },
+                Op::CreateWire { id: wire2, conductor: Wire::default() },
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
@@ -146,8 +146,14 @@ fn every_op_ledger() -> Ledger {
     rep_after.role = "moved".into();
     let header = StandardHeader { id: ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None };
     let ops = vec![
-        Op::AddPage { id: ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: page, page: page_v.clone(), index: 0 },
+        // Lane 072 E (A15): a page changed in place.
+        Op::ModifyPage {
+            id: page,
+            before: page_v.clone(),
+            after: Page { number: ecad_model::PageNo::parse("7"), sheet: ecad_model::SheetSpec::parse("A2").ok(), ..page_v.clone() },
+        },
         Op::AddLayer { id: ids.fresh(), layer: Layer { name: "x".into() } },
         Op::RemoveLayer { id: layer, layer: layer_v.clone() },
         Op::AddItem { id: ids.fresh(), item: line(page, layer, 1.0) },
@@ -165,8 +171,9 @@ fn every_op_ledger() -> Ledger {
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-        Op::CreateConductor { id: ids.fresh(), conductor: Conductor { ends: [Some(term), Some(term)], ..Conductor::default() } },
-        Op::DeleteConductor { id: wire, conductor: wire_v.clone() },
+        Op::CreateWire { id: ids.fresh(), conductor: Wire { ends: [Some(term), Some(term)], ..Wire::default() } },
+        Op::DeleteWire { id: wire, conductor: wire_v.clone() },
+        Op::ModifyWire { id: wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
         Op::AttachEnd { conductor: wire2, end: End::B, before: None, after: Some(term) },
         Op::CreateCable { id: ids.fresh(), cable: cable_v.clone() },
         Op::DeleteCable { id: cable, cable: cable_v.clone() },

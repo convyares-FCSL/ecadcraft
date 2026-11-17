@@ -383,7 +383,7 @@ pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes
     {
         return Located::of(doc, a, k, Source::Box { component: b.component, page });
     }
-    if let Some(k) = doc.pages.get(&page).and_then(|p| p.properties.get(a.property())) {
+    if let Some(k) = doc.pages.get(&page).and_then(|p| p.display.get(a.property())) {
         return Located::of(doc, a, k, Source::Page(page));
     }
     if let Some(k) = doc.properties.get(a.property()) {
@@ -682,7 +682,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
         let who = match r.subject {
             Subject::Device(c) if is_box(doc, c) => "another location box".to_string(),
             Subject::Device(c) => crate::devices::tag_words(doc, c),
-            Subject::Conductor(_) => "a wire".into(),
+            Subject::Wire(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
         };
         return Err(CmdError::refused(format!("That outline belongs to {who}; draw a box instead.")));

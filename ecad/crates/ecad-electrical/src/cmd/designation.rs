@@ -143,7 +143,7 @@ pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan,
 fn property_of(doc: &Document, o: ObjectRef, prop: &str) -> Option<String> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
-        ObjectRef::Page(pg) => doc.pages.get(&pg).and_then(|x| x.properties.get(prop)).cloned(),
+        ObjectRef::Page(pg) => doc.pages.get(&pg).and_then(|x| x.display.get(prop)).cloned(),
         ObjectRef::Project => doc.properties.get(prop).cloned(),
         _ => None,
     }

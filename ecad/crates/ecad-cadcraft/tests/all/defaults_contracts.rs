@@ -75,7 +75,7 @@ fn target_json(t: Target) -> Value {
         Target::Project => json!({}),
         Target::Page(p) => json!({"page": p.hex()}),
         Target::Device(c) => json!({"component": c.hex()}),
-        Target::Conductor(c) => json!({"conductor": c.hex()}),
+        Target::Wire(c) => json!({"conductor": c.hex()}),
         Target::Symbol(r) => json!({"representation": r.hex()}),
     }
 }

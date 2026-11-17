@@ -348,7 +348,7 @@ impl Uses {
             u.add_props(ObjectRef::Device(*c), &x.properties);
         }
         for (p, x) in &doc.pages {
-            u.add_props(ObjectRef::Page(*p), &x.properties);
+            u.add_props(ObjectRef::Page(*p), &x.display);
         }
         for (k, v) in &doc.properties {
             if let Some(a) = Aspect::of_property(k) {
@@ -393,8 +393,8 @@ impl Uses {
                 }
                 Op::CreateDevice { id, device: component } => self.add_props(ObjectRef::Device(*id), &component.properties),
                 Op::DeleteDevice { id, device: component } => self.remove_props(ObjectRef::Device(*id), &component.properties),
-                Op::AddPage { id, page, .. } => self.add_props(ObjectRef::Page(*id), &page.properties),
-                Op::RemovePage { id, page, .. } => self.remove_props(ObjectRef::Page(*id), &page.properties),
+                Op::AddPage { id, page, .. } => self.add_props(ObjectRef::Page(*id), &page.display),
+                Op::RemovePage { id, page, .. } => self.remove_props(ObjectRef::Page(*id), &page.display),
                 _ => {}
             }
         }

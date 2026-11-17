@@ -114,7 +114,7 @@ pub fn fixture() -> Fixture {
     f.commit(
         "New project",
         vec![
-            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
@@ -165,11 +165,11 @@ pub fn fixture() -> Fixture {
     f.c2 = c2;
     f.c3 = c3;
     f.t = vec![t1[0], t1[1], t2[0], t2[1], t3[0], t3[1]];
-    let (w, route, rep): (ConductorId, ItemId, RepresentationId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    let (w, route, rep): (WireId, ItemId, RepresentationId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
     f.commit(
         "WIRE",
         vec![
-            Op::CreateConductor { id: w, conductor: Conductor::default() },
+            Op::CreateWire { id: w, conductor: Wire::default() },
             Op::AddItem {
                 id: route,
                 item: Item {
@@ -184,7 +184,7 @@ pub fn fixture() -> Fixture {
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
-                    subject: Subject::Conductor(w),
+                    subject: Subject::Wire(w),
                     page,
                     form: Form::Drawn,
                     role: "route".into(),

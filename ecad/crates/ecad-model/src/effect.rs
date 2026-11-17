@@ -12,18 +12,11 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, CableMember, Conductor, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal};
-use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
 use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
-
-/// A placed object of an ordered list: its index and value.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Placed<'a, T> {
-    pub index: usize,
-    pub value: &'a T,
-}
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,12 +28,14 @@ pub struct Key<'a> {
 /// One thing a transaction changed. `before: None` = created, `after: None` = removed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect<'a> {
-    /// A page added, removed, or both in one transaction (a rename keeps the index, a move
-    /// changes it).
+    /// A page added, removed, changed in place (`ModifyPage`, which states no index), or removed
+    /// and added in one transaction (a move: the indexes differ).
     Page {
         id: PageId,
-        before: Option<Placed<'a, Page>>,
-        after: Option<Placed<'a, Page>>,
+        before: Option<&'a Page>,
+        after: Option<&'a Page>,
+        index_before: Option<usize>,
+        index_after: Option<usize>,
     },
     Layer {
         id: LayerId,
@@ -74,14 +69,14 @@ pub enum Effect<'a> {
         before: Option<&'a Representation>,
         after: Option<&'a Representation>,
     },
-    Conductor {
-        id: ConductorId,
-        before: Option<&'a Conductor>,
-        after: Option<&'a Conductor>,
+    Wire {
+        id: WireId,
+        before: Option<&'a Wire>,
+        after: Option<&'a Wire>,
     },
     /// A conductor end attached or detached.
     End {
-        conductor: ConductorId,
+        conductor: WireId,
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
@@ -154,7 +149,7 @@ pub enum EffectKind {
     DeviceDefinition,
     Terminal,
     Rep,
-    Conductor,
+    Wire,
     End,
     Cable,
     Member,
@@ -177,7 +172,7 @@ impl EffectKind {
         EffectKind::DeviceDefinition,
         EffectKind::Terminal,
         EffectKind::Rep,
-        EffectKind::Conductor,
+        EffectKind::Wire,
         EffectKind::End,
         EffectKind::Cable,
         EffectKind::Member,
@@ -254,7 +249,7 @@ impl Effect<'_> {
             Effect::DeviceDefinition { .. } => EffectKind::DeviceDefinition,
             Effect::Terminal { .. } => EffectKind::Terminal,
             Effect::Rep { .. } => EffectKind::Rep,
-            Effect::Conductor { .. } => EffectKind::Conductor,
+            Effect::Wire { .. } => EffectKind::Wire,
             Effect::End { .. } => EffectKind::End,
             Effect::Cable { .. } => EffectKind::Cable,
             Effect::Member { .. } => EffectKind::Member,
@@ -363,8 +358,13 @@ impl<'e, 'a> IntoIterator for &'e Effects<'a> {
 /// The one classification of an op.
 fn classify(op: &Op) -> Effect<'_> {
     match op {
-        Op::AddPage { id, page, index } => Effect::Page { id: *id, before: None, after: Some(Placed { index: *index, value: page }) },
-        Op::RemovePage { id, page, index } => Effect::Page { id: *id, before: Some(Placed { index: *index, value: page }), after: None },
+        Op::AddPage { id, page, index } => Effect::Page { id: *id, before: None, after: Some(page), index_before: None, index_after: Some(*index) },
+        Op::RemovePage { id, page, index } => {
+            Effect::Page { id: *id, before: Some(page), after: None, index_before: Some(*index), index_after: None }
+        }
+        Op::ModifyPage { id, before, after } => {
+            Effect::Page { id: *id, before: Some(before), after: Some(after), index_before: None, index_after: None }
+        }
         Op::AddLayer { id, layer } => Effect::Layer { id: *id, before: None, after: Some(layer) },
         Op::RemoveLayer { id, layer } => Effect::Layer { id: *id, before: Some(layer), after: None },
         Op::AddItem { id, item } => Effect::Item { id: *id, before: None, after: Some(item) },
@@ -379,8 +379,9 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
         Op::ModifyRepresentation { id, before, after } => Effect::Rep { id: *id, before: Some(before), after: Some(after) },
         Op::UnlinkRepresentation { id, rep } => Effect::Rep { id: *id, before: Some(rep), after: None },
-        Op::CreateConductor { id, conductor } => Effect::Conductor { id: *id, before: None, after: Some(conductor) },
-        Op::DeleteConductor { id, conductor } => Effect::Conductor { id: *id, before: Some(conductor), after: None },
+        Op::CreateWire { id, conductor } => Effect::Wire { id: *id, before: None, after: Some(conductor) },
+        Op::DeleteWire { id, conductor } => Effect::Wire { id: *id, before: Some(conductor), after: None },
+        Op::ModifyWire { id, before, after } => Effect::Wire { id: *id, before: Some(before), after: Some(after) },
         Op::AttachEnd { conductor, end, before, after } => Effect::End { conductor: *conductor, end: *end, before: *before, after: *after },
         Op::CreateCable { id, cable } => Effect::Cable { id: *id, before: None, after: Some(cable) },
         Op::DeleteCable { id, cable } => Effect::Cable { id: *id, before: Some(cable), after: None },
@@ -413,8 +414,8 @@ fn classify(op: &Op) -> Effect<'_> {
 /// The object a removing (`remove`) or adding (`!remove`) effect may fold on, if it is one.
 fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
     match e {
-        Effect::Page { id, before: Some(_), after: None } if remove => Some(Open::Page(*id)),
-        Effect::Page { id, before: None, after: Some(_) } if !remove => Some(Open::Page(*id)),
+        Effect::Page { id, before: Some(_), after: None, .. } if remove => Some(Open::Page(*id)),
+        Effect::Page { id, before: None, after: Some(_), .. } if !remove => Some(Open::Page(*id)),
         Effect::Terminal { id, before: Some(_), after: None } if remove => Some(Open::Terminal(*id)),
         Effect::Terminal { id, before: None, after: Some(_) } if !remove => Some(Open::Terminal(*id)),
         Effect::Folder { id, before: Some(_), after: None, .. } if remove => Some(Open::Folder(*id)),
@@ -426,7 +427,7 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::DeviceDefinition { .. }
         | Effect::Terminal { .. }
         | Effect::Rep { .. }
-        | Effect::Conductor { .. }
+        | Effect::Wire { .. }
         | Effect::End { .. }
         | Effect::Cable { .. }
         | Effect::Member { .. }
@@ -454,7 +455,10 @@ fn names(e: &Effect<'_>, o: Open) -> bool {
 /// Fill the `after` side of a waiting remove with the add `add`.
 fn fill_after<'a>(slot: &mut Effect<'a>, add: Effect<'a>) {
     match (slot, add) {
-        (Effect::Page { after, .. }, Effect::Page { after: a, .. }) => *after = a,
+        (Effect::Page { after, index_after, .. }, Effect::Page { after: a, index_after: i, .. }) => {
+            *after = a;
+            *index_after = i;
+        }
         (Effect::Terminal { after, .. }, Effect::Terminal { after: a, .. }) => *after = a,
         (Effect::Folder { after, index_after, .. }, Effect::Folder { after: a, index_after: i, .. }) => {
             *after = a;

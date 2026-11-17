@@ -27,9 +27,9 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, CableMember, Color, Conductor, ConductorId, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator,
-    Item, ItemId, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind,
+    Author, Cable, CableId, CableMember, Color, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind,
+    Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
+    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire, WireId,
 };
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
@@ -99,7 +99,7 @@ impl Variant {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntendedNet {
     pub terminals: Vec<TerminalId>,
-    pub conductors: Vec<ConductorId>,
+    pub wires: Vec<WireId>,
 }
 
 /// A cable continued from one page on the next.
@@ -215,6 +215,18 @@ fn moved(id: ItemId, before: Item, dx: f64) -> Op {
     Op::ModifyItem { id, before, after }
 }
 
+/// A wire named `name` (its wire number, not fixed, so renumbering reaches it), as [`wire_ops`]
+/// makes it.
+fn named_wire(name: &str) -> Wire {
+    let number = ecad_model::text::Text::new(name).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
+    Wire { number, ..Wire::default() }
+}
+
+/// The op renaming wire `w`, named `name`, to `<name>X` (the rename step of a wire).
+fn renamed_wire(w: WireId, name: &str) -> Op {
+    Op::ModifyWire { id: w, before: named_wire(name), after: named_wire(&format!("{name}X")) }
+}
+
 fn renamed(object: ObjectRef, tag: &str) -> Op {
     Op::SetProperty { object, key: "tag".into(), before: Some(tag.into()), after: Some(format!("{tag} (old name)")) }
 }
@@ -223,20 +235,19 @@ fn drawn(subject: Subject, page: PageId, role: &str, items: Vec<ItemId>) -> Repr
     Representation { subject, page, form: Form::Drawn, role: role.into(), items, connection_points: BTreeMap::new() }
 }
 
-/// The ops of one wire as `wire` records it: a conductor tagged `tag`, its route on `page`
-/// through `vertices`, and its ends attached to `ends` (A, then B). Returns the new conductor.
-pub fn wire_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], tag: &str) -> (ConductorId, Vec<Op>) {
-    let (w, item, rep): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let mut conductor = Conductor::default();
-    conductor.properties.insert("tag".into(), tag.into());
+/// The ops of one wire as `wire` records it: a wire numbered `tag`, its route on `page`
+/// through `vertices`, and its ends attached to `ends` (A, then B). Returns the new wire.
+pub fn wire_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], tag: &str) -> (WireId, Vec<Op>) {
+    let (w, item, rep): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let conductor = named_wire(tag);
     let [a, b] = ends;
     let ops = vec![
-        Op::CreateConductor { id: w, conductor },
+        Op::CreateWire { id: w, conductor },
         Op::AddItem {
             id: item,
             item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }) },
         },
-        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Conductor(w), page, "route", vec![item]) },
+        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Wire(w), page, "route", vec![item]) },
         Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(a) },
         Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b) },
     ];
@@ -299,7 +310,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         "New project",
         TxKind::Edit,
         vec![
-            Op::AddPage { id: first_page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: first_page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
@@ -315,7 +326,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
     let mut nets = Vec::new();
     let mut continuations = Vec::new();
     // The first cable of the previous page and its members, to continue on this page.
-    let mut previous: Option<(PageId, CableId, Vec<ConductorId>, Pt)> = None;
+    let mut previous: Option<(PageId, CableId, Vec<WireId>, Pt)> = None;
     let (mut comp_no, mut wire_no, mut cable_no) = (0usize, 0usize, 0usize);
 
     for p in 0..p_count {
@@ -324,12 +335,12 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         } else {
             let id: PageId = ids.fresh();
             let title = (p + 1).to_string();
-            let renamed_page = Page::new(format!("{title} (draft)"));
+            let renamed_page = Page::titled(format!("{title} (draft)")).map_err(|e| e.to_string())?;
             b.step(
                 "New page",
-                vec![Op::AddPage { id, page: Page::new(title.clone()), index: p }],
+                vec![Op::AddPage { id, page: Page::titled(&title).map_err(|e| e.to_string())?, index: p }],
                 "Rename page",
-                vec![Op::RemovePage { id, page: Page::new(title), index: p }, Op::AddPage { id, page: renamed_page, index: p }],
+                vec![Op::ModifyPage { id, before: Page::titled(&title).map_err(|e| e.to_string())?, after: renamed_page }],
             )?;
             id
         };
@@ -378,7 +389,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         }
 
         // Wires (`wire`), attached at both ends; pair `j mod n`.
-        let mut pair_wires: Vec<Vec<ConductorId>> = vec![Vec::new(); n];
+        let mut pair_wires: Vec<Vec<WireId>> = vec![Vec::new(); n];
         let mut pair_lows: Vec<f64> = vec![0.0; n];
         for j in 0..m {
             wire_no += 1;
@@ -395,7 +406,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let vertices = vec![a, Pt::new(a.x, low), Pt::new(mid, low), Pt::new(mid, high), Pt::new(z.x, high), z];
             let tag = format!("W{wire_no}");
             let (w, ops) = wire_ops(&mut ids, page, &style, vertices, [from_t, to_t], &tag);
-            b.step("Wire", ops, "Rename", vec![renamed(ObjectRef::Conductor(w), &tag)])?;
+            b.step("Wire", ops, "Rename", vec![renamed_wire(w, &tag)])?;
             if let Some(list) = pair_wires.get_mut(pair) {
                 list.push(w);
             }
@@ -414,11 +425,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             ts.sort();
             let mut cs = wires.clone();
             cs.sort();
-            nets.push(IntendedNet { terminals: ts, conductors: cs });
+            nets.push(IntendedNet { terminals: ts, wires: cs });
         }
 
         // Cables (`cableslash`): cable `c` takes every wire of pair `c`, cores `1, 2, …`.
-        let mut first_cable: Option<(CableId, Vec<ConductorId>, Pt)> = None;
+        let mut first_cable: Option<(CableId, Vec<WireId>, Pt)> = None;
         for c in 0..k {
             cable_no += 1;
             let members = pair_wires.get(c).cloned().unwrap_or_default();
@@ -475,7 +486,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                         kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(here.x, y), b: Pt::new(here.x + 30.0, y) }),
                     },
                 });
-                ops.push(Op::LinkRepresentation { id: r, rep: drawn(Subject::Conductor(*w), page, "route", vec![i]) });
+                ops.push(Op::LinkRepresentation { id: r, rep: drawn(Subject::Wire(*w), page, "route", vec![i]) });
             }
             let span = 5.0 * members.len() as f64;
             let (slash_item, slash_rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
@@ -494,7 +505,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         previous = first_cable.map(|(cable, members, at)| (page, cable, members, at));
     }
     b.doc.check().map_err(|e| format!("generated {} {} project is invalid: {e}", tier.name, variant.name()))?;
-    nets.sort_by(|a, z| a.conductors.cmp(&z.conductors));
+    nets.sort_by(|a, z| a.wires.cmp(&z.wires));
     let head = b.log.len() as u64;
     let ledger = Ledger::from_checkpoint(b.doc, head, b.log, SEED)
         .map_err(|e| format!("generated {} {} history is invalid: {e}", tier.name, variant.name()))?;
