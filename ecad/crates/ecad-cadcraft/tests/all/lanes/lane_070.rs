@@ -10,15 +10,6 @@ use crate::common::H;
 /// Registered commands still reading their JSON by hand. Brief 070 converts them module by
 /// module: remove ids as they are typed, never add one.
 const UNTYPED: &[&str] = &[
-    "cableslash",
-    "cableview",
-    "cablecore",
-    "cablefan",
-    "cableref",
-    "cablecontinue",
-    "cablegoto",
-    "cablerefs",
-    "cableadd",
     "newpage",
     "openpage",
     "renamepage",

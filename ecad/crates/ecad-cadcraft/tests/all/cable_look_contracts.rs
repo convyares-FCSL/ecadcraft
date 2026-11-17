@@ -314,13 +314,13 @@ fn m_hostile_core_input_is_refused() {
     let w = f.wires[0].hex();
     refused(&mut f.h, json!({"conductor": w, "core": "x".repeat(33)}), "A core label can be at most 32 characters.");
     refused(&mut f.h, json!({"conductor": w, "core": "a\nb"}), "A core label cannot contain control characters.");
-    refused(&mut f.h, json!({"conductor": w, "core": 7}), "`core` must be a string, or null to clear it");
+    refused(&mut f.h, json!({"conductor": w, "core": 7}), "`core` must be text, or null");
     refused(&mut f.h, json!({"conductor": w}), "`core` must be a string, or null to clear it");
     refused(&mut f.h, json!({"core": "1"}), "`conductor` (hex id) is required");
-    refused(&mut f.h, json!({"conductor": "zz", "core": "1"}), "`conductor` (hex id) is required");
+    refused(&mut f.h, json!({"conductor": "zz", "core": "1"}), "`conductor` must be a hex id");
     refused(&mut f.h, json!({"conductor": "ab", "core": "1"}), "no such conductor");
     refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1"]}), "`cores` must list one label (or null) per member: cable -C01 has 4 members");
-    refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": "1"}), "`cores` must list one label");
+    refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": "1"}), "`cores` must be a list of texts");
     refused(&mut f.h, json!({"cable": f.c1.hex(), "cores": ["1", "2", "a\tb", "4"]}), "Core 3: A core label cannot");
     assert_eq!(f.h.head(), head, "nothing written");
     // 32 characters (counted in characters, not bytes) are accepted.
@@ -805,7 +805,7 @@ fn cablefan_moves_the_join_along_the_spine() {
         (json!({"cable": k, "at": 0.5}), "is required unless `at` is a point"),
         (json!({"cable": k, "at": "x"}), "`at` must be a point"),
         (json!({"cable": k, "end": "C", "at": 0.5}), "`end` must be"),
-        (json!({"cable": "zz", "at": 0.5}), "`cable` (hex id) is required"),
+        (json!({"cable": "zz", "at": 0.5}), "`cable` must be a hex id"),
         (json!({"cable": "ab", "end": "A", "at": 0.5}), "no such cable"),
     ];
     for (params, words) in cases {

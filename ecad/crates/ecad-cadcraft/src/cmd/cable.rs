@@ -246,14 +246,14 @@ impl Command for CableremoveParams {
 pub(crate) fn run_slash_assign(
     p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: PageId, k: CableId, from: ecad_model::Pt, to: ecad_model::Pt,
     found: &crate::slash::Crossings,
-) -> Result<Value, String> {
+) -> Result<Value, CmdError> {
     let doc = p.ledger.document();
     let blocked: Vec<(ConductorId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.conductor, c)).collect();
     if !blocked.is_empty() {
-        return Err(rules::already_in_cable(crate::slash::already_in_cable(doc, &blocked, "Nothing was changed.")).into());
+        return Err(rules::already_in_cable(crate::slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
     if found.members.len() > MAX_CABLE_MEMBERS {
-        return Err(rules::too_many().into());
+        return Err(rules::too_many());
     }
     let cores = assign_cores(doc, k, found.members.len())?;
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());

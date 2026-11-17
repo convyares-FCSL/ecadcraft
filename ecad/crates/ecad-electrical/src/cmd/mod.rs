@@ -6,6 +6,7 @@
 pub mod accessory;
 pub mod bom;
 pub mod cable;
+pub mod cable_draw;
 pub mod connect;
 pub mod connector;
 pub mod continuation;
@@ -21,6 +22,7 @@ pub mod place;
 pub mod plc;
 pub mod prop;
 pub mod rating;
+pub mod reference;
 pub mod sheet;
 pub mod style;
 pub mod symbol;

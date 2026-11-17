@@ -18,6 +18,7 @@
 pub mod accessory;
 pub mod bom;
 pub mod cable;
+pub(crate) mod cable_draw;
 pub(crate) mod connect;
 pub mod connector;
 pub mod continuation;
@@ -33,6 +34,7 @@ pub mod page_type;
 pub mod plc;
 pub(crate) mod prop;
 pub mod rating;
+pub(crate) mod reference;
 pub mod release;
 pub mod sheet;
 pub mod style;
@@ -43,22 +45,15 @@ pub mod title_block;
 pub mod wire;
 pub(crate) mod xref;
 
-use std::collections::BTreeMap;
-
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_model::{
-    CableId, CableMember, Color, ComponentId, ConductorId, Definition, End, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, TerminalDef,
-};
+use ecad_model::{Color, ComponentId, Definition, Op, PageId, Primitive, Pt, Style, TerminalDef};
 use serde_json::{Value, json};
 
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
-use crate::slash::{self, MAX_CABLE_MEMBERS};
 pub use crate::strips::core_label;
-use crate::views::{self, View};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -116,40 +111,40 @@ fn base_specs() -> Vec<CommandSpec> {
             .params("{conductor: id, end: \"A\"|\"B\"}")
             .interactive(interact::disconnect)
             .noundo(),
-        CommandSpec::new("cableslash", "Cable Slash", run_cableslash)
+        CommandSpec::new("cableslash", "Cable Slash", crate::cmd::input::typed::<crate::cmd::cable_draw::CableslashParams>)
             .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
             .interactive(interact::cableslash)
             .noundo(),
-        CommandSpec::new("cableview", "Cable View", run_cableview)
+        CommandSpec::new("cableview", "Cable View", crate::cmd::input::typed::<crate::cmd::cable_draw::CableviewParams>)
             .params("{cable?: id, view?: \"traditional\"|\"fan\"} (no cable: every cable's view; presentation only)")
             .interactive(interact::cableview)
             .noundo(),
-        CommandSpec::new("cablecore", "Core Label", run_cablecore)
+        CommandSpec::new("cablecore", "Core Label", crate::cmd::input::typed::<crate::cmd::cable_draw::CablecoreParams>)
             .params(
                 "{conductor: id, core: string|null} | {cable: id, cores: [string|null, …]} (null, empty or spaces clear)",
             )
             .interactive(interact::cablecore)
             .noundo(),
-        CommandSpec::new("cablefan", "Cable Join", run_cablefan)
+        CommandSpec::new("cablefan", "Cable Join", crate::cmd::input::typed::<crate::cmd::cable_draw::CablefanParams>)
             .params(
                 "{cable: id, end?: \"A\"|\"B\", at: [x,y] | fraction 0..1 | null} (where the trunk joins a fanned \
 end's spine; null: the middle)",
             )
             .interactive(interact::cablefan)
             .noundo(),
-        CommandSpec::new("cableref", "Cable Reference", run_cableref)
+        CommandSpec::new("cableref", "Cable Reference", crate::cmd::input::typed::<crate::cmd::reference::CablerefParams>)
             .params("{cable: id, at: [x,y]} (a reference end of the cable on this page)")
             .interactive(interact::cableref)
             .noundo(),
-        CommandSpec::new("cablecontinue", "Continue Cable", run_cablecontinue)
+        CommandSpec::new("cablecontinue", "Continue Cable", crate::cmd::input::typed::<crate::cmd::reference::CablecontinueParams>)
             .params("{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)")
             .interactive(interact::cablecontinue)
             .noundo(),
-        CommandSpec::new("cablegoto", "Go to Reference", run_cablegoto)
+        CommandSpec::new("cablegoto", "Go to Reference", crate::cmd::input::typed::<crate::cmd::reference::CablegotoParams>)
             .params("{reference: id} (opens the other end's page; records nothing)")
             .interactive(interact::cablegoto)
             .noundo(),
-        CommandSpec::new("cablerefs", "List Cable References", run_cablerefs)
+        CommandSpec::new("cablerefs", "List Cable References", crate::cmd::input::typed::<crate::cmd::reference::CablerefsParams>)
             .params("{cable?: id} (read only)")
             .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::cmd::input::typed::<crate::cmd::device::EcaddeleteParams>)
@@ -160,7 +155,7 @@ end's spine; null: the middle)",
                 "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {components: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_fixed`: \"yes\" or null)",
             )
             .noundo(),
-        CommandSpec::new("cableadd", "Add to Cable", run_cableadd)
+        CommandSpec::new("cableadd", "Add to Cable", crate::cmd::input::typed::<crate::cmd::cable_draw::CableaddParams>)
             .params("{cable?: id, conductors: [id], tag?}")
             .noundo(),
         CommandSpec::new("place", "Place Symbol", crate::cmd::input::typed::<crate::cmd::device::PlaceParams>)
@@ -310,6 +305,8 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::prop::TYPED,
         crate::cmd::device::TYPED,
         crate::cmd::connect::TYPED,
+        crate::cmd::cable_draw::TYPED,
+        crate::cmd::reference::TYPED,
     ]
     .concat()
 }
@@ -339,23 +336,6 @@ pub(crate) fn opt_id<T: From<u128>>(p: &Value, key: &str) -> Result<Option<T>, S
     }
 }
 
-/// A list of IDs: every entry must parse, and the list may hold at most `max`; checked before
-/// anything is collected.
-pub(crate) fn id_list<T: From<u128>>(p: &Value, key: &str, max: usize) -> Result<Vec<T>, String> {
-    let a = p.get(key).and_then(Value::as_array).ok_or_else(|| format!("`{key}` (array of hex ids) is required"))?;
-    if a.len() > max {
-        return Err(format!("at most {max} entries in `{key}` per call"));
-    }
-    a.iter()
-        .map(|v| {
-            v.as_str()
-                .and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
-                .map(T::from)
-                .ok_or_else(|| format!("`{v}` in `{key}` is not a valid hex id"))
-        })
-        .collect()
-}
-
 /// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
 pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, String> {
     match p.get(key) {
@@ -377,407 +357,6 @@ pub(crate) use crate::words::MAX_HANDLES;
 
 pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
-}
-
-/// The `core` of one entry: a string or `null`.
-fn core_value(v: Option<&Value>) -> Result<Option<String>, String> {
-    match v {
-        Some(Value::Null) => core_label(None),
-        Some(Value::String(t)) => core_label(Some(t)),
-        _ => Err("`core` must be a string, or null to clear it".into()),
-    }
-}
-
-/// The ops changing member `index` of `cable` from `old` to `new` (design 009 §5.3).
-fn core_ops(cable: CableId, index: usize, conductor: ConductorId, old: Option<String>, new: Option<String>) -> [Op; 2] {
-    [
-        Op::RemoveCableMember { cable, index, member: CableMember { conductor, core: old } },
-        Op::AddCableMember { cable, index, member: CableMember { conductor, core: new } },
-    ]
-}
-
-/// The other members of `cable` with core label `core` (design 009 §5.4, duplicates allowed).
-fn duplicates(doc: &ecad_model::Document, cable: CableId, conductor: ConductorId, core: &str) -> Vec<ConductorId> {
-    doc.cables
-        .get(&cable)
-        .map(|c| c.members.iter().filter(|m| m.conductor != conductor && m.core.as_deref() == Some(core)).map(|m| m.conductor).collect())
-        .unwrap_or_default()
-}
-
-/// `cablecore` (design 009 §5.2): set or clear the core label of one member, or of every member of
-/// a cable at once. One transaction; nothing changed, no transaction.
-fn run_cablecore(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("cores").is_some() {
-        return run_cablecores(s, params);
-    }
-    let conductor: ConductorId = id(params, "conductor").map_err(err)?;
-    let core = core_value(params.get("core")).map_err(err)?;
-    with_project(s, |p, pg, _page| {
-        let doc = p.ledger.document();
-        if !doc.conductors.contains_key(&conductor) {
-            return Err("no such conductor".into());
-        }
-        let Some(cable) = doc.cables_of(conductor).first().copied() else {
-            return Err(format!("Wire {} is not in a cable.", slash::wire_name(doc, conductor)));
-        };
-        let index = doc.cables.get(&cable).and_then(|c| c.members.iter().position(|m| m.conductor == conductor)).ok_or("no such conductor")?;
-        let old = doc.cables.get(&cable).and_then(|c| c.members.get(index)).and_then(|m| m.core.clone());
-        let dups = core.as_deref().map(|c| duplicates(doc, cable, conductor, c)).unwrap_or_default();
-        let mut r = json!({
-            "cable": cable.hex(), "conductor": conductor.hex(), "index": index,
-            "core": core, "changed": old != core,
-        });
-        if !dups.is_empty() {
-            r["duplicates"] = Value::Array(dups.iter().map(|w| Value::String(w.hex())).collect());
-        }
-        if old == core {
-            return Ok(r);
-        }
-        p.apply_edit(pg, "cablecore", "Core label", core_ops(cable, index, conductor, old, core).to_vec())?;
-        Ok(r)
-    })
-}
-
-/// `cablecore {cable, cores}`: one label (or null) per member, in member order.
-fn run_cablecores(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cable: CableId = id(params, "cable").map_err(err)?;
-    with_project(s, |p, pg, _page| {
-        let doc = p.ledger.document();
-        let members = doc.cables.get(&cable).ok_or("no such cable")?.members.clone();
-        let wrong =
-            || format!("`cores` must list one label (or null) per member: cable {} has {} members", views::cable_title(doc, cable), members.len());
-        let list = params.get("cores").and_then(Value::as_array).ok_or_else(wrong)?;
-        if list.len() != members.len() {
-            return Err(wrong());
-        }
-        let mut cores = Vec::with_capacity(list.len());
-        for (i, v) in list.iter().enumerate() {
-            cores.push(core_value(Some(v)).map_err(|e| format!("Core {}: {e}", i + 1))?);
-        }
-        let mut ops = Vec::new();
-        for (index, (m, new)) in members.iter().zip(&cores).enumerate() {
-            if m.core != *new {
-                ops.extend(core_ops(cable, index, m.conductor, m.core.clone(), new.clone()));
-            }
-        }
-        let changed = !ops.is_empty();
-        if changed {
-            p.apply_edit(pg, "cablecore", "Core labels", ops)?;
-        }
-        Ok(json!({"cable": cable.hex(), "cores": cores, "changed": changed}))
-    })
-}
-
-/// What `cablefan`'s `at` asks for.
-enum JoinAt {
-    Point(Pt),
-    Fraction(f64),
-    Middle,
-}
-
-/// `cablefan` (owner request on brief 009, 2026-11-07): where the trunk joins one fanned end of a
-/// cable on the active page. The join is stored as a `fan-anchor` representation of the cable
-/// holding one Point item (existing ops, no format change), snapped onto the spine; `null` removes
-/// it and the trunk joins the middle again. Works whatever the cable's view (programmatic calls
-/// ignore views).
-fn run_cablefan(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cable: CableId = id(params, "cable").map_err(err)?;
-    let end = match params.get("end") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(e)) if e == "A" => Some(crate::look::MarkerEnd::A),
-        Some(Value::String(e)) if e == "B" => Some(crate::look::MarkerEnd::B),
-        Some(_) => return Err(err("`end` must be \"A\" or \"B\"")),
-    };
-    let at = match params.get("at") {
-        Some(Value::Null) => JoinAt::Middle,
-        Some(Value::Number(n)) => match n.as_f64().filter(|f| f.is_finite() && (0.0..=1.0).contains(f)) {
-            Some(f) => JoinAt::Fraction(f),
-            None => return Err(err("`at` as a fraction must be from 0 to 1")),
-        },
-        Some(v @ Value::Array(_)) => match point(v) {
-            Some(p) if p.x.abs() <= 1e12 && p.y.abs() <= 1e12 => JoinAt::Point(p),
-            Some(_) => return Err(err("Point out of range.")),
-            None => return Err(err("`at` must be a point [x,y], a fraction from 0 to 1, or null")),
-        },
-        _ => return Err(err("`at` must be a point [x,y], a fraction from 0 to 1, or null")),
-    };
-    with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        if !doc.cables.contains_key(&cable) {
-            return Err("no such cable".into());
-        }
-        let title = views::cable_title(doc, cable);
-        let ends = crate::look::fan_ends(doc, page, cable, p.tolerance, &crate::look::font_width);
-        if ends.is_empty() {
-            return Err(format!("Cable {title} has no fanned end on this page."));
-        }
-        let name = |e: crate::look::MarkerEnd| if e == crate::look::MarkerEnd::A { "A" } else { "B" };
-        let fe = match (end, &at) {
-            (Some(e), _) => {
-                ends.iter().find(|f| f.end == e).ok_or_else(|| format!("End {} of cable {title} stops at a reference; it has no spine.", name(e)))?
-            }
-            (None, JoinAt::Point(q)) => ends
-                .iter()
-                .min_by(|a, b| {
-                    let d = |f: &crate::look::FanEnd| f.spine.join_for(*q).map_or(f64::INFINITY, |j| j.dist(*q));
-                    d(a).total_cmp(&d(b))
-                })
-                .ok_or("no fanned end")?,
-            (None, _) => return Err("`end` (\"A\" or \"B\") is required unless `at` is a point".into()),
-        };
-        let sp = fe.spine;
-        let join = match at {
-            JoinAt::Point(q) => Some(sp.join_for(q).ok_or("Point out of range.")?),
-            JoinAt::Fraction(f) => Some(sp.point(sp.tmin + f * (sp.tmax - sp.tmin))),
-            JoinAt::Middle => None,
-        };
-        let mut r = json!({
-            "cable": cable.hex(), "end": name(fe.end),
-            "at": join.map(|j| json!([j.x, j.y])), "changed": true,
-        });
-        let ops = match (fe.anchor, join) {
-            (None, None) => {
-                r["changed"] = Value::Bool(false);
-                return Ok(r);
-            }
-            (Some((_, _, old)), Some(j)) if old.near(j, 1e-9) => {
-                r["changed"] = Value::Bool(false);
-                return Ok(r);
-            }
-            (Some((rid, item, _)), None) => {
-                let before = doc.items.get(&item).cloned().ok_or("anchor item missing")?;
-                let rep = doc.representations.get(&rid).cloned().ok_or("anchor missing")?;
-                vec![Op::UnlinkRepresentation { id: rid, rep }, Op::RemoveItem { id: item, item: before }]
-            }
-            (Some((_, item, _)), Some(j)) => {
-                let before = doc.items.get(&item).cloned().ok_or("anchor item missing")?;
-                let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: j }), ..before.clone() };
-                vec![Op::ModifyItem { id: item, before, after }]
-            }
-            (None, Some(j)) => {
-                let (item, rid): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-                let style = plain_style(p);
-                vec![
-                    Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: j }) } },
-                    Op::LinkRepresentation {
-                        id: rid,
-                        rep: Representation {
-                            subject: Subject::Cable(cable),
-                            page,
-                            form: Form::Drawn,
-                            role: crate::look::ANCHOR_ROLE.into(),
-                            items: vec![item],
-                            connection_points: BTreeMap::new(),
-                        },
-                    },
-                ]
-            }
-        };
-        p.apply_edit(pg, "cablefan", "Cable join", ops)?;
-        Ok(r)
-    })
-}
-
-fn run_cableadd(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let conductors: Vec<ConductorId> = id_list(params, "conductors", MAX_CABLE_MEMBERS).map_err(err)?;
-    if conductors.is_empty() {
-        return Err(err("`conductors` (hex ids) is required"));
-    }
-    // Only an absent `cable` creates one; a malformed ID is an error, never a new cable.
-    let existing: Option<CableId> = opt_id(params, "cable").map_err(err)?;
-    let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
-    with_project(s, |p, pg, _page| {
-        let doc = p.ledger.document();
-        // A conductor is in at most one cable (design 004, owner answer O5; §18.4 defers several).
-        let mut blocked = Vec::new();
-        for w in &conductors {
-            if let Some(k) = doc.cables_of(*w).first() {
-                blocked.push((*w, *k));
-            }
-        }
-        if !blocked.is_empty() {
-            return Err(slash::already_in_cable(doc, &blocked, "Nothing was changed."));
-        }
-        let mut ops = Vec::new();
-        // Each wire once per call, and the cap holds for the whole cable, not only for one call.
-        let mut seen = std::collections::BTreeSet::new();
-        if let Some(w) = conductors.iter().find(|w| !seen.insert(**w)) {
-            return Err(format!("`conductors` lists wire {} twice; nothing was changed", w.hex()));
-        }
-        let had = match existing {
-            Some(c) => doc.cables.get(&c).ok_or("no such cable")?.members.len(),
-            None => 0,
-        };
-        if had.saturating_add(conductors.len()) > MAX_CABLE_MEMBERS {
-            return Err(format!("a cable holds at most {MAX_CABLE_MEMBERS} wires; nothing was changed"));
-        }
-        let (cable, mut index) = match existing {
-            Some(c) => (c, had),
-            None => {
-                let c: CableId = p.ids.fresh();
-                let mut cable = ecad_model::Cable::default();
-                // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
-                let t = crate::devices::new_cable_tag(&p.ledger, &mut p.tag_high, tag.as_deref())?;
-                cable.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
-                ops.push(Op::CreateCable { id: c, cable });
-                (c, 0)
-            }
-        };
-        // Brief 028 (design 028 §6.2, Q10): a cable with a core offer gives each new member the
-        // next free core, in the order given.
-        // Brief 059 (design 059 §4.3): onto a cable not drawn yet, never more wires than free cores.
-        if let Some(k) = existing
-            && !crate::cables::is_drawn(doc, k)
-        {
-            crate::cmd::cable::assign_cores(doc, k, conductors.len())?;
-        }
-        let mut spare: std::collections::VecDeque<String> =
-            existing.and_then(|k| crate::strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
-        for w in conductors {
-            ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: w, core: spare.pop_front() } });
-            index += 1;
-        }
-        p.apply_edit(pg, "cableadd", "Add to cable", ops)?;
-        Ok(json!({"cable": cable.hex()}))
-    })
-}
-
-/// A slash end: a finite `[x,y]` within ±[`interact::MAX_COORD`].
-fn slash_point(p: &Value, key: &str) -> Result<Pt, String> {
-    let v = p.get(key).filter(|v| !v.is_null()).ok_or_else(|| format!("`{key}` [x,y] is required"))?;
-    point(v)
-        .filter(|q| q.x.abs() <= interact::MAX_COORD && q.y.abs() <= interact::MAX_COORD)
-        .ok_or_else(|| format!("`{v}` is not a finite [x,y] point"))
-}
-
-/// `cableslash` (brief 004, design 004 §2, §4, §6): the conductors the slash `from → to` crosses
-/// on the active page become one new cable, in crossing order, with the slash as its drawn
-/// representation; one transaction. Refused when it crosses no wire, more than
-/// [`MAX_CABLE_MEMBERS`], or a wire already in a cable.
-fn run_cableslash(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let from = slash_point(params, "from").map_err(err)?;
-    let to = slash_point(params, "to").map_err(err)?;
-    let tag = opt_typed(params, "tag", "a string", |v| v.as_str().map(str::to_string)).map_err(err)?;
-    let existing: Option<CableId> = opt_id(params, "cable").map_err(err)?;
-    with_project(s, |p, pg, page| {
-        if from.near(to, p.tolerance) {
-            return Err("`from` and `to` must differ".into());
-        }
-        let doc = p.ledger.document();
-        let found = slash::crossings(doc, page, from, to, p.tolerance);
-        if found.members.len() > MAX_CABLE_MEMBERS {
-            return Err(slash::too_many());
-        }
-        if found.members.is_empty() {
-            return Err(slash::no_wires(found.ignored.len()));
-        }
-        // Brief 032 §3.3: an existing cable's ID or tag continues that cable on this page.
-        let existing = match existing {
-            Some(k) if doc.cables.contains_key(&k) => Some(k),
-            Some(_) => return Err("no such cable".into()),
-            None => tag.as_deref().and_then(|t| crate::references::cable_tagged(doc, t)),
-        };
-        // Brief 059 (FD5): a cable not drawn yet is assigned, not continued.
-        if let Some(k) = existing
-            && !crate::cables::is_drawn(doc, k)
-        {
-            return crate::cmd::cable::run_slash_assign(p, pg, page, k, from, to, &found);
-        }
-        if let Some(k) = existing {
-            return crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found);
-        }
-        let blocked: Vec<(ConductorId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
-        if !blocked.is_empty() {
-            return Err(slash::already_in_cable(doc, &blocked, "Nothing was created."));
-        }
-        let (cable, item, rep): (CableId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-        let mut c = ecad_model::Cable::default();
-        // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
-        let t = crate::devices::new_cable_tag(&p.ledger, &mut p.tag_high, tag.as_deref())?;
-        c.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
-        let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
-        for (index, m) in found.members.iter().enumerate() {
-            ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: None } });
-        }
-        ops.push(Op::AddItem { id: item, item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
-        ops.push(Op::LinkRepresentation {
-            id: rep,
-            rep: Representation {
-                subject: Subject::Cable(cable),
-                page,
-                form: Form::Drawn,
-                role: "slash".into(),
-                items: vec![item],
-                connection_points: BTreeMap::new(),
-            },
-        });
-        p.apply_edit(pg, "cableslash", "Cable slash", ops)?;
-        Ok(json!({
-            "cable": cable.hex(),
-            "item": item.hex(),
-            "representation": rep.hex(),
-            "conductors": found.members.iter().map(|m| m.conductor.hex()).collect::<Vec<_>>(),
-            "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
-            "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
-        }))
-    })
-}
-
-/// `cableview` (brief 005, design 005 §3.4): show a cable traditional or fan. Presentation only:
-/// no transaction, no head move, no unsaved change, never refused because of the project's state
-/// (read-only, an unavailable page). Without `cable` it changes nothing and lists every cable's
-/// view.
-fn run_cableview(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cable: Option<CableId> = opt_id(params, "cable").map_err(err)?;
-    let bad_view = || err("`view` must be \"traditional\" or \"fan\"");
-    let view = match params.get("view") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => Some(View::parse(t).ok_or_else(bad_view)?),
-        Some(_) => return Err(bad_view()),
-    };
-    if cable.is_none() && view.is_some() {
-        return Err(err("`view` needs `cable`"));
-    }
-    with_any_page(s, |p, pg| {
-        let doc = p.ledger.document();
-        let Some(k) = cable else {
-            let views: serde_json::Map<String, Value> = doc.cables.keys().map(|k| (k.hex(), Value::String(p.view_of(*k).name().into()))).collect();
-            return Ok(json!({ "views": views }));
-        };
-        if !doc.cables.contains_key(&k) {
-            return Err("no such cable".into());
-        }
-        if p.faults.fail_view_switches > 0 {
-            p.faults.fail_view_switches -= 1;
-            return Err("injected view switch failure".into());
-        }
-        let current = p.view_of(k);
-        let target = view.unwrap_or_else(|| current.toggled());
-        if target == View::Fan && current != View::Fan && !views::offers_fan(doc, k) {
-            return Err(format!("Cable {} {}", views::cable_title(doc, k), views::ONE_WIRE));
-        }
-        let (changed, stored) = p.set_view(pg, k, target);
-        let mut r = json!({"cable": k.hex(), "view": target.name()});
-        let remembered = match (&stored, p.settings.dir()) {
-            (Ok(()), Some(_)) => true,
-            (Err(e), Some(_)) => {
-                r["reason"] = Value::String(e.clone());
-                false
-            }
-            (_, None) => {
-                if changed && !p.said_not_remembered {
-                    p.said_not_remembered = true;
-                    r["notice"] = Value::String(views::NOT_REMEMBERED.into());
-                }
-                false
-            }
-        };
-        r["remembered"] = Value::Bool(remembered);
-        if !changed {
-            r["changed"] = Value::Bool(false);
-        }
-        Ok(r)
-    })
 }
 
 /// The experiment's built-in definition: a two-terminal coil, 10 × 20, terminals A1 (top) and A2
@@ -903,218 +482,6 @@ fn run_openpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Valu
 fn run_inspect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let at = params.get("seq").and_then(Value::as_u64);
     with_any_page(s, |p, pg| p.snapshot(&pg.as_ref(), at))
-}
-
-// ---------------------------------------------------------------- cable references (brief 010)
-
-/// The result fields every reference command reports about one end, derived after the commit.
-fn reference_fields(doc: &ecad_model::Document, reference: RepresentationId) -> (Value, bool, Value) {
-    match crate::references::all(doc).into_iter().find(|r| r.reference == reference) {
-        Some(r) => (Value::String(r.text.clone()), r.orphan, r.partner().map_or(Value::Null, |p| Value::String(p.hex()))),
-        None => (Value::String("/?".into()), true, Value::Null),
-    }
-}
-
-/// `cableref` (design 010 §2.1, §7.1): a reference end of `cable` on the active page, at `at`.
-/// One transaction: the Point item and its `reference` representation. Refused (R1 to R3) when
-/// the cable already has a reference here, already has two, or has no wire drawn here.
-fn run_cableref(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cable: CableId = id(params, "cable").map_err(err)?;
-    let at = slash_point(params, "at").map_err(err)?;
-    with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        crate::references::check_reference(doc, page, cable)?;
-        let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-        let ops = vec![
-            Op::AddItem { id: item, item: Item { page, style: plain_style(p), kind: ItemKind::Primitive(Primitive::Point { at }) } },
-            Op::LinkRepresentation {
-                id: rep,
-                rep: Representation {
-                    subject: Subject::Cable(cable),
-                    page,
-                    form: Form::Drawn,
-                    role: crate::references::REFERENCE_ROLE.into(),
-                    items: vec![item],
-                    connection_points: BTreeMap::new(),
-                },
-            },
-        ];
-        p.apply_edit(pg, "cableref", "Cable reference", ops)?;
-        let (text, orphan, partner) = reference_fields(p.ledger.document(), rep);
-        Ok(json!({
-            "reference": rep.hex(),
-            "item": item.hex(),
-            "page": page.hex(),
-            "text": text,
-            "orphan": orphan,
-            "partner": partner,
-        }))
-    })
-}
-
-/// The optional `members` list of `cablecontinue`: absent or `null` is every member; otherwise a
-/// list of conductor ids, at most [`MAX_CABLE_MEMBERS`] (checked before anything is parsed).
-fn member_list(p: &Value) -> Result<Option<Vec<ConductorId>>, String> {
-    const BAD: &str = "`members` must be a list of conductor ids";
-    match p.get("members") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(a)) => {
-            if a.len() > MAX_CABLE_MEMBERS {
-                return Err(crate::references::too_many_members());
-            }
-            a.iter()
-                .map(|v| v.as_str().and_then(|t| u128::from_str_radix(t.trim(), 16).ok()).map(ConductorId::from).ok_or_else(|| BAD.to_string()))
-                .collect::<Result<Vec<_>, _>>()
-                .map(Some)
-        }
-        Some(_) => Err(BAD.into()),
-    }
-}
-
-/// `cablecontinue` (design 010 §2.2, §5, §7.2): the second drawing of `cable` on the active page.
-/// One transaction: a reference end at `at`, then for each continued member a stub that is a new
-/// route of the **same** conductor, then a slash across the stubs. No conductor, attachment or
-/// membership changes, so the nets are unchanged.
-fn run_cablecontinue(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cable: CableId = id(params, "cable").map_err(err)?;
-    let at = slash_point(params, "at").map_err(err)?;
-    let toward = slash_point(params, "toward").map_err(err)?;
-    let members = member_list(params).map_err(err)?;
-    with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        let plan = crate::references::plan_continue(doc, page, cable, members.as_deref(), at, toward, p.tolerance)?;
-        let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-        let style = plain_style(p);
-        let mut ops = vec![
-            Op::AddItem { id: item, item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) } },
-            Op::LinkRepresentation {
-                id: rep,
-                rep: Representation {
-                    subject: Subject::Cable(cable),
-                    page,
-                    form: Form::Drawn,
-                    role: crate::references::REFERENCE_ROLE.into(),
-                    items: vec![item],
-                    connection_points: BTreeMap::new(),
-                },
-            },
-        ];
-        let mut routes = Vec::with_capacity(plan.stubs.len());
-        for stub in &plan.stubs {
-            let (i, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-            ops.push(Op::AddItem {
-                id: i,
-                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: stub.a, b: stub.b }) },
-            });
-            ops.push(Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Conductor(stub.conductor),
-                    page,
-                    form: Form::Drawn,
-                    role: "route".into(),
-                    items: vec![i],
-                    connection_points: BTreeMap::new(),
-                },
-            });
-            routes.push(json!({
-                "conductor": stub.conductor.hex(),
-                "representation": r.hex(),
-                "item": i.hex(),
-                "free_end": if stub.free_end == End::A { "A" } else { "B" },
-            }));
-        }
-        let (slash_item, slash_rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-        ops.push(Op::AddItem {
-            id: slash_item,
-            item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: plan.slash.0, b: plan.slash.1 }) },
-        });
-        ops.push(Op::LinkRepresentation {
-            id: slash_rep,
-            rep: Representation {
-                subject: Subject::Cable(cable),
-                page,
-                form: Form::Drawn,
-                role: "slash".into(),
-                items: vec![slash_item],
-                connection_points: BTreeMap::new(),
-            },
-        });
-        p.apply_edit(pg, "cablecontinue", "Continue cable", ops)?;
-        let doc = p.ledger.document();
-        let (text, _, partner) = reference_fields(doc, rep);
-        let skipped: Vec<Value> = plan.skipped.iter().map(|(w, why)| json!({"conductor": w.hex(), "reason": why.reason()})).collect();
-        Ok(json!({
-            "reference": rep.hex(),
-            "item": item.hex(),
-            "slash": slash_rep.hex(),
-            "slash_item": slash_item.hex(),
-            "routes": routes,
-            "skipped": skipped,
-            "text": text,
-            "partner": partner,
-            "messages": crate::references::continued_lines(doc, page, &plan, rep),
-        }))
-    })
-}
-
-/// `cablegoto` (design 010 §4.5, §7.3): open (or front) the page of the other end of
-/// `reference`, centre the view on it and select its point. Records nothing; works on a read-only
-/// project.
-fn run_cablegoto(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let reference: RepresentationId = id(params, "reference").map_err(err)?;
-    let (uid, page, other, item, at, opened, message) = with_any_page(s, |p, pg| {
-        let doc = p.ledger.document();
-        let refs = crate::references::all(doc);
-        let here = refs.iter().find(|r| r.reference == reference).ok_or("no such reference")?;
-        let other = here.partner().ok_or("this reference has no other end")?;
-        let there = refs.iter().find(|r| r.reference == other).ok_or("this reference has no other end")?;
-        let item = there.item.ok_or("the other end cannot be located")?;
-        let at = there.at.ok_or("the other end cannot be located")?;
-        let message = format!(
-            "{}, at the other end of cable {} ({}).",
-            crate::references::page_words(doc, there.page).replacen("page", "Page", 1),
-            crate::cables::cable_title(doc, there.cable),
-            there.locator()
-        );
-        let page = there.page;
-        let opened = p.pages.get(&page).and_then(|v| v.uid).is_none();
-        let uid = p.open_page(pg, page)?;
-        Ok((uid, page, other, item, at, opened, message))
-    })?;
-    if opened {
-        let _ = s.zoom_extents();
-    }
-    if let Ok(st) = s.state_mut() {
-        let height = st.view().height;
-        let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(at.x, at.y), height, twist: 0.0 });
-    }
-    let handle = with_any_page(s, |p, _| Ok(p.pages.get(&page).and_then(|v| v.map.item(item))))?;
-    if let Some(h) = handle {
-        s.set_selection(vec![h]);
-    }
-    Ok(json!({
-        "page": page.hex(),
-        "document": uid,
-        "reference": other.hex(),
-        "item": item.hex(),
-        "message": message,
-    }))
-}
-
-/// `cablerefs` (design 010 §7.4): every cable reference (or `cable`'s), derived; read only.
-fn run_cablerefs(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cable: Option<CableId> = opt_id(params, "cable").map_err(err)?;
-    with_any_page(s, |p, _| {
-        let doc = p.ledger.document();
-        if let Some(k) = cable
-            && !doc.cables.contains_key(&k)
-        {
-            return Err("no such cable".into());
-        }
-        let refs: Vec<_> = crate::references::all(doc).into_iter().filter(|r| cable.is_none_or(|k| r.cable == k)).collect();
-        Ok(json!({ "references": ecad_inspect::references_json(doc, &refs) }))
-    })
 }
 
 /// Most characters in a page title.
