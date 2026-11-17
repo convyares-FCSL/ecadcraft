@@ -51,9 +51,6 @@ const UNTYPED: &[&str] = &[
     "reopenbranch",
     "merge",
     "undomerge",
-    "renumber",
-    "finalise",
-    "numbering",
     "accessory",
     "jumper",
     "prerelease",
@@ -868,4 +865,75 @@ fn the_typed_plc_commands_still_work() {
     assert!(page["message"].as_str().is_some_and(|m| m.starts_with("Made page ")), "{page}");
     let rest = h.run("plcchannels", json!({"card": card, "rest": true, "at": [100, 100]}));
     assert!(rest.is_err(), "every channel is drawn on the card's page: {rest:?}");
+}
+
+/// Input refusals of the numbering commands: one wording.
+#[test]
+fn the_numbering_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("renumber", json!({"kind": 1}), "`kind` must be text, or null"),
+        ("renumber", json!({"start": "x"}), "`start` must be a whole number, or null"),
+        ("renumber", json!({"preview": "yes"}), "`preview` must be true or false, or null"),
+        ("renumber", json!({"objects": "x"}), "`objects` must be a list of texts, or null"),
+        ("renumber", json!({"scope": 5}), "`scope` must be text, or null"),
+        ("finalise", json!({"kind": "all"}), "`kind` is not a parameter of this command; it takes `based_on`, `preview`"),
+        ("numbering", json!({"provisional": "on"}), "`provisional` must be true or false, or null"),
+    ];
+    let mut h = H::new(7033);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the numbering commands keep their words.
+#[test]
+fn the_numbering_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("renumber", json!({"kind": "lamps"}), "`kind` must be \"devices\", \"cables\", \"wires\", \"terminals\" or \"all\", not \"lamps\""),
+        (
+            "renumber",
+            json!({"scope": "some"}),
+            "`scope` must be \"all\", \"selection\", \"provisional\", {prefix}, {folder} or {pages}, not \"some\"",
+        ),
+        ("renumber", json!({"scope": "selection"}), "`objects` (array of hex ids) is required with scope \"selection\""),
+        ("renumber", json!({"scope": "selection", "objects": ["zz"]}), "`\"zz\"` in `objects` is not a valid hex id"),
+        ("renumber", json!({"scope": "selection", "objects": ["ab"]}), "ab in `objects` is not a device, cable or wire."),
+        ("renumber", json!({"scope": {"prefix": " "}}), "`prefix` must be letters, such as \"-K\", or a potential"),
+        ("renumber", json!({"scope": {"folder": "1"}}), "No such folder."),
+        ("renumber", json!({"scope": {"pages": ["1"]}}), "No page 00000000000000000000000000000001."),
+        ("renumber", json!({"scope": {}}), "`scope` as an object is {prefix}, {folder: id} or {pages: [id]}"),
+        ("renumber", json!({"digits": 300}), "Digits is a whole number from 1 to 6."),
+        ("renumber", json!({"start": 0}), "Start is a whole number from 1."),
+        (
+            "renumber",
+            json!({"kind": "terminals", "scope": "selection", "strips": ["ab"]}),
+            "ab in `strips` is not a terminal strip or one of its terminals.",
+        ),
+        ("finalise", json!({"based_on": 999}), "The project changed since the preview; check the new list and Apply again."),
+    ];
+    let mut h = H::new(7034);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed numbering commands still work, and answer as before.
+#[test]
+fn the_typed_numbering_commands_still_work() {
+    let mut h = H::new(7035);
+    for x in [100, 50] {
+        assert!(h.run("place", json!({"symbol": "coil", "at": [x, 100]})).is_ok());
+    }
+    let preview = h.run("renumber", json!({"preview": true, "scope": "all", "start": 1})).unwrap_or_else(|e| json!(e));
+    assert!(preview["summary"].as_str().is_some_and(|s| s.contains("to change")), "{preview}");
+    let count = preview["change_count"].clone();
+    let done = h.run("renumber", json!({"kind": "devices", "based_on": count})).unwrap_or_else(|e| json!(e));
+    assert!(done["message"].as_str().is_some(), "{done}");
+    let read = h.run("numbering", json!({})).unwrap_or_else(|e| json!(e));
+    assert_eq!(read["provisional"], json!(false), "{read}");
+    let on = h.run("numbering", json!({"provisional": true})).unwrap_or_else(|e| json!(e));
+    assert_eq!(on["provisional"], json!(true), "{on}");
+    let fin = h.run("finalise", json!({"preview": true})).unwrap_or_else(|e| json!(e));
+    assert!(fin["rows"].is_array(), "{fin}");
 }

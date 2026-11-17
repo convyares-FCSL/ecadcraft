@@ -4,17 +4,24 @@
 //!
 //! The interactive forms (the Renumber dialog, the clash box, Project Settings) commit through
 //! exactly these JSON forms. The plans come from [`ecad_model::numbering`]; this module turns them
-//! into one transaction each and into words.
+//! into one transaction each and into words. The registered commands are thin shims (brief 070):
+//! their params structs read the JSON and [`ecad_electrical::cmd::numbering`] reads what a renumber
+//! covers.
 
 use std::collections::BTreeSet;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
-use ecad_model::numbering::{self, Kind, Mark, Plan, Request, Scope};
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::numbering::{self as rules, RenumberInput, ScopeInput};
+use ecad_model::numbering::{self, Kind, Mark, Plan, Request};
 use ecad_model::tag::{self, FIXED_KEY, PROVISIONAL_SETTING, TAG_KEY};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, FolderId, ObjectRef, Op, PageId};
+use ecad_model::{CableId, Document, FolderId, ObjectRef, Op, PageId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{opt_typed, with_any_page, with_project};
+use crate::cmd::input::{Command, Typed, nullable, typed};
+use crate::cmd::{on_any_page, on_project, opt_typed, with_project};
 use crate::devices::{self, Holder};
 use crate::project::Project;
 
@@ -31,18 +38,22 @@ pub const STALE: &str = "The project changed since the preview; check the new li
 /// Refusal of fixing a provisional tag (design §4).
 pub const PROVISIONAL_FIXED: &str = "A provisional tag can't be fixed; give it a number first.";
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] =
+    &[Typed::of::<RenumberParams>("renumber"), Typed::of::<FinaliseParams>("finalise"), Typed::of::<NumberingParams>("numbering")];
+
 /// The commands of this module.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("renumber", "Renumber", run_renumber)
+        CommandSpec::new("renumber", "Renumber", typed::<RenumberParams>)
             .params(
                 "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminals\"|\"all\", strips?: [id] (terminals, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)",
             )
             .noundo(),
-        CommandSpec::new("finalise", "Finalise Numbering", run_finalise)
+        CommandSpec::new("finalise", "Finalise Numbering", typed::<FinaliseParams>)
             .params("{preview?: bool, based_on?: change count} (numbers the provisional tags and unnumbered nets in drawing order; one transaction)")
             .noundo(),
-        CommandSpec::new("numbering", "Numbering Settings", run_numbering)
+        CommandSpec::new("numbering", "Numbering Settings", typed::<NumberingParams>)
             .params("{provisional?: bool} (no parameters reads; provisional: new tags are -K?1 until Finalise)")
             .noundo(),
     ]
@@ -50,136 +61,127 @@ pub fn specs() -> Vec<CommandSpec> {
 
 // ---------------------------------------------------------------- parameters
 
-fn kinds_param(params: &Value) -> Result<BTreeSet<Kind>, String> {
-    let k = opt_typed(params, "kind", "a string", Value::as_str)?.unwrap_or("devices").trim().to_ascii_lowercase();
-    Ok(match k.as_str() {
-        "devices" | "device" | "dev" => [Kind::Devices].into(),
-        "cables" | "cable" | "cbl" => [Kind::Cables].into(),
-        "wires" | "wire" => [Kind::Wires].into(),
-        // Brief 028: terminal labels per strip ("all" keeps its 026 meaning: tags and wires).
-        "terminals" | "terminal" | "trm" => [Kind::Terminals].into(),
-        "all" => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
-        other => return Err(format!("`kind` must be \"devices\", \"cables\", \"wires\", \"terminals\" or \"all\", not {other:?}")),
-    })
+/// `scope` as an object: `{prefix}`, `{folder: id}` or `{pages: [id]}`.
+#[derive(Deserialize, JsonSchema)]
+struct ScopePick {
+    /// The tag prefix (`-K`) or the potential to renumber.
+    #[serde(default, deserialize_with = "nullable")]
+    prefix: Option<Option<String>>,
+    /// The folder whose pages to renumber.
+    #[serde(default, deserialize_with = "nullable")]
+    folder: Option<Option<FolderId>>,
+    /// The pages to renumber.
+    #[serde(default, deserialize_with = "nullable")]
+    pages: Option<Option<Vec<PageId>>>,
 }
 
-fn hex(v: &Value) -> Option<u128> {
-    v.as_str().and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
+/// `scope`: a word or an object.
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+enum ScopeParam {
+    /// "all", "selection" or "provisional".
+    Word(String),
+    /// {prefix}, {folder: id} or {pages: [id]}.
+    Pick(ScopePick),
 }
 
-fn scope_param(doc: &Document, params: &Value) -> Result<Scope, String> {
-    let scope = params.get("scope").filter(|v| !v.is_null());
-    match scope {
-        None => Ok(Scope::All),
-        Some(Value::String(w)) => match w.trim().to_ascii_lowercase().as_str() {
-            "all" => Ok(Scope::All),
-            "provisional" | "unnumbered" => Ok(Scope::Provisional),
-            // Brief 028: a terminal renumber may name its strips in `strips` alone.
-            "selection" if params.get("objects").is_none() && params.get("strips").is_some() => {
-                Ok(Scope::Selection { components: BTreeSet::new(), cables: BTreeSet::new(), conductors: BTreeSet::new() })
-            }
-            "selection" => {
-                let list =
-                    params.get("objects").and_then(Value::as_array).ok_or("`objects` (array of hex ids) is required with scope \"selection\"")?;
-                if list.len() > crate::cmd::MAX_HANDLES {
-                    return Err(format!("at most {} entries in `objects` per call", crate::cmd::MAX_HANDLES));
-                }
-                let (mut components, mut cables, mut conductors) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
-                for v in list {
-                    let n = hex(v).ok_or_else(|| format!("`{v}` in `objects` is not a valid hex id"))?;
-                    if doc.components.contains_key(&ComponentId(n)) {
-                        components.insert(ComponentId(n));
-                    } else if doc.cables.contains_key(&CableId(n)) {
-                        cables.insert(CableId(n));
-                    } else if doc.conductors.contains_key(&ConductorId(n)) {
-                        conductors.insert(ConductorId(n));
-                    } else {
-                        return Err(format!("{} in `objects` is not a device, cable or wire.", v.as_str().unwrap_or_default()));
-                    }
-                }
-                Ok(Scope::Selection { components, cables, conductors })
-            }
-            other => Err(format!("`scope` must be \"all\", \"selection\", \"provisional\", {{prefix}}, {{folder}} or {{pages}}, not {other:?}")),
-        },
-        Some(Value::Object(o)) => {
-            if let Some(p) = o.get("prefix") {
-                let p = p.as_str().map(str::trim).filter(|p| !p.is_empty()).ok_or("`prefix` must be letters, such as \"-K\", or a potential")?;
-                return Ok(Scope::Prefix(p.to_string()));
-            }
-            if let Some(f) = o.get("folder") {
-                let f = hex(f).map(FolderId).ok_or("`folder` (hex id) is required")?;
-                if !doc.folders.contains_key(&f) {
-                    return Err("No such folder.".into());
-                }
-                return Ok(Scope::Folder(f));
-            }
-            if let Some(ps) = o.get("pages") {
-                let a = ps.as_array().ok_or("`pages` must be an array of hex ids")?;
-                let mut pages = BTreeSet::new();
-                for v in a.iter().take(100_000) {
-                    let p = hex(v).map(PageId).ok_or_else(|| format!("`{v}` in `pages` is not a valid hex id"))?;
-                    if !doc.pages.contains_key(&p) {
-                        return Err(format!("No page {}.", p.hex()));
-                    }
-                    pages.insert(p);
-                }
-                return Ok(Scope::Pages(pages));
-            }
-            Err("`scope` as an object is {prefix}, {folder: id} or {pages: [id]}".into())
-        }
-        Some(_) => Err("`scope` must be a word or an object".into()),
+/// `renumber {kind?, strips?, scope?, objects?, start?, digits?, digits_for_new?, preview?,
+/// based_on?}` (design §3, §13): drawing order; fixed tags kept; one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenumberParams {
+    /// What to renumber: devices, cables, wires, terminals or all (default devices).
+    #[serde(default)]
+    kind: Option<String>,
+    /// Terminals with scope "selection": the strips (or terminals of them), as hex ids.
+    #[serde(default, deserialize_with = "nullable")]
+    strips: Option<Option<Vec<String>>>,
+    /// "all", "selection", "provisional", {prefix}, {folder: id} or {pages: [id]}.
+    #[serde(default)]
+    scope: Option<ScopeParam>,
+    /// With scope "selection": the devices, cables or wires, as hex ids.
+    #[serde(default, deserialize_with = "nullable")]
+    objects: Option<Option<Vec<String>>>,
+    /// The first number.
+    #[serde(default)]
+    start: Option<u64>,
+    /// Digits, 1 to 6.
+    #[serde(default)]
+    digits: Option<u64>,
+    /// New tags and wire numbers take `digits` too.
+    #[serde(default)]
+    digits_for_new: Option<bool>,
+    /// List the changes; write nothing.
+    #[serde(default)]
+    preview: Option<bool>,
+    /// The preview's change count: refused if the project changed since.
+    #[serde(default)]
+    based_on: Option<u64>,
+}
+
+impl Command for RenumberParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let scope = self.scope.map(|sc| match sc {
+            ScopeParam::Word(w) => ScopeInput::Word(w),
+            ScopeParam::Pick(p) => ScopeInput::Pick { prefix: p.prefix, folder: p.folder, pages: p.pages },
+        });
+        let input = RenumberInput { kind: self.kind, scope, objects: self.objects, strips: self.strips, start: self.start, digits: self.digits };
+        let how = How { preview: self.preview.unwrap_or(false), based_on: self.based_on, for_new: self.digits_for_new.unwrap_or(false) };
+        renumber_with(s, Some(&input), how)
     }
 }
 
-fn request(doc: &Document, params: &Value) -> Result<Request, String> {
-    let kinds = kinds_param(params)?;
-    let scope = scope_param(doc, params)?;
-    let start = match params.get("start") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(v.as_u64().ok_or(numbering::BAD_START)?),
-    };
-    let digits = match params.get("digits") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(v.as_u64().and_then(|d| u8::try_from(d).ok()).ok_or(numbering::BAD_DIGITS)?),
-    };
-    let strips = if kinds.contains(&Kind::Terminals) { strips_param(doc, params, &scope)? } else { BTreeSet::new() };
-    // Brief 036 (FP8c): each strip's positions, numbered as groups.
-    let positions = strips.iter().map(|c| (*c, crate::terminal_types::position_groups(doc, *c))).collect();
-    Ok(Request { kinds, scope, start, digits, strips, positions })
+/// `finalise {preview?, based_on?}` = `renumber {kind: "all", scope: "provisional"}` (design
+/// §5.3): numbers the provisional tags and unnumbered nets in drawing order; one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FinaliseParams {
+    /// List the changes; write nothing.
+    #[serde(default)]
+    preview: Option<bool>,
+    /// The preview's change count: refused if the project changed since.
+    #[serde(default)]
+    based_on: Option<u64>,
 }
 
-/// Brief 028 (design 028 §9.5): the strips a terminal renumber covers, from the scope: every
-/// strip (all, folder, pages; the planner keeps those on the pages), the strips with that tag
-/// prefix, or the strips named in `strips` or `objects` (selection; a terminal ID names its strip).
-fn strips_param(doc: &Document, params: &Value, scope: &Scope) -> Result<BTreeSet<ComponentId>, String> {
-    let all = || doc.components.keys().copied().filter(|c| crate::strips::is_strip(doc, *c));
-    Ok(match scope {
-        Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
-        Scope::Prefix(p) => {
-            let p = p.trim_start_matches('-').to_ascii_uppercase();
-            all().filter(|c| devices::tag_of(doc, *c).and_then(tag::parse).is_some_and(|(q, _)| q == p)).collect()
-        }
-        Scope::Selection { components, .. } => {
-            let mut out: BTreeSet<ComponentId> = components.iter().copied().filter(|c| crate::strips::is_strip(doc, *c)).collect();
-            for v in params.get("strips").and_then(Value::as_array).into_iter().flatten().take(crate::cmd::MAX_HANDLES) {
-                let n = hex(v).ok_or_else(|| format!("`{v}` in `strips` is not a valid hex id"))?;
-                let c = match doc.terminals.get(&ecad_model::TerminalId(n)) {
-                    Some(t) => t.component,
-                    None => ComponentId(n),
-                };
-                if !crate::strips::is_strip(doc, c) {
-                    return Err(format!("{} in `strips` is not a terminal strip or one of its terminals.", v.as_str().unwrap_or_default()));
+impl Command for FinaliseParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let how = How { preview: self.preview.unwrap_or(false), based_on: self.based_on, for_new: false };
+        renumber_with(s, None, how)
+    }
+}
+
+/// `numbering {provisional?}` (design §5.1, FP2): no parameters reads; `provisional` sets whether
+/// new tags are provisional (`-K?1`) until Finalise.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NumberingParams {
+    /// New tags are provisional until Finalise.
+    #[serde(default)]
+    provisional: Option<bool>,
+}
+
+impl Command for NumberingParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::cable_prefix(doc))});
+        match self.provisional {
+            None => on_any_page(s, |p, _| Ok(read(p.ledger.document()))),
+            Some(on) => on_project(s, |p, pg, _| {
+                let doc = p.ledger.document();
+                let before = doc.properties.get(PROVISIONAL_SETTING).cloned();
+                let after = on.then(|| "yes".to_string());
+                if before != after {
+                    p.apply_edit(
+                        pg,
+                        "numbering",
+                        "Set numbering",
+                        vec![Op::SetProperty { object: ObjectRef::Project, key: PROVISIONAL_SETTING.into(), before, after }],
+                    )?;
                 }
-                out.insert(c);
-            }
-            out
+                Ok(read(p.ledger.document()))
+            }),
         }
-        Scope::Provisional => BTreeSet::new(),
-    })
-}
-
-fn bool_param(params: &Value, key: &str) -> Result<bool, String> {
-    Ok(opt_typed(params, key, "true or false", Value::as_bool)?.unwrap_or(false))
+    }
 }
 
 // ---------------------------------------------------------------- words
@@ -301,25 +303,25 @@ pub fn plan_for(p: &mut Project, req: &Request) -> Result<Plan, String> {
     numbering::plan_ranked(doc, req, p.tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r)).map_err(String::from)
 }
 
-fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_engine::Result<Value> {
-    let preview = bool_param(params, "preview").map_err(err)?;
-    let based_on = opt_typed(params, "based_on", "a change count", Value::as_u64).map_err(err)?;
-    let for_new = bool_param(params, "digits_for_new").map_err(err)?;
-    let run = |p: &mut Project, pg: &mut crate::access::Pages<'_>| -> Result<Value, String> {
+/// How a renumber or finalise runs: a preview, the preview it applies, and whether new tags take
+/// its digits.
+#[derive(Clone, Copy)]
+struct How {
+    preview: bool,
+    based_on: Option<u64>,
+    for_new: bool,
+}
+
+/// Renumber (`input`) or finalise (`None`).
+fn renumber_with(s: &mut Session, input: Option<&RenumberInput>, how: How) -> cadcraft_engine::Result<Value> {
+    let finalise = input.is_none();
+    let run = |p: &mut Project, pg: &mut crate::access::Pages<'_>| -> Result<Value, CmdError> {
         let doc = p.ledger.document();
-        let req = if finalise {
-            Request {
-                kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(),
-                scope: Scope::Provisional,
-                start: None,
-                digits: None,
-                strips: BTreeSet::new(),
-                positions: Default::default(),
-            }
-        } else {
-            request(doc, params)?
+        let req = match input {
+            None => rules::finalise_request(),
+            Some(i) => rules::request(doc, i, crate::cmd::MAX_HANDLES)?,
         };
-        let plan = plan_for(p, &req)?;
+        let plan = plan_for(p, &req).map_err(CmdError::refused)?;
         let count = p.change_count();
         // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
         let (mut acc_ops, mut acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
@@ -327,19 +329,21 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
         let (for_ops, for_lines) = crate::bom::renumber_for_ops(p.ledger.document(), &plan.ops);
         acc_ops.extend(for_ops);
         acc_lines.extend(for_lines);
-        if preview {
+        if how.preview {
             let mut v = preview_json(p.ledger.document(), &plan, count);
             v["accessories"] = json!(acc_lines);
             return Ok(v);
         }
-        if let Some(b) = based_on
+        if let Some(b) = how.based_on
             && b != count
         {
-            return Err(STALE.into());
+            return Err(CmdError::refused(STALE));
         }
         let mut ops = plan.ops.clone();
         ops.extend(acc_ops);
-        if for_new && let Some(d) = req.digits {
+        if how.for_new
+            && let Some(d) = req.digits
+        {
             let doc = p.ledger.document();
             let before = doc.settings.clone();
             let mut after = before.clone();
@@ -370,41 +374,7 @@ fn renumber_with(s: &mut Session, params: &Value, finalise: bool) -> cadcraft_en
             "message": line,
         }))
     };
-    if preview { with_any_page(s, run) } else { with_project(s, |p, pg, _| run(p, pg)) }
-}
-
-/// `renumber {kind?, scope?, objects?, start?, digits?, digits_for_new?, preview?, based_on?}`
-/// (design §3, §13).
-pub(crate) fn run_renumber(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    renumber_with(s, params, false)
-}
-
-/// `finalise {preview?, based_on?}` = `renumber {kind: "all", scope: "provisional"}` (design §5.3).
-pub(crate) fn run_finalise(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    renumber_with(s, params, true)
-}
-
-/// `numbering {provisional?}` (design §5.1, FP2).
-pub(crate) fn run_numbering(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let prov = opt_typed(params, "provisional", "true or false", Value::as_bool).map_err(err)?;
-    let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::cable_prefix(doc))});
-    match prov {
-        None => with_any_page(s, |p, _| Ok(read(p.ledger.document()))),
-        Some(on) => with_project(s, |p, pg, _| {
-            let doc = p.ledger.document();
-            let before = doc.properties.get(PROVISIONAL_SETTING).cloned();
-            let after = on.then(|| "yes".to_string());
-            if before != after {
-                p.apply_edit(
-                    pg,
-                    "numbering",
-                    "Set numbering",
-                    vec![Op::SetProperty { object: ObjectRef::Project, key: PROVISIONAL_SETTING.into(), before, after }],
-                )?;
-            }
-            Ok(read(p.ledger.document()))
-        }),
-    }
+    if how.preview { on_any_page(s, run) } else { on_project(s, |p, pg, _| run(p, pg)) }
 }
 
 /// What the Renumber dialog offers (design §3): the tag prefixes in use (`-K`, `-Q`…, provisional
@@ -555,15 +525,7 @@ pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue,
             format!("({} issued)", plural(items.tags.len(), "provisional tag", "provisional tags"))
         }))),
         Some("finalise" | "finalize") => {
-            let req = Request {
-                kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(),
-                scope: Scope::Provisional,
-                start: None,
-                digits: None,
-                strips: BTreeSet::new(),
-                positions: Default::default(),
-            };
-            let plan = plan_for(p, &req)?;
+            let plan = plan_for(p, &rules::finalise_request())?;
             Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
         }
         Some(other) => Err(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}")),
