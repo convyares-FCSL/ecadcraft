@@ -44,18 +44,17 @@ pub(crate) mod xref;
 
 use std::collections::BTreeMap;
 
-use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
 use ecad_model::{
-    CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, End, Form, Item, ItemId, ItemKind, Op, PageId,
-    Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, TerminalDef, TerminalId,
+    CableId, CableMember, Color, ComponentId, ConductorId, Definition, End, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
+    RepresentationId, Style, Subject, TerminalDef, TerminalId,
 };
 use serde_json::{Value, json};
 
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
-use crate::project::{Mapped, Project};
+use crate::project::Project;
 use crate::slash::{self, MAX_CABLE_MEMBERS};
 pub use crate::strips::core_label;
 use crate::views::{self, View};
@@ -94,11 +93,11 @@ pub fn specs() -> Vec<CommandSpec> {
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("convertcomponent", "Convert to Component", run_convert)
+        CommandSpec::new("convertcomponent", "Convert to Component", crate::cmd::input::typed::<crate::cmd::device::ConvertcomponentParams>)
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
-        CommandSpec::new("addterminal", "Add Connection Point", run_addterminal)
+        CommandSpec::new("addterminal", "Add Connection Point", crate::cmd::input::typed::<crate::cmd::device::AddterminalParams>)
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
             .interactive(interact::addterminal)
             .noundo(),
@@ -152,7 +151,7 @@ end's spine; null: the middle)",
         CommandSpec::new("cablerefs", "List Cable References", run_cablerefs)
             .params("{cable?: id} (read only)")
             .noundo(),
-        CommandSpec::new("ecaddelete", "Delete Electrical Object", run_delete)
+        CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::cmd::input::typed::<crate::cmd::device::EcaddeleteParams>)
             .params("{conductor: id} | {component: id} | {cable: id}")
             .noundo(),
         CommandSpec::new("setprop", "Set Property", crate::cmd::input::typed::<crate::cmd::prop::SetpropParams>)
@@ -169,22 +168,22 @@ end's spine; null: the middle)",
             )
             .interactive(interact::place)
             .noundo(),
-        CommandSpec::new("symbols", "Find Symbol", crate::cmd::device::run_symbols)
+        CommandSpec::new("symbols", "Find Symbol", crate::cmd::input::typed::<crate::cmd::device::SymbolsParams>)
             .params("{query?} (starter symbols and devices matching it; read only)")
             .noundo(),
-        CommandSpec::new("devices", "List Devices", crate::cmd::device::run_devices)
+        CommandSpec::new("devices", "List Devices", crate::cmd::input::typed::<crate::cmd::device::DevicesParams>)
             .params("{tag?} (devices whose tag starts with it; read only)")
             .noundo(),
-        CommandSpec::new("tagsettings", "Tag Settings", crate::cmd::device::run_tagsettings)
+        CommandSpec::new("tagsettings", "Tag Settings", crate::cmd::input::typed::<crate::cmd::device::TagsettingsParams>)
             .params(
                 "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)",
             )
             .noundo(),
-        CommandSpec::new("deviceprops", "Device Properties", crate::cmd::device::run_deviceprops)
+        CommandSpec::new("deviceprops", "Device Properties", crate::cmd::input::typed::<crate::cmd::device::DevicepropsParams>)
             .params("{component: id} (a device's properties; read only; interactive: change them)")
             .interactive(interact::deviceprops)
             .noundo(),
-        CommandSpec::new("devicedelete", "Delete Device", crate::cmd::device::run_devicedelete)
+        CommandSpec::new("devicedelete", "Delete Device", crate::cmd::input::typed::<crate::cmd::device::DevicedeleteParams>)
             .params("{component: id} (deletes the device with every symbol, as `ecaddelete`)")
             .interactive(interact::devicedelete)
             .noundo(),
@@ -382,93 +381,8 @@ fn end_param(p: &Value) -> Result<End, String> {
 
 pub(crate) use crate::words::MAX_HANDLES;
 
-/// The `handles` parameter, or the selection when it is absent. Every entry must be a valid hex
-/// handle: a typo is an error, never a silently smaller set.
-fn handles(s: &Session, p: &Value) -> Result<Vec<Handle>, String> {
-    let Some(v) = p.get("handles") else { return Ok(s.selection()) };
-    let a = v.as_array().ok_or("`handles` must be an array of hex handles")?;
-    if a.len() > MAX_HANDLES {
-        return Err(format!("at most {MAX_HANDLES} handles per call"));
-    }
-    a.iter().map(|h| h.as_str().and_then(Handle::parse_hex).ok_or_else(|| format!("`{h}` is not a valid handle"))).collect()
-}
-
 pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
-}
-
-fn run_convert(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let hs = handles(s, params).map_err(err)?;
-    with_project(s, |p, pg, page| {
-        let map = &p.pages.get(&page).ok_or("page view not found")?.map;
-        let mut items = Vec::new();
-        // Computed parts of a traditional-view cable are left out of a selection with other
-        // objects (brief 009 review S2); on their own they are refused below.
-        let mut drawn = None;
-        for h in hs {
-            match map.get(h) {
-                Some(Mapped::Item(i)) if p.ledger.document().representation_of_item(i).is_none() => items.push(i),
-                Some(Mapped::Fan(k)) if !map.is_fan(k) => drawn = Some(k),
-                Some(Mapped::Fan(k)) => return Err(views::refusal(map, k).into()),
-                Some(_) => {
-                    return Err("only plain geometry can be converted; part of the selection already has a meaning".into());
-                }
-                None => return Err("the selection holds an object this page does not know".into()),
-            }
-        }
-        if items.is_empty() {
-            return Err(match drawn {
-                Some(k) => views::refusal(map, k).into(),
-                None => "select the geometry to convert".into(),
-            });
-        }
-        let (c, r): (ComponentId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-        let ops = vec![
-            Op::CreateComponent { id: c, component: Component::default() },
-            Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Component(c),
-                    page,
-                    form: Form::Drawn,
-                    role: "drawn".into(),
-                    items,
-                    connection_points: BTreeMap::new(),
-                },
-            },
-        ];
-        p.apply_edit(pg, "convertcomponent", "Convert to component", ops)?;
-        Ok(json!({"component": c.hex(), "representation": r.hex()}))
-    })
-}
-
-fn run_addterminal(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let h = params.get("handle").and_then(Value::as_str).and_then(Handle::parse_hex).ok_or_else(|| err("`handle` is required"))?;
-    let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
-    let label = params.get("label").and_then(Value::as_str).map(str::to_string);
-    with_project(s, |p, pg, page| {
-        let map = &p.pages.get(&page).ok_or("page view not found")?.map;
-        let item = match map.get(h) {
-            Some(Mapped::Item(item)) => item,
-            Some(Mapped::Fan(k)) => return Err(views::refusal(map, k).into()),
-            _ => return Err("pick an item of a component".into()),
-        };
-        let doc = p.ledger.document();
-        let (rid, r) = doc.representation_of_item(item).ok_or("that item is not part of a component")?;
-        let Subject::Component(c) = r.subject else { return Err("that item is not part of a component".into()) };
-        if r.form != Form::Drawn {
-            return Err("connection points of placed symbols come from their definition".into());
-        }
-        let t: TerminalId = p.ids.fresh();
-        let mut after = r.clone();
-        after.connection_points.insert(t, at);
-        let ops = vec![
-            Op::AddTerminal { id: t, terminal: Terminal { component: c, label, key: None } },
-            Op::ModifyRepresentation { id: rid, before: r.clone(), after },
-        ];
-        p.apply_edit(pg, "addterminal", "Add connection point", ops)?;
-        Ok(json!({"terminal": t.hex()}))
-    })
 }
 
 fn route_and_end(p: &Project, page: PageId, c: ConductorId, end: End) -> Result<(ItemId, Item, Pt), String> {
@@ -519,90 +433,6 @@ fn run_disconnect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         p.apply_edit(pg, "disconnect", "Disconnect", vec![Op::AttachEnd { conductor: c, end, before, after: None }])?;
         Ok(json!({"disconnected": true}))
     })
-}
-
-/// Ops removing every representation of `subject` with its items.
-fn remove_representations(doc: &ecad_model::Document, subject: Subject) -> Vec<Op> {
-    let mut ops = Vec::new();
-    for (rid, r) in doc.representations_of(subject) {
-        ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
-        for i in &r.items {
-            if let Some(item) = doc.items.get(i) {
-                ops.push(Op::RemoveItem { id: *i, item: item.clone() });
-            }
-        }
-    }
-    ops
-}
-
-pub(crate) fn run_delete(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, pg, _page| {
-        let doc = p.ledger.document();
-        let mut ops = Vec::new();
-        if let Ok(c) = id::<ConductorId>(params, "conductor") {
-            let conductor = doc.conductors.get(&c).ok_or("no such conductor")?;
-            for end in End::BOTH {
-                if let Some(t) = conductor.end(end) {
-                    ops.push(Op::AttachEnd { conductor: c, end, before: Some(t), after: None });
-                }
-            }
-            for cable in doc.cables_of(c) {
-                if let Some((i, m)) = doc.cables.get(&cable).and_then(|k| k.members.iter().enumerate().find(|(_, m)| m.conductor == c)) {
-                    ops.push(Op::RemoveCableMember { cable, index: i, member: m.clone() });
-                }
-            }
-            ops.extend(remove_representations(doc, Subject::Conductor(c)));
-            ops.push(Op::DeleteConductor { id: c, conductor: Conductor { ends: [None, None], ..conductor.clone() } });
-        } else if let Ok(c) = id::<ComponentId>(params, "component") {
-            let component = doc.components.get(&c).ok_or("no such component")?;
-            for (t, term) in doc.terminals_of(c) {
-                for (w, end) in doc.ends_at(t) {
-                    ops.push(Op::AttachEnd { conductor: w, end, before: Some(t), after: None });
-                }
-                let _ = term;
-            }
-            ops.extend(remove_representations(doc, Subject::Component(c)));
-            for (t, term) in doc.terminals_of(c) {
-                ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
-            }
-            // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
-            let released = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
-            ops.extend(released.0);
-            ops.push(Op::DeleteComponent { id: c, component: component.clone() });
-            if released.1 > 0 {
-                let tag = crate::devices::tag_words(doc, c);
-                p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
-                let message = format!("Deleted {tag}; {}", crate::plc::rack::released_words(released.1));
-                pg.echo(message.clone());
-                return Ok(json!({"deleted": true, "released": released.1, "message": message}));
-            }
-        } else if let Ok(k) = id::<CableId>(params, "cable") {
-            // Design 004 §8 (owner answer O3): the members leave, the slashes go, every conductor
-            // stays.
-            let cable = doc.cables.get(&k).ok_or("no such cable")?;
-            for (index, member) in cable.members.iter().enumerate().rev() {
-                ops.push(Op::RemoveCableMember { cable: k, index, member: member.clone() });
-            }
-            ops.extend(remove_representations(doc, Subject::Cable(k)));
-            ops.push(Op::DeleteCable { id: k, cable: ecad_model::Cable { members: Vec::new(), ..cable.clone() } });
-            let kept = cable.members.len();
-            p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
-            let message = format!("Cable {} deleted; its {} kept.", k.hex(), kept_words(kept));
-            return Ok(json!({"deleted": true, "kept": kept, "message": message}));
-        } else {
-            return Err("`conductor`, `component` or `cable` (hex id) is required".into());
-        }
-        p.apply_edit(pg, "ecaddelete", "Delete", ops)?;
-        Ok(json!({"deleted": true}))
-    })
-}
-
-fn kept_words(n: usize) -> String {
-    match n {
-        0 => "0 wires are".into(),
-        1 => "1 wire is".into(),
-        n => format!("{n} wires are"),
-    }
 }
 
 /// The `core` of one entry: a string or `null`.

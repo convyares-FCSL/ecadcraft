@@ -10,8 +10,6 @@ use crate::common::H;
 /// Registered commands still reading their JSON by hand. Brief 070 converts them module by
 /// module: remove ids as they are typed, never add one.
 const UNTYPED: &[&str] = &[
-    "convertcomponent",
-    "addterminal",
     "connect",
     "disconnect",
     "cableslash",
@@ -22,13 +20,7 @@ const UNTYPED: &[&str] = &[
     "cablecontinue",
     "cablegoto",
     "cablerefs",
-    "ecaddelete",
     "cableadd",
-    "symbols",
-    "devices",
-    "tagsettings",
-    "deviceprops",
-    "devicedelete",
     "newpage",
     "openpage",
     "renamepage",
@@ -1785,4 +1777,71 @@ fn the_typed_place_still_works() {
     assert_eq!(k["joined"], json!(false), "{k}");
     let ch = h.run("place", json!({"symbol": "di", "at": [500, 300], "channel": 3})).unwrap_or_else(|e| json!(e));
     assert_eq!(ch["channel"], json!(3), "{ch}");
+}
+
+/// Input refusals of the device commands: one wording.
+#[test]
+fn the_device_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("symbols", json!({"query": 3}), "`query` must be text, or null"),
+        ("devices", json!({"tag": 3}), "`tag` must be text, or null"),
+        ("deviceprops", json!({}), "`component` (hex id) is required"),
+        ("deviceprops", json!({"component": "zz"}), "`component` must be a hex id"),
+        ("devicedelete", json!({}), "`component` (hex id) is required"),
+        ("ecaddelete", json!({"conductor": "zz"}), "`conductor` must be a hex id, or null"),
+        ("tagsettings", json!({"padding": "x"}), "`padding` must be a whole number, or null"),
+        ("tagsettings", json!({"prefixes": {"coil": 5}}), "`prefixes` must be an object, or null"),
+        ("convertcomponent", json!({"handles": "x"}), "`handles` must be a list of texts, or null"),
+        ("addterminal", json!({"at": [0, 0]}), "`handle` (text) is required"),
+        ("addterminal", json!({"handle": "1"}), "`at` (point [x, y]) is required"),
+    ];
+    let mut h = H::new(7078);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the device commands keep their words.
+#[test]
+fn the_device_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("deviceprops", json!({"component": "ab"}), "No such device."),
+        ("devicedelete", json!({"component": "ab"}), "no such component"),
+        ("ecaddelete", json!({}), "`conductor`, `component` or `cable` (hex id) is required"),
+        ("ecaddelete", json!({"conductor": "ab"}), "no such conductor"),
+        ("ecaddelete", json!({"cable": "ab"}), "no such cable"),
+        ("tagsettings", json!({"padding": 7}), "`padding` must be a whole number from 1 to 6"),
+        ("tagsettings", json!({"prefixes": {"coil": "K1"}}), "A prefix is 1 to 10 letters, for example K or SR."),
+        ("tagsettings", json!({"prefixes": {"xyz": "K"}}), "No symbol \"xyz\". Type List to see them."),
+        ("convertcomponent", json!({"handles": ["zz"]}), "`\"zz\"` is not a valid handle"),
+        ("convertcomponent", json!({"handles": []}), "select the geometry to convert"),
+        ("convertcomponent", json!({"handles": ["ffff"]}), "the selection holds an object this page does not know"),
+        ("addterminal", json!({"handle": "ffff", "at": [0, 0]}), "pick an item of a component"),
+    ];
+    let mut h = H::new(7079);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// The typed device commands still work, and answer as before.
+#[test]
+fn the_typed_device_commands_still_work() {
+    let mut h = H::new(7080);
+    let a = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
+    let props = h.run("deviceprops", json!({"component": a})).unwrap_or_else(|e| json!(e));
+    assert_eq!(props["tag"], json!("-K01"), "{props}");
+    let found = h.run("devices", json!({"tag": "-K"})).unwrap_or_else(|e| json!(e));
+    assert!(found.to_string().contains("-K01"), "{found}");
+    let syms = h.run("symbols", json!({"query": "coil"})).unwrap_or_else(|e| json!(e));
+    assert!(syms.to_string().contains("coil"), "{syms}");
+    let ts = h.run("tagsettings", json!({"padding": 3, "prefixes": {"coil": "KA"}})).unwrap_or_else(|e| json!(e));
+    assert_eq!((ts["changed"].clone(), ts["padding"].clone(), ts["prefixes"]["coil"].clone()), (json!(true), json!(3), json!("-KA")), "{ts}");
+    let read = h.run("tagsettings", json!({})).unwrap_or_else(|e| json!(e));
+    assert_eq!(read["changed"], json!(false), "{read}");
+    let del = h.run("devicedelete", json!({"component": a})).unwrap_or_else(|e| json!(e));
+    assert_eq!(del, json!({"deleted": true, "message": "Deleted -K01."}), "{del}");
+    let b = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
+    let gone = h.run("ecaddelete", json!({"component": b})).unwrap_or_else(|e| json!(e));
+    assert_eq!(gone, json!({"deleted": true}), "{gone}");
 }

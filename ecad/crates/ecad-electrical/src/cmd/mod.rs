@@ -10,6 +10,7 @@ pub mod connector;
 pub mod continuation;
 pub mod default;
 pub mod designation;
+pub mod device;
 pub mod level;
 pub mod location;
 pub mod numbering;
