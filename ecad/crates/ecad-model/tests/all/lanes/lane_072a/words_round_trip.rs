@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
+use ecad_model::colour::ColourWords;
 use ecad_model::keys::Area;
 // ecad-model's own schemars, through its `schema` feature (only the Engine depends on it).
 use ecad_model::words::__schemars as schemars;
@@ -41,6 +42,7 @@ fn words_round_trip() -> Result<(), serde_json::Error> {
     round_trip::<StyleCatalogue>()?;
     round_trip::<Side>()?;
     round_trip::<Area>()?;
+    round_trip::<ColourWords>()?;
     Ok(())
 }
 

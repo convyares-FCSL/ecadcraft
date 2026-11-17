@@ -17,11 +17,12 @@
 //! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
 //! - [`words`], [`units`] and [`keys`]: the shared word readers, the unit types and the property
-//!   key list (design 072 §9).
+//!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod book;
 pub mod builtins;
+pub mod colour;
 pub mod connectivity;
 pub mod derive;
 mod dev;
@@ -42,6 +43,7 @@ pub mod sheet;
 pub mod strict;
 pub mod style;
 pub mod tag;
+pub mod text;
 pub mod title_block;
 pub mod units;
 pub mod wiring;

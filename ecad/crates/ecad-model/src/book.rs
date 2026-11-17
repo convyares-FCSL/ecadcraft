@@ -19,6 +19,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::doc::Document;
 use crate::id::{FolderId, PageId};
+use crate::text::Text;
 
 /// The page property naming the page's folder.
 pub const FOLDER_KEY: &str = "folder";
@@ -271,7 +272,7 @@ pub const MAX_PAGE_NO_CHARS: usize = 12;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
-pub struct PageNo(String);
+pub struct PageNo(Text<MAX_PAGE_NO_CHARS>);
 
 impl PageNo {
     /// The page number `text` is, if it is well formed. Surrounding whitespace is ignored.
@@ -283,20 +284,19 @@ impl PageNo {
     /// assert!(PageNo::parse("1.5").is_none());
     /// ```
     pub fn parse(text: &str) -> Option<PageNo> {
-        let t = text.trim();
-        let n = t.chars().count();
-        ((1..=MAX_PAGE_NO_CHARS).contains(&n) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')).then(|| PageNo(t.to_string()))
+        let t = Text::new(text).ok()?;
+        t.as_str().bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_').then_some(PageNo(t))
     }
 
     /// The number's text.
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 }
 
 impl fmt::Display for PageNo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(self.0.as_str())
     }
 }
 
@@ -304,7 +304,7 @@ impl<'de> Deserialize<'de> for PageNo {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
         PageNo::parse(&text)
-            .filter(|n| n.0 == text)
+            .filter(|n| n.as_str() == text)
             .ok_or_else(|| serde::de::Error::custom(format!("`{text}` is not a page number (1-{MAX_PAGE_NO_CHARS} letters, digits or _)")))
     }
 }

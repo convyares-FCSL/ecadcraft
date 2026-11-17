@@ -1,5 +1,5 @@
 //! The readers of the few word shapes every stored text uses (design 072 §9.1): a yes/no value and
-//! a whole number. Every copy of these rules goes through here, so a file reads the same in every
+//! a whole number, and the characters no typed text may hold. Every copy of these rules goes through here, so a file reads the same in every
 //! crate.
 //!
 //! It also holds [`Word`] and [`crate::word_enum!`], through which every enum stored as a word
@@ -92,6 +92,29 @@ fn digits_value(t: &str) -> Option<u32> {
         return None;
     }
     t.parse::<u32>().ok()
+}
+
+/// The invisible format characters a typed text never holds besides control characters (design 072
+/// §9.4): soft hyphen, the Arabic letter mark, the Mongolian vowel separator, zero-width and joiner
+/// characters and the directional marks, the bidi embeddings and overrides, word joiners and
+/// invisible operators, the bidi isolates and deprecated format characters, the byte-order mark and
+/// the interlinear annotation marks. Inclusive ranges of code points.
+pub const HIDDEN_RANGES: &[(u32, u32)] = &[
+    (0x00AD, 0x00AD),
+    (0x061C, 0x061C),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+];
+
+/// Whether `c` is a character no text a person typed may hold: a control character or one of
+/// [`HIDDEN_RANGES`]. The one hidden-character rule (G14: no other copy).
+pub fn is_hidden(c: char) -> bool {
+    c.is_control() || HIDDEN_RANGES.iter().any(|(lo, hi)| (*lo..=*hi).contains(&u32::from(c)))
 }
 
 crate::word_enum! {
