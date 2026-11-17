@@ -79,6 +79,7 @@ pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
         defaults::Value::Choice(w) => w.to_string(),
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.trim().to_string(),
+        defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
     })
 }
 

@@ -127,6 +127,7 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
         defaults::Value::Choice(w) => w.to_string(),
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.to_string(),
+        defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
     }))
 }
 
