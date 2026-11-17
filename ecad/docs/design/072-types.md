@@ -102,7 +102,7 @@ only.
 | I17 | Which device text a symbol slot places | `TextSlot.text` words | `SlotText` (§7) |
 | I18 | Title block bindings, unknown items | text kept as written | strict elements (§5.4) |
 | I19 | Style record fields | a map per catalogue | one struct per catalogue (§8) |
-| I20 | A wire's colour | free text (`GNYE`) | `Vec<Colour>` (§4.4) |
+| I20 | A wire's or core's colour | free text (`GNYE`) | `Vec<ConductorColour>` (§4.6) |
 
 ---
 
@@ -172,7 +172,7 @@ operates them, so they are one **Switching** group with an `operator` (§17 call
 | 4 | `Sensor` | B (converting a variable to a signal) | `prox3`, `floatno/nc`, `rollerno/nc`, `interlockno/nc`, `tc` | `sensing` (Proximity, Float, Limit, Interlock, Temperature…), `output` (Contact, Pnp, Npn, Analogue { range }), supply `RatedVoltage` | `Senses::signal()` (what a PLC input must accept: the "sensor on the wrong channel type" check), `Load::demand()` |
 | 5 | `Motor` | M (mechanical energy) | `motor1`, `motor3` | `phases`, `rated_power`, `rated_current`, `power_factor`, `efficiency`, `starting` (Direct, StarDelta, Soft, Vfd) | `Load::demand()`, `full_load_current()`, `starting_current()` (protection and cable sizing) |
 | 6 | `Load` | E (heat, light as energy), MB (valves, solenoids, brakes), other consumers | `heater`, `valve`, `valve2` | `rated_power: Watts` | `Load::demand()` |
-| 7 | `Indicator` | P (presenting information: lamps, beacons, buzzers, meters) | `lamp` | `colour: Option<Colour>`, `signal: SignalType` (Steady, Flashing, Rotating, Audible, Meter), `power` | `Signals::signal()`, `colour()`; `Load::demand()` |
+| 7 | `Indicator` | P (presenting information: lamps, beacons, buzzers, meters) | `lamp` | `colour: Option<IndicatorColour>`, `signal: SignalType` (Steady, Flashing, Rotating, Audible, Meter), `power` | `Signals::signal()`, `colour()`; `Load::demand()` |
 | 8 | `TerminalStrip` | X (connecting: DIN-rail terminals) | `terminal`, `terminalpe`, `term2…`, `term3…`, `termlnpe…`, `termsensor…`, `termdisc`, `termfuse` | levels (label, fuse rating), jumpers, accessories, PE part (§2.5) | `Connects::points()`, `jumpered(position)`, `Bom` lines per terminal type and accessory |
 | 9 | `Connector` | X (plugs, sockets, bulkheads) | `socket*`, `plug*`, `dsub*`, `m12*`, `rj45`, `usba`, `usbb`, `pinpair`, `pins`, `pinp` | `family`, `pins`, `pin_names`, `halves` (part per half), `mating`, ignored checks | `Connects::points()`, `mates_with(other)`, `pin_map()` |
 | 10 | `PlcRack` | K (processing signals): a PLC station | today's CPU and head-module cards | §3 | `Addressed::address_space()`, `modules(doc)`, `io_count(doc)` |
@@ -206,7 +206,7 @@ pub trait Load      { fn demand(&self, at: RatedVoltage) -> Option<Demand>; }
 pub trait Protects  { fn rated_current(&self) -> Option<Amps>; fn trips(&self, i: Amps, t: Seconds) -> Trip; fn protects(&self, c: &dyn Circuit) -> Verdict; }
 pub trait Switching { fn contacts(&self) -> &ContactSet; fn contact_table(&self) -> TablePosition; }
 pub trait Senses    { fn signal(&self) -> SignalKind; }
-pub trait Signals   { fn signal(&self) -> SignalType; fn colour(&self) -> Option<Colour>; }
+pub trait Signals   { fn signal(&self) -> SignalType; fn colour(&self) -> Option<IndicatorColour>; }
 pub trait Connects  { fn points(&self, d: &Device) -> Vec<PointKey>; }
 pub trait Addressed { fn address_block(&self, doc: &Document) -> Option<AddressBlock>; }
 pub trait Circuit   { fn load(&self) -> Option<Amps>; fn protected_by(&self) -> Option<DeviceId>;
@@ -315,7 +315,7 @@ pub struct Wire {
     pub order_fixed: bool,                       // the person reordered this net by hand
     pub wire_type: Option<StyleRef>,             // §4.4
     pub size: Option<WireSize>,                  // overrides the type's: Mm2 | Awg
-    pub colours: Option<Vec<Colour>>,            // overrides the type's
+    pub colours: Option<Vec<ConductorColour>>,           // overrides the type's
     pub number: Option<WireNumber>,              // typed numbering as today
     pub potential: Option<Text<24>>,
     pub rating: CircuitInputs, pub load: Option<Amps>, pub protected_by: Option<DeviceId>,
@@ -361,7 +361,7 @@ pub struct Cable {
     pub tag: Option<Tag>, pub tag_fixed: bool,
     pub cable_type: Option<StyleRef>,                  // a cable type (§8)
     pub type_text, pub manufacturer, pub part_number, pub description: Option<Text<64>>,
-    pub cores: Vec<Core { label: Text<16>, colours: Vec<Colour>, wire: Option<WireId>, unused: bool }>,
+    pub cores: Vec<Core { label: Text<16>, colours: Vec<ConductorColour>, wire: Option<WireId>, unused: bool }>,
     pub shield: Shield,
     pub length: Option<Metres>,
     pub ends: [CableEnd { location: Option<LocationId>, function: Option<FunctionId>, gland: Option<Text<16>> }; 2],
@@ -373,20 +373,62 @@ pub struct Cable {
 
 ### 4.6 Colours and wire types
 
-- `Colour` is an enum of the IEC 60757 base colours (`Bk`, `Bn`, `Rd`, `Og`, `Ye`, `Gn`, `Bu`,
-  `Vt`, `Gy`, `Wh`, `Pk`, `Gd`, `Tq`, `Sr`). How it is shown is a project setting extending today's
-  `wiring.colour_style`: `iec` (BN), `three-letter` (BRN), `name` (Brown). Stored words are the IEC
-  codes.
-- A wire or core holds an **ordered list**: green/yellow is `[Gn, Ye]`, never a colour of its own.
+**One shared primitive for wires and cable cores: `ConductorColour`** (owner, 2026-11-17).
+
+```rust
+// ecad-model/src/colour.rs
+/// An IEC 60757 base colour of a conductor. The variant is the identity; its forms are data.
+pub enum ConductorColour { Black, Brown, Red, Orange, Yellow, Green, Blue, Violet, Grey, White, Pink, Gold, Turquoise, Silver }
+pub struct ColourForms { pub name: &'static str, pub code2: &'static str, pub code3: &'static str, pub hex: Rgb }
+impl ConductorColour {
+    pub fn forms(self) -> &'static ColourForms;          // read once from the built-in TOML
+    pub fn shown(self, words: ColourWords) -> &'static str;
+}
+pub enum ColourWords { Code2, Code3, Name }              // the project setting (today's `wiring.colour_style`)
+```
+
+- **Every form is data**, in `ecad-model/defaults/colours.toml` (embedded, 066's pattern), one table
+  per colour, our own data:
+
+  | Colour | Name | 2-letter | 3-letter | Display hex |
+  | --- | --- | --- | --- | --- |
+  | Black | Black | BK | BLK | `#000000` |
+  | Brown | Brown | BN | BRN | `#8B4513` |
+  | Red | Red | RD | RED | `#E00000` |
+  | Orange | Orange | OG | ORG | `#FF8C00` |
+  | Yellow | Yellow | YE | YEL | `#FFD700` |
+  | Green | Green | GN | GRN | `#008000` |
+  | Blue | Blue | BU | BLU | `#0000FF` |
+  | Violet | Violet | VT | VIO | `#8A2BE2` |
+  | Grey | Grey | GY | GRY | `#808080` |
+  | White | White | WH | WHT | `#FFFFFF` |
+  | Pink | Pink | PK | PNK | `#FF69B4` |
+  | Gold | Gold | GD | GLD | `#D4AF37` |
+  | Turquoise | Turquoise | TQ | TRQ | `#40E0D0` |
+  | Silver | Silver | SR | SLV | `#C0C0C0` |
+
+  The 2-letter codes are IEC 60757's; the 3-letter codes, names and hex values are our choice. The
+  hex is for display only (swatches in the wire and cable panels, outlined so black and white show
+  on either theme); drawings print the words, not the colour. A test checks every variant has one
+  table and every table one variant, and that the codes are unique.
+- **Stored word: the 2-letter code** (`BU`); reading also accepts the 3-letter code and the name,
+  any case, so a person can type any form. The `wiring.colour_style` setting (`code2`, `code3`,
+  `name`; today `iec` and `three-letter`) chooses which form drawings, labels and reports show.
+- A wire's or a core's colour is an **ordered list** of base colours: green/yellow is
+  `[Green, Yellow]`, written `GN/YE`, never a colour of its own. Wire types and cable types use the
+  same list.
+- An **indicator's** colour (a lamp, IEC 60073: red, yellow, green, blue, white) is a different
+  thing and has its own small enum, `IndicatorColour`.
 - **Wire types are a library with IDs**: today's `wire` style catalogue (050b's wire categories),
   renamed **wire types** and typed in lane G. The standard layer is the company library, the
   project layer the project's own; the built-ins (L, L1–L3, N, PE, 24 V, 0 V, signal, analogue,
   plus 230 V L/N) are editable defaults. Each has potential, size, colours, insulation (new),
   part number, manufacturer, description, allowance, rating data, line look. A wire refers to one
   and may override size and colours.
-- **Cable types** (`cable` catalogue) use the same `Colour` list for their cores, as named core
-  colour schemes. Their default schemes are written as our own data in the defaults TOML, from the
-  owner's private reference (§12.4).
+- **Cable types** (`cable` catalogue) use the same `ConductorColour` lists for their cores, as named
+  core colour schemes (a scheme gives each core count its ordered list of core colours, or core
+  numbers, which are labels). The default schemes are written as our own data in the defaults
+  TOML; the owner's private reference informs the schemes and checks the codes (§12.4).
 
 ---
 
@@ -534,7 +576,7 @@ read-only, the file is kept. Words in display values: `words_check` on open,
 
 **070.** Its params structs take the types: `Degrees`, `StyleCatalogue`, `SymbolKey`, `Side`,
 `TextKind`, `Shown`, `Mm`, `Metres`, `Text<N>` for every text input, `LocationId`/`FunctionId` (or
-the code, resolved to the id), `Vec<Colour>`. Commands build `Modify*` ops. `setprop`'s key stays a
+the code, resolved to the id), `Vec<ConductorColour>`. Commands build `Modify*` ops. `setprop`'s key stays a
 string and routes moved keys to fields.
 
 **R9 (design 064).** `Effect::Device` (`Create`/`Delete`/`ModifyDevice`; a type change is a
@@ -571,7 +613,7 @@ field: the inspector's Raw and Readable views show it (A15).
 | F32 | **Ordered wires**: `Wire { net_order, ends: [TerminalId; 2], order_fixed, … }` between two connection points of one net; `AttachEnd` goes (ends are set by `CreateWire`/`ModifyWire`) | record shape; one op removed | F |
 | F33 | `Device.location_fixed`, `function_fixed`; `Location`/`Function` entries with code, tag and descriptions; devices, pages, boxes and cable ends refer by `LocationId`/`FunctionId` | record shape | E (lists), B (device fields), F (boxes) |
 | F34 | `Text<N>` / `LongText<N>` for every free-text field: a file with a hidden or bidi character, or an over-long text, is a read error | validation on read | A1 (type), each lane for its fields |
-| F35 | `Colour` enum; wire, core and indicator colours as `Vec<Colour>` (`GNYE` → `[GN, YE]`); `wiring.colour_style` gains `name` | **words change** (`GNYE` becomes a two-colour list) | D, G |
+| F35 | `ConductorColour` (§4.6), one primitive for wires and cable cores, with every form (name, 2-letter, 3-letter, display hex) as built-in data in `ecad-model/defaults/colours.toml`; wire and core colours as ordered lists stored by 2-letter code (`GNYE` → `GN/YE`); `wiring.colour_style` words become `code2`, `code3`, `name` (were `iec`, `three-letter`); an indicator's colour is a separate `IndicatorColour` | **words change** (`GNYE` becomes a two-colour list; the setting's words) and built-in data | A1 (type and data), D, G |
 | F36 | `Wire.wire_type` (today's `wire.category`), `size`, `colours` as overrides; wire types gain `insulation`; the `wire` catalogue's user-facing name becomes **wire types** | record shape, one new field | D, G |
 | F37 | Default cable-type core colour schemes and the 230 V L/N wire types in the defaults TOML | built-in data | G |
 
@@ -583,7 +625,7 @@ field: the inspector's Raw and Readable views show it (A15).
 
 | Lane | Content | Needs first | Tester |
 | --- | --- | --- | --- |
-| **A1** Foundation types | `words`, `units`, `Text<N>`, `Colour`, `keys` skeleton, `Word` + strum, `StyleCatalogue`, `Side`, page places, the strict read path, guards as ratchets | nothing: additive, **starts now**; its open-report step after 070's ecad-file batch | yes |
+| **A1** Foundation types | `words`, `units`, `Text<N>`, `ConductorColour` with its forms data, `keys` skeleton, `Word` + strum, `StyleCatalogue`, `Side`, page places, the strict read path, guards as ratchets | nothing: additive, **starts now**; its open-report step after 070's ecad-file batch | yes |
 | **A2** Foundation adoption | callers onto words, keys, units, `Choice<E>`, `Kind::Flag`, typed `SetStyle`, `TextKind`/`Shown`, `StarterKey`, `SymbolKey`, `cable_prefix`, degrees, `Radians` | A1, **070 and 073** | no |
 | **B** Device | device struct and fields, 12 groups (minus PLC), traits, `PointKey`, roles, symbol type, part lines, user fields, device links, predicates gone | A2 | yes |
 | **C** PLC | station, modules, channels | B step 1 merged | yes |
@@ -684,8 +726,8 @@ other tools' files; R7 and R9 themselves; CADCraft.
 Everything in Part I; device groups justified by fields and methods; PLC as station (CPU or
 Coupler head), modules, channels; wires as an ordered list per net with dots and T indicators as
 drawing aids; location and function lists with `fixed`; `Bom`, `Schematic`, `Layout` traits; loose
-parts on the project; styles in lane G now; validated text everywhere; colours as ordered lists of
-IEC base colours with a display setting; wire types and cable types as libraries; the lane order.
+parts on the project; styles in lane G now; validated text everywhere; colours as ordered lists of one shared
+`ConductorColour` (wires and cores; every form as data) with a display setting; wire types and cable types as libraries; the lane order.
 
 ---
 

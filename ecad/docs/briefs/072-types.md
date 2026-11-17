@@ -34,7 +34,7 @@ are left at 0.3.0 except display choices.
 
 | Lane | Content (design §) | Needs first | Branch | Tester |
 | --- | --- | --- | --- | --- |
-| **A1** Foundation types | §9: `words`, `units`, `Text<N>`/`LongText<N>`, `Colour`, `keys` skeleton, `Word` + strum, `StyleCatalogue`, `Side`, page places, the strict read path; guards G2, G3, G8, G10, G13, G14 as ratchets | nothing (additive); the open-report step after 070's ecad-file batch | `feature/types-foundation` | yes |
+| **A1** Foundation types | §9: `words`, `units`, `Text<N>`/`LongText<N>`, `ConductorColour` and its forms data (`colours.toml`), `keys` skeleton, `Word` + strum, `StyleCatalogue`, `Side`, page places, the strict read path; guards G2, G3, G8, G10, G13, G14 as ratchets | nothing (additive); the open-report step after 070's ecad-file batch | `feature/types-foundation` | yes |
 | **A2** Foundation adoption | §9: every caller onto words, keys, units, `Choice<E>`, `Kind::Flag` (F4), typed `SetStyle` (F1, F2), `TextKind`/`Shown`, `StarterKey`, `SymbolKey`, `cable_prefix` (F5), degrees (F6), `Radians` (F7) | A1, **070 and 073 landed** | `feature/types-adopt` | no |
 | **B** Device | §2, §7: device struct and fields (with `location_fixed`/`function_fixed`), the groups except PLC, traits, `PointKey`, roles (F3′), symbol type and defaults, part lines, user fields, device links, predicates deleted | A2 | `feature/types-device` | yes |
 | **C** PLC | §3: stations with a CPU or coupler head, modules, channels (F19′) | B step 1 merged | `feature/types-plc` | yes |
@@ -56,7 +56,7 @@ Each step is one or more commits `072<lane> <step>: …`, each green: builds, cl
 the crates it touched pass, every guard at or under its count. Push after each green commit.
 
 **A1.** (1) strum, `words.rs` (flag, digits, uint, the hidden-character set), `Text<N>` and
-`LongText<N>`, `units.rs`, `Colour` (A1). (2) `keys.rs` (A3). (3) `Word` and its macro;
+`LongText<N>`, `units.rs`, `ConductorColour` with `colours.toml` (every form: name, 2-letter, 3-letter, display hex; design §4.6) (A1). (2) `keys.rs` (A3). (3) `Word` and its macro;
 `StyleCatalogue`, `Side`, page places (A2). (4) After 070's ecad-file batch: the strict read path
 (A4, A15). (5) Guards as ratchets at exact counts (in the commit message).
 
@@ -76,7 +76,7 @@ device links. (6) Predicates deleted after the oracle A7 (recorded since step 1)
 stations with a CPU head, head modules stations with a coupler (A11). (2) Address blocks, I/O list
 and station overview as methods. (3) `PointKey::Channel`; `body_type`, `of_body`, `is_rack` go.
 
-**D.** (1) `Wire` fields and `ModifyWire`, colours as `Vec<Colour>` (F35). (2) `Cable`, cores folding
+**D.** (1) `Wire` fields and `ModifyWire`, colours as ordered `ConductorColour` lists (F35). (2) `Cable`, cores folding
 members, `ModifyCable`. (3) `Circuit`, rating and volt-drop methods; checks call them (A10). (4)
 After G's wire-type step: `wire_type` with size and colour overrides (F36).
 
@@ -97,7 +97,7 @@ cable types (default core colour schemes, F37), page types, frames, locations, r
 
 ## The private colour reference (lane G)
 
-The default core colour schemes come from a third-party reference in the owner's private folder;
+The default core colour schemes, and a check of the 2-letter codes, come from a third-party reference in the owner's private folder;
 the overseer gives the worker its path. **Never copy it into the repo, quote it, or name it or its
 tables in any committed file.** Write the schemes as our own data: the colour sequences as facts in
 our TOML, in our own words, with no layout or text from the source.
