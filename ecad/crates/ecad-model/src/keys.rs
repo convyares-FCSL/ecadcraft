@@ -68,7 +68,7 @@ crate::word_enum! {
         Page,
         Front,
         Rating,
-        /// A device's or cable's identity: its tag and whether the tag is fixed.
+        /// A device's, wire's or cable's identity: its tag or wire number and whether it is fixed.
         Identity,
         /// Tag numbering's project state: provisional tags, high-water resets.
         Numbering,
@@ -220,6 +220,10 @@ pub const TAG: PropKey = PropKey(crate::tag::TAG_KEY);
 pub const TAG_FIXED: PropKey = PropKey(crate::tag::FIXED_KEY);
 /// Whether the project gives provisional tags (yes/no).
 pub const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::tag::PROVISIONAL_SETTING);
+/// A wire's number.
+pub const WIRE_NUMBER: PropKey = PropKey(crate::connectivity::WIRE_NUMBER);
+/// Whether a wire's number is fixed (yes/no).
+pub const WIRE_NUMBER_FIXED: PropKey = PropKey(crate::connectivity::WIRE_NUMBER_FIXED);
 /// A page's number.
 pub const NUMBER: PropKey = PropKey(crate::book::NUMBER_KEY);
 /// A page's folder.
@@ -241,6 +245,8 @@ pub const GENERATED: PropKey = PropKey(crate::sheet::GENERATED_KEY);
 pub const KEYS: &[KeySpec] = &[
     KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
     KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
+    KeySpec { key: WIRE_NUMBER, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Ruled },
+    KeySpec { key: WIRE_NUMBER_FIXED, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
     KeySpec { key: NUMBER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
     KeySpec { key: FOLDER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },

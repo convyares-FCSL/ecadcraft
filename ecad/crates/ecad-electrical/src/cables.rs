@@ -184,18 +184,12 @@ pub const MAX_WORDS: usize = 400;
 
 /// `t` cut to [`MAX_ECHO`] characters, with `…` when cut, and no hidden characters.
 pub fn clip(t: &str) -> String {
-    let shown: String = t.chars().filter(|c| !is_hidden(*c)).take(MAX_ECHO).collect();
-    if t.chars().filter(|c| !is_hidden(*c)).nth(MAX_ECHO).is_some() { format!("{shown}\u{2026}") } else { shown }
+    ecad_model::text::clip(t, MAX_ECHO)
 }
 
-/// A character a value never holds (tester 059a, rule 7): control characters, and the invisible
-/// format characters that reorder or hide text (bidi controls, zero-width and joiner characters,
-/// the byte order mark, soft hyphen).
-pub fn is_hidden(c: char) -> bool {
-    c.is_control()
-        || matches!(c as u32,
-            0x00AD | 0x061C | 0x180E | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF | 0xFFF9..=0xFFFB)
-}
+/// A character a value never holds (tester 059a, rule 7): the one rule in `ecad_model::words`.
+/// Kept for the cable commands until they take `Text<N>` (design 072 §10).
+pub use ecad_model::words::is_hidden;
 
 /// Shortest and longest cable length stored, in metres.
 pub const MIN_LENGTH: f64 = 0.1;
@@ -213,7 +207,7 @@ pub fn length_of(text: &str) -> Option<f64> {
 }
 
 fn text_ok(t: &str, max: usize) -> bool {
-    !t.trim().is_empty() && t.chars().count() <= max && !t.chars().any(is_hidden)
+    ecad_model::text::check(t, max).is_ok()
 }
 
 /// A stored value of cable `k` that ECAD reads: its property for `field`, when within bounds.

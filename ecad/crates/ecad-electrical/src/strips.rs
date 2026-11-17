@@ -427,7 +427,7 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
         Some((i, c @ ('G' | 'X'))) => (upper.get(..i).unwrap_or(""), Some(c)),
         _ => (upper.as_str(), None),
     };
-    if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+    if ecad_model::words::is_digits(digits) {
         let n: usize = digits.parse().map_err(|_| format!("A cable offers at most {MAX_CORES} cores."))?;
         if n == 0 {
             return Err("A cable offers at least 1 core. Write 7, 7G or 5X; empty clears it.".into());
@@ -469,7 +469,7 @@ pub fn cores_value(value: Option<&str>) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let cores = parse_cores(v)?;
     let upper = v.to_ascii_uppercase();
-    if upper.bytes().all(|b| b.is_ascii_digit() || b == b'G' || b == b'X') {
+    if upper.bytes().all(|b| matches!(b, b'0'..=b'9' | b'G' | b'X')) {
         return Ok(Some(upper));
     }
     if !v.contains(',') && v.chars().any(|c| c.is_ascii_digit()) {

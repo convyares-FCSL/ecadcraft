@@ -451,7 +451,7 @@ pub fn write_ops(doc: &Document, net: &NetData, number: &str, fixed: bool) -> Ve
             ops.push(Op::SetProperty { object, key: WIRE_NUMBER.into(), before: cur.cloned(), after: Some(number.to_string()) });
         }
         let flag = cond.properties.get(WIRE_NUMBER_FIXED);
-        let want = fixed.then(|| "yes".to_string());
+        let want = fixed.then(|| crate::words::flag_word(true).to_string());
         if flag != want.as_ref() {
             ops.push(Op::SetProperty { object, key: WIRE_NUMBER_FIXED.into(), before: flag.cloned(), after: want });
         }

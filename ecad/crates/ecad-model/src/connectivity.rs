@@ -38,6 +38,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::doc::{Document, Properties};
 use crate::id::{ComponentId, ConductorId, TerminalId};
+use crate::keys::PropsExt;
 use crate::op::{ObjectRef, Op};
 
 /// Conductor property: the wire number its net carries (design 022 §5.1).
@@ -105,8 +106,8 @@ pub(crate) struct Contribution {
 impl Contribution {
     pub(crate) fn of(props: &Properties) -> Self {
         Self {
-            number: props.get(WIRE_NUMBER).cloned(),
-            fixed: props.get(WIRE_NUMBER_FIXED).is_some_and(|v| v == "yes"),
+            number: props.text(crate::keys::WIRE_NUMBER).map(str::to_string),
+            fixed: props.flag(crate::keys::WIRE_NUMBER_FIXED) == Some(true),
             potential: props.get(POTENTIAL).cloned(),
         }
     }

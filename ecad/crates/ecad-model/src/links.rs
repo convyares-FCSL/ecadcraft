@@ -53,7 +53,7 @@ fn level_text(k: &str) -> Option<(u32, Option<char>)> {
         Some(c @ ('i' | 'o')) => (k.get(..k.len() - 1)?, Some(c)),
         _ => (k, None),
     };
-    if digits.is_empty() || digits.len() > 2 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if digits.len() > 2 || !crate::words::is_digits(digits) {
         return None;
     }
     let n: u32 = digits.parse().ok()?;
@@ -69,7 +69,7 @@ pub struct BadLevel;
 pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), BadLevel> {
     let Some((pos, tail)) = end.rsplit_once('.') else { return Ok((end, None)) };
     let core = tail.strip_suffix(['i', 'o']).unwrap_or(tail);
-    if pos.is_empty() || core.is_empty() || !core.bytes().all(|b| b.is_ascii_digit()) {
+    if pos.is_empty() || !crate::words::is_digits(core) {
         return Ok((end, None));
     }
     level_text(tail).map(|l| (pos, Some(l))).ok_or(BadLevel)
@@ -109,10 +109,7 @@ fn cmp_labels(a: &str, b: &str) -> Ordering {
 /// The link number of `key` when it is a link key (`link.3` → 3).
 pub fn link_number(key: &str) -> Option<u32> {
     let n = key.strip_prefix(PREFIX)?;
-    if n.is_empty() || n.len() > 3 || !n.bytes().all(|b| b.is_ascii_digit()) || n.starts_with('0') {
-        return None;
-    }
-    n.parse::<u32>().ok().filter(|n| (1..=MAX_LINK).contains(n))
+    crate::words::uint_canonical(n, MAX_LINK).filter(|n| *n >= 1)
 }
 
 /// The link key of number `n`.

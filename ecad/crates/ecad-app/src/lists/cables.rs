@@ -481,7 +481,7 @@ impl CablesView {
             .map(|x| {
                 x.properties
                     .iter()
-                    .filter(|(key, v)| key.starts_with(cable::UNUSED_PREFIX) && v.trim().eq_ignore_ascii_case("yes"))
+                    .filter(|(key, v)| key.starts_with(cable::UNUSED_PREFIX) && ecad_model::words::flag(v) == Some(true))
                     .filter_map(|(key, _)| key.strip_prefix(cable::UNUSED_PREFIX).map(str::to_string))
                     .collect()
             })

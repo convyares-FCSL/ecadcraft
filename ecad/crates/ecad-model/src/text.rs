@@ -49,6 +49,23 @@ fn checked(text: &str, max: usize, lines: bool) -> Result<&str, TextError> {
     Ok(t)
 }
 
+/// Whether `text` is one line of 1 to `max` characters (after trimming) with no hidden character:
+/// the rule of [`Text`] for a bound known only at run time.
+///
+/// # Errors
+/// The [`TextError`] that `Text::<max>::new` would give.
+pub fn check(text: &str, max: usize) -> Result<(), TextError> {
+    checked(text, max, false).map(|_| ())
+}
+
+/// `text` without its hidden characters, cut to `max` characters with `…` when cut: a value
+/// echoed in a message.
+pub fn clip(text: &str, max: usize) -> String {
+    let mut visible = text.chars().filter(|c| !is_hidden(*c));
+    let shown: String = visible.by_ref().take(max).collect();
+    if visible.next().is_some() { format!("{shown}\u{2026}") } else { shown }
+}
+
 /// Declares one validated text type.
 macro_rules! text_type {
     ($(#[$doc:meta])* $name:ident, $lines:literal) => {

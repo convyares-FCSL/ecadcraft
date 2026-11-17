@@ -86,10 +86,9 @@ fn is_shield(s: &str) -> bool {
 }
 
 /// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
-/// zero-width) characters ([`crate::cables::is_hidden`], tester 059 f4).
+/// zero-width) characters (`ecad_model::text::check`, tester 059 f4).
 pub fn is_gland(s: &str) -> bool {
-    let t = s.trim();
-    !t.is_empty() && t.chars().count() <= MAX_GLAND_CHARS && !t.chars().any(crate::cables::is_hidden)
+    ecad_model::text::check(s, MAX_GLAND_CHARS).is_ok()
 }
 
 /// An outer diameter: a number of millimetres from 1 to 200.
@@ -162,7 +161,7 @@ pub fn unused_key(label: &str) -> String {
 
 /// Whether core `label` of cable `k` is ticked **Not used**.
 pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
-    doc.cables.get(&k).and_then(|c| c.properties.get(&unused_key(label))).is_some_and(|v| v.trim().eq_ignore_ascii_case("yes"))
+    doc.cables.get(&k).and_then(|c| c.properties.get(&unused_key(label))).and_then(|v| ecad_model::words::flag(v)) == Some(true)
 }
 
 /// Most bad `unused.` keys a cable's Checks rows name (a hostile file may hold many).
@@ -202,7 +201,7 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
 /// In plain words, bounded: the core is not the cable's, or the value is not yes or no.
 pub fn unused_value(doc: &Document, k: CableId, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
     let label = key.strip_prefix(UNUSED_PREFIX).unwrap_or_default();
-    let clearing = value.map(str::trim).is_none_or(|v| v.is_empty() || v.eq_ignore_ascii_case("no"));
+    let clearing = value.map(str::trim).is_none_or(|v| v.is_empty() || ecad_model::words::flag(v) == Some(false));
     if clearing && doc.cables.get(&k).is_some_and(|c| c.properties.contains_key(key)) {
         return Ok(None);
     }
@@ -222,7 +221,7 @@ pub fn unused_value(doc: &Document, k: CableId, key: &str, value: Option<&str>) 
         return Ok(None);
     }
     match value.map(str::trim) {
-        Some(v) if v.eq_ignore_ascii_case("yes") => Ok(Some("yes".into())),
+        Some(v) if ecad_model::words::flag(v) == Some(true) => Ok(Some(ecad_model::words::flag_word(true).into())),
         _ => Err("Not used is yes or no (or null to clear it).".into()),
     }
 }
@@ -244,7 +243,7 @@ pub fn bad_unused(doc: &Document, k: CableId) -> (Vec<(String, String)>, usize) 
             && label.chars().nth(MAX_LABEL_CHARS).is_none()
             && !label.chars().any(char::is_control)
             && cores.iter().any(|c| c == label)
-            && (v.trim().eq_ignore_ascii_case("yes") || v.trim().eq_ignore_ascii_case("no"));
+            && [ecad_model::words::flag_word(true), ecad_model::words::flag_word(false)].contains(&v.as_str());
         if !ok {
             n += 1;
             if out.len() < MAX_BAD_ROWS {
