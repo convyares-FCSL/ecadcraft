@@ -63,9 +63,6 @@ const UNTYPED: &[&str] = &[
     "connector",
     "pinlabel",
     "contcaption",
-    "conflicts",
-    "setlocation",
-    "setfunction",
     "folderprops",
     "renumberpages",
     "deletepage",
@@ -1131,4 +1128,68 @@ fn the_typed_bom_commands_still_work() {
     assert_eq!(same["changed"], json!(false), "{same}");
     let gone = h.run("bomitem", json!({"item": id, "delete": true})).unwrap_or_else(|e| json!(e));
     assert!(gone["message"].as_str().is_some_and(|m| m.starts_with("Deleted item Trunking")), "{gone}");
+}
+
+/// Input refusals of the location commands: one wording.
+#[test]
+fn the_location_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("setlocation", json!({"component": "1"}), "`value` (text, or null) is required"),
+        ("setlocation", json!({"component": "1", "value": 5}), "`value` must be text, or null"),
+        ("setlocation", json!({"components": "1", "value": null}), "`components` must be a list of hex ids, or null"),
+        ("setlocation", json!({"component": "1", "value": null, "type": 3}), "`type` must be text, or null"),
+        ("setfunction", json!({"component": "1", "value": "=F1", "aspect": "location"}), "`aspect` is not a parameter of this command; it takes "),
+        ("conflicts", json!({"answer": 1}), "`answer` must be text, or null"),
+        ("conflicts", json!({"components": ["zz"]}), "`components` must be a list of hex ids, or null"),
+    ];
+    let mut h = H::new(7045);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// Rule refusals of the location commands keep their words.
+#[test]
+fn the_location_commands_keep_their_rule_words() {
+    let mut h = H::new(7046);
+    let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
+    let rows: &[(&str, Value, &str)] = &[
+        ("setlocation", json!({"value": "+CP1"}), "`component` or `components` (hex ids) is required"),
+        ("setlocation", json!({"component": k, "value": "+CP1", "aspect": "place"}), "`aspect` is \"location\" or \"function\""),
+        ("setlocation", json!({"component": k, "value": "=F1", "aspect": "function", "type": "plug"}), "A function has no overrides"),
+        ("setlocation", json!({"component": k, "value": "+CP1", "type": "head"}), "The head is the device; set the device's location."),
+        ("setlocation", json!({"component": "ab", "value": "+CP1"}), "no such device"),
+        ("setfunction", json!({"component": k, "value": "=F1", "type": "plug"}), "A function has no overrides: a device's parts share its function."),
+        ("conflicts", json!({"answer": "maybe"}), "`answer` is \"move\", \"half\" or \"leave\""),
+        ("conflicts", json!({"aspect": "x"}), "`aspect` is \"location\" or \"function\""),
+        ("conflicts", json!({"answer": "half"}), "No connector half is waiting: Half answers a half or pin just placed."),
+    ];
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed location commands still work, and answer as before.
+#[test]
+fn the_typed_location_commands_still_work() {
+    let mut h = H::new(7047);
+    let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
+    let set = h.run("setlocation", json!({"components": [k, k], "value": "+CP1"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((set["changed"].clone(), set["devices"].clone(), set["location"].clone()), (json!(true), json!(1), json!("+CP1")), "{set}");
+    let f = h.run("setfunction", json!({"component": k, "value": "=F1"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(f["function"], json!("=F1"), "{f}");
+    let o = h.run("setlocation", json!({"component": k, "value": "+X1", "type": " Plug "})).unwrap_or_else(|e| json!(e));
+    assert!(o.is_object(), "{o}");
+    let clear = h.run("setlocation", json!({"component": k, "value": null, "aspect": "function"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((clear["changed"].clone(), clear["function"].clone()), (json!(true), Value::Null), "{clear}");
+    let list = h.run("conflicts", json!({})).unwrap_or_else(|e| json!(e));
+    assert!(list["conflicts"].is_object() || list["conflicts"].is_array(), "{list}");
+    let leave = h.run("conflicts", json!({"answer": " LEAVE "})).unwrap_or_else(|e| json!(e));
+    assert_eq!(leave["changed"], json!(false), "{leave}");
+    let mv = h.run("conflicts", json!({"answer": "move", "aspect": "location"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(mv["changed"], json!(false), "{mv}");
+    let sp = h.run("setprop", json!({"component": k, "key": "location", "value": "+CP2"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(sp["location"], json!("+CP2"), "{sp}");
 }
