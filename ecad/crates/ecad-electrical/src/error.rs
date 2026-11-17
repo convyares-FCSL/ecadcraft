@@ -104,6 +104,10 @@ pub mod msg {
     pub const NO_SUCH_FOLDER: &str = "no such folder";
     /// A page the input names that the project does not have (pages, folders and revisions).
     pub const NO_SUCH_PAGE: &str = "no such page";
+    /// A component the input names that the project does not have (continuations, cross-references).
+    pub const NO_SUCH_COMPONENT: &str = "no such component";
+    /// A cable the input names that the project does not have (cable references, cross-references).
+    pub const NO_SUCH_CABLE: &str = "no such cable";
     /// A folder name that does not read.
     pub const FOLDER_NAME: &str = "A folder name is 1 to 100 characters, with no control characters.";
     /// A page title that does not read.

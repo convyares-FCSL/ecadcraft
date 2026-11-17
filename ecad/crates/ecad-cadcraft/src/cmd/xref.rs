@@ -78,7 +78,7 @@ impl Command for XrefsParams {
             Some(n) => usize::try_from(n).map_err(|_| crate::cmd::err("`after` must be a number"))?,
         };
         let (component, cable, page) = (self.component, self.cable, self.page);
-        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), &p.xref, component, cable, page, limit, after).map_err(CmdError::refused))
+        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), &p.xref, component, cable, page, limit, after))
     }
 }
 

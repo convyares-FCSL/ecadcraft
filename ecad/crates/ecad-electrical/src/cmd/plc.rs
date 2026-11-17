@@ -125,7 +125,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
         Some(d) => d,
         None => {
             let d: ecad_model::DefinitionId = ids.fresh();
-            ops.push(Op::EmbedDefinition { id: d, definition: new_starter.definition().map_err(CmdError::refused)?.clone() });
+            ops.push(Op::EmbedDefinition { id: d, definition: new_starter.definition()?.clone() });
             d
         }
     };
@@ -418,7 +418,7 @@ pub fn plan_channels(
     };
     let mut placed: Vec<u32> = Vec::new();
     let mut all_pins: Vec<String> = Vec::new();
-    let def_terms = &starter.definition().map_err(CmdError::refused)?.terminals;
+    let def_terms = &starter.definition()?.terminals;
     const NO_ROLE: &str = "The channel symbol has no point for that role.";
     const NO_POINT: &str = "The channel symbol has no point.";
     for l in &landings {
@@ -777,7 +777,7 @@ pub fn plan_page_contents(
         let per_row = (((r - l - LEFT_MM) / w).floor() as usize).max(1);
         let roles = roles_of(starter);
         let mut used = crate::devices::labels_of(doc, card);
-        let local = starter.definition().map_err(CmdError::refused)?.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
+        let local = starter.definition()?.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
         for (j, i) in pc.missing.iter().enumerate() {
             let col = j % per_row;
             if j > 0 && col == 0 {
@@ -794,7 +794,7 @@ pub fn plan_page_contents(
     }
     if pc.body {
         let starter = crate::symbols::by_key(ty.body()).ok_or(CmdError::refused("No body symbol for that type."))?;
-        let def = starter.definition().map_err(CmdError::refused)?;
+        let def = starter.definition()?;
         let (bw, _) = starter.size();
         // Its points on the line of the cells' points (it is the run's power end).
         let local = def.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
@@ -808,8 +808,7 @@ pub fn plan_page_contents(
             None => Pt::new(x * k, y * k),
         };
         let pl = Placement { origin, rotation: rot, mirror: false, scale: 1.0 };
-        let plan =
-            crate::devices::plan_place(ledger, ids, high, id, style, starter, pl, crate::devices::Target::Join(card)).map_err(CmdError::refused)?;
+        let plan = crate::devices::plan_place(ledger, ids, high, id, style, starter, pl, crate::devices::Target::Join(card))?;
         ops.extend(plan.ops);
     }
     Ok(())

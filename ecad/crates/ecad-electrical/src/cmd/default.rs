@@ -283,7 +283,7 @@ pub fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chos
     if let (Target::Page(pg), Some(v)) = (target, value.as_deref())
         && entry.key == defaults::pages::PAGE_TYPE.key
     {
-        crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg)).map_err(CmdError::refused)?;
+        crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg))?;
     }
     ops(doc, entry, level, target, value)
 }

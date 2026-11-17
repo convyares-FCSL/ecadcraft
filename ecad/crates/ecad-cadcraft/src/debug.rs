@@ -535,7 +535,7 @@ pub fn verify_index(doc: &Document, kept: &crate::xref::RefIndex, head: u64) -> 
             ok: true,
             lines: vec![format!("{members} members in {groups} groups, {edges} edges: the same as a rebuild.")],
         },
-        Err(e) => Check { what: "reference index", at_seq: head, ok: false, lines: vec![e] },
+        Err(e) => Check { what: "reference index", at_seq: head, ok: false, lines: vec![e.to_string()] },
     }
 }
 

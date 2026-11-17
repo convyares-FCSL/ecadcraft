@@ -681,7 +681,7 @@ fn unit_value(qty: Option<&str>, value: Option<&str>) -> Result<Option<String>, 
 fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, String> {
     let key = f.word();
     match f {
-        Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value),
+        Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value).map_err(String::from),
         Field::ArticleNumber => plain(key, value, MAX_ARTICLE_CHARS),
         Field::Kit => plain(key, value, MAX_KIT_CHARS),
         Field::Qty => match value.map(str::trim).filter(|v| !v.is_empty()) {
@@ -759,7 +759,7 @@ pub fn item_value(doc: &Document, key: &str, value: Option<&str>, metres: bool, 
             Some(v) => parse_qty(v, metres).map(|_| Some(v.to_string())),
         },
         ARTICLE_KEY => plain(key, value, MAX_ARTICLE_CHARS),
-        _ => crate::devices::property_value(doc, key, value),
+        _ => crate::devices::property_value(doc, key, value).map_err(String::from),
     }
 }
 
