@@ -290,7 +290,7 @@ pub fn plan_address(doc: &Document, input: &AddressInput) -> Result<AddressPlan,
         let Some(v) = value else { continue };
         let value = word(v);
         if let Some(x) = &value
-            && !(x.bytes().all(|b| b.is_ascii_digit()) && x.len() <= 5 && x.parse::<u32>().is_ok_and(|n| n <= max && (key == "start" || n >= 1)))
+            && !(ecad_model::words::is_digits(x) && x.len() <= 5 && x.parse::<u32>().is_ok_and(|n| n <= max && (key == "start" || n >= 1)))
         {
             return Err(CmdError::refused(format!("`{key}` is a whole number of bytes from {} to {max}.", u32::from(key == "size"))));
         }

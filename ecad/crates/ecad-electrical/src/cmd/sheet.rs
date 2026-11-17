@@ -624,7 +624,7 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
         return Ok(());
     }
     let n = key.chars().count();
-    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')) {
         return Err(CmdError::refused("A property name is 1 to 40 characters a-z, 0-9 or _."));
     }
     Ok(())
