@@ -19,7 +19,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::err;
-use crate::cmd::input::{Command, Typed, lenient, nullable};
+use crate::cmd::input::{Command, Typed, nullable};
 use crate::cmd::{on_any_page, on_project};
 use crate::designations::{self, Aspect};
 
@@ -213,8 +213,7 @@ pub(crate) struct RemoveParams {
     #[serde(default)]
     code: Option<String>,
     /// Remove every entry nothing uses.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     unused: Option<bool>,
 }
 

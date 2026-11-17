@@ -3,8 +3,8 @@
 //! Each command has a `#[derive(Deserialize, JsonSchema)] #[serde(deny_unknown_fields)]` struct
 //! that implements [`Command`]; [`typed`] is its run function. Fields are ordinary types: typed IDs
 //! read their hex form themselves, [`Point`] reads `[x, y]`, [`Bounded`] a list of bounded length,
-//! [`nullable`] tells `null` from absent and [`lenient`] keeps the few legacy switches that ignored
-//! a wrong type.
+//! and [`nullable`] tells `null` from absent. Input is strict: a value of the wrong kind is
+//! refused, never ignored.
 //!
 //! A parameter that does not read is refused in one uniform wording, built from its name and the
 //! kind its schema gives ([`parse`]): "`conductor` (hex id) is required", "`at` must be a point
@@ -295,14 +295,6 @@ impl<T: JsonSchema> JsonSchema for OrNull<T> {
 /// A value that is not a `T`.
 pub(crate) fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<Option<T>>, D::Error> {
     Option::<T>::deserialize(d).map(Some)
-}
-
-/// `deserialize_with` for a legacy switch that ignored anything but `true` or `false`.
-///
-/// # Errors
-/// None: anything else reads as not given.
-pub(crate) fn lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
-    Ok(Value::deserialize(d)?.as_bool())
 }
 
 #[cfg(test)]

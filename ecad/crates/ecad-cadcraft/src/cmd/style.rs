@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::{Map, Number, Value, json};
 
 use crate::cmd::err;
-use crate::cmd::input::{Command, Typed, lenient};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{on_any_page, on_project};
 use crate::defaults;
 use crate::styles::{self, Catalogue, Layer};
@@ -146,8 +146,7 @@ pub(crate) struct StylesParams {
     #[serde(default)]
     catalogue: Option<String>,
     /// Also count each style's users.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     users: Option<bool>,
 }
 
@@ -282,8 +281,7 @@ pub(crate) struct SetstyleParams {
     #[serde(default)]
     name: Option<String>,
     /// Make a new style called `name`.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     new: Option<bool>,
     /// The style a new one copies (default: the catalogue's first built-in).
     #[serde(default)]
