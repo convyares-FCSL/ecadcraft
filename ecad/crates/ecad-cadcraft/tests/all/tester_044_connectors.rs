@@ -70,7 +70,7 @@ fn name(h: &mut H, t: TerminalId) -> String {
     ecad_cadcraft::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_cadcraft::interact::terminal_name(&d, t))
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
     h.doc().connectivity().net_of_terminal(t)
 }
 

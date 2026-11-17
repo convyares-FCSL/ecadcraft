@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::book::Book;
-use crate::connectivity::{self, NetData, NetId, split_number};
+use crate::connectivity::{self, NetData, NetKey, split_number};
 use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
 use crate::id::{CableId, DeviceId, FolderId, PageId, TerminalId, WireId};
@@ -845,10 +845,10 @@ fn row_of(places: &mut Places<'_>, it: &Tagged, old: String, new: String, mark: 
 fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
     let conn = doc.connectivity();
     let fresh = !matches!(req.scope, Scope::Provisional);
-    let mut chosen: Vec<(NetId, &NetData, Option<(PageId, Pt, Order)>)> = Vec::new();
-    let mut fixed_rows: Vec<(NetId, &NetData, Option<(PageId, Pt, Order)>)> = Vec::new();
-    let mut kept: BTreeSet<NetId> = BTreeSet::new();
-    let selected: Option<BTreeSet<NetId>> = match &req.scope {
+    let mut chosen: Vec<(NetKey, &NetData, Option<(PageId, Pt, Order)>)> = Vec::new();
+    let mut fixed_rows: Vec<(NetKey, &NetData, Option<(PageId, Pt, Order)>)> = Vec::new();
+    let mut kept: BTreeSet<NetKey> = BTreeSet::new();
+    let selected: Option<BTreeSet<NetKey>> = match &req.scope {
         Scope::Selection { conductors, .. } => Some(conductors.iter().filter_map(|c| conn.net_of_conductor(*c)).collect()),
         _ => None,
     };

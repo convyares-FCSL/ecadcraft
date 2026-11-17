@@ -50,7 +50,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::units::{Amps, Celsius, Percent, Volts};
 use ecad_model::wire::{CircuitInputs, InstallMethod, SupplySystem};
-use ecad_model::{CableId, DeviceId, Document, NetId, ObjectRef, Op, StyleRef, WireId, Word};
+use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, WireId, Word};
 
 use crate::defaults::{self, Scope};
 use crate::styles::{self, cable, ratingtable, wire};
@@ -247,7 +247,7 @@ pub struct Touch {
     pub subjects: BTreeSet<RatedSubject>,
     /// Re-trace these too.
     pub retrace: BTreeSet<RatedSubject>,
-    pub nets: BTreeSet<NetId>,
+    pub nets: BTreeSet<NetKey>,
     pub devices: BTreeSet<DeviceId>,
     pub styles: BTreeSet<(String, StyleRef)>,
     /// Locations whose temperature changed: `at[location]` (D1).
@@ -428,7 +428,7 @@ pub struct Kept {
     /// device → subjects it protects (by the trace or by name).
     protects: BTreeMap<DeviceId, BTreeSet<RatedSubject>>,
     /// net → subjects whose trace crossed it.
-    path: BTreeMap<NetId, BTreeSet<RatedSubject>>,
+    path: BTreeMap<NetKey, BTreeSet<RatedSubject>>,
     tally: Tally,
     /// Devices whose rating does not read → how many results name them.
     unread: BTreeMap<DeviceId, (usize, String)>,

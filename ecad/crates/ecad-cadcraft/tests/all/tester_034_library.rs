@@ -265,7 +265,7 @@ fn search_keys(h: &mut H, q: &str) -> BTreeSet<String> {
     v["symbols"].as_array().map(|a| a.iter().filter_map(|s| s["key"].as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
-fn net_of(d: &Document, t: TerminalId) -> Option<ecad_model::connectivity::NetId> {
+fn net_of(d: &Document, t: TerminalId) -> Option<ecad_model::connectivity::NetKey> {
     d.connectivity().net_of_terminal(t)
 }
 

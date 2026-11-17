@@ -113,7 +113,7 @@ fn rows_have_a_way_out(h: &mut H, kind: &str) {
     }
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
     h.doc().connectivity().net_of_terminal(t)
 }
 

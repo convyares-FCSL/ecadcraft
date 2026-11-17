@@ -42,7 +42,7 @@ fn terminals(v: &Value) -> Vec<TerminalId> {
     v["terminals"].as_array().unwrap().iter().map(|t| id(t, "terminal")).collect()
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
     h.doc().connectivity().net_of_terminal(t)
 }
 

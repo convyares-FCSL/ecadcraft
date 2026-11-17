@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
-fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetId> {
+fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetKey> {
     doc.connectivity().net_of_conductor(c)
 }
 
