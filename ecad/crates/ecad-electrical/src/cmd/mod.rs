@@ -5,6 +5,7 @@
 
 pub mod designation;
 pub mod output;
+pub mod plc;
 pub mod sheet;
 pub mod style;
 pub mod symbol;

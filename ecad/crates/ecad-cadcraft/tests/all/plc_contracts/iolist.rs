@@ -70,7 +70,7 @@ fn n_one_row_per_channel_of_every_card_with_states_targets_and_wires() {
     assert_eq!(rows(&mut h, json!({"state": "spare", "limit": 2000})).len(), 7 + 4 + 16);
     assert_eq!(rows(&mut h, json!({"card": "-A02", "limit": 2000})).len(), 16);
     let e = h.run("iolist", json!({"state": "broken"})).unwrap_err();
-    assert!(e.contains("used, reserved or spare"), "{e}");
+    assert!(e.contains("one of \"used\", \"reserved\", \"spare\""), "{e}");
 }
 
 #[test]

@@ -230,6 +230,27 @@ impl<T: JsonSchema, const MIN: usize, const MAX: usize> JsonSchema for Bounded<T
     }
 }
 
+/// A parameter written as text or as a number (a slot, a channel, a page number, a byte): the
+/// rules read it as text, a number written as JSON writes it (`3` reads as `"3"`).
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TextOrNumber {
+    /// Text.
+    Text(String),
+    /// A number.
+    Number(serde_json::Number),
+}
+
+impl TextOrNumber {
+    /// The value as text: the text itself, or the number as JSON writes it.
+    pub fn text(&self) -> String {
+        match self {
+            TextOrNumber::Text(t) => t.clone(),
+            TextOrNumber::Number(n) => n.to_string(),
+        }
+    }
+}
+
 /// The schema of a parameter that must be given and may be `null`: `T`, or null. Use it as
 /// `#[schemars(required, with = "OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
 /// a required `Option`).
@@ -319,6 +340,27 @@ mod tests {
         for (v, want) in rows {
             assert_eq!(says(v.clone()).as_deref(), Some(want), "{v}");
         }
+    }
+
+    #[test]
+    fn text_or_number_reads_both_as_text() {
+        #[derive(Deserialize, JsonSchema)]
+        #[serde(deny_unknown_fields)]
+        struct Q {
+            #[serde(default)]
+            slot: Option<TextOrNumber>,
+        }
+        impl Command for Q {
+            fn run(self, _: &mut Session) -> cadcraft_engine::Result<Value> {
+                Ok(Value::Null)
+            }
+        }
+        let read = |v: Value| parse::<Q>(&v).map(|q| q.slot.map(|s| s.text())).map_err(|e| e.to_string());
+        assert_eq!(read(json!({"slot": 3})), Ok(Some("3".into())));
+        assert_eq!(read(json!({"slot": "03"})), Ok(Some("03".into())));
+        assert_eq!(read(json!({"slot": 2.5})), Ok(Some("2.5".into())));
+        assert_eq!(read(json!({"slot": null})), Ok(None));
+        assert_eq!(read(json!({"slot": true})), Err("`slot` must be text, or null".into()));
     }
 
     #[test]

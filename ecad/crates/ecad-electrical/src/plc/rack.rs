@@ -18,6 +18,7 @@ use ecad_model::{ComponentId, Document, ObjectRef, Op, Subject};
 use serde_json::{Value, json};
 
 use crate::defaults::{self, Scope};
+use crate::error::CmdError;
 
 /// The card property naming the card's rack (its component ID, 32 hex digits; FP1).
 pub const RACK_KEY: &str = "plc.rack";
@@ -362,43 +363,53 @@ pub fn released_words(n: usize) -> String {
     if n == 1 { "1 card is now in no rack.".into() } else { format!("{n} cards are now in no rack.") }
 }
 
-/// A rack named by `v`: a hex ID or a tag.
+/// A device named by `t`: a hex ID (32 digits) of a device, else a tag.
+///
+/// # Errors
+/// No device of that name ("No device -A9.").
+fn device_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
+    let t = t.trim();
+    if let Some(c) = ComponentId::parse(t).filter(|c| t.len() == 32 && doc.components.contains_key(c)) {
+        return Ok(c);
+    }
+    let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());
+    doc.components_tagged(&tag).first().copied().ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
+}
+
+/// A rack named by `t`: a hex ID or a tag.
 ///
 /// # Errors
 /// Nothing of that name, or it is not a rack.
-pub fn rack_param(doc: &Document, v: &Value) -> Result<ComponentId, String> {
-    let t = v.as_str().ok_or("`rack` must be a rack's ID or tag, or null")?.trim();
-    let c = match ComponentId::parse(t).filter(|c| t.len() == 32 && doc.components.contains_key(c)) {
-        Some(c) => c,
-        None => {
-            let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());
-            *doc.components_tagged(&tag).first().ok_or_else(|| format!("No device {tag}."))?
-        }
-    };
+pub fn rack_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
+    let c = device_named(doc, t)?;
     if !is_rack(doc, c) {
-        return Err(format!("{} is not a rack; a rack is a CPU or a head module.", crate::devices::tag_words(doc, c)));
+        return Err(CmdError::refused(format!("{} is not a rack; a rack is a CPU or a head module.", crate::devices::tag_words(doc, c))));
     }
     Ok(c)
 }
 
-/// A card named by `v`: a hex ID or a tag, of a device that is a card (not a rack).
+/// A card named by `t`: a hex ID or a tag, of a device that is a card (not a rack).
 ///
 /// # Errors
 /// Nothing of that name, a rack, or a device that is not a PLC card.
-pub fn card_param(doc: &Document, v: Option<&Value>) -> Result<ComponentId, String> {
-    let t = v.and_then(Value::as_str).ok_or("`card` (a card's ID or tag) is required")?.trim();
-    let c = match ComponentId::parse(t).filter(|c| t.len() == 32 && doc.components.contains_key(c)) {
-        Some(c) => c,
-        None => {
-            let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());
-            *doc.components_tagged(&tag).first().ok_or_else(|| format!("No device {tag}."))?
-        }
-    };
+pub fn card_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
+    let c = device_named(doc, t)?;
     match crate::plc::card_type_of(doc, c) {
-        Some(t) if t.is_rack() => Err(format!("{} is a {}: it is a rack, not a card in a slot.", crate::devices::tag_words(doc, c), t.noun())),
+        Some(t) if t.is_rack() => {
+            Err(CmdError::refused(format!("{} is a {}: it is a rack, not a card in a slot.", crate::devices::tag_words(doc, c), t.noun())))
+        }
         Some(_) => Ok(c),
-        None => Err(format!("{} is not a PLC card.", crate::devices::tag_words(doc, c))),
+        None => Err(CmdError::refused(format!("{} is not a PLC card.", crate::devices::tag_words(doc, c)))),
     }
+}
+
+/// A rack named by `v`: a hex ID or a tag ([`rack_named`], for callers still reading JSON).
+///
+/// # Errors
+/// Not text, or as [`rack_named`].
+pub fn rack_param(doc: &Document, v: &Value) -> Result<ComponentId, String> {
+    let t = v.as_str().ok_or("`rack` must be a rack's ID or tag, or null")?;
+    rack_named(doc, t).map_err(String::from)
 }
 
 /// The rack a card goes in when none is named: its own, else the only rack.
@@ -427,6 +438,14 @@ pub fn slot_value(v: &Value) -> Result<u32, String> {
     n.filter(|n| *n <= u64::from(MAX_SLOT))
         .and_then(|n| u32::try_from(n).ok())
         .ok_or_else(|| format!("A slot is a whole number from 0 to {MAX_SLOT}."))
+}
+
+/// A slot written as text: a whole number 0–999.
+///
+/// # Errors
+/// Anything else, in words.
+pub fn slot_number(text: &str) -> Result<u32, CmdError> {
+    parse_slot(text).ok_or_else(|| CmdError::refused(format!("A slot is a whole number from 0 to {MAX_SLOT}.")))
 }
 
 /// Where a card goes, worked out against `doc` (design 045 §2.4, §2.5).

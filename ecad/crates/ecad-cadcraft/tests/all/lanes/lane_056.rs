@@ -279,7 +279,7 @@ fn j_other_files_and_a_missing_column_are_refused_in_words() {
     let e = h.run("plcimport", json!({"text": P56_TAGS, "name": "a\u{7}b"})).unwrap_err();
     assert!(e.contains("control"), "{e}");
     let e = h.run("plcimport", json!({"text": P56_TAGS, "what": "everything"})).unwrap_err();
-    assert!(e.contains("both, tags or descriptions"), "{e}");
+    assert!(e.contains("one of \"both\", \"tags\", \"descriptions\""), "{e}");
     assert_eq!(h.head(), head, "refusals record nothing");
 }
 

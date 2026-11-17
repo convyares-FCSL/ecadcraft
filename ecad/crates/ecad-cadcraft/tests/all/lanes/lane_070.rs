@@ -65,17 +65,10 @@ const UNTYPED: &[&str] = &[
     "setdefault",
     "connector",
     "pinlabel",
-    "plcslot",
-    "plcracks",
-    "plcchannels",
-    "plcchannel",
-    "iolist",
-    "plcaddress",
     "partline",
     "bomitem",
     "article",
     "contcaption",
-    "plcpage",
     "conflicts",
     "setlocation",
     "setfunction",
@@ -85,10 +78,6 @@ const UNTYPED: &[&str] = &[
     "titleblocks",
     "titleblock",
     "titleblockimport",
-    "plcmaketags",
-    "plcexport",
-    "plcimport",
-    "plccardtype",
     "rating",
     "ratingtable",
     "ratings",
@@ -780,4 +769,103 @@ fn the_typed_terminal_commands_still_work() {
     assert_eq!((&plan["next"], &plan["strips"].as_array().map(Vec::len)), (&json!(1), &Some(1)), "{plan}");
     let rest = h.run("stripplan", json!({"after": 1, "accessories": false})).unwrap_or(Value::Null);
     assert_eq!(rest["strips"][0]["first_row"], json!(1), "{rest}");
+}
+
+/// Input refusals of the PLC commands: one wording.
+#[test]
+fn the_plc_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("plcslot", json!({}), "`card` (text) is required"),
+        ("plcslot", json!({"card": "-A1", "swap": "yes"}), "`swap` must be true or false, or null"),
+        ("plcslot", json!({"card": "-A1", "rack": 5}), "`rack` must be text, or null"),
+        ("plcracks", json!({"rack": 1}), "`rack` must be text, or null"),
+        ("plcchannels", json!({"from": "here"}), "`from` must be a point [x, y], or null"),
+        ("plcchannels", json!({"rest": 1}), "`rest` must be true or false, or null"),
+        ("plcchannel", json!({"channel": 0}), "`card` (text) is required"),
+        ("plcchannel", json!({"card": "-A1", "channel": 0, "text": 5}), "`text` must be text, or null"),
+        ("plcchannel", json!({"card": "-A1", "channel": 0, "pins": {"in": 4}}), "`pins` must be an object, or null"),
+        ("iolist", json!({"state": "busy"}), "`state` must be one of \"used\", \"reserved\", \"spare\", or null"),
+        ("iolist", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("plcaddress", json!({"card": "-A1", "start": true}), "`start` must be text, or null"),
+        ("plcpage", json!({}), "`card` (text) is required"),
+        ("plcpage", json!({"card": "-A1", "after": []}), "`after` must be text, or null"),
+        ("plcmaketags", json!({"card": 1}), "`card` must be text, or null"),
+        ("plcexport", json!({"path": 1}), "`path` must be text, or null"),
+        ("plcimport", json!({"what": "all"}), "`what` must be one of \"both\", \"tags\", \"descriptions\", or null"),
+        ("plcimport", json!({"dry_run": "yes"}), "`dry_run` must be true or false, or null"),
+        ("plccardtype", json!({"card": "-A1"}), "`type` (text) is required"),
+        ("plccardtype", json!({"card": "-A1", "type": "DI", "x": 1}), "`x` is not a parameter of this command; it takes `card`, `type`"),
+    ];
+    let mut h = H::new(7030);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the PLC commands keep their words.
+#[test]
+fn the_plc_commands_keep_their_rule_words() {
+    let mut h = H::new(7031);
+    assert!(h.run("place", json!({"symbol": "plcdi", "at": [100, 200]})).is_ok());
+    let rows: &[(&str, Value, &str)] = &[
+        ("plcslot", json!({"card": "-A99"}), "No device -A99."),
+        ("plcslot", json!({"card": "-A1", "slot": "x"}), "A slot is a whole number from 0 to 999."),
+        ("plcslot", json!({"card": "-A1", "rack": null, "slot": 2}), "`slot` is for a card in a rack; `rack: null` takes the card out."),
+        ("plcslot", json!({"card": "-A1"}), "The project has no rack: place a CPU (plccpu) or a head module (plcim) first."),
+        ("plcracks", json!({"rack": "-A1"}), "-A01 is not a rack; a rack is a CPU or a head module."),
+        ("plcchannels", json!({"card": "-A1", "rest": true, "at": [1e13, 0]}), "`at` must be a point [x, y] on the sheet"),
+        ("plcchannels", json!({"card": "-A1"}), "`from` [x,y] is required"),
+        ("plcchannels", json!({"first": "x", "from": [0, 0], "to": [9, 9]}), "A channel is a whole number from 0 to 9999."),
+        ("plcchannels", json!({"type": "ZZ", "from": [0, 0], "to": [9, 9]}), "No card type \"ZZ\". Types: DI, DQ, AI, AO, RTD, IOL."),
+        ("plcchannel", json!({"card": "-A1"}), "`channel` (a number as shown) is required"),
+        ("plcchannel", json!({"card": "-A1", "channel": 99}), "-A01 has 16 channels (0–15)."),
+        ("plcchannel", json!({"card": "-A1", "channel": 0, "move_to": null}), "`move_to` is a channel number"),
+        ("plcaddress", json!({}), "`card` (a card's ID or tag) is required"),
+        ("plcaddress", json!({"card": "-A1", "size": 0}), "`size` is a whole number of bytes from 1 to 4096."),
+        ("plcpage", json!({"card": "-A1", "after": "999"}), "No page 999."),
+        ("plcmaketags", json!({}), "Give `card` or `rack` (an ID or tag)."),
+        ("plcexport", json!({"format": "xml"}), "No tag table format \"xml\"; the formats are: csv."),
+        ("plcimport", json!({}), "Give `path` (a file) or `text` (the tag table)."),
+        ("plccardtype", json!({"card": "-A1", "type": "XX"}), "`type` is DI, DQ, AI, AO, RTD or IOL"),
+        ("plccardtype", json!({"card": "-A1", "type": "DQ", "x": 1}), "`x` is not a parameter of this command; it takes `card`, `type`"),
+    ];
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed PLC commands still work, and answer as before.
+#[test]
+fn the_typed_plc_commands_still_work() {
+    let mut h = H::new(7032);
+    assert!(h.run("place", json!({"symbol": "plccpu", "at": [50, 200]})).is_ok());
+    let card = h.run("place", json!({"symbol": "plcdi", "at": [100, 200]})).unwrap_or_else(|e| json!(e))["component"].clone();
+    let slot = h.run("plcslot", json!({"card": card, "slot": "3"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((&slot["changed"], &slot["slot"]), (&json!(true), &json!(3)), "{slot}");
+    let racks = h.run("plcracks", json!({})).unwrap_or_else(|e| json!(e));
+    assert_eq!(racks["racks"].as_array().map(Vec::len), Some(1), "{racks}");
+    let ch = h.run("plcchannel", json!({"card": card, "channel": 0, "text": "Start", "tag": "START"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(ch["changed"], json!(true), "{ch}");
+    let pins = h.run("plcchannel", json!({"card": card, "index": 0, "pins": {"in": "4"}})).unwrap_or_else(|e| json!(e));
+    assert_eq!(pins, json!("Channel 0 of -A02 has no in point."), "an undrawn channel has no points to relabel");
+    let io = h.run("iolist", json!({"state": "used", "limit": 5})).unwrap_or_else(|e| json!(e));
+    assert_eq!(io["cards"].as_array().map(Vec::len), Some(1), "{io}");
+    let addr = h.run("plcaddress", json!({"card": card, "start": 8})).unwrap_or_else(|e| json!(e));
+    assert_eq!(addr["changed"], json!(true), "{addr}");
+    let unpin = h.run("plcaddress", json!({"card": card, "start": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(unpin["changed"], json!(true), "{unpin}");
+    let ty = h.run("plccardtype", json!({"card": card, "type": "di"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(ty["changed"], json!(false), "{ty}");
+    let tags = h.run("plcmaketags", json!({"card": card})).unwrap_or_else(|e| json!(e));
+    assert!(tags["made"].is_number(), "{tags}");
+    let ex = h.run("plcexport", json!({})).unwrap_or_else(|e| json!(e));
+    assert!(ex["text"].as_str().is_some_and(|t| t.contains("START")), "{ex}");
+    let text = ex["text"].as_str().unwrap_or_default().to_string();
+    let im = h.run("plcimport", json!({"text": text, "dry_run": true, "what": "tags"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(im["written"], json!(false), "{im}");
+    let page = h.run("plcpage", json!({"card": card, "after": 1})).unwrap_or_else(|e| json!(e));
+    assert!(page["message"].as_str().is_some_and(|m| m.starts_with("Made page ")), "{page}");
+    let rest = h.run("plcchannels", json!({"card": card, "rest": true, "at": [100, 100]}));
+    assert!(rest.is_err(), "every channel is drawn on the card's page: {rest:?}");
 }
