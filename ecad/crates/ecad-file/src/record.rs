@@ -84,6 +84,7 @@ pub const OP_NAMES: &[&str] = &[
     "ModifyFolder",
     "SetStyle",
     "SetStandard",
+    "ModifyProject",
 ];
 
 /// Why a record could not be decoded (§20.6).

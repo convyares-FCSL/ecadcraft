@@ -1060,15 +1060,15 @@ impl Touch {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-                    // Brief 052: a location entry's code changed (or the entry came or went): the
-                    // rows naming it are worded again.
-                    if let Some((crate::designations::Aspect::Location, k, true)) = crate::designations::parse_list_property(key) {
-                        self.locations.insert(k.to_string());
-                    }
                     if key.starts_with("rating.") || key.starts_with("wire.") {
                         self.all_results = true;
                         self.table |= key == defaults::rating::TABLE.key;
                     }
+                }
+                // Brief 052: a location entry's code changed (or the entry came or went): the rows
+                // naming it are worded again.
+                Op::ModifyProject { before, after } => {
+                    self.locations.extend(crate::designations::changed_codes(before, after, crate::designations::Aspect::Location));
                 }
                 Op::SetStyle { catalogue, id, .. } => {
                     if catalogue == ratingtable::WORD {

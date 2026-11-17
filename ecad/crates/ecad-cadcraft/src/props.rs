@@ -152,7 +152,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             | Op::AddFolder { .. }
             | Op::RemoveFolder { .. }
             | Op::ModifyFolder { .. }
-            | Op::SetProjectSettings { .. } => return None,
+            | Op::SetProjectSettings { .. }
+            // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
+            | Op::ModifyProject { .. } => return None,
         }
     }
     Some(out)
@@ -367,7 +369,6 @@ pub fn sheet_choices(doc: &Document) -> Vec<String> {
 fn page_section(doc: &Document, page: PageId) -> Section {
     let book = Book::of(doc);
     let pg = doc.pages.get(&page);
-    let prop = |k: &str| pg.and_then(|x| x.display.get(k)).cloned();
     let number = book.number(doc, page);
     let mut rows =
         vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.to_string()).unwrap_or_default())];
@@ -375,12 +376,14 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let path = crate::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
-        // Brief 052: stored as entry keys, shown as codes.
+        // Brief 052: stored as entry keys, shown as codes (design 072 §5.3: page and project fields).
         let shown = |v: Option<String>| v.map(|v| crate::designations::display(doc, key, &v));
-        let mut r = match shown(prop(key)) {
+        let a = crate::designations::Aspect::of_property(key);
+        let own = a.and_then(|a| pg.and_then(|x| crate::designations::page_key(x, a)));
+        let mut r = match shown(own) {
             Some(v) => Row::rw(key, label, v),
             None => {
-                let inherited = shown(doc.properties.get(key).cloned());
+                let inherited = shown(a.and_then(|a| crate::designations::default_key(&doc.project, a)));
                 let mut r = Row::rw(key, label, inherited.as_ref().map(|v| format!("{v} (project)")).unwrap_or_default());
                 r.inherited = inherited.is_some();
                 r

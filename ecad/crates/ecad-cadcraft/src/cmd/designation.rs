@@ -60,7 +60,7 @@ pub fn rows(p: &mut crate::project::Project, only: Option<Aspect>) -> Value {
     let doc = p.ledger.document();
     let mut out = serde_json::Map::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
-        let default = doc.properties.get(a.property());
+        let default = designations::default_key(&doc.project, a);
         let rows: Vec<Value> = designations::entries(doc, a)
             .into_iter()
             .map(|e| {
@@ -68,7 +68,7 @@ pub fn rows(p: &mut crate::project::Project, only: Option<Aspect>) -> Value {
                 json!({
                     "key": e.key, "code": e.code, "description": e.description,
                     "devices": c.devices, "overrides": c.overrides, "boxes": c.boxes, "pages": c.pages,
-                    "default": default == Some(&e.key), "unused": c.unused(), "uses": c.words(),
+                    "default": default.as_ref() == Some(&e.key), "unused": c.unused(), "uses": c.words(),
                 })
             })
             .collect();
@@ -88,9 +88,12 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
         return true;
     }
     log.get(seen..).unwrap_or_default().iter().flat_map(|tx| tx.ops.iter()).any(|op| match op {
-        Op::SetProperty { key, .. } => designations::is_list_property(key) || Aspect::of_property(key).is_some(),
-        Op::CreateDevice { .. } | Op::DeleteDevice { .. } | Op::AddPage { .. } | Op::RemovePage { .. } => true,
-        Op::ModifyPage { before, after, .. } => before.change(after).display.iter().any(|k| Aspect::of_property(k).is_some()),
+        Op::SetProperty { key, .. } => Aspect::of_property(key).is_some(),
+        Op::CreateDevice { .. } | Op::DeleteDevice { .. } | Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyProject { .. } => true,
+        Op::ModifyPage { before, after, .. } => {
+            let ch = before.change(after);
+            ch.location || ch.function
+        }
         _ => false,
     })
 }

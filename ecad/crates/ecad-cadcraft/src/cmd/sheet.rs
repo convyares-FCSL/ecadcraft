@@ -347,8 +347,9 @@ pub(crate) fn new_page_ops_at(
 /// The page's properties as `pageprops` reports them.
 pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&crate::outputs::Outputs>) -> Value {
     let pg = doc.pages.get(&page);
-    let prop = |k: &str| pg.and_then(|x| x.display.get(k)).cloned();
-    let project = |k: &str| doc.properties.get(k).cloned();
+    use crate::designations::{Aspect, default_key, page_key};
+    let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
+    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
     let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
     json!({
         "page": page.hex(),
@@ -503,8 +504,13 @@ fn style_word(s: ReferenceStyle) -> &'static str {
 pub fn project_json(doc: &Document) -> Value {
     let mut fields = Map::new();
     for k in PROJECT_KEYS {
-        // Brief 052: the function and location show their codes.
-        fields.insert(k.into(), doc.properties.get(k).map_or(Value::Null, |v| Value::String(crate::designations::display(doc, k, v))));
+        // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
+        // project).
+        let v = match crate::designations::Aspect::of_property(k) {
+            Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
+            None => doc.properties.get(k).cloned(),
+        };
+        fields.insert(k.into(), v.map_or(Value::Null, Value::String));
     }
     let free: Map<String, Value> = doc
         .properties
@@ -515,7 +521,6 @@ pub fn project_json(doc: &Document) -> Value {
                 && !k.starts_with("numbering.")
                 && !k.starts_with("tags.")
                 && !k.starts_with("revisions.")
-                && !crate::designations::is_list_property(k)
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();

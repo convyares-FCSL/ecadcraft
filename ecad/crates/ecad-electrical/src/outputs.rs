@@ -35,7 +35,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::LOCATION_KEY;
 use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
@@ -535,21 +534,26 @@ impl Scope {
                     self.cables.insert(*k);
                 }
                 Op::SetProperty { object: ObjectRef::Page(_), .. } => {}
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    // Brief 047: an item without its own location shows the project's.
+                    if default_key(before, Aspect::Location) != default_key(after, Aspect::Location) {
+                        self.project_location = true;
+                    }
+                    // Brief 052: a rename in the project's list re-keys its users' rows.
+                    for a in Aspect::ALL {
+                        for k in changed_codes(before, after, a) {
+                            // Brief 059: the cables planning an end there show its new code.
+                            self.cables.extend(crate::cables::planning(doc, &k));
+                            self.renamed.insert(k);
+                        }
+                    }
+                }
                 // Brief 050a: a standard's value of a registry key reaches the same views.
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
                     // Brief 050b: the project's or standard's wire category reaches every wire row.
                     if key == ecad_model::wiring::WIRE_CATEGORY {
                         self.all_wires = true;
-                    }
-                    // Brief 047: an item without its own location shows the project's.
-                    if key == LOCATION_KEY {
-                        self.project_location = true;
-                    }
-                    // Brief 052: a rename in the project's list re-keys its users' rows.
-                    if let Some((_, k, true)) = crate::designations::parse_list_property(key) {
-                        self.renamed.insert(k.to_string());
-                        // Brief 059: the cables planning an end there show its new code.
-                        self.cables.extend(crate::cables::planning(doc, k));
                     }
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {

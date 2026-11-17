@@ -53,6 +53,12 @@ pub struct Page {
     /// else its frame's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_block: Option<StyleRef>,
+    /// Its location (an entry of the project's list); `None` takes the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<crate::id::LocationId>,
+    /// Its function (an entry of the project's list); `None` takes the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<crate::id::FunctionId>,
     /// Presentation choices and registry values at page level.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: Properties,
@@ -69,6 +75,8 @@ impl Page {
             page_type: None,
             sheet: None,
             title_block: None,
+            location: None,
+            function: None,
             display: Properties::new(),
         }
     }
@@ -90,6 +98,8 @@ impl Page {
             page_type: self.page_type != after.page_type,
             sheet: self.sheet != after.sheet,
             title_block: self.title_block != after.title_block,
+            location: self.location != after.location,
+            function: self.function != after.function,
             display,
         }
     }
@@ -112,6 +122,8 @@ pub struct PageChange<'a> {
     pub page_type: bool,
     pub sheet: bool,
     pub title_block: bool,
+    pub location: bool,
+    pub function: bool,
     /// The display keys whose value changed.
     pub display: Vec<&'a str>,
 }
@@ -671,6 +683,9 @@ pub struct Document {
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: Properties,
+    /// The project's own data: the location and function lists (design 072 §5.3).
+    #[serde(skip_serializing_if = "crate::project::Project::is_empty")]
+    pub project: crate::project::Project,
     /// Folders of pages (brief 019, decision FP3).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub folders: BTreeMap<FolderId, Folder>,
@@ -709,6 +724,8 @@ struct DocumentData {
     #[serde(default)]
     properties: Properties,
     #[serde(default)]
+    project: crate::project::Project,
+    #[serde(default)]
     folders: BTreeMap<FolderId, Folder>,
     #[serde(default)]
     folder_order: Vec<FolderId>,
@@ -734,6 +751,7 @@ impl From<DocumentData> for Document {
             settings,
             versions,
             properties,
+            project,
             folders,
             folder_order,
             standard,
@@ -753,6 +771,7 @@ impl From<DocumentData> for Document {
             settings,
             versions,
             properties,
+            project,
             folders,
             folder_order,
             standard,
@@ -782,6 +801,7 @@ impl PartialEq for Document {
             settings,
             versions,
             properties,
+            project,
             folders,
             folder_order,
             standard,
@@ -802,6 +822,7 @@ impl PartialEq for Document {
             && *settings == other.settings
             && *versions == other.versions
             && *properties == other.properties
+            && *project == other.project
             && *folders == other.folders
             && *folder_order == other.folder_order
             && *standard == other.standard

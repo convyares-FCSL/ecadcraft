@@ -71,6 +71,7 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.folders.insert(*id);
             }
             Op::SetStyle { .. } | Op::SetStandard { .. } => t.styles = true,
+            Op::ModifyProject { .. } => t.project = true,
         }
     }
     t

@@ -26,6 +26,7 @@ fn expected(op: &Op) -> EffectKind {
         "AddFolder" | "RemoveFolder" | "ModifyFolder" => EffectKind::Folder,
         "SetStyle" => EffectKind::Style,
         "SetStandard" => EffectKind::Standard,
+        "ModifyProject" => EffectKind::Project,
         other => panic!("op {other} has no expected effect kind: add it here and to design 064 §3.2"),
     }
 }
@@ -161,6 +162,7 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.folders.insert(*id);
             }
             Op::SetStyle { .. } | Op::SetStandard { .. } => t.styles = true,
+            Op::ModifyProject { .. } => t.project = true,
         }
     }
     t
