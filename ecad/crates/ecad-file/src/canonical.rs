@@ -10,21 +10,14 @@ use serde_json::Value;
 pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// Why a value has no canonical form.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CanonicalError {
     /// NaN or ±∞ (cannot occur in parsed JSON, but can in values built in memory).
+    #[error("a number is not finite")]
     NonFinite,
     /// An integer that a double cannot hold exactly.
+    #[error("integer {0} is not exactly representable as a double")]
     InexactInteger(String),
-}
-
-impl std::fmt::Display for CanonicalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CanonicalError::NonFinite => f.write_str("a number is not finite"),
-            CanonicalError::InexactInteger(n) => write!(f, "integer {n} is not exactly representable as a double"),
-        }
-    }
 }
 
 /// The canonical bytes of `v`.

@@ -32,6 +32,7 @@ pub mod chunks;
 mod crc;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
+mod error;
 pub mod pack;
 pub mod project;
 pub mod record;
@@ -43,6 +44,7 @@ pub mod verify;
 pub use crc::crc32c;
 #[cfg(not(target_arch = "wasm32"))]
 pub use disk::{JUST_ENDED, ReadOnly, utc};
+pub use error::FileError;
 pub use project::{BranchError, DamageV2, OpenErrorV2, OpenedV2, ProjectV2, ReportV2, SaveErrorV2, SavedV2, StoreHistory};
 pub use record::{SCHEMA_VERSION, definition_hash};
 pub use store::{Reader, Store, StoreError, TableStat, Writer};

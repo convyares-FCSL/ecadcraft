@@ -670,7 +670,7 @@ pub fn read_row(store: &ecad_file::Store, seq: u64, expected: Option<&Transactio
     let r = store.reader().map_err(|e| e.to_string())?;
     let branch = r.branches().map_err(|e| e.to_string())?.into_iter().find(|(_, b)| b.name == "main").map(|(id, _)| id).ok_or("no main branch")?;
     let (flag, chain, body) = r.tx(branch, seq).map_err(|e| e.to_string())?.ok_or(format!("no row for {seq}"))?;
-    let record = ecad_file::pack::unpack(flag, &body)?;
+    let record = ecad_file::pack::unpack(flag, &body).map_err(|e| e.to_string())?;
     let check = (|| {
         if ecad_file::chain::tx_hash(&record) != chain {
             return Err("the record does not match its chain value".to_string());

@@ -145,7 +145,7 @@ pub struct Prepared {
 /// target records the target's head (`A2`); the newer of them, else the fork.
 fn ancestor(p: &Project, s: &Sides) -> Result<(BranchId, u64), String> {
     let v = p.file.v2().ok_or("Branches live in the project file. Save it first.")?;
-    let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) };
+    let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) }.map_err(|e| e.to_string());
     // A1: into the target from the source, at target step m, of source head s1.
     let a1 = rows(s.target)?.into_iter().filter(|m| m.source == s.source).max_by_key(|m| m.seq);
     // A2: into the source from the target, at source step u, of target head t2.
@@ -756,7 +756,7 @@ fn merge(
     }
     let v = p.file.v2().ok_or(CmdError::refused(NO_FILE))?;
     let source_head = prep.key.0;
-    let chain = |b, seq| v.chain_of(b, seq).map_err(CmdError::refused);
+    let chain = |b, seq| v.chain_of(b, seq).map_err(CmdError::from);
     let kind = TxKind::Merge {
         source: sides.source.0,
         source_head: StepPoint { seq: source_head, chain: chain(sides.source, source_head)? },
