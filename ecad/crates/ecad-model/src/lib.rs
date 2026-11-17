@@ -39,6 +39,7 @@ pub mod merge;
 pub mod numbering;
 pub mod op;
 pub mod sheet;
+pub mod strict;
 pub mod style;
 pub mod tag;
 pub mod title_block;

@@ -1,0 +1,167 @@
+//! The words check run once when a project is opened (design 072 §9.4, F11).
+//!
+//! A typed field with an unknown word already fails its record's decode. This check finds the
+//! words inside values that stay text: a stored value of a defaults choice that is not one of its
+//! words, a `tag_prefixes` key that is not a built-in symbol, and a property that became a struct
+//! field ([`ecad_model::keys::RESERVED`]). Anything found opens the project read-only, naming the
+//! word, the setting and where it is; the file is never changed.
+//!
+//! It reads the whole document, so it runs on open (and on reload) only, never per commit. It
+//! changes nothing and excludes values that are not words: an out-of-range length or a malformed
+//! style ID still reads as absent (design 066).
+
+use ecad_model::keys;
+use ecad_model::strict::{UnknownWord, WordPlace};
+use ecad_model::{Document, Properties, RepresentationId};
+
+use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
+
+/// Every unknown word in `doc`, in a stable order (by place, then setting).
+///
+/// # Example
+/// ```
+/// use ecad_model::Document;
+/// let mut doc = Document::default();
+/// assert!(ecad_electrical::words_check::check(&doc).is_empty());
+/// doc.properties.insert("text.tag.show".into(), "maybe".into());
+/// let found = ecad_electrical::words_check::check(&doc);
+/// assert_eq!(found.len(), 1);
+/// assert!(found[0].to_string().contains("`maybe`"));
+/// ```
+pub fn check(doc: &Document) -> Vec<UnknownWord> {
+    let mut out = Vec::new();
+    bag(&doc.properties, WordPlace::Project, Level::Project, &mut out);
+    if let Some(std) = &doc.standard {
+        bag(&std.values, WordPlace::Standard, Level::Standard, &mut out);
+    }
+    for (id, p) in &doc.pages {
+        bag(&p.properties, WordPlace::Page(*id), Level::Page, &mut out);
+    }
+    for (id, c) in &doc.components {
+        bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
+    }
+    for (id, c) in &doc.conductors {
+        bag(&c.properties, WordPlace::Wire(*id), Level::Object, &mut out);
+    }
+    for (id, c) in &doc.cables {
+        reserved(&c.properties, WordPlace::Cable(*id), &mut out);
+    }
+    for key in doc.settings.tag_prefixes.keys() {
+        if crate::symbols::by_key(key).is_none() {
+            out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.clone(), allowed: Vec::new() });
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The unknown words of one property bag held at `level`.
+fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<UnknownWord>) {
+    reserved(props, place, out);
+    for (key, value) in props {
+        let Some((entry, level)) = entry_of(key, level) else { continue };
+        let Kind::Choice(words) = entry.kind else { continue };
+        // A project value an entry keeps in the settings is typed there, not stored as a word.
+        let in_settings = level == Level::Project && matches!(entry.project, ProjectSource::Settings(_));
+        let stored_here = entry.allows(level) && !in_settings;
+        if stored_here && entry.parse(value).is_none() {
+            out.push(UnknownWord::Value { place, setting: key.clone(), word: value.clone(), allowed: words.to_vec() });
+        }
+    }
+}
+
+/// A property that became a struct field.
+fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
+    out.extend(props.keys().filter(|k| keys::is_reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));
+}
+
+/// The registry entry stored under `key` at `level`: the entry itself, or on an object a
+/// symbol's own value of it (`text.<rep>.tag.show`, [`defaults::symbol_key`]).
+fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
+    if let Some(e) = defaults::find(key) {
+        return Some((e, level));
+    }
+    if level != Level::Object {
+        return None;
+    }
+    let mut parts = key.splitn(3, '.');
+    let (area, rep, rest) = (parts.next()?, parts.next()?, parts.next());
+    RepresentationId::parse(rep).filter(|_| rep.len() == 32)?;
+    let generic = match rest {
+        Some(rest) => format!("{area}.{rest}"),
+        None => area.to_string(),
+    };
+    defaults::find(&generic).map(|e| (e, Level::Object))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ecad_model::{Component, ComponentId, PageId};
+
+    fn doc() -> Document {
+        Document::default()
+    }
+
+    #[test]
+    fn known_words_pass_and_unknown_ones_are_named() {
+        let mut d = doc();
+        d.properties.insert("text.tag.show".into(), "first".into());
+        assert!(check(&d).is_empty(), "a known word passes");
+        d.properties.insert("text.tag.show".into(), " FIRST ".into());
+        assert!(check(&d).is_empty(), "case and spaces are read as today");
+        d.properties.insert("text.tag.show".into(), "maybe".into());
+        let found = check(&d);
+        assert_eq!(found.len(), 1);
+        let text = found[0].to_string();
+        assert!(text.contains("`maybe`") && text.contains("text.tag.show") && text.contains("project"), "{text}");
+        assert!(matches!(&found[0], UnknownWord::Value { allowed, .. } if allowed.contains(&"first")));
+    }
+
+    #[test]
+    fn values_that_are_not_words_are_left_to_their_readers() {
+        let mut d = doc();
+        d.properties.insert("text.tag.height".into(), "huge".into());
+        d.properties.insert("my_own_field".into(), "anything".into());
+        assert!(check(&d).is_empty());
+    }
+
+    #[test]
+    fn every_level_is_checked() {
+        let mut d = doc();
+        let page = PageId(1);
+        d.pages.insert(page, ecad_model::Page::default());
+        if let Some(p) = d.pages.get_mut(&page) {
+            p.properties.insert("text.tag.show".into(), "sometimes".into());
+        }
+        let c = ComponentId(2);
+        d.components.insert(c, Component::default());
+        let rep = RepresentationId(0xab);
+        if let Some(comp) = d.components.get_mut(&c) {
+            comp.properties.insert(defaults::symbol_key("text.tag.show", rep), "never".into());
+        }
+        let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
+        assert_eq!(places, [WordPlace::Page(page), WordPlace::Device(c)]);
+    }
+
+    #[test]
+    fn tag_prefixes_name_built_in_symbols() {
+        let mut d = doc();
+        d.settings.tag_prefixes.insert("no_such_symbol".into(), "Q".into());
+        let found = check(&d);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].to_string().contains("tag_prefixes"));
+    }
+
+    #[test]
+    fn registry_and_key_list_are_disjoint() {
+        for e in defaults::all() {
+            assert!(keys::spec(e.key).is_none(), "{} is both a registry entry and in keys::KEYS", e.key);
+            assert!(!keys::is_reserved(e.key), "{} is both a registry entry and reserved", e.key);
+            let area = keys::area_of(e.key);
+            assert!(area.is_registry(), "{} classifies to {area:?}, not a registry area", e.key);
+        }
+        let words: Vec<&str> = keys::Area::REGISTRY.iter().map(|a| ecad_model::Word::word(*a)).collect();
+        assert_eq!(words, defaults::AREAS, "Area::REGISTRY has the registry's words in its order");
+    }
+}
