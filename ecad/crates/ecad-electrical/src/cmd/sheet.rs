@@ -911,7 +911,7 @@ pub struct RevisionFields {
 /// that is not a field name.
 pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdError> {
     let n = revisions::pending_n(doc);
-    let mut ops = Vec::new();
+    let mut project = doc.project.clone();
     let mut given = false;
     for (field, v) in &f.standard {
         given = true;
@@ -922,7 +922,7 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
             }
             other => value(doc, field, other)?,
         };
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), v));
+        project = revisions::with_field(&project, n, field, v.as_deref())?;
     }
     // Brief 033 (design 033 §7.2): custom fields, `fields: {ecr: "ECR-114"}`, on the pending row
     // only; an issued row never changes.
@@ -952,19 +952,14 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
             other => value(doc, field, other.as_deref())?,
         };
         given = true;
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), t));
+        project = revisions::with_field(&project, n, field, t.as_deref())?;
     }
     let row_exists = revisions::pending(doc).is_some();
     let rev_given = f.standard.iter().any(|(k, v)| *k == "rev" && v.is_some());
-    if given && !row_exists && !rev_given {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: revisions::key(n, "rev"),
-            before: None,
-            after: Some(revisions::pending_rev(doc)),
-        });
+    if given && !row_exists && !rev_given && revisions::rows(&project).len() >= n as usize {
+        project = revisions::with_field(&project, n, "rev", Some(&revisions::pending_rev(doc)))?;
     }
-    Ok(ops)
+    Ok(revisions::modify(&doc.project, project).into_iter().collect())
 }
 
 /// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
@@ -1011,13 +1006,15 @@ pub fn plan_issue(
         return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     let mut date = row.get("date").to_string();
+    let mut project = doc.project.clone();
     if date.is_empty() {
         date = today().unwrap_or_default();
         if !date.is_empty() {
-            ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
+            project = revisions::with_field(&project, n, "date", Some(&date))?;
         }
     }
-    ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
+    project = revisions::with_field(&project, n, revisions::ISSUED, Some(&name))?;
+    ops.extend(revisions::modify(&doc.project, project));
     ops.push(Op::NameVersion { name, at: head, description: None });
     Ok(IssuePlan { ops, rev, n, date, head })
 }

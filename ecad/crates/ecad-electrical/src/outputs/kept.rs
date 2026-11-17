@@ -179,10 +179,8 @@ impl Outputs {
                     || before.display.get(crate::defaults::strip_pages::STYLE.key) != after.display.get(crate::defaults::strip_pages::STYLE.key)
             }
             Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
-                (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
-                    || key == crate::defaults::strip_pages::STYLE.key
-            }
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
+            Op::ModifyProject { before, after } => crate::revisions::issue_changed(before, after),
             Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
             Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
             _ => false,

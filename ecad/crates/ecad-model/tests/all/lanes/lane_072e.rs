@@ -198,3 +198,52 @@ fn a_project_record_is_strict() {
     assert_eq!(p.locations[0].descriptions.len(), 2);
     assert_eq!(serde_json::to_string(&p).unwrap(), text);
 }
+
+// ---------------------------------------------------------------- step 2b: revision rows
+
+fn row(rev: &str, issued: bool) -> ecad_model::Revision {
+    ecad_model::Revision {
+        rev: ecad_model::Rev::new(rev).ok(),
+        description: ecad_model::RevValue::new("Issue").ok(),
+        issued: issued.then(|| ecad_model::RevValue::new(&format!("Rev {rev}")).unwrap()),
+        ..Default::default()
+    }
+}
+
+/// A4: a revision row with an unknown field, a bad custom field name, an over-long rev or a hidden
+/// character does not read; a full one round-trips.
+#[test]
+fn a_revision_record_is_strict() {
+    let bad = [
+        r#"{"rev":"A","colour":"red"}"#,
+        r#"{"rev":"A","custom":{"Bad Name":"x"}}"#,
+        r#"{"rev":"A","custom":{"issued":"x"}}"#,
+        r#"{"rev":"ABCDEFGHI"}"#,
+        "{\"description\":\"a\u{202E}b\"}",
+    ];
+    for text in bad {
+        assert!(serde_json::from_str::<ecad_model::Revision>(text).is_err(), "{text}");
+    }
+    let text = r#"{"rev":"A","date":"2026-11-17","custom":{"ecr":"ECR-1"},"issued":"Rev A","released":"release/Rev A"}"#;
+    let r: ecad_model::Revision = serde_json::from_str(text).unwrap();
+    assert_eq!(serde_json::to_string(&r).unwrap(), text);
+}
+
+/// I22: only the last revision row may be unissued; Restore (a filter refusing `rev.`) keeps the
+/// rows as they are now, and accepting it restores them.
+#[test]
+fn revision_rows_are_ordered_and_kept_by_restore() {
+    let (mut ledger, _, _) = one_page();
+    let ok = ecad_model::Project { revisions: vec![row("A", true), row("B", false)], ..Default::default() };
+    ledger.commit(Author::User, "rows", vec![Op::ModifyProject { before: Default::default(), after: ok.clone() }]).unwrap();
+    let bad = ecad_model::Project { revisions: vec![row("A", false), row("B", true)], ..Default::default() };
+    let e = ledger.commit(Author::User, "bad", vec![Op::ModifyProject { before: ok.clone(), after: bad }]).unwrap_err();
+    assert!(matches!(e, ModelError::Invariant(_)), "{e:?}");
+
+    let past = ecad_model::Document::default();
+    let live = ledger.document().clone();
+    let keep = ecad_model::diff::ops_between(&live, &past, &|k| !k.starts_with(ecad_model::project::REVISIONS_KEY));
+    assert!(keep.iter().all(|o| !matches!(o, Op::ModifyProject { .. })), "rows kept: {keep:?}");
+    let all = ecad_model::diff::ops_between(&live, &past, &|_| true);
+    assert!(all.iter().any(|o| matches!(o, Op::ModifyProject { after, .. } if after.revisions.is_empty())), "{all:?}");
+}

@@ -12,7 +12,8 @@
 //!   removed and added again.
 //! - Pages and folders keep the longest run already in the target's order; only the others move.
 //! - Named versions are never touched (they are history). `keep_project_key` says which project
-//!   properties are compared (Restore leaves `rev.*` as it is now).
+//!   properties are compared (Restore leaves the revision rows as they are now: the filter is
+//!   asked about [`crate::project::REVISIONS_KEY`]).
 //!
 //! Excluded: version names; the derived index and nets (rebuilt by applying the ops).
 
@@ -256,8 +257,13 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // The project.
     if project {
         props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
-        if from.project != to.project {
-            changes.push(Op::ModifyProject { before: from.project.clone(), after: to.project.clone() });
+        // Revision rows are history: kept as they are now unless the filter accepts them.
+        let mut target = to.project.clone();
+        if !keep_project_key(crate::project::REVISIONS_KEY) {
+            target.revisions = from.project.revisions.clone();
+        }
+        if from.project != target {
+            changes.push(Op::ModifyProject { before: from.project.clone(), after: target });
         }
         if from.settings != to.settings {
             changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });

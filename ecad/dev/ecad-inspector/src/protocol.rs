@@ -451,14 +451,11 @@ fn wire_name(d: &Document, c: WireId) -> String {
 
 fn project(d: &Document) -> Value {
     let mut props = Map::new();
-    let mut revisions: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for (k, v) in &d.properties {
-        if let Some((n, field)) = k.strip_prefix("rev.").and_then(|r| r.split_once('.')) {
-            revisions.entry(n.to_string()).or_default().insert(field.to_string(), json!(v));
-        } else {
-            props.insert(k.clone(), json!(v));
-        }
+        props.insert(k.clone(), json!(v));
     }
+    // Design 072 §5.3 (A15): the revision rows, numbered from 1.
+    let revisions: BTreeMap<String, Value> = d.project.revisions.iter().zip(1u32..).map(|(r, n)| (n.to_string(), json!(r))).collect();
     // Design 072 §5.3 (A15): the location and function lists and the project's defaults.
     let list = |l: Vec<(String, String, Option<String>, Vec<String>)>| -> Vec<Value> {
         l.into_iter().map(|(id, code, tag, descriptions)| json!({"id": id, "code": code, "tag": tag, "descriptions": descriptions})).collect()

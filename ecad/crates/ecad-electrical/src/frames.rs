@@ -288,7 +288,9 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetStandard { before, after } => before != after,
         // Brief 052 (design 052 §8.2a, tester 052 finding 1): a rename in the project's list
         // reaches the title block when it shows the entry's old code.
-        // Design 072 §5.3: the project's default, or a code it shows renamed.
+        // Design 072 §5.3: an issue (the Rev box and the table), the project's default, or a code
+        // it shows renamed.
+        Op::ModifyProject { before, after } if crate::revisions::issue_changed(before, after) => true,
         Op::ModifyProject { before, after } => crate::designations::Aspect::ALL.into_iter().any(|a| {
             let field = match a {
                 crate::designations::Aspect::Function => &shown.function,
@@ -307,7 +309,6 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
                 // Brief 033 (design 033 §9.1).
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
         }
         Op::SetProperty { object: ObjectRef::Page(p), .. } => *p == page,
         // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,
