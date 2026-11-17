@@ -71,6 +71,9 @@ pub type Function = ListEntry<FunctionId>;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
+    /// What the project is: title, drawing number, customer, site, status, the cover's notes.
+    #[serde(default, skip_serializing_if = "ProjectInfo::is_empty")]
+    pub info: ProjectInfo,
     /// The location list, in the order entries were made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub locations: Vec<Location>,
@@ -263,5 +266,91 @@ impl Revision {
     /// Whether nothing is set.
     pub fn is_empty(&self) -> bool {
         *self == Revision::default()
+    }
+}
+
+// ---------------------------------------------------------------- project info (design 072 §5.3)
+
+/// Most characters of a one-line project info field.
+pub const MAX_INFO: usize = 200;
+/// Most notes on the cover, and characters of one note.
+pub const MAX_NOTES: usize = 40;
+pub const MAX_NOTE_CHARS: usize = 400;
+
+/// A one-line project info field.
+pub type InfoText = Text<MAX_INFO>;
+/// The cover's notes: one per line.
+pub type Notes = crate::text::LongText<{ MAX_NOTES * (MAX_NOTE_CHARS + 1) }>;
+
+crate::word_enum! {
+    /// A field of [`ProjectInfo`], by the project property it was (`title`, `cover.notes`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum InfoField {
+        Title,
+        #[strum(serialize = "drawing_number")]
+        DrawingNumber,
+        Customer,
+        Site,
+        Status,
+        #[strum(serialize = "cover.notes")]
+        Notes,
+    }
+}
+
+/// What the project is (design 072 §5.3): what the title block and the cover show. Every field is
+/// left out of records while unset.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<InfoText>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drawing_number: Option<InfoText>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer: Option<InfoText>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<InfoText>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<InfoText>,
+    /// The cover's notes, one per line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Notes>,
+}
+
+impl ProjectInfo {
+    /// Whether nothing is set.
+    pub fn is_empty(&self) -> bool {
+        *self == ProjectInfo::default()
+    }
+
+    /// The value of field `f`.
+    pub fn get(&self, f: InfoField) -> Option<&str> {
+        match f {
+            InfoField::Title => self.title.as_ref().map(Text::as_str),
+            InfoField::DrawingNumber => self.drawing_number.as_ref().map(Text::as_str),
+            InfoField::Customer => self.customer.as_ref().map(Text::as_str),
+            InfoField::Site => self.site.as_ref().map(Text::as_str),
+            InfoField::Status => self.status.as_ref().map(Text::as_str),
+            InfoField::Notes => self.notes.as_ref().map(crate::text::LongText::as_str),
+        }
+    }
+
+    /// `self` with field `f` set to `value` (`None`, or blank, clears it).
+    ///
+    /// # Errors
+    /// Why the text was refused.
+    pub fn with(&self, f: InfoField, value: Option<&str>) -> Result<ProjectInfo, crate::text::TextError> {
+        let mut out = self.clone();
+        let v = value.map(str::trim).filter(|v| !v.is_empty());
+        let line = |v: Option<&str>| v.map(InfoText::new).transpose();
+        match f {
+            InfoField::Title => out.title = line(v)?,
+            InfoField::DrawingNumber => out.drawing_number = line(v)?,
+            InfoField::Customer => out.customer = line(v)?,
+            InfoField::Site => out.site = line(v)?,
+            InfoField::Status => out.status = line(v)?,
+            InfoField::Notes => out.notes = v.map(Notes::new).transpose()?,
+        }
+        Ok(out)
     }
 }

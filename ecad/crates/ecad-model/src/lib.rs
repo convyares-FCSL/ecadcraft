@@ -76,7 +76,9 @@ pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use page::{GenKind, PageKind, PageTitle};
-pub use project::{CustomField, Function, ListCode, ListDescription, ListEntry, Location, Project, Rev, RevField, RevValue, Revision};
+pub use project::{
+    CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
+};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use words::{Side, Word};

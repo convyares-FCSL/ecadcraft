@@ -804,7 +804,16 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
 /// The project's own data (design 072 §5.3): each list merges entry by entry (an entry changed on
 /// both sides differently is a conflict), the defaults field by field, the revision rows whole.
 fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project) -> crate::Project {
+    // The info merges field by field, like the project properties it was.
+    let mut info = t.info.clone();
+    for f in <crate::project::InfoField as crate::Word>::ALL {
+        let get = |p: &crate::Project| p.info.get(*f).map(str::to_string);
+        let what = format!("Project · {}", crate::Word::word(*f));
+        let v = field(ctx, obj, crate::Word::word(*f), what, &get(a), &get(t), &get(s), &|x| shown_value(x.as_ref()));
+        info = info.with(*f, v.as_deref()).unwrap_or(info);
+    }
     crate::Project {
+        info,
         locations: merge_list(ctx, obj, "location", &a.locations, &t.locations, &s.locations),
         functions: merge_list(ctx, obj, "function", &a.functions, &t.functions, &s.functions),
         location: field(ctx, obj, "location", "Project · location".into(), &a.location, &t.location, &s.location, &|x| {

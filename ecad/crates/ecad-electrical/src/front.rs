@@ -47,7 +47,7 @@ const LEGEND_COLUMNS: usize = 5;
 
 /// The cover's notes as stored, cut to the bounds: (notes, whether anything was cut).
 pub fn notes(doc: &Document) -> (Vec<String>, bool) {
-    let Some(text) = doc.properties.get(NOTES_KEY) else { return (Vec::new(), false) };
+    let Some(text) = crate::frames::project_text(doc, NOTES_KEY) else { return (Vec::new(), false) };
     let mut cut = false;
     let mut out = Vec::new();
     for line in text.lines() {
@@ -456,7 +456,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
     let codes_on = Block::StructureCodes.on(doc);
     ops.iter().any(|op| match op {
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-            matches!(key.as_str(), crate::frames::TITLE | crate::frames::CUSTOMER | "site" | NOTES_KEY | WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
+            matches!(key.as_str(), WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
                 || key.starts_with("front.cover.")
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
@@ -477,6 +477,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         // Design 072 §5.3: the revision rows, or a code the cover shows.
         Op::ModifyProject { before, after } => {
             before.revisions != after.revisions
+                || before.info != after.info
                 || (codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
         }
         Op::ModifyPage { before, after, .. } => {

@@ -113,7 +113,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             type_id: ty.text(),
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),
-            notes: doc.properties.get(ecad_cadcraft::front::NOTES_KEY).cloned().unwrap_or_default(),
+            notes: ecad_cadcraft::frames::project_text(doc, ecad_cadcraft::front::NOTES_KEY).unwrap_or_default(),
             wire_rows: if kind == GenKind::Cover { ecad_cadcraft::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
             legend_rows: if kind == GenKind::Cover {
                 ecad_cadcraft::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect()

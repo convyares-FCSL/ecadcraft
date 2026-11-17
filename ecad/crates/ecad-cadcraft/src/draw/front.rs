@@ -207,7 +207,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let small = sized("front.cover.body");
     let caption = sized("front.cover.column_head");
     let on = |b: Block| b.on(doc);
-    let prop = |k: &str| doc.properties.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| crate::frames::project_text(doc, k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
 
     // Heading and customer line, centred.
     let title_text = prop(crate::frames::TITLE).unwrap_or_default();

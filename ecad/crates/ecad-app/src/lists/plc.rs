@@ -777,9 +777,7 @@ impl IoView {
     /// model (words only; no rows made).
     fn after_sync(&mut self, doc: &Document, o: &Outputs) {
         let plc = &o.plc;
-        self.project_name = doc
-            .properties
-            .get(ecad_cadcraft::frame::TITLE)
+        self.project_name = ecad_cadcraft::frames::project_text(doc, ecad_cadcraft::frame::TITLE)
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| "Project".into());
