@@ -14,7 +14,8 @@
 //! PLC card bodies) and adds text anchors for lane T ([`anchors`]), the rating rule
 //! ([`setprop_rule`]) and quiet points ([`is_quiet`]).
 //!
-//! The catalogue reads no project; only [`setprop_rule`] reads one, to find a fuse bank's fuses.
+//! The catalogue reads no project; [`setprop_rule`] reads one to find a fuse bank's fuses, and the
+//! project-symbol helpers read its symbol versions.
 //! Nothing here changes a project.
 
 #![deny(clippy::wildcard_enum_match_arm)]
@@ -24,7 +25,7 @@ use std::sync::OnceLock;
 
 use crate::CmdError;
 use ecad_model::{
-    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Origin, Primitive, Pt, Subject, TerminalDef, Word,
+    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, Primitive, Pt, Subject, TerminalDef, Word,
 };
 
 /// The library ID of the starter symbols.
@@ -1331,6 +1332,48 @@ pub fn project_symbols(doc: &Document) -> Vec<Version<'_>> {
 pub fn project_by_key<'a>(doc: &'a Document, key: &str) -> Option<Version<'a>> {
     let k = key.trim();
     project_symbols(doc).into_iter().find(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
+}
+
+/// Whether some version of a project symbol has key `key` (case-insensitive).
+pub fn has_project_key(doc: &Document, key: &str) -> bool {
+    let k = key.trim();
+    project_versions(doc).any(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
+}
+
+/// The op that keeps the project's tag prefixes on project symbols (design 072 F5) true after
+/// `ops`: a prefix whose key no version holds any more moves to the new key of the symbol that had
+/// it (a rename), or is cleared (its versions removed). `None` when nothing changes.
+///
+/// # Semantics
+/// Reads only the project's symbol versions and `ops`' `EmbedDefinition`/`RemoveDefinition`, so
+/// it goes last in the plan. A rename onto a key that already has a prefix keeps that one.
+pub fn prefix_follow(doc: &Document, ops: &[Op]) -> Option<Op> {
+    use ecad_model::prefix::PrefixOf;
+    let removed: BTreeSet<DefinitionId> = ops.iter().filter_map(|o| if let Op::RemoveDefinition { id, .. } = o { Some(*id) } else { None }).collect();
+    let embedded: Vec<Version<'_>> =
+        ops.iter().filter_map(|o| if let Op::EmbedDefinition { id, definition } = o { Version::of(*id, definition) } else { None }).collect();
+    let lower = |k: &str| k.trim().to_ascii_lowercase();
+    let mut after: BTreeSet<String> = project_versions(doc).filter(|v| !removed.contains(&v.id)).filter_map(|v| v.key().map(lower)).collect();
+    after.extend(embedded.iter().filter_map(|v| v.key().map(lower)));
+    let before = doc.settings.clone();
+    let mut next = before.clone();
+    for (of, prefix) in &before.tag_prefixes {
+        let PrefixOf::Project(k) = of else { continue };
+        if after.contains(&lower(k)) {
+            continue;
+        }
+        next.tag_prefixes.remove(of);
+        let lineages: BTreeSet<DefinitionId> =
+            project_versions(doc).filter(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k.trim()))).map(|v| v.lineage).collect();
+        let renamed = embedded.iter().filter(|v| lineages.contains(&v.lineage)).max_by_key(|v| v.seq).and_then(|v| v.key());
+        if let Some(new) = renamed.filter(|k| PrefixOf::project_form(k)).map(|k| PrefixOf::Project(k.into()))
+            && !before.tag_prefixes.contains_key(&new)
+            && !next.tag_prefixes.contains_key(&new)
+        {
+            next.tag_prefixes.insert(new, prefix.clone());
+        }
+    }
+    (next != before).then_some(Op::SetProjectSettings { before, after: next })
 }
 
 /// The key a symbol's registry entries use: a starter's catalogue key, else a project symbol's own.

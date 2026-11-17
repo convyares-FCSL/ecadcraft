@@ -437,7 +437,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
         Author::User,
         X,
         vec![
-            Op::AddPage { id: p1, page: Page::new(X), index: 0 },
+            Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
             Op::CreateDevice {
                 id: k,

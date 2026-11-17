@@ -66,6 +66,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
     };
     for op in ops {
         match op {
+            Op::ModifyPage { id, .. } => {
+                out.insert(ObjectRef::Page(*id));
+            }
             Op::SetProperty { object, .. } => {
                 out.insert(*object);
                 // A location box's own location is what its page's devices inherit (brief 024).
@@ -361,9 +364,10 @@ pub fn sheet_choices(doc: &Document) -> Vec<String> {
 fn page_section(doc: &Document, page: PageId) -> Section {
     let book = Book::of(doc);
     let pg = doc.pages.get(&page);
-    let prop = |k: &str| pg.and_then(|x| x.properties.get(k)).cloned();
+    let prop = |k: &str| pg.and_then(|x| x.display.get(k)).cloned();
     let number = book.number(doc, page);
-    let mut rows = vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.clone()).unwrap_or_default())];
+    let mut rows =
+        vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.to_string()).unwrap_or_default())];
     let folder = ecad_model::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
     let path = crate::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
@@ -385,8 +389,8 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let mut sheet = Row::rw(
         ecad_model::sheet::SHEET_KEY,
         "Sheet",
-        match prop(ecad_model::sheet::SHEET_KEY) {
-            Some(t) => t,
+        match pg.and_then(|x| x.sheet) {
+            Some(t) => t.text(),
             None => format!("Project ({})", doc.settings.sheet().summary()),
         },
     );
@@ -1004,7 +1008,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
                 (key, own, crate::defaults::resolve(doc, entry, scope).word())
             }
             TextsAt::Page(p) => {
-                let own = doc.pages.get(&p).and_then(|x| x.properties.get(entry.key)).cloned();
+                let own = doc.pages.get(&p).and_then(|x| x.display.get(entry.key)).cloned();
                 (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
             }
         };

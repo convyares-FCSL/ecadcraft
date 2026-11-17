@@ -376,9 +376,14 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
     let project = chosen(doc, entry, Scope::project());
     let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
     match cat.word {
-        "frame" => doc.pages.iter().filter(|(_, p)| !own(&p.properties)).filter(|_| project == *id).count(),
+        "frame" => doc.pages.iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
         // Brief 054: pages with no own type whose generated kind (or none) gives `id`.
-        "page" => doc.pages.values().filter(|p| !own(&p.properties)).filter(|p| ecad_model::sheet::page_type_of(doc, &p.properties) == *id).count(),
+        "page" => doc
+            .pages
+            .values()
+            .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, "page", t)))
+            .filter(|p| ecad_model::sheet::page_type_of(doc, p) == *id)
+            .count(),
         "location" if project == *id => doc.devices.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count(),
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         "wire" => {

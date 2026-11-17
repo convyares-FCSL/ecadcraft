@@ -4,7 +4,7 @@
 use ecad_cadcraft::checks::Kind;
 use ecad_cadcraft::styles::page as ptype;
 use ecad_model::book::{Book, NUMBER_KEY};
-use ecad_model::sheet::{PAGE_TYPE_KEY, sheet_of};
+use ecad_model::sheet::sheet_of;
 use ecad_model::{FolderId, PageId, StyleRef};
 use serde_json::{Value, json};
 
@@ -53,7 +53,7 @@ fn old_pages_resolve_their_type_without_a_property() {
     let bom = page(&mut h, json!({"generated": "bom-location"}));
     let d = h.doc();
     for p in [first, cover, bom] {
-        assert!(!d.pages[&p].properties.contains_key(PAGE_TYPE_KEY), "nothing written for the derived type");
+        assert!(d.pages[&p].page_type.is_none(), "nothing written for the derived type");
     }
     assert_eq!((ty(&mut h, first), ty(&mut h, cover), ty(&mut h, bom)), ("schematic".into(), "front".into(), "report".into()));
     // The sheet is the project's, as before.
@@ -74,10 +74,10 @@ fn newpage_type_after_inserts_after_the_page_with_the_next_number() {
     assert_eq!(Book::of(&d).order, vec![p1, p2, n, p3], "the type never moves it");
     assert_eq!(number(&mut h, n), "4");
     assert_eq!(d.pages[&n].title, "Network");
-    assert_eq!(d.pages[&n].properties.get(PAGE_TYPE_KEY).map(String::as_str), Some("network"));
+    assert_eq!(d.pages[&n].page_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("network"));
     // A plain schematic page stays as small as today.
     let s = page(&mut h, json!({"type": "schematic", "after": p3.hex()}));
-    assert!(!h.doc().pages[&s].properties.contains_key(PAGE_TYPE_KEY));
+    assert!(h.doc().pages[&s].page_type.is_none());
     // An empty folder with start 100: its first page is 100, the next 101.
     let f: FolderId = id(&h.run("newfolder", json!({"name": "Schematic"})).unwrap(), "folder");
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
@@ -253,18 +253,14 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     h.run("pageprops", json!({"page": p1.hex()})).unwrap();
     h.cfg(|p| {
         let d = p.ledger.document();
-        let before = d.pages[&p1].properties.get(PAGE_TYPE_KEY).cloned();
+        let before = d.pages[&p1].clone();
+        let after = ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xff)), ..before.clone() };
         p.ledger
             .commit(
                 ecad_model::Author::User,
                 "hostile",
                 vec![
-                    ecad_model::Op::SetProperty {
-                        object: ecad_model::ObjectRef::Page(p1),
-                        key: PAGE_TYPE_KEY.into(),
-                        before,
-                        after: Some("#000000000000000000000000000000ff".into()),
-                    },
+                    ecad_model::Op::ModifyPage { id: p1, before, after },
                     ecad_model::Op::SetProperty {
                         object: ecad_model::ObjectRef::Project,
                         key: "folder.0000000000000000000000000000beef.start".into(),

@@ -343,6 +343,11 @@ fn shown(v: Option<&String>) -> String {
     v.map_or_else(|| "(none)".to_string(), Clone::clone)
 }
 
+/// A value as a conflict shows it; unset is `(none)`.
+fn shown_value<T: std::fmt::Display>(x: Option<&T>) -> String {
+    x.map_or_else(|| "(none)".to_string(), |v| format!("\"{v}\""))
+}
+
 /// A property value as a person reads it (brief 045, FP1 condition 1): a value that is a
 /// component's ID (32 hex digits, a component of one of `docs`) is shown as that component's tag,
 /// never as the ID; any other value as stored.
@@ -497,10 +502,10 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(n) => format!("Cable {n}"),
             None => format!("Cable {}", c.short()),
         },
-        Obj::Page(p) => {
-            let title = docs.iter().find_map(|d| d.pages.get(&p)).map(|p| p.title.clone()).unwrap_or_default();
-            if title.is_empty() { page_of(p) } else { format!("{} \"{title}\"", page_of(p)) }
-        }
+        Obj::Page(p) => match docs.iter().find_map(|d| d.pages.get(&p)) {
+            Some(page) => format!("{} \"{}\"", page_of(p), page.title),
+            None => page_of(p),
+        },
         Obj::Folder(f) => format!("Folder \"{}\"", docs.iter().find_map(|d| d.folders.get(&f)).map_or_else(|| f.short(), |f| f.name.clone())),
         Obj::Layer(l) => format!("Layer \"{}\"", docs.iter().find_map(|d| d.layers.get(&l)).map_or_else(|| l.short(), |l| l.name.clone())),
         Obj::Definition(d) => format!("Symbol \"{}\"", docs.iter().find_map(|x| x.definitions.get(&d)).map_or_else(|| d.short(), |d| d.name.clone())),
@@ -686,7 +691,30 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Page(id) => {
                 let v = object(ctx, obj, &what, a.pages.get(&id), t.pages.get(&id), s.pages.get(&id), |ctx, a, t, s| Page {
                     title: field(ctx, obj, "title", format!("{what} · title"), &a.title, &t.title, &s.title, &|x| format!("\"{x}\"")),
-                    properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
+                    number: field(ctx, obj, "number", format!("{what} · number"), &a.number, &t.number, &s.number, &|x| shown_value(x.as_ref())),
+                    folder: field(ctx, obj, "folder", format!("{what} · folder"), &a.folder, &t.folder, &s.folder, &|x| {
+                        x.map_or_else(|| "(top level)".to_string(), FolderId::short)
+                    }),
+                    kind: field(ctx, obj, "kind", format!("{what} · kind"), &a.kind, &t.kind, &s.kind, &|x| {
+                        x.generated_kind().map_or("schematic", crate::Word::word).to_string()
+                    }),
+                    page_type: field(ctx, obj, "page_type", format!("{what} · page type"), &a.page_type, &t.page_type, &s.page_type, &|x| {
+                        shown_value(x.as_ref())
+                    }),
+                    sheet: field(ctx, obj, "sheet", format!("{what} · sheet"), &a.sheet, &t.sheet, &s.sheet, &|x| {
+                        x.map_or_else(|| "(project's)".to_string(), |s| s.text())
+                    }),
+                    title_block: field(
+                        ctx,
+                        obj,
+                        "title_block",
+                        format!("{what} · title block"),
+                        &a.title_block,
+                        &t.title_block,
+                        &s.title_block,
+                        &|x| shown_value(x.as_ref()),
+                    ),
+                    display: merge_props(ctx, obj, &what, &a.display, &t.display, &s.display, &all),
                 });
                 set(&mut m.pages, id, v);
             }
@@ -1195,7 +1223,7 @@ fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj
         }
         (Obj::Page(p), Use::PageFolder) => {
             if let Some(p) = m.pages.get_mut(&p) {
-                p.properties.remove(crate::book::FOLDER_KEY);
+                p.folder = None;
             }
         }
         (Obj::Folder(f), Use::FolderParent) => {
@@ -1638,7 +1666,7 @@ fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTree
         if let Some(q) = which
             && let Some(page) = m.pages.get_mut(&q)
         {
-            page.properties.insert(crate::book::NUMBER_KEY.into(), fresh.clone());
+            page.number = crate::book::PageNo::parse(&fresh);
             taken.insert(fresh);
             out.insert(Obj::Page(q));
         }
@@ -1758,7 +1786,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             Obj::Device(c) => d.devices.get(&c).map(|x| x.properties.clone()),
             Obj::Conductor(c) => d.conductors.get(&c).map(|x| x.properties.clone()),
             Obj::Cable(c) => d.cables.get(&c).map(|x| x.properties.clone()),
-            Obj::Page(p) => d.pages.get(&p).map(|x| x.properties.clone()),
+            Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
             Obj::Project => Some(d.properties.clone()),
             _ => None,
         }
@@ -2279,8 +2307,8 @@ mod tests {
     #[test]
     fn a_page_number_added_on_both_is_renumbered_either_way() {
         let page = |n: &str| {
-            let mut p = Page::new("x");
-            p.properties.insert(crate::book::NUMBER_KEY.into(), n.into());
+            let mut p = Page::titled("x").unwrap();
+            p.number = crate::book::PageNo::parse(n);
             p
         };
         let a = Document::default();
@@ -2296,7 +2324,7 @@ mod tests {
         let id = p.conflicts.iter().find(|c| c.kind == ConflictKind::PageNumber).map(|c| c.id.clone()).unwrap();
         for (c, renumbered) in [(Choice::RenumberSource, PageId(2)), (Choice::RenumberTarget, PageId(1))] {
             let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c)));
-            assert_eq!(doc.pages[&renumbered].properties[crate::book::NUMBER_KEY], "6");
+            assert_eq!(doc.pages[&renumbered].number.as_ref().map(crate::book::PageNo::as_str), Some("6"));
             assert_eq!(doc.page_order.len(), 2);
         }
     }
@@ -2305,7 +2333,7 @@ mod tests {
     fn page_order_changed_differently_on_both_sides_is_chosen() {
         let mut a = Document::default();
         for i in 1..=3u128 {
-            a.pages.insert(PageId(i), Page::new(format!("{i}")));
+            a.pages.insert(PageId(i), Page::titled(format!("{i}")).unwrap());
             a.page_order.push(PageId(i));
         }
         let mut t = a.clone();

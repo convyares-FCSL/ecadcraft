@@ -650,7 +650,7 @@ fn style_row(
     let list = styles::catalogue(cat).map(|c| styles::rows(doc, c).into_iter().map(|x| (x.id.text(), x.name)).collect()).unwrap_or_default();
     let own = match scope.component {
         Some(c) => doc.devices.get(&c).and_then(|x| x.properties.get(e.key)),
-        None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.properties.get(e.key)),
+        None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.display.get(e.key)),
     };
     let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", styles::name(doc, cat, &id)));
     let _ = r;

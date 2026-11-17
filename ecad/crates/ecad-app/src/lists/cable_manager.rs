@@ -82,7 +82,7 @@ impl crate::App {
             let doc = p.ledger.document();
             let plan = cable_cmds::planned(doc, cable, Side::From, Aspect::Location)?;
             doc.page_order.iter().copied().find(|pg| {
-                let key = doc.pages.get(pg).and_then(|x| x.properties.get(Aspect::Location.property()));
+                let key = doc.pages.get(pg).and_then(|x| x.display.get(Aspect::Location.property()));
                 ecad_cadcraft::designations::shown(doc, Aspect::Location, key.map(String::as_str)).is_some_and(|c| c.eq_ignore_ascii_case(&plan))
             })
         });

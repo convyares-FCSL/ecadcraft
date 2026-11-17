@@ -9,32 +9,110 @@ use crate::index::{Index, referrers};
 
 use serde::{Deserialize, Serialize};
 
+use crate::book::PageNo;
 use crate::device::DeviceType;
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
+use crate::page::{PageKind, PageTitle};
+use crate::sheet::SheetSpec;
+use crate::style::StyleRef;
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
 pub type Properties = BTreeMap<String, String>;
 
-/// A page of the project.
+/// A page of the project (design 072 §5.1).
 ///
-/// Its `properties` (brief 019, decision FP1) hold the page number (`number`), the `=`/`+`
-/// overrides (`function`, `location`), its own sheet (`sheet`) and its folder (`folder`); see
-/// [`crate::book`] and [`crate::sheet`]. Left out of records while empty.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// What the page is ([`PageKind`]), its place in the book (`number`, `folder`) and its look
+/// (`page_type`, `sheet`, `title_block`) are fields; `display` holds only presentation choices and
+/// the defaults registry's page-level values. Every optional field is left out of records while
+/// unset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Page {
-    pub title: String,
+    pub title: PageTitle,
+    /// The designer's page number (`100`, `105a`); `None` shows the book position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<PageNo>,
+    /// The folder it is in; `None` at the top level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<FolderId>,
+    /// What the page is; set when it is made.
+    #[serde(default, skip_serializing_if = "PageKind::is_schematic")]
+    pub kind: PageKind,
+    /// Its page type (a style of catalogue `page`, brief 054); `None` takes the type its kind
+    /// implies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_type: Option<StyleRef>,
+    /// Its own sheet (brief 019); `None` takes its page type's, else the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    /// The frame style whose title block it borrows (brief 055); `None` takes its page type's,
+    /// else its frame's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<StyleRef>,
+    /// Presentation choices and registry values at page level.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: Properties,
+    pub display: Properties,
 }
 
 impl Page {
-    /// A page titled `title`, with no properties.
-    pub fn new(title: impl Into<String>) -> Self {
-        Page { title: title.into(), properties: Properties::new() }
+    /// A schematic page titled `title`, with nothing else set.
+    pub fn new(title: PageTitle) -> Self {
+        Page {
+            title,
+            number: None,
+            folder: None,
+            kind: PageKind::Schematic,
+            page_type: None,
+            sheet: None,
+            title_block: None,
+            display: Properties::new(),
+        }
     }
+
+    /// What differs between `self` (before) and `after`: the fields one by one, and the display
+    /// keys whose value differs. The update maps read a `ModifyPage` through it.
+    pub fn change<'a>(&'a self, after: &'a Page) -> PageChange<'a> {
+        let display = self
+            .display
+            .keys()
+            .chain(after.display.keys().filter(|k| !self.display.contains_key(*k)))
+            .filter(|k| self.display.get(*k) != after.display.get(*k))
+            .map(String::as_str)
+            .collect();
+        PageChange {
+            title: self.title != after.title,
+            number: self.number != after.number,
+            folder: self.folder != after.folder,
+            page_type: self.page_type != after.page_type,
+            sheet: self.sheet != after.sheet,
+            title_block: self.title_block != after.title_block,
+            display,
+        }
+    }
+
+    /// A schematic page titled `title`, if it is a valid title.
+    ///
+    /// # Errors
+    /// Why the title was refused.
+    pub fn titled(title: impl AsRef<str>) -> std::result::Result<Self, crate::text::TextError> {
+        PageTitle::new(title.as_ref()).map(Page::new)
+    }
+}
+
+/// What a `ModifyPage` changed ([`Page::change`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageChange<'a> {
+    pub title: bool,
+    pub number: bool,
+    pub folder: bool,
+    pub page_type: bool,
+    pub sheet: bool,
+    pub title_block: bool,
+    /// The display keys whose value changed.
+    pub display: Vec<&'a str>,
 }
 
 /// A folder of pages (brief 019, decision FP3): a name and a place in the tree. Pages name their

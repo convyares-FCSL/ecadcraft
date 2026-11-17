@@ -635,7 +635,7 @@ fn hostile_documents_derive_without_panicking() {
     let layer: LayerId = LayerId::from(2);
     let cable: CableId = CableId::from(3);
     let mut doc = Document::default();
-    doc.pages.insert(page, Page::new("1"));
+    doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
     doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::<CableMember>::new() });
@@ -673,8 +673,8 @@ fn hostile_documents_derive_without_panicking() {
     // partners read `?` for it, and nothing panics.
     let lost_page = PageId::from(9);
     let mut two = Document::default();
-    two.pages.insert(page, Page::new("1"));
-    two.pages.insert(lost_page, Page::new("lost"));
+    two.pages.insert(page, Page::titled("1").unwrap());
+    two.pages.insert(lost_page, Page::titled("lost").unwrap());
     two.page_order.push(page);
     two.layers.insert(layer, Layer { name: "0".into() });
     two.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
@@ -713,7 +713,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     let layer: LayerId = LayerId::from(2);
     let cable: CableId = CableId::from(3);
     let mut doc = Document::default();
-    doc.pages.insert(page, Page::new("1"));
+    doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
     doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });

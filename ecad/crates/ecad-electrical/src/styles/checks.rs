@@ -50,7 +50,8 @@ pub fn touches(op: &Op) -> bool {
         // A deleted object takes its choices with it.
         Op::DeleteDevice { device: component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
         Op::DeleteConductor { conductor, .. } => conductor.properties.keys().any(|k| is_choice_key(k)),
-        Op::RemovePage { page, .. } => page.properties.keys().any(|k| is_choice_key(k)),
+        Op::RemovePage { page, .. } => page.page_type.is_some() || page.display.keys().any(|k| is_choice_key(k)),
+        Op::ModifyPage { before, after, .. } => before.page_type != after.page_type,
         // Brief 054: the page type and folder rows.
         op if crate::page_types::touches_checks(op) => true,
         _ => false,

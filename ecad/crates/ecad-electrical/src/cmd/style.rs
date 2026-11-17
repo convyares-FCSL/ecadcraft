@@ -171,7 +171,7 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
         ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
-        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),
+        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
         ObjectRef::Project => Some(&doc.properties),
         ObjectRef::Standard => doc.standard.as_ref().map(|s| &s.values),
     }

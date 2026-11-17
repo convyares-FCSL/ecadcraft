@@ -18,7 +18,6 @@
 //!
 //! This module holds no invariant logic and no I/O.
 
-use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use crate::doc::{Cable, CableMember, Conductor, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
@@ -182,10 +181,13 @@ impl Index {
     }
 
     pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {
-        if let Some(f) = p.properties.text(crate::keys::FOLDER) {
-            self.page_folder(id, f, delta);
+        if let Some(f) = p.folder {
+            bump(&mut self.folder_pages, f, id, delta);
         }
-        self.style_choices(ObjectRef::Page(id), &p.properties, delta);
+        if let Some(t) = &p.page_type {
+            self.style_choice(ObjectRef::Page(id), crate::sheet::PAGE_TYPE_KEY, &t.to_string(), delta);
+        }
+        self.style_choices(ObjectRef::Page(id), &p.display, delta);
     }
 
     /// Every style choice among `props` (brief 050a).
@@ -199,14 +201,6 @@ impl Index {
     pub(crate) fn style_choice(&mut self, object: ObjectRef, key: &str, value: &str, delta: Delta) {
         if crate::style::is_choice_key(key) {
             bump(&mut self.style_users, (value.trim().to_string(), key.to_string()), object, delta);
-        }
-    }
-
-    /// A page's `folder` property `value` (its stored text) is added or removed. Text that is no
-    /// folder ID is indexed under no folder (the invariant check refuses it).
-    pub(crate) fn page_folder(&mut self, id: PageId, value: &str, delta: Delta) {
-        if let Some(f) = FolderId::parse(value) {
-            bump(&mut self.folder_pages, f, id, delta);
         }
     }
 

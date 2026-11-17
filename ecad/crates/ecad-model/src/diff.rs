@@ -188,17 +188,17 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
 
-    // Pages: those kept in place change only their properties; the others are removed (from the
-    // highest index down) and inserted in the target's order.
+    // Pages: those kept in place change in place (`ModifyPage`); the others, and a page whose kind
+    // changed, are removed (from the highest index down) and inserted in the target's order.
     let scoped_pages: Option<BTreeSet<PageId>> = scope.map(|s| s.pages.iter().chain(&s.page_properties).copied().collect());
     let page_changed = |p: &PageId| scoped_pages.as_ref().is_none_or(|s| s.contains(p));
-    let same_title: Vec<PageId> = from
+    let same_kind: Vec<PageId> = from
         .page_order
         .iter()
         .copied()
-        .filter(|p| !page_changed(p) || to.pages.get(p).zip(from.pages.get(p)).is_some_and(|(b, a)| a.title == b.title))
+        .filter(|p| !page_changed(p) || to.pages.get(p).zip(from.pages.get(p)).is_some_and(|(b, a)| a.kind == b.kind))
         .collect();
-    let stay: BTreeSet<PageId> = if same_title == to.page_order { same_title.iter().copied().collect() } else { kept(&same_title, &to.page_order) };
+    let stay: BTreeSet<PageId> = if same_kind == to.page_order { same_kind.iter().copied().collect() } else { kept(&same_kind, &to.page_order) };
     let mut order = from.page_order.clone();
     let mut page_removes = Vec::new();
     for i in (0..order.len()).rev() {
@@ -215,8 +215,9 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         if stay.contains(id) {
             if page_changed(id)
                 && let (Some(a), Some(b)) = (from.pages.get(id), to.pages.get(id))
+                && a != b
             {
-                props(ObjectRef::Page(*id), &a.properties, &b.properties, &all, &mut changes);
+                changes.push(Op::ModifyPage { id: *id, before: a.clone(), after: b.clone() });
             }
         } else if let Some(page) = to.pages.get(id) {
             page_adds.push(Op::AddPage { id: *id, page: page.clone(), index: i });
@@ -314,7 +315,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
     let mut out = BTreeMap::new();
     for op in ops {
         let key = match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => ("page", id.0),
+            Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => ("page", id.0),
             Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => ("layer", id.0),
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => ("item", id.0),
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {

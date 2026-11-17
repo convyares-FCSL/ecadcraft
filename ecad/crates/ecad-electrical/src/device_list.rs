@@ -149,14 +149,17 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
             Op::AddPage { .. } | Op::RemovePage { .. } => moved_pages(&mut extra),
             // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
             // order (folders) or the project's grid may change every place.
-            Op::SetProperty { object: ObjectRef::Page(pg), key, .. }
-                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
-            {
-                for (_, r) in doc.representations_on(*pg) {
-                    component(&r.subject);
+            Op::ModifyPage { id: pg, before, after } => {
+                let ch = before.change(after);
+                if ch.number || ch.sheet {
+                    for (_, r) in doc.representations_on(*pg) {
+                        component(&r.subject);
+                    }
+                }
+                if ch.folder {
+                    moved_pages(&mut extra);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => moved_pages(&mut extra),
             Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => moved_pages(&mut extra),
             Op::SetProjectSettings { before, after } => {
                 settings = true;

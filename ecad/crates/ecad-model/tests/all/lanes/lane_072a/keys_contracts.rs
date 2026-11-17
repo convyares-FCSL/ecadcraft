@@ -58,7 +58,7 @@ fn family_parts_are_whole_segments() {
 fn areas_classify_by_first_word() {
     let table: &[(&str, Area)] = &[
         ("tag", Area::Identity),
-        ("number", Area::Book),
+        ("number", Area::Free),
         ("text.tag.height", Area::Text),
         ("strippage.columns", Area::StripPage),
         ("print.frame.style", Area::Print),

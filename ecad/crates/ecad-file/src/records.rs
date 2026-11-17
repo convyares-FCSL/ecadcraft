@@ -26,11 +26,22 @@ fn mpt(p: Pt) -> m::Pt {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {
-    pub title: String,
-    /// Brief 019 (decision FP1): left out while empty, so a page without properties is written
-    /// exactly as before.
+    pub title: m::PageTitle,
+    /// Design 072 §5.1: every optional field is left out while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<m::PageNo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<FolderId>,
+    #[serde(default, skip_serializing_if = "m::PageKind::is_schematic")]
+    pub kind: m::PageKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_type: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<m::StyleRef>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: BTreeMap<String, String>,
+    pub display: BTreeMap<String, String>,
 }
 
 /// A folder of pages (brief 019, decision FP3).
@@ -650,6 +661,12 @@ pub enum Op {
         page: Page,
         index: u64,
     },
+    /// Design 072 §5.1.
+    ModifyPage {
+        id: PageId,
+        before: Page,
+        after: Page,
+    },
     AddLayer {
         id: LayerId,
         layer: Layer,
@@ -1023,13 +1040,31 @@ impl From<&m::Definition> for Definition {
 
 impl From<&m::Page> for Page {
     fn from(p: &m::Page) -> Self {
-        Page { title: p.title.clone(), properties: p.properties.clone() }
+        Page {
+            title: p.title.clone(),
+            number: p.number.clone(),
+            folder: p.folder,
+            kind: p.kind,
+            page_type: p.page_type.clone(),
+            sheet: p.sheet.as_ref().map(SheetSpec::from),
+            title_block: p.title_block.clone(),
+            display: p.display.clone(),
+        }
     }
 }
 
 impl From<Page> for m::Page {
     fn from(p: Page) -> Self {
-        m::Page { title: p.title, properties: p.properties }
+        m::Page {
+            title: p.title,
+            number: p.number,
+            folder: p.folder,
+            kind: p.kind,
+            page_type: p.page_type,
+            sheet: p.sheet.map(m::SheetSpec::from),
+            title_block: p.title_block,
+            display: p.display,
+        }
     }
 }
 
@@ -1090,6 +1125,7 @@ impl From<&m::Op> for Op {
         match op {
             m::Op::AddPage { id, page, index } => Op::AddPage { id: *id, page: page.into(), index: ix(*index) },
             m::Op::RemovePage { id, page, index } => Op::RemovePage { id: *id, page: page.into(), index: ix(*index) },
+            m::Op::ModifyPage { id, before, after } => Op::ModifyPage { id: *id, before: before.into(), after: after.into() },
             m::Op::AddLayer { id, layer } => Op::AddLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::RemoveLayer { id, layer } => Op::RemoveLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
@@ -1338,6 +1374,7 @@ impl TryFrom<Op> for m::Op {
         Ok(match op {
             Op::AddPage { id, page, index: i } => m::Op::AddPage { id, page: page.into(), index: index(i)? },
             Op::RemovePage { id, page, index: i } => m::Op::RemovePage { id, page: page.into(), index: index(i)? },
+            Op::ModifyPage { id, before, after } => m::Op::ModifyPage { id, before: before.into(), after: after.into() },
             Op::AddLayer { id, layer } => m::Op::AddLayer { id, layer: m::Layer { name: layer.name } },
             Op::RemoveLayer { id, layer } => m::Op::RemoveLayer { id, layer: m::Layer { name: layer.name } },
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },

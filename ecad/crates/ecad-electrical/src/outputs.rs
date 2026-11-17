@@ -35,7 +35,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::{LOCATION_KEY, NUMBER_KEY};
+use ecad_model::book::LOCATION_KEY;
 use ecad_model::{CableId, ConductorId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
 
@@ -534,12 +534,7 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.cables.insert(*k);
                 }
-                Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == LOCATION_KEY => {}
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
-                    if key == NUMBER_KEY {
-                        self.route_pages.insert(*p);
-                    }
-                }
+                Op::SetProperty { object: ObjectRef::Page(_), .. } => {}
                 // Brief 050a: a standard's value of a registry key reaches the same views.
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
                     // Brief 050b: the project's or standard's wire category reaches every wire row.
@@ -640,6 +635,17 @@ impl Scope {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
                     self.pages.insert(*id);
                     self.route_pages.insert(*id);
+                }
+                // Design 072 §5.1: a page changed in place; its number and title are where rows
+                // say they are.
+                Op::ModifyPage { id, before, after } => {
+                    if before.title != after.title || before.folder != after.folder {
+                        self.pages.insert(*id);
+                        self.route_pages.insert(*id);
+                    }
+                    if before.number != after.number {
+                        self.route_pages.insert(*id);
+                    }
                 }
                 Op::EmbedDefinition { .. }
                 | Op::RemoveDefinition { .. }

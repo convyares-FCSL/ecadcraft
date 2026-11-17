@@ -50,7 +50,7 @@ fn start(s: &Session, aspect: Aspect) -> R<Box<dyn Interactive>> {
     let page_default = read(s, |p, page| {
         let doc = p.ledger.document();
         // Brief 052: a stored entry key, shown by its code.
-        let stored = doc.pages.get(&page).and_then(|x| x.properties.get(aspect.property())).or_else(|| doc.properties.get(aspect.property()));
+        let stored = doc.pages.get(&page).and_then(|x| x.display.get(aspect.property())).or_else(|| doc.properties.get(aspect.property()));
         Ok(crate::designations::shown(doc, aspect, stored.map(String::as_str)))
     })
     .unwrap_or(None);

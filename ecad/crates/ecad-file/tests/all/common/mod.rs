@@ -114,7 +114,7 @@ pub fn fixture() -> Fixture {
     f.commit(
         "New project",
         vec![
-            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),

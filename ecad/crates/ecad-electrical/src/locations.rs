@@ -383,7 +383,7 @@ pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes
     {
         return Located::of(doc, a, k, Source::Box { component: b.component, page });
     }
-    if let Some(k) = doc.pages.get(&page).and_then(|p| p.properties.get(a.property())) {
+    if let Some(k) = doc.pages.get(&page).and_then(|p| p.display.get(a.property())) {
         return Located::of(doc, a, k, Source::Page(page));
     }
     if let Some(k) = doc.properties.get(a.property()) {

@@ -35,8 +35,8 @@ pub fn history() -> Ledger {
         Author::User,
         "New project",
         vec![
-            Op::AddPage { id: p1, page: Page::new("1"), index: 0 },
-            Op::AddPage { id: p2, page: Page::new("2"), index: 1 },
+            Op::AddPage { id: p1, page: Page::titled("1").unwrap(), index: 0 },
+            Op::AddPage { id: p2, page: Page::titled("2").unwrap(), index: 1 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
         ],
     )
@@ -85,8 +85,8 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         Author::User,
         "New project",
         vec![
-            Op::AddPage { id: p1, page: Page::new(title), index: 0 },
-            Op::AddPage { id: p2, page: Page::new("2"), index: 1 },
+            Op::AddPage { id: p1, page: Page::titled(title).unwrap(), index: 0 },
+            Op::AddPage { id: p2, page: Page::titled("2").unwrap(), index: 1 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
         ],
     )

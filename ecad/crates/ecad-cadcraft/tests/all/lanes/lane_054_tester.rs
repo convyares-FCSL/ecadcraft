@@ -177,7 +177,7 @@ fn ac2_old_pages_resolve_their_type_and_keep_numbers_folders_and_sheets() {
     let before_sheets: Vec<String> = order(&mut h).into_iter().map(|p| sheet_text(&mut h, p)).collect();
     let d = h.doc();
     for p in d.page_order.iter() {
-        assert!(!d.pages[p].properties.contains_key("page.type"), "plain newpage writes no page.type (§4.2)");
+        assert!(d.pages[p].page_type.is_none(), "plain newpage writes no page.type (§4.2)");
     }
     let head = h.head();
     for (p, want) in [(p1, "schematic"), (p2, "schematic"), (cover, "front"), (revs, "front"), (bom, "report")] {
@@ -218,7 +218,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     assert!(!["1", "2", "3", "4", "5"].contains(&n.as_str()), "a free number: {n}");
     assert_eq!(n, "6", "the next available number after 3 (4 and 5 are taken)");
     assert_eq!(type_of(&mut h, net), "network");
-    assert_eq!(h.doc().pages[&net].properties.get("page.type").map(String::as_str), Some("network"), "§4.2: written when it differs");
+    assert_eq!(h.doc().pages[&net].page_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("network"), "§4.2: written when it differs");
     // Back and front types do not force placement (Q1).
     let rep = new_page(&mut h, json!({"type": "report", "generated": "bom-location", "after": p[0].hex()}));
     assert_eq!(order(&mut h).iter().position(|x| *x == rep), Some(1), "a Report page goes where it is asked, not to the back");
@@ -226,7 +226,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     assert_eq!(order(&mut h).last(), Some(&cov), "a cover after the last page stays last");
     // A schematic `newpage {type}` writes no page.type (the derived type).
     let sch = new_page(&mut h, json!({"type": "schematic", "after": p[1].hex()}));
-    assert!(!h.doc().pages[&sch].properties.contains_key("page.type"), "§4.2: as small as today");
+    assert!(h.doc().pages[&sch].page_type.is_none(), "§4.2: as small as today");
     // In a folder: after a page in a folder lands in that folder.
     let f = folder(&mut h, "Motors");
     move_into(&mut h, p[3], f);
@@ -323,11 +323,7 @@ fn ac5_renumber_pages_numbers_each_folder_from_its_start() {
     h.run("place", json!({"symbol": "no", "at": [100, 100], "device": k.hex()})).ok();
     let before = numbers(&mut h);
     let (v, tx) = one_tx(&mut h, "renumberpages", json!({}));
-    assert!(
-        tx.ops.iter().all(|o| matches!(o, ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == "number")),
-        "{:?}",
-        tx.ops
-    );
+    assert!(tx.ops.iter().all(|o| matches!(o, ecad_model::Op::ModifyPage { before, after, .. } if before.change(after).number)), "{:?}", tx.ops);
     assert_eq!(tx.ops.len(), 50, "every page's number changes");
     let want: Vec<String> = (100..140).chain(300..310).map(|n| n.to_string()).collect();
     assert_eq!(numbers(&mut h), want);
@@ -454,7 +450,7 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
     // `generated` with no `type`: rule 2's type, and no page.type stored.
     let c = new_page(&mut h, json!({"generated": "contents", "after": revs.hex()}));
     assert_eq!(type_of(&mut h, c), "front");
-    assert!(!h.doc().pages[&c].properties.contains_key("page.type"));
+    assert!(h.doc().pages[&c].page_type.is_none());
     // An own type copied from Cover sheet may hold a cover (§2.3).
     let own = s(&h.run("setstyle", json!({"catalogue": "page", "new": true, "name": "Cover A4", "copy_of": "front"})).unwrap()["id"]);
     new_page(&mut h, json!({"type": own, "generated": "cover", "after": sch.hex()}));
@@ -823,7 +819,9 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     use ecad_model::{ObjectRef, Op};
     let (mut h, cover, sch) = with_cover(0x54_1501);
     let f = folder(&mut h, "Field");
-    let ghost = "#0000000000000000000000000000dead".to_string();
+    let ghost = h.doc().pages[&sch].clone();
+    let ghost =
+        Op::ModifyPage { id: sch, before: ghost.clone(), after: ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xdead)), ..ghost } };
     inject(
         &mut h,
         vec![
@@ -834,7 +832,7 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
                 before: None,
                 after: Some("100".into()),
             },
-            Op::SetProperty { object: ObjectRef::Page(sch), key: "page.type".into(), before: None, after: Some(ghost) },
+            ghost,
         ],
     );
     assert_eq!(type_of(&mut h, sch), "schematic", "a page.type naming nothing falls to rule 3");

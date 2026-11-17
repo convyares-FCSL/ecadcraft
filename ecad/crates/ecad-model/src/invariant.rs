@@ -48,7 +48,6 @@
 //!
 //! This module changes nothing: it only reads the document.
 
-use crate::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::doc::{
@@ -393,12 +392,9 @@ impl Document {
 
     /// I21.
     fn check_page_folder(&self, id: PageId) -> Result<()> {
-        let Some(text) = self.pages.get(&id).and_then(|p| p.properties.text(crate::keys::FOLDER)) else {
-            return Ok(());
-        };
-        match FolderId::parse(text) {
-            Some(f) if self.folders.contains_key(&f) => Ok(()),
-            _ => bad(format!("page {id} names a missing folder")),
+        match self.pages.get(&id).and_then(|p| p.folder) {
+            Some(f) if !self.folders.contains_key(&f) => bad(format!("page {id} names a missing folder")),
+            Some(_) | None => Ok(()),
         }
     }
 

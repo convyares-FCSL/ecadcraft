@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY};
+use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY};
 use ecad_model::sheet::{SheetSpec, unit_scale};
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
@@ -187,7 +187,7 @@ impl FrameInput {
     /// ([`FrameText::with`], or [`FrameText::sizes`] for a rule that only reads the layout).
     pub fn with(doc: &Document, page: PageId, book: &Book, text: FrameText) -> FrameInput {
         let prop = |k: &str| doc.properties.get(k).cloned().unwrap_or_default();
-        let pprops = doc.pages.get(&page).map(|p| &p.properties);
+        let pprops = doc.pages.get(&page).map(|p| &p.display);
         let inherited = |k: &str| pprops.and_then(|p| p.get(k)).cloned().unwrap_or_else(|| prop(k));
         let issued = crate::revisions::issued(doc);
         let rev_columns = crate::revisions::columns(doc);
@@ -219,7 +219,7 @@ impl FrameInput {
             customer: prop(CUSTOMER),
             drawing_number: prop(DRAWING_NUMBER),
             status: prop(STATUS),
-            page_title: doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default(),
+            page_title: doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default(),
             // Brief 052: stored as entry keys of the project's list; the title block shows codes.
             function: crate::designations::shown_text(
                 doc,
@@ -309,8 +309,12 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
                 || key == crate::revisions::PENDING_KEY
                 || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
         }
-        Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
-            *p == page || key == book::FOLDER_KEY || (key == book::NUMBER_KEY && shown.next_page == Some(*p))
+        Op::SetProperty { object: ObjectRef::Page(p), .. } => *p == page,
+        // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,
+        // the numbers of unnumbered pages), a number the Next box of the page before it.
+        Op::ModifyPage { id, before, after } => {
+            let ch = before.change(after);
+            *id == page || ch.folder || (ch.number && shown.next_page == Some(*id))
         }
         // A page renamed in place changes only its own title box; a page moved changes the book
         // order (Next, and the numbers of unnumbered pages).

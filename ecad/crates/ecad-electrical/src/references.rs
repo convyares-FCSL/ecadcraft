@@ -580,10 +580,14 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::SetProperty { object: ecad_model::ObjectRef::Device(_), .. } => {}
             // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
             // say about themselves, so their cables (whose other ends show it).
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. }
-                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
-            {
-                out.extend(cables_on(doc, *p));
+            Op::ModifyPage { id: p, before, after } => {
+                let ch = before.change(after);
+                if ch.number || ch.sheet || ch.page_type {
+                    out.extend(cables_on(doc, *p));
+                }
+                if ch.folder {
+                    moved_cables(doc, ops, &mut moved, &mut out);
+                }
             }
             // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
             Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
@@ -596,9 +600,6 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // A page moved between folders, a page added, removed or moved, a folder op: only the
             // pages whose book position changed may read differently (an unnumbered page's
             // number, the order of a cable's partners); a rename in place or an append moves none.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
-                moved_cables(doc, ops, &mut moved, &mut out);
-            }
             Op::SetProperty { object: ecad_model::ObjectRef::Page(_) | ecad_model::ObjectRef::Project, .. } => {}
             Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {
                 moved_cables(doc, ops, &mut moved, &mut out)

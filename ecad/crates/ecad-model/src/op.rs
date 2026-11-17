@@ -50,6 +50,13 @@ pub enum Op {
         page: Page,
         index: usize,
     },
+    /// Change a page in place (design 072 §5.1): its title, number, folder, look or display
+    /// choices. Its place in the page order and its kind stay.
+    ModifyPage {
+        id: PageId,
+        before: Page,
+        after: Page,
+    },
     AddLayer {
         id: LayerId,
         layer: Layer,
@@ -242,6 +249,7 @@ impl Op {
         match self.clone() {
             Op::AddPage { id, page, index } => Op::RemovePage { id, page, index },
             Op::RemovePage { id, page, index } => Op::AddPage { id, page, index },
+            Op::ModifyPage { id, before, after } => Op::ModifyPage { id, before: after, after: before },
             Op::AddLayer { id, layer } => Op::RemoveLayer { id, layer },
             Op::RemoveLayer { id, layer } => Op::AddLayer { id, layer },
             Op::AddItem { id, item } => Op::RemoveItem { id, item },
@@ -350,6 +358,16 @@ impl Op {
                     doc.index.page(*id, &old, Delta::Remove);
                 }
                 doc.page_order.remove(*index);
+            }
+            Op::ModifyPage { id, before, after } => {
+                holds(&doc.pages, *id, before, "page", checked)?;
+                if checked && before.kind != after.kind {
+                    return Err(pre(format!("page {id}: a page's kind is set when it is made")));
+                }
+                if let Some(old) = doc.pages.insert(*id, after.clone()) {
+                    doc.index.page(*id, &old, Delta::Remove);
+                }
+                doc.index.page(*id, after, Delta::Add);
             }
             Op::AddLayer { id, layer } => {
                 absent(&doc.layers, *id, "layer")?;
@@ -488,11 +506,14 @@ impl Op {
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
+                if crate::keys::is_reserved(key) {
+                    return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
+                }
                 let props = match object {
                     ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Conductor(id) => doc.conductors.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
-                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.properties),
+                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.display),
                     ObjectRef::Project => Some(&mut doc.properties),
                     ObjectRef::Standard => doc.standard.as_mut().map(|s| &mut s.values),
                 }
@@ -555,17 +576,6 @@ impl Op {
                         if let Some(new) = after {
                             doc.index.style_choice(obj, key, new, Delta::Add);
                         }
-                    }
-                }
-                // A page's folder is indexed (brief 019).
-                if let ObjectRef::Page(id) = object
-                    && key == crate::book::FOLDER_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.page_folder(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.page_folder(*id, new, Delta::Add);
                     }
                 }
             }
@@ -661,6 +671,7 @@ impl Op {
     pub fn name(&self) -> &'static str {
         match self {
             Op::AddPage { .. } => "AddPage",
+            Op::ModifyPage { .. } => "ModifyPage",
             Op::RemovePage { .. } => "RemovePage",
             Op::AddLayer { .. } => "AddLayer",
             Op::RemoveLayer { .. } => "RemoveLayer",

@@ -173,12 +173,12 @@ impl Outputs {
             Op::AddPage { .. } | Op::RemovePage { .. } => true,
             // Brief 046 (review): a page's style or sheet changes its sheet count on the document
             // alone, so the count before cannot be compared.
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => {
-                key == ecad_model::book::NUMBER_KEY
-                    || key == crate::generated::KEY
-                    || key == crate::defaults::strip_pages::STYLE.key
-                    || key == ecad_model::sheet::SHEET_KEY
+            Op::ModifyPage { before, after, .. } => {
+                before.number != after.number
+                    || before.sheet != after.sheet
+                    || before.display.get(crate::defaults::strip_pages::STYLE.key) != after.display.get(crate::defaults::strip_pages::STYLE.key)
             }
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == crate::defaults::strip_pages::STYLE.key,
             Op::SetProperty { object: ObjectRef::Project, key, .. } => {
                 (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
                     || key == crate::defaults::strip_pages::STYLE.key
@@ -264,7 +264,6 @@ impl Outputs {
         for op in ops {
             let p = match op {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == crate::generated::KEY => *p,
                 _ => continue,
             };
             if needs_outputs(doc, p) {
@@ -290,7 +289,7 @@ impl Outputs {
             scope.conductors.extend(self.wires.keys().copied());
         }
         if scope.sheet {
-            let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.properties.contains_key(ecad_model::sheet::SHEET_KEY));
+            let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.sheet.is_some());
             scope.route_pages.extend(doc.page_order.iter().filter(|p| !own(p)).copied());
         }
         if scope.project_location {

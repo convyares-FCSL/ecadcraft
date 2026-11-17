@@ -375,8 +375,10 @@ const views = {
       <tr><th>opened branch</th><td>${esc(o.branch)} at ${esc(o.verified_seq)} (snapshot ${esc(o.snapshot_seq)}, tail ${esc(o.tail)})</td></tr></table></div>
       <div><h2>Counts</h2><table>${counts}</table></div></div>
       ${revs ? `<h2>Revisions</h2>${table(["#", "fields"], [revs])}` : ""}
-      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Items", "Devices", "Wires", "Properties"],
-      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td><td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
+      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Kind", "Page type", "Sheet", "Title block", "Items", "Devices", "Wires", "Display"],
+      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.kind)}${r.strip ? ` (strip ${esc(r.strip)})` : ""}</td>
+        <td>${esc(r.page_type)}</td><td>${esc(r.sheet)}</td><td>${esc(r.title_block)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td>
+        <td class="mono">${esc(JSON.stringify(r.display))}</td></tr>`));
   },
   async devices() {
     return `<h2>Devices</h2>` + (await paged("devices", "devices", { detail: true }, ["Tag", "Function", "Location", "Definition", "Pages", "Connection points", "Properties"],

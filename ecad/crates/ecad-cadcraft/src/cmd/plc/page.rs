@@ -19,7 +19,7 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::plc as rules;
 pub use ecad_electrical::cmd::plc::{LEFT_MM, ROW_PITCH_MM, title};
-use ecad_model::book::{self, Book, FOLDER_KEY, NUMBER_KEY};
+use ecad_model::book::{self, Book};
 use ecad_model::{Op, Page, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -64,11 +64,9 @@ impl Command for PlcpageParams {
             let position = before.and_then(|b| book.position(b)).map_or(book.order.len() + 1, |x| x + 1);
             let number = crate::cmd::sheet::default_number(doc, &book, before, position, outputs);
             let title = title(doc, pc.card, pc.ty);
-            let mut new_page = Page::new(title.clone());
-            new_page.properties.insert(NUMBER_KEY.into(), number.clone());
-            if let Some(f) = before.and_then(|b| book::folder_of(doc, b)).filter(|f| doc.folders.contains_key(f)) {
-                new_page.properties.insert(FOLDER_KEY.into(), f.hex());
-            }
+            let mut new_page = Page::new(ecad_electrical::cmd::sheet::page_title(&title)?);
+            new_page.number = ecad_model::PageNo::parse(&number);
+            new_page.folder = before.and_then(|b| book::folder_of(doc, b)).filter(|f| doc.folders.contains_key(f));
             let index = before.and_then(|b| doc.page_order.iter().position(|x| *x == b)).map_or(doc.page_order.len(), |i| i + 1);
             let id: PageId = p.ids.fresh();
             let mut ops = vec![Op::AddPage { id, page: new_page, index }];
@@ -130,7 +128,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
     let (id, _, mut more) = crate::cmd::sheet::new_page_ops_at(p, kind.title().to_string(), None, None, None)?;
     for op in &mut more {
         if let Op::AddPage { page, .. } = op {
-            page.properties.insert(crate::generated::KEY.into(), kind.value().into());
+            page.kind = ecad_model::PageKind::generated(kind);
         }
     }
     Ok((Some(id), more))

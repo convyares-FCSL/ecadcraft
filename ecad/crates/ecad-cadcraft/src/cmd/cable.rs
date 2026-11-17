@@ -323,7 +323,7 @@ pub struct PickItem {
 /// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
 pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
     let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
-    let page_loc = doc.pages.get(&page).and_then(|x| x.properties.get(Aspect::Location.property()));
+    let page_loc = doc.pages.get(&page).and_then(|x| x.display.get(Aspect::Location.property()));
     if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.map(String::as_str)) {
         here.insert(code);
     }

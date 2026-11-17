@@ -96,7 +96,7 @@ pub(crate) fn base() -> Base {
     let mut ids = IdAllocator::seeded(13);
     let mut ledger = Ledger::new(5);
     let page = ids.fresh();
-    let page_v = Page::new("1");
+    let page_v = Page::titled("1").unwrap();
     let layer = ids.fresh();
     let layer_v = Layer { name: "0".into() };
     let def = ids.fresh();
@@ -212,7 +212,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
     let mut rep_after = b.rep_wire_v.clone();
     rep_after.role = "moved".into();
     vec![
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 },
         Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "x".into() } },
         Op::RemoveLayer { id: b.layer, layer: b.layer_v.clone() },
@@ -251,6 +251,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder) }, index: 1 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
         Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
+        Op::ModifyPage { id: b.page, before: b.page_v.clone(), after: Page { number: ecad_model::PageNo::parse("9"), ..b.page_v.clone() } },
         Op::SetStyle {
             layer: StyleLayer::Project,
             catalogue: "line".into(),
@@ -270,9 +271,9 @@ fn failing(b: &mut Base) -> Vec<Op> {
     let missing_comp = b.ids.fresh();
     vec![
         // Not atomic before brief 013: the page went in before the index was rejected.
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 9 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 9 },
         Op::AddPage { id: b.page, page: b.page_v.clone(), index: 0 },
-        Op::RemovePage { id: b.page, page: Page::new("other"), index: 0 },
+        Op::RemovePage { id: b.page, page: Page::titled("other").unwrap(), index: 0 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 1 },
         Op::AddLayer { id: b.layer, layer: b.layer_v.clone() },
         Op::RemoveLayer { id: b.layer, layer: Layer { name: "other".into() } },
@@ -313,6 +314,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 1 },
         Op::RemoveFolder { id: b.folder, folder: Folder { name: "other".into(), parent: None }, index: 0 },
         Op::ModifyFolder { id: b.folder, before: Folder { name: "other".into(), parent: None }, after: b.folder_v.clone() },
+        // Lane 072 E: a page not as recorded.
+        Op::ModifyPage { id: b.page, before: Page::titled("other").unwrap(), after: b.page_v.clone() },
         // The project has no standard, so a Standard-layer style and a header change both fail.
         Op::SetStyle {
             layer: StyleLayer::Standard,
@@ -392,7 +395,7 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     let mut b = base();
     // Rename the page by removing and re-adding it: in between, every item and representation on
     // it points at a missing page.
-    let renamed = Page::new("renamed");
+    let renamed = Page::titled("renamed").unwrap();
     let ops = vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 0 }];
     b.ledger.commit(Author::User, "rename", ops).unwrap();
     assert_eq!(b.ledger.document().pages.get(&b.page), Some(&renamed));
@@ -434,7 +437,7 @@ fn a_transaction_failing_at_op_three_leaves_the_document_byte_identical() {
     let head = b.ledger.head();
     let missing = b.ids.fresh();
     let ops = vec![
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::AttachEnd { conductor: b.wire2, end: End::A, before: None, after: Some(b.term) },
         Op::RemoveItem { id: missing, item: b.item_v.clone() },
         Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "never".into() } },
@@ -707,14 +710,14 @@ impl Gen {
             0..=1 => {
                 let id = if spoil { self.rng.pick(&self.pools.pages).unwrap_or_else(|| fresh_in!(self, pages)) } else { fresh_in!(self, pages) };
                 let index = self.rng.below(doc.page_order.len() + 1 + usize::from(spoil));
-                Op::AddPage { id, page: Page::new("p"), index }
+                Op::AddPage { id, page: Page::titled("p").unwrap(), index }
             }
             2 => match self.rng.pick(&doc.page_order) {
                 Some(id) => {
                     let index = doc.page_order.iter().position(|p| *p == id).unwrap_or(0) + usize::from(spoil);
-                    Op::RemovePage { id, page: doc.pages.get(&id).cloned().unwrap_or(Page::new("?")), index }
+                    Op::RemovePage { id, page: doc.pages.get(&id).cloned().unwrap_or(Page::titled("?").unwrap()), index }
                 }
-                None => Op::AddPage { id: fresh_in!(self, pages), page: Page::new("p"), index: 0 },
+                None => Op::AddPage { id: fresh_in!(self, pages), page: Page::titled("p").unwrap(), index: 0 },
             },
             3 => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
             4 => match self.rng.pick_key(&doc.layers) {
@@ -1063,7 +1066,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: None } },
         Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: Some("K2".into()) },
-        Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
     ];
     let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];
     for op in applicable(&mut b) {
