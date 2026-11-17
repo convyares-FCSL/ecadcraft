@@ -2,17 +2,19 @@
 //!
 //! A typed field with an unknown word already fails its record's decode. This check finds the
 //! words inside values that stay text: a stored value of a defaults choice that is not one of its
-//! words, a `tag_prefixes` key that is not a built-in symbol, and a property that became a struct
-//! field ([`ecad_model::keys::RESERVED`]). Anything found opens the project read-only, naming the
+//! words, a yes/no key ([`keys::ValueSpec::Flag`]) holding anything but `yes` or `no`, a
+//! `tag_prefixes` key that is not a built-in symbol, and a property that became a struct field
+//! ([`ecad_model::keys::RESERVED`]). Typed input may say `true`, `1` or `on`; a file holds only the
+//! words the program writes. Anything found opens the project read-only, naming the
 //! word, the setting and where it is; the file is never changed.
 //!
 //! It reads the whole document, so it runs on open (and on reload) only, never per commit. It
 //! changes nothing and excludes values that are not words: an out-of-range length or a malformed
 //! style ID still reads as absent (design 066).
 
-use ecad_model::keys;
 use ecad_model::strict::{UnknownWord, WordPlace};
 use ecad_model::{Document, Properties, RepresentationId};
+use ecad_model::{keys, words};
 
 use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 
@@ -45,6 +47,7 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     }
     for (id, c) in &doc.cables {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
+        flags(&c.properties, WordPlace::Cable(*id), &mut out);
     }
     for key in doc.settings.tag_prefixes.keys() {
         if crate::symbols::by_key(key).is_none() {
@@ -58,6 +61,7 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
 /// The unknown words of one property bag held at `level`.
 fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<UnknownWord>) {
     reserved(props, place, out);
+    flags(props, place, out);
     for (key, value) in props {
         let Some((entry, level)) = entry_of(key, level) else { continue };
         let Kind::Choice(words) = entry.kind else { continue };
@@ -66,6 +70,17 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
         let stored_here = entry.allows(level) && !in_settings;
         if stored_here && entry.parse(value).is_none() {
             out.push(UnknownWord::Value { place, setting: key.clone(), word: value.clone(), allowed: words.to_vec() });
+        }
+    }
+}
+
+/// The yes/no keys of [`keys::KEYS`] holding anything but the written words `yes` and `no`.
+fn flags(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
+    let written = [words::flag_word(true), words::flag_word(false)];
+    for (key, value) in props {
+        let flag = keys::spec(key).is_some_and(|s| matches!(s.value, keys::ValueSpec::Flag));
+        if flag && !written.contains(&value.as_str()) {
+            out.push(UnknownWord::Value { place, setting: key.clone(), word: value.clone(), allowed: written.to_vec() });
         }
     }
 }
@@ -142,6 +157,27 @@ mod tests {
         }
         let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
         assert_eq!(places, [WordPlace::Page(page), WordPlace::Device(c)]);
+    }
+
+    #[test]
+    fn stored_flags_hold_only_yes_or_no() {
+        let mut d = doc();
+        let c = ComponentId(3);
+        d.components.insert(c, Component::default());
+        d.properties.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
+        if let Some(comp) = d.components.get_mut(&c) {
+            comp.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
+        }
+        assert!(check(&d).is_empty(), "the written words pass");
+        for typed in ["on", "true", "1", "off", "Yes", " no"] {
+            if let Some(comp) = d.components.get_mut(&c) {
+                comp.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
+            }
+            let found = check(&d);
+            assert_eq!(found.len(), 1, "{typed:?} in a file is refused");
+            let text = found[0].to_string();
+            assert!(text.contains("tag_fixed") && text.contains(&format!("`{typed}`")), "{text}");
+        }
     }
 
     #[test]
