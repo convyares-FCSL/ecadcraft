@@ -1,4 +1,4 @@
-//! Design 072 §11: the typed-object-model guards that `cargo xtask layers` checks textually. Each
+//! Design 072 §13: the typed-object-model guards that `cargo xtask layers` checks textually. Each
 //! starts as a ratchet at its exact count in the lane that adds it; the count only falls, and the
 //! end gate checks every guard at 0 as a plain ban.
 //!
@@ -21,19 +21,28 @@ pub struct Guard {
     pub what: &'static str,
     pub allowed: usize,
     pub fix: &'static str,
-    /// Whether `line` (comments stripped) is one of the guard's places in file `rel`.
-    pub hit: fn(rel: &str, line: &str) -> bool,
+    pub scan: Scan,
+}
+
+/// How a guard finds its places in a file (comments and the trailing test module stripped).
+pub enum Scan {
+    /// Whether one line, in file `rel`, is a place.
+    Line(fn(rel: &str, line: &str) -> bool),
+    /// The 0-based numbers of the lines that are places, from the whole file.
+    File(fn(rel: &str, code: &str) -> Vec<usize>),
 }
 
 /// The guards and their counts. Lane 072 A1 recorded the starting counts; later lanes lower them,
 /// and the end of lane F sets each to 0.
 #[rustfmt::skip]
 pub const GUARDS: &[Guard] = &[
-    Guard { name: "G2", what: "boolean words compared or matched", allowed: 57, fix: "read it with ecad_model::words::flag", hit: g2 },
-    Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 36, fix: "use ecad_model::words::is_digits, uint or uint_canonical", hit: g3 },
-    Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 31, fix: "declare the words as a word_enum! and use a typed choice", hit: g8_choice },
-    Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 10, fix: "compare the typed value, not its word", hit: g8_word },
-    Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 4, fix: "an unknown word is a read error (design 072 §9.4); type it", hit: g10 },
+    Guard { name: "G2", what: "boolean words compared or matched", allowed: 57, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
+    Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 36, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
+    Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 31, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
+    Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 10, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
+    Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 4, fix: "an unknown word is a read error (design 072 §9.4); type it", scan: Scan::Line(g10) },
+    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 27, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
+    Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 12, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 
 fn g2(rel: &str, line: &str) -> bool {
@@ -62,6 +71,64 @@ fn g10(_: &str, line: &str) -> bool {
     t.starts_with("Unknown(") || line.contains("Stored<") || line.contains("enum Raw ") || line.contains(", Raw>")
 }
 
+/// The files where the hidden-character rule may appear: the rule and the text types built on it.
+const HIDDEN_RULE_FILES: &[&str] = &[WORDS_FILE, "crates/ecad-model/src/text.rs"];
+
+/// Hand-written members of the hidden set (G14): a few of its code points, as hex or escapes.
+const HIDDEN_MARKS: &[&str] = &["is_hidden", "0x200B", "0x202A", "0x2066"];
+/// The same code points written as Rust escapes, compared in lower case.
+const HIDDEN_ESCAPES: &[&str] = &[r"\u{200b}", r"\u{202a}", r"\u{202e}", r"\u{2066}"];
+
+fn g14(rel: &str, line: &str) -> bool {
+    !HIDDEN_RULE_FILES.contains(&rel)
+        && (HIDDEN_MARKS.iter().any(|m| line.contains(m)) || HIDDEN_ESCAPES.iter().any(|m| line.to_ascii_lowercase().contains(m)))
+}
+
+/// The crate whose structs are stored (design 072 Part I: stored structs live in ecad-model).
+const STORED_CRATE: &str = "crates/ecad-model/src/";
+
+/// G13: in ecad-model, the fields of a struct deriving `Serialize` typed with `String` or `&str`
+/// (also inside `Option`, `Vec` or a map), and tuple structs over them.
+fn g13(rel: &str, code: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    if !rel.starts_with(STORED_CRATE) {
+        return out;
+    }
+    let textual = |l: &str| l.contains("String") || l.contains("&str") || l.contains("&'static str");
+    let (mut serialized, mut depth) = (false, 0usize);
+    for (i, line) in code.lines().enumerate() {
+        let t = line.trim();
+        if depth > 0 {
+            let field = t.split_once(':').is_some_and(|(name, _)| {
+                let name = name.trim_start_matches("pub(crate) ").trim_start_matches("pub ");
+                !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            });
+            if depth == 1 && field && textual(t) {
+                out.push(i);
+            }
+            depth = (depth + t.matches('{').count()).saturating_sub(t.matches('}').count());
+            continue;
+        }
+        if t.starts_with("#[derive(") {
+            serialized = t.contains("Serialize");
+            continue;
+        }
+        if t.starts_with('#') || t.starts_with("///") || t.is_empty() {
+            continue;
+        }
+        let is_struct = t.starts_with("struct ") || t.starts_with("pub struct ") || t.starts_with("pub(crate) struct ");
+        if serialized && is_struct {
+            if t.ends_with('{') {
+                depth = 1;
+            } else if t.contains('(') && textual(t) {
+                out.push(i);
+            }
+        }
+        serialized = false;
+    }
+    out
+}
+
 /// `text` up to its trailing `#[cfg(test)]` module, if it has one: the line `#[cfg(test)]`
 /// followed by a `mod` line.
 pub fn product_part(text: &str) -> &str {
@@ -80,11 +147,11 @@ pub fn product_part(text: &str) -> &str {
 pub fn places(guard: &Guard, rel: &str, text: &str) -> Vec<String> {
     let product = product_part(text);
     let code = super::strip_line_comments(product);
-    code.lines()
-        .enumerate()
-        .filter(|(_, l)| (guard.hit)(rel, l))
-        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, product.lines().nth(i).unwrap_or_default().trim()))
-        .collect()
+    let lines: Vec<usize> = match guard.scan {
+        Scan::Line(hit) => code.lines().enumerate().filter(|(_, l)| hit(rel, l)).map(|(i, _)| i).collect(),
+        Scan::File(scan) => scan(rel, &code),
+    };
+    lines.into_iter().map(|i| format!("{rel}:{}: {}", i + 1, product.lines().nth(i).unwrap_or_default().trim())).collect()
 }
 
 /// Every guard's count over the product crates in `meta`, against [`GUARDS`]: a count that rose
