@@ -60,8 +60,6 @@ const UNTYPED: &[&str] = &[
     "toposition",
     "canvassheet",
     "setdefault",
-    "connector",
-    "pinlabel",
     "contcaption",
     "titleblockimport",
 ];
@@ -1307,4 +1305,61 @@ fn the_typed_page_type_commands_still_work() {
     let gone = h.run("deletepage", json!({"pages": [cover]})).unwrap_or_else(|e| json!(e));
     assert_eq!(gone["deleted"], json!([cover]), "{gone}");
     assert!(gone["message"].as_str().is_some_and(|m| m.starts_with("Removed ")), "{gone}");
+}
+
+/// Input refusals of the connector commands: one wording.
+#[test]
+fn the_connector_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("connector", json!({"at": "x"}), "`at` must be a point [x, y], or null"),
+        ("connector", json!({"line": [[0, 0]]}), "`line` needs at least 2 entries"),
+        ("connector", json!({"pins": "4"}), "`pins` must be a whole number, or null"),
+        ("connector", json!({"swap": 1}), "`swap` must be true or false, or null"),
+        ("connector", json!({"device": 5}), "`device` must be text, or null"),
+        ("connector", json!({"wire": "zz"}), "`wire` must be a hex id, or null"),
+        ("pinlabel", json!({"device": "-X1"}), "`to` (text) is required"),
+        ("pinlabel", json!({"to": 3}), "`to` must be text"),
+    ];
+    let mut h = H::new(7054);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the connector commands keep their words.
+#[test]
+fn the_connector_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("connector", json!({"rotation": 45}), "`rotation` is 0, 90, 180 or 270"),
+        ("connector", json!({"at": [0, 0], "halves": "x"}), "`halves` is socket, plug or both"),
+        ("connector", json!({"at": [0, 0], "family": "x"}), "`family` is plain, dsub, m12, rj45, usba or usbb"),
+        ("connector", json!({"at": [0, 0], "pins": 99}), "`pins` is a whole number from 1 to 64."),
+        ("connector", json!({"at": [0, 0], "layout": "x"}), "`layout` is row or pins"),
+        ("connector", json!({"layout": "row", "family": "plain"}), "connector needs at for a row, or line or wire for pins."),
+        ("connector", json!({"at": [0, 0], "page": "ab"}), "No such page."),
+        ("pinlabel", json!({"to": "2"}), "`device` and `pin`, or `terminal`, is required"),
+        ("pinlabel", json!({"terminal": "1", "to": "2"}), "No such connection point."),
+    ];
+    let mut h = H::new(7055);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed connector commands still work, and answer as before.
+#[test]
+fn the_typed_connector_commands_still_work() {
+    let mut h = H::new(7056);
+    let row = json!({"halves": "both", "family": "plain", "pins": 4, "names": "numbers", "layout": "row", "at": [100, 100]});
+    let v = h.run("connector", row).unwrap_or_else(|e| json!(e));
+    assert_eq!((v["new"].clone(), v["terminals"].as_array().map(Vec::len)), (json!(true), Some(8)), "{v}");
+    assert!(v["message"].as_str().is_some_and(|m| m.starts_with("Placed ")), "{v}");
+    let c = v["component"].clone();
+    let r = h.run("pinlabel", json!({"device": c, "pin": "1", "to": "L"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((r["changed"].clone(), r["from"].clone(), r["to"].clone()), (json!(true), json!("1"), json!("L")), "{r}");
+    let same = h.run("pinlabel", json!({"device": c, "pin": "L", "to": "L"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(same["changed"], json!(false), "{same}");
+    let list = h.run("connector", json!({"names": ["L", "N", "PE"], "layout": "row", "family": "plain", "at": [200, 100]}));
+    assert!(list.is_ok_and(|v| v["terminals"].as_array().is_some_and(|t| !t.is_empty())));
 }

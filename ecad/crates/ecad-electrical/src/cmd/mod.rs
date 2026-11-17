@@ -5,6 +5,7 @@
 
 pub mod bom;
 pub mod cable;
+pub mod connector;
 pub mod designation;
 pub mod location;
 pub mod numbering;
