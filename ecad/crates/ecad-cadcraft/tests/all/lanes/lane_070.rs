@@ -24,7 +24,6 @@ const UNTYPED: &[&str] = &[
     "cablerefs",
     "ecaddelete",
     "cableadd",
-    "place",
     "symbols",
     "devices",
     "tagsettings",
@@ -607,7 +606,10 @@ fn the_typed_symbol_commands_still_work() {
     assert_eq!((&impact["version"], &impact["copies"], &impact["problems"]), (&json!(2), &json!(0), &json!([])), "{impact}");
     let same = h.run("symboledit", float_switch(json!({"definition": def, "update": "None"}))).err().unwrap_or_default();
     assert_eq!(same, "Nothing changed.");
-    let v2 = h.run("symboledit", float_switch(json!({"definition": def, "name": "Float", "update": "None", "builtins": "x"}))).unwrap_or(Value::Null);
+    // Strict input: a switch that is not true or false is refused (it was ignored before).
+    let lenient = h.run("symboledit", float_switch(json!({"definition": def, "name": "Float", "update": "None", "builtins": "x"}))).err();
+    assert_eq!(lenient.as_deref(), Some("`builtins` must be true or false, or null"));
+    let v2 = h.run("symboledit", float_switch(json!({"definition": def, "name": "Float", "update": "None"}))).unwrap_or(Value::Null);
     assert_eq!((&v2["version"], &v2["lineage"], &v2["updated"], &v2["left"]), (&json!(2), &json!(lineage), &json!(0), &json!(0)), "{v2}");
     let none = h.run("symbolupdate", json!({"lineage": lineage})).err().unwrap_or_default();
     assert_eq!(none, "Nothing to update: every copy shows this version.");
@@ -1712,4 +1714,75 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     for (what, ..) in rows {
         assert!(PROP_RULES.iter().any(|r| r.what == *what), "{what}");
     }
+}
+
+/// Input refusals of `place`: one wording.
+#[test]
+fn place_refuses_input_uniformly() {
+    let rows: &[(Value, &str)] = &[
+        (json!({"symbol": "coil"}), "`at` (point [x, y]) is required"),
+        (json!({"symbol": "coil", "at": "x"}), "`at` must be a point [x, y]"),
+        (json!({"symbol": "coil", "at": [0, 0], "rotation": "x"}), "`rotation` must be a number, or null"),
+        (json!({"symbol": "coil", "at": [0, 0], "mirror": 1}), "`mirror` must be true or false, or null"),
+        (json!({"symbol": "coil", "at": [0, 0], "tag": 5}), "`tag` must be text, or null"),
+        (json!({"symbol": "coil", "at": [0, 0], "location": {"x": 1}}), "`location` must be text, or null"),
+        (json!({"symbol": "plcdi", "at": [0, 0], "rack": 5}), "`rack` must be text, or null"),
+        (json!({"at": [0, 0], "definition": "zz"}), "`definition` must be a hex id, or null"),
+    ];
+    let mut h = H::new(7075);
+    for (params, says) in rows {
+        assert_eq!(h.run("place", params.clone()).err().as_deref(), Some(*says), "{params}");
+    }
+}
+
+/// Rule refusals of `place` keep their words, in every form.
+#[test]
+fn place_keeps_its_rule_words() {
+    let mut h = H::new(7076);
+    let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
+    let rows: &[(Value, &str)] = &[
+        (json!({"symbol": "coil", "definition": "1", "at": [0, 0]}), "`symbol` and `definition` are mutually exclusive"),
+        (json!({"tag": "-K9", "at": [0, 0]}), "`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"),
+        (json!({"symbol": "nope", "at": [0, 0]}), "No symbol \"nope\". Type List to see them."),
+        (json!({"symbol": "coil", "at": [1e15, 0]}), ecad_cadcraft::interact::OUT_OF_RANGE),
+        (json!({"symbol": "coil", "at": [0, 0], "device": "zz"}), "`device` (hex id) is required"),
+        (json!({"symbol": "coil", "at": [0, 0], "device": coil, "tag": "-K9"}), "`tag` is for a new device; `device` joins an existing one"),
+        (json!({"symbol": "coil", "at": [0, 0], "device": "ab"}), "No such device."),
+        (json!({"symbol": "coil", "at": [0, 0], "location": " "}), "`location` is \"propose\", \"move\", \"keep\" or a code"),
+        (json!({"symbol": "junction", "at": [0, 0], "tag": "-K9"}), "A junction has no tag and is not part of a device."),
+        (json!({"symbol": "continuation", "at": [0, 0]}), "`name` is required for a continuation"),
+        (json!({"symbol": "junction", "at": [0, 0], "caption": "Up"}), "Only continuation arrows have a caption; that is a junction."),
+        (
+            json!({"symbol": "termlnpe.2", "at": [0, 0], "device": coil}),
+            "is not a terminal strip. Name a strip (-X01), or leave it out for a new one.",
+        ),
+        (json!({"symbol": "di", "at": [0, 0], "device": coil, "tag": "-A9"}), "`tag` is for a new card; `device` joins an existing one"),
+        (json!({"symbol": "plcdi", "at": [0, 0], "rack": "-K99"}), "No device -K99."),
+        (json!({"symbol": "socket4", "at": [0, 0], "device": coil}), "is not a connector"),
+        (json!({"at": [0, 0], "definition": "ab"}), "no such definition"),
+    ];
+    for (params, says) in rows {
+        let e = h.run("place", params.clone()).err().unwrap_or_default();
+        assert!(e.contains(says), "{params}: {e}");
+    }
+}
+
+/// `place` still places, joins and answers as before.
+#[test]
+fn the_typed_place_still_works() {
+    let mut h = H::new(7077);
+    let v = h.run("place", json!({"symbol": "coil", "at": [100, 100], "tag": "-K5"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((v["tag"].clone(), v["joined"].clone()), (json!("-K05"), json!(false)), "{v}");
+    let j = h.run("place", json!({"symbol": "no", "at": [200, 100], "device": v["component"]})).unwrap_or_else(|e| json!(e));
+    assert_eq!(j["joined"], json!(true), "{j}");
+    let c = h.run("place", json!({"symbol": "continuation", "at": [300, 100], "name": "24V", "caption": "to page 2"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((c["name"].clone(), c["caption"].clone()), (json!("24V"), json!("to page 2")), "{c}");
+    let t = h.run("place", json!({"symbol": "terminal", "at": [100, 300]})).unwrap_or_else(|e| json!(e));
+    assert!(t["tag"].as_str().is_some_and(|x| x.starts_with("-X")), "{t}");
+    let x = h.run("place", json!({"at": [400, 100]})).unwrap_or_else(|e| json!(e));
+    assert_eq!(x["terminals"].as_array().map(Vec::len), Some(2), "{x}");
+    let k = h.run("place", json!({"symbol": "socket4", "at": [400, 300]})).unwrap_or_else(|e| json!(e));
+    assert_eq!(k["joined"], json!(false), "{k}");
+    let ch = h.run("place", json!({"symbol": "di", "at": [500, 300], "channel": 3})).unwrap_or_else(|e| json!(e));
+    assert_eq!(ch["channel"], json!(3), "{ch}");
 }

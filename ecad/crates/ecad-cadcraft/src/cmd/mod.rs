@@ -48,8 +48,8 @@ use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
 use ecad_model::{
-    CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, End, Form, Item, ItemId, ItemKind, Op,
-    PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    CableId, CableMember, Color, Component, ComponentId, Conductor, ConductorId, Definition, End, Form, Item, ItemId, ItemKind, Op, PageId,
+    Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, TerminalDef, TerminalId,
 };
 use serde_json::{Value, json};
 
@@ -163,7 +163,7 @@ end's spine; null: the middle)",
         CommandSpec::new("cableadd", "Add to Cable", run_cableadd)
             .params("{cable?: id, conductors: [id], tag?}")
             .noundo(),
-        CommandSpec::new("place", "Place Symbol", run_place)
+        CommandSpec::new("place", "Place Symbol", crate::cmd::input::typed::<crate::cmd::device::PlaceParams>)
             .params(
                 "{at: [x,y], rotation?: degrees, mirror?: bool, symbol?: key, definition?: id, device?: id, tag?} (`symbol`: a starter symbol, see `symbols`; `device` adds it to that device; `tag` names a new one, or adds it to the device that has that tag)",
             )
@@ -308,6 +308,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::continuation::TYPED,
         crate::cmd::default::TYPED,
         crate::cmd::prop::TYPED,
+        crate::cmd::device::TYPED,
     ]
     .concat()
 }
@@ -1020,58 +1021,6 @@ pub fn builtin_coil() -> Definition {
         ],
         ..Default::default()
     }
-}
-
-fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    // Brief 018: a starter symbol, as a new device or another symbol of one.
-    if crate::cmd::device::is_symbol_place(params) {
-        return crate::cmd::device::run_place(s, params);
-    }
-    let at = params.get("at").and_then(point).ok_or_else(|| err("`at` [x,y] is required"))?;
-    let degrees = opt_typed(params, "rotation", "a finite number of degrees", |v| v.as_f64().filter(|d| d.is_finite())).map_err(err)?.unwrap_or(0.0);
-    let mirror = opt_typed(params, "mirror", "true or false", Value::as_bool).map_err(err)?.unwrap_or(false);
-    let wanted: Option<DefinitionId> = opt_id(params, "definition").map_err(err)?;
-    with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        let mut ops = Vec::new();
-        let (def_id, def) = match wanted {
-            Some(d) => (d, doc.definitions.get(&d).cloned().ok_or("no such definition")?),
-            None => match doc.definitions.iter().find(|(_, d)| d.name == builtin_coil().name) {
-                Some((id, d)) => (*id, d.clone()),
-                None => {
-                    let id: DefinitionId = p.ids.fresh();
-                    ops.push(Op::EmbedDefinition { id, definition: builtin_coil() });
-                    (id, builtin_coil())
-                }
-            },
-        };
-        let (c, item, r): (ComponentId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-        ops.push(Op::CreateComponent { id: c, component: Component { definition: Some(def_id), ..Component::default() } });
-        let mut terminals = Vec::new();
-        for td in &def.terminals {
-            let t: TerminalId = p.ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
-            terminals.push(json!({"key": td.key, "terminal": t.hex()}));
-        }
-        let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
-        ops.push(Op::AddItem {
-            id: item,
-            item: Item { page, style: plain_style(p), kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement }) },
-        });
-        ops.push(Op::LinkRepresentation {
-            id: r,
-            rep: Representation {
-                subject: Subject::Component(c),
-                page,
-                form: Form::Symbol,
-                role: crate::symbols::of_definition(&def).map_or_else(|| "symbol".to_string(), |s| s.key.to_string()),
-                items: vec![item],
-                connection_points: BTreeMap::new(),
-            },
-        });
-        p.apply_edit(pg, "place", "Place symbol", ops)?;
-        Ok(json!({"component": c.hex(), "item": item.hex(), "definition": def_id.hex(), "terminals": terminals}))
-    })
 }
 
 fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {

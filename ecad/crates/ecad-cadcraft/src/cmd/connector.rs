@@ -7,23 +7,24 @@
 //!
 //! `connector` and `pinlabel` are thin shims (brief 070): their params structs read the JSON, the
 //! rules in [`ecad_electrical::cmd::connector`] decide, and the shim commits the ops and answers in
-//! JSON. `place`'s connector form still reads its JSON by hand ([`run_place_half`]).
+//! JSON. `place`'s connector form is [`place_half`], part of `place`'s shim.
 //!
 //! [`Project::apply_edit`]: crate::project::Project::apply_edit
 
 use std::collections::BTreeSet;
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
 use ecad_electrical::cmd::connector::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
-use ecad_model::{ComponentId, ConductorId, Document, PageId, Placement, Pt, TerminalId};
+use ecad_model::{ConductorId, Document, PageId, Placement, Pt, TerminalId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::input::{Bounded, Command, Point, Typed};
-use crate::cmd::{err, on_project, opt_typed, plain_style, with_project};
+use crate::cmd::{err, on_project, plain_style};
 use crate::connectors::{self as cn, Names};
-use crate::symbols::{Side, Starter};
+use crate::symbols::Starter;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];
@@ -47,16 +48,6 @@ transaction; with terminal and to \"next\", moves that one drawn pin to its half
             )
             .noundo(),
     ]
-}
-
-/// The connector a JSON call's `device` names (a hex ID or a tag): `place` still reads its JSON by
-/// hand.
-fn device_param(doc: &Document, params: &Value) -> Result<Option<ComponentId>, String> {
-    match params.get("device") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(t)) => rules::device(doc, Some(t)).map_err(String::from),
-        Some(_) => Err("`device` is a connector's id or tag".into()),
-    }
 }
 
 fn out_of_range(p: Pt) -> bool {
@@ -199,52 +190,17 @@ impl Command for ConnectorParams {
 /// `place {symbol: <connector half or pin>, at, rotation?, mirror?, device?, tag?, pin?}` (design
 /// 044 §3.3): a new connector, or joining the connector named by `device` (or `tag`); a pin takes
 /// the next pin (§4.4) or `pin`, and on a wire it lands there. One transaction.
-pub(crate) fn run_place_half(
-    s: &mut Session, params: &Value, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
+pub(crate) fn place_half(
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
-    let tag = opt_typed(params, "tag", "a tag", Value::as_str).map_err(err)?.map(str::to_string);
-    let pin = opt_typed(params, "pin", "a pin name", Value::as_str).map_err(err)?.map(|p| p.trim().to_string());
+    let tag = params.tag.clone();
+    let device = params.device.clone();
+    let pin = params.pin.as_deref().map(|p| p.trim().to_string());
     let side = starter.side().ok_or_else(|| err("That symbol is not a connector half."))?;
-    let v = with_project(s, |p, pg, page| {
+    let modes = params.modes()?;
+    let v = on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
-        let mut device = device_param(doc, params)?;
-        if params.get("device").is_some_and(|v| !v.is_null()) && tag.is_some() {
-            return Err("`tag` is for a new connector; `device` joins an existing one".into());
-        }
-        let mut new_tag = None;
-        if let Some(t) = &tag
-            && let Some(found) = crate::connectors::resolve(doc, t)
-        {
-            // Brief 044 (tester D5): a half's tag (`-X01.P`) names its connector and that half.
-            let (c, half, _) = found?;
-            if let Some(h) = half
-                && side != Side::Both
-                && h != side
-            {
-                return Err(format!(
-                    "{} is the {} half of {}; this symbol is a {} half. Name -{}'s {} half, or Enter for a new connector.",
-                    t.trim(),
-                    h.word(),
-                    crate::devices::tag_words(doc, c),
-                    side.word(),
-                    crate::devices::tag_words(doc, c).trim_start_matches('-'),
-                    side.word()
-                ));
-            }
-            device = Some(c);
-        } else if let Some(t) = &tag {
-            let t = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
-            match crate::devices::holder_of(doc, &t, None) {
-                Some(c) => device = Some(c),
-                None if !doc.cables_tagged(&t).is_empty() => return Err(format!("Tag {t} is a cable's; choose another tag for a device.")),
-                None => new_tag = Some(t),
-            }
-        }
-        if let Some(c) = device
-            && !cn::is_connector(doc, c)
-        {
-            return Err(cn::not_a_connector(doc, c));
-        }
+        let (device, new_tag) = ecad_electrical::cmd::place::connector_target(doc, side, device.as_deref(), tag.as_deref())?;
         let style = plain_style(p);
         let mut ops = Vec::new();
         let def = crate::cmd::terminal::definition_for(doc, &mut p.ids, starter, &mut ops)?;
@@ -294,7 +250,7 @@ pub(crate) fn run_place_half(
         }
         let label = if new { format!("Place connector {tag_text}") } else { format!("Add symbol to {tag_text}") };
         // Brief 052d (design 052 §5.3): the place proposes; a half's conflict may answer Half.
-        let proposed = crate::draw::proposals::plan_place(p, params, c, page, origin, starter.side())?;
+        let proposed = crate::draw::proposals::plan_place(p, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
         p.last_placed = Some((starter.key.to_string(), c));

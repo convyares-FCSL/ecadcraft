@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::input::{Command, Point, Typed};
-use crate::cmd::{err, on_any_page, on_project, opt_id, opt_typed, plain_style, with_project};
+use crate::cmd::{err, on_any_page, on_project, plain_style};
 pub use crate::connectors::strip_terminal_at;
 pub use crate::connectors::{Land, plan_land};
 pub use crate::strips::terminal_words;
@@ -211,43 +211,19 @@ fn wire_words(doc: &Document, w: ConductorId) -> String {
 /// §3.3, §3.4): a level symbol (or whole terminal, disconnect or fuse terminal) joins strip `device`
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
-pub(crate) fn run_place_level(
-    s: &mut Session, params: &Value, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
+pub(crate) fn place_level(
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(starter.key).ok_or_else(|| err("That symbol is not a terminal level."))?;
-    let device: Option<ComponentId> = opt_id(params, "device").map_err(err)?;
-    let tag = opt_typed(params, "tag", "a tag", Value::as_str).map_err(err)?.map(str::to_string);
-    let position = opt_typed(params, "position", "a position label", Value::as_str).map_err(err)?.map(str::to_string);
-    if device.is_some() && tag.is_some() {
-        return Err(err("`tag` is for a new strip; `device` joins an existing one"));
-    }
-    let v = with_project(s, |p, pg, page| {
+    let device = params.device_id()?;
+    let tag = params.tag.clone();
+    let position = params.position.clone();
+    ecad_electrical::cmd::place::one_of(device.is_some(), tag.is_some(), "strip").map_err(|e| err(e.to_string()))?;
+    let modes = params.modes()?;
+    let v = on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
-        let not_strip = |c: ComponentId| {
-            format!("{} is not a terminal strip. Name a strip (-X01), or leave it out for a new one.", crate::devices::tag_words(doc, c))
-        };
-        let (strip, new_tag) = match (device, &tag) {
-            (Some(c), _) => {
-                if !doc.components.contains_key(&c) {
-                    return Err("No such device.".into());
-                }
-                if !strips::is_strip(doc, c) {
-                    return Err(not_strip(c));
-                }
-                (Some(c), None)
-            }
-            (None, Some(t)) => {
-                let t = ecad_model::tag::normalise(t, crate::devices::padding(doc))?;
-                match crate::devices::holder_of(doc, &t, None) {
-                    Some(c) if strips::is_strip(doc, c) => (Some(c), None),
-                    Some(c) => return Err(not_strip(c)),
-                    None if !doc.cables_tagged(&t).is_empty() => return Err(format!("Tag {t} is a cable's; choose another tag for a strip.")),
-                    None => (None, Some(t)),
-                }
-            }
-            (None, None) => (None, None),
-        };
+        let (strip, new_tag) = ecad_electrical::cmd::place::strip_target(doc, device, tag.as_deref())?;
         let mut ops = Vec::new();
         let def = definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let mut chooser = tt::Chooser::new(doc, strip);
@@ -279,7 +255,7 @@ pub(crate) fn run_place_level(
             ops.extend(l.ops.clone());
         }
         // Brief 052d (design 052 §5.3): the place proposes for the strip.
-        let proposed = crate::draw::proposals::plan_place(p, params, c, page, origin, None)?;
+        let proposed = crate::draw::proposals::plan_place(p, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));

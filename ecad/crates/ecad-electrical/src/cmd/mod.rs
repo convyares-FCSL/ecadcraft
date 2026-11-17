@@ -15,6 +15,7 @@ pub mod location;
 pub mod numbering;
 pub mod output;
 pub mod page_type;
+pub mod place;
 pub mod plc;
 pub mod prop;
 pub mod rating;

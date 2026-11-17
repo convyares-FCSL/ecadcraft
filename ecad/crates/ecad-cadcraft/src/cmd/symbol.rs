@@ -25,8 +25,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::cmd::input::{Bounded, Command, Point, Typed, lenient};
-use crate::cmd::{MAX_HANDLES, err, on_project, opt_id, plain_style, with_project};
+use crate::cmd::input::{Bounded, Command, Point, Typed};
+use crate::cmd::{MAX_HANDLES, err, on_project, plain_style, with_project};
 use crate::defaults::symbols::Field;
 use crate::project::Mapped;
 use crate::symbols;
@@ -319,8 +319,7 @@ pub(crate) struct ImpactParams {
     #[serde(default)]
     bridges: Option<Bridges>,
     /// Also the copies of an edited built-in.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     builtins: Option<bool>,
 }
 
@@ -389,8 +388,7 @@ pub(crate) struct EditParams {
     #[serde(default)]
     copies: Option<Copies>,
     /// With `update: all`: also the copies of an edited built-in.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     builtins: Option<bool>,
 }
 
@@ -486,8 +484,7 @@ pub(crate) struct MakeParams {
     #[serde(default)]
     bridges: Option<Bridges>,
     /// Replace the drawing with the new symbol (default true).
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     replace: Option<bool>,
     /// The page point of the symbol's origin (default: the drawing's centre on the point grid).
     #[serde(default)]
@@ -555,54 +552,34 @@ impl Command for MakeParams {
 
 // ---------------------------------------------------------------- placing (§5.1)
 
-/// `place {symbol: <project key>, at, rotation?, mirror?, device?}` (design 048 §5.1): the newest
-/// version of that project symbol. `None` when `key` names no project symbol.
-pub(crate) fn place_project_key(s: &mut Session, params: &Value, key: &str) -> cadcraft_engine::Result<Option<Value>> {
-    let at = params.get("at").and_then(crate::cmd::point).ok_or_else(|| err("`at` [x,y] is required"))?;
+/// `place {symbol: <project key>, at, rotation?, mirror?, device?, tag?}` (design 048 §5.1): the
+/// newest version of that project symbol. `None` when `key` names no project symbol.
+pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::PlaceParams, key: &str) -> cadcraft_engine::Result<Option<Value>> {
+    let at = params.at.0;
     if !(at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
         return Err(err(crate::interact::OUT_OF_RANGE));
     }
-    let degrees = match params.get("rotation") {
-        None | Some(Value::Null) => 0.0,
-        Some(v) => v.as_f64().filter(|d| d.is_finite()).ok_or_else(|| err("`rotation` must be a finite number of degrees"))?,
-    };
-    let mirror = params.get("mirror").and_then(Value::as_bool).unwrap_or(false);
-    let device: Option<ComponentId> = opt_id(params, "device").map_err(err)?;
+    let degrees = params.rotation.unwrap_or(0.0);
+    let mirror = params.mirror.unwrap_or(false);
+    let device = params.device_id()?;
     // Pack re-run, bug 2: a typed tag names the new device, as for a built-in symbol.
-    let tag = match params.get("tag") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => Some(t.clone()),
-        Some(_) => return Err(err("`tag` must be a string")),
-    };
-    if device.is_some() && tag.is_some() {
-        return Err(err("`tag` is for a new device; `device` joins an existing one"));
-    }
+    let tag = params.tag.clone();
+    ecad_electrical::cmd::place::one_of(device.is_some(), tag.is_some(), "device").map_err(|e| err(e.to_string()))?;
+    let modes = params.modes()?;
     let key = key.to_string();
-    with_project(s, |p, pg, page| {
+    on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
         let Some(v) = symbols::project_by_key(doc, &key) else { return Ok(None) };
         let (id, def) = (v.id, v.def.clone());
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
         // does for built-in symbols; devices and cables share one namespace (brief 026).
-        let (device, tag) = match tag {
-            None => (device, None),
-            Some(t) => {
-                let t = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
-                match crate::devices::holder_of(doc, &t, None) {
-                    Some(c) => (Some(c), None),
-                    None if !doc.cables_tagged(&t).is_empty() => {
-                        return Err(format!("Tag {t} is a cable's; choose another tag for a device."));
-                    }
-                    None => (None, Some(t)),
-                }
-            }
-        };
+        let (device, tag) = ecad_electrical::cmd::place::project_target(doc, device, tag.as_deref())?;
         let pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let style = plain_style(p);
         let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
         // Brief 052d (design 052 §5.3): the place proposes.
-        let proposed = crate::draw::proposals::plan_place(p, params, plan.component, page, at, None)?;
+        let proposed = crate::draw::proposals::plan_place(p, modes, plan.component, page, at, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();

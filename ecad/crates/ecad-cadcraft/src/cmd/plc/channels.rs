@@ -8,50 +8,33 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::cmd::input::{Command, Point, TextOrNumber, nullable};
-use crate::cmd::{err, on_project, opt_typed, plain_style, with_project};
+use crate::cmd::{err, on_project, plain_style};
 use crate::plc::channels::*;
 use crate::plc::rack::channel_count;
 use crate::symbols::Starter;
-use ecad_model::{ComponentId, Placement, Pt, TerminalId};
+use ecad_model::{Placement, Pt, TerminalId};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// `place {symbol: <channel symbol>, at, rotation?, mirror?, device?, tag?, channel?}` (design 045
 /// §4.4): joins card `device` (or the card tagged `tag`, or a new card) as its next free channel or
 /// the channel numbered `channel`; on a wire its first point lands there. One transaction.
-pub(crate) fn run_place_channel(
-    s: &mut Session, params: &Value, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
+pub(crate) fn place_channel(
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let t = cell_type(starter).ok_or_else(|| err("That symbol is not a PLC channel."))?;
-    let device: Option<ComponentId> = crate::cmd::opt_id(params, "device").map_err(err)?;
-    let tag = opt_typed(params, "tag", "a tag", Value::as_str).map_err(err)?.map(str::to_string);
-    let named = match params.get("channel") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(rules::channel_number(&v.as_str().map_or_else(|| v.to_string(), str::to_string)).map_err(|e| err(e.to_string()))?),
+    let device = params.device_id()?;
+    let tag = params.tag.clone();
+    let named = match &params.channel {
+        None => None,
+        Some(v) => Some(rules::channel_number(&v.text()).map_err(|e| err(e.to_string()))?),
     };
-    if device.is_some() && tag.is_some() {
-        return Err(err("`tag` is for a new card; `device` joins an existing one"));
-    }
-    let v = with_project(s, |p, pg, page| {
+    ecad_electrical::cmd::place::one_of(device.is_some(), tag.is_some(), "card").map_err(|e| err(e.to_string()))?;
+    let modes = params.modes()?;
+    let v = on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
-        let card = match (device, &tag) {
-            (Some(c), _) => {
-                if !doc.components.contains_key(&c) {
-                    return Err("No such device.".into());
-                }
-                Some(c)
-            }
-            (None, Some(t)) => {
-                let t = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
-                crate::devices::holder_of(doc, &t, None)
-            }
-            (None, None) => None,
-        };
-        let new_tag = match (card, &tag) {
-            (None, Some(t)) => Some(ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?),
-            _ => None,
-        };
+        let (card, new_tag) = ecad_electrical::cmd::place::card_target(doc, device, tag.as_deref())?;
         let mut ops = Vec::new();
         let def = crate::cmd::terminal::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let (card, card_tag, new) = match card {
@@ -102,7 +85,7 @@ pub(crate) fn run_place_channel(
             ops.extend(land.ops);
         }
         // Brief 052d (design 052 §5.3): the place proposes for the card.
-        let proposed = crate::draw::proposals::plan_place(p, params, card, page, pl.origin, None)?;
+        let proposed = crate::draw::proposals::plan_place(p, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
         p.last_placed = Some((starter.key.to_string(), card));

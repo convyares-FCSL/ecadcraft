@@ -15,7 +15,6 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{ComponentId, Document, ObjectRef, Op, Subject};
-use serde_json::{Value, json};
 
 use crate::defaults::{self, Scope};
 use crate::error::CmdError;
@@ -403,15 +402,6 @@ pub fn card_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
     }
 }
 
-/// A rack named by `v`: a hex ID or a tag ([`rack_named`], for callers still reading JSON).
-///
-/// # Errors
-/// Not text, or as [`rack_named`].
-pub fn rack_param(doc: &Document, v: &Value) -> Result<ComponentId, String> {
-    let t = v.as_str().ok_or("`rack` must be a rack's ID or tag, or null")?;
-    rack_named(doc, t).map_err(String::from)
-}
-
 /// The rack a card goes in when none is named: its own, else the only rack.
 ///
 /// # Errors
@@ -430,14 +420,6 @@ pub fn default_rack(doc: &Document, card: Option<ComponentId>) -> Result<Compone
             Err(format!("Name a rack: the project has {} ({}{more}).", many.len(), tags.join(", ")))
         }
     }
-}
-
-/// A slot parameter: a whole number 0–999.
-pub fn slot_value(v: &Value) -> Result<u32, String> {
-    let n = v.as_u64().or_else(|| v.as_str().and_then(|s| parse_slot(s).map(u64::from)));
-    n.filter(|n| *n <= u64::from(MAX_SLOT))
-        .and_then(|n| u32::try_from(n).ok())
-        .ok_or_else(|| format!("A slot is a whole number from 0 to {MAX_SLOT}."))
 }
 
 /// A slot written as text: a whole number 0–999.
@@ -494,18 +476,18 @@ pub fn place_words(doc: &Document, card: ComponentId) -> String {
     }
 }
 
-/// The `place` parameters of a card body (design 045 §2.4): `rack` (ID or tag; `null` for none;
-/// absent: the rack of the last card placed, else the only rack, else none) and `slot` (absent: the
-/// next free one). `Ok(None)` when the card goes in no rack.
+/// Where a card body `place`d goes (design 045 §2.4): `rack` (`None`: absent, the rack of the
+/// last card placed, else the only rack, else none; `Some(None)`: null, no rack; else an ID or a
+/// tag) and `slot` as written (absent: the next free one). `Ok(None)` when the card goes in no rack.
 ///
 /// # Errors
 /// An unknown rack, a slot that is not a number or not in the rack, a taken slot.
-pub fn place_target(doc: &Document, params: &Value, last_card: Option<ComponentId>) -> Result<Option<(ComponentId, u32)>, String> {
-    if params.get("rack").is_some_and(Value::is_null) {
-        return Ok(None);
-    }
-    let rack = match params.get("rack") {
-        Some(v) => rack_param(doc, v)?,
+pub fn place_target(
+    doc: &Document, rack: Option<Option<&str>>, slot: Option<&str>, last_card: Option<ComponentId>,
+) -> Result<Option<(ComponentId, u32)>, CmdError> {
+    let rack = match rack {
+        Some(None) => return Ok(None),
+        Some(Some(t)) => rack_named(doc, t)?,
         None => {
             let last = last_card.and_then(|c| match rack_ref(doc, c) {
                 RackRef::Rack(r) => Some(r),
@@ -519,20 +501,20 @@ pub fn place_target(doc: &Document, params: &Value, last_card: Option<ComponentI
     };
     let (first, n) = slot_range(doc, rack);
     let last = first.saturating_add(n).saturating_sub(1);
-    let slot = match params.get("slot") {
-        None | Some(Value::Null) => next_free_slot(doc, rack, None).ok_or_else(|| {
-            format!(
+    let slot = match slot {
+        None => next_free_slot(doc, rack, None).ok_or_else(|| {
+            CmdError::refused(format!(
                 "{}'s {n} slots are all taken. Raise its slot count (plc.slots), or place the card in no rack (rack: null).",
                 crate::devices::tag_words(doc, rack)
-            )
+            ))
         })?,
-        Some(v) => slot_value(v)?,
+        Some(t) => slot_number(t)?,
     };
     if !(first..=last).contains(&slot) {
-        return Err(format!("{} has slots {first}–{last}. Pick a slot in that range.", crate::devices::tag_words(doc, rack)));
+        return Err(CmdError::refused(format!("{} has slots {first}–{last}. Pick a slot in that range.", crate::devices::tag_words(doc, rack))));
     }
     if let Some(other) = holder_of_slot(doc, rack, slot, None) {
-        return Err(taken_words(doc, rack, slot, other));
+        return Err(CmdError::refused(taken_words(doc, rack, slot, other)));
     }
     Ok(Some((rack, slot)))
 }
@@ -556,7 +538,11 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
     Some(match key {
         RACK_KEY => match v {
             None => Ok(None),
-            Some(t) => rack_param(doc, &json!(t)).and_then(|r| if r == c { Err("A card cannot be its own rack.".into()) } else { Ok(Some(r.hex())) }),
+            Some(t) => match rack_named(doc, t) {
+                Ok(r) if r == c => Err("A card cannot be its own rack.".into()),
+                Ok(r) => Ok(Some(r.hex())),
+                Err(e) => Err(e.to_string()),
+            },
         },
         SLOT_KEY => match v {
             None => Ok(None),
