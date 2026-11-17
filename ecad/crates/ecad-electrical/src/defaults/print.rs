@@ -104,8 +104,8 @@ pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::tag::Style {
     let word = |e: &Entry| super::resolve(doc, e, super::Scope::project()).word();
     Style {
         padding: doc.settings.tag_padding().min(MAX_PADDING),
-        dash: ecad_model::words::flag(&word(&TAG_DASH)).unwrap_or(true),
-        case: Case::parse(&word(&TAG_CASE)).unwrap_or_default(),
+        dash: ecad_model::words::flag(word(&TAG_DASH)).unwrap_or(true),
+        case: Case::parse(word(&TAG_CASE)).unwrap_or_default(),
     }
 }
 
