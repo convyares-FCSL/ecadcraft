@@ -122,8 +122,8 @@ pub(crate) fn land_result(doc: &Document, t: TerminalId, land: &Land) -> (Value,
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, String> {
-    rules::level_word(doc, c, t, word).map_err(String::from)
+pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
+    rules::level_word(doc, c, t, word)
 }
 
 /// [`plan_fence`] on project `p`, with its own IDs and tag numbers (tools such as the bench, which
@@ -133,9 +133,9 @@ pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word
 /// As [`plan_fence`].
 pub fn plan_fence_in(
     p: &mut crate::project::Project, page: PageId, style: Style, strip: Option<ComponentId>, pe: bool, from: Pt, to: Pt,
-) -> Result<Fence, String> {
+) -> Result<Fence, CmdError> {
     let tol = p.tolerance;
-    plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol).map_err(String::from)
+    plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol)
 }
 
 /// `terminals {strip?, pe?, type?, level?, position?, from, to}` (Place Terminals, design 028

@@ -20,6 +20,7 @@
 //! Excluded: any entry's levels, which only the registry sets.
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
 use ecad_electrical::cmd::default::{self as rules, Given, Objects};
 use ecad_model::{ComponentId, ConductorId, Document, Op, PageId, RepresentationId};
 use schemars::JsonSchema;
@@ -52,21 +53,21 @@ value: string|number | reset: true} (writes a default at that level; page: the p
 ///
 /// # Errors
 /// Not text or a number, or not valid for the entry, in words.
-pub fn stored_text(entry: &Entry, value: &Value) -> Result<String, String> {
+pub fn stored_text(entry: &Entry, value: &Value) -> Result<String, CmdError> {
     let typed = match value {
         Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
-        _ => return Err(format!("`value` for `{}` is a string or a number.", entry.key)),
+        _ => return Err(CmdError::input(format!("`value` for `{}` is a string or a number.", entry.key))),
     };
-    rules::stored_text(entry, &typed).map_err(String::from)
+    rules::stored_text(entry, &typed)
 }
 
 /// [`rules::ops`], its refusal in words (the Standards screen's tests and `promote`).
 ///
 /// # Errors
 /// As [`rules::ops`].
-pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: Option<String>) -> Result<Vec<Op>, String> {
-    rules::ops(doc, entry, level, target, value).map_err(String::from)
+pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: Option<String>) -> Result<Vec<Op>, CmdError> {
+    rules::ops(doc, entry, level, target, value)
 }
 
 /// The JSON line the Standards screen and the inspector run for a change (`None`: reset).

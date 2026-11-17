@@ -16,7 +16,7 @@ use super::{
     drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name, pick, pixel, preview_entity, preview_text, pt, read,
     ring_kind, terminal_for, terminal_name, v2, valid_name,
 };
-use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, with_project};
+use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, on_project};
 use crate::project::Mapped;
 use crate::slash;
 use crate::views::View;
@@ -35,7 +35,7 @@ pub(super) fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -
     match catch_unwind(AssertUnwindSafe(|| f(&mut *s))) {
         Ok(r) => r,
         Err(_) => {
-            let _ = with_project(s, |p, pg, _| {
+            let _ = on_project(s, |p, pg, _| {
                 p.refresh_pages(pg, Some(name));
                 Ok(())
             });
@@ -441,7 +441,7 @@ impl Wire {
             } else {
                 Some(ecad_model::wiring::valid_text("potential", Some(&choice)).map_err(other)?.unwrap_or_default())
             };
-            with_project(s, |p, _, _| {
+            on_project(s, |p, _, _| {
                 // A table name is written as the table spells it.
                 let v = value.map(|v| p.ledger.document().settings.wiring.potential(&v).map_or(v, |r| r.name.clone()));
                 p.wire_potential = v;

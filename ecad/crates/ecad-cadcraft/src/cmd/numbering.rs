@@ -289,11 +289,11 @@ pub fn summary_line(plan: &Plan) -> String {
 ///
 /// # Errors
 /// As [`numbering::plan`].
-pub fn plan_for(p: &mut Project, req: &Request) -> Result<Plan, String> {
+pub fn plan_for(p: &mut Project, req: &Request) -> Result<Plan, CmdError> {
     p.tag_high.catch_up(&p.ledger);
     // Design 052 §4: a device is numbered at its head, else its first symbol in drawing order.
     let doc = p.ledger.document();
-    numbering::plan_ranked(doc, req, p.tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r)).map_err(String::from)
+    numbering::plan_ranked(doc, req, p.tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r)).map_err(CmdError::from)
 }
 
 /// How a renumber or finalise runs: a preview, the preview it applies, and whether new tags take
@@ -314,7 +314,7 @@ fn renumber_with(s: &mut Session, input: Option<&RenumberInput>, how: How) -> ca
             None => rules::finalise_request(),
             Some(i) => rules::request(doc, i, crate::cmd::MAX_HANDLES)?,
         };
-        let plan = plan_for(p, &req).map_err(CmdError::refused)?;
+        let plan = plan_for(p, &req)?;
         let count = p.change_count();
         // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
         let (mut acc_ops, mut acc_lines) = crate::accessories::renumber_ops(p.ledger.document(), &plan.ops);
@@ -501,9 +501,9 @@ pub enum BeforeIssue {
 ///
 /// # Errors
 /// Provisional items present and no `provisional` given (the ways forward), or a bad value.
-pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, String> {
+pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, CmdError> {
     let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?;
-    Ok(plan_before(p, way)?)
+    plan_before(p, way)
 }
 
 /// [`plan_before_issue`] with the `provisional` word `way` read.
@@ -527,7 +527,7 @@ pub fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, Cm
             format!("({} issued)", plural(items.tags.len(), "provisional tag", "provisional tags"))
         }))),
         Some("finalise" | "finalize") => {
-            let plan = plan_for(p, &rules::finalise_request()).map_err(CmdError::refused)?;
+            let plan = plan_for(p, &rules::finalise_request())?;
             Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
         }
         Some(other) => Err(CmdError::input(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}"))),
@@ -538,8 +538,8 @@ pub fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, Cm
 ///
 /// # Errors
 /// The commit was refused.
-pub(crate) fn commit_finalise(p: &mut Project, pg: &mut crate::access::Pages<'_>, plan: &Plan) -> Result<(), String> {
-    p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
+pub(crate) fn commit_finalise(p: &mut Project, pg: &mut crate::access::Pages<'_>, plan: &Plan) -> Result<(), CmdError> {
+    p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone()).map_err(CmdError::refused)?;
     pg.echo(applied_words(plan, true));
     Ok(())
 }
@@ -552,6 +552,6 @@ pub(crate) fn commit_finalise(p: &mut Project, pg: &mut crate::access::Pages<'_>
 pub(crate) fn before_issue(p: &mut Project, pg: &mut crate::access::Pages<'_>, way: Option<&str>) -> Result<Option<String>, CmdError> {
     match plan_before(p, way)? {
         BeforeIssue::Go(note) => Ok(note),
-        BeforeIssue::Finalise(plan) => commit_finalise(p, pg, &plan).map(|()| None).map_err(CmdError::refused),
+        BeforeIssue::Finalise(plan) => commit_finalise(p, pg, &plan).map(|()| None),
     }
 }
