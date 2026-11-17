@@ -37,24 +37,26 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
         bag(&std.values, WordPlace::Standard, Level::Standard, &mut out);
     }
     for (id, p) in &doc.pages {
-        bag(&p.properties, WordPlace::Page(*id), Level::Page, &mut out);
+        bag(&p.display, WordPlace::Page(*id), Level::Page, &mut out);
     }
-    for (id, c) in &doc.components {
+    for (id, c) in &doc.devices {
         bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
     }
-    for (id, c) in &doc.conductors {
-        bag(&c.properties, WordPlace::Wire(*id), Level::Object, &mut out);
+    for (id, c) in &doc.wires {
+        bag(&c.display, WordPlace::Wire(*id), Level::Object, &mut out);
     }
     for (id, c) in &doc.cables {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
         flags(&c.properties, WordPlace::Cable(*id), &mut out);
     }
     // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
-    // strictly with the file); a project symbol's key is its own and is not looked up.
+    // strictly with the file); a project symbol's prefix names a project symbol the project holds.
     for key in doc.settings.tag_prefixes.keys() {
-        if let ecad_model::prefix::PrefixOf::Starter(w) = key
-            && crate::symbols::by_key(w).is_none()
-        {
+        let known = match key {
+            ecad_model::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).is_some(),
+            ecad_model::prefix::PrefixOf::Project(k) => crate::symbols::has_project_key(doc, k),
+        };
+        if !known {
             out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.to_string(), allowed: Vec::new() });
         }
     }
@@ -96,7 +98,16 @@ fn flags(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
 
 /// A property that became a struct field.
 fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
-    out.extend(props.keys().filter(|k| keys::is_reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));
+    let holder = match place {
+        WordPlace::Project => Some(keys::Holder::Project),
+        WordPlace::Page(_) => Some(keys::Holder::Page),
+        WordPlace::Device(_) => Some(keys::Holder::Device),
+        WordPlace::Wire(_) => Some(keys::Holder::Wire),
+        WordPlace::Cable(_) => Some(keys::Holder::Cable),
+        WordPlace::Settings | WordPlace::Standard => None,
+    };
+    let reserved = |k: &str| holder.map_or_else(|| keys::is_reserved(k), |h| keys::is_reserved_on(h, k));
+    out.extend(props.keys().filter(|k| reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));
 }
 
 /// The registry entry stored under `key` at `level`: the entry itself, or on an object a
@@ -121,7 +132,7 @@ fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_model::{Component, ComponentId, PageId};
+    use ecad_model::{Device, DeviceId, PageId};
 
     fn doc() -> Document {
         Document::default()
@@ -154,14 +165,14 @@ mod tests {
     fn every_level_is_checked() {
         let mut d = doc();
         let page = PageId(1);
-        d.pages.insert(page, ecad_model::Page::default());
+        d.pages.insert(page, ecad_model::Page::titled("p").unwrap());
         if let Some(p) = d.pages.get_mut(&page) {
-            p.properties.insert("text.tag.show".into(), "sometimes".into());
+            p.display.insert("text.tag.show".into(), "sometimes".into());
         }
-        let c = ComponentId(2);
-        d.components.insert(c, Component::default());
+        let c = DeviceId(2);
+        d.devices.insert(c, Device::default());
         let rep = RepresentationId(0xab);
-        if let Some(comp) = d.components.get_mut(&c) {
+        if let Some(comp) = d.devices.get_mut(&c) {
             comp.properties.insert(defaults::symbol_key("text.tag.show", rep), "never".into());
         }
         let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
@@ -171,15 +182,15 @@ mod tests {
     #[test]
     fn stored_flags_hold_only_yes_or_no() {
         let mut d = doc();
-        let c = ComponentId(3);
-        d.components.insert(c, Component::default());
+        let c = DeviceId(3);
+        d.devices.insert(c, Device::default());
         d.properties.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
-        if let Some(comp) = d.components.get_mut(&c) {
+        if let Some(comp) = d.devices.get_mut(&c) {
             comp.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
         }
         assert!(check(&d).is_empty(), "the written words pass");
         for typed in ["on", "true", "1", "off", "Yes", " no"] {
-            if let Some(comp) = d.components.get_mut(&c) {
+            if let Some(comp) = d.devices.get_mut(&c) {
                 comp.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
             }
             let found = check(&d);
@@ -194,18 +205,22 @@ mod tests {
         let mut d = doc();
         let q = ecad_model::prefix::TagPrefix::typed("Q").unwrap();
         d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
-        // A project symbol's own prefix is not a word to check (it opens writable).
+        // A project symbol's prefix names a project symbol the project holds: none here.
         d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Project("valve-x".into()), q);
         let found = check(&d);
-        assert_eq!(found.len(), 1);
-        assert!(found[0].to_string().contains("tag_prefixes") && found[0].to_string().contains("starter:nosuch"));
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().any(|f| f.to_string().contains("tag_prefixes") && f.to_string().contains("starter:nosuch")));
+        assert!(found.iter().any(|f| f.to_string().contains("project:valve-x")));
     }
 
     #[test]
     fn registry_and_key_list_are_disjoint() {
         for e in defaults::all() {
             assert!(keys::spec(e.key).is_none(), "{} is both a registry entry and in keys::KEYS", e.key);
-            assert!(!keys::is_reserved(e.key), "{} is both a registry entry and reserved", e.key);
+            // A page's type is a page-level-only entry whose value is the page's field (design 072
+            // §5.1): `setdefault` writes it with `ModifyPage`, so a bag holding it is an error.
+            let field = e.key == ecad_model::sheet::PAGE_TYPE_KEY;
+            assert!(field || !keys::is_reserved(e.key), "{} is both a registry entry and reserved", e.key);
             let area = keys::area_of(e.key);
             assert!(area.is_registry(), "{} classifies to {area:?}, not a registry area", e.key);
         }

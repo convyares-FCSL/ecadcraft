@@ -127,6 +127,7 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
         defaults::Value::Choice(w) => w.to_string(),
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.to_string(),
+        defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
     }))
 }
 
@@ -155,8 +156,8 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
     let (mut d, mut w, mut p) = (0, 0, 0);
     for (_, o) in users {
         match o {
-            ObjectRef::Component(_) => d += 1,
-            ObjectRef::Conductor(_) | ObjectRef::Cable(_) => w += 1,
+            ObjectRef::Device(_) => d += 1,
+            ObjectRef::Wire(_) | ObjectRef::Cable(_) => w += 1,
             ObjectRef::Page(_) => p += 1,
             ObjectRef::Project | ObjectRef::Standard => {}
         }
@@ -168,10 +169,10 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
     match o {
-        ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
-        ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
+        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
-        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),
+        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
         ObjectRef::Project => Some(&doc.properties),
         ObjectRef::Standard => doc.standard.as_ref().map(|s| &s.values),
     }

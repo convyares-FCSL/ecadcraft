@@ -81,7 +81,7 @@ fn core_fixes_go_to_the_open_end_and_tick_not_used_in_one_transaction() {
     let want = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.configure(&mut t.cad.session, |p| ecad_cadcraft::checks::handles_of(p, page, Object::Conductor(c))).unwrap()
+        p.configure(&mut t.cad.session, |p| ecad_cadcraft::checks::handles_of(p, page, Object::Wire(c))).unwrap()
     };
     assert!(!sel.is_empty() && sel == want, "the open conductor is selected: {sel:?} vs {want:?}");
     // Tick Not used: one transaction; one undo takes it back.

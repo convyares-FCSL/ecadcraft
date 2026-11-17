@@ -310,8 +310,8 @@ fn objects_of(ops: &[ecad_model::Op]) -> BTreeSet<Obj> {
     let t = &s.touched;
     let mut out = BTreeSet::new();
     out.extend(t.pages.iter().chain(&t.page_properties).map(|x| Obj::Page(*x)));
-    out.extend(t.components.iter().map(|x| Obj::Component(*x)));
-    out.extend(t.conductors.iter().map(|x| Obj::Conductor(*x)));
+    out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
+    out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
     out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
@@ -336,10 +336,10 @@ fn keeps(update: bool) -> impl Fn(&str) -> bool {
 /// would be (design §5.2: the property's own rules from 018/019/022): `Ok(value)` as stored.
 fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String, String> {
     let checked = match obj {
-        Obj::Component(c) if crate::cmd::device::is_device_property(ecad_model::ObjectRef::Component(c), key) => {
+        Obj::Device(c) if crate::cmd::device::is_device_property(ecad_model::ObjectRef::Device(c), key) => {
             crate::devices::property_value(doc, key, Some(value))?
         }
-        Obj::Conductor(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
+        Obj::Wire(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Wire(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },
@@ -372,7 +372,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
         let rule = |obj: Obj, key: &str, v: &str| edit_rule(target, obj, key, v);
         // Brief 026, Make them one: 018's device merge, with fresh IDs from the project.
         let ids = std::cell::RefCell::new(&mut p.ids);
-        let join = |d: &Document, from: ecad_model::ComponentId, into: ecad_model::ComponentId| {
+        let join = |d: &Document, from: ecad_model::DeviceId, into: ecad_model::DeviceId| {
             let mut ids = ids.borrow_mut();
             crate::devices::plan_merge(d, &mut ids, from, into).map_err(String::from)
         };

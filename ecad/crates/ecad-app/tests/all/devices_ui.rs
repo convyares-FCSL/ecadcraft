@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ecad_app::{search, tools};
-use ecad_model::{ComponentId, Subject};
+use ecad_model::{DeviceId, Subject};
 use eframe::egui::{self, Event};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -32,7 +32,7 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
     }
 }
 
-fn device(h: &mut H, tag: &str) -> ComponentId {
+fn device(h: &mut H, tag: &str) -> DeviceId {
     let d = doc(h);
     d.components_tagged(tag).first().copied().unwrap_or_else(|| panic!("no device {tag}"))
 }
@@ -62,7 +62,7 @@ fn every_starter_symbol_on_one_page() {
         ok(&mut h, &format!(r#"place {{"symbol":"{}","at":[{x},{y}]}}"#, s.key));
     }
     let d = doc(&mut h);
-    assert_eq!(d.components.len(), 19);
+    assert_eq!(d.devices.len(), 19);
     zoom(&mut h);
     save(&h, &deltas, "018-symbols-all.png");
 }
@@ -86,7 +86,7 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     ok(&mut h, r#"newpage {"title":"Control"}"#);
     ok(&mut h, &format!(r#"place {{"symbol":"no","at":[0,0],"device":"{}"}}"#, k1.hex()));
     ok(&mut h, &format!(r#"place {{"symbol":"nc","at":[30,0],"device":"{}"}}"#, k1.hex()));
-    assert_eq!(doc(&mut h).representations_of(Subject::Component(k1)).count(), 3);
+    assert_eq!(doc(&mut h).representations_of(Subject::Device(k1)).count(), 3);
     zoom(&mut h);
     ok(&mut h, "zoom s 0.5x");
     save(&h, &deltas, "018-k1-page2.png");
@@ -190,7 +190,7 @@ fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
     let at = screen(&h, 20.0, 0.0);
     crate::common::click(&mut h, at);
     let log: Vec<String> = h.state().cad.session.log.iter().rev().take(4).cloned().collect();
-    assert_eq!(doc(&mut h).representations_of(Subject::Component(k1)).count(), 2, "the click placed it: {} {log:?}", prompt(&h));
+    assert_eq!(doc(&mut h).representations_of(Subject::Device(k1)).count(), 2, "the click placed it: {} {log:?}", prompt(&h));
     save(&h, &deltas, "018-choices.png");
     // The prompt's default device is a keyword: a click on it (sent as the keyword) answers.
     type_enter(&mut h, "D");

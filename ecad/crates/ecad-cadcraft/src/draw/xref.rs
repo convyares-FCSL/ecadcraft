@@ -1,7 +1,7 @@
 //! The engine half of [`crate::xref`]: reference texts aligned as CADCraft aligns text, the
 //! tables laid out with CADCraft's fonts, and the refusal of an edit of a drawn mapping.
 
-use ecad_model::{ComponentId, Document, PageId};
+use ecad_model::{DeviceId, Document, PageId};
 use serde_json::Value;
 
 use crate::draw::text_style::EngineMetrics;
@@ -43,7 +43,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
 ///
 /// # Errors
 /// Unknown component.
-pub fn contacts_json(doc: &Document, c: ComponentId) -> Result<Value, String> {
+pub fn contacts_json(doc: &Document, c: DeviceId) -> Result<Value, String> {
     crate::xref::contacts_json_measured(doc, c, &EngineMetrics).map_err(String::from)
 }
 

@@ -12,7 +12,7 @@ use ecad_app::library::draft::Picked;
 use ecad_app::library::{browser, details, review};
 use ecad_app::shell::Workspace;
 use ecad_cadcraft::symbols;
-use ecad_model::{ComponentId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, Pt, RepresentationId, Subject};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -175,7 +175,7 @@ fn a_drawn_symbol_saves_as_version_1_and_the_browser_selects_it() {
 }
 
 /// Three float switches, the first wired on point 2.
-fn three_copies(h: &mut H) -> (Vec<RepresentationId>, Vec<ComponentId>) {
+fn three_copies(h: &mut H) -> (Vec<RepresentationId>, Vec<DeviceId>) {
     run(
         h,
         "symbolnew",
@@ -190,11 +190,11 @@ fn three_copies(h: &mut H) -> (Vec<RepresentationId>, Vec<ComponentId>) {
     let mut comps = Vec::new();
     for x in [100.0, 150.0, 200.0] {
         let v = run(h, "place", json!({"symbol": "float1", "at": [x, 100.0]}));
-        comps.push(ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap()));
+        comps.push(DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap()));
     }
     run(h, "wire", json!({"points": [[100.0, 90.0], [100.0, 60.0]]}));
     let d = doc(h);
-    let reps = comps.iter().map(|c| d.representations_of(Subject::Component(*c)).next().unwrap().0).collect();
+    let reps = comps.iter().map(|c| d.representations_of(Subject::Device(*c)).next().unwrap().0).collect();
     (reps, comps)
 }
 
@@ -290,7 +290,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
         hs.push(v["handles"][0].as_str().unwrap().to_string());
     }
     let v = run(&mut h, "convertcomponent", json!({"handles": hs}));
-    let c = ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap());
+    let c = DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap());
     for (at, label) in [([100, 100], "A1"), ([110, 110], "A2")] {
         run(&mut h, "addterminal", json!({"handle": hs[0], "at": at, "label": label}));
     }
@@ -313,9 +313,9 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     h.run_steps(4);
     assert!(h.state().library.builder.is_none(), "saved: {:?}", h.state().library.builder.as_ref().and_then(|b| b.refusal.clone()));
     let d = doc(&mut h);
-    let (_, rep) = d.representations_of(Subject::Component(c)).next().expect("the same device");
+    let (_, rep) = d.representations_of(Subject::Device(c)).next().expect("the same device");
     assert_eq!(rep.form, ecad_model::Form::Symbol);
-    let w = ecad_model::ConductorId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    let w = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     assert!(d.terminals_of(c).any(|(term, _)| d.ends_at(term).iter().any(|(x, _)| *x == w)), "the wire stays attached");
     let v = symbols::project_by_key(&d, "mine").unwrap();
     let slot = v.def.texts.first().expect("the tag slot");
@@ -376,9 +376,9 @@ fn make_symbol_on_a_wire_refuses_naming_it() {
     let w = run(&mut h, "wire", json!({"points": [[400.0, 100.0], [450.0, 100.0]]}));
     run(&mut h, "wirenumber", json!({"conductor": w["conductor"], "value": "24V-05"}));
     let d = doc(&mut h);
-    let c = ecad_model::ConductorId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    let c = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     let page = d.page_order[0];
-    let route = d.representations_of(Subject::Conductor(c)).find(|(_, r)| r.page == page).and_then(|(_, r)| r.items.first().copied()).unwrap();
+    let route = d.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).and_then(|(_, r)| r.items.first().copied()).unwrap();
     let handle = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();

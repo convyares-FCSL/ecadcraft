@@ -17,8 +17,8 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_electrical::CmdError;
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
-    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
+    Author, CableId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId, ProjectId,
+    ProjectSettings, Pt, RepresentationId, Subject, TerminalId, WireId,
 };
 use ecad_store::MemoryBackend;
 use serde_json::{Value, json};
@@ -116,7 +116,7 @@ pub struct Project {
     oops: crate::oops::Records,
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
-    pub(crate) last_placed: Option<(String, ComponentId)>,
+    pub(crate) last_placed: Option<(String, DeviceId)>,
     /// The last continuation name placed in this session, the prompt's default (design 022 §3.2).
     pub(crate) last_continuation: Option<String>,
     /// Brief 049: the last caption given in this session, Caption Continuations' default.
@@ -201,10 +201,10 @@ pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
 }
 
 /// A new project's first page: titled and numbered `1`.
-fn first_page() -> Page {
-    let mut p = Page::new("1");
-    p.properties.insert(ecad_model::book::NUMBER_KEY.into(), "1".into());
-    p
+fn first_page() -> Result<Page, ecad_model::text::TextError> {
+    let mut p = Page::titled("1")?;
+    p.number = ecad_model::PageNo::parse("1");
+    Ok(p)
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -562,7 +562,7 @@ pub fn project_page_kept(
             map.insert_marker(rid, *t, h);
             members.push(h);
         }
-        if matches!(r.subject, Subject::Component(_)) && members.len() > 1 {
+        if matches!(r.subject, Subject::Device(_)) && members.len() > 1 {
             groups.push(Group { name: format!("{ECAD_PREFIX}{:032x}", rid.0), description: String::new(), selectable: true, members });
         }
     }
@@ -626,7 +626,7 @@ pub fn project_page_kept(
         map.insert_xref(part.rep, part.index, h);
     }
     // Link lines (brief 030): derived on every draw, never stored.
-    let mut seen: BTreeMap<(ComponentId, u32), u32> = BTreeMap::new();
+    let mut seen: BTreeMap<(DeviceId, u32), u32> = BTreeMap::new();
     for part in crate::link_lines::parts_on_page(doc, page) {
         let i = seen.entry((part.strip, part.n)).or_default();
         let h = prev.link(part.strip, part.n, *i).unwrap_or_else(|| d.new_handle());
@@ -645,7 +645,7 @@ pub fn project_page_kept(
     }
     // Looks-connected marks (brief 032 §2.6): derived with the page, after its quiet ends.
     map.looks = crate::wires::looks_connected_on_page(doc, page, &map.quiet);
-    // Conductor labels (brief 022): derived on every draw of the page, never stored.
+    // Wire labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
@@ -819,7 +819,7 @@ impl Project {
     /// The page window's title: `demo - page 2: Field`.
     fn page_title(&self, page: PageId) -> String {
         let doc = self.ledger.document();
-        let t = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+        let t = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
         format!("{} - page {}: {t}", self.name, crate::references::page_number(doc, page))
     }
 
@@ -999,7 +999,7 @@ impl Project {
         }
         // Brief 054b: the cover's Checks rows follow the cover (a cover added or removed too).
         let cover_page = |op: &Op| match op {
-            Op::AddPage { page, .. } | Op::RemovePage { page, .. } => page.properties.get(crate::generated::KEY).map(String::as_str) == Some("cover"),
+            Op::AddPage { page, .. } | Op::RemovePage { page, .. } => page.kind.generated_kind() == Some(crate::generated::GenKind::Cover),
             _ => false,
         };
         if cover || ops.iter().any(cover_page) {
@@ -1112,7 +1112,7 @@ impl Project {
                 };
                 PageInfo {
                     id: *p,
-                    title: doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default(),
+                    title: doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default(),
                     open: st.is_some(),
                     projection_matches: matches,
                     mapped_handles: view.filter(|_| st.is_some()).map(|v| v.map.len()),
@@ -1135,7 +1135,7 @@ impl Project {
     fn following_routes(&self, page: PageId, moved: &dyn Fn(TerminalId) -> Option<Pt>) -> Vec<cadcraft_engine::doc::EntityKind> {
         let doc = self.ledger.document();
         let mut out = Vec::new();
-        for (cid, c) in &doc.conductors {
+        for (cid, c) in &doc.wires {
             let Some((_, prim)) = ecad_model::derive::route_on_page(doc, *cid, page) else { continue };
             let mut p = prim.clone();
             let mut any = false;
@@ -1168,10 +1168,10 @@ fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &
             _ => false,
         })
     };
-    let comp_left = |c: &ecad_model::ComponentId| {
+    let comp_left = |c: &ecad_model::DeviceId| {
         !ops.iter().any(|o| match o {
-            Op::DeleteComponent { id: x, .. } => x == c,
-            Op::SetComponentDefinition { id: x, after, .. } => x == c && *after != Some(id),
+            Op::DeleteDevice { id: x, .. } => x == c,
+            Op::SetDeviceDefinition { id: x, after, .. } => x == c && *after != Some(id),
             _ => false,
         })
     };
@@ -1202,71 +1202,74 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.insert(after.page);
             }
             Op::AttachEnd { conductor, .. } => {
-                out.extend(doc.representations_of(Subject::Conductor(*conductor)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(Subject::Wire(*conductor)).map(|(_, r)| r.page));
             }
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
             // its representation ops.
-            Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. }
+            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
                 if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
-            Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
+            Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
             // same transaction (the invariant requires it), and those ops name its pages.
-            Op::DeleteConductor { .. } => {}
-            Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+            Op::DeleteWire { .. } => {}
+            Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
             // symbols only: their pages.
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.extend(doc.representations_of(Subject::Component(terminal.component)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(Subject::Device(terminal.component)).map(|(_, r)| r.page));
             }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they
             // change on other pages are the reference snapshot's part.
             // A folder move changes the book order (Next boxes, unnumbered pages) anywhere.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
+            Op::ModifyPage { before, after, .. } if before.change(after).folder => {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } => {
+            Op::ModifyPage { id: p, before, after } => {
                 out.insert(*p);
                 // The page before it in book order shows its number in its Next box.
-                if key == ecad_model::book::NUMBER_KEY {
+                if before.change(after).number {
                     let book = ecad_model::book::Book::of(doc);
                     if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i)) {
                         out.insert(*prev);
                     }
                 }
             }
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
+                out.insert(*p);
+            }
             // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
             // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
             // partners' pages come from the reference index's watch.
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, .. }
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, .. }
                 if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
                     && crate::continuations::is_continuation(doc, *c) =>
             {
-                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(_), key, .. }
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. }
                 if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
             {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, after, .. } => {
-                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                 // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
                 // card's slot or size moves the addresses of the cards after it.
                 out.extend(crate::plc::pages_touched(doc, plc, *c, key, after.as_deref()));
             }
-            Op::SetComponentDefinition { id: c, .. } => {
-                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            Op::SetDeviceDefinition { id: c, .. } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
             }
             // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
             // nowhere. Its last copies move off it in the same transaction (review of PR #86,
             // finding 1), and their own ops name their pages; the document here is the one before.
             Op::RemoveDefinition { id, .. } if unused_after(doc, *id, ops) => {}
             // A conductor's label shows its properties (brief 022): its pages.
-            Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } => {
-                out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+            Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
+                out.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
             }
             // Brief 026: a cable's tag is drawn by its slashes and its members' labels: their
             // pages (its references elsewhere are the reference snapshot's part). A high-water
@@ -1275,7 +1278,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.extend(doc.representations_of(Subject::Cable(*k)).map(|(_, r)| r.page));
                 if let Some(cable) = doc.cables.get(k) {
                     for m in &cable.members {
-                        out.extend(doc.representations_of(Subject::Conductor(m.conductor)).map(|(_, r)| r.page));
+                        out.extend(doc.representations_of(Subject::Wire(m.conductor)).map(|(_, r)| r.page));
                     }
                 }
             }
@@ -1283,21 +1286,23 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // Brief 052 (design 052 §8.2a): a rename in the project's list redraws the pages of
             // the devices, boxes and pages storing that entry (every page when it is the project's
             // default); a description is drawn on no page.
-            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
-                let (_, entry, is_code) = crate::designations::parse_list_property(key)?;
-                if is_code {
-                    if doc.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+            Op::ModifyProject { before, after } => {
+                use crate::designations::{Aspect, changed_codes, default_key, page_key};
+                for a in Aspect::ALL {
+                    // A new default is drawn on every page that sets none.
+                    if default_key(before, a) != default_key(after, a) {
                         return None;
                     }
-                    for (c, x) in &doc.components {
-                        if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                            out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                    for entry in changed_codes(before, after, a) {
+                        if default_key(after, a).as_deref() == Some(entry.as_str()) {
+                            return None;
                         }
-                    }
-                    for (pid, x) in &doc.pages {
-                        if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                            out.insert(*pid);
+                        for (c, x) in &doc.devices {
+                            if x.properties.iter().any(|(k, v)| Aspect::of_property(k).is_some() && *v == entry) {
+                                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                            }
                         }
+                        out.extend(doc.pages.iter().filter(|(_, x)| page_key(x, a).as_deref() == Some(entry.as_str())).map(|(p, _)| *p));
                     }
                 }
             }

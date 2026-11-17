@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId,
+    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -26,11 +26,26 @@ fn mpt(p: Pt) -> m::Pt {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {
-    pub title: String,
-    /// Brief 019 (decision FP1): left out while empty, so a page without properties is written
-    /// exactly as before.
+    pub title: m::PageTitle,
+    /// Design 072 §5.1: every optional field is left out while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<m::PageNo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<FolderId>,
+    #[serde(default, skip_serializing_if = "m::PageKind::is_schematic")]
+    pub kind: m::PageKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_type: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<m::LocationId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<m::FunctionId>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: BTreeMap<String, String>,
+    pub display: BTreeMap<String, String>,
 }
 
 /// A folder of pages (brief 019, decision FP3).
@@ -171,15 +186,18 @@ pub struct Item {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Component {
+pub struct Device {
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
+    /// What the device is (design 072 F15): the model's own type, whose words and fields are
+    /// strict.
+    pub device_type: m::DeviceType,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Terminal {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub label: Option<String>,
     pub key: Option<String>,
 }
@@ -187,8 +205,8 @@ pub struct Terminal {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Subject {
-    Component(ComponentId),
-    Conductor(ConductorId),
+    Device(DeviceId),
+    Wire(WireId),
     Cable(CableId),
 }
 
@@ -224,17 +242,32 @@ pub struct Ends {
     pub b: Option<TerminalId>,
 }
 
+/// A wire (design 072 §4.2): its ends, its typed values (the model's own strict types) and its
+/// display choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Conductor {
-    pub properties: BTreeMap<String, String>,
+pub struct Wire {
     pub ends: Ends,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<m::wire::WireSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colours: Option<m::wire::Colours>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<m::wire::WireNumber>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub potential: Option<m::text::Text<{ m::wire::MAX_VALUE_CHARS }>>,
+    #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
+    pub rating: m::wire::CircuitInputs,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<m::units::Amps>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub display: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CableMember {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub core: Option<String>,
 }
 
@@ -282,6 +315,9 @@ pub struct Definition {
     /// The origin an edited copy came from (brief 048, FP4). Left out when none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
+    /// What a device this symbol starts is (design 072 F15). Left out for `general`.
+    #[serde(default, skip_serializing_if = "m::DeviceType::is_general")]
+    pub device_type: m::DeviceType,
 }
 
 /// A text slot of a definition (brief 048, FP1).
@@ -549,8 +585,8 @@ impl From<SheetSpec> for m::SheetSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ObjectRef {
-    Component(ComponentId),
-    Conductor(ConductorId),
+    Device(DeviceId),
+    Wire(WireId),
     Cable(CableId),
     /// Brief 019 (decision FP1).
     Page(PageId),
@@ -644,6 +680,12 @@ pub enum Op {
         page: Page,
         index: u64,
     },
+    /// Design 072 §5.1.
+    ModifyPage {
+        id: PageId,
+        before: Page,
+        after: Page,
+    },
     AddLayer {
         id: LayerId,
         layer: Layer,
@@ -665,17 +707,23 @@ pub enum Op {
         id: ItemId,
         item: Item,
     },
-    CreateComponent {
-        id: ComponentId,
-        component: Component,
+    CreateDevice {
+        id: DeviceId,
+        device: Device,
     },
-    DeleteComponent {
-        id: ComponentId,
-        component: Component,
+    DeleteDevice {
+        id: DeviceId,
+        device: Device,
+    },
+    /// Design 072 F13.
+    ModifyDevice {
+        id: DeviceId,
+        before: Device,
+        after: Device,
     },
     /// Brief 048, FP5.
-    SetComponentDefinition {
-        id: ComponentId,
+    SetDeviceDefinition {
+        id: DeviceId,
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
@@ -700,16 +748,21 @@ pub enum Op {
         id: RepresentationId,
         rep: Representation,
     },
-    CreateConductor {
-        id: ConductorId,
-        conductor: Conductor,
+    CreateWire {
+        id: WireId,
+        conductor: Wire,
     },
-    DeleteConductor {
-        id: ConductorId,
-        conductor: Conductor,
+    DeleteWire {
+        id: WireId,
+        conductor: Wire,
+    },
+    ModifyWire {
+        id: WireId,
+        before: Wire,
+        after: Wire,
     },
     AttachEnd {
-        conductor: ConductorId,
+        conductor: WireId,
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
@@ -792,6 +845,11 @@ pub enum Op {
     SetStandard {
         before: Option<StandardHeader>,
         after: Option<StandardHeader>,
+    },
+    /// Design 072 §5.3: the project's own data, the model's strict record.
+    ModifyProject {
+        before: m::Project,
+        after: m::Project,
     },
 }
 
@@ -936,9 +994,9 @@ impl From<&m::Item> for Item {
     }
 }
 
-impl From<&m::Component> for Component {
-    fn from(c: &m::Component) -> Self {
-        Component { properties: c.properties.clone(), definition: c.definition }
+impl From<&m::Device> for Device {
+    fn from(c: &m::Device) -> Self {
+        Device { properties: c.properties.clone(), definition: c.definition, device_type: c.device_type.clone() }
     }
 }
 
@@ -952,8 +1010,8 @@ impl From<&m::Representation> for Representation {
     fn from(r: &m::Representation) -> Self {
         Representation {
             subject: match r.subject {
-                m::Subject::Component(c) => Subject::Component(c),
-                m::Subject::Conductor(c) => Subject::Conductor(c),
+                m::Subject::Device(c) => Subject::Device(c),
+                m::Subject::Wire(c) => Subject::Wire(c),
                 m::Subject::Cable(c) => Subject::Cable(c),
             },
             page: r.page,
@@ -975,9 +1033,18 @@ fn end(e: m::End) -> End {
     }
 }
 
-impl From<&m::Conductor> for Conductor {
-    fn from(c: &m::Conductor) -> Self {
-        Conductor { properties: c.properties.clone(), ends: Ends { a: c.end(m::End::A), b: c.end(m::End::B) } }
+impl From<&m::Wire> for Wire {
+    fn from(c: &m::Wire) -> Self {
+        Wire {
+            ends: Ends { a: c.end(m::End::A), b: c.end(m::End::B) },
+            size: c.size,
+            colours: c.colours.clone(),
+            number: c.number.clone(),
+            potential: c.potential.clone(),
+            rating: c.rating,
+            load: c.load,
+            display: c.display.clone(),
+        }
     }
 }
 
@@ -1004,19 +1071,42 @@ impl From<&m::Definition> for Definition {
             texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults.clone(),
             derived_from: d.derived_from.as_ref().map(origin),
+            device_type: d.device_type.clone(),
         }
     }
 }
 
 impl From<&m::Page> for Page {
     fn from(p: &m::Page) -> Self {
-        Page { title: p.title.clone(), properties: p.properties.clone() }
+        Page {
+            title: p.title.clone(),
+            number: p.number.clone(),
+            folder: p.folder,
+            kind: p.kind,
+            page_type: p.page_type.clone(),
+            sheet: p.sheet.as_ref().map(SheetSpec::from),
+            title_block: p.title_block.clone(),
+            location: p.location,
+            function: p.function,
+            display: p.display.clone(),
+        }
     }
 }
 
 impl From<Page> for m::Page {
     fn from(p: Page) -> Self {
-        m::Page { title: p.title, properties: p.properties }
+        m::Page {
+            title: p.title,
+            number: p.number,
+            folder: p.folder,
+            kind: p.kind,
+            page_type: p.page_type,
+            sheet: p.sheet.map(m::SheetSpec::from),
+            title_block: p.title_block,
+            location: p.location,
+            function: p.function,
+            display: p.display,
+        }
     }
 }
 
@@ -1062,8 +1152,8 @@ impl From<&m::ProjectSettings> for ProjectSettings {
 
 fn object(o: m::ObjectRef) -> ObjectRef {
     match o {
-        m::ObjectRef::Component(c) => ObjectRef::Component(c),
-        m::ObjectRef::Conductor(c) => ObjectRef::Conductor(c),
+        m::ObjectRef::Device(c) => ObjectRef::Device(c),
+        m::ObjectRef::Wire(c) => ObjectRef::Wire(c),
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
         m::ObjectRef::Page(p) => ObjectRef::Page(p),
         m::ObjectRef::Project => ObjectRef::Project,
@@ -1077,21 +1167,24 @@ impl From<&m::Op> for Op {
         match op {
             m::Op::AddPage { id, page, index } => Op::AddPage { id: *id, page: page.into(), index: ix(*index) },
             m::Op::RemovePage { id, page, index } => Op::RemovePage { id: *id, page: page.into(), index: ix(*index) },
+            m::Op::ModifyPage { id, before, after } => Op::ModifyPage { id: *id, before: before.into(), after: after.into() },
             m::Op::AddLayer { id, layer } => Op::AddLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::RemoveLayer { id, layer } => Op::RemoveLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
             m::Op::ModifyItem { id, before, after } => Op::ModifyItem { id: *id, before: before.into(), after: after.into() },
             m::Op::RemoveItem { id, item } => Op::RemoveItem { id: *id, item: item.into() },
-            m::Op::CreateComponent { id, component } => Op::CreateComponent { id: *id, component: component.into() },
-            m::Op::DeleteComponent { id, component } => Op::DeleteComponent { id: *id, component: component.into() },
-            m::Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id: *id, before: *before, after: *after },
+            m::Op::CreateDevice { id, device } => Op::CreateDevice { id: *id, device: device.into() },
+            m::Op::DeleteDevice { id, device } => Op::DeleteDevice { id: *id, device: device.into() },
+            m::Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id: *id, before: before.into(), after: after.into() },
+            m::Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id: *id, before: *before, after: *after },
             m::Op::AddTerminal { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
             m::Op::RemoveTerminal { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
-            m::Op::CreateConductor { id, conductor } => Op::CreateConductor { id: *id, conductor: conductor.into() },
-            m::Op::DeleteConductor { id, conductor } => Op::DeleteConductor { id: *id, conductor: conductor.into() },
+            m::Op::CreateWire { id, conductor } => Op::CreateWire { id: *id, conductor: conductor.into() },
+            m::Op::DeleteWire { id, conductor } => Op::DeleteWire { id: *id, conductor: conductor.into() },
+            m::Op::ModifyWire { id, before, after } => Op::ModifyWire { id: *id, before: before.into(), after: after.into() },
             m::Op::AttachEnd { conductor, end: e, before, after } => {
                 Op::AttachEnd { conductor: *conductor, end: end(*e), before: *before, after: *after }
             }
@@ -1120,6 +1213,7 @@ impl From<&m::Op> for Op {
             m::Op::SetStandard { before, after } => {
                 Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
             }
+            m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
         }
     }
 }
@@ -1206,9 +1300,9 @@ impl From<Item> for m::Item {
     }
 }
 
-impl From<Component> for m::Component {
-    fn from(c: Component) -> Self {
-        m::Component { properties: c.properties, definition: c.definition }
+impl From<Device> for m::Device {
+    fn from(c: Device) -> Self {
+        m::Device { properties: c.properties, definition: c.definition, device_type: c.device_type }
     }
 }
 
@@ -1222,8 +1316,8 @@ impl From<Representation> for m::Representation {
     fn from(r: Representation) -> Self {
         m::Representation {
             subject: match r.subject {
-                Subject::Component(c) => m::Subject::Component(c),
-                Subject::Conductor(c) => m::Subject::Conductor(c),
+                Subject::Device(c) => m::Subject::Device(c),
+                Subject::Wire(c) => m::Subject::Wire(c),
                 Subject::Cable(c) => m::Subject::Cable(c),
             },
             page: r.page,
@@ -1245,9 +1339,18 @@ fn mend(e: End) -> m::End {
     }
 }
 
-impl From<Conductor> for m::Conductor {
-    fn from(c: Conductor) -> Self {
-        m::Conductor { properties: c.properties, ends: [c.ends.a, c.ends.b] }
+impl From<Wire> for m::Wire {
+    fn from(c: Wire) -> Self {
+        m::Wire {
+            ends: [c.ends.a, c.ends.b],
+            size: c.size,
+            colours: c.colours,
+            number: c.number,
+            potential: c.potential,
+            rating: c.rating,
+            load: c.load,
+            display: c.display,
+        }
     }
 }
 
@@ -1274,6 +1377,7 @@ impl From<Definition> for m::Definition {
             texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults,
             derived_from: d.derived_from.map(morigin),
+            device_type: d.device_type,
         }
     }
 }
@@ -1308,8 +1412,8 @@ impl From<ProjectSettings> for m::ProjectSettings {
 
 fn mobject(o: ObjectRef) -> m::ObjectRef {
     match o {
-        ObjectRef::Component(c) => m::ObjectRef::Component(c),
-        ObjectRef::Conductor(c) => m::ObjectRef::Conductor(c),
+        ObjectRef::Device(c) => m::ObjectRef::Device(c),
+        ObjectRef::Wire(c) => m::ObjectRef::Wire(c),
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
         ObjectRef::Page(p) => m::ObjectRef::Page(p),
         ObjectRef::Project => m::ObjectRef::Project,
@@ -1323,21 +1427,24 @@ impl TryFrom<Op> for m::Op {
         Ok(match op {
             Op::AddPage { id, page, index: i } => m::Op::AddPage { id, page: page.into(), index: index(i)? },
             Op::RemovePage { id, page, index: i } => m::Op::RemovePage { id, page: page.into(), index: index(i)? },
+            Op::ModifyPage { id, before, after } => m::Op::ModifyPage { id, before: before.into(), after: after.into() },
             Op::AddLayer { id, layer } => m::Op::AddLayer { id, layer: m::Layer { name: layer.name } },
             Op::RemoveLayer { id, layer } => m::Op::RemoveLayer { id, layer: m::Layer { name: layer.name } },
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
             Op::ModifyItem { id, before, after } => m::Op::ModifyItem { id, before: before.into(), after: after.into() },
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
-            Op::CreateComponent { id, component } => m::Op::CreateComponent { id, component: component.into() },
-            Op::DeleteComponent { id, component } => m::Op::DeleteComponent { id, component: component.into() },
-            Op::SetComponentDefinition { id, before, after } => m::Op::SetComponentDefinition { id, before, after },
+            Op::CreateDevice { id, device } => m::Op::CreateDevice { id, device: device.into() },
+            Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: device.into() },
+            Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: before.into(), after: after.into() },
+            Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },
-            Op::CreateConductor { id, conductor } => m::Op::CreateConductor { id, conductor: conductor.into() },
-            Op::DeleteConductor { id, conductor } => m::Op::DeleteConductor { id, conductor: conductor.into() },
+            Op::CreateWire { id, conductor } => m::Op::CreateWire { id, conductor: conductor.into() },
+            Op::DeleteWire { id, conductor } => m::Op::DeleteWire { id, conductor: conductor.into() },
+            Op::ModifyWire { id, before, after } => m::Op::ModifyWire { id, before: before.into(), after: after.into() },
             Op::AttachEnd { conductor, end, before, after } => m::Op::AttachEnd { conductor, end: mend(end), before, after },
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },
@@ -1356,6 +1463,7 @@ impl TryFrom<Op> for m::Op {
                 m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
             }
             Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
+            Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
         })
     }
 }

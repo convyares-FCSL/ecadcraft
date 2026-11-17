@@ -231,7 +231,7 @@ fn fixture(h: &mut Harness<'static, App>, right: bool) -> (String, Vec<String>) 
         let r = h.state_mut().cad.run("wire", json!({"points": [[0, y], [120, y]]})).unwrap();
         let w = r["conductor"].as_str().unwrap().to_string();
         let tag = format!("W{}", i + 1);
-        h.state_mut().cad.run("setprop", json!({"conductor": w, "key": "tag", "value": tag})).unwrap();
+        h.state_mut().cad.run("wirenumber", json!({"conductor": w, "value": tag})).unwrap();
         wires.push(w);
     }
     let r = h.state_mut().cad.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap();

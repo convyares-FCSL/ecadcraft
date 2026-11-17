@@ -153,7 +153,7 @@ pub fn verify_page_pending(
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::locations::styled_label_entity(doc, &look, rep, &value, at, Handle(0)))).or_default() += 1;
     }
-    // Conductor labels (brief 022), derived the same way.
+    // Wire labels (brief 022), derived the same way.
     for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
         *fan_expected.entry(computed_key(&crate::wires::label_entity(&look, &l, Handle(0)))).or_default() += 1;
     }
@@ -190,7 +190,7 @@ pub fn verify_page_pending(
         if let Some(Mapped::Item(id)) = map.get(e.handle)
             && doc
                 .representation_of_item(id)
-                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Conductor(_)))
+                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Wire(_)))
             && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
@@ -225,7 +225,7 @@ pub fn verify_page_pending(
             continue;
         }
         if let Some(Mapped::Label(c)) = map.get(e.handle) {
-            if !doc.conductors.contains_key(&c) {
+            if !doc.wires.contains_key(&c) {
                 problems.push(format!("a label is drawn for {c}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
@@ -345,7 +345,7 @@ pub fn verify_page_pending(
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: BTreeSet<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
         members.extend(r.connection_points.keys().filter_map(|t| map.marker(*rid, *t)));
-        if !matches!(r.subject, Subject::Component(_)) || members.len() < 2 {
+        if !matches!(r.subject, Subject::Device(_)) || members.len() < 2 {
             continue;
         }
         wanted_groups += 1;
@@ -372,7 +372,7 @@ pub fn verify_page_pending(
     //    position read from the drawing (markers and symbol blocks), not from the document.
     let mut drawn_terminals: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
     drawn_terminals.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
-    for (cid, c) in &doc.conductors {
+    for (cid, c) in &doc.wires {
         let Some((item, _)) = ecad_model::derive::route_on_page(doc, *cid, page) else { continue };
         let Some(e) = map.item(item).and_then(|h| entities.get(&h)) else { continue };
         let Some(path) = item_from(doc, page, e).ok().and_then(|i| match i.kind {

@@ -29,8 +29,8 @@ use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
 use ecad_cadcraft::views::{self, FanOnPage, Settings};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::{
-    CableId, CableMember, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style,
-    Subject, Transaction,
+    CableId, CableMember, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    Transaction, WireId,
 };
 use serde_json::{Value, json};
 
@@ -61,7 +61,7 @@ struct Fx {
     h: H,
     page: PageId,
     c1: CableId,
-    wires: Vec<ConductorId>,
+    wires: Vec<WireId>,
 }
 
 /// A drawn component at `x` with connection points at y = 0, 5, 10, 15.
@@ -88,8 +88,8 @@ fn fixture_on(mut h: H, left: bool, right: bool) -> Fx {
     }
     let mut wires = Vec::new();
     for (i, y) in [0.0, 5.0, 10.0, 15.0].into_iter().enumerate() {
-        let w: ConductorId = id(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor");
-        h.run("setprop", json!({"conductor": w.hex(), "key": "tag", "value": format!("W{}", i + 1)})).unwrap();
+        let w: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor");
+        h.run("wirenumber", json!({"conductor": w.hex(), "value": format!("W{}", i + 1)})).unwrap();
         wires.push(w);
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap(), "cable");
@@ -566,12 +566,12 @@ fn ac4_traditional_labels_on_vertical_and_reversed_wires() {
     let mut wires = Vec::new();
     // Two vertical wires drawn top to bottom, two horizontal wires drawn right to left.
     for pts in [[[0.0, 40.0], [0.0, 0.0]], [[5.0, 40.0], [5.0, 0.0]]] {
-        wires.push(id::<ConductorId>(&h.run("wire", json!({"points": pts})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&h.run("wire", json!({"points": pts})).unwrap(), "conductor"));
     }
     let v: CableId = id(&h.run("cableslash", json!({"from": [-3, 20], "to": [8, 20]})).unwrap(), "cable");
     h.run("cablecore", json!({"cable": v.hex(), "cores": ["A", "B"]})).unwrap();
     for pts in [[[100.0, 0.0], [50.0, 0.0]], [[100.0, 5.0], [50.0, 5.0]]] {
-        wires.push(id::<ConductorId>(&h.run("wire", json!({"points": pts})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&h.run("wire", json!({"points": pts})).unwrap(), "conductor"));
     }
     let r: CableId = id(&h.run("cableslash", json!({"from": [75, -3], "to": [75, 8]})).unwrap(), "cable");
     h.run("cablecore", json!({"cable": r.hex(), "cores": ["C", "D"]})).unwrap();
@@ -709,8 +709,8 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
     store_core_raw(&mut f.h, f.c1, 3, Some(""));
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "tag", "value": ""})).ok();
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "designation", "value": "D".repeat(1000)})).unwrap();
-    f.h.run("setprop", json!({"conductor": f.wires[1].hex(), "key": "tag", "value": ""})).ok();
-    f.h.run("setprop", json!({"conductor": f.wires[2].hex(), "key": "tag", "value": "T".repeat(1000)})).unwrap();
+    f.h.run("wirenumber", json!({"conductor": f.wires[1].hex(), "value": ""})).ok();
+    f.h.run("wirenumber", json!({"conductor": f.wires[2].hex(), "value": "T".repeat(24)})).unwrap();
     f.h.check();
     let shown32 = format!("{}…", "L".repeat(31));
     let shown24 = |c: &str| format!("{}…", c.repeat(23));
@@ -724,13 +724,13 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
         assert!(texts.iter().all(|t| t.chars().count() <= 32), "{texts:?}");
         assert!(texts.iter().all(|t| !t.chars().any(char::is_control)), "{texts:?}");
         if fan_view {
-            assert!(texts.contains(&shown24("T")), "wire tag shortened to 24: {texts:?}");
+            assert!(texts.contains(&"T".repeat(24)), "a 24-character wire number shown whole: {texts:?}");
             assert!(texts.contains(&shown24("D")), "designation shortened to 24: {texts:?}");
             let d = fan(&mut f.h, f.page, f.c1);
             assert!(all_finite(&d));
             // The tails are long enough for the longest labels on their side (design §4.2 step 4).
             let wc = look::font_width(&shown32) * hh();
-            let ww = look::font_width(&shown24("T")) * hh();
+            let ww = look::font_width(&"T".repeat(24)) * hh();
             // The gap between core label and wire number is one text height (overseer decision on
             // the brief 009 review); the gaps at either end stay `ecad.label-gap`.
             let need = 2.0 * look::LABEL_GAP + look::label_spacing(hh()) + wc + ww;
@@ -850,7 +850,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
         let mut ws = Vec::new();
         for y in [0.0, 5.0, 10.0] {
             match h.run("wire", json!({"points": [[-big, y], [big, y]]})) {
-                Ok(v) => ws.push(id::<ConductorId>(&v, "conductor")),
+                Ok(v) => ws.push(id::<WireId>(&v, "conductor")),
                 Err(e) => eprintln!("wire at {big} refused: {e}"),
             }
         }
@@ -883,8 +883,8 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
         let mut ws = Vec::new();
         for i in 0..20 {
             let t = f64::from(i);
-            let w: ConductorId = id(&h.run("wire", json!({"points": [p(0.0, t), p(80.0, t)]})).unwrap(), "conductor");
-            h.run("setprop", json!({"conductor": w.hex(), "key": "tag", "value": format!("X{i:02}")})).unwrap();
+            let w: WireId = id(&h.run("wire", json!({"points": [p(0.0, t), p(80.0, t)]})).unwrap(), "conductor");
+            h.run("wirenumber", json!({"conductor": w.hex(), "value": format!("X{i:02}")})).unwrap();
             ws.push(w);
         }
         let k: CableId = id(&h.run("cableslash", json!({"from": p(40.0, -2.0), "to": p(40.0, 21.0)})).unwrap(), "cable");

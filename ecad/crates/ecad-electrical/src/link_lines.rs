@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model::links;
-use ecad_model::{ComponentId, Document, PageId, Pt, Subject};
+use ecad_model::{DeviceId, Document, PageId, Pt, Subject};
 
 /// Lane spacing and stub length, in millimetres (`ecad.link`, `ecad.link-stub`).
 pub const LANE_MM: f64 = 1.5;
@@ -32,7 +32,7 @@ pub const LINK_DERIVED: &str =
 /// One segment of a link line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinkPart {
-    pub strip: ComponentId,
+    pub strip: DeviceId,
     pub n: u32,
     pub a: Pt,
     pub b: Pt,
@@ -50,10 +50,10 @@ fn stub(p: Pt, toward: Pt, back: bool) -> Pt {
 
 /// The link lines of every strip shown on `page`.
 pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
-    let mut strips: Vec<ComponentId> = doc
+    let mut strips: Vec<DeviceId> = doc
         .representations_on(page)
         .filter_map(|(_, r)| match r.subject {
-            Subject::Component(c) => Some(c),
+            Subject::Device(c) => Some(c),
             _ => None,
         })
         .collect();
@@ -61,7 +61,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
     strips.dedup();
     let mut out = Vec::new();
     for c in strips {
-        let Some(comp) = doc.components.get(&c) else { continue };
+        let Some(comp) = doc.devices.get(&c) else { continue };
         let found = links::of(&comp.properties);
         if found.is_empty() || !crate::strips::is_strip(doc, c) {
             continue;
@@ -156,7 +156,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
 }
 
 /// The hover line of a link (§5.3): `-X01 link 1-4 (4 positions, 1 bar JB-10)`.
-pub fn hover(doc: &Document, data: Option<&crate::strips::StripData>, c: ComponentId, n: u32) -> String {
+pub fn hover(doc: &Document, data: Option<&crate::strips::StripData>, c: DeviceId, n: u32) -> String {
     let tag = crate::devices::tag_words(doc, c);
     let Some(l) = data.and_then(|d| d.acc.links.iter().find(|l| l.n == n)) else { return format!("{tag} link {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };

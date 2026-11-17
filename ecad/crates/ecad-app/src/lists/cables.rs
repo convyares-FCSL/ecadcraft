@@ -700,7 +700,7 @@ fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
 /// `k`'s cores, else empty.
 fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
     let Some((tag, label)) = at.trim().rsplit_once(':') else { return String::new() };
-    let members: Vec<ecad_model::ConductorId> = doc.cables.get(&k).map(|c| c.members.iter().map(|m| m.conductor).collect()).unwrap_or_default();
+    let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.members.iter().map(|m| m.conductor).collect()).unwrap_or_default();
     let conn = doc.connectivity();
     for c in doc.components_tagged(tag) {
         for (t, x) in doc.terminals_of(c) {

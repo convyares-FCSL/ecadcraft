@@ -44,9 +44,9 @@ fn main() -> Result<(), String> {
         let doc = p.ledger.document();
         let page = *doc.page_order.first().ok_or("page")?;
         let map = &p.pages.get(&page).ok_or("page")?.map;
-        let comp = ecad_model::ComponentId::parse(c["component"].as_str().unwrap_or_default()).ok_or("id")?;
+        let comp = ecad_model::DeviceId::parse(c["component"].as_str().unwrap_or_default()).ok_or("id")?;
         let mut out = Vec::new();
-        for (rid, r) in doc.representations_of(ecad_model::Subject::Component(comp)) {
+        for (rid, r) in doc.representations_of(ecad_model::Subject::Device(comp)) {
             out.extend(r.items.iter().filter_map(|i| map.item(*i)).map(|h| h.hex()));
             out.extend(r.connection_points.keys().filter_map(|t| map.marker(rid, *t)).map(|h| h.hex()));
         }

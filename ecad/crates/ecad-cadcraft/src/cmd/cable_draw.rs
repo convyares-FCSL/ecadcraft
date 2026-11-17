@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable_draw::{self as rules, SlashTarget};
-use ecad_model::{CableId, ConductorId, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Subject};
+use ecad_model::{CableId, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Subject, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -105,7 +105,7 @@ pub(crate) struct CableaddParams {
     #[serde(default)]
     cable: Option<CableId>,
     /// The wires, in order.
-    conductors: Bounded<ConductorId, 1, MAX_CABLE_MEMBERS>,
+    conductors: Bounded<WireId, 1, MAX_CABLE_MEMBERS>,
     /// The new cable's tag.
     #[serde(default)]
     tag: Option<String>,
@@ -129,7 +129,7 @@ impl Command for CableaddParams {
 pub(crate) struct CablecoreParams {
     /// The wire whose core label is set.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// Its label, or null to clear it.
     #[serde(default, deserialize_with = "nullable")]
     core: Option<Option<String>>,

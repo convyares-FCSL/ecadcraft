@@ -270,7 +270,7 @@ fn fp3_different_styles_values_and_edits_merge_cleanly() {
     assert!(field(&mut c, "frame", "sheet", "border_weight").starts_with("0.7"));
     assert!(styles(&mut c, "location").iter().any(|r| s(&r["id"]) == own));
     let d = c.doc();
-    assert_eq!(d.conductors.len(), 1, "main's wire kept");
+    assert_eq!(d.wires.len(), 1, "main's wire kept");
     let std = d.standard.as_ref().unwrap();
     assert_eq!(std.values.get("symbol.coil.prefix").map(String::as_str), Some("Q"));
     assert_eq!(std.values.get("wiring.label_rule").map(String::as_str), Some("each"));
@@ -325,7 +325,7 @@ fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
         let w = c.exec("wire", json!({"points": [[0, 20], [60, 20]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
         assert_eq!(styles(&mut c, "wire").len(), 10);
         let (_, ops) = one_by_agent_then_undo(&mut c, "category", json!({"conductor": w, "value": "signal"}));
-        assert!(matches!(ops.as_slice(), [Op::SetProperty { key, .. }] if key == "wire.category"), "{ops:?}");
+        assert!(matches!(ops.as_slice(), [Op::ModifyWire { after, .. }] if after.display.contains_key("wire.category")), "{ops:?}");
         one_by_agent_then_undo(&mut c, "wire", json!({"points": [[0, 60], [60, 60]], "category": "dc24"}));
         one_by_agent_then_undo(
             &mut c,
@@ -397,8 +397,8 @@ fn b18_category_merges() {
     let r = c.exec("merge", json!({"from": "Option B", "choices": {id: "main"}}));
     assert_eq!(r["merged"], json!(true), "{r}");
     let d = c.doc();
-    let cond = d.conductors.iter().find(|(k, _)| k.hex() == w).map(|(_, x)| x.clone()).unwrap();
-    assert_eq!(cond.properties.get("wire.category").map(String::as_str), Some("signal"), "the branch's category came");
+    let cond = d.wires.iter().find(|(k, _)| k.hex() == w).map(|(_, x)| x.clone()).unwrap();
+    assert_eq!(cond.display.get("wire.category").map(String::as_str), Some("signal"), "the branch's category came");
     assert!(field(&mut c, "wire", "dc24", "colour").contains("RD"));
     assert!(field(&mut c, "wire", "pe", "line_weight").starts_with("0.5"));
     c.ok("save", json!({}));

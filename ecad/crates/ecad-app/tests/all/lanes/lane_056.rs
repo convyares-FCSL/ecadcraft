@@ -8,7 +8,7 @@ use ecad_app::App;
 use ecad_app::lists::ListAction;
 use ecad_app::lists::plc::{self, IoView};
 use ecad_app::shell::{ListsView, Workspace};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use ecad_ui::table::TableSource;
 use eframe::egui;
 use egui_kittest::Harness;
@@ -93,7 +93,7 @@ fn act(h: &mut H, a: ListAction) {
     h.run_steps(4);
 }
 
-fn tagged(h: &mut H, tag: &str) -> ComponentId {
+fn tagged(h: &mut H, tag: &str) -> DeviceId {
     doc(h).components_tagged(tag).first().copied().unwrap_or_else(|| panic!("{tag}"))
 }
 
@@ -242,7 +242,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     }
     assert_eq!(head_of(&mut h), before + 4);
     let d = doc(&mut h);
-    let p = &d.components[&a03].properties;
+    let p = &d.devices[&a03].properties;
     assert_eq!(p.get("part_number").map(String::as_str), Some("DQ16-R-2B"));
     assert_eq!(p.get("plc.slot").map(String::as_str), Some("7"));
     // An accessory (the front connector) as a part line.
@@ -275,7 +275,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     h.run_steps(4);
     assert_eq!(head_of(&mut h), before + 1);
     assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Di), "the card is now a DI card");
-    assert_eq!(doc(&mut h).components[&a03].properties.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"));
+    assert_eq!(doc(&mut h).devices[&a03].properties.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"));
     assert_eq!(start_byte("%Q4.0"), Some(Some(4)));
     assert_eq!(start_byte("IW64"), Some(Some(64)));
     assert_eq!(start_byte(""), Some(None), "empty unpins");

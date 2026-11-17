@@ -17,8 +17,8 @@ use ecad_cadcraft::debug::{ObjectId, used_by};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
 use ecad_model::{
-    Author, CableId, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
-    Transaction,
+    Author, CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,
+    WireId,
 };
 use serde_json::{Value, json};
 
@@ -27,15 +27,15 @@ const SEED: u64 = 40_04;
 struct F {
     h: H,
     page: PageId,
-    w0: ConductorId,
-    w5: ConductorId,
-    w10: ConductorId,
+    w0: WireId,
+    w5: WireId,
+    w10: WireId,
     plain: ItemId,
 }
 
-fn wire(h: &mut H, points: Value, tag: &str) -> ConductorId {
-    let c: ConductorId = id(&h.run("wire", json!({ "points": points })).unwrap(), "conductor");
-    h.run("setprop", json!({"conductor": c.hex(), "key": "tag", "value": tag})).unwrap();
+fn wire(h: &mut H, points: Value, tag: &str) -> WireId {
+    let c: WireId = id(&h.run("wire", json!({ "points": points })).unwrap(), "conductor");
+    h.run("wirenumber", json!({"conductor": c.hex(), "value": tag})).unwrap();
     c
 }
 
@@ -56,7 +56,7 @@ fn slash(h: &mut H, from: (f64, f64), to: (f64, f64)) -> Result<Value, String> {
     h.run("cableslash", json!({"from": [from.0, from.1], "to": [to.0, to.1]}))
 }
 
-fn members(h: &mut H, k: CableId) -> Vec<ConductorId> {
+fn members(h: &mut H, k: CableId) -> Vec<WireId> {
     h.doc().cables[&k].members.iter().map(|m| m.conductor).collect()
 }
 
@@ -102,7 +102,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     assert_eq!(r["ignored"], json!([f.plain.hex()]), "the plain line is ignored and reported");
     assert_eq!(r["touched"], json!([]));
     // Nothing that existed changed (DOC-04).
-    assert_eq!(d.conductors, before.conductors, "conductor IDs and attachments unchanged");
+    assert_eq!(d.wires, before.wires, "conductor IDs and attachments unchanged");
     for (i, item) in &before.items {
         assert_eq!(d.items.get(i), Some(item), "item {i} unchanged");
     }
@@ -274,8 +274,8 @@ fn the_crossing_rules() {
         let got = slash(&mut f.h, from, to);
         let d = f.h.doc();
         let tag = |c: &str| {
-            let c = ConductorId::from(u128::from_str_radix(c, 16).unwrap());
-            d.conductors[&c].properties["tag"].clone()
+            let c = WireId::from(u128::from_str_radix(c, 16).unwrap());
+            d.wires[&c].number_text().unwrap_or_default().to_string()
         };
         let tags = |v: &Value| v.as_array().unwrap().iter().map(|c| tag(c.as_str().unwrap())).collect::<Vec<_>>();
         match want {
@@ -407,7 +407,7 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     let d = f.h.doc();
     assert!(d.cables.is_empty());
     assert!(!d.items.contains_key(&item) && !d.representations.contains_key(&rid), "the slash goes with it");
-    assert_eq!(d.conductors, before.conductors, "every conductor stays");
+    assert_eq!(d.wires, before.wires, "every conductor stays");
     for c in [f.w0, f.w5, f.w10] {
         assert_eq!(ecad_model::derive::route_on_page(&d, c, f.page), ecad_model::derive::route_on_page(&before, c, f.page), "routes unchanged");
     }
@@ -469,7 +469,7 @@ fn the_debugger_trail_goes_from_cable_to_its_wires_in_order() {
     let d = f.h.doc();
     assert_eq!(
         used_by(&d, ObjectId::Cable(k)),
-        vec![ObjectId::Conductor(f.w10), ObjectId::Conductor(f.w5), ObjectId::Conductor(f.w0), ObjectId::Representation(rid)]
+        vec![ObjectId::Wire(f.w10), ObjectId::Wire(f.w5), ObjectId::Wire(f.w0), ObjectId::Representation(rid)]
     );
 }
 
@@ -488,8 +488,8 @@ fn wires_at(h: &mut H, xs: &[f64]) {
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let mut ops = Vec::new();
         for &x in xs {
-            let (c, item, r): (ConductorId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-            ops.push(Op::CreateConductor { id: c, conductor: Default::default() });
+            let (c, item, r): (WireId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+            ops.push(Op::CreateWire { id: c, conductor: Default::default() });
             ops.push(Op::AddItem {
                 id: item,
                 item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, -1.0), b: Pt::new(x, 1.0) }) },
@@ -497,7 +497,7 @@ fn wires_at(h: &mut H, xs: &[f64]) {
             ops.push(Op::LinkRepresentation {
                 id: r,
                 rep: Representation {
-                    subject: Subject::Conductor(c),
+                    subject: Subject::Wire(c),
                     page,
                     form: Form::Drawn,
                     role: "route".into(),
@@ -530,7 +530,7 @@ fn hostile_slashes_never_panic() {
     let cable = r["cable"].as_str().unwrap().to_string();
     // The one wire the slash did not take (IDs do not follow creation order).
     let taken: Vec<&str> = r["conductors"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
-    let last = h.doc().conductors.keys().copied().find(|c| !taken.contains(&c.hex().as_str())).unwrap();
+    let last = h.doc().wires.keys().copied().find(|c| !taken.contains(&c.hex().as_str())).unwrap();
     let e = h.s.execute("cableadd", &json!({"cable": cable, "conductors": [last.hex()]})).unwrap_err();
     assert!(e.to_string().contains("a cable holds at most 10000 wires"), "{e}");
     assert_eq!(h.head(), head + 1);

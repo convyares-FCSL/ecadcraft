@@ -85,8 +85,9 @@ fn geometry(r: Option<&ecad_model::StyleRecord>) -> Option<(Option<String>, Opti
 pub fn frame_reach(doc: &Document, op: &ecad_model::Op) -> Reach {
     use ecad_model::{ObjectRef, Op};
     match op {
-        Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == sheet::FRAME_STYLE_KEY || key == sheet::TITLE_BLOCK_KEY => {
-            Reach::Pages([*p].into())
+        Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == sheet::FRAME_STYLE_KEY => Reach::Pages([*p].into()),
+        Op::ModifyPage { id, before, after } if before.title_block != after.title_block || before.page_type != after.page_type => {
+            Reach::Pages([*id].into())
         }
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == sheet::FRAME_STYLE_KEY => Reach::Wide,
         Op::SetStandard { before, after } if before != after => Reach::Wide,

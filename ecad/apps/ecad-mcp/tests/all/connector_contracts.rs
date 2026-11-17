@@ -3,15 +3,15 @@
 //! `Author::Agent(<client>)`; the refusals of §6.1 record nothing; with writes off each is refused.
 
 use ecad_mcp::policy;
-use ecad_model::{ComponentId, Op};
+use ecad_model::{DeviceId, Op};
 use serde_json::{Value, json};
 
 use crate::common::{assert_one_by_agent, writer};
 
 const WRITER_SEED: u64 = 44;
 
-fn component(v: &Value) -> ComponentId {
-    ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap())
+fn component(v: &Value) -> DeviceId {
+    DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap())
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn connector_row_and_pins_by_the_agent() {
     let v = c.exec("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]}));
     let ops = assert_one_by_agent(&mut c, n, "write").ops;
     let x = component(&v);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).count(), 2);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddTerminal { .. })).count(), 8);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::LinkRepresentation { rep, .. } if !rep.connection_points.is_empty())).count(), 2);
@@ -35,7 +35,7 @@ fn connector_row_and_pins_by_the_agent() {
     let v = c.exec("connector", json!({"halves": "both", "family": "m12", "pins": 4, "layout": "pins", "line": [[90, 200], [130, 200]]}));
     let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(v["split"].as_array().map(Vec::len), Some(2));
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateConductor { .. })).count(), 2);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateWire { .. })).count(), 2);
 
     // `place {symbol: pinpair, device}` joins and takes the next free pin.
     let n = c.log().len();

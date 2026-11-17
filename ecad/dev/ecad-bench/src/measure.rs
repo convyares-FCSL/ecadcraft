@@ -330,24 +330,23 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{Component, ComponentId, Conductor, ConductorId, Ledger, Op, Page, PageId, Terminal, TerminalId};
+    use ecad_model::{Device, DeviceId, Ledger, Op, Page, PageId, Terminal, TerminalId, Wire, WireId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
-    let comp: ComponentId = ids.fresh();
+    let comp: DeviceId = ids.fresh();
     let hub: TerminalId = ids.fresh();
     let mut ops = vec![
-        Op::AddPage { id: page, page: Page::new("1"), index: 0 },
-        Op::CreateComponent { id: comp, component: Component::default() },
+        Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
+        Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
     ];
     let mut leaves = Vec::with_capacity(wires);
     for _ in 0..wires {
-        let (t, c): (TerminalId, ConductorId) = (ids.fresh(), ids.fresh());
+        let (t, c): (TerminalId, WireId) = (ids.fresh(), ids.fresh());
         ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: comp, label: None, key: None } });
-        let mut conductor = Conductor { ends: [Some(hub), Some(t)], ..Conductor::default() };
-        conductor.properties.insert(ecad_model::wiring::POTENTIAL_KEY.into(), "0V".into());
-        ops.push(Op::CreateConductor { id: c, conductor });
+        let conductor = Wire { ends: [Some(hub), Some(t)], potential: ecad_model::text::Text::new("0V").ok(), ..Wire::default() };
+        ops.push(Op::CreateWire { id: c, conductor });
         leaves.push(c);
     }
     ledger.commit_extended(Author::User, "Rail", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -356,7 +355,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut out = Vec::with_capacity(runs);
     for run in 0..runs {
         let victim = *leaves.get(run * 997 % wires.max(1)).ok_or("no leaf")?;
-        let cond = ledger.document().conductors.get(&victim).cloned().ok_or("leaf missing")?;
+        let cond = ledger.document().wires.get(&victim).cloned().ok_or("leaf missing")?;
         let mut ops = Vec::new();
         for end in ecad_model::End::BOTH {
             if let Some(t) = cond.end(end) {
@@ -365,7 +364,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         }
         let mut bare = cond.clone();
         bare.ends = [None, None];
-        ops.push(Op::DeleteConductor { id: victim, conductor: bare });
+        ops.push(Op::DeleteWire { id: victim, conductor: bare });
         let t = Instant::now();
         let scope = checks.scope(ledger.document(), &ops);
         ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -402,13 +401,13 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
         let (victim, size) = {
             let doc = o.ledger.document();
             let conn = doc.connectivity();
-            let free = |n: &ecad_model::NetData| n.conductors.iter().copied().find(|c| doc.cables_of(*c).is_empty());
+            let free = |n: &ecad_model::NetData| n.wires.iter().copied().find(|c| doc.cables_of(*c).is_empty());
             let (c, net) = conn
                 .nets()
                 .filter_map(|(_, n)| free(n).map(|c| (c, n)))
-                .max_by_key(|(_, n)| n.conductors.len())
+                .max_by_key(|(_, n)| n.wires.len())
                 .ok_or("no net with a wire outside a cable")?;
-            (c, net.conductors.len())
+            (c, net.wires.len())
         };
         for run in 0..runs {
             let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-net-{}", run + 1))?;
@@ -426,14 +425,14 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
 
             let doc = o.ledger.document();
             let mut ops = Vec::new();
-            for (rid, r) in doc.representations_of(Subject::Conductor(victim)) {
+            for (rid, r) in doc.representations_of(Subject::Wire(victim)) {
                 ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
                 for i in &r.items {
                     let item = doc.items.get(i).cloned().ok_or("route item missing")?;
                     ops.push(Op::RemoveItem { id: *i, item });
                 }
             }
-            let cond = doc.conductors.get(&victim).cloned().ok_or("victim missing")?;
+            let cond = doc.wires.get(&victim).cloned().ok_or("victim missing")?;
             for end in ecad_model::End::BOTH {
                 if let Some(t) = cond.end(end) {
                     ops.push(Op::AttachEnd { conductor: victim, end, before: Some(t), after: None });
@@ -441,7 +440,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
             }
             let mut bare = cond.clone();
             bare.ends = [None, None];
-            ops.push(Op::DeleteConductor { id: victim, conductor: bare });
+            ops.push(Op::DeleteWire { id: victim, conductor: bare });
             let t = Instant::now();
             let scope = checks.scope(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -478,7 +477,7 @@ fn draw_target(project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::
         let doc = p.ledger.document();
         let page = doc.page_order.first().copied()?;
         let (component, item) = doc.representations.values().find_map(|r| {
-            let Subject::Component(c) = r.subject else { return None };
+            let Subject::Device(c) = r.subject else { return None };
             let item = *r.items.first()?;
             let wired = doc.terminals_of(c).any(|(t, _)| !doc.ends_at(t).is_empty());
             (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
@@ -655,8 +654,8 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
             wires.push(x);
             run(&mut s, "u", json!({}))?;
             let b_tag: String = project.read(&mut s, |p, _| {
-                ecad_model::ComponentId::parse(&b)
-                    .and_then(|id| p.ledger.document().components.get(&id))
+                ecad_model::DeviceId::parse(&b)
+                    .and_then(|id| p.ledger.document().devices.get(&id))
                     .and_then(|c| c.properties.get("tag").cloned())
                     .unwrap_or_default()
             })?;
@@ -824,7 +823,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         step(ledger, b, "no", (x, 60.0), Target::Join(c))?;
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
-            let op = Op::SetProperty { object: ObjectRef::Component(c), key: "contacts".into(), before: None, after: Some("3P+1NO+1NC".into()) };
+            let op = Op::SetProperty { object: ObjectRef::Device(c), key: "contacts".into(), before: None, after: Some("3P+1NO+1NC".into()) };
             ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
         }
     }
@@ -969,7 +968,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             // A symbol of a device on this page, to go to from page 1.
             let found = project.read(&mut s, |p, _| {
                 p.ledger.document().representations_on(page).find_map(|(id, r)| match r.subject {
-                    ecad_model::Subject::Component(c) => Some((id, c)),
+                    ecad_model::Subject::Device(c) => Some((id, c)),
                     _ => None,
                 })
             })?;

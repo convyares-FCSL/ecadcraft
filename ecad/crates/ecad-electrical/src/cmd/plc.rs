@@ -11,7 +11,7 @@ use ecad_model::units::{Degrees, Radians};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::Book;
-use ecad_model::{ComponentId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, TerminalId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, TerminalId};
 
 use crate::defaults;
 use crate::devices::TagHigh;
@@ -55,7 +55,7 @@ pub fn slot_given(out: bool, slot: Option<&str>) -> Result<Option<u32>, CmdError
 ///
 /// # Errors
 /// No such card or rack, and the refusals of [`rack::plan_slot`].
-pub fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: Option<u32>, swap: bool) -> Result<(ComponentId, Vec<Op>), CmdError> {
+pub fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: Option<u32>, swap: bool) -> Result<(DeviceId, Vec<Op>), CmdError> {
     let card = card_named(doc, card)?;
     let ops = match rack {
         RackChoice::Out => rack::slot_ops(doc, card, None),
@@ -79,7 +79,7 @@ pub fn io_type(word: &str) -> Result<CardType, CmdError> {
 /// What `plccardtype` does.
 #[derive(Debug, Clone)]
 pub struct CardTypePlan {
-    pub card: ComponentId,
+    pub card: DeviceId,
     /// The ops; empty when the card is that type already.
     pub ops: Vec<Op>,
     pub message: String,
@@ -132,7 +132,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
     };
     let mut bodies = 0;
     let mut old_defs = BTreeSet::new();
-    for (_, r) in doc.representations_of(Subject::Component(c)) {
+    for (_, r) in doc.representations_of(Subject::Device(c)) {
         let Some(st) = crate::devices::rep_starter(doc, r) else { continue };
         if CardType::of_body(st.key) != Some(from) {
             continue;
@@ -155,15 +155,16 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
             to.noun()
         )));
     }
-    let comp = doc.components.get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
+    let comp = doc.devices.get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
     if let Some(d) = comp.definition.filter(|d| old_defs.contains(d)) {
-        ops.push(Op::SetComponentDefinition { id: c, before: Some(d), after: Some(def) });
+        ops.push(Op::SetDeviceDefinition { id: c, before: Some(d), after: Some(def) });
+        ops.extend(crate::devices::retype(c, comp, def, &new_starter.device_type()));
     }
     // A description that was the old body's name (placing writes it) follows the type.
     let old_name = crate::symbols::by_key(from.body()).map(|s| s.name);
     if let Some(d) = comp.properties.get("description").filter(|d| Some(d.trim()) == old_name) {
         ops.push(Op::SetProperty {
-            object: ObjectRef::Component(c),
+            object: ObjectRef::Device(c),
             key: "description".into(),
             before: Some(d.clone()),
             after: Some(new_starter.name.to_string()),
@@ -175,7 +176,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
             break;
         }
         if crate::plc::channels::parse_ch_key(k).is_some_and(|(_, w)| w == signals::SAFE) && signals::safe_value(Some(to), Some(v)).is_err() {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: k.clone(), before: Some(v.clone()), after: None });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: k.clone(), before: Some(v.clone()), after: None });
         }
     }
     let message = format!("{who} is now {}. {}", with_article(to), rack::change_words(from, to));
@@ -188,7 +189,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
 ///
 /// # Errors
 /// Neither or both, or no such card or rack.
-pub fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) -> Result<(Vec<ComponentId>, String), CmdError> {
+pub fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) -> Result<(Vec<DeviceId>, String), CmdError> {
     match (card, rack) {
         (Some(c), None) => {
             let c = card_named(doc, c)?;
@@ -196,7 +197,7 @@ pub fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) -> Resu
         }
         (None, Some(r)) => {
             let r = rack_named(doc, r)?;
-            let cards: Vec<ComponentId> = rack::cards_naming(doc, r).into_iter().map(|(c, _)| c).collect();
+            let cards: Vec<DeviceId> = rack::cards_naming(doc, r).into_iter().map(|(c, _)| c).collect();
             Ok((cards, format!("rack {}", crate::devices::tag_words(doc, r))))
         }
         _ => Err(CmdError::input("Give `card` or `rack` (an ID or tag).")),
@@ -226,7 +227,7 @@ pub struct AddressPlan {
     /// The rack's or card's tag.
     pub who: String,
     /// The rack whose cards' addresses may move.
-    pub rack: Option<ComponentId>,
+    pub rack: Option<DeviceId>,
     /// What `fix` or `clear` did, in words (empty without them).
     pub tail: String,
     pub ops: Vec<Op>,
@@ -240,10 +241,10 @@ pub struct AddressPlan {
 /// or size out of range.
 pub fn plan_address(doc: &Document, input: &AddressInput) -> Result<AddressPlan, CmdError> {
     let mut ops = Vec::new();
-    let set = |ops: &mut Vec<Op>, c: ComponentId, key: &str, after: Option<String>| {
-        let before = doc.components.get(&c).and_then(|x| x.properties.get(key)).cloned();
+    let set = |ops: &mut Vec<Op>, c: DeviceId, key: &str, after: Option<String>| {
+        let before = doc.devices.get(&c).and_then(|x| x.properties.get(key)).cloned();
         if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: key.into(), before, after });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after });
         }
     };
     let word = |v: &Option<String>| v.as_deref().map(|s| s.trim().to_string());
@@ -323,7 +324,7 @@ pub fn channel_number(text: &str) -> Result<u32, CmdError> {
 ///
 /// # Errors
 /// No such card, or a card without channels.
-pub fn channel_card(doc: &Document, card: &str) -> Result<(ComponentId, CardType), CmdError> {
+pub fn channel_card(doc: &Document, card: &str) -> Result<(DeviceId, CardType), CmdError> {
     let c = card_named(doc, card)?;
     let t = card_type_of(doc, c).ok_or(CmdError::refused("Not a PLC card."))?;
     if !t.has_channels() {
@@ -349,7 +350,7 @@ pub struct FenceInput {
 #[derive(Debug, Clone)]
 pub struct ChannelsPlan {
     pub ops: Vec<Op>,
-    pub card: ComponentId,
+    pub card: DeviceId,
     pub tag: String,
     pub ty: CardType,
     /// The starter key of the cells (the next place's default).
@@ -370,8 +371,8 @@ pub struct ChannelsPlan {
 /// refusal of one landing.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_channels(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, card: Option<(ComponentId, CardType)>,
-    input: &FenceInput, tol: f64,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, card: Option<(DeviceId, CardType)>, input: &FenceInput,
+    tol: f64,
 ) -> Result<ChannelsPlan, CmdError> {
     let doc = ledger.document();
     let t = match (card, &input.ty) {
@@ -458,7 +459,7 @@ pub fn plan_channels(
 /// # Errors
 /// Every channel is drawn, or no cell is on the page and no `at`.
 pub fn plan_rest(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, c: ComponentId, t: CardType, at: Option<Pt>,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, c: DeviceId, t: CardType, at: Option<Pt>,
 ) -> Result<ChannelsPlan, CmdError> {
     let tag = crate::devices::tag_words(doc, c);
     let n = channel_count(doc, c, t);
@@ -475,7 +476,7 @@ pub fn plan_rest(
         Some(q) => q,
         None => {
             let mut right: Option<Pt> = None;
-            for (_, r) in doc.representations_of(Subject::Component(c)).filter(|(_, r)| r.page == page) {
+            for (_, r) in doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == page) {
                 let Some(st) = crate::devices::rep_starter(doc, r) else { continue };
                 if crate::plc::channels::cell_type(st).is_none() {
                     continue;
@@ -524,7 +525,7 @@ pub struct ChannelInput {
 /// What `plcchannel` changes.
 #[derive(Debug, Clone)]
 pub struct ChannelPlan {
-    pub card: ComponentId,
+    pub card: DeviceId,
     /// The channel number as shown.
     pub shown: u32,
     pub ops: Vec<Op>,
@@ -552,7 +553,7 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
     if i >= n && !pts.contains_key(&i) {
         return Err(CmdError::refused(format!("{who} has {n} channels ({first}–{}).", (n + first).saturating_sub(1))));
     }
-    let props = doc.components.get(&c).map(|x| &x.properties);
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let mut ops = Vec::new();
     let mut said = Vec::new();
     for (what, given) in &input.values {
@@ -577,7 +578,7 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
                 before.as_deref().map_or("(none)".to_string(), |b| format!("\"{b}\"")),
                 value.as_deref().map_or("(none)".to_string(), |a| format!("\"{a}\""))
             ));
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: k, before, after: value });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: k, before, after: value });
         }
     }
     if let Some(pins) = &input.pins {
@@ -648,7 +649,7 @@ const MAX_AFTER: usize = 64;
 
 /// `plc.page.title` filled in for `card`: `{tag}`, `{type}`, `{channels}`, `{rack}`, `{slot}`,
 /// `{slot:02}`.
-pub fn title(doc: &Document, card: ComponentId, ty: CardType) -> String {
+pub fn title(doc: &Document, card: DeviceId, ty: CardType) -> String {
     let pattern = defaults::resolve(doc, &defaults::plc::PAGE_TITLE, defaults::Scope::project()).text();
     let (rack, slot) = match (rack::rack_ref(doc, card), rack::slot_of(doc, card)) {
         (RackRef::Rack(r), s) => (crate::devices::tag_words(doc, r), s),
@@ -667,15 +668,14 @@ pub fn title(doc: &Document, card: ComponentId, ty: CardType) -> String {
 }
 
 /// Whether `c` has a card body drawn anywhere.
-fn body_drawn(doc: &Document, c: ComponentId) -> bool {
-    doc.representations_of(Subject::Component(c))
-        .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()))
+fn body_drawn(doc: &Document, c: DeviceId) -> bool {
+    doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()))
 }
 
 /// What a card's page shows (design 051 §3.6).
 #[derive(Debug, Clone)]
 pub struct PageCard {
-    pub card: ComponentId,
+    pub card: DeviceId,
     pub ty: CardType,
     /// The card's tag.
     pub tag: String,
@@ -719,7 +719,7 @@ pub fn page_card(doc: &Document, card: &str) -> Result<PageCard, CmdError> {
 ///
 /// # Errors
 /// An `after` that names no page.
-pub fn after_page(doc: &Document, book: &Book, card: ComponentId, after: Option<&str>) -> Result<Option<PageId>, CmdError> {
+pub fn after_page(doc: &Document, book: &Book, card: DeviceId, after: Option<&str>) -> Result<Option<PageId>, CmdError> {
     if let Some(n) = after {
         let n = n.trim();
         if n.is_empty() || n.chars().count() > MAX_AFTER {
@@ -728,13 +728,13 @@ pub fn after_page(doc: &Document, book: &Book, card: ComponentId, after: Option<
         return book.order.iter().copied().find(|p| book.number(doc, *p) == n).map(Some).ok_or_else(|| CmdError::refused(format!("No page {n}.")));
     }
     // The last page on which a card of the same rack (or the rack) is drawn.
-    let mut mates: Vec<ComponentId> = Vec::new();
+    let mut mates: Vec<DeviceId> = Vec::new();
     if let RackRef::Rack(r) = rack::rack_ref(doc, card) {
         mates.push(r);
         mates.extend(rack::cards_naming(doc, r).into_iter().map(|(c, _)| c));
     }
     let pages: BTreeSet<PageId> =
-        mates.iter().flat_map(|c| doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page).collect::<Vec<_>>()).collect();
+        mates.iter().flat_map(|c| doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page).collect::<Vec<_>>()).collect();
     if let Some(p) = book.order.iter().rev().find(|p| pages.contains(p)) {
         return Ok(Some(*p));
     }

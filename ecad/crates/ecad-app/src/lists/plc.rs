@@ -24,7 +24,7 @@ use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::plc::iolist::{self, Row};
 use ecad_cadcraft::plc::overview::{self, Chip, Square, Tile, TileKind};
 use ecad_cadcraft::plc::signals;
-use ecad_model::{ComponentId, Document, PageId};
+use ecad_model::{DeviceId, Document, PageId};
 use ecad_ui::table::strip::{self, Link, Mark, StripEvent, Tone};
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 use serde_json::json;
@@ -32,7 +32,7 @@ use serde_json::json;
 use super::ListAction;
 
 /// A row: its card and channel index.
-pub type IoKey = (ComponentId, u32);
+pub type IoKey = (DeviceId, u32);
 
 pub const CARD: ColumnId = ColumnId(0);
 pub const RACK: ColumnId = ColumnId(1);
@@ -121,9 +121,9 @@ pub struct IoSource {
     cols: Vec<Column>,
     keys: Vec<IoKey>,
     rows: HashMap<IoKey, Row>,
-    by_card: BTreeMap<ComponentId, Vec<IoKey>>,
+    by_card: BTreeMap<DeviceId, Vec<IoKey>>,
     /// The card `This card` shows; `None`: every card.
-    only: Option<ComponentId>,
+    only: Option<DeviceId>,
     /// Inputs are offered (the project can be written).
     pub writable: bool,
     /// Free channels folded away after the first of a run (`This card` only), and whether the
@@ -151,7 +151,7 @@ impl Default for IoSource {
 
 impl IoSource {
     /// Replace card `c`'s rows; the keys that changed.
-    fn set_card(&mut self, c: ComponentId, rows: Vec<Row>) -> Vec<IoKey> {
+    fn set_card(&mut self, c: DeviceId, rows: Vec<Row>) -> Vec<IoKey> {
         let mut touched: Vec<IoKey> = self.by_card.remove(&c).unwrap_or_default();
         for k in &touched {
             self.rows.remove(k);
@@ -169,8 +169,8 @@ impl IoSource {
 
     /// Lay the keys out in card order (only the shown card's in `This card`, its free channels
     /// folded after the first of each run unless unfolded; design 056 §4.2).
-    fn order(&mut self, cards: &[ComponentId]) {
-        let shown: Vec<ComponentId> = match self.only {
+    fn order(&mut self, cards: &[DeviceId]) {
+        let shown: Vec<DeviceId> = match self.only {
             Some(c) => vec![c],
             None => cards.to_vec(),
         };
@@ -201,7 +201,7 @@ impl IoSource {
     }
 
     /// Show one card's rows (`Some`) or every card's.
-    fn set_scope(&mut self, only: Option<ComponentId>) {
+    fn set_scope(&mut self, only: Option<DeviceId>) {
         self.only = only;
         self.cols = columns(only.is_none());
     }
@@ -212,7 +212,7 @@ impl IoSource {
     }
 
     /// The card `This card` shows.
-    pub fn only(&self) -> Option<ComponentId> {
+    pub fn only(&self) -> Option<DeviceId> {
         self.only
     }
 }
@@ -369,8 +369,8 @@ fn pages_words(numbers: &[String]) -> Vec<String> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TileLink {
     Page(PageId),
-    MakePage(ComponentId),
-    Checks(ComponentId),
+    MakePage(DeviceId),
+    Checks(DeviceId),
     Place { slot: u32 },
     None,
 }
@@ -474,7 +474,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
 }
 
 /// A square's hover (045 §4.7's words): `-A03 channel 3 · Q0.3 · Pump 1 run`.
-fn tip_words(doc: &Document, c: ComponentId, t: &Tile, i: usize) -> String {
+fn tip_words(doc: &Document, c: DeviceId, t: &Tile, i: usize) -> String {
     let n = u32::try_from(i).unwrap_or(0);
     let first = ecad_cadcraft::plc::channels::first_number(doc, c);
     let state = t.squares.get(i).map_or("", |s| s.words());
@@ -543,8 +543,8 @@ pub struct IoView {
 /// The card header's words and targets (design 056 §4.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardHead {
-    pub card: Option<ComponentId>,
-    pub rack: Option<ComponentId>,
+    pub card: Option<DeviceId>,
+    pub rack: Option<DeviceId>,
     /// `-A03 · output card · slot 2`.
     pub title: String,
     /// `16 channels, 9 in use, drawn in detail on page 5`.
@@ -559,7 +559,7 @@ pub enum PathKind {
     Import,
     /// Export the rack of the selected card, or every rack.
     Export {
-        rack: Option<ComponentId>,
+        rack: Option<DeviceId>,
         all: bool,
     },
 }
@@ -619,7 +619,7 @@ impl IoView {
     }
 
     /// The selected card, if the selected tile is one.
-    pub fn selected_card(&self) -> Option<ComponentId> {
+    pub fn selected_card(&self) -> Option<DeviceId> {
         self.selected.and_then(|i| self.tiles.get(i)).and_then(Tile::card)
     }
 
@@ -672,7 +672,7 @@ impl IoView {
     }
 
     /// The table's scope from the selection: the selected card, or every card.
-    fn apply_scope(&mut self, cards: &[ComponentId]) {
+    fn apply_scope(&mut self, cards: &[DeviceId]) {
         let only = if self.all_cards { None } else { self.selected_card() };
         if only != self.source.only() || self.source.columns().len() != columns(only.is_none()).len() || std::mem::take(&mut self.reorder) {
             self.source.set_scope(only);
@@ -691,7 +691,7 @@ impl IoView {
     /// Bring the view up to date with the models (the update map in the module docs). `writable`:
     /// the project can be written now.
     pub fn sync(&mut self, serial: u64, doc: &Document, o: &Outputs, writable: bool) {
-        let cards: Vec<ComponentId> = iolist::cards_in_order(&o.plc).into_iter().map(|c| c.id).collect();
+        let cards: Vec<DeviceId> = iolist::cards_in_order(&o.plc).into_iter().map(|c| c.id).collect();
         if self.source.writable != writable {
             self.source.writable = writable;
             self.built = None;
@@ -733,12 +733,12 @@ impl IoView {
             self.patched += 1;
         }
         // A card gone or no longer listed.
-        let gone: Vec<ComponentId> = self.source.by_card.keys().copied().filter(|c| !cards.contains(c)).collect();
+        let gone: Vec<DeviceId> = self.source.by_card.keys().copied().filter(|c| !cards.contains(c)).collect();
         for c in gone {
             touched.extend(self.source.set_card(c, Vec::new()));
         }
         // The strip: the tiles of the changed cards; a changed rack or chip set makes it again.
-        let changed: BTreeSet<ComponentId> = o.plc.last_changed.iter().chain(o.plc.rows_changed.iter()).copied().collect();
+        let changed: BTreeSet<DeviceId> = o.plc.last_changed.iter().chain(o.plc.rows_changed.iter()).copied().collect();
         if !changed.is_empty() {
             let rack_changed = changed.iter().any(|c| o.plc.racks.contains_key(c) || !o.plc.cards.contains_key(c));
             let chips_moved = overview::chips(&o.plc) != self.chips;
@@ -1208,7 +1208,7 @@ fn symbols_of(doc: &Document, t: &Tile) -> Vec<ecad_model::RepresentationId> {
     };
     let mut out = Vec::new();
     for page in &t.pages {
-        out.extend(doc.representations_of(ecad_model::Subject::Component(c)).filter(|(_, r)| r.page == *page).map(|(id, _)| id));
+        out.extend(doc.representations_of(ecad_model::Subject::Device(c)).filter(|(_, r)| r.page == *page).map(|(id, _)| id));
         if out.len() >= 256 {
             out.truncate(256);
             break;

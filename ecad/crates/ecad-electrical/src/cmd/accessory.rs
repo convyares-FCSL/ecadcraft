@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::links::{self, Positions};
-use ecad_model::{ComponentId, Document, Noun, ObjectRef, Op, TerminalId};
+use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, TerminalId};
 
 use crate::accessories::{self as acc, Acc, Spot};
 use crate::error::CmdError;
@@ -38,12 +38,12 @@ impl Words {
     }
 }
 
-fn strip_words(doc: &Document, c: ComponentId) -> String {
+fn strip_words(doc: &Document, c: DeviceId) -> String {
     crate::devices::tag_words(doc, c)
 }
 
 /// The strip a call names (`strip`, or `terminal`'s), and the terminal's label.
-fn strip_of(doc: &Document, strip: Option<ComponentId>, terminal: Option<TerminalId>) -> Result<(ComponentId, Option<String>), CmdError> {
+fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<TerminalId>) -> Result<(DeviceId, Option<String>), CmdError> {
     let (c, label) = match (strip, terminal) {
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
@@ -52,7 +52,7 @@ fn strip_of(doc: &Document, strip: Option<ComponentId>, terminal: Option<Termina
         }
         (None, None) => return Err(CmdError::input("`strip` or `terminal` (hex id) is required")),
     };
-    if !doc.components.contains_key(&c) {
+    if !doc.devices.contains_key(&c) {
         return Err(CmdError::NotFound(Noun::Strip));
     }
     if !crate::strips::is_strip(doc, c) {
@@ -62,7 +62,7 @@ fn strip_of(doc: &Document, strip: Option<ComponentId>, terminal: Option<Termina
 }
 
 /// `-X01 has no position 15; it has 1…12. Pick one of those, or start/end.`
-fn no_position(doc: &Document, c: ComponentId, label: &str, order: &[String]) -> CmdError {
+fn no_position(doc: &Document, c: DeviceId, label: &str, order: &[String]) -> CmdError {
     let has = match (order.first(), order.last()) {
         (Some(a), Some(b)) if a != b => format!("{a}\u{2026}{b}"),
         (Some(a), _) => a.clone(),
@@ -87,8 +87,8 @@ fn item_list(given: Option<&Option<Words>>, on: bool) -> Result<Option<Vec<Acc>>
     }
 }
 
-fn read_items(doc: &Document, c: ComponentId, key: &str, on: bool) -> Vec<Acc> {
-    doc.components.get(&c).and_then(|x| x.properties.get(key)).and_then(|v| acc::parse_items(v, on).ok()).unwrap_or_default()
+fn read_items(doc: &Document, c: DeviceId, key: &str, on: bool) -> Vec<Acc> {
+    doc.devices.get(&c).and_then(|x| x.properties.get(key)).and_then(|v| acc::parse_items(v, on).ok()).unwrap_or_default()
 }
 
 fn plural(a: Acc, n: usize) -> String {
@@ -104,7 +104,7 @@ fn plural(a: Acc, n: usize) -> String {
 /// What `accessory` is asked to write (design 030 §2.2).
 #[derive(Debug, Clone, Default)]
 pub struct AccessoryInput {
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
     pub terminal: Option<TerminalId>,
     /// `start`, `end`, `all`, a position label, or a list of them (absent: `terminal`'s position).
     pub at: Option<Words>,
@@ -123,7 +123,7 @@ pub struct AccessoryInput {
 /// A planned `accessory` call.
 #[derive(Debug, Clone)]
 pub struct Accessory {
-    pub strip: ComponentId,
+    pub strip: DeviceId,
     /// Per place: its key and its items after the call.
     pub keys: Vec<(String, Vec<Acc>)>,
     pub ops: Vec<Op>,
@@ -200,10 +200,10 @@ pub fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory
             return Err(CmdError::refused(format!("A place holds at most {} accessories.", acc::MAX_ITEMS)));
         }
         let after = (!list.is_empty()).then(|| acc::items_text(&list));
-        let before = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let before = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
         keys.push((key.clone(), list));
         if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key, before, after });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key, before, after });
         }
     }
     // `clear`: placement keys emptied in the same transaction (the `accessory-orphan` fix,
@@ -215,8 +215,8 @@ pub fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory
         if keys.iter().any(|(x, _)| x == k) {
             continue;
         }
-        if let Some(before) = doc.components.get(&c).and_then(|x| x.properties.get(k)).cloned() {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: k.clone(), before: Some(before), after: None });
+        if let Some(before) = doc.devices.get(&c).and_then(|x| x.properties.get(k)).cloned() {
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: k.clone(), before: Some(before), after: None });
         }
     }
     let tag = strip_words(doc, c);
@@ -283,8 +283,8 @@ fn labels_of(text: &str, order: &[String]) -> Result<Vec<String>, CmdError> {
 }
 
 /// The next free link number on a strip.
-fn next_link(doc: &Document, c: ComponentId) -> Option<u32> {
-    let props = &doc.components.get(&c)?.properties;
+fn next_link(doc: &Document, c: DeviceId) -> Option<u32> {
+    let props = &doc.devices.get(&c)?.properties;
     let high = props
         .range(links::PREFIX.to_string()..)
         .take_while(|(k, _)| k.starts_with(links::PREFIX))
@@ -298,13 +298,13 @@ fn next_link(doc: &Document, c: ComponentId) -> Option<u32> {
     (high < links::MAX_LINK).then_some(high + 1)
 }
 
-fn set_op(doc: &Document, c: ComponentId, key: String, after: Option<String>) -> Option<Op> {
-    let before = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
-    (before != after).then_some(Op::SetProperty { object: ObjectRef::Component(c), key, before, after })
+fn set_op(doc: &Document, c: DeviceId, key: String, after: Option<String>) -> Option<Op> {
+    let before = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+    (before != after).then_some(Op::SetProperty { object: ObjectRef::Device(c), key, before, after })
 }
 
 /// The ops clearing a link and its own part keys.
-fn delete_ops(doc: &Document, c: ComponentId, n: u32) -> Vec<Op> {
+fn delete_ops(doc: &Document, c: DeviceId, n: u32) -> Vec<Op> {
     let mut ops: Vec<Op> = set_op(doc, c, links::key(n), None).into_iter().collect();
     for f in acc::FIELDS {
         ops.extend(set_op(doc, c, format!("{}.{f}", links::key(n)), None));
@@ -324,7 +324,7 @@ fn range_between(order: &[String], a: &str, b: &str) -> Vec<String> {
 /// The link a `jumper` edit names.
 #[derive(Debug, Clone, Default)]
 pub struct LinkRef {
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
     pub n: Option<u64>,
 }
 
@@ -334,7 +334,7 @@ pub struct JumperInput {
     /// The link to edit.
     pub link: Option<LinkRef>,
     /// Make: the strip.
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
     /// Make: the picked terminals.
     pub terminals: Vec<TerminalId>,
     /// Make: no ranges between consecutive picks.
@@ -356,7 +356,7 @@ pub struct JumperInput {
 /// A planned `jumper` call.
 #[derive(Debug, Clone)]
 pub struct Jumper {
-    pub strip: ComponentId,
+    pub strip: DeviceId,
     /// The link's number.
     pub n: u32,
     pub ops: Vec<Op>,
@@ -382,7 +382,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=links::MAX_LINK).contains(n));
         let n = n.ok_or(CmdError::input("`link.n` must be a whole number from 1 to 999"))?;
         let key = links::key(n);
-        let cur_text = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let cur_text = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
         let cur_text = cur_text.ok_or_else(|| CmdError::refused(format!("{} has no link {n}.", strip_words(doc, c))))?;
         let order = acc::positions(doc, c);
         let parsed = links::parse(&cur_text).unwrap_or_default();
@@ -569,7 +569,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         ops.extend(set_op(doc, c, links::key(*m), Some(t.clone())));
         // Both halves keep the link's own part (review of PR #57, 3).
         for f in acc::FIELDS {
-            let own = doc.components.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", links::key(n)))).cloned();
+            let own = doc.devices.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", links::key(n)))).cloned();
             if own.is_some() {
                 ops.extend(set_op(doc, c, format!("{}.{f}", links::key(*m)), own));
             }

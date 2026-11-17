@@ -6,7 +6,7 @@
 use ecad_app::App;
 use ecad_app::lists::plc::{self, IoView};
 use ecad_app::shell::{ListsView, Workspace};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use ecad_ui::table::TableSource;
 use eframe::egui;
 use egui_kittest::Harness;
@@ -29,7 +29,7 @@ fn harness(deltas: Deltas) -> H {
     h
 }
 
-fn tagged(h: &mut H, tag: &str) -> ComponentId {
+fn tagged(h: &mut H, tag: &str) -> DeviceId {
     doc(h).components_tagged(tag).first().copied().unwrap_or_else(|| panic!("{tag}"))
 }
 
@@ -164,7 +164,7 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
 fn edit_lines_follow_the_column() {
     use ecad_cadcraft::plc::iolist::Row;
     let row = |pins: Vec<(&'static str, String)>| Row {
-        card: ComponentId(1),
+        card: DeviceId(1),
         card_tag: "-A02".into(),
         rack: None,
         slot: None,

@@ -6,7 +6,7 @@
 
 use ecad_cadcraft::rating::dataset::{self, Insulation};
 use ecad_cadcraft::rating::{self, parse};
-use ecad_model::{CableId, ComponentId, ConductorId};
+use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -36,11 +36,11 @@ fn texts(rows: &[Value]) -> Vec<String> {
     rows.iter().map(|r| r["text"].as_str().unwrap_or_default().to_string()).collect()
 }
 
-fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> ComponentId {
+fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> DeviceId {
     id(&h.run("place", json!({"symbol": symbol, "at": at, "tag": tag})).unwrap_or_else(|e| panic!("place {symbol}: {e}")), "component")
 }
 
-fn wire(h: &mut H, points: &[(f64, f64)]) -> ConductorId {
+fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
     id(&h.run("wire", json!({"points": pts(points)})).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
 }
 
@@ -57,9 +57,9 @@ fn ratings(h: &mut H, p: Value) -> Value {
 /// -K01 at (50, 50): pins 3 (50, 60), 4 (50, 40); -X01 at (50, 0); -X02 at (150, 0).
 struct Fx {
     h: H,
-    q01: ComponentId,
-    l2: ConductorId,
-    core: ConductorId,
+    q01: DeviceId,
+    l2: WireId,
+    core: WireId,
     w01: CableId,
 }
 
@@ -456,7 +456,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
 // ------------------------------------------------------------------------------- fix round
 
 /// A location box `+CAB1` over the fixture (its devices at x 50–150, y 0–110).
-fn cab1(h: &mut H) -> ComponentId {
+fn cab1(h: &mut H) -> DeviceId {
     id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[0, -30], [200, 130]]})).unwrap(), "component")
 }
 
@@ -468,7 +468,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     let b = cab1(&mut f.h);
     let r = f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
     assert_eq!(r["boxes"], json!(1), "{r}");
-    assert_eq!(f.h.doc().components[&b].properties.get(rating::TEMPERATURE).map(String::as_str), Some("44"));
+    assert_eq!(f.h.doc().devices[&b].properties.get(rating::TEMPERATURE).map(String::as_str), Some("44"));
     let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
     let panel = r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap();
     // round2(√(26/40)) = round2(0.8062) = 0.81.
@@ -490,7 +490,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     touch.collect(&after, &ops);
     assert!(!touch.all_results);
     let changed = k.update(&after, &touch);
-    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![rating::RatedSubject::Conductor(f.l2)]);
+    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![rating::RatedSubject::Wire(f.l2)]);
     assert_eq!(k.retraced, 0);
     // A device's own location reaches its wires only.
     let mut k = rating::Kept::build(&after);
@@ -501,9 +501,9 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     touch.collect(&after, &ops);
     touch.collect(&later, &ops);
     assert!(!touch.all_results);
-    let on_q01: Vec<ConductorId> = later.terminals_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
+    let on_q01: Vec<WireId> = later.terminals_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
     for s in k.update(&later, &touch) {
-        assert!(matches!(s, rating::RatedSubject::Conductor(c) if on_q01.contains(&c)), "{s:?}");
+        assert!(matches!(s, rating::RatedSubject::Wire(c) if on_q01.contains(&c)), "{s:?}");
     }
     // A box temperature a file holds out of range: a row, not silence.
     let rows = checks_of(&mut f.h, "rating-bad-value");
@@ -513,7 +513,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
             ecad_model::Author::User,
             "hostile box temperature",
             vec![ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Component(b),
+                object: ecad_model::ObjectRef::Device(b),
                 key: rating::TEMPERATURE.into(),
                 before: Some("45".into()),
                 after: Some("95".into()),
@@ -556,7 +556,7 @@ fn f6_the_trace_bound_is_said_in_words() {
     let mut f = fixture();
     rate_category(&mut f.h);
     let doc = f.h.doc();
-    let mut r = rating::rating_of(&doc, rating::RatedSubject::Conductor(f.l2));
+    let mut r = rating::rating_of(&doc, rating::RatedSubject::Wire(f.l2));
     r.issues = vec![rating::Issue::NoDevice(true)];
     let rows = rating::rows(&doc, &r);
     assert_eq!(rows.len(), 1);
@@ -602,7 +602,7 @@ fn a_location_temperature_follows_the_entry_when_its_code_is_renamed() {
     rate_category(&mut f.h);
     let _ = cab1(&mut f.h);
     f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
-    let panel = |h: &mut H, w: ConductorId| {
+    let panel = |h: &mut H, w: WireId| {
         let r = ratings(h, json!({"wire": w.hex()}));
         r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap()
     };

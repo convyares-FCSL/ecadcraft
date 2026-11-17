@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, NetId, Node, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, NetId, Node, Subject, TerminalId};
 
 use super::RatedSubject;
 use crate::symbols::{Kind, StarterKey, StarterKey as K};
@@ -45,7 +45,7 @@ impl How {
 /// a strip position), the nets it crossed, and whether it stopped at its bound.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
-    pub devices: Vec<(ComponentId, Option<String>)>,
+    pub devices: Vec<(DeviceId, Option<String>)>,
     pub path: BTreeSet<NetId>,
     pub bounded: bool,
 }
@@ -71,12 +71,12 @@ pub fn load_side(key: StarterKey, label: &str) -> bool {
 }
 
 /// The starter keys a component's symbols show.
-fn starters(doc: &Document, c: ComponentId) -> Vec<&'static crate::symbols::Starter> {
-    doc.representations_of(Subject::Component(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
+fn starters(doc: &Document, c: DeviceId) -> Vec<&'static crate::symbols::Starter> {
+    doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
 }
 
 /// Whether component `c` shows a protective starter.
-pub fn is_protective_component(doc: &Document, c: ComponentId) -> bool {
+pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
     starters(doc, c).iter().any(|s| is_protective_key(s.key))
 }
 
@@ -114,7 +114,7 @@ fn crossed(s: &crate::symbols::Starter) -> bool {
 /// What reaching terminal `t` means.
 enum Step {
     /// A protective device's load side (with a bank's fuse or a strip's position).
-    Found(ComponentId, Option<String>),
+    Found(DeviceId, Option<String>),
     /// Cross to these terminals.
     Cross(Vec<TerminalId>),
     Stop,
@@ -177,7 +177,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetId>) -> Fou
     }
     while !level.is_empty() {
         let mut next = Vec::new();
-        let mut here: Vec<(ComponentId, Option<String>)> = Vec::new();
+        let mut here: Vec<(DeviceId, Option<String>)> = Vec::new();
         for n in &level {
             let Some(net) = conn.net(*n) else { continue };
             for t in &net.terminals {
@@ -223,7 +223,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetId>) -> Fou
 pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
     let conn = doc.connectivity();
     match s {
-        RatedSubject::Conductor(c) => trace_nets(doc, conn.net_of_conductor(c)),
+        RatedSubject::Wire(c) => trace_nets(doc, conn.net_of_conductor(c)),
         RatedSubject::Cable(k) => {
             let mut all = Found::default();
             let Some(cable) = doc.cables.get(&k) else { return all };
@@ -247,7 +247,7 @@ pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
 
 /// The device a `protected_by` value names: `-Q01`, or `-F01:3` (a fuse of a bank, a strip's fuse
 /// position).
-pub fn named(doc: &Document, text: &str) -> Option<(ComponentId, Option<String>)> {
+pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     let t: String = text.trim().chars().take(64).collect();
     let (tag, fuse) = match t.rsplit_once(':') {
         Some((a, b)) if !b.is_empty() => (a.to_string(), Some(b.to_string())),
@@ -266,19 +266,19 @@ pub fn named(doc: &Document, text: &str) -> Option<(ComponentId, Option<String>)
 }
 
 /// The rating text of a device (or its fuse).
-pub fn rating_text(doc: &Document, c: ComponentId, fuse: Option<&str>) -> String {
-    let props = doc.components.get(&c).map(|x| &x.properties);
+pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let key = fuse.map_or_else(|| crate::symbols::RATING_KEY.to_string(), |f| format!("{}{f}", crate::symbols::RATING_OF_PREFIX));
     props.and_then(|p| p.get(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 
 /// In of a device (or its fuse), when its rating reads (design 057 §4.1).
-pub fn amps_of(doc: &Document, c: ComponentId, fuse: Option<&str>) -> Option<f64> {
+pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
     super::parse::amps(&rating_text(doc, c, fuse))
 }
 
 /// A device in words: `-Q01`, `-F01:3`.
-pub fn device_words(doc: &Document, c: ComponentId, fuse: Option<&str>) -> String {
+pub fn device_words(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let tag = crate::devices::tag_words(doc, c);
     match fuse {
         Some(f) => format!("{tag}:{f}"),

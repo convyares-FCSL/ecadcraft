@@ -39,12 +39,12 @@ pub struct MeasuredStyles {
 }
 
 /// The densest page and a device on it.
-fn densest(project: &ProjectHandle, s: &mut Session) -> Result<(PageId, Option<ecad_model::ComponentId>), String> {
+fn densest(project: &ProjectHandle, s: &mut Session) -> Result<(PageId, Option<ecad_model::DeviceId>), String> {
     project.read(s, |p, _| {
         let doc = p.ledger.document();
         let page = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count()).unwrap_or(PageId(0));
         let device = doc.representations_on(page).find_map(|(_, r)| match r.subject {
-            Subject::Component(c) => Some(c),
+            Subject::Device(c) => Some(c),
             _ => None,
         });
         (page, device)
@@ -112,7 +112,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
             let net = project.read(&mut s, |p, _| {
                 let doc = p.ledger.document();
                 doc.representations_on(page).find_map(|(_, r)| match r.subject {
-                    Subject::Conductor(c) => Some(c),
+                    Subject::Wire(c) => Some(c),
                     _ => None,
                 })
             })?;

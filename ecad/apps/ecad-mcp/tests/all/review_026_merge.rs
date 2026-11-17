@@ -4,13 +4,13 @@
 //! internal `numbering.high.<P>` never merged as a property (4).
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{CableId, ComponentId, Document, Subject};
+use ecad_model::{CableId, DeviceId, Document, Subject};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{Client, TempDir};
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.components.get(&ComponentId::parse(comp).unwrap()).and_then(|x| x.properties.get("tag").cloned())
+    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.properties.get("tag").cloned())
 }
 
 fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> String {
@@ -62,10 +62,10 @@ fn a_rename_into_the_other_sides_new_tag_renumbers_and_joins_the_right_device() 
                 assert_ne!(tag_of(&doc, &y).as_deref(), Some("-K05"), "main's new device is renumbered");
             }
             _ => {
-                let yid = ComponentId::parse(&y).unwrap();
-                assert!(!doc.components.contains_key(&ComponentId::parse(&x).unwrap()), "X (the branch's) joined main's");
+                let yid = DeviceId::parse(&y).unwrap();
+                assert!(!doc.devices.contains_key(&DeviceId::parse(&x).unwrap()), "X (the branch's) joined main's");
                 assert_eq!(tag_of(&doc, &y).as_deref(), Some("-K05"));
-                assert_eq!(doc.representations_of(Subject::Component(yid)).count(), 2, "one device with both symbols");
+                assert_eq!(doc.representations_of(Subject::Device(yid)).count(), 2, "one device with both symbols");
             }
         }
     }

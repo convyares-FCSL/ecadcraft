@@ -116,7 +116,7 @@ impl App {
     }
 
     /// Brief 028: Reports on the Terminals tab for `strip` (Properties' **Show plan**).
-    pub fn show_plan(&mut self, strip: Option<ecad_model::ComponentId>) {
+    pub fn show_plan(&mut self, strip: Option<ecad_model::DeviceId>) {
         self.reports_view();
         if let Some(r) = &mut self.reports {
             r.tab = outputs_ui::Tab::Terminals;

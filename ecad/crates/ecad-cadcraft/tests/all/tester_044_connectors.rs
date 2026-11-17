@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{Author, ComponentId, ConductorId, DefinitionId, Document, Op, PageId, Pt, RepresentationId, Subject, TerminalId};
+use ecad_model::{Author, DefinitionId, DeviceId, Document, Op, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -36,7 +36,7 @@ fn qty(v: &Value) -> u64 {
 }
 
 /// The connector a `connector` result names (design §4.3: "the connector's ID and tag").
-fn conn_of(v: &Value) -> ComponentId {
+fn conn_of(v: &Value) -> DeviceId {
     for k in ["component", "connector", "device"] {
         if v[k].is_string() {
             return id(v, k);
@@ -46,22 +46,22 @@ fn conn_of(v: &Value) -> ComponentId {
 }
 
 /// A connector's terminals by (side key, pin label).
-fn pins(d: &Document, c: ComponentId) -> BTreeMap<(String, String), TerminalId> {
+fn pins(d: &Document, c: DeviceId) -> BTreeMap<(String, String), TerminalId> {
     d.terminals_of(c).map(|(t, x)| ((x.key.clone().unwrap_or_default(), x.label.clone().unwrap_or_default()), t)).collect()
 }
 
-fn pin(d: &Document, c: ComponentId, side: &str, label: &str) -> TerminalId {
+fn pin(d: &Document, c: DeviceId, side: &str, label: &str) -> TerminalId {
     pins(d, c).get(&(side.to_string(), label.to_string())).copied().unwrap_or_else(|| panic!("{side}:{label} missing: {:?}", pins(d, c)))
 }
 
 /// The pin labels drawn on one side, in natural order.
-fn side_labels(d: &Document, c: ComponentId, side: &str) -> Vec<String> {
+fn side_labels(d: &Document, c: DeviceId, side: &str) -> Vec<String> {
     let mut v: Vec<String> = pins(d, c).keys().filter(|(k, _)| k == side).map(|(_, l)| l.clone()).collect();
     v.sort_by_key(|l| (l.parse::<u64>().unwrap_or(u64::MAX), l.clone()));
     v
 }
 
-fn tag(d: &Document, c: ComponentId) -> String {
+fn tag(d: &Document, c: DeviceId) -> String {
     ecad_cadcraft::devices::tag_words(d, c)
 }
 
@@ -85,7 +85,7 @@ fn newpage(h: &mut H, number: &str, title: &str) -> PageId {
 }
 
 /// Vertical wires at `xs`, from y 250 to y 150, on the active page.
-fn drops(h: &mut H, xs: &[f64]) -> Vec<ConductorId> {
+fn drops(h: &mut H, xs: &[f64]) -> Vec<WireId> {
     xs.iter().map(|x| id(&h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap(), "conductor")).collect()
 }
 
@@ -96,7 +96,7 @@ fn shown_at(d: &Document, page: PageId, t: TerminalId) -> Option<Pt> {
 
 /// A wire from pin `t` (on `page`) 20 mm away from its half's body: up from a socket pin, down
 /// from a plug pin, unless the mate on the same page says the halves are swapped.
-fn wire_out(h: &mut H, page: PageId, c: ComponentId, t: TerminalId) -> ConductorId {
+fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: TerminalId) -> WireId {
     h.activate(page);
     let d = h.doc();
     let at = shown_at(&d, page, t).unwrap_or_else(|| panic!("{} not on that page", name(h, t)));
@@ -110,8 +110,8 @@ fn wire_out(h: &mut H, page: PageId, c: ComponentId, t: TerminalId) -> Conductor
         _ => -1.0,
     };
     let v = h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)])})).unwrap();
-    let w: ConductorId = id(&v, "conductor");
-    assert!(h.doc().conductors[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
+    let w: WireId = id(&v, "conductor");
+    assert!(h.doc().wires[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
     w
 }
 
@@ -166,7 +166,7 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -231,14 +231,14 @@ fn read_everything(h: &mut H) {
 }
 
 /// The symbols (representations) of `c` on `page`.
-fn reps_on(d: &Document, c: ComponentId, page: PageId) -> Vec<RepresentationId> {
-    d.representations_of(Subject::Component(c)).filter(|(_, r)| r.page == page).map(|(rid, _)| rid).collect()
+fn reps_on(d: &Document, c: DeviceId, page: PageId) -> Vec<RepresentationId> {
+    d.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == page).map(|(rid, _)| rid).collect()
 }
 
 /// The representation showing `t`.
 fn rep_of(d: &Document, t: TerminalId) -> RepresentationId {
     let c = d.terminals[&t].component;
-    d.representations_of(Subject::Component(c)).find(|(_, r)| r.connection_points.contains_key(&t)).map(|(rid, _)| rid).expect("shown")
+    d.representations_of(Subject::Device(c)).find(|(_, r)| r.connection_points.contains_key(&t)).map(|(rid, _)| rid).expect("shown")
 }
 
 fn page_no(d: &Document, p: PageId) -> String {
@@ -264,7 +264,7 @@ struct C {
     p101: PageId,
     p102: PageId,
     /// The three wires on page 100 (24 V, 0 V, signal).
-    w: Vec<ConductorId>,
+    w: Vec<WireId>,
 }
 
 const XS: [f64; 3] = [100.0, 110.0, 120.0];
@@ -282,14 +282,14 @@ fn fixture_c(seed: u64) -> C {
 }
 
 /// Row 1's `-X01`: a plain 4-pin pair as rows on page 101.
-fn with_x01(c: &mut C) -> ComponentId {
+fn with_x01(c: &mut C) -> DeviceId {
     c.h.activate(c.p101);
     let v = c.h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [100, 100], "page": c.p101.hex()}));
     conn_of(&v.unwrap_or_else(|e| panic!("connector row: {e}")))
 }
 
 /// Row 3's `-X02`: M12 4-pin pin pairs across page 100's three wires.
-fn with_x02(c: &mut C) -> (ComponentId, Value) {
+fn with_x02(c: &mut C) -> (DeviceId, Value) {
     c.h.activate(c.p100);
     let v = c
         .h
@@ -316,7 +316,7 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     assert_eq!(side_labels(&d, x, ".p"), ["1", "2", "3", "4"]);
     assert_eq!(d.terminals_of(x).count(), 8, "one connection point per pin per half");
     // No other X device: one connector, not two half devices.
-    let xs: Vec<ComponentId> = d.components.keys().copied().filter(|k| tag(&d, *k).starts_with("-X")).collect();
+    let xs: Vec<DeviceId> = d.devices.keys().copied().filter(|k| tag(&d, *k).starts_with("-X")).collect();
     assert_eq!(xs, [x], "one device for both halves");
     for t in pins(&d, x).values() {
         let n = name(&mut c.h, *t);
@@ -340,7 +340,7 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
         );
     }
     assert_eq!(c.h.doc().definitions.len(), before_defs + 2);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1, "one CreateComponent");
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1, "one CreateDevice");
     let adds: Vec<(Option<String>, Option<String>)> = ops
         .iter()
         .filter_map(|o| if let Op::AddTerminal { terminal, .. } = o { Some((terminal.key.clone(), terminal.label.clone())) } else { None })
@@ -490,13 +490,13 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     assert_eq!(tag(&d, x), "-X02", "{v}");
     assert_eq!(side_labels(&d, x, ".s"), ["1", "2", "3"], "{v}");
     assert_eq!(side_labels(&d, x, ".p"), ["1", "2", "3"], "{v}");
-    assert_eq!(d.components[&x].properties.get("pins").map(String::as_str), Some("4"), "pins = 4 (FP4)");
+    assert_eq!(d.devices[&x].properties.get("pins").map(String::as_str), Some("4"), "pins = 4 (FP4)");
     assert_eq!(reps_on(&d, x, c.p100).len(), 3, "one pin pair per wire");
     let mut nets = Vec::new();
     for (i, label) in ["1", "2", "3"].iter().enumerate() {
         let (sp, pp) = (pin(&d, x, ".s", label), pin(&d, x, ".p", label));
-        let on_s: Vec<&ConductorId> = d.conductors.iter().filter(|(_, k)| k.ends.contains(&Some(sp))).map(|(w, _)| w).collect();
-        let on_p: Vec<&ConductorId> = d.conductors.iter().filter(|(_, k)| k.ends.contains(&Some(pp))).map(|(w, _)| w).collect();
+        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(sp))).map(|(w, _)| w).collect();
+        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(pp))).map(|(w, _)| w).collect();
         assert_eq!((on_s.len(), on_p.len()), (1, 1), "pin {label}: the wire is split onto both points");
         let n = net(&mut c.h, sp);
         assert!(n.is_some() && n == net(&mut c.h, pp), "pin {label}: one net through the mate");
@@ -579,7 +579,7 @@ fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
     let x = conn_of(&v);
     let d = c.h.doc();
     let sp = pin(&d, x, ".s", "1");
-    let on: Vec<&ecad_model::Conductor> = d.conductors.values().filter(|k| k.ends.contains(&Some(sp))).collect();
+    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&Some(sp))).collect();
     assert_eq!(on.len(), 1, "one point, one wire");
 }
 
@@ -607,7 +607,7 @@ fn r04_refusals_name_a_way_forward() {
         json!({"symbol": "pins", "device": x2.hex(), "pin": "2", "at": [150, 100]}),
         &[format!("{t2}.S:2 is drawn on").as_str(), "Pick another pin, or Enter for the next free one."],
     );
-    let k: ComponentId = id(&c.h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap(), "component");
+    let k: DeviceId = id(&c.h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap(), "component");
     let kt = tag(&c.h.doc(), k);
     for sym in ["socket4", "pinpair", "pins"] {
         refused(
@@ -685,14 +685,11 @@ fn r05_family_or_size_mismatch_is_a_warning_not_a_refusal() {
     let handles: Vec<String> = reps_on(&d, x2, c.p100).iter().map(|r| c.h.handle_of(c.p100, d.representations[r].items[0]).hex()).collect();
     c.h.activate(c.p100);
     c.h.run("erase", json!({"handles": handles})).unwrap();
-    if c.h.doc().components.contains_key(&x2) {
+    if c.h.doc().devices.contains_key(&x2) {
         c.h.activate(c.p101);
         step(&mut c.h, "place", json!({"symbol": "plug6", "device": x2.hex(), "at": [100, 100]}));
         let rows: Vec<Value> = ["connector-family", "connector-size"].iter().flat_map(|k| checks_of(&mut c.h, k)).collect();
-        assert!(
-            !rows.is_empty() || !c.h.doc().components[&x2].properties.contains_key("pins"),
-            "an M12 4-pin connector with a plain plug6: {rows:?}"
-        );
+        assert!(!rows.is_empty() || !c.h.doc().devices[&x2].properties.contains_key("pins"), "an M12 4-pin connector with a plain plug6: {rows:?}");
     }
     // Family: a D-sub socket with an M12 plug.
     let x3 = conn_of(
@@ -801,11 +798,11 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     }
     // A terminal strip on the socket wire: its plan's target names the half pin (046's targets).
     let d = c.h.doc();
-    assert!(d.conductors[&ws].ends.contains(&Some(s3)));
+    assert!(d.wires[&ws].ends.contains(&Some(s3)));
     let at = shown_at(&d, c.p101, s3).unwrap();
     c.h.activate(c.p101);
     let v = c.h.run("terminals", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
-    let strip: ComponentId = id(&v, "strip");
+    let strip: DeviceId = id(&v, "strip");
     let plan = c.h.run("stripplan", json!({"strip": strip.hex(), "limit": 5000})).unwrap();
     if !plan.to_string().contains("-X01.S:3") {
         bad.push(format!("strip targets name the half pin: {plan}"));
@@ -839,7 +836,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
 fn r06_typed_half_tags_and_the_tag_guard() {
     let mut c = fixture_c(0x7044_0051);
     let x = conn_of(&c.h.run("connector", json!({"halves": "socket", "pins": 4, "layout": "row", "at": [100, 100]})).unwrap());
-    let k: ComponentId = id(&c.h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap(), "component");
+    let k: DeviceId = id(&c.h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap(), "component");
     refused(
         &mut c.h,
         "setprop",
@@ -847,7 +844,7 @@ fn r06_typed_half_tags_and_the_tag_guard() {
         &["-X01.S is the socket half of -X01. Pick another tag."],
     );
     let v = step(&mut c.h, "place", json!({"symbol": "plug4", "tag": "-X01.P", "at": [100, 60]}));
-    assert_eq!(id::<ComponentId>(&v, "component"), x, "typed half tag joins the connector: {v}");
+    assert_eq!(id::<DeviceId>(&v, "component"), x, "typed half tag joins the connector: {v}");
     assert_eq!(side_labels(&c.h.doc(), x, ".p").len(), 4);
 }
 
@@ -1003,7 +1000,7 @@ fn r07_registry_area_and_description_defaults() {
     assert_eq!(side_labels(&d, y, ".p").len(), 6, "registry pins and halves");
     assert!(side_labels(&d, y, ".s").is_empty());
     let d = c.h.doc();
-    assert_eq!(d.components[&y].properties.get("description").map(String::as_str), Some("Connector"), "connector.description");
+    assert_eq!(d.devices[&y].properties.get("description").map(String::as_str), Some("Connector"), "connector.description");
 }
 
 // ------------------------------------------------------------------------------- row 8 (AC 6)
@@ -1177,12 +1174,12 @@ fn r10_pinlabel_renames_on_both_halves() {
     let w1 = wire_out(&mut c.h, c.p101, x, s3);
     let w2 = wire_out(&mut c.h, c.p101, x, p3);
     let number = wire_number(&mut c.h, s3);
-    let conductors = c.h.doc().conductors.clone();
+    let conductors = c.h.doc().wires.clone();
     let v = step(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "3", "to": "PE"}));
     let d = c.h.doc();
     assert_eq!((d.terminals[&s3].label.as_deref(), d.terminals[&s3].key.as_deref()), (Some("PE"), Some(".s")), "{v}");
     assert_eq!((d.terminals[&p3].label.as_deref(), d.terminals[&p3].key.as_deref()), (Some("PE"), Some(".p")));
-    assert_eq!(d.conductors, conductors, "wires unchanged");
+    assert_eq!(d.wires, conductors, "wires unchanged");
     assert_eq!(net(&mut c.h, s3), net(&mut c.h, p3), "still mated");
     assert_eq!(wire_number(&mut c.h, s3), number);
     assert_eq!(name(&mut c.h, s3), "-X01.S:PE");
@@ -1366,7 +1363,7 @@ fn r12_hostile_input_never_panics() {
     );
     for k in ["half.x.part_number", "half.S.maker", "half..maker", "half.sp.location", "half.\u{0}.maker"] {
         survives(&mut c.h, "setprop", json!({"component": x.hex(), "key": k, "value": "v"}));
-        assert!(!c.h.doc().components[&x].properties.contains_key(k), "{k:?} is not written");
+        assert!(!c.h.doc().devices[&x].properties.contains_key(k), "{k:?} is not written");
     }
     let nines = "9".repeat(10_000);
     for v in ["-1", "0", "65", "99999999999999999999", "NaN", "4.5", "", nines.as_str()] {
@@ -1426,7 +1423,7 @@ fn r12_hand_made_connectors_never_panic() {
     c.h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops)).unwrap();
     for (k, v) in [("pins", "99999999999999999999"), ("half.s.location", "\u{0}"), ("connector.side.socket", "P"), ("connector.half.separator", ":")]
     {
-        let set = Op::SetProperty { object: ecad_model::ObjectRef::Component(x), key: k.into(), before: None, after: Some(v.into()) };
+        let set = Op::SetProperty { object: ecad_model::ObjectRef::Device(x), key: k.into(), before: None, after: Some(v.into()) };
         let _ = c.h.cfg(|p| p.ledger.commit(Author::User, "hand-made", vec![set]));
     }
     let (mut h, _) = reload(c.h, "hostile", 0x7044_00c3);
@@ -1501,8 +1498,8 @@ fn r13_old_version_1_halves_stay_separate() {
     let (mut h, _) = reload(h, "v1", 0x7044_00d3);
     let page = h.doc().page_order[0];
     h.activate(page);
-    let old_s: ComponentId = id(&h.run("place", json!({"definition": v1[0].hex(), "at": [60, 100]})).unwrap(), "component");
-    let old_p: ComponentId = id(&h.run("place", json!({"definition": v1[1].hex(), "at": [60, 60]})).unwrap(), "component");
+    let old_s: DeviceId = id(&h.run("place", json!({"definition": v1[0].hex(), "at": [60, 100]})).unwrap(), "component");
+    let old_p: DeviceId = id(&h.run("place", json!({"definition": v1[1].hex(), "at": [60, 60]})).unwrap(), "component");
     assert_ne!(old_s, old_p, "two devices, as 034");
     let d = h.doc();
     for c in [old_s, old_p] {
@@ -1510,7 +1507,7 @@ fn r13_old_version_1_halves_stay_separate() {
     }
     // A new socket4 embeds version 2 beside version 1.
     let n = h.doc().definitions.len();
-    let x: ComponentId = id(&h.run("place", json!({"symbol": "socket4", "at": [200, 100]})).unwrap(), "component");
+    let x: DeviceId = id(&h.run("place", json!({"symbol": "socket4", "at": [200, 100]})).unwrap(), "component");
     let d = h.doc();
     assert_eq!(d.definitions.len(), n + 1, "version 2 embedded beside version 1");
     let sid = ecad_cadcraft::symbols::by_key("socket4").unwrap().definition().unwrap().origin.as_ref().unwrap().definition;

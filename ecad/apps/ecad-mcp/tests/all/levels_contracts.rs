@@ -26,7 +26,7 @@ fn last_by_agent(c: &mut Client) -> (String, Vec<Op>) {
 
 fn set(ops: &[Op], key: &str) -> Option<String> {
     ops.iter().find_map(|o| match o {
-        Op::SetProperty { object: ObjectRef::Component(_) | ObjectRef::Project, key: k, after, .. } if k == key => after.clone(),
+        Op::SetProperty { object: ObjectRef::Device(_) | ObjectRef::Project, key: k, after, .. } if k == key => after.clone(),
         _ => None,
     })
 }
@@ -94,7 +94,7 @@ fn multi_level_terminal_commands_through_execute() {
     c.exec("toposition", json!({"device": dev, "strip": strip}));
     let (label, ops) = last_by_agent(&mut c);
     assert!(label.contains("\u{2192} -X01:"), "{label}");
-    assert!(ops.iter().any(|o| matches!(o, Op::DeleteComponent { .. })));
+    assert!(ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })));
     // The reads record nothing.
     let n = c.log().len();
     let plan = c.exec("stripplan", json!({"strip": strip}));

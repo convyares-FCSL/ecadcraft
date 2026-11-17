@@ -7,7 +7,8 @@
 //!   first, then additions, then changes in place; pages and folders are removed and inserted at
 //!   indices valid at that point. Invariants hold at the end because `to` is a valid document.
 //! - An object present in both with a different value is changed in place where an op can
-//!   (`ModifyItem`, `ModifyRepresentation`, `ModifyFolder`, `SetProperty`, `AttachEnd`), else
+//!   (`ModifyItem`, `ModifyDevice`, `ModifyRepresentation`, `ModifyFolder`, `SetProperty`,
+//!   `AttachEnd`), else
 //!   removed and added again.
 //! - Pages and folders keep the longest run already in the target's order; only the others move.
 //! - Named versions are never touched (they are history). `keep_project_key` says which project
@@ -17,7 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Document, End, Properties};
+use crate::doc::{Document, End, Properties, Wire};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
@@ -99,18 +100,23 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
     // Conductors: properties and ends change in place.
-    for id in ids(&from.conductors, &to.conductors, scope.map(|s| &s.conductors)) {
-        match (from.conductors.get(&id), to.conductors.get(&id)) {
+    for id in ids(&from.wires, &to.wires, scope.map(|s| &s.wires)) {
+        match (from.wires.get(&id), to.wires.get(&id)) {
             (Some(a), Some(b)) => {
-                props(ObjectRef::Conductor(id), &a.properties, &b.properties, &all, &mut changes);
+                props(ObjectRef::Wire(id), &a.display, &b.display, &all, &mut changes);
+                let values = Wire { ends: a.ends, display: a.display.clone(), ..b.clone() };
+                let before = Wire { display: a.display.clone(), ..a.clone() };
+                if values != before {
+                    changes.push(Op::ModifyWire { id, before, after: values });
+                }
                 for end in End::BOTH {
                     if a.end(end) != b.end(end) {
                         changes.push(Op::AttachEnd { conductor: id, end, before: a.end(end), after: b.end(end) });
                     }
                 }
             }
-            (Some(a), None) => removes.push(Op::DeleteConductor { id, conductor: a.clone() }),
-            (None, Some(b)) => adds.push(Op::CreateConductor { id, conductor: b.clone() }),
+            (Some(a), None) => removes.push(Op::DeleteWire { id, conductor: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateWire { id, conductor: b.clone() }),
             (None, None) => {}
         }
     }
@@ -135,18 +141,22 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             }
         }
     }
-    // Components: properties in place; another definition is `SetComponentDefinition` (brief 048,
-    // FP5), after the definitions are embedded.
-    for id in ids(&from.components, &to.components, scope.map(|s| &s.components)) {
-        match (from.components.get(&id), to.components.get(&id)) {
+    // Devices: properties in place; another definition is `SetDeviceDefinition` (brief 048,
+    // FP5), after the definitions are embedded; another type makes it one `ModifyDevice` (design
+    // 072 F13).
+    for id in ids(&from.devices, &to.devices, scope.map(|s| &s.devices)) {
+        match (from.devices.get(&id), to.devices.get(&id)) {
+            (Some(a), Some(b)) if a.device_type != b.device_type => {
+                changes.push(Op::ModifyDevice { id, before: a.clone(), after: b.clone() });
+            }
             (Some(a), Some(b)) => {
-                props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes);
+                props(ObjectRef::Device(id), &a.properties, &b.properties, &all, &mut changes);
                 if a.definition != b.definition {
-                    changes.push(Op::SetComponentDefinition { id, before: a.definition, after: b.definition });
+                    changes.push(Op::SetDeviceDefinition { id, before: a.definition, after: b.definition });
                 }
             }
-            (Some(a), None) => removes.push(Op::DeleteComponent { id, component: a.clone() }),
-            (None, Some(b)) => adds.push(Op::CreateComponent { id, component: b.clone() }),
+            (Some(a), None) => removes.push(Op::DeleteDevice { id, device: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateDevice { id, device: b.clone() }),
             (None, None) => {}
         }
     }
@@ -183,17 +193,17 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
 
-    // Pages: those kept in place change only their properties; the others are removed (from the
-    // highest index down) and inserted in the target's order.
+    // Pages: those kept in place change in place (`ModifyPage`); the others, and a page whose kind
+    // changed, are removed (from the highest index down) and inserted in the target's order.
     let scoped_pages: Option<BTreeSet<PageId>> = scope.map(|s| s.pages.iter().chain(&s.page_properties).copied().collect());
     let page_changed = |p: &PageId| scoped_pages.as_ref().is_none_or(|s| s.contains(p));
-    let same_title: Vec<PageId> = from
+    let same_kind: Vec<PageId> = from
         .page_order
         .iter()
         .copied()
-        .filter(|p| !page_changed(p) || to.pages.get(p).zip(from.pages.get(p)).is_some_and(|(b, a)| a.title == b.title))
+        .filter(|p| !page_changed(p) || to.pages.get(p).zip(from.pages.get(p)).is_some_and(|(b, a)| a.kind == b.kind))
         .collect();
-    let stay: BTreeSet<PageId> = if same_title == to.page_order { same_title.iter().copied().collect() } else { kept(&same_title, &to.page_order) };
+    let stay: BTreeSet<PageId> = if same_kind == to.page_order { same_kind.iter().copied().collect() } else { kept(&same_kind, &to.page_order) };
     let mut order = from.page_order.clone();
     let mut page_removes = Vec::new();
     for i in (0..order.len()).rev() {
@@ -210,8 +220,9 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         if stay.contains(id) {
             if page_changed(id)
                 && let (Some(a), Some(b)) = (from.pages.get(id), to.pages.get(id))
+                && a != b
             {
-                props(ObjectRef::Page(*id), &a.properties, &b.properties, &all, &mut changes);
+                changes.push(Op::ModifyPage { id: *id, before: a.clone(), after: b.clone() });
             }
         } else if let Some(page) = to.pages.get(id) {
             page_adds.push(Op::AddPage { id: *id, page: page.clone(), index: i });
@@ -245,6 +256,9 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // The project.
     if project {
         props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
+        if from.project != to.project {
+            changes.push(Op::ModifyProject { before: from.project.clone(), after: to.project.clone() });
+        }
         if from.settings != to.settings {
             changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
         }
@@ -309,13 +323,15 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
     let mut out = BTreeMap::new();
     for op in ops {
         let key = match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => ("page", id.0),
+            Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => ("page", id.0),
             Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => ("layer", id.0),
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => ("item", id.0),
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => ("component", id.0),
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                ("device", id.0)
+            }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),
+            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } | Op::AttachEnd { conductor: id, .. } => ("wire", id.0),
             Op::CreateCable { id, .. }
             | Op::DeleteCable { id, .. }
             | Op::AddCableMember { cable: id, .. }
@@ -323,8 +339,8 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => ("definition", id.0),
             Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),
             Op::SetProperty { object, .. } => match object {
-                ObjectRef::Component(c) => ("component", c.0),
-                ObjectRef::Conductor(c) => ("conductor", c.0),
+                ObjectRef::Device(c) => ("device", c.0),
+                ObjectRef::Wire(c) => ("wire", c.0),
                 ObjectRef::Cable(c) => ("cable", c.0),
                 ObjectRef::Page(c) => ("page", c.0),
                 ObjectRef::Project => ("project", 0),
@@ -336,6 +352,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
                 StyleRef::Builtin(w) => ("style", w.bytes().fold(0u128, |h, b| h.wrapping_mul(31).wrapping_add(u128::from(b)))),
             },
             Op::SetProjectSettings { .. } => ("settings", 0),
+            Op::ModifyProject { .. } => ("project", 0),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => continue,
         };
         *out.entry(key).or_insert(0) += 1;

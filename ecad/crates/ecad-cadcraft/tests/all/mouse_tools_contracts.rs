@@ -20,7 +20,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use common::H;
-use ecad_model::{ComponentId, ConductorId, Document, End, PageId, TerminalId, Transaction};
+use ecad_model::{DeviceId, Document, End, PageId, TerminalId, Transaction, WireId};
 use serde_json::json;
 
 const SEED: u64 = 80_08;
@@ -77,8 +77,8 @@ fn terminal_at(d: &Document, page: PageId, x: f64, y: f64) -> TerminalId {
         .unwrap_or_else(|| panic!("no terminal at {x},{y}"))
 }
 
-fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> ConductorId {
-    *d.conductors
+fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> WireId {
+    *d.wires
         .keys()
         .find(|c| {
             ecad_model::derive::route_on_page(d, **c, page)
@@ -90,12 +90,12 @@ fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> ConductorId {
 
 /// Base scene, by JSON: rectangle component (terminal "1" at 40,10), coil at 100,0 rotated 90
 /// (A1 at 90,0), a loose wire 0,30 -> 20,30 and a wire 40,10 -> 90,0 attached at both ends.
-fn base(h: &mut H) -> ComponentId {
+fn base(h: &mut H) -> DeviceId {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
         h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     let r = h.run("convertcomponent", json!({ "handles": lines })).unwrap();
-    let c: ComponentId = common::id(&r, "component");
+    let c: DeviceId = common::id(&r, "component");
     let right = line_handle(h, 40.0, 0.0, 40.0, 20.0);
     h.run("addterminal", json!({"handle": right.hex(), "at": [40, 10], "label": "1"})).unwrap();
     h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap();
@@ -380,7 +380,7 @@ fn ac2_undo_after_each_finished_form_is_one_step_and_redo_restores_it() {
         if let Some(b) = &before_doc {
             assert!(h.doc() == *b, "{what}: one undo restores the document before the command");
         } else {
-            assert!(h.doc().components.len() == done.components.len() - 1, "{what}: the component is undone");
+            assert!(h.doc().devices.len() == done.devices.len() - 1, "{what}: the component is undone");
         }
         h.cmdline("redo");
         assert!(h.doc() == done, "{what}: redo restores it");
@@ -419,7 +419,7 @@ fn ac4_preview_and_click_agree_inside_and_outside_the_aperture() {
             let pg = h.first_page();
             let d = h.doc();
             let a2 = terminal_at(&d, pg, 110.0, 0.0);
-            let attached = d.conductors.values().any(|c| End::BOTH.iter().any(|e| c.end(*e) == Some(a2)));
+            let attached = d.wires.values().any(|c| End::BOTH.iter().any(|e| c.end(*e) == Some(a2)));
             assert_eq!(attached, inside, "{tool} at {pixels} px: click");
             h.check();
         }
@@ -652,7 +652,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay gives the same state");
     h2.check();
     let pg = h2.first_page();
-    let ends = h2.doc().conductors.len();
+    let ends = h2.doc().wires.len();
     start(&mut h2, "wire");
     typed(&mut h2, "0,200");
     let px = h2.s.pixel_size();
@@ -662,9 +662,9 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     click(&mut h2, near);
     assert!(h2.s.running.is_none());
     let d = h2.doc();
-    assert_eq!(d.conductors.len(), ends + 1);
+    assert_eq!(d.wires.len(), ends + 1);
     let t1 = terminal_at(&d, pg, 40.0, 10.0);
-    assert!(d.conductors.values().filter(|c| c.end(End::B) == Some(t1)).count() >= 1);
+    assert!(d.wires.values().filter(|c| c.end(End::B) == Some(t1)).count() >= 1);
     h2.check();
     while !h2.s.docs.is_empty() {
         h2.s.execute("close", &json!({"index": 0})).unwrap();

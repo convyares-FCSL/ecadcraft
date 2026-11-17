@@ -171,8 +171,8 @@ mod hover_and_marks {
         pointer_to(&mut h, on_rect);
         let rect = first_hover_line(&h).unwrap_or_default();
         assert!(wrong.is_empty(), "terminal hovers wrong:\n{}", wrong.join("\n"));
-        assert_eq!(wire, "Wire (no tag)");
-        assert_eq!(rect, "Component (no tag)");
+        assert_eq!(wire, "Wire 01", "a wire is named by its number");
+        assert_eq!(rect, "Device (no tag)");
     }
 
     fn to_layout(h: &mut Harness<'static, App>, name: &str) {
@@ -242,7 +242,7 @@ mod hover_and_marks {
             ("Add Connection Point", None),
             ("Connect", None),
             ("Disconnect", None),
-            ("Convert to Component", None),
+            ("Convert to Device", None),
         ] {
             h.state_mut().cad.session.set_selection(Vec::new());
             h.get_by_label(tools::TAB).click();
@@ -289,7 +289,7 @@ mod hover_and_marks {
         let d = doc(&mut h);
         let page = d.page_order[0];
         let routes: Vec<String> =
-            d.conductors.keys().filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
+            d.wires.keys().filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
         let paper: usize = h.state().cad.session.doc().unwrap().layouts.iter().map(|l| l.entities.len()).sum();
         eprintln!("wire in paper space: head {} -> {after}; routes {routes:?}; paper {paper}", before.0);
         let t = h.state_mut();
@@ -428,7 +428,7 @@ mod layout_refusals {
     }
 
     const TOOLS: [(&str, &str); 6] = [
-        ("Convert to Component", "convertcomponent"),
+        ("Convert to Device", "convertcomponent"),
         ("Add Connection Point", "addterminal"),
         ("Place Symbol", "place"),
         ("Wire", "wire"),
@@ -461,7 +461,7 @@ mod layout_refusals {
         let all: Vec<_> =
             h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
         h.state_mut().cad.session.set_selection(all);
-        button(&mut h, "Convert to Component");
+        button(&mut h, "Convert to Device");
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
         assert!(running(&h).is_none());
         assert!((head(&mut h), doc(&mut h)) == before, "something was recorded in the layout");
@@ -530,7 +530,7 @@ mod layout_refusals {
         let d = doc(&mut h);
         let page = d.page_order[0];
         let new_route = d
-            .conductors
+            .wires
             .keys()
             .filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page))
             .filter_map(|(_, r)| r.path_ends())

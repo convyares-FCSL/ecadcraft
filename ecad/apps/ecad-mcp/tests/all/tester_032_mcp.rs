@@ -3,7 +3,7 @@
 //! refused with writes off. Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{ConductorId, Op, Transaction};
+use ecad_model::{Op, Transaction, WireId};
 use serde_json::{Value, json};
 
 use crate::common::assert_one_by_agent;
@@ -13,8 +13,8 @@ fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
 }
 
-fn conductor(h: &str) -> ConductorId {
-    ConductorId::from(u128::from_str_radix(h, 16).unwrap())
+fn conductor(h: &str) -> WireId {
+    WireId::from(u128::from_str_radix(h, 16).unwrap())
 }
 
 fn place_terminal(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f64) {
@@ -57,14 +57,14 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
     let (survivor, cable, p2) = {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
 
-        // `wire` merging (case 1): one transaction labelled Wire, no CreateConductor.
+        // `wire` merging (case 1): one transaction labelled Wire, no CreateWire.
         let a = c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
         let first = hex(&a, "conductor");
         let n = c.log().len();
         let b = c.exec("wire", json!({"points": [[50, 0], [50, -20]]}));
         let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "wire merge");
         assert_eq!(label, "Wire");
-        assert!(!ops.iter().any(|o| matches!(o, Op::CreateConductor { .. })), "{ops:?}");
+        assert!(!ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "{ops:?}");
         assert_eq!(b["created"], json!(false), "{b}");
         assert_eq!(hex(&b, "conductor"), first, "{b}");
         assert_eq!(b["joined"][0]["how"], "merged", "{b}");
@@ -81,8 +81,8 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         assert_eq!(v["created"], json!(false), "{v}");
         assert_eq!(hex(&v, "conductor"), left, "{v}");
         assert_eq!(v["removed"], json!([right]), "{v}");
-        assert!(ops.iter().any(|o| matches!(o, Op::DeleteConductor { .. })), "{ops:?}");
-        assert!(!c.doc().conductors.contains_key(&conductor(&right)), "the folded conductor is gone");
+        assert!(ops.iter().any(|o| matches!(o, Op::DeleteWire { .. })), "{ops:?}");
+        assert!(!c.doc().wires.contains_key(&conductor(&right)), "the folded conductor is gone");
 
         // A refused merge records nothing.
         c.exec("wire", json!({"points": [[0, 300], [50, 300]], "potential": "0V"}));

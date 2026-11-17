@@ -26,7 +26,7 @@ use cadcraft_engine::Session;
 use ecad_cadcraft::xref::{self, RefIndex};
 use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_inspect::EventKind;
-use ecad_model::{ComponentId, ConductorId, PageId, RepresentationId};
+use ecad_model::{DeviceId, PageId, RepresentationId, WireId};
 use serde_json::{Value, json};
 
 struct Rng(u64);
@@ -48,9 +48,9 @@ impl Rng {
 struct X {
     h: H,
     pages: Vec<PageId>,
-    k1: ComponentId,
+    k1: DeviceId,
     coil: RepresentationId,
-    a2: ConductorId,
+    a2: WireId,
 }
 
 fn rep(v: &Value) -> RepresentationId {
@@ -64,15 +64,15 @@ fn fixture(seed: u64) -> X {
     let p100 = h.first_page();
     h.run("pageprops", json!({"page": p100.hex(), "number": "100", "title": "Supply"})).unwrap();
     let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
-    let k1: ComponentId = id(&coil, "component");
-    let a2: ConductorId = id(&h.run("wire", json!({"points": pts(&[(75.0, 170.0), (75.0, 150.0)])})).unwrap(), "conductor");
+    let k1: DeviceId = id(&coil, "component");
+    let a2: WireId = id(&h.run("wire", json!({"points": pts(&[(75.0, 170.0), (75.0, 150.0)])})).unwrap(), "conductor");
     h.run("wire", json!({"points": pts(&[(40.0, 150.0), (200.0, 150.0)])})).unwrap();
     h.run("place", json!({"symbol": "power3", "at": [125, 180], "device": k1.hex()})).unwrap();
     let p105: PageId = id(&h.run("newpage", json!({"title": "Motor control", "number": "105"})).unwrap(), "page");
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "nc", "at": [100, 100], "device": k1.hex()})).unwrap();
     let mcb = h.run("place", json!({"symbol": "mcb1", "at": [250, 150]})).unwrap();
-    let q1: ComponentId = id(&mcb, "component");
+    let q1: DeviceId = id(&mcb, "component");
     h.run("place", json!({"symbol": "nc", "at": [300, 150], "device": q1.hex()})).unwrap();
     let p110: PageId = id(&h.run("newpage", json!({"title": "Field", "number": "110"})).unwrap(), "page");
     h.run("place", json!({"symbol": "no", "at": [150, 120], "device": k1.hex()})).unwrap();
@@ -111,14 +111,14 @@ fn xref_handles(h: &mut H, page: PageId, r: RepresentationId) -> Vec<String> {
     h.p(|p| (0u32..400).map_while(|i| p.pages[&page].map.xref(r, i)).map(|hd| hd.hex()).collect())
 }
 
-fn children(h: &mut H, c: ComponentId) -> Vec<RepresentationId> {
+fn children(h: &mut H, c: DeviceId) -> Vec<RepresentationId> {
     h.p(|p| xref::device(p.ledger.document(), c).children)
 }
 
-fn components_with_head(h: &mut H) -> Vec<ComponentId> {
+fn components_with_head(h: &mut H) -> Vec<DeviceId> {
     h.p(|p| {
         let doc = p.ledger.document();
-        doc.components.keys().copied().filter(|c| xref::device(doc, *c).head.is_some()).collect()
+        doc.devices.keys().copied().filter(|c| xref::device(doc, *c).head.is_some()).collect()
     })
 }
 
@@ -374,7 +374,7 @@ fn tester_025_branch_switch_merge_and_update_keep_the_index() {
     let m = raw(&mut x.h, "merge", json!({"from": "B"}));
     assert!(m.is_ok(), "{m:?}");
     index_is_a_rebuild(&mut x.h, "after merge");
-    assert!(x.h.doc().components[&x.k1].properties.contains_key("contacts"));
+    assert!(x.h.doc().devices[&x.k1].properties.contains_key("contacts"));
     raw(&mut x.h, "u", json!({})).ok();
     raw(&mut x.h, "undomerge", json!({})).ok();
     index_is_a_rebuild(&mut x.h, "after undoing the merge");
@@ -425,7 +425,7 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     // (`auto`) is left out of the settings. (A qsave always writes a new session record, so the
     // file bytes are not compared.)
     let doc = h2.doc();
-    assert!(doc.components.values().all(|c| !c.properties.contains_key("contacts") && !c.properties.contains_key("mirror")));
+    assert!(doc.devices.values().all(|c| !c.properties.contains_key("contacts") && !c.properties.contains_key("mirror")));
     let settings = serde_json::to_value(&doc.settings).unwrap();
     assert!(settings.get("contact_mirror").is_none(), "{settings}");
     // With an offer, a moved table and a project default, a second round trip keeps them all.
@@ -475,7 +475,7 @@ fn tester_025_old_v1_golden_opens_with_an_index_and_no_transaction() {
 
 // ------------------------------------------------------------------ contact labelling
 
-fn rows(h: &mut H, c: ComponentId) -> Vec<(String, String, String)> {
+fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String)> {
     let v = h.run("contacts", json!({"component": c.hex()})).unwrap();
     v["rows"]
         .as_array()
@@ -530,7 +530,7 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     let p105 = x.pages[1];
     x.h.activate(p105);
     let lone = x.h.run("place", json!({"symbol": "no", "at": [30, 30]})).unwrap();
-    let lone_c: ComponentId = id(&lone, "component");
+    let lone_c: DeviceId = id(&lone, "component");
     assert!(xref_handles(&mut x.h, p105, rep(&lone)).is_empty());
     let v = x.h.run("xrefs", json!({"component": lone_c.hex()})).unwrap();
     assert!(v["references"].as_array().unwrap().is_empty(), "{v}");
@@ -538,14 +538,14 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     assert!(v["head"].is_null(), "{v}");
     // A coil with no contacts and no offer: no table; with an offer: spare rows only.
     let k2 = x.h.run("place", json!({"symbol": "coil", "at": [200, 220]})).unwrap();
-    let k2c: ComponentId = id(&k2, "component");
+    let k2c: DeviceId = id(&k2, "component");
     assert!(xref_handles(&mut x.h, p105, rep(&k2)).is_empty(), "no table for a bare coil");
     x.h.run("setprop", json!({"component": k2c.hex(), "key": "contacts", "value": "2NO"})).unwrap();
     assert!(rows(&mut x.h, k2c).iter().all(|r| r.2 == "spare"));
     assert!(!xref_handles(&mut x.h, p105, rep(&k2)).is_empty(), "a table of spares");
     // Duplicate tags: give -K2 the tag of -K1 (merge refused or asked): the two devices stay
     // apart in the index.
-    let tag = x.h.doc().components[&x.k1].properties.get("tag").cloned().unwrap_or_default();
+    let tag = x.h.doc().devices[&x.k1].properties.get("tag").cloned().unwrap_or_default();
     let _ = x.h.run("setprop", json!({"component": k2c.hex(), "key": "tag", "value": tag}));
     index_is_a_rebuild(&mut x.h, "duplicate tag");
     let groups: Vec<_> = x.h.p(|p| p.xref.groups().collect());
@@ -662,7 +662,7 @@ fn tester_025_bug_headless_device_with_an_offer_is_checked() {
     let mut x = fixture(2507);
     x.h.activate(x.pages[1]);
     let lone = x.h.run("place", json!({"symbol": "no", "at": [30, 30]})).unwrap();
-    let c: ComponentId = id(&lone, "component");
+    let c: DeviceId = id(&lone, "component");
     x.h.run("setprop", json!({"component": c.hex(), "key": "contacts", "value": "1NC"})).unwrap();
     let v = x.h.run("checks", json!({"kinds": ["too-many-contacts"]})).unwrap();
     let mine: Vec<&Value> = v["checks"].as_array().unwrap().iter().filter(|r| r["object"]["component"] == json!(c.hex())).collect();

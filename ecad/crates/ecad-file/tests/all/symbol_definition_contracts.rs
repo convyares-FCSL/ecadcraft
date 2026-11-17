@@ -1,6 +1,6 @@
 //! Brief 048 (symbol builder): a definition's text slots, defaults and `derived_from` (FP1, FP2,
 //! FP4) are left out of the record when empty, so existing content hashes hold, and round-trip
-//! when set; the op `SetComponentDefinition` (FP5) round-trips; a project symbol's content hash is
+//! when set; the op `SetDeviceDefinition` (FP5) round-trips; a project symbol's content hash is
 //! checked on read like any embedded definition's.
 
 use crate::common::*;
@@ -60,21 +60,21 @@ fn a_project_symbol_and_set_component_definition_round_trip() {
     let sym = from_library(symbol(), DefinitionId(0x48), 1);
     let id = DefinitionId(0x480);
     // A component with no placed symbol (a placed one must show its component's definition, I9).
-    let c = ComponentId(0x4801);
+    let c = DeviceId(0x4801);
     f.commit(
         "Symbol",
         vec![
             Op::EmbedDefinition { id, definition: sym.clone() },
-            Op::CreateComponent { id: c, component: Component { definition: Some(f.d1), ..Default::default() } },
+            Op::CreateDevice { id: c, device: Device { definition: Some(f.d1), ..Default::default() } },
         ],
     );
-    let op = Op::SetComponentDefinition { id: c, before: Some(f.d1), after: Some(id) };
+    let op = Op::SetDeviceDefinition { id: c, before: Some(f.d1), after: Some(id) };
     let v = ecad_file::record::op_value(&op).unwrap();
-    assert_eq!(v["op"], "SetComponentDefinition");
+    assert_eq!(v["op"], "SetDeviceDefinition");
     assert_eq!(v["v"], 1);
     assert!(v.get("before").is_some() && v.get("after").is_some(), "{v}");
     f.commit("Symbol changed", vec![op.clone()]);
-    let none = Op::SetComponentDefinition { id: c, before: Some(id), after: None };
+    let none = Op::SetDeviceDefinition { id: c, before: Some(id), after: None };
     f.commit("No symbol", vec![none.clone()]);
     f.commit("Back", vec![none.inverse()]);
 
@@ -89,7 +89,7 @@ fn a_project_symbol_and_set_component_definition_round_trip() {
     let mut zero = symbol();
     zero.texts[1].rotation = ecad_model::units::Radians(0.0);
     assert_eq!(ecad_file::definition_hash(&zero).unwrap(), ecad_file::definition_hash(&symbol()).unwrap());
-    assert_eq!(opened.ledger.document().components[&c].definition, Some(id));
+    assert_eq!(opened.ledger.document().devices[&c].definition, Some(id));
 }
 
 #[test]

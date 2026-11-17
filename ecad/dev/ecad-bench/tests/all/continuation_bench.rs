@@ -61,7 +61,7 @@ fn pages(n: usize) -> Document {
     Op::AddLayer { id: layer, layer: ecad_model::Layer { name: "0".into() } }.apply(&mut doc).unwrap();
     for i in 0..n {
         let id = PageId(0x1000 + i as u128);
-        Op::AddPage { id, page: ecad_model::Page::new(format!("{}", 100 + i)), index: i }.apply(&mut doc).unwrap();
+        Op::AddPage { id, page: ecad_model::Page::titled(format!("{}", 100 + i)).unwrap(), index: i }.apply(&mut doc).unwrap();
     }
     doc
 }
@@ -86,7 +86,7 @@ fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: 
 /// The ops moving the symbol item of the first arrow named `name` by `dx`.
 fn move_first(doc: &Document, name: &str, dx: f64) -> Vec<Op> {
     let c = doc.continuations_named(name)[0];
-    let (_, r) = doc.representations_of(ecad_model::Subject::Component(c)).next().unwrap();
+    let (_, r) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
     let id = r.items[0];
     let before = doc.items[&id].clone();
     let mut after = before.clone();
@@ -155,17 +155,13 @@ fn bench_049_continuation_rows() {
     let mut redrawn = BTreeSet::new();
     let move20 = time_with(runs, || idx.clone(), |mut i| redrawn = commit_work(&doc, &after, &mut i, &ops));
     let partners: BTreeSet<PageId> =
-        doc.continuations_named("N3").iter().flat_map(|c| doc.representations_of(ecad_model::Subject::Component(*c))).map(|(_, r)| r.page).collect();
+        doc.continuations_named("N3").iter().flat_map(|c| doc.representations_of(ecad_model::Subject::Device(*c))).map(|(_, r)| r.page).collect();
     assert!(redrawn.is_subset(&partners), "only pages with an N3 arrow: {redrawn:?}");
 
     // Rename one arrow from N3 to N4.
     let c = doc.continuations_named("N3")[1];
-    let rename = vec![Op::SetProperty {
-        object: ecad_model::ObjectRef::Component(c),
-        key: "name".into(),
-        before: Some("N3".into()),
-        after: Some("N4".into()),
-    }];
+    let rename =
+        vec![Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: "name".into(), before: Some("N3".into()), after: Some("N4".into()) }];
     let after = applied(&doc, &rename);
     let rename20 = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &rename)));
 

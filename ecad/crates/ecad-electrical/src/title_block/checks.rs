@@ -15,7 +15,6 @@
 //! Every other op leaves the rows. Working them out reads each page's values once and fits each
 //! field's value in its box; no frame is drawn (one frame input per frame style and sheet).
 
-use ecad_model::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY};
@@ -36,7 +35,7 @@ pub fn touches(op: &Op) -> bool {
         Op::SetStyle { .. } | Op::SetStandard { .. } => true,
         Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard | ObjectRef::Page(_), .. } => true,
-        Op::AddPage { .. } | Op::RemovePage { .. } => true,
+        Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyPage { .. } => true,
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
         _ => false,
     }
@@ -122,7 +121,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 fn sheet_rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
     for (page, p) in doc.pages.iter().take(MAX_PAGES) {
-        let Some(own) = p.properties.text(ecad_model::keys::SHEET).and_then(|t| ecad_model::SheetSpec::parse(t).ok()) else { continue };
+        let Some(own) = p.sheet else { continue };
         let Some(framed) = sheet::frame_sheet(doc, *page) else { continue };
         if (own.width, own.height) == (framed.width, framed.height) && own == framed {
             continue;
@@ -151,9 +150,9 @@ fn sheet_rows(doc: &Document) -> Vec<Check> {
 /// page's own values.
 fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> FrameInput {
     let mut inp = base.clone();
-    let pprops = doc.pages.get(&page).map(|p| &p.properties);
+    let pprops = doc.pages.get(&page).map(|p| &p.display);
     let inherited = |k: &str| pprops.and_then(|p| p.get(k)).or_else(|| doc.properties.get(k)).cloned().unwrap_or_default();
-    inp.page_title = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+    inp.page_title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     inp.page = book.number(doc, page);
     inp.next_page = book.next(page);
     inp.next = inp.next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n));

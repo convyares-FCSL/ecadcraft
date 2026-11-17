@@ -50,10 +50,10 @@ fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
         if !matches!(s.key, StarterKey::Pinpair | StarterKey::Pins | StarterKey::Pinp) {
             assert_eq!(labels(&r), s.labels(), "{}", s.key);
         }
-        let cid: ecad_model::ComponentId = u128::from_str_radix(r["component"].as_str().unwrap(), 16).unwrap().into();
+        let cid: ecad_model::DeviceId = u128::from_str_radix(r["component"].as_str().unwrap(), 16).unwrap().into();
         let doc = c.doc();
         let want = if connector { "Connector" } else { s.name };
-        assert_eq!(doc.components[&cid].properties.get("description").map(String::as_str), Some(want), "{}: description", s.key);
+        assert_eq!(doc.devices[&cid].properties.get("description").map(String::as_str), Some(want), "{}: description", s.key);
         // Again: no embed.
         let n = c.log().len();
         c.exec("place", json!({"symbol": s.key, "at": [at[0].as_f64().unwrap(), at[1].as_f64().unwrap() - 40.0]}));

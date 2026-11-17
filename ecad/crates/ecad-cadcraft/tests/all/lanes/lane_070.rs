@@ -109,7 +109,7 @@ fn an_unknown_parameter_is_refused() {
     let mut h = H::new(7002);
     let e = h.run("wire", json!({"points": [[0, 0], [9, 0]], "colour": "RD"})).err().unwrap_or_default();
     assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `junction`, `points`, `potential`");
-    assert!(h.doc().conductors.is_empty(), "nothing was drawn");
+    assert!(h.doc().wires.is_empty(), "nothing was drawn");
 }
 
 /// The typed commands still work: a wire, its net, a fixed number and a released one.
@@ -1024,8 +1024,8 @@ fn the_bom_commands_keep_their_rule_words() {
     let mut h = H::new(7043);
     let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
     let rows: &[(&str, Value, &str)] = &[
-        ("partline", json!({"add": {"maker": "M"}}), "`component` or `components` (hex id) is required"),
-        ("partline", json!({"components": [], "add": {"maker": "M"}}), "`components` is empty"),
+        ("partline", json!({"add": {"maker": "M"}}), "`component` or `devices` (hex id) is required"),
+        ("partline", json!({"devices": [], "add": {"maker": "M"}}), "`devices` is empty"),
         ("partline", json!({"component": "ab", "add": {"maker": "M"}}), "No component 000000000000000000000000000000ab."),
         ("partline", json!({"component": k, "add": []}), "`add` names no line"),
         ("partline", json!({"component": k, "add": {"kit": "K"}}), "`kit` is not a part line field. Use part_number,"),
@@ -1079,11 +1079,11 @@ fn the_location_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("setlocation", json!({"component": "1"}), "`value` (text, or null) is required"),
         ("setlocation", json!({"component": "1", "value": 5}), "`value` must be text, or null"),
-        ("setlocation", json!({"components": "1", "value": null}), "`components` must be a list of hex ids, or null"),
+        ("setlocation", json!({"devices": "1", "value": null}), "`devices` must be a list of hex ids, or null"),
         ("setlocation", json!({"component": "1", "value": null, "type": 3}), "`type` must be text, or null"),
         ("setfunction", json!({"component": "1", "value": "=F1", "aspect": "location"}), "`aspect` is not a parameter of this command; it takes "),
         ("conflicts", json!({"answer": 1}), "`answer` must be text, or null"),
-        ("conflicts", json!({"components": ["zz"]}), "`components` must be a list of hex ids, or null"),
+        ("conflicts", json!({"devices": ["zz"]}), "`devices` must be a list of hex ids, or null"),
     ];
     let mut h = H::new(7045);
     for (cmd, params, says) in rows {
@@ -1098,7 +1098,7 @@ fn the_location_commands_keep_their_rule_words() {
     let mut h = H::new(7046);
     let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
     let rows: &[(&str, Value, &str)] = &[
-        ("setlocation", json!({"value": "+CP1"}), "`component` or `components` (hex ids) is required"),
+        ("setlocation", json!({"value": "+CP1"}), "`component` or `devices` (hex ids) is required"),
         ("setlocation", json!({"component": k, "value": "+CP1", "aspect": "place"}), "`aspect` is \"location\" or \"function\""),
         ("setlocation", json!({"component": k, "value": "=F1", "aspect": "function", "type": "plug"}), "A function has no overrides"),
         ("setlocation", json!({"component": k, "value": "+CP1", "type": "head"}), "The head is the device; set the device's location."),
@@ -1119,7 +1119,7 @@ fn the_location_commands_keep_their_rule_words() {
 fn the_typed_location_commands_still_work() {
     let mut h = H::new(7047);
     let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
-    let set = h.run("setlocation", json!({"components": [k, k], "value": "+CP1"})).unwrap_or_else(|e| json!(e));
+    let set = h.run("setlocation", json!({"devices": [k, k], "value": "+CP1"})).unwrap_or_else(|e| json!(e));
     assert_eq!((set["changed"].clone(), set["devices"].clone(), set["location"].clone()), (json!(true), json!(1), json!("+CP1")), "{set}");
     let f = h.run("setfunction", json!({"component": k, "value": "=F1"})).unwrap_or_else(|e| json!(e));
     assert_eq!(f["function"], json!("=F1"), "{f}");
@@ -1568,7 +1568,7 @@ fn setprop_refuses_input_uniformly() {
         (json!({"component": "1", "key": "description"}), "`value` (text, or null) is required"),
         (json!({"component": "1", "key": "description", "value": 3}), "`value` must be text, or null"),
         (json!({"component": "zz", "key": "description", "value": "x"}), "`component` must be a hex id, or null"),
-        (json!({"components": ["zz"], "key": "description", "value": "x"}), "`components` must be a list of hex ids, or null"),
+        (json!({"devices": ["zz"], "key": "description", "value": "x"}), "`devices` must be a list of hex ids, or null"),
         (json!({"component": "1", "key": "tag", "value": "-K1", "merge": "yes"}), "`merge` must be true or false, or null"),
         (json!({"component": "1", "key": "tag", "value": "-K1", "conflict": 1}), "`conflict` must be text, or null"),
         (json!({"key": "description", "value": "x"}), "`component`, `conductor` or `cable` (hex id) is required"),
@@ -1588,7 +1588,7 @@ fn setprop_keeps_its_rule_words() {
     let tag_b = h.run("deviceprops", json!({"component": b})).unwrap_or_default()["tag"].clone();
     let rows: &[(Value, &str)] = &[
         (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_electrical::text_style::RESERVED_KEY),
-        (json!({"components": [a, b], "key": "tag", "value": "-K9"}), "Tags are one per device."),
+        (json!({"devices": [a, b], "key": "tag", "value": "-K9"}), "Tags are one per device."),
         (json!({"component": a, "key": "tag_fixed", "value": "maybe"}), "`tag_fixed` is \"yes\" or null, not \"maybe\""),
         (
             json!({"component": a, "key": "tag", "value": tag_b, "conflict": "sideways"}),
@@ -1615,7 +1615,7 @@ fn the_typed_setprop_still_works() {
     assert_eq!(same, json!({"changed": false, "value": "Pump"}), "{same}");
     let free = h.run("setprop", json!({"component": a, "key": "note", "value": "x"})).unwrap_or_else(|e| json!(e));
     assert_eq!(free, json!({"changed": true}), "{free}");
-    let many = h.run("setprop", json!({"components": [a, b], "key": "note", "value": "y"})).unwrap_or_else(|e| json!(e));
+    let many = h.run("setprop", json!({"devices": [a, b], "key": "note", "value": "y"})).unwrap_or_else(|e| json!(e));
     assert_eq!(many, json!({"changed": true, "devices": 2}), "{many}");
     let tag = h.run("setprop", json!({"component": a, "key": "tag", "value": "-K07"})).unwrap_or_else(|e| json!(e));
     assert_eq!(tag, json!({"changed": true, "value": "-K07", "fixed": true}), "{tag}");
@@ -1632,7 +1632,7 @@ fn the_typed_setprop_still_works() {
 #[test]
 fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     use ecad_electrical::cmd::prop::{PROP_RULES, rule_for};
-    use ecad_model::{ComponentId, ObjectRef};
+    use ecad_model::{DeviceId, ObjectRef};
     let mut h = H::new(7074);
     let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
     let coil2 = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
@@ -1662,10 +1662,10 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     ];
     let doc = h.doc();
     for (what, [one, two], key, value) in rows {
-        let c = u128::from_str_radix(one.as_str().unwrap_or_default(), 16).map(ComponentId).unwrap_or(ComponentId(0));
-        assert_eq!(rule_for(&doc, ObjectRef::Component(c), key).what, *what, "{key}");
+        let c = u128::from_str_radix(one.as_str().unwrap_or_default(), 16).map(DeviceId).unwrap_or(DeviceId(0));
+        assert_eq!(rule_for(&doc, ObjectRef::Device(c), key).what, *what, "{key}");
         let single = h.run("setprop", json!({"component": one, "key": key, "value": value})).err();
-        let many = h.run("setprop", json!({"components": [one, two], "key": key, "value": value})).err();
+        let many = h.run("setprop", json!({"devices": [one, two], "key": key, "value": value})).err();
         assert!(single.is_some(), "{what}: {key} {value} is refused");
         assert_eq!(single, many, "{what}: one and several differ");
     }

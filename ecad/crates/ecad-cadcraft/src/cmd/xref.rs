@@ -9,7 +9,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::xref as rules;
-use ecad_model::{CableId, ComponentId, PageId, RepresentationId};
+use ecad_model::{CableId, DeviceId, PageId, RepresentationId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -55,7 +55,7 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 pub(crate) struct XrefsParams {
     /// Only this device's references.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Only this cable's references.
     #[serde(default)]
     cable: Option<CableId>,
@@ -87,7 +87,7 @@ impl Command for XrefsParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ContactsParams {
     /// The device.
-    component: ComponentId,
+    component: DeviceId,
 }
 
 impl Command for ContactsParams {
@@ -147,7 +147,7 @@ impl Command for RefgotoParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct MirrormoveParams {
     /// The device.
-    component: ComponentId,
+    component: DeviceId,
     /// A page point for the table.
     #[serde(default)]
     at: Option<Point>,

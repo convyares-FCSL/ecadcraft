@@ -171,11 +171,11 @@ fn three_copies(h: &mut H) -> Vec<ecad_model::RepresentationId> {
     let mut comps = Vec::new();
     for x in [100.0, 150.0, 200.0] {
         let v = run(h, "place", json!({"symbol": "float1", "at": [x, 100.0]}));
-        comps.push(ecad_model::ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap()));
+        comps.push(ecad_model::DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap()));
     }
     run(h, "wire", json!({"points": [[100.0, 90.0], [100.0, 60.0]]}));
     let d = doc(h);
-    comps.iter().filter_map(|c| d.representations_of(Subject::Component(*c)).next().map(|r| r.0)).collect()
+    comps.iter().filter_map(|c| d.representations_of(Subject::Device(*c)).next().map(|r| r.0)).collect()
 }
 
 /// Boards 3.01–3.04, 4.01, 5.01 and 5.02 at 1920 × 1080, as `uiv3-F-<board>-ours.png`.

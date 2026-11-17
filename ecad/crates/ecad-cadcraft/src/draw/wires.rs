@@ -64,7 +64,7 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
     let looks = crate::styles::wire::WireLooks::new(doc);
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for (_, r) in doc.representations_on(page) {
-        let Subject::Conductor(c) = r.subject else { continue };
+        let Subject::Wire(c) = r.subject else { continue };
         if r.form != Form::Drawn {
             continue;
         }

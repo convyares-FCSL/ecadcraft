@@ -18,7 +18,7 @@
 //!
 //! Excluded: any entry's levels, which only the registry sets.
 
-use ecad_model::{ComponentId, ConductorId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
+use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId, WireId};
 
 use crate::defaults::{self, Entry, Level, ProjectSource};
 use crate::error::CmdError;
@@ -79,6 +79,7 @@ pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
         defaults::Value::Choice(w) => w.to_string(),
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.trim().to_string(),
+        defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
     })
 }
 
@@ -151,8 +152,8 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
 pub enum Target {
     Project,
     Page(PageId),
-    Component(ComponentId),
-    Conductor(ConductorId),
+    Device(DeviceId),
+    Wire(WireId),
     Symbol(RepresentationId),
 }
 
@@ -183,20 +184,26 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
                 Ok(if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] })
             }
         },
-        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.properties), entry.key.to_string()),
+        // Design 072 §5.1: a page's type is its field, changed with `ModifyPage`.
+        (Level::Page, Target::Page(pg)) if entry.key == ecad_model::sheet::PAGE_TYPE_KEY => {
+            let before = doc.pages.get(&pg).ok_or(CmdError::NotFound(Noun::Object))?;
+            let mut after = before.clone();
+            after.page_type = match value.as_deref() {
+                Some(v) => Some(ecad_model::StyleRef::parse(v).ok_or_else(|| CmdError::refused(format!("`{v}` is not a page type")))?),
+                None => None,
+            };
+            Ok(if after == *before { Vec::new() } else { vec![Op::ModifyPage { id: pg, before: before.clone(), after }] })
+        }
+        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.display), entry.key.to_string()),
         (Level::Object, Target::Symbol(rep)) => {
             let c = match doc.representations.get(&rep).map(|r| r.subject) {
-                Some(ecad_model::Subject::Component(c)) => c,
+                Some(ecad_model::Subject::Device(c)) => c,
                 _ => return Err(CmdError::refused(format!("No symbol {}.", rep.hex()))),
             };
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
+            property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
-        (Level::Object, Target::Component(c)) => {
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
-        (Level::Object, Target::Conductor(c)) => {
-            property(ObjectRef::Conductor(c), doc.conductors.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
+        (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
+        (Level::Object, Target::Wire(c)) => property(ObjectRef::Wire(c), doc.wires.get(&c).map(|c| &c.display), entry.key.to_string()),
         (Level::Object, _) => Err(CmdError::refused(NEEDS_OBJECT)),
         (Level::Page, _) => Err(CmdError::refused("The page level needs a `page`.")),
         (Level::Standard, _) => property(ObjectRef::Standard, doc.standard.as_ref().map(|s| &s.values), entry.key.to_string()),
@@ -246,8 +253,8 @@ pub fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Objects {
     pub representation: Option<RepresentationId>,
-    pub component: Option<ComponentId>,
-    pub conductor: Option<ConductorId>,
+    pub component: Option<DeviceId>,
+    pub conductor: Option<WireId>,
 }
 
 /// The target of `level`: the page `page` (else `shown`), or the object named.
@@ -260,8 +267,8 @@ pub fn target(level: Level, page: Option<PageId>, shown: PageId, o: Objects) -> 
         Level::Page => Target::Page(page.unwrap_or(shown)),
         Level::Object => match (o.representation, o.component, o.conductor) {
             (Some(r), _, _) => Target::Symbol(r),
-            (None, Some(c), _) => Target::Component(c),
-            (None, None, Some(c)) => Target::Conductor(c),
+            (None, Some(c), _) => Target::Device(c),
+            (None, None, Some(c)) => Target::Wire(c),
             _ => return Err(CmdError::refused(NEEDS_OBJECT)),
         },
     })

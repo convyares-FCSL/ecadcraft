@@ -17,10 +17,9 @@
 //! This module draws nothing itself and records nothing: the projection turns [`Part`]s into
 //! entities on [`crate::views::LAYER`].
 
-use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, ConductorId, Document, End, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, Subject};
+use ecad_model::{CableId, Document, End, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, Subject, WireId};
 
 // ---------------------------------------------------------------- tokens (design §12)
 
@@ -141,7 +140,7 @@ pub struct Part {
     pub shape: Shape,
     pub weight: Weight,
     /// The member the part belongs to (bends, tails, their labels, core labels).
-    pub core: Option<ConductorId>,
+    pub core: Option<WireId>,
     /// The reference end the part belongs to (flag, reference text).
     pub reference: Option<RepresentationId>,
     /// A colour of its own (ACI), else the layer's: an orphan reference's text is red.
@@ -152,7 +151,7 @@ impl Part {
     fn new(role: Role, shape: Shape, weight: Weight) -> Part {
         Part { role, shape, weight, core: None, reference: None, color: None }
     }
-    fn of_core(mut self, c: ConductorId) -> Part {
+    fn of_core(mut self, c: WireId) -> Part {
         self.core = Some(c);
         self
     }
@@ -197,7 +196,7 @@ pub struct CableDrawing {
     /// Loose wire ends at an end that stops at a reference: no loose-end square there.
     pub quiet: Vec<Pt>,
     /// Members attached to a terminal at an end that stops at a reference.
-    pub at_reference: Vec<ConductorId>,
+    pub at_reference: Vec<WireId>,
     /// Each reference end on the page and the end it stops.
     pub markers: BTreeMap<RepresentationId, MarkerEnd>,
 }
@@ -352,7 +351,7 @@ fn inside_interval(a: Pt, b: Pt, lo: Pt, hi: Pt) -> Option<(f64, f64)> {
 
 /// One member with a route on the page.
 struct Member {
-    conductor: ConductorId,
+    conductor: WireId,
     core: Option<String>,
     path: Vec<Pt>,
 }
@@ -532,12 +531,8 @@ fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends
         .iter()
         .map(|m| {
             let core = m.core.as_deref().filter(|c| !c.trim().is_empty()).map(|c| shorten(c, MAX_CORE_CHARS));
-            let wire = doc
-                .conductors
-                .get(&m.conductor)
-                .and_then(|c| c.properties.text(ecad_model::keys::TAG))
-                .filter(|t| !t.is_empty())
-                .map(|t| shorten(t, MAX_SHOWN_CHARS));
+            // A wire's name in the fan: its number when a person fixed it (a name given by hand).
+            let wire = doc.wires.get(&m.conductor).filter(|c| c.number_fixed()).and_then(|c| c.number_text()).map(|t| shorten(t, MAX_SHOWN_CHARS));
             let core_w = core.as_deref().map_or(0.0, measure) * h;
             let wire_w = wire.as_deref().map_or(0.0, measure) * h;
             Labels { core, wire, core_w, wire_w }
@@ -695,7 +690,7 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
 /// Core labels just past the slash crossings (design §6).
 fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -> Vec<Part> {
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
-    let core_of: BTreeMap<ConductorId, String> = c
+    let core_of: BTreeMap<WireId, String> = c
         .members
         .iter()
         .filter_map(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| (m.conductor, shorten(x, MAX_CORE_CHARS))))
@@ -814,7 +809,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
                     continue;
                 }
                 for (m, e) in members.iter().zip(side_ends.get(s).into_iter().flatten()) {
-                    let attached = doc.conductors.get(&m.conductor).is_some_and(|x| {
+                    let attached = doc.wires.get(&m.conductor).is_some_and(|x| {
                         let (a, b) = (m.path.first().copied(), m.path.last().copied());
                         let which = if a.is_some_and(|a| a.near(*e, tol)) {
                             End::A
@@ -1033,20 +1028,20 @@ pub fn cables_on_page(
 /// representations, and each cable's representations. Every cable is then drawn without scanning
 /// the whole document again.
 pub struct PageIndex<'a> {
-    routes: BTreeMap<ConductorId, &'a Primitive>,
-    prims: BTreeMap<ConductorId, Vec<&'a Primitive>>,
-    conductors: BTreeMap<ConductorId, Vec<&'a ecad_model::Representation>>,
+    routes: BTreeMap<WireId, &'a Primitive>,
+    prims: BTreeMap<WireId, Vec<&'a Primitive>>,
+    wires: BTreeMap<WireId, Vec<&'a ecad_model::Representation>>,
     cables: BTreeMap<CableId, Vec<(RepresentationId, &'a ecad_model::Representation)>>,
 }
 
 impl<'a> PageIndex<'a> {
     /// One pass over the representations on `page` (through the page index, brief 014).
     pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
-        let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), conductors: BTreeMap::new(), cables: BTreeMap::new() };
+        let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), wires: BTreeMap::new(), cables: BTreeMap::new() };
         for (id, r) in doc.representations_on(page) {
             match r.subject {
-                Subject::Conductor(w) => {
-                    idx.conductors.entry(w).or_default().push(r);
+                Subject::Wire(w) => {
+                    idx.wires.entry(w).or_default().push(r);
                     let prim = |i: &ItemId| match doc.items.get(i).map(|x| &x.kind) {
                         Some(ItemKind::Primitive(p)) => Some(p),
                         _ => None,
@@ -1059,19 +1054,19 @@ impl<'a> PageIndex<'a> {
                     }
                 }
                 Subject::Cable(k) => idx.cables.entry(k).or_default().push((id, r)),
-                Subject::Component(_) => {}
+                Subject::Device(_) => {}
             }
         }
         idx
     }
-    fn route(&self, w: ConductorId) -> Option<&'a Primitive> {
+    fn route(&self, w: WireId) -> Option<&'a Primitive> {
         self.routes.get(&w).copied()
     }
-    fn route_prims(&self, w: ConductorId) -> &[&'a Primitive] {
+    fn route_prims(&self, w: WireId) -> &[&'a Primitive] {
         self.prims.get(&w).map(Vec::as_slice).unwrap_or_default()
     }
-    fn conductor_reps(&self, w: ConductorId) -> &[&'a ecad_model::Representation] {
-        self.conductors.get(&w).map(Vec::as_slice).unwrap_or_default()
+    fn conductor_reps(&self, w: WireId) -> &[&'a ecad_model::Representation] {
+        self.wires.get(&w).map(Vec::as_slice).unwrap_or_default()
     }
     fn cable_reps(&self, k: CableId) -> &[(RepresentationId, &'a ecad_model::Representation)] {
         self.cables.get(&k).map(Vec::as_slice).unwrap_or_default()
@@ -1193,7 +1188,7 @@ pub fn rgb(c: ecad_drawing_style::Color) -> cadcraft_engine::doc::color::Rgb {
 /// A wire route drawn in its colours on a page (brief 040, step 3).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColouredRoute {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     /// The route representation.
     pub rep: ecad_model::RepresentationId,
     /// The handle the route is drawn with on the page (to leave a selected wire to CADCraft).
@@ -1215,7 +1210,7 @@ pub fn coloured_routes(
     let mut out = Vec::new();
     let looks = crate::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
-        let Subject::Conductor(c) = r.subject else { continue };
+        let Subject::Wire(c) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
             continue;
         }
@@ -1270,7 +1265,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
     map.tag_text_handles()
         .filter(|h| {
             let Some((rep, crate::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
-            let Some(Subject::Component(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
+            let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
             crate::devices::tag_of(doc, c).is_some_and(ecad_model::tag::is_provisional)
         })
         .collect()

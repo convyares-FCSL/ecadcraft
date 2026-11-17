@@ -72,12 +72,8 @@ crate::word_enum! {
         Identity,
         /// Tag numbering's project state: provisional tags, high-water resets.
         Numbering,
-        /// A page's place in the book: its number and folder.
-        Book,
         /// The `=` function and `+` location codes stored on a page or the project.
         Designation,
-        /// A generated page's kind.
-        Generated,
         /// A terminal strip's jumpers (`link.<n>`).
         Link,
         /// Anything else: a person's own property.
@@ -224,37 +220,20 @@ pub const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::tag::PROVISIONAL_SETTI
 pub const WIRE_NUMBER: PropKey = PropKey(crate::connectivity::WIRE_NUMBER);
 /// Whether a wire's number is fixed (yes/no).
 pub const WIRE_NUMBER_FIXED: PropKey = PropKey(crate::connectivity::WIRE_NUMBER_FIXED);
-/// A page's number.
-pub const NUMBER: PropKey = PropKey(crate::book::NUMBER_KEY);
-/// A page's folder.
-pub const FOLDER: PropKey = PropKey(crate::book::FOLDER_KEY);
 /// The `=` function code of a page or the project.
 pub const FUNCTION: PropKey = PropKey(crate::book::FUNCTION_KEY);
 /// The `+` location code of a page or the project.
 pub const LOCATION: PropKey = PropKey(crate::book::LOCATION_KEY);
-/// A page's sheet.
-pub const SHEET: PropKey = PropKey(crate::sheet::SHEET_KEY);
-/// A page's title block.
-pub const TITLE_BLOCK: PropKey = PropKey(crate::sheet::TITLE_BLOCK_KEY);
-/// A generated page's kind.
-pub const GENERATED: PropKey = PropKey(crate::sheet::GENERATED_KEY);
 
 /// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
-    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
+    KeySpec { key: TAG, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Ruled },
     KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
-    KeySpec { key: WIRE_NUMBER, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Ruled },
-    KeySpec { key: WIRE_NUMBER_FIXED, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
-    KeySpec { key: NUMBER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: FOLDER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
     KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
     KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
-    KeySpec { key: SHEET, area: Area::Page, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: TITLE_BLOCK, area: Area::Page, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: GENERATED, area: Area::Generated, holders: &[Holder::Page], value: ValueSpec::Ruled },
 ];
 
 /// The key families. One family per line.
@@ -267,8 +246,43 @@ pub const FAMILIES: &[Family] = &[
 ];
 
 /// Keys that became struct fields: a property bag holding one is a read error (design 072 §9.4).
-/// Lanes B–F move keys here from [`KEYS`].
-pub const RESERVED: &[PropKey] = &[];
+/// Lanes B–F move keys here from [`KEYS`]. One key per line.
+#[rustfmt::skip]
+pub const RESERVED: &[PropKey] = &[
+    // Lane 072 E: a page's fields (design 072 §5.1).
+    PropKey(crate::book::NUMBER_KEY),
+    PropKey(crate::book::FOLDER_KEY),
+    PropKey(crate::sheet::SHEET_KEY),
+    PropKey(crate::sheet::TITLE_BLOCK_KEY),
+    PropKey(crate::sheet::GENERATED_KEY),
+    PropKey(crate::page::STRIP_KEY),
+    PropKey(crate::sheet::PAGE_TYPE_KEY),
+    // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
+    WIRE_NUMBER,
+    WIRE_NUMBER_FIXED,
+];
+
+/// Keys that became struct fields on one holder only (design 072 §5.3): a page's and the
+/// project's location and function are ids now; a device's stay in its bag until lane B moves them.
+#[rustfmt::skip]
+pub const RESERVED_ON: &[(Holder, PropKey)] = &[
+    (Holder::Page, LOCATION),
+    (Holder::Page, FUNCTION),
+    (Holder::Project, LOCATION),
+    (Holder::Project, FUNCTION),
+];
+
+/// Key prefixes that became struct fields on one holder: the project's location and function
+/// lists (`designation.l.<id>.code`, design 072 §5.3).
+pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[(Holder::Project, "designation.")];
+
+/// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],
+/// [`RESERVED_PREFIXES`]).
+pub fn is_reserved_on(holder: Holder, key: &str) -> bool {
+    is_reserved(key)
+        || RESERVED_ON.iter().any(|(h, k)| *h == holder && k.0 == key)
+        || RESERVED_PREFIXES.iter().any(|(h, p)| *h == holder && key.starts_with(p))
+}
 
 /// The fixed key `key`, if it is one.
 pub fn spec(key: &str) -> Option<&'static KeySpec> {
