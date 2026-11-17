@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::cmd::err;
-use crate::cmd::input::{Bounded, Command, Point, Typed, lenient, nullable};
+use crate::cmd::input::{Bounded, Command, Point, Typed, nullable};
 use crate::cmd::{on_any_page, on_project};
 use crate::defaults::{self, Entry, Level, Resolved, Scope, Source};
 pub use crate::text_style::kind_words;
@@ -452,8 +452,7 @@ pub(crate) struct MovetextParams {
     #[serde(default)]
     justify: Option<String>,
     /// Back to the computed place (`to` is not read).
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     reset: Option<bool>,
 }
 

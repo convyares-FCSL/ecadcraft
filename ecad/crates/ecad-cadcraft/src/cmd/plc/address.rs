@@ -6,7 +6,7 @@ use ecad_electrical::cmd::plc::{self as rules, AddressInput};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::{Command, TextOrNumber, lenient, nullable};
+use crate::cmd::input::{Command, TextOrNumber, nullable};
 use crate::cmd::on_project;
 use crate::plc::address::*;
 use serde_json::{Value, json};
@@ -38,12 +38,10 @@ pub(crate) struct PlcaddressParams {
     #[serde(default, deserialize_with = "nullable")]
     size: Option<Option<TextOrNumber>>,
     /// Pin every card of the rack at its current start.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     fix: Option<bool>,
     /// Unpin every card of the rack.
-    #[serde(default, deserialize_with = "lenient")]
-    #[schemars(with = "Option<bool>")]
+    #[serde(default)]
     clear: Option<bool>,
 }
 
