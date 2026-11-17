@@ -73,7 +73,7 @@ fn write_file(path: &str, bytes: &[u8]) -> Result<(), CmdError> {
 /// As [`read_tags`], or the file cannot be read.
 pub fn read_file_tags(path: &str) -> Result<(Read, String), CmdError> {
     let bytes = read_file(path)?;
-    Ok((read_tags(&bytes, None).map_err(CmdError::refused)?, file_name(path)))
+    Ok((read_tags(&bytes, None)?, file_name(path)))
 }
 
 /// Which columns `plcimport` fills.
@@ -131,7 +131,7 @@ impl Command for PlcimportParams {
         let plan = |p: &mut crate::project::Project| -> Result<Fill, CmdError> {
             p.outputs();
             let o = p.outputs.as_ref().ok_or(CmdError::refused("The PLC model is not available."))?;
-            plan_fill(p.ledger.document(), &o.plc, &read.rows, tags, texts).map_err(CmdError::refused)
+            plan_fill(p.ledger.document(), &o.plc, &read.rows, tags, texts)
         };
         let report = |fill: &Fill, written: bool| {
             let lead = if written { format!("Imported {source}") } else { format!("{source} would set") };
@@ -192,7 +192,7 @@ impl Command for PlcexportParams {
             let doc = p.ledger.document();
             let rack = self.rack.as_deref().map(|r| crate::plc::rack::rack_named(doc, r)).transpose()?;
             let ex = export_rows(doc, &o.plc, rack, f);
-            let bytes = f.write(&ex.rows).map_err(CmdError::refused)?;
+            let bytes = f.write(&ex.rows)?;
             let scope = rack.map_or_else(|| "every rack".to_string(), |r| format!("rack {}", crate::devices::tag_words(doc, r)));
             let n = ex.rows.len();
             let left = ex.left_out_words();

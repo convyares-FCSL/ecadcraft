@@ -628,7 +628,7 @@ const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-cadcraft", 166, 42),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
-    ("ecad-electrical", 87, 96),
+    ("ecad-electrical", 3, 8),
     ("ecad-inspector", 5, 2),
     ("ecad-mcp", 34, 10),
     ("ecad-model", 6, 7),

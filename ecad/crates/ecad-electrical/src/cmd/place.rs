@@ -145,7 +145,7 @@ pub fn connector_target(
         && let Some(named) = crate::connectors::resolve(doc, t)
     {
         // Brief 044 (tester D5): a half's tag (`-X01.P`) names its connector and that half.
-        let (c, half, _) = named.map_err(CmdError::refused)?;
+        let (c, half, _) = named?;
         if let Some(h) = half
             && side != Side::Both
             && h != side
@@ -191,7 +191,7 @@ pub fn tagless(starter: &Starter, joins: bool, name: Option<&str>, caption: Opti
         return Err(CmdError::refused(format!("A {} has no tag and is not part of a device.", starter.name.to_lowercase())));
     }
     let name = match name {
-        Some(n) => Some(crate::wires::valid_name(n).map_err(CmdError::refused)?),
+        Some(n) => Some(crate::wires::valid_name(n)?),
         None => None,
     };
     if starter.key == CONTINUATION && name.is_none() {

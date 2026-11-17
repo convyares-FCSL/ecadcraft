@@ -194,13 +194,13 @@ pub fn plan_fence_typed(
             let label = next.to_string();
             let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, starter.key, &mut ops);
             first_main = false;
-            let land = plan_land(doc, ids, page, on, t).map_err(|e| on_wire(CmdError::refused(e), m.conductor))?;
+            let land = plan_land(doc, ids, page, on, t).map_err(|e| on_wire(e, m.conductor))?;
             ops.extend(land.ops);
             placed.push((t, label, land.conductor, land.new));
             next += 1;
             continue;
         }
-        let position = chooser.choose(doc, existing, kind.ty, kind.level, named.take().as_deref()).map_err(CmdError::refused)?;
+        let position = chooser.choose(doc, existing, kind.ty, kind.level, named.take().as_deref())?;
         let placement = Placement { origin: m.at, rotation: 0.0, mirror: false, scale: 1.0 };
         let shown = level_symbol(ids, page, style.clone(), def, starter, strip, &position, placement, &mut ops)?;
         let land = land_level(doc, ids, page, on, &shown, placement).map_err(|e| on_wire(e, m.conductor))?;
@@ -261,9 +261,9 @@ pub fn land_level(
 ) -> Result<Land, CmdError> {
     let first = shown.first().map(|(_, t, _)| *t).ok_or(CmdError::refused("The symbol has no connection point."))?;
     let (Some(tin), Some(tout)) = (shown.iter().find(|(k, _, _)| k.ends_with('i')), shown.iter().find(|(k, _, _)| k.ends_with('o'))) else {
-        return plan_land(doc, ids, page, on, first).map_err(CmdError::refused);
+        return plan_land(doc, ids, page, on, first);
     };
-    let mut land = plan_land(doc, ids, page, on, tin.1).map_err(CmdError::refused)?;
+    let mut land = plan_land(doc, ids, page, on, tin.1)?;
     let (pin, pout) = (placement.apply(tin.2), placement.apply(tout.2));
     // Which half comes from the in point's side: the kept half's vertex before the split.
     let before = crate::wires::route_vertices(doc, on.conductor, page).and_then(|(_, _, v)| v.get(on.segment).copied());

@@ -179,7 +179,7 @@ pub fn add_to_cable(
 /// # Errors
 /// A label with a control character, or too long.
 fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::core_label(text).map_err(CmdError::refused)
+    crate::strips::core_label(text)
 }
 
 /// The ops changing member `index` of `cable` from `old` to `new` (design 009 §5.3).

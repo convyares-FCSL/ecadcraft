@@ -81,9 +81,9 @@ fn item_list(given: Option<&Option<Words>>, on: bool) -> Result<Option<Vec<Acc>>
             if a.len() > acc::MAX_ITEMS {
                 return Err(CmdError::refused(format!("A place holds at most {} accessories.", acc::MAX_ITEMS)));
             }
-            acc::parse_items(&a.join(","), on).map(Some).map_err(CmdError::refused)
+            acc::parse_items(&a.join(","), on).map(Some)
         }
-        Some(Some(Words::Text(t))) => acc::parse_items(t, on).map(Some).map_err(CmdError::refused),
+        Some(Some(Words::Text(t))) => acc::parse_items(t, on).map(Some),
     }
 }
 
@@ -167,7 +167,7 @@ pub fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory
             ("start", false) => Spot::Start,
             ("end", false) => Spot::End,
             _ => {
-                acc::check_label(a).map_err(CmdError::refused)?;
+                acc::check_label(a)?;
                 if !order.iter().any(|o| o == a) {
                     return Err(no_position(doc, c, a, &order));
                 }

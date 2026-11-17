@@ -324,9 +324,9 @@ fn editor_of(v: &PageView, b: Block, writable: bool) -> Option<crate::shell::tab
 /// Whether the editor's rows may be saved.
 fn check_rows(what: &str, rows: &[crate::shell::table_editor::Row]) -> Result<(), String> {
     match what {
-        "notes" => ecad_cadcraft::front::check_notes(&notes_text(rows)),
+        "notes" => ecad_cadcraft::front::check_notes(&notes_text(rows)).map_err(String::from),
         "revisions" => Ok(()),
-        _ => ecad_cadcraft::front::check_overrides(&rows_text(rows)),
+        _ => ecad_cadcraft::front::check_overrides(&rows_text(rows)).map_err(String::from),
     }
 }
 

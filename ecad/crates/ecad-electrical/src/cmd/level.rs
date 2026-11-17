@@ -141,8 +141,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         let to = match m {
             MoveTo::Next => chooser.choose(doc, Some(c), ty, Some(n), None),
             MoveTo::New => chooser.choose(doc, Some(c), ty, None, None),
-        }
-        .map_err(CmdError::refused)?;
+        }?;
         ops.extend(relabel_ops(doc, &who, &to));
         message = format!("Moved {tag}:{pos} level {n} to position {to}.");
     } else if let Some(q) = &position
@@ -291,7 +290,7 @@ pub fn plan_toposition(
     let mut ops = Vec::new();
     let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
     let mut chooser = tt::Chooser::new(doc, Some(strip));
-    let pos = chooser.choose(doc, Some(strip), ty, Some(1), position).map_err(CmdError::refused)?;
+    let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
     let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddTerminal { id: tin, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1i".into()) } });
     ops.push(Op::AddTerminal { id: tout, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1o".into()) } });
