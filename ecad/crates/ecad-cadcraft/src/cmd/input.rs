@@ -40,13 +40,21 @@ pub(crate) fn typed<P: Command>(s: &mut Session, params: &Value) -> cadcraft_eng
     p.run(s)
 }
 
-/// Read `params` as `P`. Anything but an object reads as no parameters.
+/// The refusal of parameters that are not an object (strict input: parse or fail).
+pub const NOT_AN_OBJECT: &str = "The parameters must be an object: {name: value, …}.";
+
+/// Read `params` as `P`. `null` (or absent) reads as no parameters; anything else that is not
+/// an object is refused.
 ///
 /// # Errors
-/// [`CmdError::Input`] naming the parameter and the kind it must be.
+/// [`CmdError::Input`] naming the parameter and the kind it must be, or [`NOT_AN_OBJECT`].
 pub(crate) fn parse<P: Command>(params: &Value) -> Result<P, CmdError> {
     let empty = Map::new();
-    let obj = params.as_object().unwrap_or(&empty);
+    let obj = match params {
+        Value::Object(o) => o,
+        Value::Null => &empty,
+        _ => return Err(CmdError::input(NOT_AN_OBJECT)),
+    };
     P::deserialize(&Value::Object(obj.clone())).map_err(|e| CmdError::input(explain::<P>(obj, &e.to_string())))
 }
 
@@ -333,6 +341,9 @@ mod tests {
         let rows = [
             (json!({}), "`conductor` (hex id) is required"),
             (Value::Null, "`conductor` (hex id) is required"),
+            (json!([1, 2, 3]), NOT_AN_OBJECT),
+            (json!("x"), NOT_AN_OBJECT),
+            (json!(5), NOT_AN_OBJECT),
             (json!({"conductor": 5}), "`conductor` must be a hex id"),
             (json!({"conductor": "zz"}), "`conductor` must be a hex id"),
             (json!({"conductor": "1", "at": "here"}), "`at` must be a point [x, y], or null"),
