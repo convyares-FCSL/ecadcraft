@@ -100,11 +100,12 @@ pub static REVISION_PENDING: Entry = Entry {
 /// `ecad-model` reads without the registry (a test keeps them equal).
 pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::tag::Style {
     use ecad_model::tag::{Case, MAX_PADDING, Style};
+    use ecad_model::words::Word;
     let word = |e: &Entry| super::resolve(doc, e, super::Scope::project()).word();
     Style {
         padding: doc.settings.tag_padding().min(MAX_PADDING),
-        dash: word(&TAG_DASH) == "yes",
-        case: if word(&TAG_CASE) == "typed" { Case::Typed } else { Case::Upper },
+        dash: ecad_model::words::flag(&word(&TAG_DASH)).unwrap_or(true),
+        case: Case::parse(&word(&TAG_CASE)).unwrap_or_default(),
     }
 }
 

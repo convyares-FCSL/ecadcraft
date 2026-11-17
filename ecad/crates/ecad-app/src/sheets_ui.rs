@@ -109,9 +109,9 @@ pub struct ProjectProps {
     tag_dash_orig: bool,
     /// Brief 033 (design 033 §8.1): tags written with a leading `-`.
     pub tag_dash: bool,
-    tag_case_orig: String,
-    /// `upper` or `typed`.
-    pub tag_case: String,
+    tag_case_orig: ecad_model::tag::Case,
+    /// How tags are cased (`tags.case`).
+    pub tag_case: ecad_model::tag::Case,
     pending_orig: String,
     /// Brief 033 (design 033 §6.2): `star`, `draft` or `off`.
     pub pending: String,
@@ -179,6 +179,8 @@ impl ProjectProps {
         });
         let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
+        let tag_case =
+            v.get("tag_case").and_then(Value::as_str).and_then(<ecad_model::tag::Case as ecad_model::words::Word>::parse).unwrap_or_default();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
         let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(String::new, |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
@@ -202,8 +204,8 @@ impl ProjectProps {
             label_height,
             tag_dash_orig: v.get("tag_dash").and_then(Value::as_bool).unwrap_or(true),
             tag_dash: v.get("tag_dash").and_then(Value::as_bool).unwrap_or(true),
-            tag_case_orig: text("tag_case"),
-            tag_case: text("tag_case"),
+            tag_case_orig: tag_case,
+            tag_case,
             pending_orig: text("revision_pending"),
             pending: text("revision_pending"),
             rev_columns_orig: rev_columns.clone(),
@@ -306,7 +308,7 @@ impl ProjectProps {
             m.insert("tag_dash".into(), json!(self.tag_dash));
         }
         if self.tag_case != self.tag_case_orig {
-            m.insert("tag_case".into(), Value::String(self.tag_case.clone()));
+            m.insert("tag_case".into(), json!(self.tag_case));
         }
         if self.pending != self.pending_orig {
             m.insert("revision_pending".into(), Value::String(self.pending.clone()));
@@ -538,13 +540,14 @@ impl ProjectProps {
                 g.row("Digits", |ui| TextEntry::new(&mut self.padding, "ecad.projectsettings.padding").width(SHORT_W).show(ui));
                 // Brief 033 (design 033 §8.1): the leading - and the case, a writing rule.
                 g.row("Case", |ui| {
-                    let mut k = usize::from(self.tag_case == "typed");
+                    use ecad_model::tag::Case;
+                    let mut k = usize::from(self.tag_case == Case::Typed);
                     if Segmented::new(&mut k, &["Upper case", "As typed"]).name("ecad.project.props.tag_case").show(ui).clicked.is_some() {
-                        self.tag_case = if k == 1 { "typed" } else { "upper" }.to_string();
+                        self.tag_case = if k == 1 { Case::Typed } else { Case::Upper };
                     }
                 });
                 g.row("", |ui| Checkbox::new(&mut self.tag_dash, "Leading - on tags").show(ui).accessible_name("ecad.project.props.tag_dash"));
-                let case = if self.tag_case == "typed" { ecad_model::tag::Case::Typed } else { ecad_model::tag::Case::Upper };
+                let case = self.tag_case;
                 let pad = self.padding.trim().parse::<u8>().unwrap_or(2);
                 let example =
                     ecad_model::tag::normalise("k5", ecad_model::tag::Style { padding: pad, dash: self.tag_dash, case }).unwrap_or_default();

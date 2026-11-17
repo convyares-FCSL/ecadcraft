@@ -36,6 +36,7 @@ pub(crate) mod text_tools;
 mod wiring_forms;
 mod xrefs;
 
+use ecad_model::keys::PropsExt;
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::color::Color as CColor;
@@ -432,7 +433,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
 }
 
 fn tag(props: &ecad_model::Properties) -> Option<&str> {
-    props.get("tag").map(String::as_str)
+    props.text(ecad_model::keys::TAG)
 }
 
 /// What hovering drawing object `h` on page drawing `uid` shows (design §4.3): its name or ID and

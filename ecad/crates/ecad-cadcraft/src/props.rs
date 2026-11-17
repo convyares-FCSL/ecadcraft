@@ -11,6 +11,7 @@
 //! Excluded: editing several kinds at once, cable members and cores (read only here), free
 //! project properties (Project Properties holds them).
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use cadcraft_engine::doc::Handle;
@@ -866,7 +867,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
     rows.push(Row::ro("to", "To", end_words(doc, w, End::B)));
     let cables: Vec<String> = doc.cables_of(w).into_iter().map(|k| crate::cables::cable_title(doc, k)).collect();
     rows.push(Row::ro("cables", "Cables", if cables.is_empty() { "none".into() } else { cables.join(", ") }));
-    rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default()));
+    rows.push(Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::keys::TAG)).unwrap_or_default().to_string()));
     rows.extend(free_rows(
         props,
         &[
@@ -885,7 +886,7 @@ fn wire_section(doc: &Document, w: ConductorId) -> Section {
 fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.get("tag")).cloned().unwrap_or_default())];
+    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::keys::TAG)).unwrap_or_default().to_string())];
     // Brief 026: Fixed beside Tag.
     rows.push(fixed_row(props));
     rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY, crate::strips::CORES_KEY]));
@@ -1076,7 +1077,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         j["conflict"] = way.into();
         return format!("setprop {j}");
     }
-    let v = if key == ecad_model::tag::FIXED_KEY && value.is_some_and(|s| s.trim().eq_ignore_ascii_case("no")) { serde_json::Value::Null } else { v };
+    let v = if key == ecad_model::tag::FIXED_KEY && value.and_then(ecad_model::words::flag) == Some(false) { serde_json::Value::Null } else { v };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();

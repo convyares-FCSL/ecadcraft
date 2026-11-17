@@ -3,6 +3,7 @@
 //! ends, off-plan ends and value checks). Pure rules over the document; the commands that write
 //! them are `ecad_cadcraft::cmd::cable`.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subject};
@@ -529,8 +530,8 @@ pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.properties.get("tag")) {
-        Some(t) => t.clone(),
+    match doc.cables.get(&cable).and_then(|c| c.properties.text(ecad_model::keys::TAG)) {
+        Some(t) => t.to_string(),
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }
 }

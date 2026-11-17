@@ -164,7 +164,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
     let summary = if d.description.is_empty() { d.tag.clone() } else { format!("{} \u{b7} {}", d.tag, d.description) };
     let mut folded = std::mem::take(&mut insp.folded);
     w::section(ui, &mut folded, full, "identity", "Identity", &summary, false, |ui| {
-        let fixed = find(s, ecad_model::tag::FIXED_KEY).is_some_and(|r| r.value == "yes");
+        let fixed = find(s, ecad_model::tag::FIXED_KEY).and_then(|r| ecad_model::words::flag(&r.value)) == Some(true);
         for (key, label) in [("tag", "Tag"), ("function", "Function"), ("location", "Location"), ("description", "Description")] {
             let Some(row) = find(s, key) else { continue };
             let hint = match key {

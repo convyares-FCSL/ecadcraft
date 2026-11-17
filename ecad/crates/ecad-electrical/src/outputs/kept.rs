@@ -3,6 +3,7 @@
 //! [`TextMetrics`]; ecad-cadcraft's `crate::outputs::Outputs` wraps this with today's
 //! signatures, passing CADCraft's fonts.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::LOCATION_KEY;
@@ -850,7 +851,7 @@ impl Outputs {
             .into_iter()
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
-                let tag = cab.properties.get("tag").cloned().unwrap_or_else(|| "?".into());
+                let tag = cab.properties.text(ecad_model::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
                 let i = cab.members.iter().position(|m| m.conductor == w)?;
                 let core = cab.members.get(i).and_then(|m| m.core.clone()).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))

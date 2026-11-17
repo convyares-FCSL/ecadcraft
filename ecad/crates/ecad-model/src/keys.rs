@@ -214,20 +214,41 @@ impl Family {
 /// The objects a device or cable key may be held by.
 const DEVICE_CABLE: &[Holder] = &[Holder::Device, Holder::Cable];
 
+/// A device's or cable's tag.
+pub const TAG: PropKey = PropKey(crate::tag::TAG_KEY);
+/// Whether a device's or cable's tag is fixed (yes/no).
+pub const TAG_FIXED: PropKey = PropKey(crate::tag::FIXED_KEY);
+/// Whether the project gives provisional tags (yes/no).
+pub const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::tag::PROVISIONAL_SETTING);
+/// A page's number.
+pub const NUMBER: PropKey = PropKey(crate::book::NUMBER_KEY);
+/// A page's folder.
+pub const FOLDER: PropKey = PropKey(crate::book::FOLDER_KEY);
+/// The `=` function code of a page or the project.
+pub const FUNCTION: PropKey = PropKey(crate::book::FUNCTION_KEY);
+/// The `+` location code of a page or the project.
+pub const LOCATION: PropKey = PropKey(crate::book::LOCATION_KEY);
+/// A page's sheet.
+pub const SHEET: PropKey = PropKey(crate::sheet::SHEET_KEY);
+/// A page's title block.
+pub const TITLE_BLOCK: PropKey = PropKey(crate::sheet::TITLE_BLOCK_KEY);
+/// A generated page's kind.
+pub const GENERATED: PropKey = PropKey(crate::sheet::GENERATED_KEY);
+
 /// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
-    KeySpec { key: PropKey(crate::tag::TAG_KEY), area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::tag::FIXED_KEY), area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
-    KeySpec { key: PropKey(crate::tag::PROVISIONAL_SETTING), area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
-    KeySpec { key: PropKey(crate::book::NUMBER_KEY), area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::book::FOLDER_KEY), area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::book::FUNCTION_KEY), area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::book::LOCATION_KEY), area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::sheet::SHEET_KEY), area: Area::Page, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::sheet::TITLE_BLOCK_KEY), area: Area::Page, holders: &[Holder::Page], value: ValueSpec::Ruled },
-    KeySpec { key: PropKey(crate::sheet::GENERATED_KEY), area: Area::Generated, holders: &[Holder::Page], value: ValueSpec::Ruled },
+    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
+    KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
+    KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
+    KeySpec { key: NUMBER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
+    KeySpec { key: FOLDER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
+    KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
+    KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
+    KeySpec { key: SHEET, area: Area::Page, holders: &[Holder::Page], value: ValueSpec::Ruled },
+    KeySpec { key: TITLE_BLOCK, area: Area::Page, holders: &[Holder::Page], value: ValueSpec::Ruled },
+    KeySpec { key: GENERATED, area: Area::Generated, holders: &[Holder::Page], value: ValueSpec::Ruled },
 ];
 
 /// The key families. One family per line.

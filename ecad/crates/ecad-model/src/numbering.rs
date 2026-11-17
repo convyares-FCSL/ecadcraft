@@ -414,13 +414,15 @@ pub fn rep_anchor_in(places: &mut Places<'_>, subject: Subject) -> Option<(PageI
 
 /// Whether a project has provisional tags on (FP2).
 pub fn provisional_on(doc: &Document) -> bool {
-    doc.properties.get(tag::PROVISIONAL_SETTING).is_some_and(|v| v == "yes")
+    use crate::keys::PropsExt;
+    doc.properties.flag(crate::keys::NUMBERING_PROVISIONAL) == Some(true)
 }
 
 /// Whether a device or cable with these properties is fixed (FP1). A provisional tag never
 /// counts as fixed (overseer ruling, tester 026 bug 2): Finalise numbers it whatever the flag says.
 pub fn is_fixed(props: &crate::doc::Properties) -> bool {
-    props.get(FIXED_KEY).is_some_and(|v| v == "yes") && !props.get(TAG_KEY).is_some_and(|t| tag::is_provisional(t))
+    use crate::keys::PropsExt;
+    props.flag(crate::keys::TAG_FIXED) == Some(true) && !props.text(crate::keys::TAG).is_some_and(tag::is_provisional)
 }
 
 /// The next provisional tag of `prefix` (`-K?3`): the highest provisional number of that prefix
