@@ -30,6 +30,7 @@ pub mod level;
 pub mod location;
 pub mod numbering;
 pub mod output;
+pub(crate) mod page;
 pub mod page_type;
 pub mod plc;
 pub(crate) mod prop;
@@ -47,8 +48,8 @@ pub(crate) mod xref;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_model::{Color, ComponentId, Definition, Op, PageId, Primitive, Pt, Style, TerminalDef};
-use serde_json::{Value, json};
+use ecad_model::{Color, Definition, PageId, Primitive, Pt, Style, TerminalDef};
+use serde_json::Value;
 
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
@@ -214,17 +215,17 @@ end's spine; null: the middle)",
         CommandSpec::new("checks", "Checks", crate::cmd::input::typed::<crate::cmd::wire::ChecksParams>)
             .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
             .noundo(),
-        CommandSpec::new("newpage", "New Page", run_newpage)
+        CommandSpec::new("newpage", "New Page", crate::cmd::input::typed::<crate::cmd::page::NewpageParams>)
             .params(
                 "{title?, number?, folder?: id, after?: page id, type?: page type, generated?: kind, strip?: id, style?: \"table\"|\"graphic\"} (after: right after that page, in its folder; type: \"schematic\", \"network\", \"front\"… (front and report need generated); number: default the next after the page before it, or a folder's start number for its first page; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip; style: the terminal plan's style) or \"cables\")",
             )
             .noundo(),
-        CommandSpec::new("openpage", "Open Page", run_openpage).params("{page: id}").noundo(),
-        CommandSpec::new("renamepage", "Rename Page", run_renamepage).params("{page: id, title}").noundo(),
-        CommandSpec::new("movepage", "Move Page", run_movepage)
+        CommandSpec::new("openpage", "Open Page", crate::cmd::input::typed::<crate::cmd::page::OpenpageParams>).params("{page: id}").noundo(),
+        CommandSpec::new("renamepage", "Rename Page", crate::cmd::input::typed::<crate::cmd::page::RenamepageParams>).params("{page: id, title}").noundo(),
+        CommandSpec::new("movepage", "Move Page", crate::cmd::input::typed::<crate::cmd::page::MovepageParams>)
             .params("{page: id, index: n} (1 = first) | {page: id, folder: id|null, index?: n} (into a folder, 1 = first of its pages)")
             .noundo(),
-        CommandSpec::new("ecadinspect", "Inspect Project", run_inspect)
+        CommandSpec::new("ecadinspect", "Inspect Project", crate::cmd::input::typed::<crate::cmd::page::EcadinspectParams>)
             .params("{seq?: n} (read-only snapshot)")
             .noundo(),
         CommandSpec::new("joinwires", "Join Wires", crate::cmd::input::typed::<crate::cmd::wire::JoinwiresParams>)
@@ -307,6 +308,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::connect::TYPED,
         crate::cmd::cable_draw::TYPED,
         crate::cmd::reference::TYPED,
+        crate::cmd::page::TYPED,
     ]
     .concat()
 }
@@ -318,23 +320,6 @@ pub fn schema_of(id: &str) -> Option<Value> {
 
 /// Refusal for edits on a page whose drawing could not be rebuilt (PROJ-02).
 pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not be rebuilt); close and reopen it";
-
-pub(crate) fn id<T: From<u128>>(p: &Value, key: &str) -> Result<T, String> {
-    p.get(key)
-        .and_then(Value::as_str)
-        .and_then(|t| u128::from_str_radix(t.trim(), 16).ok())
-        .map(T::from)
-        .ok_or_else(|| format!("`{key}` (hex id) is required"))
-}
-
-/// An optional ID parameter: absent or `null` is `None`; anything else must be a valid hex ID, so a
-/// typo is an error rather than "not given".
-pub(crate) fn opt_id<T: From<u128>>(p: &Value, key: &str) -> Result<Option<T>, String> {
-    match p.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(_) => id(p, key).map(Some),
-    }
-}
 
 /// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
 pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, String> {
@@ -374,174 +359,6 @@ pub fn builtin_coil() -> Definition {
         ],
         ..Default::default()
     }
-}
-
-fn run_newpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    // Brief 024 (FP1): a generated page's kind, set only here.
-    let generated = match params.get("generated") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => Some(
-            crate::generated::GenKind::parse(t)
-                .ok_or_else(|| err("`generated` is \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" or \"cables\""))?,
-        ),
-        Some(_) => return Err(err("`generated` must be a string")),
-    };
-    // Brief 046 (design 046 §8.1): a terminal plan page's style, stored as its page-level
-    // `terminal.plan.style` in the AddPage, so the page is one transaction.
-    let style = match params.get("style") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => Some(
-            crate::defaults::strip_pages::STYLE
-                .parse(t)
-                .and_then(|v| if let crate::defaults::Value::Choice(w) = v { Some(w.to_string()) } else { None })
-                .ok_or_else(|| err("`style` is \"table\" or \"graphic\""))?,
-        ),
-        Some(_) => return Err(err("`style` must be a string: \"table\" or \"graphic\"")),
-    };
-    if style.is_some() && generated != Some(crate::generated::GenKind::Terminals) {
-        return Err(err("`style` is for a terminal plan page (`generated: \"terminals\"`)"));
-    }
-    let default_title = match (generated, style.as_deref()) {
-        (Some(crate::generated::GenKind::Terminals), Some(crate::defaults::strip_pages::GRAPHIC)) => crate::strip_page::TITLE,
-        (g, _) => g.map_or("new", |g| g.title()),
-    };
-    let title = params.get("title").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| default_title.to_string());
-    let number = match params.get("number") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => Some(t.clone()),
-        Some(_) => return Err(err("`number` must be a string such as \"105\", or null for the next number")),
-    };
-    let folder: Option<ecad_model::FolderId> = opt_id(params, "folder").map_err(err)?;
-    // Brief 054 (design 054 §4.2): the page type, and the page to add after (the page well's +).
-    let after: Option<PageId> = opt_id(params, "after").map_err(err)?;
-    let ty = match params.get("type") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => Some(t.clone()),
-        Some(_) => return Err(err("`type` must be a page type's ID or name, such as \"schematic\"")),
-    };
-    // Brief 028 (FP3): a terminal plan page may show one strip.
-    let strip: Option<ComponentId> = opt_id(params, "strip").map_err(err)?;
-    if strip.is_some() && generated != Some(crate::generated::GenKind::Terminals) {
-        return Err(err("`strip` is for a terminal plan page (`generated: \"terminals\"`)"));
-    }
-    let has_title = params.get("title").and_then(Value::as_str).is_some();
-    let (page, number) = with_project(s, |p, pg, _| {
-        if let Some(c) = strip
-            && !crate::strips::is_strip(p.ledger.document(), c)
-        {
-            return Err("That device is not a terminal strip; leave `strip` out to show every strip.".into());
-        }
-        let doc = p.ledger.document();
-        if after.is_some_and(|a| !doc.pages.contains_key(&a)) {
-            return Err("No such page to add after.".into());
-        }
-        let page_type = crate::page_types::newpage_type(doc, ty.as_deref(), generated)?;
-        // A page with no kind is titled after its type (design 054 §4.2).
-        let title = match (&page_type, generated, has_title) {
-            (Some(t), None, false) => crate::styles::name(doc, crate::styles::page::WORD, t),
-            _ => title,
-        };
-        let derived = crate::styles::page::derived(generated);
-        let (id, number, mut ops) = crate::cmd::sheet::new_page_ops_at(p, title, number, folder, after)?;
-        for op in &mut ops {
-            if let Op::AddPage { page, .. } = op {
-                // Written only when it differs from what the kind gives (FP2).
-                if let Some(t) = page_type.as_ref().filter(|t| **t != derived) {
-                    page.properties.insert(ecad_model::sheet::PAGE_TYPE_KEY.into(), t.text());
-                }
-                if let Some(g) = generated {
-                    page.properties.insert(crate::generated::KEY.into(), g.value().into());
-                    if let Some(c) = strip {
-                        page.properties.insert(crate::generated::STRIP_KEY.into(), c.hex());
-                    }
-                    if let Some(v) = &style {
-                        page.properties.insert(crate::defaults::strip_pages::STYLE.key.into(), v.clone());
-                    }
-                }
-            }
-        }
-        p.apply_edit(pg, "newpage", "New page", ops)?;
-        p.pages.entry(id).or_default();
-        Ok((id, number))
-    })?;
-    let mut v = open(s, page)?;
-    v["number"] = json!(number);
-    Ok(v)
-}
-
-fn open(s: &mut Session, page: PageId) -> cadcraft_engine::Result<Value> {
-    let uid = with_any_page(s, |p, pg| p.open_page(pg, page))?;
-    Ok(json!({"page": page.hex(), "document": uid}))
-}
-
-fn run_openpage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let page: PageId = id(params, "page").map_err(err)?;
-    open(s, page)
-}
-
-fn run_inspect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let at = params.get("seq").and_then(Value::as_u64);
-    with_any_page(s, |p, pg| p.snapshot(&pg.as_ref(), at))
-}
-
-/// Most characters in a page title.
-pub const MAX_PAGE_TITLE: usize = 200;
-
-/// A page title: 1 to [`MAX_PAGE_TITLE`] characters after trimming, no control characters.
-pub(crate) fn page_title(p: &Value) -> Result<String, String> {
-    const BAD: &str = "`title` must be a non-empty string of at most 200 characters";
-    let t = p.get("title").and_then(Value::as_str).ok_or(BAD)?.trim();
-    let n = t.chars().count();
-    if !(1..=MAX_PAGE_TITLE).contains(&n) || t.chars().any(char::is_control) {
-        return Err(BAD.into());
-    }
-    Ok(t.to_string())
-}
-
-/// `renamepage` (design 010 §2.3, §7.5): one transaction, `RemovePage` + `AddPage` with the same
-/// ID at the same position. The same title changes nothing.
-fn run_renamepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let page: PageId = id(params, "page").map_err(err)?;
-    let title = page_title(params).map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let old = doc.pages.get(&page).cloned().ok_or("no such page")?;
-        let index = doc.page_order.iter().position(|x| *x == page).ok_or("no such page")?;
-        if old.title == title {
-            return Ok(json!({"page": page.hex(), "title": title, "index": index + 1, "changed": false}));
-        }
-        // The page as it is with only its title changed, so any other field of a page is kept.
-        let mut renamed = old.clone();
-        renamed.title = title.clone();
-        let ops = vec![Op::RemovePage { id: page, page: old, index }, Op::AddPage { id: page, page: renamed, index }];
-        p.apply_edit(pg, "renamepage", "Rename page", ops)?;
-        Ok(json!({"page": page.hex(), "title": title, "index": index + 1, "changed": true}))
-    })
-}
-
-/// `movepage` (design 010 §2.3, §7.5): one transaction, `RemovePage` at the old position +
-/// `AddPage` at `index` (1 = first). The same position changes nothing.
-fn run_movepage(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("folder").is_some() {
-        return crate::cmd::sheet::run_movepage_folder(s, params);
-    }
-    let page: PageId = id(params, "page").map_err(err)?;
-    let wanted = params.get("index").and_then(Value::as_u64);
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let n = doc.page_order.len();
-        let bad = || format!("`index` must be a whole number from 1 to {n}");
-        let to = wanted.and_then(|i| usize::try_from(i).ok()).filter(|i| (1..=n).contains(i)).ok_or_else(bad)?;
-        let old = doc.pages.get(&page).cloned().ok_or("no such page")?;
-        let from = doc.page_order.iter().position(|x| *x == page).ok_or("no such page")?;
-        if from + 1 == to {
-            return Ok(json!({"page": page.hex(), "title": old.title, "index": to, "changed": false}));
-        }
-        let title = old.title.clone();
-        let ops = vec![Op::RemovePage { id: page, page: old.clone(), index: from }, Op::AddPage { id: page, page: old, index: to - 1 }];
-        p.apply_edit(pg, "movepage", "Move page", ops)?;
-        Ok(json!({"page": page.hex(), "title": title, "index": to, "changed": true}))
-    })
 }
 
 #[cfg(test)]

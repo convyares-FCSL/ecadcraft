@@ -8,11 +8,15 @@ use std::collections::{BTreeSet, HashMap};
 use ecad_model::book::{self, Book, FOLDER_KEY, FUNCTION_KEY, LOCATION_KEY, MAX_FOLDER_DEPTH, NUMBER_KEY};
 use ecad_model::sheet::{SHEET_KEY, SheetSpec};
 use ecad_model::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
-use ecad_model::{Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, PageId, ProjectSettings, Properties, ReferenceStyle};
+use ecad_model::{
+    ComponentId, Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, PageId, ProjectSettings, Properties, ReferenceStyle, StyleRef,
+};
 
+use crate::defaults::strip_pages;
 use crate::designations::{self, Aspect, Pending};
 use crate::error::{CmdError, msg};
 use crate::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
+use crate::generated::GenKind;
 use crate::outputs::kept::Outputs;
 use crate::page_types::MAX_NUMBER_CHARS;
 use crate::proposals::{self, Mode, Planned};
@@ -322,6 +326,145 @@ pub fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, ind
         ops.push(Op::AddPage { id: page, page: now, index: to });
     }
     Ok(ops)
+}
+
+/// The kind of page `newpage` makes (briefs 024, 028, 046): a generated page's kind, a terminal
+/// plan's style and strip.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewPageKind {
+    pub generated: Option<GenKind>,
+    /// The terminal plan's style word (`table` or `graphic`).
+    pub style: Option<String>,
+    /// The one strip a terminal plan shows.
+    pub strip: Option<ComponentId>,
+}
+
+/// `newpage`'s `generated`, `style` and `strip` read together.
+///
+/// # Errors
+/// A kind or style word that does not read; a style or strip for a page that is not a terminal
+/// plan.
+pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option<ComponentId>) -> Result<NewPageKind, CmdError> {
+    // Brief 024 (FP1): a generated page's kind, set only here.
+    let generated = match generated {
+        Some(t) => Some(
+            GenKind::parse(t)
+                .ok_or(CmdError::input("`generated` is \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" or \"cables\""))?,
+        ),
+        None => None,
+    };
+    // Brief 046 (design 046 §8.1): a terminal plan page's style, stored as its page-level
+    // `terminal.plan.style` in the AddPage, so the page is one transaction.
+    let style = match style {
+        Some(t) => Some(
+            strip_pages::STYLE
+                .parse(t)
+                .and_then(|v| if let crate::defaults::Value::Choice(w) = v { Some(w.to_string()) } else { None })
+                .ok_or(CmdError::input("`style` is \"table\" or \"graphic\""))?,
+        ),
+        None => None,
+    };
+    if style.is_some() && generated != Some(GenKind::Terminals) {
+        return Err(CmdError::input("`style` is for a terminal plan page (`generated: \"terminals\"`)"));
+    }
+    // Brief 028 (FP3): a terminal plan page may show one strip.
+    if strip.is_some() && generated != Some(GenKind::Terminals) {
+        return Err(CmdError::input("`strip` is for a terminal plan page (`generated: \"terminals\"`)"));
+    }
+    Ok(NewPageKind { generated, style, strip })
+}
+
+/// The type a new page of `kind` gets (design 054 §4.2: `ty`, a page type's ID or name), and its
+/// title when none is given and it has no generated kind: the type's name.
+///
+/// # Errors
+/// `strip` is not a terminal strip; no page `after`; the type's refusals.
+pub fn new_page_type(
+    doc: &Document, kind: &NewPageKind, after: Option<PageId>, ty: Option<&str>,
+) -> Result<(Option<StyleRef>, Option<String>), CmdError> {
+    if let Some(c) = kind.strip
+        && !crate::strips::is_strip(doc, c)
+    {
+        return Err(CmdError::refused("That device is not a terminal strip; leave `strip` out to show every strip."));
+    }
+    if after.is_some_and(|a| !doc.pages.contains_key(&a)) {
+        return Err(CmdError::refused("No such page to add after."));
+    }
+    let page_type = crate::page_types::newpage_type(doc, ty, kind.generated).map_err(CmdError::refused)?;
+    // A page with no kind is titled after its type (design 054 §4.2).
+    let title = match (&page_type, kind.generated) {
+        (Some(t), None) => Some(crate::styles::name(doc, crate::styles::page::WORD, t)),
+        _ => None,
+    };
+    Ok((page_type, title))
+}
+
+/// Stamp the new page in `ops` (its `AddPage`) with its type (only when it differs from what the
+/// kind gives, FP2) and its kind, strip and style.
+pub fn stamp_new_page(ops: &mut [Op], kind: &NewPageKind, page_type: Option<&StyleRef>) {
+    let derived = crate::styles::page::derived(kind.generated);
+    for op in ops {
+        if let Op::AddPage { page, .. } = op {
+            if let Some(t) = page_type.filter(|t| **t != derived) {
+                page.properties.insert(ecad_model::sheet::PAGE_TYPE_KEY.into(), t.text());
+            }
+            if let Some(g) = kind.generated {
+                page.properties.insert(crate::generated::KEY.into(), g.value().into());
+                if let Some(c) = kind.strip {
+                    page.properties.insert(crate::generated::STRIP_KEY.into(), c.hex());
+                }
+                if let Some(v) = &kind.style {
+                    page.properties.insert(strip_pages::STYLE.key.into(), v.clone());
+                }
+            }
+        }
+    }
+}
+
+/// A page renamed or moved: its title, its 1-based position, and the ops (empty when nothing
+/// changes).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageMoved {
+    pub title: String,
+    pub index: usize,
+    pub ops: Vec<Op>,
+}
+
+/// `renamepage` (design 010 §2.3, §7.5): `RemovePage` + `AddPage` with the same ID at the same
+/// position, only the title changed. The same title changes nothing.
+///
+/// # Errors
+/// A title that does not read ([`page_title`]); no such page.
+pub fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<PageMoved, CmdError> {
+    let title = page_title(title)?;
+    let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let index = doc.page_order.iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    if old.title == title {
+        return Ok(PageMoved { title, index: index + 1, ops: Vec::new() });
+    }
+    // The page as it is with only its title changed, so any other field of a page is kept.
+    let mut renamed = old.clone();
+    renamed.title = title.clone();
+    let ops = vec![Op::RemovePage { id: page, page: old, index }, Op::AddPage { id: page, page: renamed, index }];
+    Ok(PageMoved { title, index: index + 1, ops })
+}
+
+/// `movepage {page, index}` (design 010 §2.3, §7.5): `RemovePage` at the old position + `AddPage`
+/// at `index` (1 = first). The same position changes nothing.
+///
+/// # Errors
+/// `index` not from 1 to the number of pages; no such page.
+pub fn move_page_to(doc: &Document, page: PageId, index: Option<usize>) -> Result<PageMoved, CmdError> {
+    let n = doc.page_order.len();
+    let to = index.filter(|i| (1..=n).contains(i)).ok_or_else(|| CmdError::input(format!("`index` must be a whole number from 1 to {n}")))?;
+    let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let from = doc.page_order.iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let title = old.title.clone();
+    if from + 1 == to {
+        return Ok(PageMoved { title, index: to, ops: Vec::new() });
+    }
+    let ops = vec![Op::RemovePage { id: page, page: old.clone(), index: from }, Op::AddPage { id: page, page: old, index: to - 1 }];
+    Ok(PageMoved { title, index: to, ops })
 }
 
 /// What `pageprops` writes: each `Some` is given (`Some(None)` clears).
