@@ -663,7 +663,7 @@ pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
 /// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
 /// the registered default `wire.join`.
 pub(crate) fn join_by_default(doc: &Document) -> bool {
-    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).word() == "on"
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).flag()
 }
 
 // ---------------------------------------------------------------- place (the continuation form)

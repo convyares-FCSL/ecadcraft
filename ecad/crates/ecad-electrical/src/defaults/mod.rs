@@ -102,6 +102,9 @@ pub enum Kind {
     Number { min: f64, max: f64 },
     /// One of these words (compared without case; the registered spelling is returned).
     Choice(&'static [&'static str]),
+    /// A switch (design 072 F4): stored as exactly `yes` or `no`; typed as any word
+    /// [`ecad_model::words::flag`] reads.
+    Flag,
     /// Free text of 1 to this many characters, no control characters.
     Text { max_chars: usize },
     /// Text of 1 to `max_chars` characters, no control characters, that `parse` accepts (a
@@ -120,6 +123,8 @@ pub enum Value<'a> {
     Number(f64),
     /// One of a [`Kind::Choice`] entry's words.
     Choice(&'static str),
+    /// A [`Kind::Flag`] entry's switch.
+    Flag(bool),
     /// A [`Kind::Text`] or [`Kind::Parsed`] value.
     Text(&'a str),
 }
@@ -257,10 +262,16 @@ impl Resolved<'_> {
         E::parse(self.word())
     }
 
-    /// A word (a [`Kind::Choice`] entry); `""` otherwise.
+    /// Whether a [`Kind::Flag`] entry is on; `false` for any other entry.
+    pub fn flag(&self) -> bool {
+        self.value == Value::Flag(true)
+    }
+
+    /// A word (a [`Kind::Choice`] entry, or a flag's `yes`/`no`); `""` otherwise.
     pub fn word(&self) -> &'static str {
         match self.value {
             Value::Choice(w) => w,
+            Value::Flag(b) => ecad_model::words::flag_word(b),
             _ => "",
         }
     }
@@ -270,6 +281,7 @@ impl Resolved<'_> {
         match self.value {
             Value::Length(x) | Value::Number(x) => format!("{x}"),
             Value::Choice(w) => w.to_string(),
+            Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
             Value::Text(t) => t.to_string(),
         }
     }
@@ -281,6 +293,12 @@ impl Entry {
     /// ([`data::safe_value`]), never a crash.
     pub fn builtin(&self) -> Value<'static> {
         *self.slot.get_or_init(|| data::builtin_value(self))
+    }
+
+    /// Parse a typed value for this entry ([`parse_input`]): a flag in any of
+    /// [`ecad_model::words::flag`]'s words, everything else as [`Entry::parse`].
+    pub fn parse_input<'a>(&self, typed: &'a str) -> Option<Value<'a>> {
+        parse_input(self.kind, typed)
     }
 
     /// Parse a stored value for this entry. Anything that does not parse, is not finite, is out of
@@ -313,6 +331,7 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
         match (kind, value) {
             (Kind::Length { min, max }, Value::Length(x)) | (Kind::Number { min, max }, Value::Number(x)) => x.is_finite() && (min..=max).contains(x),
             (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
+            (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
             _ => false,
         }
@@ -326,6 +345,7 @@ impl Entry {
             Kind::Length { .. } => "length",
             Kind::Number { .. } => "number",
             Kind::Choice(_) => "choice",
+            Kind::Flag => "flag",
             Kind::Text { .. } | Kind::Parsed { .. } => "text",
             Kind::Style(_) => "style",
         }
@@ -341,9 +361,26 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
         Kind::Length { min, max } => number_in(s, min, max).map(Value::Length),
         Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
         Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
+        // Stored strictly: the written words only, as they are (F4).
+        Kind::Flag => [true, false].into_iter().find(|b| ecad_model::words::flag_word(*b) == stored).map(Value::Flag),
         Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
         Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
         Kind::Style(_) => ecad_model::StyleRef::parse(s).is_some().then_some(Value::Text(s)),
+    }
+}
+
+/// Parse a value typed in a command or a box: a [`Kind::Flag`] in any of
+/// [`ecad_model::words::flag`]'s words (stored as `yes`/`no`); a choice whose words include `yes`
+/// and `no` (a text's Shown: `yes`, `no`, `first`) takes those the same way; any other kind as
+/// [`parse_value`].
+pub fn parse_input(kind: Kind, typed: &str) -> Option<Value<'_>> {
+    match kind {
+        Kind::Flag => ecad_model::words::flag(typed).map(Value::Flag),
+        Kind::Choice(words) => parse_value(kind, typed).or_else(|| {
+            let w = ecad_model::words::flag_word(ecad_model::words::flag(typed)?);
+            words.contains(&w).then_some(Value::Choice(w))
+        }),
+        _ => parse_value(kind, typed),
     }
 }
 
@@ -596,11 +633,11 @@ mod tests {
         let mut doc = Document::default();
         let page = PageId(7);
         doc.pages.insert(page, Page::new("p"));
-        doc.properties.insert(show.key.into(), "off".into());
+        doc.properties.insert(show.key.into(), "no".into());
         if let Some(p) = doc.pages.get_mut(&page) {
             p.properties.insert(show.key.into(), "sideways".into());
         }
-        assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("off"), from: Source::Project });
+        assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("no"), from: Source::Project });
     }
 
     #[test]
@@ -614,12 +651,12 @@ mod tests {
         doc.components.insert(comp, Component { properties: Default::default(), definition: None });
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
-        doc.properties.insert(show.key.into(), "off".into());
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("off"), from: Source::Project });
-        doc.pages.get_mut(&page).map(|p| p.properties.insert(show.key.into(), "on".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("on"), from: Source::Page });
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "off".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("off"), from: Source::Object });
+        doc.properties.insert(show.key.into(), "no".into());
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Project });
+        doc.pages.get_mut(&page).map(|p| p.properties.insert(show.key.into(), "yes".into()));
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("yes"), from: Source::Page });
+        doc.components.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Object });
         doc.components.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("first"), from: Source::Symbol });
         // The project-only scope still sees only the project.

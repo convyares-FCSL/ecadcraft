@@ -491,7 +491,7 @@ fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: 
             |ui| switch(ui, row.zones, writable, &format!("ecad.settings.pages.zones.{id}")),
         );
         if z.inner.clicked() {
-            todo.push(Do::Set(row.id.clone(), vec![("zones", Some(if row.zones { "off" } else { "on" }.into()))]));
+            todo.push(Do::Set(row.id.clone(), vec![("zones", Some(ecad_model::words::flag_word(!row.zones).into()))]));
         }
         // Pages.
         let count =
@@ -637,7 +637,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
         });
         prow(ui, "Zones", |ui| {
             if switch(ui, row.zones, writable, "ecad.settings.pages.panel.zones").clicked() {
-                todo.push(Do::Set(row.id.clone(), vec![("zones", Some(if row.zones { "off" } else { "on" }.into()))]));
+                todo.push(Do::Set(row.id.clone(), vec![("zones", Some(ecad_model::words::flag_word(!row.zones).into()))]));
             }
         });
     });
@@ -648,7 +648,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
     section(ui, "checks", "Checks and references", summary, |ui| {
         prow(ui, "Checks", |ui| {
             if switch(ui, row.checks, writable, CHECKS).clicked() {
-                todo.push(Do::Set(row.id.clone(), vec![("checks", Some(if row.checks { "off" } else { "on" }.into()))]));
+                todo.push(Do::Set(row.id.clone(), vec![("checks", Some(ecad_model::words::flag_word(!row.checks).into()))]));
             }
         });
         ui.label(egui::RichText::new(CHECKS_NOTE).small().color(ecad_ui::color(s.text_3)));

@@ -39,7 +39,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
         let d = h.state_mut().project_props.as_mut().unwrap();
         let t = d.text.as_mut().expect("the Text section");
         let tag = t.rows.iter_mut().find(|r| r.kind == "tag").unwrap();
-        assert_eq!((tag.height.as_str(), tag.bold, tag.show.as_deref()), ("2.5", true, Some("on")));
+        assert_eq!((tag.height.as_str(), tag.bold, tag.show.as_deref()), ("2.5", true, Some("yes")));
         tag.height = "3".into();
     }
     h.run_steps(2);

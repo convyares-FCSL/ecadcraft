@@ -331,7 +331,11 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
         }
         _ => {
             let DeValue::String(s) = v else {
-                return Err(Fault::WrongKind(if matches!(kind, Kind::Choice(_)) { "a word" } else { "text" }));
+                return Err(Fault::WrongKind(match kind {
+                    Kind::Choice(_) => "a word",
+                    Kind::Flag => "yes or no",
+                    _ => "text",
+                }));
             };
             let s: &'a str = s.as_ref();
             if empty && s.is_empty() && matches!(kind, Kind::Text { .. } | Kind::Parsed { .. }) {
@@ -340,7 +344,7 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
             // A built-in is written exactly; a stored project value is trimmed, a data value is not.
             match super::parse_value(kind, s) {
                 Some(Value::Text(t)) if t.len() == s.len() => Ok(Value::Text(t)),
-                Some(v @ Value::Choice(_)) if s.trim() == s => Ok(v),
+                Some(v @ (Value::Choice(_) | Value::Flag(_))) if s.trim() == s => Ok(v),
                 _ => Err(Fault::OutOfRange),
             }
         }
@@ -355,6 +359,7 @@ pub fn safe_value(kind: Kind) -> Value<'static> {
         Kind::Length { min, .. } => Value::Length(min),
         Kind::Number { min, .. } => Value::Number(min),
         Kind::Choice(words) => words.first().map_or(Value::Text(""), |w| Value::Choice(w)),
+        Kind::Flag => Value::Flag(false),
         Kind::Style(cat) => Value::Text(styles::catalogue(cat).and_then(|c| c.builtins.first()).map_or("none", |b| b.id)),
         Kind::Text { .. } | Kind::Parsed { .. } => Value::Text(""),
     }
@@ -380,6 +385,7 @@ fn model_value(entry: &Entry) -> Option<Value<'static>> {
         (Kind::Number { .. }, BuiltinValue::Number(x)) => Value::Number(x),
         (Kind::Length { .. }, BuiltinValue::Number(x)) => Value::Length(x),
         (Kind::Choice(words), BuiltinValue::Word(w)) => Value::Choice(words.iter().copied().find(|x| *x == w)?),
+        (Kind::Flag, BuiltinValue::Word(w)) => super::parse_value(Kind::Flag, w)?,
         _ => return None,
     };
     entry.accepts(&v).then_some(v)

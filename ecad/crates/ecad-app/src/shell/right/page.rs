@@ -368,7 +368,7 @@ fn act(t: &mut App, v: &PageView, d: Do) {
             r
         }
         Do::Block(b, on) => {
-            t.run_value("setdefault", json!({"key": b.entry().key, "level": "project", "value": if on { "on" } else { "off" }})).map(|_| ())
+            t.run_value("setdefault", json!({"key": b.entry().key, "level": "project", "value": ecad_model::words::flag_word(on)})).map(|_| ())
         }
         Do::Notes(text) => {
             let value = if text.trim().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text) };

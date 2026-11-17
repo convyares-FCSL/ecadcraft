@@ -157,7 +157,7 @@ pub static COLOUR: Entry = Entry {
 
 /// Whether `doc` prints mono ([`COLOUR`] is `mono`, the default).
 pub fn mono(doc: &ecad_model::Document) -> bool {
-    super::resolve(doc, &COLOUR, super::Scope::project()).word() != "colour"
+    super::resolve(doc, &COLOUR, super::Scope::project()).choice::<PrintColour>() != Some(PrintColour::Colour)
 }
 
 /// A print command's `colour` parameter (`mono`, `colour`, or `screen` as `colour`), or the

@@ -70,13 +70,14 @@ pub fn level_refused(entry: &Entry, level: Level) -> String {
 /// # Errors
 /// The value is not valid for the entry, in words.
 pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
-    let parsed = entry.parse(typed).ok_or_else(|| bad_value(entry))?;
+    let parsed = entry.parse_input(typed).ok_or_else(|| bad_value(entry))?;
     if is_prefix(entry) {
         return crate::devices::valid_prefix(typed).ok_or_else(|| bad_value(entry));
     }
     Ok(match parsed {
         defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
         defaults::Value::Choice(w) => w.to_string(),
+        defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.trim().to_string(),
     })
 }
@@ -87,6 +88,7 @@ fn bad_value(entry: &Entry) -> CmdError {
         defaults::Kind::Length { min, max } => format!("`{}` is a length from {min} to {max} mm.", entry.key),
         defaults::Kind::Number { min, max } => format!("`{}` is a number from {min} to {max}.", entry.key),
         defaults::Kind::Choice(words) => format!("`{}` is one of: {}.", entry.key, words.join(", ")),
+        defaults::Kind::Flag => format!("`{}` is yes or no.", entry.key),
         _ if is_prefix(entry) => format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS),
         defaults::Kind::Text { max_chars } | defaults::Kind::Parsed { max_chars, .. } => {
             format!("`{}` is 1 to {max_chars} characters with no control characters, in its own form.", entry.key)

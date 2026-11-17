@@ -50,10 +50,10 @@ static FIELDS: [Field; 6] = [
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, slot: Slot::new(), over: None },
     Field { key: "frame", label: "Frame style", kind: Kind::Parsed { max_chars: 40, parse: is_frame }, slot: Slot::new(), over: None },
     Field { key: "title_block", label: "Title block", kind: Kind::Parsed { max_chars: 40, parse: is_title_block }, slot: Slot::new(), over: None },
-    Field { key: "zones", label: "Zones", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "zones", label: "Zones", kind: Kind::Flag, slot: Slot::new(), over: None },
     // Design 054 §3.4: off, the type's pages get no electrical checks, cross-references or
     // numbering.
-    Field { key: "checks", label: "Checks and references", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "checks", label: "Checks and references", kind: Kind::Flag, slot: Slot::new(), over: None },
     // Not shown: copied with the type, so an own type holds what its source holds.
     Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), slot: Slot::new(), over: None },
 ];

@@ -88,10 +88,10 @@ impl ShowText {
     fn change(&self, s: &mut Session, picked: Picked) -> R<Step> {
         let (rep, component, page, kind, show) = match picked {
             Picked::Text { rep, of, component, symbol, shown, page } => {
-                (rep, component, page, Self::kind(of, symbol), if shown { "off" } else { "on" })
+                (rep, component, page, Self::kind(of, symbol), ecad_model::words::flag_word(!shown))
             }
             Picked::Symbol { tag_hidden: false, .. } => return Err(other(NOTHING_HIDDEN)),
-            Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, "on"),
+            Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::words::flag_word(true)),
         };
         let mut params = json!({"kind": kind.word(), "show": show});
         match (self.level, component) {

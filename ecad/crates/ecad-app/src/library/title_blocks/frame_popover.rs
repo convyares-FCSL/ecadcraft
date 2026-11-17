@@ -62,8 +62,8 @@ impl FrameEdit {
         let n = |v: f64| if v.fract() == 0.0 { format!("{v:.0}") } else { format!("{v}") };
         fields.insert("sheet".into(), if self.own { "page".into() } else { self.spec.text() });
         fields.insert("margins".into(), margins_text(&self.margins));
-        fields.insert("grid_labels".into(), if self.labels { "on" } else { "off" }.into());
-        fields.insert("centre_marks".into(), if self.centre { "on" } else { "off" }.into());
+        fields.insert("grid_labels".into(), ecad_model::words::flag_word(self.labels).into());
+        fields.insert("centre_marks".into(), ecad_model::words::flag_word(self.centre).into());
         fields.insert("border_weight".into(), n(self.border));
         fields.insert("inner_weight".into(), n(self.inner));
         fields.insert("line_colour".into(), self.colour.clone());

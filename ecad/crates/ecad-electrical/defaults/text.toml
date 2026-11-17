@@ -7,17 +7,17 @@
 [values]
 "text.font" = "Barlow Semi Condensed"
 "text.wire_label.height" = 2.5   # owner, 2026-11-15: was 1.6 (brief 066)
-"text.tag.show" = "on"
+"text.tag.show" = "yes"
 "text.tag.show.strip" = "first"
 "text.tag.show.plc" = "first"
-"text.point_label.show" = "on"
-"text.description.show" = "off"
-"text.part_number.show" = "off"
-"text.continuation_name.show" = "off"
-"text.reference.show" = "on"
-"text.continuation_caption.show" = "on"
-"text.location.show" = "on"
-"text.wire_label.show" = "on"
+"text.point_label.show" = "yes"
+"text.description.show" = "no"
+"text.part_number.show" = "no"
+"text.continuation_name.show" = "no"
+"text.reference.show" = "yes"
+"text.continuation_caption.show" = "yes"
+"text.location.show" = "yes"
+"text.wire_label.show" = "yes"
 "text.run.align" = 1.0
 "text.run.gap" = 15.0
 "text.tag.gap" = 0.6

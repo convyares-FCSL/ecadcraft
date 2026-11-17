@@ -45,10 +45,10 @@ fill = "none"
 border_weight = 0.5
 inner_weight = 0.25
 line_colour = "none"
-grid_labels = "on"
+grid_labels = "yes"
 sheet = "page"
 margins = "10,10,10,7"
-centre_marks = "on"
+centre_marks = "yes"
 block = "bottom_full"
 
 [styles.frame.sheet]
@@ -141,13 +141,13 @@ line_weight = 0.25
 sheet = "project"
 frame = "project"
 title_block = "frame"
-zones = "on"
-checks = "on"
+zones = "yes"
+checks = "yes"
 holds = "none"
 
 [styles.page.front]
 holds = "front"
-zones = "off"
+zones = "no"
 
 [styles.page.schematic]
 
@@ -156,15 +156,15 @@ zones = "off"
 [styles.page.singleline]
 
 [styles.page.panel]
-zones = "off"
+zones = "no"
 
 [styles.page.report]
 holds = "report"
-zones = "off"
+zones = "no"
 
 [styles.page.plain]
-zones = "off"
-checks = "off"
+zones = "no"
+checks = "no"
 
 [fields.cable]
 cross_section = ""

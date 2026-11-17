@@ -388,7 +388,9 @@ ecad_model::word_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum Shown {
         #[default]
+        #[strum(serialize = "yes")]
         On,
+        #[strum(serialize = "no")]
         Off,
         /// Once per run (§5.3): on the first symbol of each run, hidden on the others. Tags only.
         First,
@@ -396,7 +398,7 @@ ecad_model::word_enum! {
 }
 
 impl Shown {
-    /// The stored word: `on`, `off` or `first`.
+    /// The stored word: `yes`, `no` or `first` (design 072 F4).
     pub fn word(self) -> &'static str {
         <Self as ecad_model::Word>::word(self)
     }
@@ -406,11 +408,13 @@ impl Shown {
         <Self as ecad_model::Word>::parse(w).unwrap_or_default()
     }
 
-    /// The value typed in a box: a stored word, or its words in the panels (`Shown`, `Hidden`,
-    /// `Once per run`), in any case.
+    /// The value typed in a box: a stored word, any yes/no word ([`ecad_model::words::flag`]), or
+    /// its words in the panels (`Shown`, `Hidden`, `Once per run`), in any case.
     pub fn from_input(text: &str) -> Option<Shown> {
         let t = text.trim();
-        <Self as ecad_model::Word>::parse(t).or_else(|| Shown::ALL_LABELS.into_iter().find(|s| s.label().eq_ignore_ascii_case(t)))
+        <Self as ecad_model::Word>::parse(t)
+            .or_else(|| ecad_model::words::flag(t).map(|on| if on { Shown::On } else { Shown::Off }))
+            .or_else(|| Shown::ALL_LABELS.into_iter().find(|s| s.label().eq_ignore_ascii_case(t)))
     }
 
     const ALL_LABELS: [Shown; 3] = [Shown::On, Shown::Off, Shown::First];
@@ -1171,19 +1175,19 @@ mod tests {
         assert_eq!(text_shown(&doc, plain, TextKind::ContinuationName), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Grid), Shown::On);
         // A project-wide tag rule overrides the run rule; `first` is refused for other kinds.
-        doc.properties.insert("text.tag.show".into(), "off".into());
+        doc.properties.insert("text.tag.show".into(), "no".into());
         doc.properties.insert("text.description.show".into(), "first".into());
         assert_eq!(text_shown(&doc, strip, TextKind::Tag), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Description), Shown::Off);
-        doc.pages.get_mut(&page).map(|p| p.properties.insert("text.tag.show".into(), "on".into()));
+        doc.pages.get_mut(&page).map(|p| p.properties.insert("text.tag.show".into(), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
-        doc.components.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "off".into()));
+        doc.components.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::Off);
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "on".into()));
+        doc.components.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         // The project may turn the strip run rule off.
         let mut doc2 = Document::default();
-        doc2.properties.insert("text.tag.show.strip".into(), "on".into());
+        doc2.properties.insert("text.tag.show.strip".into(), "yes".into());
         assert_eq!(text_shown(&doc2, TextTarget { run: RunRule::Strip, ..TextTarget::project() }, TextKind::Tag), Shown::On);
     }
 }

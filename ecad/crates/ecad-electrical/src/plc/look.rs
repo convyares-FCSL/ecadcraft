@@ -77,7 +77,7 @@ pub struct Run {
 /// Whether the frame of card `c` is drawn (`plc.frame.show`).
 pub fn frame_shown(doc: &Document, c: ComponentId) -> bool {
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    crate::defaults::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).word() == "on"
+    crate::defaults::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).flag()
 }
 
 /// The piece of representation `r` of card `c`, when it is a PLC cell or card body at 0° or 180°.

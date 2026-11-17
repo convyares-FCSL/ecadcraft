@@ -6,12 +6,12 @@
 
 [values]
 "page.type" = "schematic"
-"front.cover.notes" = "on"
-"front.cover.wire_colours" = "on"
-"front.cover.symbol_legend" = "on"
-"front.cover.revisions" = "on"
-"front.cover.structure_codes" = "off"
-"front.cover.customer_site" = "on"
+"front.cover.notes" = "yes"
+"front.cover.wire_colours" = "yes"
+"front.cover.symbol_legend" = "yes"
+"front.cover.revisions" = "yes"
+"front.cover.structure_codes" = "no"
+"front.cover.customer_site" = "yes"
 "front.cover.heading" = "Electrical documentation"
 
 # Built-in layout values no level overrides (brief 066c).

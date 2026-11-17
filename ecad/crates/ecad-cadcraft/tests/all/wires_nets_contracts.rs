@@ -519,7 +519,7 @@ fn the_join_default_comes_from_the_registry() {
                     object: ecad_model::ObjectRef::Project,
                     key: "wire.join".into(),
                     before,
-                    after: Some("off".into()),
+                    after: Some("no".into()),
                 }],
             )
             .unwrap();

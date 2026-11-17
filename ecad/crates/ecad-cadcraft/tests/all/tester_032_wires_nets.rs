@@ -1014,7 +1014,7 @@ fn t21_defaults_registry_lists_lane_w_keys() {
     let mut h = H::new(0x7032_0210);
     let d = h.run("defaults", json!({})).unwrap();
     let text = d.to_string();
-    for (key, builtin) in [("wiring.label_rule", json!("net")), ("wiring.label_min_length", json!(0)), ("wire.join", json!("on"))] {
+    for (key, builtin) in [("wiring.label_rule", json!("net")), ("wiring.label_min_length", json!(0)), ("wire.join", json!("yes"))] {
         let all = d.as_object().and_then(|o| o.values().find_map(Value::as_array)).cloned().unwrap_or_default();
         let e = all.iter().find(|e| e["key"] == key).unwrap_or_else(|| panic!("{key} in {text}"));
         let b = &e["builtin"];

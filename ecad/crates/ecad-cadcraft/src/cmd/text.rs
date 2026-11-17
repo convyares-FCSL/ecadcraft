@@ -195,6 +195,7 @@ fn value_json(r: &Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
         defaults::Value::Choice(w) => json!(w),
+        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
     }
 }

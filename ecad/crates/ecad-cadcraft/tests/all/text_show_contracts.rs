@@ -125,7 +125,7 @@ fn the_narrowest_level_wins() {
     // Refusals.
     for (p, words) in [
         (json!({"kind": "reference", "show": "off", "component": c.hex()}), "At device level the kinds are"),
-        (json!({"kind": "description", "show": "first"}), "Shown is on, off or first"),
+        (json!({"kind": "description", "show": "first"}), "Shown is yes, no or first"),
         (json!({"kind": "tag", "show": "off", "page": page.hex(), "component": c.hex()}), "at most one"),
         (json!({"kind": "tag", "show": "off", "representation": "00000000000000000000000000000001"}), "No representation"),
     ] {
@@ -270,7 +270,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
     let new_hex = new_rep.hex();
     assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");
-    assert_eq!(props.get(&ecad_cadcraft::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("off"));
+    assert_eq!(props.get(&ecad_cadcraft::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("no"));
     assert!(props.contains_key(&format!("text.{new_hex}.tag.at")), "{keys:?}");
     assert_eq!(keys.len(), 2, "{keys:?}");
     h.check();

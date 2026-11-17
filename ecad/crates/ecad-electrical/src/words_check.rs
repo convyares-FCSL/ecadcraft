@@ -2,7 +2,7 @@
 //!
 //! A typed field with an unknown word already fails its record's decode. This check finds the
 //! words inside values that stay text: a stored value of a defaults choice that is not one of its
-//! words, a yes/no key ([`keys::ValueSpec::Flag`]) holding anything but `yes` or `no`, a
+//! words, a defaults switch ([`Kind::Flag`]) or a yes/no key ([`keys::ValueSpec::Flag`]) holding anything but `yes` or `no`, a
 //! `tag_prefixes` key that is not a built-in symbol, and a property that became a struct field
 //! ([`ecad_model::keys::RESERVED`]). Typed input may say `true`, `1` or `on`; a file holds only the
 //! words the program writes. Anything found opens the project read-only, naming the
@@ -64,7 +64,12 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
     flags(props, place, out);
     for (key, value) in props {
         let Some((entry, level)) = entry_of(key, level) else { continue };
-        let Kind::Choice(words) = entry.kind else { continue };
+        let words = match entry.kind {
+            Kind::Choice(words) => words,
+            // Stored strictly as `yes` or `no` (F4).
+            Kind::Flag => words::FLAG_WORDS,
+            Kind::Length { .. } | Kind::Number { .. } | Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_) => continue,
+        };
         // A project value an entry keeps in the settings is typed there, not stored as a word.
         let in_settings = level == Level::Project && matches!(entry.project, ProjectSource::Settings(_));
         let stored_here = entry.allows(level) && !in_settings;

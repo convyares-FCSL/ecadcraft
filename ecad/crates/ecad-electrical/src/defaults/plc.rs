@@ -76,8 +76,6 @@ const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 /// A standard (reserved) and the project may override.
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
-const ON_OFF: &[&str] = &["on", "off"];
-
 pub static SLOTS: Entry = Entry {
     key: "plc.slots",
     label: "Slots in a rack",
@@ -170,7 +168,7 @@ pub static CAPTION_SHOW: Entry = Entry {
     label: "Show the card caption",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -319,7 +317,7 @@ pub static CHANNEL_SHOW: Entry = Entry {
     label: "Show channel numbers",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -330,7 +328,7 @@ pub static ADDRESS_SHOW: Entry = Entry {
     label: "Show addresses on channels",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -352,7 +350,7 @@ pub static XREF_TABLE: Entry = Entry {
     label: "Channel table under a card body",
     group: GROUP,
     brief: "045",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,
@@ -384,7 +382,7 @@ pub static FRAME_SHOW: Entry = Entry {
     label: "Draw a frame around a card's cells",
     group: GROUP,
     brief: "051",
-    kind: Kind::Choice(ON_OFF),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
     project: ProjectSource::Property,

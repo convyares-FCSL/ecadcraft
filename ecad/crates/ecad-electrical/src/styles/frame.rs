@@ -29,13 +29,13 @@ static FIELDS: [Field; 8] = [
     Field { key: "border_weight", label: "Border weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
     Field { key: "inner_weight", label: "Inner line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
     Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
-    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Flag, slot: Slot::new(), over: None },
     // Brief 055 (FP2): the sheet the frame is drawn for (`page`: the page's own), its margins,
     // its centre marks and where its block sits. 050a's `title_block` choice is retired (FP3): a
     // stored value is listed as unknown.
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 48, parse: sheet_ok }, slot: Slot::new(), over: None },
     Field { key: "margins", label: "Margins", kind: Kind::Parsed { max_chars: 48, parse: margins_ok }, slot: Slot::new(), over: None },
-    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
+    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Flag, slot: Slot::new(), over: None },
     Field { key: "block", label: "Block position", kind: Kind::Choice(<BlockAt as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
 ];
 

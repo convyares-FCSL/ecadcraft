@@ -14,12 +14,12 @@ use ecad_model::{
 use crate::defaults::{self, Scope};
 use crate::devices::{self, TextOf};
 use crate::error::CmdError;
-use crate::text_style::{self, TextKind, kind_words};
+use crate::text_style::{self, Shown, TextKind, kind_words};
 
 /// Refusals (design 031 §10.1).
 pub const BAD_HEIGHT: &str = "A text height is 0.5 to 10 mm.";
 pub const BAD_WEIGHT: &str = "Weight is regular or bold.";
-pub const BAD_SHOW: &str = "Shown is on, off or first (first: tag only).";
+pub const BAD_SHOW: &str = "Shown is yes, no or first (first: tag only).";
 pub const BAD_FONT: &str = "A font name is 1 to 64 characters with no control characters.";
 pub const NEEDS_KIND: &str = "height, weight and show need a kind.";
 pub const BAD_POINT: &str = "A text position must be a finite point.";
@@ -124,7 +124,7 @@ fn kind_change(row: KindRow) -> Result<Option<KindChange>, CmdError> {
     let kind = opt_kind(row.kind.as_deref())?;
     let height = check(row.height, |h| (h.is_finite() && (0.5..=10.0).contains(&h)).then_some(h), BAD_HEIGHT)?;
     let weight = check(row.weight, |w| word_in(w, &["regular", "bold"]), BAD_WEIGHT)?;
-    let show = check(row.show, |w| word_in(w, &["on", "off", "first"]), BAD_SHOW)?;
+    let show = check(row.show, |w| Shown::from_input(&w).map(|s| s.word().to_string()), BAD_SHOW)?;
     let changes = height.is_some() || weight.is_some() || show.is_some();
     let Some(kind) = kind else {
         return if changes { Err(CmdError::refused(NEEDS_KIND)) } else { Ok(None) };
@@ -354,12 +354,13 @@ pub fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)>
     })
 }
 
-/// The `show` of a `showtext` call: "on", "off" or "first" (any case), or `None` to inherit.
+/// The `show` of a `showtext` call as stored (`yes`, `no` or `first`): any word
+/// [`Shown::from_input`] reads, or `None` to inherit.
 ///
 /// # Errors
 /// Any other word.
 pub fn show_word(show: Option<&str>) -> Result<Option<String>, CmdError> {
-    show.map(|w| word_in(w.to_string(), &["on", "off", "first"]).ok_or(CmdError::refused(BAD_SHOW))).transpose()
+    show.map(|w| Shown::from_input(w).map(|s| s.word().to_string()).ok_or(CmdError::refused(BAD_SHOW))).transpose()
 }
 
 /// The level a `showtext` call names, checked against `doc`.
@@ -407,7 +408,7 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
         let words: Vec<&str> = allowed.iter().map(|k| k.word()).collect();
         return Err(CmdError::refused(format!("At {} level the kinds are {}.", level.word(), words.join(", "))));
     }
-    if show == Some("first") && kind != TextKind::Tag {
+    if show.and_then(Shown::from_input) == Some(Shown::First) && kind != TextKind::Tag {
         return Err(CmdError::refused(BAD_SHOW));
     }
     let (object, key) = show_key(level, kind).ok_or(CmdError::refused(BAD_SHOW))?;
@@ -426,8 +427,8 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
 
 /// The transaction label of a `showtext` change (`Hide tag -X01`, `Show tag`, `Reset tag`).
 pub fn show_label(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&str>) -> String {
-    let verb = match show {
-        Some("off") => "Hide",
+    let verb = match show.map(Shown::from_input) {
+        Some(Some(Shown::Off)) => "Hide",
         Some(_) => "Show",
         None => "Reset",
     };

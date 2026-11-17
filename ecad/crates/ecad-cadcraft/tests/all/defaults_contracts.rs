@@ -19,6 +19,7 @@ fn other_value(e: &Entry) -> Option<String> {
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
+        Kind::Flag => ecad_model::words::FLAG_WORDS.iter().map(|w| w.to_string()).collect(),
         Kind::Text { .. } | Kind::Parsed { .. } => {
             [
                 "ZZ",
@@ -145,7 +146,7 @@ fn setdefault_is_one_undoable_transaction() {
     let doc = h.doc();
     let t = targets(page, c, rep, &doc);
     for (key, value, (level, target, scope, source)) in
-        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "off", t[1]), ("text.tag.show", "first", t[3])]
+        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "no", t[1]), ("text.tag.show", "first", t[3])]
     {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
@@ -228,9 +229,9 @@ fn the_chain_shows_a_level_that_holds_a_value_or_is_allowed() {
     // A height has no page level (owner answer 4).
     assert!(!levels(height, &doc).contains(&Source::Page));
     let _ = c;
-    h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "off"})).unwrap();
+    h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "no"})).unwrap();
     let d = h.doc();
     let chain = defaults::chain(&d, show, at);
-    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("off")));
+    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("no")));
     assert_eq!(defaults::resolve(&d, show, at).from, Source::Page);
 }

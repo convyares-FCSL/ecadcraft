@@ -742,6 +742,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 here: target.filter(|(l, _)| e.allows(*l)),
                 choices: match e.kind {
                     Kind::Choice(w) => w,
+                    Kind::Flag => ecad_model::words::FLAG_WORDS,
                     _ => &[],
                 },
                 styles,
