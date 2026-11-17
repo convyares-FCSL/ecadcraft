@@ -15,7 +15,7 @@ fn header(name: &str) -> StandardHeader {
 }
 
 fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
-    StyleRecord { name: name.into(), fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), body: None }
+    StyleRecord::new(name, ecad_model::style::StyleBody::Text(fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()))
 }
 
 fn tag() -> StyleRef {
@@ -223,14 +223,8 @@ fn style_records_merge_as_units() {
     let mut m = t.clone();
     m.commit(Author::User, "merge", plan.ops).unwrap();
     let d = m.document();
-    assert_eq!(
-        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.fields.get("height")).map(String::as_str),
-        Some("7")
-    );
-    assert_eq!(
-        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.fields.get("colour")).map(String::as_str),
-        Some("BU")
-    );
+    assert_eq!(d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.field("height")), Some("7"));
+    assert_eq!(d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.field("colour")), Some("BU"));
     let values = &d.standard.as_ref().unwrap().values;
     assert_eq!((values.get("x.one").map(String::as_str), values.get("x.two").map(String::as_str)), (Some("1"), Some("2")));
     assert!(d.check().is_ok());

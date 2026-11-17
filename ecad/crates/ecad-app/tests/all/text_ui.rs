@@ -51,7 +51,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     let d = doc(&mut h);
     // Brief 050a: the tag text style's project record.
     let rec = d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
-    assert_eq!(rec.and_then(|r| r.fields.get("height")).map(String::as_str), Some("3"));
+    assert_eq!(rec.and_then(|r| r.field("height")), Some("3"));
     let page = d.page_order[0];
     let tags: Vec<f64> = ecad_cadcraft::devices::texts_on_page(&d, page)
         .into_iter()

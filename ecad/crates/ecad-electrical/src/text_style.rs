@@ -1110,11 +1110,8 @@ mod tests {
     fn hostile_heights_give_the_default() {
         for bad in ["NaN", "abc", "0.1", "11", "1e308", "-2", ""] {
             let mut doc = Document::default();
-            let rec = ecad_model::StyleRecord {
-                name: String::new(),
-                fields: [("height".to_string(), bad.to_string()), ("weight".into(), "heavy".into())].into_iter().collect(),
-                body: None,
-            };
+            let fields = [("height".to_string(), bad.to_string()), ("weight".into(), "heavy".into())].into_iter().collect();
+            let rec = ecad_model::StyleRecord::new("", ecad_model::style::StyleBody::Text(fields));
             doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
             let want = TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None };
             assert_eq!(text_style(&doc, TextKind::Tag), want, "{bad:?}");
@@ -1133,11 +1130,8 @@ mod tests {
     #[test]
     fn project_values_and_inch_projects() {
         let mut doc = Document::default();
-        let rec = ecad_model::StyleRecord {
-            name: String::new(),
-            fields: [("height".to_string(), "3".to_string()), ("weight".into(), "Regular".into())].into_iter().collect(),
-            body: None,
-        };
+        let fields = [("height".to_string(), "3".to_string()), ("weight".into(), "Regular".into())].into_iter().collect();
+        let rec = ecad_model::StyleRecord::new("", ecad_model::style::StyleBody::Text(fields));
         doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });
         doc.settings.length_unit = LengthUnit::Inch;

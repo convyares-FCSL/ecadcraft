@@ -275,10 +275,11 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x", "sheet": "A0 999x999"}})).unwrap_err();
     // Written past the command's checks, as a hostile file would hold them.
     h.cfg(|p| {
-        let mut r = ecad_model::StyleRecord::default();
-        r.fields.insert("holds".into(), "x".into());
-        r.fields.insert("sheet".into(), "A0 999x999".into());
-        r.fields.insert("zones".into(), "maybe".into());
+        let mut r = ecad_model::StyleRecord::empty(ecad_model::StyleCatalogue::Page);
+        let fields = r.fields_mut().unwrap();
+        fields.insert("holds".into(), "x".into());
+        fields.insert("sheet".into(), "A0 999x999".into());
+        fields.insert("zones".into(), "maybe".into());
         p.ledger
             .commit(
                 ecad_model::Author::User,

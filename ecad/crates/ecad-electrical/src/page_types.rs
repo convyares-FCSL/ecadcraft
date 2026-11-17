@@ -326,7 +326,7 @@ pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
         Op::ModifyPage { before, after, .. } => before.page_type != after.page_type && (off(before) || off(after)),
         Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(page),
         Op::SetStyle { catalogue, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("checks").cloned());
+            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.field("checks").map(str::to_string));
             c(before) != c(after)
         }
         _ => false,
@@ -369,7 +369,7 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
     for layer in [StyleLayer::Standard, StyleLayer::Project] {
         for (id, r) in crate::styles::records(doc, layer, ecad_model::StyleCatalogue::Page) {
             for (i, f) in ptype::CATALOGUE.fields.iter().enumerate() {
-                let Some(v) = r.fields.get(f.key) else { continue };
+                let Some(v) = r.fields().and_then(|p| p.get(f.key)) else { continue };
                 if crate::defaults::parse_value(f.kind, v).is_none() {
                     let name = crate::styles::name(doc, ecad_model::StyleCatalogue::Page, id);
                     let shown: String = v.chars().take(24).filter(|c| !c.is_control()).collect();

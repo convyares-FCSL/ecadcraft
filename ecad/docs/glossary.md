@@ -46,6 +46,7 @@ stay as they are.
 | **continuation** | An arrow with a name (`24V`) where a net leaves a page. All continuations with one name are one net. |
 | **potential** | What a wire carries for numbering and defaults: `L`, `L1`…`L3`, `N`, `PE`, `24V`, `0V`. It sets the number prefix, colour and cross-section. Several nets share one potential (`24V-01`, `24V-02`). |
 | **wire number** | The number a net carries and every one of its conductors shows (`24V-07`). Automatic, or **fixed** by hand. Stored on the conductors once issued, so adding a wire never renumbers others. |
+| **wire type** | A library entry a wire refers to (it was "wire category"): its potential, size, colours, insulation, part, rating and drawn line. Built-in types (L, L1–L3, N, PE, 230 V AC L/N, 24 V, 0 V, signal, analogue) can be edited; standards and projects add their own. In code and files the catalogue is still `wire` and the record a `WireType`. |
 | **cable** | A group of conductors that run together (`-W01`), made with a slash across their wires. Its members are its **cores**. Cable and device tags share one namespace (brief 026). |
 | **core** | One conductor of a cable, with its core number or colour (`1`, `BK`). |
 | **not drawn** | A cable built in Project ▸ Cables that has no wires and no slash yet (brief 059). It is shown as `not drawn`, never as an error. |

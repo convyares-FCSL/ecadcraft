@@ -32,7 +32,7 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     assert_eq!(last.label, "Text styles");
     assert!(
         // Brief 050a: the tag text style's record, at project level.
-        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag" && r.fields.get("height").map(String::as_str) == Some("3")),
+        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag" && r.field("height") == Some("3")),
         "{:?}",
         last.ops
     );
@@ -53,8 +53,8 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
         d.styles
             .get(&ecad_model::StyleCatalogue::Text)
             .and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into())))
-            .and_then(|r| r.fields.get(f))
-            .cloned()
+            .and_then(|r| r.field(f))
+            .map(str::to_string)
     };
     assert_eq!((field("point_label", "height").as_deref(), field("location", "weight").as_deref()), (Some("2"), Some("bold")));
     let m = c.refused("execute", json!({"command": "textstyle", "params": {"kinds": [{"height": 2}]}}));

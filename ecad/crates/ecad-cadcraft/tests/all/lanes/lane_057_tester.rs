@@ -192,7 +192,7 @@ fn fixture(seed: u64) -> R {
     let category = own_id(
         &h.run(
             "setstyle",
-            json!({"catalogue": "wire", "new": true, "name": "Synth power", "fields": {"cross_section": 2.5, "rated_current": 33, "rated_at": 20, "max_temperature": 80}}),
+            json!({"catalogue": "wire", "new": true, "name": "Synth power", "fields": {"size": 2.5, "rated_current": 33, "rated_at": 20, "max_temperature": 80}}),
         )
         .unwrap(),
     );

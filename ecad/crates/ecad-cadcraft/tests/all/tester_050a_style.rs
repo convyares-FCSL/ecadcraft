@@ -552,7 +552,7 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
     for (k, v) in [("height", "NaN"), ("height", "11"), ("height", "-1"), ("height", "1e308"), ("weight", "heavy"), ("colour", "PURPLISH\u{7}")] {
         let mut tx = template.clone();
-        find_obj_mut(&mut tx, "fields").expect("a record with fields").insert("fields".into(), json!({k: v}));
+        find_obj_mut(&mut tx, "body").expect("a record with a body").insert("body".into(), json!({"text": {k: v}}));
         let ops = decoded_ops(&tx);
         inject(&mut h, ops.clone());
         let st = text_style::text_style(&h.doc(), TextKind::Tag);
@@ -1046,9 +1046,9 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
         rec.insert("catalogue".into(), json!(cat));
         rec.insert("id".into(), json!(id));
         rec.insert("before".into(), Value::Null);
-        let after = find_obj_mut(&mut v, "fields").expect("a record");
+        let after = find_obj_mut(&mut v, "body").expect("a record");
         after.insert("name".into(), json!(name));
-        after.insert("fields".into(), fields);
+        after.insert("body".into(), json!({ cat: fields }));
         decoded_ops(&v)
     };
     for i in 0..2000u32 {

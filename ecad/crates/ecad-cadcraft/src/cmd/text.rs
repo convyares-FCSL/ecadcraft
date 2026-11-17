@@ -198,6 +198,8 @@ fn value_json(r: &Resolved<'_>) -> Value {
         defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
         defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        defaults::Value::Size(s) => json!(s.to_string()),
+        defaults::Value::Colours(c) => json!(c.to_string()),
     }
 }
 
