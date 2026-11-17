@@ -24,8 +24,9 @@ use ecad_model::{
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
-use ecad_model::{CableId, CableMember, Conductor, ConductorId};
+use ecad_model::{CableId, CableMember, Conductor, ConductorId, Noun};
 
+use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
@@ -307,7 +308,7 @@ pub fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
 ///
 /// # Errors
 /// `-X10:3` on a connector with pin 3 on both halves, and a pin the half does not have.
-pub fn resolve(doc: &Document, text: &str) -> Option<Result<(ComponentId, Option<Side>, Option<TerminalId>), String>> {
+pub fn resolve(doc: &Document, text: &str) -> Option<Result<(ComponentId, Option<Side>, Option<TerminalId>), CmdError>> {
     let text: String = text.trim().chars().take(64).collect();
     let (head, pin) = match text.split_once(':') {
         Some((h, p)) => (h.to_string(), Some(p.to_string())),
@@ -339,19 +340,19 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(ComponentId, Option
     let with =
         |want: Side| doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key.as_deref() == want.key()).map(|(t, _)| t);
     Some(match side {
-        Some(s) => with(s).map(|t| (c, Some(s), Some(t))).ok_or_else(|| format!("{} has no pin {pin}.", half_tag(doc, c, s))),
+        Some(s) => with(s).map(|t| (c, Some(s), Some(t))).ok_or_else(|| CmdError::refused(format!("{} has no pin {pin}.", half_tag(doc, c, s)))),
         None => match (with(Side::Socket), with(Side::Plug)) {
             (Some(_), Some(_)) => {
                 let tag = crate::devices::tag_words(doc, c);
-                Err(format!(
+                Err(CmdError::refused(format!(
                     "{tag} has pin {pin} on both halves. Type {}:{pin} or {}:{pin}.",
                     half_tag(doc, c, Side::Socket),
                     half_tag(doc, c, Side::Plug)
-                ))
+                )))
             }
             (Some(t), None) => Ok((c, Some(Side::Socket), Some(t))),
             (None, Some(t)) => Ok((c, Some(Side::Plug), Some(t))),
-            (None, None) => Err(format!("{} has no pin {pin}.", crate::devices::tag_words(doc, c))),
+            (None, None) => Err(CmdError::refused(format!("{} has no pin {pin}.", crate::devices::tag_words(doc, c)))),
         },
     })
 }
@@ -454,13 +455,13 @@ pub enum Names {
 ///
 /// # Errors
 /// Empty, too long, a space, comma, colon or control character.
-pub fn check_name(name: &str) -> Result<(), String> {
+pub fn check_name(name: &str) -> Result<(), CmdError> {
     let shown: String = name.chars().take(16).filter(|c| !c.is_control()).collect();
     if name.is_empty() || name.chars().count() > MAX_NAME_CHARS {
-        return Err(format!("A pin name is 1 to {MAX_NAME_CHARS} characters: \"{shown}\"."));
+        return Err(CmdError::refused(format!("A pin name is 1 to {MAX_NAME_CHARS} characters: \"{shown}\".")));
     }
     if name.chars().any(|c| c.is_whitespace() || c == ',' || c == ':' || c.is_control()) {
-        return Err(format!("Pin names cannot contain spaces, commas or colons: \"{shown}\"."));
+        return Err(CmdError::refused(format!("Pin names cannot contain spaces, commas or colons: \"{shown}\".")));
     }
     Ok(())
 }
@@ -469,9 +470,9 @@ pub fn check_name(name: &str) -> Result<(), String> {
 ///
 /// # Errors
 /// Too long, a bad name, a repeated name, more than [`MAX_PINS`].
-pub fn parse_list(text: &str) -> Result<Vec<String>, String> {
+pub fn parse_list(text: &str) -> Result<Vec<String>, CmdError> {
     if text.chars().count() > MAX_LIST_CHARS {
-        return Err(format!("A pin name list is at most {MAX_LIST_CHARS} characters."));
+        return Err(CmdError::refused(format!("A pin name list is at most {MAX_LIST_CHARS} characters.")));
     }
     let names: Vec<String> = text.split(',').map(|n| n.trim().to_string()).collect();
     check_list(&names)?;
@@ -482,15 +483,15 @@ pub fn parse_list(text: &str) -> Result<Vec<String>, String> {
 ///
 /// # Errors
 /// As [`parse_list`].
-pub fn check_list(names: &[String]) -> Result<(), String> {
+pub fn check_list(names: &[String]) -> Result<(), CmdError> {
     if names.len() > MAX_PINS {
-        return Err(format!("A connector has at most {MAX_PINS} pins; got {}.", names.len()));
+        return Err(CmdError::refused(format!("A connector has at most {MAX_PINS} pins; got {}.", names.len())));
     }
     let mut seen = BTreeSet::new();
     for n in names {
         check_name(n)?;
         if !seen.insert(n.to_ascii_lowercase()) {
-            return Err(format!("Pin {n} is named twice. Give each pin its own name."));
+            return Err(CmdError::refused(format!("Pin {n} is named twice. Give each pin its own name.")));
         }
     }
     Ok(())
@@ -500,21 +501,21 @@ pub fn check_list(names: &[String]) -> Result<(), String> {
 ///
 /// # Errors
 /// Letters past 26, a list whose count is not `n`.
-pub fn names_for(names: &Names, n: usize) -> Result<Vec<String>, String> {
+pub fn names_for(names: &Names, n: usize) -> Result<Vec<String>, CmdError> {
     if n == 0 || n > MAX_PINS {
-        return Err(format!("A connector has 1 to {MAX_PINS} pins."));
+        return Err(CmdError::refused(format!("A connector has 1 to {MAX_PINS} pins.")));
     }
     match names {
         Names::Numbers => Ok((1..=n).map(|i| i.to_string()).collect()),
         Names::Letters => {
             if n > 26 {
-                return Err("Letters name at most 26 pins. Use Numbers or a list.".into());
+                return Err(CmdError::refused("Letters name at most 26 pins. Use Numbers or a list."));
             }
             Ok((0..n).filter_map(|i| u8::try_from(i).ok().map(|i| char::from(b'A' + i).to_string())).collect())
         }
         Names::List(v) => {
             if v.len() != n {
-                return Err(format!("Give {n} pin names; got {}.", v.len()));
+                return Err(CmdError::refused(format!("Give {n} pin names; got {}.", v.len())));
             }
             check_list(v)?;
             Ok(v.clone())
@@ -564,7 +565,7 @@ fn candidates(doc: &Document, c: ComponentId, d: &Drawn) -> Vec<String> {
 /// # Errors
 /// A connector named by letters or a list whose pins are all drawn on that side; more than
 /// [`MAX_PINS`] pins.
-pub fn next_pin(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<String, String> {
+pub fn next_pin(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<String, CmdError> {
     let d = drawn(doc, c);
     let on = |s: Side, n: &str| d.has(s, n) || taken.contains(&(s, n.to_string()));
     let free = |n: &str| match side {
@@ -593,7 +594,7 @@ pub fn next_pin(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Si
     if numbers {
         let next = all.iter().filter_map(|x| x.parse::<u64>().ok()).max().unwrap_or(0) + 1;
         if next > MAX_PINS as u64 {
-            return Err(format!("{} has {MAX_PINS} pins, the most a connector has.", crate::devices::tag_words(doc, c)));
+            return Err(CmdError::refused(format!("{} has {MAX_PINS} pins, the most a connector has.", crate::devices::tag_words(doc, c))));
         }
         return Ok(next.to_string());
     }
@@ -602,11 +603,11 @@ pub fn next_pin(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Si
         Side::Both => "both halves".to_string(),
         s => format!("the {} half", s.word()),
     };
-    Err(format!(
+    Err(CmdError::refused(format!(
         "{tag} has {} named pins ({}), all drawn on {where_}. Add a name with pinlabel, or set pins.",
         all.len(),
         all.iter().take(8).cloned().collect::<Vec<_>>().join(", ")
-    ))
+    )))
 }
 
 // ---------------------------------------------------------------- halves and their symbols
@@ -679,7 +680,7 @@ pub struct Shown {
 pub fn symbol_ops(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &Starter, c: ComponentId, names: &[String], placement: Placement,
     ops: &mut Vec<Op>,
-) -> Result<(RepresentationId, ItemId, Vec<Shown>), String> {
+) -> Result<(RepresentationId, ItemId, Vec<Shown>), CmdError> {
     let d = starter.definition()?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut cps = BTreeMap::new();
@@ -687,12 +688,12 @@ pub fn symbol_ops(
     let pin = is_pin_starter(starter);
     for (i, td) in d.terminals.iter().enumerate() {
         let side = match starter.side() {
-            Some(Side::Both) | None => Side::of_key(&td.key).ok_or("A connector symbol's point has no side.")?,
+            Some(Side::Both) | None => Side::of_key(&td.key).ok_or(CmdError::refused("A connector symbol's point has no side."))?,
             Some(s) => s,
         };
-        let name = if pin { names.first() } else { names.get(i) }.ok_or("Not enough pin names for this symbol.")?;
+        let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: TerminalId = ids.fresh();
-        let key = side.key().ok_or("A connector symbol's point has no side.")?;
+        let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
         ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key.to_string()) } });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
@@ -720,7 +721,7 @@ pub fn symbol_ops(
 pub fn create_ops(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, starter: &Starter, def: DefinitionId, tag: Option<String>,
     pins: Option<usize>, names: Option<&[String]>, ops: &mut Vec<Op>,
-) -> Result<(ComponentId, String), String> {
+) -> Result<(ComponentId, String), CmdError> {
     let doc = ledger.document();
     let tag = match tag {
         Some(t) if ecad_model::tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
@@ -753,26 +754,26 @@ pub fn not_a_connector(doc: &Document, c: ComponentId) -> String {
 ///
 /// # Errors
 /// The half already has pins.
-pub fn check_whole_half(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<(), String> {
+pub fn check_whole_half(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<(), CmdError> {
     let d = drawn(doc, c);
     let has = d.side(side).is_some_and(|m| !m.is_empty()) || taken.iter().any(|(s, _)| *s == side);
     if !has {
         return Ok(());
     }
     let at = half_goto(doc, c, side).map(|r| format!(" ({})", where_words(doc, r))).unwrap_or_default();
-    Err(format!(
+    Err(CmdError::refused(format!(
         "{} already has a {} half{at}. Place a {} half, or Enter for a new connector.",
         crate::devices::tag_words(doc, c),
         side.word(),
         side.other().word()
-    ))
+    )))
 }
 
 /// Check that pin `name` may be drawn on `side` of connector `c` (design 044 §6.1).
 ///
 /// # Errors
 /// The pin is drawn on that side (either side for a pin pair).
-pub fn check_named_pin(doc: &Document, c: ComponentId, side: Side, name: &str, taken: &BTreeSet<(Side, String)>) -> Result<(), String> {
+pub fn check_named_pin(doc: &Document, c: ComponentId, side: Side, name: &str, taken: &BTreeSet<(Side, String)>) -> Result<(), CmdError> {
     check_name(name)?;
     let d = drawn(doc, c);
     let sides: &[Side] = match side {
@@ -782,11 +783,14 @@ pub fn check_named_pin(doc: &Document, c: ComponentId, side: Side, name: &str, t
     };
     for s in sides {
         if taken.contains(&(*s, name.to_string())) {
-            return Err(format!("{}:{name} is already being drawn. Pick another pin.", half_tag(doc, c, *s)));
+            return Err(CmdError::refused(format!("{}:{name} is already being drawn. Pick another pin.", half_tag(doc, c, *s))));
         }
         if let Some(t) = d.side(*s).and_then(|m| m.get(name)).and_then(|v| v.first()) {
             let at = doc.representations_showing(*t).next().map(|(rid, _)| where_words(doc, rid)).unwrap_or_default();
-            return Err(format!("{}:{name} is drawn on {at}. Pick another pin, or Enter for the next free one.", half_tag(doc, c, *s)));
+            return Err(CmdError::refused(format!(
+                "{}:{name} is drawn on {at}. Pick another pin, or Enter for the next free one.",
+                half_tag(doc, c, *s)
+            )));
         }
     }
     Ok(())
@@ -801,8 +805,8 @@ pub fn check_named_pin(doc: &Document, c: ComponentId, side: Side, name: &str, t
 /// [`crate::connectors::plan_land`]'s refusals.
 pub fn land_pin(
     doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, shown: &[Shown], placement: Placement,
-) -> Result<crate::connectors::Land, String> {
-    let first = shown.first().ok_or("The symbol has no connection point.")?;
+) -> Result<crate::connectors::Land, CmdError> {
+    let first = shown.first().ok_or(CmdError::refused("The symbol has no connection point."))?;
     let before = crate::wires::route_vertices(doc, on.conductor, page).and_then(|(_, _, v)| v.get(on.segment).copied());
     let mut land = crate::connectors::plan_land(doc, ids, page, on, first.terminal)?;
     let (c1, c2) = (land.conductor, land.new);
@@ -875,7 +879,7 @@ fn set_route_end(item: &mut Item, p: Pt, start: bool) {
 ///
 /// # Errors
 /// A pin count out of range, an unknown side letter, a value the rules refuse.
-pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     if key == PINS_KEY {
         if !is_connector(doc, c) {
             return None;
@@ -887,7 +891,7 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
                 .ok()
                 .filter(|n| (1..=MAX_PINS).contains(n))
                 .map(|n| Some(n.to_string()))
-                .ok_or_else(|| format!("`pins` is a whole number from 1 to {MAX_PINS}.")),
+                .ok_or_else(|| CmdError::refused(format!("`pins` is a whole number from 1 to {MAX_PINS}."))),
         });
     }
     if key == PIN_NAMES_KEY {
@@ -907,12 +911,12 @@ pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&s
         let (letter, field) = rest.split_once('.').unwrap_or((rest, ""));
         if letter != "s" && letter != "p" {
             let shown: String = letter.chars().take(8).filter(|c| !c.is_control()).collect();
-            return Some(Err(format!("{tag} has no half \"{shown}\". Use half.s.* or half.p.*.")));
+            return Some(Err(CmdError::refused(format!("{tag} has no half \"{shown}\". Use half.s.* or half.p.*."))));
         }
         if field.is_empty() || field.chars().count() > 32 || !field.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
-            return Some(Err(format!("A half's field is a word such as {}: half.{letter}.description.", HALF_FIELDS.join(", "))));
+            return Some(Err(CmdError::refused(format!("A half's field is a word such as {}: half.{letter}.description.", HALF_FIELDS.join(", ")))));
         }
-        return Some(crate::devices::property_value(doc, "description", value));
+        return Some(crate::devices::property_value(doc, "description", value).map_err(CmdError::from));
     }
     if crate::defaults::connectors::is_naming_key(key) {
         if !is_connector(doc, c) {
@@ -1407,12 +1411,12 @@ mod tests {
         assert_eq!(names_for(&Names::Letters, 3), Ok(vec!["A".into(), "B".into(), "C".into()]));
         assert!(names_for(&Names::Letters, 27).is_err());
         assert_eq!(parse_list("L, N ,PE"), Ok(vec!["L".into(), "N".into(), "PE".into()]));
-        assert!(parse_list("P E").is_err_and(|e| e.contains("spaces")));
+        assert!(parse_list("P E").is_err_and(|e| e.to_string().contains("spaces")));
         assert!(parse_list("L,L").is_err());
         assert!(parse_list(&"x,".repeat(5_000)).is_err());
         assert!(check_name("a\u{1}").is_err());
         assert!(check_name("123456789").is_err());
-        assert!(names_for(&Names::List(vec!["L".into()]), 3).is_err_and(|e| e == "Give 3 pin names; got 1."));
+        assert!(names_for(&Names::List(vec!["L".into()]), 3).is_err_and(|e| e.to_string() == "Give 3 pin names; got 1."));
     }
 }
 
@@ -1438,29 +1442,29 @@ pub struct Land {
 /// # Errors
 /// The point at a route end, a terminal already there, a wire drawn on several pages; each says
 /// what to do instead.
-pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, t: TerminalId) -> Result<Land, String> {
+pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, t: TerminalId) -> Result<Land, CmdError> {
     let c = on.conductor;
-    let cond = doc.conductors.get(&c).ok_or("No such wire.")?;
+    let cond = doc.conductors.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
     let pages: BTreeSet<PageId> = doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page).collect();
     if pages.len() > 1 {
-        return Err(format!(
+        return Err(CmdError::refused(format!(
             "This wire is drawn on {} pages; place the terminal where the wire is drawn on one page, or on empty space and wire it.",
             pages.len()
-        ));
+        )));
     }
     if let Some(x) = strip_terminal_at(doc, page, on.at) {
-        return Err(format!("{} is already there. Click elsewhere on the wire.", terminal_words(doc, x)));
+        return Err(CmdError::refused(format!("{} is already there. Click elsewhere on the wire.", terminal_words(doc, x))));
     }
-    let (item_id, item, v) = crate::wires::route_vertices(doc, c, page).ok_or("The wire has no route on this page.")?;
-    let (first, last) = (v.first().copied().ok_or("empty route")?, v.last().copied().ok_or("empty route")?);
+    let (item_id, item, v) = crate::wires::route_vertices(doc, c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
+    let (first, last) = (v.first().copied().ok_or(CmdError::refused("empty route"))?, v.last().copied().ok_or(CmdError::refused("empty route"))?);
     for (end, p) in [(End::A, first), (End::B, last)] {
         if on.at.near(p, ON_WIRE) {
-            return Err(match cond.end(end) {
+            return Err(CmdError::refused(match cond.end(end) {
                 Some(x) => {
                     format!("That is the end of the wire at {}. Click along the wire, away from its ends, or on empty space.", terminal_words(doc, x))
                 }
                 None => "That is the end of the wire. Click along the wire, away from its ends, or on empty space.".into(),
-            });
+            }));
         }
     }
     let seg = on.segment;

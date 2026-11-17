@@ -47,6 +47,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::derive::Place;
 use ecad_model::{CableId, CableMember, ComponentId, ConductorId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId};
 
+use crate::CmdError;
 use crate::outputs::PageCx;
 use crate::outputs::kept::Outputs;
 use crate::symbols::Kind;
@@ -172,7 +173,7 @@ impl Offer {
 /// # Errors
 /// Unreadable text, an unknown code, no positions, or more than [`MAX_POSITIONS`] in all, in
 /// words with the way forward.
-pub fn parse_offer(text: &str) -> Result<Offer, String> {
+pub fn parse_offer(text: &str) -> Result<Offer, CmdError> {
     let counts = crate::terminal_types::parse_counts(text)?;
     let positions = counts.iter().fold(0u32, |a, b| a.saturating_add(*b));
     Ok(Offer { positions, pe: counts.get(1).copied().unwrap_or(0), counts })
@@ -182,7 +183,7 @@ pub fn parse_offer(text: &str) -> Result<Offer, String> {
 ///
 /// # Errors
 /// [`parse_offer`]'s.
-pub fn offer_value(value: Option<&str>) -> Result<Option<String>, String> {
+pub fn offer_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),
         Some(v) => Ok(Some(parse_offer(v)?.text())),
@@ -228,10 +229,10 @@ pub fn offer_of(doc: &Document, c: ComponentId) -> Option<Offer> {
 
 // ---------------------------------------------------------------- cores (§6)
 
-fn cores_refusal(text: &str) -> String {
+fn cores_refusal(text: &str) -> CmdError {
     let shown: String = text.chars().take(24).collect();
     let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    format!("\"{shown}{more}\" is not a core list. Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE.")
+    CmdError::refused(format!("\"{shown}{more}\" is not a core list. Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE."))
 }
 
 /// A core count as a cable type writes it (design 028 §6.1, owner decisions 2026-11-12).
@@ -417,10 +418,10 @@ pub fn notation_size(kind: &str) -> Option<f64> {
 ///
 /// # Errors
 /// Unreadable text, no cores, more than [`MAX_CORES`], an empty or repeated list entry.
-pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
+pub fn parse_cores(text: &str) -> Result<Vec<String>, CmdError> {
     let t = text.trim();
     if t.chars().count() > MAX_CORES * (crate::words::MAX_CORE_CHARS + 1) {
-        return Err(format!("A cable offers at most {MAX_CORES} cores."));
+        return Err(CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")));
     }
     let upper = t.to_ascii_uppercase();
     let (digits, letter) = match upper.char_indices().last() {
@@ -428,12 +429,12 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
         _ => (upper.as_str(), None),
     };
     if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
-        let n: usize = digits.parse().map_err(|_| format!("A cable offers at most {MAX_CORES} cores."))?;
+        let n: usize = digits.parse().map_err(|_| CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")))?;
         if n == 0 {
-            return Err("A cable offers at least 1 core. Write 7, 7G or 5X; empty clears it.".into());
+            return Err(CmdError::refused("A cable offers at least 1 core. Write 7, 7G or 5X; empty clears it."));
         }
         if n > MAX_CORES {
-            return Err(format!("A cable offers at most {MAX_CORES} cores."));
+            return Err(CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")));
         }
         let pe = match letter {
             Some('G') => Some(true),
@@ -448,13 +449,15 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
     }
     let mut out: Vec<String> = Vec::new();
     for part in t.split(',') {
-        let label = crate::strips::core_label(Some(part)).map_err(|e| format!("{e} {}", cores_refusal(text)))?.ok_or_else(|| cores_refusal(text))?;
+        let label = crate::strips::core_label(Some(part))
+            .map_err(|e| CmdError::refused(format!("{e} {}", cores_refusal(text))))?
+            .ok_or_else(|| cores_refusal(text))?;
         if out.iter().any(|x| x.eq_ignore_ascii_case(&label)) {
-            return Err(format!("The core list names {label} twice. Write each core once."));
+            return Err(CmdError::refused(format!("The core list names {label} twice. Write each core once.")));
         }
         out.push(label);
         if out.len() > MAX_CORES {
-            return Err(format!("A cable offers at most {MAX_CORES} cores."));
+            return Err(CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")));
         }
     }
     Ok(out)
@@ -465,7 +468,7 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, String> {
 ///
 /// # Errors
 /// [`parse_cores`]'s.
-pub fn cores_value(value: Option<&str>) -> Result<Option<String>, String> {
+pub fn cores_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let cores = parse_cores(v)?;
     let upper = v.to_ascii_uppercase();
@@ -1745,13 +1748,13 @@ pub fn plan_lines(s: &StripData) -> usize {
 ///
 /// # Errors
 /// Longer than [`crate::words::MAX_CORE_CHARS`] characters, or a control character, in words.
-pub fn core_label(text: Option<&str>) -> Result<Option<String>, String> {
+pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.chars().any(char::is_control) {
-        return Err("A core label cannot contain control characters.".into());
+        return Err(CmdError::refused("A core label cannot contain control characters."));
     }
     if t.chars().count() > crate::words::MAX_CORE_CHARS {
-        return Err(format!("A core label can be at most {} characters.", crate::words::MAX_CORE_CHARS));
+        return Err(CmdError::refused(format!("A core label can be at most {} characters.", crate::words::MAX_CORE_CHARS)));
     }
     Ok(Some(t.to_string()))
 }
@@ -1794,7 +1797,7 @@ mod tests {
         assert!(parse_offer("990+10PE").is_err(), "999 in all");
         assert_eq!(offer_value(Some("12 + 2 PE")), Ok(Some("12+2PE".into())));
         assert_eq!(offer_value(Some("  ")), Ok(None));
-        assert!(parse_offer("12X").unwrap_err().contains("Write 12, 12+2PE or 12+4x3"));
+        assert!(parse_offer("12X").unwrap_err().to_string().contains("Write 12, 12+2PE or 12+4x3"));
         assert!(parse_offer("1000").is_err());
         assert!(parse_offer("0").is_err());
         assert_eq!(parse_offer("2+3PE").map(Offer::text), Ok("2+3PE".into()));
@@ -1807,7 +1810,7 @@ mod tests {
         assert_eq!(parse_cores("3g").unwrap(), ["1", "2", GNYE]);
         assert_eq!(parse_cores("3X").unwrap(), ["1", "2", "3"]);
         assert_eq!(parse_cores("BN, BK ,GNYE").unwrap(), ["BN", "BK", "GNYE"]);
-        assert!(parse_cores("7Q").unwrap_err().contains("Write 7, 7G, 5X, 4x2x0.25 (pairs)"));
+        assert!(parse_cores("7Q").unwrap_err().to_string().contains("Write 7, 7G, 5X, 4x2x0.25 (pairs)"));
         assert!(parse_cores("1000").is_err());
         assert!(parse_cores("BN,BN").is_err());
         assert!(parse_cores("BN,,BK").is_err());

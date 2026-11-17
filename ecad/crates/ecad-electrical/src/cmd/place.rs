@@ -145,7 +145,7 @@ pub fn connector_target(
         && let Some(named) = crate::connectors::resolve(doc, t)
     {
         // Brief 044 (tester D5): a half's tag (`-X01.P`) names its connector and that half.
-        let (c, half, _) = named.map_err(CmdError::refused)?;
+        let (c, half, _) = named?;
         if let Some(h) = half
             && side != Side::Both
             && h != side

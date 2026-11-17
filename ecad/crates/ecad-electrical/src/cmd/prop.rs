@@ -193,7 +193,7 @@ fn mirror_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Res
 }
 
 fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::offer_value(value).map_err(refused)
+    crate::strips::offer_value(value)
 }
 
 fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -202,14 +202,14 @@ fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Res
 
 fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o).and_then(|c| crate::connectors::setprop_value(doc, c, key, value)) {
-        Some(r) => r.map_err(refused),
+        Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
 }
 
 fn terminal_default_value(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match crate::defaults::terminals::setprop_value(key, value) {
-        Some(r) => r.map_err(refused),
+        Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
 }
@@ -245,14 +245,14 @@ fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Re
 
 fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let rule = match component(o) {
-        Some(c) => crate::accessories::setprop_rule(doc, c, key, value).map_err(refused)?,
+        Some(c) => crate::accessories::setprop_rule(doc, c, key, value)?,
         None => None,
     };
     Ok(rule.unwrap_or_else(|| value.map(str::to_string)))
 }
 
 fn cores_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::cores_value(value).map_err(refused)
+    crate::strips::cores_value(value)
 }
 
 fn unused_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
