@@ -108,8 +108,8 @@ impl RackHead {
 /// (`3`). Anything else is refused on input and a read error in a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NetAddress {
-    /// An IPv4 address, its four numbers in order.
-    Ip([u8; 4]),
+    /// An IPv4 address (`core::net`: plain data, no system access).
+    Ip(core::net::Ipv4Addr),
     Node(u16),
 }
 
@@ -126,15 +126,7 @@ impl NetAddress {
     pub fn parse(text: &str) -> Option<NetAddress> {
         let t = text.trim();
         if t.contains('.') {
-            let mut out = [0u8; 4];
-            let mut parts = t.split('.');
-            for b in &mut out {
-                let p = parts.next()?;
-                // Digits only, no leading zero, 0–255.
-                let n = crate::words::uint_canonical(p, 255)?;
-                *b = u8::try_from(n).ok()?;
-            }
-            return parts.next().is_none().then_some(NetAddress::Ip(out));
+            return t.parse::<core::net::Ipv4Addr>().ok().map(NetAddress::Ip);
         }
         crate::words::uint(t, u32::from(MAX_NODE)).filter(|_| t.len() <= 5).and_then(|n| u16::try_from(n).ok()).map(NetAddress::Node)
     }
@@ -143,7 +135,7 @@ impl NetAddress {
 impl fmt::Display for NetAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NetAddress::Ip([a, b, c, d]) => write!(f, "{a}.{b}.{c}.{d}"),
+            NetAddress::Ip(a) => write!(f, "{a}"),
             NetAddress::Node(n) => write!(f, "{n}"),
         }
     }

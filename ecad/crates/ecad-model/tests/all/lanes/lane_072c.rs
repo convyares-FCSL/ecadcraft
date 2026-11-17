@@ -101,3 +101,13 @@ fn the_replaced_keys_are_reserved() {
     }
     assert!(!is_reserved("plc.slots"), "a registry entry stays a value");
 }
+
+/// A station's network address: an IPv4 address in its one written form, or a node number.
+#[test]
+fn network_addresses_read_strictly() {
+    assert_eq!(NetAddress::parse("192.168.0.10").map(|a| a.to_string()).as_deref(), Some("192.168.0.10"));
+    assert_eq!(NetAddress::parse("7"), Some(NetAddress::Node(7)));
+    for bad in ["300.1.1.1", "1.2.3", "1.2.3.4.5", "01.2.3.4", "65536", "x"] {
+        assert_eq!(NetAddress::parse(bad), None, "{bad}");
+    }
+}
