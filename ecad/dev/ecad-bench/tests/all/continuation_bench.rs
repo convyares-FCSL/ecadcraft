@@ -75,7 +75,7 @@ fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: 
         props.insert("caption".into(), c.into());
     }
     let style = Style { layer: ecad_model::LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_cadcraft::wires::continuation_starter().unwrap();
+    let starter = ecad_cadcraft::wires::continuation_starter();
     let pl = Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
     let t = ecad_cadcraft::wires::plan_tagless(doc, ids, page, style, starter, pl, props).unwrap();
     for op in &t.ops {

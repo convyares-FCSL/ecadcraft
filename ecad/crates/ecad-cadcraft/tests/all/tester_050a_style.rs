@@ -19,6 +19,7 @@ use ecad_cadcraft::defaults::{self, Kind, Level, Scope, Source};
 use ecad_cadcraft::text_style::{self, TextKind};
 use ecad_cadcraft::{Persistence, printbook};
 use ecad_drawing_style::sheet::PAPER;
+use ecad_model::Word;
 use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId, Transaction};
 use serde_json::{Value, json};
 

@@ -372,7 +372,7 @@ fn registry_defaults_apply() {
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
     assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");
-    assert!(ecad_cadcraft::text_style::TextKind::from_word("continuation_caption").is_some());
+    assert!(<ecad_cadcraft::text_style::TextKind as ecad_model::Word>::parse("continuation_caption").is_some());
 }
 
 /// Check 13: a name with many arrows keeps implicit edges (no m² storage) and stays equal to a
@@ -448,7 +448,7 @@ fn xrefs_on_a_name_of(m: usize) {
     ledger.commit(ecad_model::Author::User, "pages", setup).unwrap();
     let mut ids = IdAllocator::seeded(0x49_15);
     let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_cadcraft::wires::continuation_starter().unwrap();
+    let starter = ecad_cadcraft::wires::continuation_starter();
     let mut props = ecad_model::Properties::new();
     props.insert("kind".into(), "continuation".into());
     props.insert("name".into(), "BIG".into());

@@ -200,7 +200,8 @@ fn make_run(card: ComponentId, dir: f64, pieces: &[Piece]) -> Run {
 fn name_block(doc: &Document, c: ComponentId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    if crate::text_style::Shown::from_word(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+    if <crate::text_style::Shown as ecad_model::Word>::parse(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+        .unwrap_or_default()
         != crate::text_style::Shown::Off
     {
         out.push((crate::devices::tag_words(doc, c), TextKind::Tag));
