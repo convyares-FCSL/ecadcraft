@@ -26,7 +26,7 @@ impl Project {
                 vec![
                     // The first page is numbered 1 (brief 019): stored, so moving pages never
                     // renumbers it.
-                    Op::AddPage { id: page, page: first_page(), index: 0 },
+                    Op::AddPage { id: page, page: first_page().map_err(|e| e.to_string())?, index: 0 },
                     Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
                     // The length unit is recorded at creation (proposal §20.13).
                     Op::SetProjectSettings {

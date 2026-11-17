@@ -85,7 +85,7 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
                     id: *id,
                     duplicate: seen.get(&num.to_ascii_lowercase()).is_some_and(|c| *c > 1),
                     number: num,
-                    title: doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
+                    title: doc.pages.get(id).map(|p| p.title.to_string()).unwrap_or_default(),
                     unavailable: unavailable(*id),
                     depth: *depth,
                     folder: ecad_model::book::folder_of(doc, *id).filter(|f| doc.folders.contains_key(f)),
@@ -96,11 +96,12 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
 }
 
 /// Whether `ops` could change the Pages tree (design 019 §9): pages added, removed, renamed or
-/// moved, a page's properties (number, folder), folder ops. Every other op changes nothing there.
+/// moved, a page's title, number or folder changed in place (`ModifyPage`), folder ops. Every other
+/// op, and a `ModifyPage` of anything else, changes nothing there.
 pub fn tree_touched(ops: &[Op]) -> bool {
-    ops.iter().any(|op| {
-        matches!(op, Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. })
-            || matches!(op, Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. }
-            if key == ecad_model::book::NUMBER_KEY || key == ecad_model::book::FOLDER_KEY)
+    ops.iter().any(|op| match op {
+        Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
+        Op::ModifyPage { before, after, .. } => before.title != after.title || before.number != after.number || before.folder != after.folder,
+        _ => false,
     })
 }

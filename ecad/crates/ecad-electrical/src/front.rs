@@ -475,6 +475,10 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Component(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
+        Op::ModifyPage { before, after, .. } => {
+            let ch = before.change(after);
+            codes_on && ch.display.iter().any(|k| crate::designations::Aspect::of_property(k).is_some())
+        }
         Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()
         }

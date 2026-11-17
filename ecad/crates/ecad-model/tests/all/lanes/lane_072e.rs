@@ -1,0 +1,111 @@
+//! Brief 072 lane E (design 072 §5.1, §14): the typed page. `ModifyPage` (A9: inverse, applied
+//! and checked), `PageKind` and `GenKind` words (A2), the page's old keys reserved (A3), and the
+//! strict page record (A4).
+
+use ecad_model::book::{Book, PageNo};
+use ecad_model::keys;
+use ecad_model::{Author, GenKind, IdAllocator, Ledger, ModelError, ObjectRef, Op, Page, PageId, PageKind, StyleRef, Word};
+
+fn one_page() -> (Ledger, PageId, IdAllocator) {
+    let mut ids = IdAllocator::seeded(72);
+    let mut ledger = Ledger::new(72);
+    let page: PageId = ids.fresh();
+    ledger.commit(Author::User, "page", vec![Op::AddPage { id: page, page: Page::titled("Supply").unwrap(), index: 0 }]).unwrap();
+    (ledger, page, ids)
+}
+
+/// A9: `ModifyPage` applies, inverts, undoes and replays; a page that is not as recorded, or a
+/// changed kind, is refused and leaves the document as it was.
+#[test]
+fn modify_page_applies_inverts_and_refuses() {
+    let (mut ledger, page, _) = one_page();
+    let before = ledger.document().pages[&page].clone();
+    let mut after = before.clone();
+    after.title = ecad_model::PageTitle::new("Main supply").unwrap();
+    after.number = PageNo::parse("105a");
+    after.page_type = StyleRef::builtin("network");
+    after.sheet = ecad_model::SheetSpec::parse("A2").ok();
+    after.display.insert("text.tag.show".into(), "yes".into());
+    let op = Op::ModifyPage { id: page, before: before.clone(), after: after.clone() };
+    assert_eq!(op.inverse(), Op::ModifyPage { id: page, before: after.clone(), after: before.clone() });
+    ledger.commit(Author::User, "modify", vec![op.clone()]).unwrap();
+    let doc = ledger.document();
+    assert_eq!(doc.pages[&page], after);
+    assert_eq!(Book::of(doc).number(doc, page), "105a");
+    assert_eq!(doc.page_order, [page], "the page keeps its place");
+    ledger.undo(Author::User).unwrap();
+    assert_eq!(ledger.document().pages[&page], before);
+    assert!(ledger.replay_matches().unwrap());
+
+    let snapshot = ledger.document().clone();
+    let cases: Vec<(&str, Op)> = vec![
+        ("before differs", Op::ModifyPage { id: page, before: after.clone(), after: before.clone() }),
+        (
+            "kind changes",
+            Op::ModifyPage { id: page, before: before.clone(), after: Page { kind: PageKind::generated(GenKind::Cover), ..before.clone() } },
+        ),
+        ("a missing folder", {
+            let mut a = before.clone();
+            a.folder = Some(ecad_model::FolderId(9));
+            Op::ModifyPage { id: page, before: before.clone(), after: a }
+        }),
+    ];
+    for (what, op) in cases {
+        let e = ledger.commit(Author::User, what, vec![op]).unwrap_err();
+        assert!(matches!(e, ModelError::Precondition(_) | ModelError::Invariant(_)), "{what}: {e:?}");
+        assert_eq!(ledger.document(), &snapshot, "{what}");
+    }
+}
+
+/// A3: the page's old keys are reserved; writing one to any bag is refused.
+#[test]
+fn the_pages_old_keys_are_reserved() {
+    let (mut ledger, page, _) = one_page();
+    for key in ["number", "folder", "sheet", "title_block", "generated", "strip", "page.type"] {
+        assert!(keys::is_reserved(key), "{key}");
+        assert!(keys::spec(key).is_none(), "{key} is no longer a free key");
+        for object in [ObjectRef::Page(page), ObjectRef::Project] {
+            let op = Op::SetProperty { object, key: key.into(), before: None, after: Some("x".into()) };
+            let e = ledger.commit(Author::User, key, vec![op]).unwrap_err();
+            assert!(matches!(e, ModelError::Precondition(_)), "{key}: {e:?}");
+        }
+    }
+}
+
+/// A2: every generated kind's word round-trips, and a page record round-trips with each kind.
+#[test]
+fn page_kinds_and_their_words_round_trip() {
+    let words: Vec<&str> = GenKind::ALL.iter().map(|k| k.word()).collect();
+    assert_eq!(words, ["cover", "contents", "revisions", "bom-location", "terminals", "cables", "plcrack", "iolist"]);
+    for k in GenKind::ALL {
+        assert_eq!(GenKind::parse(k.word()), Some(*k));
+    }
+    let strip = ecad_model::ComponentId(0xabc);
+    for kind in [PageKind::Schematic, PageKind::generated(GenKind::Cover), PageKind::TerminalStrip { strip }] {
+        let mut p = Page::titled("p").unwrap();
+        p.kind = kind;
+        let text = serde_json::to_string(&p).unwrap();
+        assert_eq!(serde_json::from_str::<Page>(&text).unwrap(), p, "{text}");
+        assert_eq!(text.contains("kind"), kind != PageKind::Schematic, "a schematic page writes no kind: {text}");
+    }
+}
+
+/// A4: a page record with an unknown field, an unknown kind word, a hidden character in its title
+/// or a malformed number does not read.
+#[test]
+fn a_page_record_is_strict() {
+    let bad = [
+        r#"{"title":"p","properties":{"number":"1"}}"#,
+        r#"{"title":"p","kind":{"generated":"poster"}}"#,
+        r#"{"title":"p","kind":{"terminal_strip":{}}}"#,
+        r#"{"title":"p","kind":{"generated":"terminals","strip":"0abc"}}"#,
+        "{\"title\":\"p\u{202E}q\"}",
+        r#"{"title":""}"#,
+        r#"{"title":"p","number":"1.5"}"#,
+    ];
+    for text in bad {
+        assert!(serde_json::from_str::<Page>(text).is_err(), "{text}");
+    }
+    let good: Page = serde_json::from_str(r#"{"title":"p","number":"7","kind":{"generated":"iolist"}}"#).unwrap();
+    assert_eq!(good.kind.generated_kind(), Some(GenKind::IoList));
+}

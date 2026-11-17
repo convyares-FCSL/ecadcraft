@@ -337,7 +337,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let comp: ComponentId = ids.fresh();
     let hub: TerminalId = ids.fresh();
     let mut ops = vec![
-        Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+        Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateComponent { id: comp, component: Component::default() },
         Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
     ];

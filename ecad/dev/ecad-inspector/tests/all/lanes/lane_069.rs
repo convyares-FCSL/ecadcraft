@@ -75,7 +75,7 @@ fn every_op_ledger() -> Ledger {
     let mut ids = IdAllocator::seeded(0x069);
     let mut ledger = Ledger::new(0x069);
     let page: PageId = ids.fresh();
-    let page_v = Page::new("1");
+    let page_v = Page::titled("1").unwrap();
     let layer: LayerId = ids.fresh();
     let layer_v = Layer { name: "0".into() };
     let def: ecad_model::DefinitionId = ids.fresh();
@@ -146,8 +146,14 @@ fn every_op_ledger() -> Ledger {
     rep_after.role = "moved".into();
     let header = StandardHeader { id: ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None };
     let ops = vec![
-        Op::AddPage { id: ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: page, page: page_v.clone(), index: 0 },
+        // Lane 072 E (A15): a page changed in place.
+        Op::ModifyPage {
+            id: page,
+            before: page_v.clone(),
+            after: Page { number: ecad_model::PageNo::parse("7"), sheet: ecad_model::SheetSpec::parse("A2").ok(), ..page_v.clone() },
+        },
         Op::AddLayer { id: ids.fresh(), layer: Layer { name: "x".into() } },
         Op::RemoveLayer { id: layer, layer: layer_v.clone() },
         Op::AddItem { id: ids.fresh(), item: line(page, layer, 1.0) },

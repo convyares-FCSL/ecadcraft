@@ -262,7 +262,7 @@ fn r_the_page_title_pattern_is_bounded() {
 fn o_the_rack_sheet_draws_a_heading_and_tiles_per_rack() {
     let F { mut h, .. } = fixture(5110);
     let page: PageId = id(&h.run("newpage", json!({"generated": "plcrack"})).unwrap(), "page");
-    assert_eq!(h.doc().pages.get(&page).map(|p| p.title.clone()).as_deref(), Some("PLC racks"));
+    assert_eq!(h.doc().pages.get(&page).map(|p| p.title.to_string()).as_deref(), Some("PLC racks"));
     assert_eq!(sheets_of(&mut h, page), 1);
     let t = texts(&mut h, page);
     assert!(t.iter().any(|x| x == "-A01 \u{b7} CPU \u{b7} 32 slots, 3 used"), "{t:?}");
@@ -461,19 +461,13 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
     let first = h.first_page();
     let d = h.doc();
     let plc = h.cfg(|p| p.outputs().plc.clone());
-    let renumber = vec![ecad_model::Op::SetProperty {
-        object: ecad_model::ObjectRef::Page(first),
-        key: ecad_model::book::NUMBER_KEY.into(),
-        before: None,
-        after: Some("7".into()),
-    }];
+    let renumbered = |p: PageId, n: &str| {
+        let before = d.pages[&p].clone();
+        ecad_model::Op::ModifyPage { id: p, before: before.clone(), after: ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before } }
+    };
+    let renumber = vec![renumbered(first, "7")];
     assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &renumber));
-    let empty = vec![ecad_model::Op::SetProperty {
-        object: ecad_model::ObjectRef::Page(sheet),
-        key: ecad_model::book::NUMBER_KEY.into(),
-        before: None,
-        after: Some("9".into()),
-    }];
+    let empty = vec![renumbered(sheet, "9")];
     assert!(!ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &empty), "a page with no PLC symbol");
     let item = h.symbol_item(ai);
     let it = d.items[&item].clone();

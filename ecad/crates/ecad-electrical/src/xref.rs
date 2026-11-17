@@ -1677,10 +1677,14 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
                     self.devices.insert(*c);
                 }
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
-                {
-                    self.devices.extend(idx.devices_on(doc, *p));
+                Op::ModifyPage { id: p, before, after } => {
+                    let ch = before.change(after);
+                    if ch.number || ch.sheet || ch.page_type {
+                        self.devices.extend(idx.devices_on(doc, *p));
+                    }
+                    if ch.folder {
+                        self.moved(doc, idx, ops, &mut moved);
+                    }
                 }
                 // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
                 Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
@@ -1689,9 +1693,6 @@ impl Scope {
                             self.devices.extend(idx.devices_on(doc, p));
                         }
                     }
-                }
-                Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
-                    self.moved(doc, idx, ops, &mut moved);
                 }
                 Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {
                     self.moved(doc, idx, ops, &mut moved);
@@ -1737,10 +1738,11 @@ impl Scope {
             }
             // Brief 049: what continuation arrows the op could change.
             match op {
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
-                {
-                    self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                Op::ModifyPage { id: p, before, after } => {
+                    let ch = before.change(after);
+                    if ch.number || ch.sheet || ch.page_type {
+                        self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                    }
                 }
                 Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {

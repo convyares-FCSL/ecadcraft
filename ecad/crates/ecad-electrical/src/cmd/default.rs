@@ -183,7 +183,17 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
                 Ok(if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] })
             }
         },
-        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.properties), entry.key.to_string()),
+        // Design 072 §5.1: a page's type is its field, changed with `ModifyPage`.
+        (Level::Page, Target::Page(pg)) if entry.key == ecad_model::sheet::PAGE_TYPE_KEY => {
+            let before = doc.pages.get(&pg).ok_or(CmdError::NotFound(Noun::Object))?;
+            let mut after = before.clone();
+            after.page_type = match value.as_deref() {
+                Some(v) => Some(ecad_model::StyleRef::parse(v).ok_or_else(|| CmdError::refused(format!("`{v}` is not a page type")))?),
+                None => None,
+            };
+            Ok(if after == *before { Vec::new() } else { vec![Op::ModifyPage { id: pg, before: before.clone(), after }] })
+        }
+        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.display), entry.key.to_string()),
         (Level::Object, Target::Symbol(rep)) => {
             let c = match doc.representations.get(&rep).map(|r| r.subject) {
                 Some(ecad_model::Subject::Component(c)) => c,

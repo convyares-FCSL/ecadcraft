@@ -658,7 +658,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         // hand-edited file) would move without any, which the model refuses (I14) with words
         // nobody can act on: say what is wrong instead.
         if r.form == Form::Symbol && shown.is_empty() && rep_definition(doc, r).is_some_and(|(def, _)| !def.terminals.is_empty()) {
-            let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.clone());
+            let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.to_string());
             return Err(CmdError::refused(format!(
                 "Cannot merge {from_words}: its symbol on page \"{page}\" is not linked to any of its connection points. Delete that symbol and place it again, then merge."
             )));

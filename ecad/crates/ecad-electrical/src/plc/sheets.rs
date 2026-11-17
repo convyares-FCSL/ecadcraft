@@ -194,7 +194,7 @@ pub const NO_RACKS: &str = "No PLC racks.";
 /// resized, or any page moved in the book. Only the ops' own items and the pages they name are
 /// read.
 pub fn rack_places_touched(doc: &Document, plc: &Plc, ops: &[ecad_model::Op]) -> bool {
-    use ecad_model::{ObjectRef, Op, Subject};
+    use ecad_model::{Op, Subject};
     let ours = |c: ecad_model::ComponentId| plc.cards.contains_key(&c) || plc.racks.contains_key(&c);
     let page_holds = |p: PageId| doc.representations_on(p).any(|(_, r)| matches!(r.subject, Subject::Component(c) if ours(c)));
     for op in ops {
@@ -207,11 +207,11 @@ pub fn rack_places_touched(doc: &Document, plc: &Plc, ops: &[ecad_model::Op]) ->
                     return true;
                 }
             }
-            Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                if (key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::book::FOLDER_KEY)
-                    && page_holds(*p) =>
-            {
-                return true;
+            Op::ModifyPage { id: p, before, after } => {
+                let ch = before.change(after);
+                if (ch.number || ch.sheet || ch.folder) && page_holds(*p) {
+                    return true;
+                }
             }
             _ => {}
         }

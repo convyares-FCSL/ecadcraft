@@ -175,7 +175,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
             pinned: plc.blocks.get(&c).is_some_and(|b| b.pinned),
             rule,
             page: page
-                .map(|pg| (pg, ecad_cadcraft::references::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.clone()).unwrap_or_default())),
+                .map(|pg| (pg, ecad_cadcraft::references::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.to_string()).unwrap_or_default())),
             drawn: (drawn, used.len()),
             maker: own("maker").unwrap_or_default(),
             part_number: own("part_number").unwrap_or_default(),

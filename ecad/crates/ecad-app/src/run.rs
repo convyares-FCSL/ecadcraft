@@ -519,7 +519,7 @@ impl App {
                 self.publish_view(shell::PublishTab::Release);
             }
             A::NewGenerated(kind) => {
-                let mut v = json!({"generated": kind.value()});
+                let mut v = json!({"generated": ecad_model::Word::word(kind)});
                 if let Some(f) = self.panel.target_folder() {
                     v["folder"] = json!(f.hex());
                 }

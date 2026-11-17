@@ -211,6 +211,6 @@ pub fn build(doc: &Document, c: ComponentId, rep: RepresentationId, kinds: &[Tex
 /// The page a symbol is on (for the header of a page).
 pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
     let number = ecad_model::book::page_number(doc, page);
-    let title = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+    let title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)
 }

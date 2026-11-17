@@ -40,6 +40,7 @@ pub mod links;
 pub mod merge;
 pub mod numbering;
 pub mod op;
+pub mod page;
 pub mod prefix;
 pub mod sheet;
 pub mod strict;
@@ -68,6 +69,7 @@ pub use id::{
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
+pub use page::{GenKind, PageKind, PageTitle};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use words::{Side, Word};

@@ -415,7 +415,7 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
     let props = match object {
         ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
         ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
-        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),
+        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
         ObjectRef::Project => Some(&doc.properties),
         ObjectRef::Cable(_) | ObjectRef::Standard => None,
     }

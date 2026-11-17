@@ -78,3 +78,26 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
 (ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
+
+## Lane E, step 1: typed pages (design 072 §5.1)
+
+A page's title, number, folder, kind, page type, sheet and borrowed title block are fields of the
+page now, not keys in its property bag. Renaming, renumbering, moving to another folder or
+setting a page's sheet or type records one `ModifyPage`. A generated page's kind is fixed when it
+is made: a terminal plan of every strip, or of one strip.
+
+- Nothing should look different: page numbers, folders, the Pages panel, the title block and
+  references follow every change as before.
+- A file whose page holds one of the old keys (`number`, `folder`, `sheet`, `title_block`,
+  `generated`, `strip`, `page.type`) in its property bag opens read-only and names the key.
+- The inspector's Pages view shows each page's kind, page type, sheet and title block.
+
+### Try it
+
+1. Make a page, rename it from the Pages panel, set its number and sheet in its properties, and
+   move it into a folder: each is one undo step, and the title block follows.
+2. New page ▸ Terminal plan, once with no strip and once for one strip: both show their strips.
+3. Open the project in the inspector: the Pages view lists the kinds.
+
+Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
+tried these steps by hand yet.

@@ -8,7 +8,7 @@ use crate::incremental_contracts::{all_ops, applicable, base};
 /// The kind of effect each op gives (design 064 §3.2).
 fn expected(op: &Op) -> EffectKind {
     match op.name() {
-        "AddPage" | "RemovePage" => EffectKind::Page,
+        "AddPage" | "RemovePage" | "ModifyPage" => EffectKind::Page,
         "AddLayer" | "RemoveLayer" => EffectKind::Layer,
         "AddItem" | "ModifyItem" | "RemoveItem" => EffectKind::Item,
         "CreateComponent" | "DeleteComponent" => EffectKind::Component,
@@ -56,7 +56,7 @@ fn pairs_fold() {
     let mut b = base();
     let other = b.ids.fresh();
     let mut renamed = b.page_v.clone();
-    renamed.title = "renamed".into();
+    renamed.title = ecad_model::PageTitle::new("renamed").unwrap();
     let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".into(), before: None, after: Some("9".into()) };
     let page_pair =
         vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 1 }];
@@ -81,10 +81,10 @@ fn pairs_fold() {
     }
     let folded = Effects::of(&page_pair);
     match folded.iter().next() {
-        Some(Effect::Page { id, before: Some(bf), after: Some(af) }) => {
+        Some(Effect::Page { id, before: Some(_), after: Some(af), index_before, index_after }) => {
             assert_eq!(*id, b.page);
-            assert_eq!((bf.index, af.index), (0, 1), "a move changes the index");
-            assert_eq!(af.value.title, "renamed");
+            assert_eq!((*index_before, *index_after), (Some(0), Some(1)), "a move changes the index");
+            assert_eq!(af.title.as_str(), "renamed");
         }
         other => panic!("page pair: {other:?}"),
     }
@@ -103,7 +103,7 @@ fn old_touched(ops: &[Op]) -> Touched {
     let mut t = Touched::default();
     for op in ops {
         match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+            Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
                 t.page_order = true;
                 t.pages.insert(*id);
             }

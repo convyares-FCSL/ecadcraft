@@ -435,7 +435,7 @@ impl Project {
                 let open = view.and_then(|v| v.uid).filter(|u| pg.doc(*u).is_some());
                 PageRow {
                     id: *p,
-                    title: doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default(),
+                    title: doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default(),
                     uid: open,
                     mapped: view.filter(|_| open.is_some()).map(|v| v.map.len()),
                     map_consistent: view.filter(|_| open.is_some()).map(|v| v.map.is_consistent()),
@@ -774,7 +774,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
         lines.push("no page is open".into());
     }
     for p in &inputs.pages {
-        let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.clone());
+        let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.to_string());
         let same = crate::project::project_page_pending(
             &inputs.doc,
             p.id,
@@ -892,6 +892,7 @@ pub fn op_view(op: &Op) -> OpView {
     let (before, after) = match op {
         Op::AddPage { page, index, .. } => (None, val(&json!({"page": page, "index": index}))),
         Op::RemovePage { page, index, .. } => (val(&json!({"page": page, "index": index})), None),
+        Op::ModifyPage { before, after, .. } => (val(before), val(after)),
         Op::AddLayer { layer, .. } => (None, val(layer)),
         Op::RemoveLayer { layer, .. } => (val(layer), None),
         Op::AddItem { item, .. } => (None, val(item)),
@@ -949,7 +950,14 @@ fn rep_refs(rep: &ecad_model::Representation, out: &mut Vec<ObjectId>) {
 pub fn op_targets(op: &Op) -> Vec<ObjectId> {
     let mut out = Vec::new();
     match op {
-        Op::AddPage { id, .. } | Op::RemovePage { id, .. } => out.push(ObjectId::Page(*id)),
+        Op::AddPage { id, page, .. } | Op::RemovePage { id, page, .. } => {
+            out.push(ObjectId::Page(*id));
+            out.extend(page.kind.strip().map(ObjectId::Component));
+        }
+        Op::ModifyPage { id, before, .. } => {
+            out.push(ObjectId::Page(*id));
+            out.extend(before.kind.strip().map(ObjectId::Component));
+        }
         Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => out.push(ObjectId::Layer(*id)),
         Op::AddItem { id, item } | Op::RemoveItem { id, item } => {
             out.push(ObjectId::Item(*id));

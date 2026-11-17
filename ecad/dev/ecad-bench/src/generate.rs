@@ -300,7 +300,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         "New project",
         TxKind::Edit,
         vec![
-            Op::AddPage { id: first_page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: first_page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
@@ -325,12 +325,12 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         } else {
             let id: PageId = ids.fresh();
             let title = (p + 1).to_string();
-            let renamed_page = Page::new(format!("{title} (draft)"));
+            let renamed_page = Page::titled(format!("{title} (draft)")).map_err(|e| e.to_string())?;
             b.step(
                 "New page",
-                vec![Op::AddPage { id, page: Page::new(title.clone()), index: p }],
+                vec![Op::AddPage { id, page: Page::titled(&title).map_err(|e| e.to_string())?, index: p }],
                 "Rename page",
-                vec![Op::RemovePage { id, page: Page::new(title), index: p }, Op::AddPage { id, page: renamed_page, index: p }],
+                vec![Op::ModifyPage { id, before: Page::titled(&title).map_err(|e| e.to_string())?, after: renamed_page }],
             )?;
             id
         };

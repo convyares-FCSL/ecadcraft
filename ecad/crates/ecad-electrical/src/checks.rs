@@ -1529,12 +1529,20 @@ impl Scope {
                 }
                 // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
                 // are checked again for a table over the title block.
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == ecad_model::sheet::SHEET_KEY => {
+                // Design 072 §5.1: a page changed in place; its sheet moves its frame (as below), its
+                // function or location is a context for the devices on it.
+                Op::ModifyPage { id: p, before, after } => {
+                    let ch = before.change(after);
                     self.relocate = true;
-                    for (_, r) in doc.representations_on(*p) {
-                        if let Subject::Component(c) = r.subject {
-                            self.components.insert(c);
+                    if ch.sheet {
+                        for (_, r) in doc.representations_on(*p) {
+                            if let Subject::Component(c) = r.subject {
+                                self.components.insert(c);
+                            }
                         }
+                    }
+                    if ch.display.iter().any(|k| crate::designations::Aspect::of_property(k).is_some()) {
+                        self.devices_on(doc, *p);
                     }
                 }
                 // Brief 052 (design 052 §6): a page's function or location is a context for the

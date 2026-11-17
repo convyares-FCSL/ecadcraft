@@ -173,7 +173,7 @@ fn index(doc: &Document) -> Vec<Value> {
         out.push(json!({"kind": kind, "id": id, "short": short, "label": label}));
     };
     for (id, p) in &doc.pages {
-        push("page", format!("{:032x}", id.0), id.short(), p.title.clone());
+        push("page", format!("{:032x}", id.0), id.short(), p.title.to_string());
     }
     for id in doc.components.keys() {
         push("component", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Component(*id)));
@@ -242,7 +242,7 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
             json!({
                 "id": format!("{:032x}", id.0),
                 "short": id.short(),
-                "title": doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
+                "title": doc.pages.get(id).map(|p| p.title.to_string()).unwrap_or_default(),
                 "open": fact.map(|f| f.open),
                 "projection_matches": fact.and_then(|f| f.projection_matches),
                 "mapped_handles": fact.and_then(|f| f.mapped_handles),
@@ -305,7 +305,7 @@ pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
                     "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.properties.get("tag")),
                     "page": r.page.hex(),
                     "page_number": r.page_number,
-                    "page_title": doc.pages.get(&r.page).map(|p| p.title.clone()).unwrap_or_default(),
+                    "page_title": doc.pages.get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),
                     "at": r.at.map(|p| json!([p.x, p.y])),
                     "column": r.column,
                     // Brief 019: the frame's row and labels, and this end's own place.

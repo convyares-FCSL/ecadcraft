@@ -438,7 +438,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
         Author::User,
         X,
         vec![
-            Op::AddPage { id: p1, page: Page::new(X), index: 0 },
+            Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
             Op::CreateComponent { id: k, component: Component { properties: props(&[("tag", X), ("note", X)]), definition: None } },
             Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None } },

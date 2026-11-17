@@ -201,10 +201,10 @@ pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
 }
 
 /// A new project's first page: titled and numbered `1`.
-fn first_page() -> Page {
-    let mut p = Page::new("1");
-    p.properties.insert(ecad_model::book::NUMBER_KEY.into(), "1".into());
-    p
+fn first_page() -> Result<Page, ecad_model::text::TextError> {
+    let mut p = Page::titled("1")?;
+    p.number = ecad_model::PageNo::parse("1");
+    Ok(p)
 }
 
 /// What this program records about itself in a file header and a writer lock.
@@ -819,7 +819,7 @@ impl Project {
     /// The page window's title: `demo - page 2: Field`.
     fn page_title(&self, page: PageId) -> String {
         let doc = self.ledger.document();
-        let t = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+        let t = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
         format!("{} - page {}: {t}", self.name, crate::references::page_number(doc, page))
     }
 
@@ -999,7 +999,7 @@ impl Project {
         }
         // Brief 054b: the cover's Checks rows follow the cover (a cover added or removed too).
         let cover_page = |op: &Op| match op {
-            Op::AddPage { page, .. } | Op::RemovePage { page, .. } => page.properties.get(crate::generated::KEY).map(String::as_str) == Some("cover"),
+            Op::AddPage { page, .. } | Op::RemovePage { page, .. } => page.kind.generated_kind() == Some(crate::generated::GenKind::Cover),
             _ => false,
         };
         if cover || ops.iter().any(cover_page) {
@@ -1112,7 +1112,7 @@ impl Project {
                 };
                 PageInfo {
                     id: *p,
-                    title: doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default(),
+                    title: doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default(),
                     open: st.is_some(),
                     projection_matches: matches,
                     mapped_handles: view.filter(|_| st.is_some()).map(|v| v.map.len()),
@@ -1224,18 +1224,21 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // A page's own properties show in its frame only (brief 019); the references they
             // change on other pages are the reference snapshot's part.
             // A folder move changes the book order (Next boxes, unnumbered pages) anywhere.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
+            Op::ModifyPage { before, after, .. } if before.change(after).folder => {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. } => {
+            Op::ModifyPage { id: p, before, after } => {
                 out.insert(*p);
                 // The page before it in book order shows its number in its Next box.
-                if key == ecad_model::book::NUMBER_KEY {
+                if before.change(after).number {
                     let book = ecad_model::book::Book::of(doc);
                     if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i)) {
                         out.insert(*prev);
                     }
                 }
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
+                out.insert(*p);
             }
             // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
             // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
@@ -1295,7 +1298,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                         }
                     }
                     for (pid, x) in &doc.pages {
-                        if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+                        if x.display.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
                             out.insert(*pid);
                         }
                     }

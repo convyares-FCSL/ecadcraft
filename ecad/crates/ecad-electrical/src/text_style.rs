@@ -1152,7 +1152,7 @@ mod tests {
         let page = PageId(1);
         let comp = ComponentId(2);
         let rep = RepresentationId(3);
-        doc.pages.insert(page, Page::new("p"));
+        doc.pages.insert(page, Page::titled("p").unwrap());
         doc.components.insert(comp, Component::default());
         doc.representations.insert(
             rep,
@@ -1179,7 +1179,7 @@ mod tests {
         doc.properties.insert("text.description.show".into(), "first".into());
         assert_eq!(text_shown(&doc, strip, TextKind::Tag), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Description), Shown::Off);
-        doc.pages.get_mut(&page).map(|p| p.properties.insert("text.tag.show".into(), "yes".into()));
+        doc.pages.get_mut(&page).map(|p| p.display.insert("text.tag.show".into(), "yes".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         doc.components.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::Off);

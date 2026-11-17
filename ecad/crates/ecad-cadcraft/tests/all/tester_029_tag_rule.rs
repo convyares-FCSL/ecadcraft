@@ -34,7 +34,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         Author::User,
         "Setup",
         vec![
-            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::CreateComponent { id: k1, component: Component { properties: tagged("-K1"), definition: None } },
             Op::CreateComponent { id: x1, component: Component { properties: tagged("-X1"), definition: None } },

@@ -160,7 +160,7 @@ impl Dirty {
         add("definition", t.definitions.iter().map(|i| i.0).collect());
         for op in ops {
             match op {
-                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+                Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
                     self.pages.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Page(id), .. } => {
@@ -394,7 +394,8 @@ enum Parsed {
     Meta(ModelMeta),
     // Boxed: the project chunk holds the standard and the style records (brief 050a).
     Project(Box<ProjectChunk>),
-    Page(PageId, PageChunk),
+    // Boxed: a page carries its typed fields (design 072 §5.1).
+    Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Component(BTreeMap<ComponentId, Component>),
     Terminal(BTreeMap<TerminalId, Terminal>),
@@ -441,7 +442,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
             return Err(FileError::OnAnotherPage { what: "representation", id: r.to_string(), page: id.to_string() });
         }
-        return Ok(Parsed::Page(id, p));
+        return Ok(Parsed::Page(id, Box::new(p)));
     }
     let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) else {
         return Err(FileError::ChunkKey(key.to_string()));

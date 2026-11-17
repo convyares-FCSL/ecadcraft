@@ -116,7 +116,7 @@ impl Command for RenamepageParams {
         let title = rules::page_title(&self.title).map_err(|e| err(e.to_string()))?;
         let page = self.page;
         on_project(s, |p, pg, _| {
-            let done = rules::rename_page(p.ledger.document(), page, &title)?;
+            let done = rules::rename_page(p.ledger.document(), page, title.as_str())?;
             let changed = !done.ops.is_empty();
             if changed {
                 p.apply_edit(pg, "renamepage", "Rename page", done.ops)?;
