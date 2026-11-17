@@ -189,7 +189,7 @@ pub struct ConnectorInput {
     /// The wire one pin lands on.
     pub wire: Option<ConductorId>,
     /// 0, 90, 180 or 270.
-    pub degrees: f64,
+    pub degrees: Degrees,
     /// A row's halves swapped.
     pub swap: bool,
     /// The first pin's name.
@@ -316,10 +316,10 @@ fn wire_point(doc: &Document, page: PageId, w: ConductorId) -> Option<Pt> {
 /// A bulkhead (RJ45, USB): 034's one-piece symbol, a new device, as Find Symbol places it.
 #[allow(clippy::too_many_arguments)]
 fn place_bulkhead(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: f64,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: Degrees,
 ) -> Result<Made, CmdError> {
     let starter = crate::devices::starter(key)?;
-    let placement = Placement { origin: at, rotation: Radians::from(Degrees(degrees)), mirror: false, scale: 1.0 };
+    let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror: false, scale: 1.0 };
     let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
     Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), dropped: Vec::new(), ops: plan.ops })
 }
@@ -348,7 +348,7 @@ struct Row<'a> {
     pins: Option<usize>,
     names: &'a Names,
     at: Pt,
-    degrees: f64,
+    degrees: Degrees,
     swap: bool,
 }
 
@@ -382,7 +382,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
         Some(c) if !matches!(names, Names::List(_)) => join_names(doc, c, n),
         _ => cn::names_for(names, n)?,
     };
-    let rot = Radians::from(Degrees(r.degrees));
+    let rot = Radians::from(r.degrees);
     let (sin, cos) = rot.sin_cos();
     let up = if swap { -5.0 } else { 5.0 };
     let mut ops = Vec::new();

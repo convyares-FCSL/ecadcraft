@@ -115,7 +115,7 @@ pub(crate) struct ConnectorParams {
     at: Option<Point>,
     /// 0, 90, 180 or 270.
     #[serde(default)]
-    rotation: Option<f64>,
+    rotation: Option<Degrees>,
     /// A row's halves swapped.
     #[serde(default)]
     swap: Option<bool>,
@@ -135,8 +135,8 @@ pub(crate) struct ConnectorParams {
 
 impl Command for ConnectorParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let degrees = self.rotation.unwrap_or(0.0);
-        if ![0.0, 90.0, 180.0, 270.0].contains(&degrees) {
+        let degrees = self.rotation.unwrap_or_default();
+        if ![0.0, 90.0, 180.0, 270.0].contains(&degrees.0) {
             return Err(err("`rotation` is 0, 90, 180 or 270"));
         }
         let at = self.at.map(|p| p.0);
@@ -192,7 +192,7 @@ impl Command for ConnectorParams {
 /// 044 §3.3): a new connector, or joining the connector named by `device` (or `tag`); a pin takes
 /// the next pin (§4.4) or `pin`, and on a wire it lands there. One transaction.
 pub(crate) fn place_half(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let tag = params.tag.clone();
     let device = params.device.clone();
@@ -237,8 +237,8 @@ pub(crate) fn place_half(
         let landing = if pin_starter { crate::cmd::terminal::landing_point(doc, page, at) } else { None };
         let origin = landing.map_or(at, |on| on.at);
         let rotation = match landing {
-            Some(on) if degrees == 0.0 => rules::along_wire(doc, page, &on),
-            _ => Radians::from(Degrees(degrees)),
+            Some(on) if degrees.0 == 0.0 => rules::along_wire(doc, page, &on),
+            _ => Radians::from(degrees),
         };
         let placement = Placement { origin, rotation, mirror, scale: 1.0 };
         let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, &mut ops)?;

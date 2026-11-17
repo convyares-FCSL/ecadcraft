@@ -213,7 +213,7 @@ fn wire_words(doc: &Document, w: ConductorId) -> String {
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(ecad_model::Word::word(starter.key)).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
@@ -246,7 +246,7 @@ pub(crate) fn place_level(
         };
         let landing = landing_point(doc, page, at);
         let origin = landing.map_or(at, |on| on.at);
-        let placement = Placement { origin, rotation: Radians::from(Degrees(degrees)), mirror, scale: 1.0 };
+        let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(land_level(doc, &mut p.ids, page, on, &shown, placement)?),
