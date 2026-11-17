@@ -53,7 +53,6 @@ const UNTYPED: &[&str] = &[
     "undomerge",
     "agentaccess",
     "canvassheet",
-    "setdefault",
     "titleblockimport",
 ];
 
@@ -1538,4 +1537,48 @@ fn contcaption_refuses_input_uniformly_and_keeps_its_rule_words() {
     }
     let schema = schema_of("contcaption").unwrap_or(Value::Null);
     assert_eq!(schema["required"], json!(["continuations", "caption"]), "{schema}");
+}
+
+/// Input refusals and rule words of `setdefault`.
+#[test]
+fn setdefault_refuses_input_uniformly_and_keeps_its_rule_words() {
+    let input: &[(Value, &str)] = &[
+        (json!({"value": 3}), "`key` (text) is required"),
+        (json!({"key": "text.run.gap", "value": true}), "`value` must be text, or null"),
+        (json!({"key": "text.run.gap", "value": 3, "reset": "yes"}), "`reset` must be true or false, or null"),
+        (json!({"key": "text.run.gap", "level": 2, "value": 3}), "`level` must be text, or null"),
+        (json!({"key": "text.tag.show", "level": "object", "component": "zz", "value": "off"}), "`component` must be a hex id, or null"),
+    ];
+    let mut h = H::new(7067);
+    for (params, says) in input {
+        assert_eq!(h.run("setdefault", params.clone()).err().as_deref(), Some(*says), "{params}");
+    }
+    let rules: &[(Value, &str)] = &[
+        (json!({"key": "text.nope", "value": 3}), "No default \"text.nope\"."),
+        (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level \"sideways\". Levels: standard, project, page, object."),
+        (json!({"key": "text.run.gap"}), ecad_cadcraft::default_cmds::NEEDS_VALUE),
+        (json!({"key": "text.run.gap", "value": 3, "reset": true}), "Give either `value` or `reset: true`, not both."),
+        (json!({"key": "text.run.gap", "value": 101}), "`text.run.gap` is a length from 0 to 100 mm."),
+        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_cadcraft::default_cmds::NEEDS_OBJECT),
+        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_cadcraft::default_cmds::STANDARD_READ_ONLY),
+        (json!({"key": "symbol.coil.prefix", "value": "K1"}), "A prefix is 1 to"),
+    ];
+    for (params, says) in rules {
+        let e = h.run("setdefault", params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{params}: {e}");
+    }
+}
+
+/// `setdefault` still writes, resets and answers as before.
+#[test]
+fn the_typed_setdefault_still_works() {
+    let mut h = H::new(7068);
+    let v = h.run("setdefault", json!({"key": "text.run.gap", "value": 3})).unwrap_or_else(|e| json!(e));
+    assert_eq!(v["changed"], json!(true), "{v}");
+    let again = h.run("setdefault", json!({"key": "text.run.gap", "value": "3"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(again["changed"], json!(false), "{again}");
+    let reset = h.run("setdefault", json!({"key": "text.run.gap", "reset": true, "value": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(reset["changed"], json!(true), "{reset}");
+    let px = h.run("setdefault", json!({"key": "symbol.coil.prefix", "value": "q"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(px["changed"], json!(true), "{px}");
 }

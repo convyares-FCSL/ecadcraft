@@ -4,34 +4,41 @@
 //! # Semantics
 //! It writes a registry entry's value at one level through the same stored values the registry
 //! reads ([`crate::defaults::resolve`]): the project property of the entry's key, or the project
-//! setting behind it ([`ProjectSource::Settings`], through [`Op::SetProjectSettings`]); a page's
-//! property; a device's, conductor's or symbol's property (`text.<rep>.<rest>` on its component).
-//! No new op and no new stored field. One call is one transaction, undoable like any other; a call
-//! that changes nothing records nothing. `reset: true` removes the level's value, so the entry
-//! resolves one level further out.
+//! setting behind it ([`ecad_electrical::defaults::ProjectSource::Settings`], through
+//! [`Op::SetProjectSettings`]); a page's property; a device's, conductor's or symbol's property
+//! (`text.<rep>.<rest>` on its component). No new op and no new stored field. One call is one
+//! transaction, undoable like any other; a call that changes nothing records nothing. `reset: true`
+//! removes the level's value, so the entry resolves one level further out.
 //!
 //! Brief 050a: `level: "standard"` writes the project's standard's value
 //! (`SetProperty` on `ObjectRef::Standard`); it is refused while the project uses IEC (built in).
 //! A style choice ([`defaults::Kind::Style`]) takes a style's ID or name and stores the ID.
 //!
+//! A thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::default`] decide, and the shim commits the ops and answers in JSON.
+//!
 //! Excluded: any entry's levels, which only the registry sets.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::{ComponentId, ConductorId, Document, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
+use ecad_electrical::cmd::default::{self as rules, Given, Objects};
+use ecad_model::{ComponentId, ConductorId, Document, Op, PageId, RepresentationId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, opt_id, with_project};
-use crate::defaults::{self, Entry, Level, ProjectSource, Scope};
+pub use ecad_electrical::cmd::default::{NEEDS_OBJECT, NEEDS_VALUE, STANDARD_READ_ONLY, Target, level_refused, level_word, write_setting};
 
-/// Refusals, in words.
-pub const STANDARD_READ_ONLY: &str = "This project uses IEC (built in). Make a standard first (`standard {new}`).";
-pub const NEEDS_VALUE: &str = "Give a `value`, or `reset: true` to remove this level's value.";
-pub const NEEDS_OBJECT: &str = "The object level needs a `component`, `conductor` or `representation`.";
+use crate::cmd::input::{Command, TextOrNumber, Typed};
+use crate::cmd::{err, on_project};
+use crate::defaults::{self, Entry, Level, Scope};
+
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[Typed::of::<SetdefaultParams>("setdefault")];
 
 /// The commands of this module, registered through [`crate::lanes`].
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("setdefault", "Set Default", run_setdefault)
+        CommandSpec::new("setdefault", "Set Default", crate::cmd::input::typed::<SetdefaultParams>)
             .params(
                 "{key, level: \"standard\"|\"project\"|\"page\"|\"object\", page?: id, component?: id, conductor?: id, representation?: id, \
 value: string|number | reset: true} (writes a default at that level; page: the page shown if not given; one transaction)",
@@ -40,168 +47,26 @@ value: string|number | reset: true} (writes a default at that level; page: the p
     ]
 }
 
-/// The words of a level in `defaults` and here.
-pub fn level_word(l: Level) -> &'static str {
-    match l {
-        Level::Standard => "standard",
-        Level::Project => "project",
-        Level::Page => "page",
-        Level::Object => "object",
-    }
-}
-
-fn level_of(word: &str) -> Option<Level> {
-    match word.trim().to_ascii_lowercase().as_str() {
-        "standard" => Some(Level::Standard),
-        "project" => Some(Level::Project),
-        "page" => Some(Level::Page),
-        "object" | "symbol" | "device" => Some(Level::Object),
-        _ => None,
-    }
-}
-
-/// `"`text.tag.height` cannot be set at page level. It can be set at: project, object."`
-pub fn level_refused(entry: &Entry, level: Level) -> String {
-    let allowed: Vec<&str> = entry.levels.iter().filter(|l| **l != Level::Standard).map(|l| level_word(*l)).collect();
-    if allowed.is_empty() {
-        return format!("`{}` cannot be set at {} level; it has only its built-in value.", entry.key, level_word(level));
-    }
-    format!("`{}` cannot be set at {} level. It can be set at: {}.", entry.key, level_word(level), allowed.join(", "))
-}
-
-/// The text a value is stored as: a number as short as it reads, a word as registered, a prefix
-/// as Tag Settings writes it (letters, upper case, no `-`), other text trimmed.
+/// The text a value given as JSON is stored as ([`rules::stored_text`]), for the Standards
+/// screen's field.
 ///
 /// # Errors
-/// The value is not valid for the entry, in words.
+/// Not text or a number, or not valid for the entry, in words.
 pub fn stored_text(entry: &Entry, value: &Value) -> Result<String, String> {
     let typed = match value {
         Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
         _ => return Err(format!("`value` for `{}` is a string or a number.", entry.key)),
     };
-    let parsed = entry.parse(&typed).ok_or_else(|| bad_value(entry))?;
-    if is_prefix(entry) {
-        return crate::devices::valid_prefix(&typed).ok_or_else(|| bad_value(entry));
-    }
-    Ok(match parsed {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
-        defaults::Value::Choice(w) => w.to_string(),
-        defaults::Value::Text(t) => t.trim().to_string(),
-    })
+    rules::stored_text(entry, &typed).map_err(String::from)
 }
 
-/// What a value of `entry` must be, in words.
-fn bad_value(entry: &Entry) -> String {
-    match entry.kind {
-        defaults::Kind::Length { min, max } => format!("`{}` is a length from {min} to {max} mm.", entry.key),
-        defaults::Kind::Number { min, max } => format!("`{}` is a number from {min} to {max}.", entry.key),
-        defaults::Kind::Choice(words) => format!("`{}` is one of: {}.", entry.key, words.join(", ")),
-        _ if is_prefix(entry) => format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS),
-        defaults::Kind::Text { max_chars } | defaults::Kind::Parsed { max_chars, .. } => {
-            format!("`{}` is 1 to {max_chars} characters with no control characters, in its own form.", entry.key)
-        }
-        defaults::Kind::Style(cat) => format!("`{}` is a style of the {cat} catalogue: its ID or name (see `styles`).", entry.key),
-    }
-}
-
-/// A tag prefix entry (`symbol.<key>.prefix`, `terminal.<key>.prefix`).
-fn is_prefix(entry: &Entry) -> bool {
-    starter_key(entry).is_some()
-}
-
-/// The starter symbol key of a prefix entry.
-fn starter_key(entry: &Entry) -> Option<&'static str> {
-    // Brief 045: its new starters' prefixes are in the `plc` area.
-    let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal.")).or_else(|| entry.key.strip_prefix("plc."))?;
-    let key = rest.strip_suffix(".prefix")?;
-    defaults::symbols::prefix_entry(key).filter(|e| e.key == entry.key).map(|_| key)
-}
-
-/// Write `value` (`None`: remove) into the project setting behind a [`ProjectSource::Settings`]
-/// entry, as the setting's own command writes it.
+/// [`rules::ops`], its refusal in words (the Standards screen's tests and `promote`).
 ///
 /// # Errors
-/// The entry has no setting this command knows (a registry entry added without a writer).
-pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>) -> Result<(), String> {
-    // Brief 066 (F2): `None` stores "not chosen", never the built-in's value.
-    let number = |v: Option<&str>| v.and_then(|t| t.parse::<f64>().ok());
-    // A whole number; the entry's kind has already checked its range.
-    let whole = |v: Option<&str>| v.map(|t| t.trim().parse::<u32>().map_err(|_| format!("`{t}` must be a whole number."))).transpose();
-    let small = |n: u32| u8::try_from(n).unwrap_or(u8::MAX);
-    match entry.key {
-        k if k == defaults::text::WIRE_LABEL_HEIGHT.key => s.wiring.label_height = number(value),
-        k if k == defaults::wires::WIRING_LABEL_RULE.key => s.wiring.label_rule = value.map(str::to_string),
-        k if k == defaults::wires::WIRING_LABEL_MIN_LENGTH.key => s.wiring.label_min_length = number(value),
-        // Brief 066c (F3): whole numbers and words; the entry's kind has checked the range.
-        k if k == defaults::settings::TAG_PADDING.key => s.tag_padding = whole(value)?.map(small),
-        k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?.map(small),
-        k if k == defaults::settings::PAGE_NUMBER_STEP.key => s.page_number_step = whole(value)?,
-        k if k == defaults::settings::COLOUR_STYLE.key => s.wiring.colour_style = value.and_then(ecad_model::wiring::ColourStyle::parse),
-        k if k == defaults::settings::REFERENCE_STYLE.key => s.reference_style = value.and_then(ecad_model::ReferenceStyle::parse),
-        _ => match starter_key(entry) {
-            Some(key) => crate::cmd::device::apply_tag_settings(s, None, vec![(key.to_string(), value.map(str::to_string))]),
-            None => return Err(format!("`{}` has no project setting this command can write.", entry.key)),
-        },
-    }
-    Ok(())
-}
-
-/// The ops writing `value` (`None`: reset) for `entry` at `level` on `target`; empty when it is
-/// already so.
-///
-/// # Errors
-/// A level the entry does not allow, the standard level, or a missing target, in words.
+/// As [`rules::ops`].
 pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: Option<String>) -> Result<Vec<Op>, String> {
-    if level == Level::Standard && doc.standard.is_none() {
-        return Err(STANDARD_READ_ONLY.into());
-    }
-    if !entry.allows(level) {
-        return Err(level_refused(entry, level));
-    }
-    let property = |object: ObjectRef, props: Option<&ecad_model::Properties>, key: String| -> Result<Vec<Op>, String> {
-        let props = props.ok_or("No such object.")?;
-        let before = props.get(&key).cloned();
-        Ok(if before == value { Vec::new() } else { vec![Op::SetProperty { object, key, before, after: value.clone() }] })
-    };
-    match (level, target) {
-        (Level::Project, _) => match entry.project {
-            ProjectSource::Property => property(ObjectRef::Project, Some(&doc.properties), entry.key.to_string()),
-            ProjectSource::Settings(_) => {
-                let before = doc.settings.clone();
-                let mut after = before.clone();
-                write_setting(entry, &mut after, value.as_deref())?;
-                Ok(if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] })
-            }
-        },
-        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.properties), entry.key.to_string()),
-        (Level::Object, Target::Symbol(rep)) => {
-            let c = match doc.representations.get(&rep).map(|r| r.subject) {
-                Some(ecad_model::Subject::Component(c)) => c,
-                _ => return Err(format!("No symbol {}.", rep.hex())),
-            };
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
-        }
-        (Level::Object, Target::Component(c)) => {
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
-        (Level::Object, Target::Conductor(c)) => {
-            property(ObjectRef::Conductor(c), doc.conductors.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
-        (Level::Object, _) => Err(NEEDS_OBJECT.into()),
-        (Level::Page, _) => Err("The page level needs a `page`.".into()),
-        (Level::Standard, _) => property(ObjectRef::Standard, doc.standard.as_ref().map(|s| &s.values), entry.key.to_string()),
-    }
-}
-
-/// What a `setdefault` call writes on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Target {
-    Project,
-    Page(PageId),
-    Component(ComponentId),
-    Conductor(ConductorId),
-    Symbol(RepresentationId),
+    rules::ops(doc, entry, level, target, value).map_err(String::from)
 }
 
 /// The JSON line the Standards screen and the inspector run for a change (`None`: reset).
@@ -221,76 +86,81 @@ pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> Str
     format!("setdefault {p}")
 }
 
-/// `setdefault {key, level, page?, component?, conductor?, representation?, value | reset: true}`.
-fn run_setdefault(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let key = params.get("key").and_then(Value::as_str).map(str::trim).ok_or_else(|| err("`key` (a default's key, see `defaults`) is required."))?;
-    let Some(entry) = defaults::find(key) else {
-        // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>`.
-        return crate::cmd::symbol::run_set_family(s, params, key)?.ok_or_else(|| err(format!("No default \"{key}\".")));
-    };
-    let level = match params.get("level").and_then(Value::as_str) {
-        Some(w) => level_of(w).ok_or_else(|| err(format!("Unknown level \"{w}\". Levels: standard, project, page, object.")))?,
-        None => Level::Project,
-    };
-    let reset = params.get("reset").and_then(Value::as_bool).unwrap_or(false);
-    // A style choice names a style by ID or name, resolved in the project below (brief 050a).
-    let style_name = match (entry.kind, params.get("value")) {
-        (defaults::Kind::Style(cat), Some(Value::String(v))) if !reset => Some((cat, v.clone())),
-        _ => None,
-    };
-    let value = match (params.get("value"), reset) {
-        (Some(_), false) if style_name.is_some() => None,
-        // Brief 054 (design 054 §6.1): an empty cover heading is allowed, stored as `none`.
-        (Some(Value::String(v)), false) if entry.key == defaults::pages::HEADING.key && v.trim().is_empty() => {
-            Some(defaults::pages::NO_HEADING.to_string())
-        }
-        (Some(v), false) if !v.is_null() => Some(stored_text(entry, v).map_err(err)?),
-        (None | Some(Value::Null), true) => None,
-        (Some(_), true) => return Err(err("Give either `value` or `reset: true`, not both.")),
-        _ => return Err(err(NEEDS_VALUE)),
-    };
-    let rep: Option<RepresentationId> = opt_id(params, "representation").map_err(err)?;
-    let component: Option<ComponentId> = opt_id(params, "component").map_err(err)?;
-    let conductor: Option<ConductorId> = opt_id(params, "conductor").map_err(err)?;
-    let page: Option<PageId> = opt_id(params, "page").map_err(err)?;
-    with_project(s, |p, pg, shown| {
-        let doc = p.ledger.document();
-        let value = match &style_name {
-            Some((cat, v)) => Some(crate::styles::find(doc, cat, v)?.text()),
-            None => value,
+/// `setdefault {key, level, page?, component?, conductor?, representation?, value | reset: true}`:
+/// writes a default at that level (page: the page shown if not given); one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SetdefaultParams {
+    /// A default's key (see `defaults`).
+    key: String,
+    /// standard, project (the default), page or object.
+    #[serde(default)]
+    level: Option<String>,
+    /// The page level: the page (default the page shown).
+    #[serde(default)]
+    page: Option<PageId>,
+    /// The object level: a device.
+    #[serde(default)]
+    component: Option<ComponentId>,
+    /// The object level: a wire.
+    #[serde(default)]
+    conductor: Option<ConductorId>,
+    /// The object level: a symbol.
+    #[serde(default)]
+    representation: Option<RepresentationId>,
+    /// The value: text or a number.
+    #[serde(default)]
+    value: Option<TextOrNumber>,
+    /// true: remove this level's value.
+    #[serde(default)]
+    reset: Option<bool>,
+}
+
+impl Command for SetdefaultParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let key = self.key.trim();
+        let reset = self.reset.unwrap_or(false);
+        let given = self.value.map(|v| match v {
+            TextOrNumber::Text(t) => Given::Text(t),
+            TextOrNumber::Number(n) => Given::Number(n.to_string()),
+        });
+        let Some(entry) = defaults::find(key) else {
+            // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>` (read as JSON there).
+            let value = match &given {
+                Some(Given::Text(t)) => json!(t),
+                Some(Given::Number(n)) => serde_json::from_str(n).unwrap_or(Value::Null),
+                None => Value::Null,
+            };
+            let params = json!({"level": self.level, "reset": reset, "value": value});
+            return crate::cmd::symbol::run_set_family(s, &params, key)?.ok_or_else(|| err(format!("No default \"{key}\".")));
         };
-        let target = match level {
-            Level::Project | Level::Standard => Target::Project,
-            Level::Page => Target::Page(page.unwrap_or(shown)),
-            Level::Object => match (rep, component, conductor) {
-                (Some(r), _, _) => Target::Symbol(r),
-                (None, Some(c), _) => Target::Component(c),
-                (None, None, Some(c)) => Target::Conductor(c),
-                _ => return Err(NEEDS_OBJECT.into()),
-            },
+        let level = match self.level.as_deref() {
+            Some(w) => rules::level_of(w).map_err(|e| err(e.to_string()))?,
+            None => Level::Project,
         };
-        // Brief 054 (design 054 §2.3): a generated page's type keeps its kind's position.
-        if let (Target::Page(pg), Some(v)) = (target, value.as_deref())
-            && entry.key == crate::defaults::pages::PAGE_TYPE.key
-        {
-            crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg))?;
-        }
-        let ops = ops(doc, entry, level, target, value)?;
-        let changed = !ops.is_empty();
-        if changed {
-            let label = format!("Default {}", entry.label);
-            p.apply_edit(pg, "setdefault", &label, ops)?;
-        }
-        let doc = p.ledger.document();
-        let at = match target {
-            Target::Project => Scope::project(),
-            Target::Page(pg) => Scope::page(pg),
-            Target::Component(c) => Scope::component(c),
-            Target::Conductor(c) => Scope { conductor: Some(c), ..Scope::project() },
-            Target::Symbol(r) => Scope::symbol(doc, r),
-        };
-        let mut v = crate::cmd::text::entry_json(doc, entry, at);
-        v["changed"] = json!(changed);
-        Ok(v)
-    })
+        let chosen = rules::chosen(entry, given, reset).map_err(|e| err(e.to_string()))?;
+        let objects = Objects { representation: self.representation, component: self.component, conductor: self.conductor };
+        let page = self.page;
+        on_project(s, |p, pg, shown| {
+            let doc = p.ledger.document();
+            let target = rules::target(level, page, shown, objects)?;
+            let ops = rules::ops_for(doc, entry, level, target, chosen)?;
+            let changed = !ops.is_empty();
+            if changed {
+                let label = format!("Default {}", entry.label);
+                p.apply_edit(pg, "setdefault", &label, ops)?;
+            }
+            let doc = p.ledger.document();
+            let at = match target {
+                Target::Project => Scope::project(),
+                Target::Page(pg) => Scope::page(pg),
+                Target::Component(c) => Scope::component(c),
+                Target::Conductor(c) => Scope { conductor: Some(c), ..Scope::project() },
+                Target::Symbol(r) => Scope::symbol(doc, r),
+            };
+            let mut v = crate::cmd::text::entry_json(doc, entry, at);
+            v["changed"] = json!(changed);
+            Ok(v)
+        })
+    }
 }

@@ -8,6 +8,7 @@ pub mod bom;
 pub mod cable;
 pub mod connector;
 pub mod continuation;
+pub mod default;
 pub mod designation;
 pub mod level;
 pub mod location;

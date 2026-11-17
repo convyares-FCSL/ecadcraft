@@ -306,6 +306,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::release::TYPED,
         crate::cmd::level::TYPED,
         crate::cmd::continuation::TYPED,
+        crate::cmd::default::TYPED,
     ]
     .concat()
 }
