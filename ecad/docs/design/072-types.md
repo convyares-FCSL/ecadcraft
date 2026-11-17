@@ -2,9 +2,9 @@
 
 Status: **Draft** (designer, 2026-11-16; widened the same day by the owner from "types for keys,
 units and device kinds" to the typed object model for all of ECAD). The spec below is the owner's
-and is decided; this design turns it into types, lanes and steps. Waiting for: the owner's calls in
-§16 and the overseer's batch approval of the format and op changes F13–F30 (§10). F1–F12 approved
-2026-11-16 (F12 is superseded by F13, §10). Brief: `docs/briefs/072-types.md`.
+and is decided; this design turns it into types, lanes and steps. Waiting for the owner's calls in
+§16. Format and op changes (§10): F1–F29 approved by the overseer, 2026-11-16 (F12 superseded by
+F13); F30 waits on the owner's call 4. Brief: `docs/briefs/072-types.md`.
 
 **Goal (one sentence).** What every stored object is, and how it relates to other objects, is held
 in its own typed struct, never worked out from names, symbols, strings or positions, so the
@@ -13,11 +13,11 @@ compiler finds every place a new object, field, kind or unit must be handled.
 Sources: code review 2026-11 (`C:\dev\ecad-features\_tmp\code-review-2026-11.md`), findings 4, 6,
 7 and 10 (lanes R4, R5, R8); the owner's answers and spec of 2026-11-16.
 
-**Names.** "Device" is the person's word (052) for what the code calls `Component`; this design
-proposes renaming the struct to `Device` and `Conductor` to `Wire` (F14, F20). That changes a
-recorded decision (owner, 2026-11-08: code, op and command names stay until the next major format
-version), so it is listed for the overseer; if it is refused, read `Device` as `Component` and
-`Wire` as `Conductor` throughout, and nothing else changes. `Terminal` keeps its name either way. `ecad-cadcraft` becomes `ecad-engine` in lane 073, right after 070: read "Engine" as
+**Names.** "Device" is the person's word (052) for what the code calls `Component`; the struct is
+renamed `Device`, and `Conductor` → `Wire`, with their ops (F14, F20, approved 2026-11-16). This
+supersedes the 2026-11-08 rule that code and op names stay until the next major format version
+(`docs/decisions.md`, 2026-11-16); lane B and lane D update `docs/glossary.md`'s "In code and files"
+paragraph in the commits that rename. `Terminal` keeps its name. `ecad-cadcraft` becomes `ecad-engine` in lane 073, right after 070: read "Engine" as
 that crate. Paths below are today's.
 
 ---
@@ -591,18 +591,23 @@ Pre-v1: fixtures are regenerated, no shims, no format version change.
 groups; F12 is **superseded** by F13: once every device field is typed, a type change is one field
 edit like the others.
 
-**For approval:**
+**Approved (overseer, 2026-11-16): F13–F29 as written**, including the renames `Component` →
+`Device` and `Conductor` → `Wire` and their ops (superseding the 2026-11-08 naming rule), the
+whole-struct `Modify*` ops replacing `SetProperty` for typed fields, the removal of
+`AddCableMember`/`RemoveCableMember`, and `AddDeviceLink`/`RemoveDeviceLink`. **F30 waits on the
+owner's call 4.** Condition on every new op and field (acceptance A15, hard rule): the inspector's
+Raw and Readable views show it, on a normal project and on one opened read-only.
 
 | # | Change | Op or on disk | Lane |
 | --- | --- | --- | --- |
 | F13 | **`ModifyDevice { id, before: Device, after: Device }`** replaces `SetDeviceKind` (F12) and `SetProperty` for every typed device field. Same pattern as `ModifyItem`, `ModifyRepresentation`, `ModifyFolder`: the whole struct before and after, inverse by swap | new op; `SetDeviceKind` never ships | B |
-| F14 | The device struct with the common fields (§2.1), `device_type`, `parts`, `user`, `display`. **Renaming** `Component` → `Device` and its ops (`CreateDevice`, `DeleteDevice`, `SetDeviceDefinition`) changes the 2026-11-08 rule that code and op names stay until the next major format version: approve the fields and the rename separately | record shape; op names if the rename is approved | B |
+| F14 | The device struct with the common fields (§2.1), `device_type`, `parts`, `user`, `display`. Renamed `Component` → `Device` with its ops (`CreateDevice`, `DeleteDevice`, `SetDeviceDefinition`); approved, superseding the 2026-11-08 naming rule | record shape and op names | B |
 | F15 | `DeviceType` groups and their structs (§2.2, §2.5); the starters' and project symbols' `device_type` | new data | B |
 | F16 | `Terminal { owner: TerminalOwner, label, key: PointKey }` (§2.6) | record shape | B |
 | F17 | `Definition`: `part_role`, `SlotText`, `SymbolDefaults`, typed `bridges` (§7.1) | record shape | B |
 | F18 | `Project.user_fields` and `Device.user` (§2.8) | new data | B |
 | F19 | PLC: `PlcRack`, `PlcModule`, `ChannelGroup`, `Channel` (§3); today's CPU/head-module cards become a rack device plus a CPU module | new data; regenerated fixtures | C |
-| F20 | The wire struct with typed fields (§4.2); **`ModifyWire { id, before, after }`** replaces `SetProperty` on wires. Renaming `Conductor` → `Wire` (and its ops) falls under the same rule as F14's rename | new op, record shape | D |
+| F20 | The wire struct with typed fields (§4.2); **`ModifyWire { id, before, after }`** replaces `SetProperty` on wires. Renamed `Conductor` → `Wire` with its ops (`CreateWire`, `DeleteWire`); approved like F14 | new op, record shape, op names | D |
 | F21 | `Cable` typed (§4.1), cores fold `members`; **`ModifyCable { id, before, after }`** replaces `SetProperty` and `AddCableMember`/`RemoveCableMember` | new op; two ops removed | D |
 | F22 | `Document.device_links` and **`AddDeviceLink` / `RemoveDeviceLink`** (§2.7) | new ops, new data | B |
 | F23 | `Page` typed with `PageKind` (§5.1); **`ModifyPage { id, before, after }`** for page edits and renames/moves (design 064 §13 item 2's wish, so `Effects::of` no longer folds `RemovePage` + `AddPage`) | new op, record shape | E |
@@ -612,7 +617,7 @@ edit like the others.
 | F27 | Boxes write `function`, `location`, `placed_in` on devices in the same transaction (§6.3): no new op, `ModifyDevice` | behaviour | F |
 | F28 | Loose parts out of the device store (§6.4, per the owner's call) | new data | F |
 | F29 | Title block strictness: `Binding` enum, no `BlockItem::Unknown`, no `StyleBody::Raw` (§5.4) | record shape | E |
-| F30 | Typed style records per catalogue (§8), if the owner says now | record shape | G |
+| F30 | Typed style records per catalogue (§8), if the owner says now | record shape | G (waits on call 4) |
 
 `SetProperty` stays, for the keys of §9.2 only. `Op::ALL` and the contract tests list every op;
 `Effects::of` (064) maps every new op (§13).
@@ -748,7 +753,7 @@ end-gate review.
 | A12 | `junctionless_nets`: a T-joint by `Attach::Wire` gives the same nets and wire numbers as the old junction; the dot is drawn where it was | F |
 | A13 | `boxes_set_location`: placing, moving, reshaping and deleting a box or a device writes the devices' values in the same transaction; undo restores them | F |
 | A14 | `format_shapes`: a project saved by each lane has its §10 shapes; fixtures regenerated, not shimmed | each lane |
-| A15 | `inspector_shows_everything` (hard rule): the inspector's Raw and Readable views show every new struct, field and op, and a read-only project's offending record or value with its reason | each lane |
+| A15 | `inspector_shows_everything` (hard rule, the overseer's condition on every new op): the inspector's Raw and Readable views show every new struct, field and op (`ModifyDevice`, `ModifyWire`, `ModifyCable`, `ModifyPage`, `ModifyProject`, `AddDeviceLink`/`RemoveDeviceLink`, `AddAid`/`RemoveAid`/`ModifyAid`, `AttachEnd` with `Attach`), each with its before and after, and a read-only project's offending record or value with its reason | each lane, for its ops |
 | A16 | guards at 0 | end of F (and G) |
 
 **Bench** (medium while building, large once per lane): `views.setprop_tag`, `views.move_symbol`
