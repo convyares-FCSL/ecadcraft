@@ -341,7 +341,7 @@ pub trait DerivedView: Send {
 | `GeneratedView` | `cover_uses` (`front::Uses`) | per-`GenKind` flags | `Contents`: `Page`, `Folder`, `Prop` area `Book`; `Revisions`: `Prop` on `Project` area `Revisions`/`RevisionRow`, `Version`; `Cover`: `front::touches` + `Uses` | an **exhaustive `match GenKind`** over `GenKind::ALL` (§4.2); `pages` = the pages of each changed kind; `frame_stale` when the shown frame is such a page |
 | `DevicesFeed` | the change log's `DeviceTouch` | `DeviceTouch` | `devices_touched` | a `DeviceTouch` in `Changes` |
 | `PropsFeed` | the change log's `ObjectRef` set | `Option<BTreeSet<ObjectRef>>` | `props::touched` (`AREAS` = every area, `Free` included) | `Changes::props` |
-| `TreeFeed` | `page_list_version` | `bool` | `Page`, `Folder`, `Prop` area `Book` (`tree_touched`) | `list` |
+| `TreeFeed` | `page_list_version` | `bool` | `Page` (added, removed, moved; a `ModifyPage` of title, number or folder), `Folder`; no property area since lane 072 E moved number and folder into `Page` (`tree_touched`) | `list` |
 
 The three feeds keep nothing themselves. They stay views because their scope *is* the change
 log's record. Making them views also puts D3's numbering ops into them through the After

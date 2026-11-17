@@ -54,6 +54,8 @@ fn the_tree_feed_follows_its_update_map() {
     let mut display = Properties::new();
     display.insert("text.tag.height".into(), "3".into());
     let restyled = Page { display, ..page.clone() };
+    let rekinded = Page { kind: ecad_model::page::PageKind::TerminalStrip { strip: ecad_model::DeviceId(9) }, ..page.clone() };
+    let resheeted = Page { sheet: ecad_model::SheetSpec::parse("A3").ok(), ..page.clone() };
     let (p, f) = (PageId(1), FolderId(4));
     let folder = Folder { name: "A".into(), parent: None };
     let cases: Vec<(&str, Vec<Op>, bool)> = vec![
@@ -66,6 +68,14 @@ fn the_tree_feed_follows_its_update_map() {
         ("page display choice", vec![Op::ModifyPage { id: p, before: page.clone(), after: restyled }], false),
         ("folder added", vec![Op::AddFolder { id: f, folder: folder.clone(), index: 0 }], true),
         ("folder renamed", vec![Op::ModifyFolder { id: f, before: folder.clone(), after: Folder { name: "B".into(), parent: None } }], true),
+        ("folder removed", vec![Op::RemoveFolder { id: f, folder: folder.clone(), index: 0 }], true),
+        (
+            "folder moved",
+            vec![Op::RemoveFolder { id: f, folder: folder.clone(), index: 0 }, Op::AddFolder { id: f, folder: folder.clone(), index: 2 }],
+            true,
+        ),
+        ("page kind", vec![Op::ModifyPage { id: p, before: page.clone(), after: rekinded }], false),
+        ("page sheet", vec![Op::ModifyPage { id: p, before: page.clone(), after: resheeted }], false),
         ("a page property", vec![Op::SetProperty { object: ObjectRef::Page(p), key: "note".into(), before: None, after: Some("x".into()) }], false),
         ("a version named", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }], false),
         ("nothing", vec![], false),
