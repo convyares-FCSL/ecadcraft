@@ -7,74 +7,50 @@
 //! the other's key and removes the first, in one transaction. Every write is one transaction
 //! through [`crate::project::Project::apply_edit`]; refusals say what to do instead and write
 //! nothing.
+//!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::designation`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::{ComponentId, Document, ObjectRef, Op};
+use ecad_electrical::cmd::designation::{self as rules, EditInput};
+use ecad_model::Op;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, with_any_page, with_project};
-use crate::designations::{self, Aspect, Entry};
+use crate::cmd::err;
+use crate::cmd::input::{Command, Typed, nullable};
+use crate::cmd::{on_any_page, on_project};
+use crate::designations::{self, Aspect};
+
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<DesignationsParams>("designations"),
+    Typed::of::<AddParams>("designationadd"),
+    Typed::of::<EditParams>("designationedit"),
+    Typed::of::<MergeParams>("designationmerge"),
+    Typed::of::<RemoveParams>("designationremove"),
+];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("designations", "Functions and Locations", run_designations)
+        CommandSpec::new("designations", "Functions and Locations", crate::cmd::input::typed::<DesignationsParams>)
             .params("{aspect?: \"function\" | \"location\"} (read only: each entry's key, code, description and counts)")
             .noundo(),
-        CommandSpec::new("designationadd", "Add Function or Location", run_add)
+        CommandSpec::new("designationadd", "Add Function or Location", crate::cmd::input::typed::<AddParams>)
             .params("{aspect: \"function\" | \"location\", code, description?} (one transaction)")
             .noundo(),
-        CommandSpec::new("designationedit", "Rename Function or Location", run_edit)
+        CommandSpec::new("designationedit", "Rename Function or Location", crate::cmd::input::typed::<EditParams>)
             .params("{aspect, key, code?: the new code (a rename), description?: text | null} | {aspect, code: the entry, to: the new code, description?} (one transaction; a code another entry has is refused: merge instead)")
             .noundo(),
-        CommandSpec::new("designationmerge", "Merge Functions or Locations", run_merge)
+        CommandSpec::new("designationmerge", "Merge Functions or Locations", crate::cmd::input::typed::<MergeParams>)
             .params("{aspect, from: key | code, into: key | code} (every user of `from` takes `into`; `from` is removed; one transaction)")
             .noundo(),
-        CommandSpec::new("designationremove", "Remove Function or Location", run_remove)
+        CommandSpec::new("designationremove", "Remove Function or Location", crate::cmd::input::typed::<RemoveParams>)
             .params("{aspect, key | code} (only an entry nothing uses) | {aspect?, unused: true} (every entry nothing uses) (one transaction)")
             .noundo(),
     ]
-}
-
-fn aspect(params: &Value, required: bool) -> Result<Option<Aspect>, String> {
-    match params.get("aspect") {
-        None | Some(Value::Null) if !required => Ok(None),
-        Some(Value::String(w)) => Aspect::of_word(w).map(Some).ok_or_else(|| "`aspect` is \"function\" or \"location\"".to_string()),
-        _ => Err("`aspect` is required: \"function\" or \"location\"".into()),
-    }
-}
-
-fn text(params: &Value, key: &str) -> Result<Option<String>, String> {
-    match params.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(t)) => Ok(Some(t.clone())),
-        Some(_) => Err(format!("`{key}` must be text")),
-    }
-}
-
-/// The entry named by `params[field]` (a key or a code).
-fn named(doc: &Document, a: Aspect, params: &Value, field: &str) -> Result<Entry, String> {
-    let t = text(params, field)?.ok_or_else(|| format!("`{field}` (a key or a code such as {}) is required", designations::example(a)))?;
-    designations::find(doc, a, &t).ok_or_else(|| format!("{} is not in the project's list of {}.", t.trim(), a.plural()))
-}
-
-/// The entry `key` or `code` names.
-fn named_key_or_code(doc: &Document, a: Aspect, params: &Value) -> Result<Entry, String> {
-    if params.get("key").is_some_and(|v| !v.is_null()) { named(doc, a, params, "key") } else { named(doc, a, params, "code") }
-}
-
-/// A description as typed: trimmed; empty clears it.
-fn description_value(doc: &Document, t: Option<&str>) -> Result<Option<String>, String> {
-    crate::devices::property_value(doc, "description", t)
-}
-
-fn set(key: String, before: Option<String>, after: Option<String>) -> Option<Op> {
-    (before != after).then_some(Op::SetProperty { object: ObjectRef::Project, key, before, after })
-}
-
-/// A code refused because another entry has it.
-fn taken(doc: &Document, a: Aspect, code: &str, except: Option<&str>) -> Option<Entry> {
-    designations::entries(doc, a).into_iter().find(|e| e.code.eq_ignore_ascii_case(code) && Some(e.key.as_str()) != except)
 }
 
 /// The list with its counts, as `designations` answers (`only`: one aspect), for the command and
@@ -118,191 +94,150 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
     })
 }
 
-/// `designations {aspect?}`.
-fn run_designations(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let only = aspect(params, false).map_err(err)?;
-    with_any_page(s, |p, _| Ok(rows(p, only)))
+/// `designations {aspect?}` (read only): each entry's key, code, description and counts.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DesignationsParams {
+    /// "function" or "location" (default: both).
+    #[serde(default)]
+    aspect: Option<String>,
 }
 
-/// `designationadd {aspect, code, description?}`.
-fn run_add(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let a = aspect(params, true).map_err(err)?.ok_or_else(|| err("`aspect` is required"))?;
-    let typed = text(params, "code").map_err(err)?.ok_or_else(|| err("`code` is required, such as +CP1"))?;
-    let description = text(params, "description").map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let code = designations::normalise(doc, a, &typed)?;
-        if taken(doc, a, &code, None).is_some() {
-            return Err(format!("{code} is already in the list."));
-        }
-        let id: ComponentId = p.ids.fresh();
-        let key = id.hex();
-        let mut ops =
-            vec![Op::SetProperty { object: ObjectRef::Project, key: designations::code_property(a, &key), before: None, after: Some(code.clone()) }];
-        if let Some(d) = description_value(doc, description.as_deref())? {
-            ops.push(Op::SetProperty { object: ObjectRef::Project, key: designations::description_property(a, &key), before: None, after: Some(d) });
-        }
-        p.apply_edit(pg, "designationadd", &format!("Add {} {code}", a.word()), ops)?;
-        Ok(json!({"changed": true, "key": key, "code": code}))
-    })
-}
-
-/// `designationedit {aspect, key | code, code?, description?}`.
-fn run_edit(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let a = aspect(params, true).map_err(err)?.ok_or_else(|| err("`aspect` is required"))?;
-    // With `key`, `code` is the new code; without it, `code` names the entry and `to` (or
-    // `new_code`) is the new one.
-    let has_key = params.get("key").is_some_and(|v| !v.is_null());
-    let new_code =
-        if has_key { text(params, "code") } else { text(params, "to").and_then(|t| if t.is_some() { Ok(t) } else { text(params, "new_code") }) }
-            .map_err(err)?;
-    let description = params.get("description").map(|v| v.as_str().map(str::to_string));
-    if matches!(description, Some(None)) && params.get("description").is_some_and(|v| !v.is_null()) {
-        return Err(err("`description` must be text, or null to clear it"));
-    }
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let e = named_key_or_code(doc, a, params)?;
-        let mut ops = Vec::new();
-        let mut label = format!("Describe {} {}", a.word(), e.code);
-        let mut code = e.code.clone();
-        if let Some(t) = new_code.as_deref() {
-            code = designations::normalise(doc, a, t)?;
-            if let Some(other) = taken(doc, a, &code, Some(&e.key)) {
-                return Err(format!("{} is already in the list. Merge {} into it instead?", other.code, e.code));
-            }
-            if code != e.code {
-                label = format!("Rename {} {} → {code}", a.word(), e.code);
-                ops.extend(set(designations::code_property(a, &e.key), Some(e.code.clone()), Some(code.clone())));
-            }
-        }
-        if let Some(d) = description {
-            let after = description_value(doc, d.as_deref())?;
-            ops.extend(set(
-                designations::description_property(a, &e.key),
-                doc.properties.get(&designations::description_property(a, &e.key)).cloned(),
-                after,
-            ));
-        }
-        if ops.is_empty() {
-            return Ok(json!({"changed": false, "key": e.key, "code": code}));
-        }
-        p.apply_edit(pg, "designationedit", &label, ops)?;
-        Ok(json!({"changed": true, "key": e.key, "code": code}))
-    })
-}
-
-/// The value of property `prop` on object `o`.
-fn property_of(doc: &Document, o: ObjectRef, prop: &str) -> Option<String> {
-    match o {
-        ObjectRef::Component(c) => doc.components.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
-        ObjectRef::Page(pg) => doc.pages.get(&pg).and_then(|x| x.properties.get(prop)).cloned(),
-        ObjectRef::Project => doc.properties.get(prop).cloned(),
-        _ => None,
+impl Command for DesignationsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let only = rules::opt_aspect(self.aspect.as_deref()).map_err(|e| err(e.to_string()))?;
+        on_any_page(s, |p, _| Ok(rows(p, only)))
     }
 }
 
-/// `designationmerge {aspect, from, into}` (Q11).
-fn run_merge(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let a = aspect(params, true).map_err(err)?.ok_or_else(|| err("`aspect` is required"))?;
-    with_project(s, |p, pg, _| {
-        p.designation_uses.catch_up(&p.ledger);
-        let doc = p.ledger.document();
-        let from = named(doc, a, params, "from")?;
-        let into = named(doc, a, params, "into")?;
-        if from.key == into.key {
-            return Err(format!("{} and {} are the same entry.", from.code, into.code));
-        }
-        let counts = p.designation_uses.counts(doc, a, &from.key);
-        let mut ops = Vec::new();
-        for (o, prop) in p.designation_uses.users(a, &from.key).map(|u| u.refs.clone()).unwrap_or_default() {
-            let before = property_of(doc, o, &prop);
-            if before.as_deref() == Some(from.key.as_str()) {
-                ops.push(Op::SetProperty { object: o, key: prop, before, after: Some(into.key.clone()) });
-            }
-        }
-        if into.description.is_none()
-            && let Some(d) = &from.description
-        {
-            ops.push(Op::SetProperty {
-                object: ObjectRef::Project,
-                key: designations::description_property(a, &into.key),
-                before: None,
-                after: Some(d.clone()),
-            });
-        }
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: designations::code_property(a, &from.key),
-            before: Some(from.code.clone()),
-            after: None,
-        });
-        if let Some(d) = &from.description {
-            ops.push(Op::SetProperty {
-                object: ObjectRef::Project,
-                key: designations::description_property(a, &from.key),
-                before: Some(d.clone()),
-                after: None,
-            });
-        }
-        let label = format!("Merge {} {} into {} ({})", a.word(), from.code, into.code, counts.words());
-        p.apply_edit(pg, "designationmerge", &label, ops)?;
-        Ok(json!({"changed": true, "from": from.code, "into": into.code, "key": into.key, "moved": counts.words()}))
-    })
+/// `designationadd {aspect, code, description?}`: a new entry of the list.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AddParams {
+    /// "function" or "location".
+    aspect: String,
+    /// The code: "=F1", "+CP1".
+    code: String,
+    /// What it is.
+    #[serde(default)]
+    description: Option<String>,
 }
 
-/// The ops removing entry `e`.
-fn remove_ops(a: Aspect, e: &Entry) -> Vec<Op> {
-    let mut ops =
-        vec![Op::SetProperty { object: ObjectRef::Project, key: designations::code_property(a, &e.key), before: Some(e.code.clone()), after: None }];
-    if let Some(d) = &e.description {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: designations::description_property(a, &e.key),
-            before: Some(d.clone()),
-            after: None,
-        });
+impl Command for AddParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let a = rules::aspect(&self.aspect).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
+            let plan = rules::plan_add(p.ledger.document(), &mut p.ids, a, &self.code, self.description.as_deref())?;
+            p.apply_edit(pg, "designationadd", &plan.label, plan.ops)?;
+            Ok(json!({"changed": true, "key": plan.key, "code": plan.code}))
+        })
     }
-    ops
+}
+
+/// `designationedit {aspect, key | code, code?, to?, description?}`: an entry renamed (everything
+/// storing its key shows the new code) or described.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EditParams {
+    /// "function" or "location".
+    aspect: String,
+    /// The entry's key; with it, `code` is the new code.
+    #[serde(default)]
+    key: Option<String>,
+    /// The new code (with `key`), or the entry's code (without).
+    #[serde(default)]
+    code: Option<String>,
+    /// The new code (without `key`).
+    #[serde(default)]
+    to: Option<String>,
+    /// The old name of `to`.
+    #[serde(default)]
+    new_code: Option<String>,
+    /// The description, or null to clear it.
+    #[serde(default, deserialize_with = "nullable")]
+    description: Option<Option<String>>,
+}
+
+impl Command for EditParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let a = rules::aspect(&self.aspect).map_err(|e| err(e.to_string()))?;
+        let edit = EditInput { key: self.key, code: self.code, to: self.to, new_code: self.new_code, description: self.description };
+        on_project(s, |p, pg, _| {
+            let plan = rules::plan_edit(p.ledger.document(), a, edit)?;
+            if plan.ops.is_empty() {
+                return Ok(json!({"changed": false, "key": plan.key, "code": plan.code}));
+            }
+            p.apply_edit(pg, "designationedit", &plan.label, plan.ops)?;
+            Ok(json!({"changed": true, "key": plan.key, "code": plan.code}))
+        })
+    }
+}
+
+/// `designationmerge {aspect, from, into}` (Q11): every user of `from` takes `into`; `from` is
+/// removed.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MergeParams {
+    /// "function" or "location".
+    aspect: String,
+    /// The entry merged away: its key or code.
+    from: String,
+    /// The entry kept: its key or code.
+    into: String,
+}
+
+impl Command for MergeParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let a = rules::aspect(&self.aspect).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
+            p.designation_uses.catch_up(&p.ledger);
+            let m = rules::plan_merge(p.ledger.document(), &p.designation_uses, a, &self.from, &self.into)?;
+            p.apply_edit(pg, "designationmerge", &m.label, m.ops)?;
+            Ok(json!({"changed": true, "from": m.from, "into": m.into, "key": m.key, "moved": m.moved}))
+        })
+    }
 }
 
 /// `designationremove {aspect, key | code}`, or `{aspect?, unused: true}`: every entry nothing
 /// uses, in one transaction (design 052 §9.4, **Remove unused**).
-fn run_remove(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if params.get("unused").and_then(Value::as_bool) == Some(true) {
-        let only = aspect(params, false).map_err(err)?;
-        return with_project(s, |p, pg, _| {
-            p.designation_uses.catch_up(&p.ledger);
-            let doc = p.ledger.document();
-            let mut ops = Vec::new();
-            let mut codes = Vec::new();
-            for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
-                for e in designations::entries(doc, a) {
-                    if p.designation_uses.counts(doc, a, &e.key).unused() {
-                        ops.extend(remove_ops(a, &e));
-                        codes.push(e.code);
-                    }
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RemoveParams {
+    /// "function" or "location" (with `unused`, default both).
+    #[serde(default)]
+    aspect: Option<String>,
+    /// The entry's key.
+    #[serde(default)]
+    key: Option<String>,
+    /// The entry's code.
+    #[serde(default)]
+    code: Option<String>,
+    /// Remove every entry nothing uses.
+    #[serde(default)]
+    unused: Option<bool>,
+}
+
+impl Command for RemoveParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        if self.unused == Some(true) {
+            let only = rules::opt_aspect(self.aspect.as_deref()).map_err(|e| err(e.to_string()))?;
+            return on_project(s, |p, pg, _| {
+                p.designation_uses.catch_up(&p.ledger);
+                let (ops, codes) = rules::plan_remove_unused(p.ledger.document(), &p.designation_uses, only);
+                if codes.is_empty() {
+                    return Ok(json!({"changed": false, "removed": []}));
                 }
-            }
-            if codes.is_empty() {
-                return Ok(json!({"changed": false, "removed": []}));
-            }
-            let n = codes.len();
-            p.apply_edit(pg, "designationremove", &format!("Remove {n} unused {}", if n == 1 { "entry" } else { "entries" }), ops)?;
-            Ok(json!({"changed": true, "removed": codes}))
-        });
-    }
-    let a = aspect(params, true).map_err(err)?.ok_or_else(|| err("`aspect` is required"))?;
-    with_project(s, |p, pg, _| {
-        p.designation_uses.catch_up(&p.ledger);
-        let doc = p.ledger.document();
-        let e = named_key_or_code(doc, a, params)?;
-        let counts = p.designation_uses.counts(doc, a, &e.key);
-        if !counts.unused() {
-            return Err(format!("{} is used by {}. Give them another {} first.", e.code, counts.words(), a.word()));
+                let n = codes.len();
+                p.apply_edit(pg, "designationremove", &format!("Remove {n} unused {}", if n == 1 { "entry" } else { "entries" }), ops)?;
+                Ok(json!({"changed": true, "removed": codes}))
+            });
         }
-        let ops = remove_ops(a, &e);
-        p.apply_edit(pg, "designationremove", &format!("Remove {} {}", a.word(), e.code), ops)?;
-        Ok(json!({"changed": true, "code": e.code}))
-    })
+        let a = rules::required_aspect(self.aspect.as_deref()).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
+            p.designation_uses.catch_up(&p.ledger);
+            let (ops, code) = rules::plan_remove(p.ledger.document(), &p.designation_uses, a, self.key.as_deref(), self.code.as_deref())?;
+            p.apply_edit(pg, "designationremove", &format!("Remove {} {code}", a.word()), ops)?;
+            Ok(json!({"changed": true, "code": code}))
+        })
+    }
 }

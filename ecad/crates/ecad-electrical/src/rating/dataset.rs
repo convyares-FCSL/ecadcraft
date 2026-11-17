@@ -16,6 +16,7 @@
 //! At most [`MAX_BYTES`] of text and [`MAX_ROWS`] rows (checked before any row is read), fields of
 //! at most [`MAX_FIELD`] characters, no indexing.
 
+use crate::CmdError;
 use std::collections::BTreeMap;
 
 /// The most text a rating table holds (256 KiB).
@@ -148,18 +149,18 @@ pub struct Dataset {
     pub too_big: Option<String>,
 }
 
-fn num(field: Option<&str>, what: &str, min: f64, max: f64) -> Result<f64, String> {
-    let f = field.map(str::trim).filter(|f| !f.is_empty()).ok_or_else(|| format!("{what} missing"))?;
+fn num(field: Option<&str>, what: &str, min: f64, max: f64) -> Result<f64, CmdError> {
+    let f = field.map(str::trim).filter(|f| !f.is_empty()).ok_or_else(|| CmdError::refused(format!("{what} missing")))?;
     if f.chars().nth(MAX_FIELD).is_some() {
-        return Err(format!("{what} too long"));
+        return Err(CmdError::refused(format!("{what} too long")));
     }
     let ok = !f.is_empty() && f.bytes().all(|b| matches!(b, b'0'..=b'9' | b'.')) && f.bytes().filter(|b| *b == b'.').count() <= 1;
     let x = if ok { f.parse::<f64>().ok() } else { None };
     let shown: String = f.chars().take(12).collect();
     match x {
         Some(x) if x.is_finite() && (min..=max).contains(&x) => Ok(x),
-        Some(_) => Err(format!("{what} '{shown}' is outside {}–{}", fmt_num(min), fmt_num(max))),
-        None => Err(format!("{what} '{shown}'")),
+        Some(_) => Err(CmdError::refused(format!("{what} '{shown}' is outside {}–{}", fmt_num(min), fmt_num(max)))),
+        None => Err(CmdError::refused(format!("{what} '{shown}'"))),
     }
 }
 
@@ -168,20 +169,22 @@ fn field<'a>(fields: &[&'a str], i: usize) -> Option<&'a str> {
 }
 
 /// Read one data line (not a comment or header).
-fn row(line: &str) -> Result<(RowKey, f64), String> {
+fn row(line: &str) -> Result<(RowKey, f64), CmdError> {
     let fields: Vec<&str> = line.split(',').take(8).collect();
     let kind = field(&fields, 0).map(str::trim).unwrap_or_default().to_ascii_lowercase();
-    let want = |n: usize| -> Result<(), String> {
+    let want = |n: usize| -> Result<(), CmdError> {
         let have = line.split(',').take(n + 2).count();
-        if have == n { Ok(()) } else { Err(format!("{kind} takes {n} columns, not {have}")) }
+        if have == n { Ok(()) } else { Err(CmdError::refused(format!("{kind} takes {n} columns, not {have}"))) }
     };
-    let method_at = |i: usize| -> Result<&'static str, String> {
+    let method_at = |i: usize| -> Result<&'static str, CmdError> {
         let t = field(&fields, i).unwrap_or_default();
-        method(t).ok_or_else(|| format!("method '{}' is not an IEC 60364-5-52 name", t.trim().chars().take(12).collect::<String>()))
+        method(t)
+            .ok_or_else(|| CmdError::refused(format!("method '{}' is not an IEC 60364-5-52 name", t.trim().chars().take(12).collect::<String>())))
     };
-    let insulation_at = |i: usize| -> Result<Insulation, String> {
+    let insulation_at = |i: usize| -> Result<Insulation, CmdError> {
         let t = field(&fields, i).unwrap_or_default();
-        Insulation::parse(t).ok_or_else(|| format!("insulation '{}' (pvc, xlpe or 50–250)", t.trim().chars().take(12).collect::<String>()))
+        Insulation::parse(t)
+            .ok_or_else(|| CmdError::refused(format!("insulation '{}' (pvc, xlpe or 50–250)", t.trim().chars().take(12).collect::<String>())))
     };
     match kind.as_str() {
         "capacity" => {
@@ -190,7 +193,7 @@ fn row(line: &str) -> Result<(RowKey, f64), String> {
             let insulation = insulation_at(2)?;
             let loaded = num(field(&fields, 3), "loaded", 2.0, 3.0)?;
             if loaded.fract() != 0.0 {
-                return Err("loaded is 2 or 3".into());
+                return Err(CmdError::refused("loaded is 2 or 3"));
             }
             let size = num(field(&fields, 4), "size", 0.05, 1000.0)?;
             let amps = num(field(&fields, 5), "amps", 0.1, 6300.0)?;
@@ -212,7 +215,7 @@ fn row(line: &str) -> Result<(RowKey, f64), String> {
             let method = method_at(1)?;
             let circuits = num(field(&fields, 2), "circuits", 1.0, 100.0)?;
             if circuits.fract() != 0.0 {
-                return Err("circuits is a whole number".into());
+                return Err(CmdError::refused("circuits is a whole number"));
             }
             let factor = num(field(&fields, 3), "factor", 0.01, 2.0)?;
             Ok((RowKey::Grouping { method, circuits: circuits as u32 }, factor))
@@ -225,14 +228,14 @@ fn row(line: &str) -> Result<(RowKey, f64), String> {
                 "2" => 2,
                 "5" => 5,
                 "6" => 6,
-                other => return Err(format!("class '{}' (1, 2, 5 or 6)", other.chars().take(12).collect::<String>())),
+                other => return Err(CmdError::refused(format!("class '{}' (1, 2, 5 or 6)", other.chars().take(12).collect::<String>()))),
             };
             let size = num(field(&fields, 2), "size", 0.05, 1000.0)?;
             let ohms = num(field(&fields, 3), "resistance", 0.001, 1000.0)?;
             Ok((RowKey::Resistance { class, size: key_of(size) }, ohms))
         }
-        "" => Err("empty kind".into()),
-        other => Err(format!("kind '{}' (capacity, ambient, grouping or resistance)", other.chars().take(12).collect::<String>())),
+        "" => Err(CmdError::refused("empty kind")),
+        other => Err(CmdError::refused(format!("kind '{}' (capacity, ambient, grouping or resistance)", other.chars().take(12).collect::<String>()))),
     }
 }
 
@@ -268,7 +271,7 @@ pub fn parse(text: &str) -> Dataset {
                     e.insert(v);
                 }
             },
-            Err(e) => bad(e),
+            Err(e) => bad(e.to_string()),
         }
     }
     d
@@ -283,20 +286,20 @@ fn is_data(line: &str) -> bool {
 ///
 /// # Errors
 /// In words: the bound it breaks, or the first [`MAX_LISTED`] bad lines with their numbers.
-pub fn parse_strict(text: &str) -> Result<Dataset, String> {
+pub fn parse_strict(text: &str) -> Result<Dataset, CmdError> {
     let d = parse(text);
     if let Some(why) = &d.too_big {
-        return Err(format!("{why} Nothing was written."));
+        return Err(CmdError::refused(format!("{why} Nothing was written.")));
     }
     if d.bad_count > 0 {
         let lines: Vec<String> = d.bad.iter().map(|(n, why)| format!("line {n}: {why}")).collect();
         let more = if d.bad_count > d.bad.len() { format!(" and {} more", d.bad_count - d.bad.len()) } else { String::new() };
-        return Err(format!(
+        return Err(CmdError::refused(format!(
             "{} row{} not read ({}{more}). Nothing was written.",
             d.bad_count,
             if d.bad_count == 1 { "" } else { "s" },
             lines.join("; ")
-        ));
+        )));
     }
     Ok(d)
 }

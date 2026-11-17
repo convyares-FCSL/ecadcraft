@@ -28,6 +28,7 @@
 use ecad_model::keys::PropsExt;
 use std::collections::BTreeMap;
 
+use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
 use ecad_model::connectivity::KIND;
 use ecad_model::{
@@ -556,26 +557,26 @@ fn layer_ops(doc: &Document, ids: &mut IdAllocator) -> (LayerId, Vec<Op>) {
 ///
 /// # Errors
 /// Empty, too long or a control character.
-pub fn location_value(doc: &Document, text: &str) -> Result<String, String> {
-    crate::devices::property_value(doc, LOCATION_KEY, Some(text))?.ok_or_else(|| "A location box needs a location, such as +CP1.".to_string())
+pub fn location_value(doc: &Document, text: &str) -> Result<String, CmdError> {
+    crate::devices::property_value(doc, LOCATION_KEY, Some(text))?.ok_or(CmdError::refused("A location box needs a location, such as +CP1."))
 }
 
 /// Check an outline for a box.
 ///
 /// # Errors
 /// Fewer than three points, a non-finite point, too many points, or too small.
-pub fn check_outline(v: &[Pt]) -> Result<(), String> {
+pub fn check_outline(v: &[Pt]) -> Result<(), CmdError> {
     if v.len() < 3 {
-        return Err("A location box needs at least three points.".into());
+        return Err(CmdError::refused("A location box needs at least three points."));
     }
     if v.len() > MAX_VERTICES {
-        return Err(format!("A location box has at most {MAX_VERTICES} points."));
+        return Err(CmdError::refused(format!("A location box has at most {MAX_VERTICES} points.")));
     }
     if v.iter().any(|p| !p.is_finite()) {
-        return Err("Every point must be a finite [x, y].".into());
+        return Err(CmdError::refused("Every point must be a finite [x, y]."));
     }
     if area(v) < MIN_AREA {
-        return Err(TOO_SMALL.into());
+        return Err(CmdError::refused(TOO_SMALL));
     }
     Ok(())
 }
@@ -595,7 +596,7 @@ pub struct Planned {
 /// and location, each stored as an entry key ([`designations::Pending`]).
 fn box_props(
     doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>,
-) -> Result<ecad_model::Properties, String> {
+) -> Result<ecad_model::Properties, CmdError> {
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), KIND_VALUE.into());
     for (a, text) in values {
@@ -606,7 +607,7 @@ fn box_props(
         props.insert(a.property().into(), key);
     }
     if !props.contains_key(LOCATION_KEY) && !props.contains_key(FUNCTION_KEY) {
-        return Err(NO_VALUE.into());
+        return Err(CmdError::refused(NO_VALUE));
     }
     Ok(props)
 }
@@ -619,7 +620,7 @@ pub const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or
 ///
 /// # Errors
 /// As [`plan_box_with`].
-pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &str, vertices: Vec<Pt>) -> Result<Planned, String> {
+pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &str, vertices: Vec<Pt>) -> Result<Planned, CmdError> {
     plan_box_with(doc, ids, page, &[(Aspect::Location, location)], vertices)
 }
 
@@ -629,9 +630,9 @@ pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &
 ///
 /// # Errors
 /// As [`check_outline`]; a value that is not a valid code; neither value given.
-pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>) -> Result<Planned, String> {
+pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>) -> Result<Planned, CmdError> {
     if !doc.pages.contains_key(&page) {
-        return Err("no such page".into());
+        return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
     }
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();
@@ -664,7 +665,7 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
 ///
 /// # Errors
 /// As [`plan_from_item_with`].
-pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, location: &str) -> Result<Planned, String> {
+pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, location: &str) -> Result<Planned, CmdError> {
     plan_from_item_with(doc, ids, item, &[(Aspect::Location, location)])
 }
 
@@ -672,8 +673,8 @@ pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, locat
 ///
 /// # Errors
 /// Not a closed polyline, part of another object, or as [`plan_box_with`].
-pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, values: &[(Aspect, &str)]) -> Result<Planned, String> {
-    let it = doc.items.get(&item).ok_or("no such item")?;
+pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, values: &[(Aspect, &str)]) -> Result<Planned, CmdError> {
+    let it = doc.items.get(&item).ok_or(CmdError::refused("no such item"))?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
             Subject::Component(c) if is_box(doc, c) => "another location box".to_string(),
@@ -681,11 +682,11 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
             Subject::Conductor(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
         };
-        return Err(format!("That outline belongs to {who}; draw a box instead."));
+        return Err(CmdError::refused(format!("That outline belongs to {who}; draw a box instead.")));
     }
     let vertices = match &it.kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) => vertices.clone(),
-        _ => return Err(NOT_CLOSED.into()),
+        _ => return Err(CmdError::refused(NOT_CLOSED)),
     };
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();

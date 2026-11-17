@@ -805,16 +805,16 @@ fn ac8_hostile_json_params_are_refused_without_panic() {
     let head = f.h.head();
     let before = f.h.doc();
     let cases: Vec<(Value, &str)> = vec![
-        (json!({"to": [1, 1]}), "`from` [x,y] is required"),
-        (json!({"from": [1, 1]}), "`to` [x,y] is required"),
+        (json!({"to": [1, 1]}), "`from` (point [x, y]) is required"),
+        (json!({"from": [1, 1]}), "`to` (point [x, y]) is required"),
         (json!({"from": [28, -3], "to": [28, -3]}), "`from` and `to` must differ"),
         (json!({"from": [28, -3], "to": [28.0 + 1e-12, -3]}), "`from` and `to` must differ"),
-        (json!({"from": [null, 0], "to": [1, 1]}), "is not a finite [x,y] point"),
+        (json!({"from": [null, 0], "to": [1, 1]}), "`from` must be a point [x, y]"),
         (json!({"from": [1e13, 0], "to": [1, 1]}), "is not a finite [x,y] point"),
         (json!({"from": [0, 0], "to": [-1e13, 1]}), "is not a finite [x,y] point"),
-        (json!({"from": "28,-3", "to": [1, 1]}), "is not a finite [x,y] point"),
-        (json!({"from": [1], "to": [1, 1]}), "is not a finite [x,y] point"),
-        (json!({"from": [28, -3], "to": [32, 18], "tag": 123}), "`tag` must be a string"),
+        (json!({"from": "28,-3", "to": [1, 1]}), "`from` must be a point [x, y]"),
+        (json!({"from": [1], "to": [1, 1]}), "`from` must be a point [x, y]"),
+        (json!({"from": [28, -3], "to": [32, 18], "tag": 123}), "`tag` must be text"),
         (json!({"from": [28, -3], "to": [32, 18], "tag": null}), ""),
         // The shared point parser reads the first two numbers (as `wire` does): no panic either way.
         (json!({"from": [1, 2, 3], "to": [1, 1]}), ""),

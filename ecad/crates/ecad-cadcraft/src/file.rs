@@ -16,6 +16,6 @@ pub fn home() -> Option<std::path::PathBuf> {
 ///
 /// # Errors
 /// As [`normalize_with`].
-pub fn normalize(path: &str) -> Result<String, String> {
+pub fn normalize(path: &str) -> Result<String, PathError> {
     normalize_with(path, home().as_deref())
 }

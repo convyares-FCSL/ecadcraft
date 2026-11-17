@@ -420,7 +420,7 @@ impl Context {
     fn with_boxes(doc: &Document, boxes: &BTreeMap<ComponentId, BoxTemp>) -> Self {
         let mut temps: BTreeMap<String, f64> = BTreeMap::new();
         for b in boxes.values() {
-            if let Ok(t) = b.temp {
+            if let Temp::Read(t) = b.temp {
                 let e = temps.entry(b.location.clone()).or_insert(t);
                 if t > *e {
                     *e = t;
@@ -437,7 +437,16 @@ impl Context {
 pub struct BoxTemp {
     /// The box's stored location: an entry key of the project's list (brief 052).
     pub location: String,
-    pub temp: Result<f64, String>,
+    pub temp: Temp,
+}
+
+/// A box's stored panel temperature: the value in degrees Celsius, or the text that did not read.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Temp {
+    /// The temperature read, in degrees Celsius.
+    Read(f64),
+    /// The stored text (at most 32 characters of it) that is not a temperature.
+    Unread(String),
 }
 
 /// The temperature of location box `c`, if it is one and sets one.
@@ -445,7 +454,7 @@ pub fn box_temp(doc: &Document, c: ComponentId) -> Option<BoxTemp> {
     let x = doc.components.get(&c).filter(|x| crate::locations::is_box_component(x))?;
     let v = x.properties.get(TEMPERATURE)?;
     let location = x.properties.text(ecad_model::keys::LOCATION).map(|l| l.trim().to_string()).unwrap_or_default();
-    Some(BoxTemp { location, temp: parse::ambient(v).ok_or_else(|| v.chars().take(32).collect()) })
+    Some(BoxTemp { location, temp: parse::ambient(v).map_or_else(|| Temp::Unread(v.chars().take(32).collect()), Temp::Read) })
 }
 
 /// The code of location entry `key` (brief 052), or the key itself when the list has no entry.
@@ -1464,7 +1473,10 @@ impl Kept {
 
     /// Location boxes whose temperature does not read: (box, location, text).
     pub fn bad_boxes(&self) -> impl Iterator<Item = (ComponentId, &str, &str)> {
-        self.boxes.iter().filter_map(|(c, b)| b.temp.as_ref().err().map(|v| (*c, b.location.as_str(), v.as_str())))
+        self.boxes.iter().filter_map(|(c, b)| match &b.temp {
+            Temp::Unread(v) => Some((*c, b.location.as_str(), v.as_str())),
+            Temp::Read(_) => None,
+        })
     }
 
     /// Devices whose rating does not read, with their rating text.

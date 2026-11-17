@@ -17,6 +17,7 @@
 //! Excluded: the parts catalogue and kits from it (2.3); counts derived from the drawing; the
 //! BOM model itself, which is [`crate::outputs`].
 
+use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -110,10 +111,12 @@ pub fn part_key(n: u8, f: Field) -> String {
 
 /// What a `part.` key names: `None` when `key` is not a part key at all, else the line and field
 /// or why the key is not one ECAD reads (`<n>` outside 1…99, a leading zero, an unknown field).
-pub fn parse_part_key(key: &str) -> Option<Result<(u8, Field), String>> {
+pub fn parse_part_key(key: &str) -> Option<Result<(u8, Field), CmdError>> {
     let rest = key.strip_prefix(PART_PREFIX)?;
     let shown: String = key.chars().take(40).collect();
-    let bad = || format!("\"{shown}\" is not a part line key. Write part.<n>.<field>, n 1 to {MAX_LINES}, field one of {}.", field_words());
+    let bad = || {
+        CmdError::refused(format!("\"{shown}\" is not a part line key. Write part.<n>.<field>, n 1 to {MAX_LINES}, field one of {}.", field_words()))
+    };
     let Some((n, f)) = rest.split_once('.') else { return Some(Err(bad())) };
     let n = ecad_model::words::uint_canonical(n, u32::from(MAX_LINES)).filter(|n| *n >= 1).and_then(|n| u8::try_from(n).ok());
     match (n, Field::parse(f)) {
@@ -178,18 +181,18 @@ impl fmt::Display for Qty {
 ///
 /// # Errors
 /// Anything else, in words.
-pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, String> {
+pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, CmdError> {
     let t = text.trim();
     let shown: String = t.chars().take(20).collect();
     let more = if t.chars().count() > 20 { "…" } else { "" };
-    let bad = || format!("\"{shown}{more}\" is not a quantity. Write a number greater than 0, at most 9999, like 2 or 3.6.");
+    let bad = || CmdError::refused(format!("\"{shown}{more}\" is not a quantity. Write a number greater than 0, at most 9999, like 2 or 3.6."));
     let (w, frac) = t.split_once('.').unwrap_or((t, ""));
     let digits_or_none = |t: &str| t.is_empty() || ecad_model::words::is_digits(t);
     if w.is_empty() && frac.is_empty() || w.len() > 6 || !digits_or_none(w) || !digits_or_none(frac) {
         return Err(bad());
     }
     if frac.len() > 3 {
-        return Err(format!("\"{shown}{more}\" has more than three decimals."));
+        return Err(CmdError::refused(format!("\"{shown}{more}\" has more than three decimals.")));
     }
     let whole: u64 = if w.is_empty() { 0 } else { w.parse().map_err(|_| bad())? };
     let thousandths: u64 = if frac.is_empty() { 0 } else { format!("{frac:0<3}").parse().map_err(|_| bad())? };
@@ -198,7 +201,7 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, String> {
         return Err(bad());
     }
     if !metres && !q.is_multiple_of(1000) {
-        return Err(format!("\"{shown}\" pieces: a count of pieces is whole. Set the unit to m for a length."));
+        return Err(CmdError::refused(format!("\"{shown}\" pieces: a count of pieces is whole. Set the unit to m for a length.")));
     }
     Ok(Qty(q))
 }
@@ -207,11 +210,11 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, String> {
 ///
 /// # Errors
 /// Any other word.
-pub fn parse_unit(text: &str) -> Result<bool, String> {
+pub fn parse_unit(text: &str) -> Result<bool, CmdError> {
     match text.trim().to_ascii_lowercase().as_str() {
         "m" | "metre" | "metres" | "meter" | "meters" => Ok(true),
         "pcs" | "pc" | "piece" | "pieces" | "" => Ok(false),
-        _ => Err("A unit is m (metres) or pcs (pieces).".into()),
+        _ => Err(CmdError::refused("A unit is m (metres) or pcs (pieces).")),
     }
 }
 
@@ -222,14 +225,14 @@ pub fn parse_unit(text: &str) -> Result<bool, String> {
 ///
 /// # Errors
 /// Longer than [`MAX_ARTICLE_CHARS`], or control characters.
-pub fn article_value(value: Option<&str>) -> Result<Option<String>, String> {
+pub fn article_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     plain(ARTICLE_KEY, value, MAX_ARTICLE_CHARS)
 }
 
-pub fn plain(key: &str, value: Option<&str>, max: usize) -> Result<Option<String>, String> {
+pub fn plain(key: &str, value: Option<&str>, max: usize) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if v.chars().count() > max || v.chars().any(char::is_control) {
-        return Err(format!("`{key}` can be at most {max} characters, with no control characters."));
+        return Err(CmdError::refused(format!("`{key}` can be at most {max} characters, with no control characters.")));
     }
     Ok(Some(v.to_string()))
 }
@@ -297,17 +300,17 @@ pub fn is_fuse_terminal(doc: &Document, c: ComponentId) -> bool {
 /// # Errors
 /// Too long, a range the wrong way round, more than [`MAX_SUBS`] names, or a name that is too long
 /// or holds control characters.
-pub fn expand_for(text: &str) -> Result<Vec<String>, String> {
+pub fn expand_for(text: &str) -> Result<Vec<String>, CmdError> {
     if text.chars().count() > MAX_FOR_CHARS {
-        return Err(format!("`for` names at most {MAX_SUBS} positions or fuses."));
+        return Err(CmdError::refused(format!("`for` names at most {MAX_SUBS} positions or fuses.")));
     }
     let mut out: Vec<String> = Vec::new();
     let mut seen = BTreeSet::new();
-    let mut push = |name: String, out: &mut Vec<String>| -> Result<(), String> {
+    let mut push = |name: String, out: &mut Vec<String>| -> Result<(), CmdError> {
         if seen.insert(name.clone()) {
             out.push(name);
         }
-        if out.len() > MAX_SUBS { Err(format!("`for` names at most {MAX_SUBS} positions or fuses.")) } else { Ok(()) }
+        if out.len() > MAX_SUBS { Err(CmdError::refused(format!("`for` names at most {MAX_SUBS} positions or fuses."))) } else { Ok(()) }
     };
     for part in text.split(',') {
         let p = part.trim();
@@ -317,10 +320,10 @@ pub fn expand_for(text: &str) -> Result<Vec<String>, String> {
         let range = p.split_once('-').and_then(|(a, b)| Some((a.trim().parse::<u64>().ok()?, b.trim().parse::<u64>().ok()?)));
         if let Some((a, b)) = range {
             if a > b {
-                return Err(format!("\"{p}\" goes the wrong way round. Write the smaller number first."));
+                return Err(CmdError::refused(format!("\"{p}\" goes the wrong way round. Write the smaller number first.")));
             }
             if b - a >= MAX_SUBS as u64 {
-                return Err(format!("`for` names at most {MAX_SUBS} positions or fuses."));
+                return Err(CmdError::refused(format!("`for` names at most {MAX_SUBS} positions or fuses.")));
             }
             for i in a..=b {
                 push(i.to_string(), &mut out)?;
@@ -329,7 +332,7 @@ pub fn expand_for(text: &str) -> Result<Vec<String>, String> {
         }
         if p.chars().count() > MAX_SUB_CHARS || p.chars().any(char::is_control) {
             let shown: String = p.chars().take(MAX_SUB_CHARS).collect();
-            return Err(format!("\"{shown}…\" is not a position or fuse: names are at most {MAX_SUB_CHARS} characters."));
+            return Err(CmdError::refused(format!("\"{shown}…\" is not a position or fuse: names are at most {MAX_SUB_CHARS} characters.")));
         }
         push(p.to_string(), &mut out)?;
     }
@@ -354,7 +357,7 @@ pub fn names_words(names: &[String]) -> String {
 }
 
 /// Check a `for` value on `c`: every name a sub-item of `c` (§2.3).
-fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String>, String> {
+fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String>, CmdError> {
     let t = text.trim();
     if t.is_empty() {
         return Ok(None);
@@ -362,15 +365,15 @@ fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String
     let who = crate::devices::tag_words(doc, c);
     let subs = sub_items(doc, c);
     if subs == Subs::None {
-        return Err(format!("{who} has nothing to name with for: leave it empty and set qty."));
+        return Err(CmdError::refused(format!("{who} has nothing to name with for: leave it empty and set qty.")));
     }
     let names = expand_for(t)?;
     for n in &names {
         if !subs.names().contains(n) {
-            return Err(match &subs {
+            return Err(CmdError::refused(match &subs {
                 Subs::Fuses(f) => format!("{who} has no fuse {n}. Its fuses are {}.", names_words(f)),
                 _ => format!("{who} has no position {n}."),
-            });
+            }));
         }
     }
     Ok(Some(t.to_string()))
@@ -612,18 +615,18 @@ pub fn takes_lines(doc: &Document, c: ComponentId) -> bool {
 ///
 /// # Errors
 /// [`ITEM_NO_TAG`], [`ITEM_NO_LINES`], [`ITEM_NEEDS_DESCRIPTION`].
-pub fn refuse_on_item(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<(), String> {
+pub fn refuse_on_item(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<(), CmdError> {
     if !is_item(doc, c) {
         return Ok(());
     }
     if key == ecad_model::tag::TAG_KEY || key == ecad_model::tag::FIXED_KEY {
-        return Err(ITEM_NO_TAG.into());
+        return Err(CmdError::refused(ITEM_NO_TAG));
     }
     if key.starts_with(PART_PREFIX) {
-        return Err(ITEM_NO_LINES.into());
+        return Err(CmdError::refused(ITEM_NO_LINES));
     }
     if key == "description" && value.map(str::trim).is_none_or(str::is_empty) {
-        return Err(ITEM_NEEDS_DESCRIPTION.into());
+        return Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION));
     }
     Ok(())
 }
@@ -638,7 +641,7 @@ pub fn is_bom_key(doc: &Document, c: ComponentId, key: &str) -> bool {
 ///
 /// # Errors
 /// Every refusal of §2.1, §2.3 and §3, in words. Clearing a part line key is always allowed.
-pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     refuse_on_item(doc, c, key, value)?;
     let props = doc.components.get(&c).map(|x| &x.properties);
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
@@ -661,7 +664,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
     }
     let (n, f) = parsed?;
     if !takes_lines(doc, c) {
-        return Err(PARTLINE_FOR_DEVICES.into());
+        return Err(CmdError::refused(PARTLINE_FOR_DEVICES));
     }
     let metres = props.and_then(|p| p.get(&part_key(n, Field::Unit))).is_some_and(|u| parse_unit(u).unwrap_or(false));
     let qty = props.and_then(|p| p.get(&part_key(n, Field::Qty))).map(String::as_str);
@@ -669,16 +672,16 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
 }
 
 /// A unit value, checked against the quantity it will apply to.
-fn unit_value(qty: Option<&str>, value: Option<&str>) -> Result<Option<String>, String> {
+fn unit_value(qty: Option<&str>, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let metres = parse_unit(value.unwrap_or(""))?;
     if !metres && let Some(q) = qty.and_then(|q| parse_qty(q, true).ok()).filter(|q| !q.whole()) {
-        return Err(format!("The quantity is {q}: a count of pieces is whole. Set a whole quantity first."));
+        return Err(CmdError::refused(format!("The quantity is {q}: a count of pieces is whole. Set a whole quantity first.")));
     }
     Ok(metres.then(|| METRES.to_string()))
 }
 
 /// One field's value for a line of `c` (with the line's unit `metres` and stored `qty`).
-fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, String> {
+fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
     let key = f.word();
     match f {
         Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value),
@@ -694,10 +697,10 @@ fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, me
         Field::Half => match value.map(str::trim).filter(|v| !v.is_empty()) {
             None => Ok(None),
             Some(_) if !crate::connectors::is_connector(doc, c) => {
-                Err(format!("`half` is for a connector's part lines; {} is not a connector.", crate::devices::tag_words(doc, c)))
+                Err(CmdError::refused(format!("`half` is for a connector's part lines; {} is not a connector.", crate::devices::tag_words(doc, c))))
             }
             Some(v) if v.eq_ignore_ascii_case("s") || v.eq_ignore_ascii_case("p") => Ok(Some(v.to_ascii_lowercase())),
-            Some(_) => Err("`half` is s (the socket half) or p (the plug half).".into()),
+            Some(_) => Err(CmdError::refused("`half` is s (the socket half) or p (the plug half).")),
         },
     }
 }
@@ -720,8 +723,8 @@ pub fn item_unit_metres(doc: &Document) -> bool {
 }
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.
-pub fn line_ops(doc: &Document, c: ComponentId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, String> {
-    let props = doc.components.get(&c).map(|x| &x.properties).ok_or("no such component")?;
+pub fn line_ops(doc: &Document, c: ComponentId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
+    let props = doc.components.get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
     let given = |f: Field| fields.iter().find(|(g, _)| *g == f).map(|(_, v)| v.clone());
     let metres = match given(Field::Unit) {
         Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
@@ -747,10 +750,10 @@ pub fn line_ops(doc: &Document, c: ComponentId, n: u8, fields: &[(Field, Option<
 }
 
 /// An item property's value, checked (with the item's unit `metres` and stored `qty`).
-pub fn item_value(doc: &Document, key: &str, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, String> {
+pub fn item_value(doc: &Document, key: &str, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
     match key {
         "description" => match crate::devices::property_value(doc, key, value)? {
-            None => Err(ITEM_NEEDS_DESCRIPTION.into()),
+            None => Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION)),
             v => Ok(v),
         },
         UNIT_KEY => unit_value(qty, value),

@@ -302,15 +302,16 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
     let r = store.reader().map_err(|e| e.to_string())?;
     let mut rows = Vec::new();
     let mut chunks = Vec::new();
+    let engine = |e: ecad_file::FileError| ecad_file::StoreError::Engine(e.to_string());
     r.raw_rows(|table, _, v| {
         match table {
             "transactions" => {
-                let (flag, _, body) = ecad_file::schema::split_tx_value(v)?;
-                rows.push(ecad_file::pack::unpack(flag, body)?);
+                let (flag, _, body) = ecad_file::schema::split_tx_value(v).map_err(engine)?;
+                rows.push(ecad_file::pack::unpack(flag, body).map_err(engine)?);
             }
             "chunks" => {
-                let flag = *v.first().ok_or("empty chunk")?;
-                chunks.push(ecad_file::pack::unpack(flag, v.get(1..).unwrap_or_default())?);
+                let flag = *v.first().ok_or_else(|| ecad_file::StoreError::Engine("empty chunk".into()))?;
+                chunks.push(ecad_file::pack::unpack(flag, v.get(1..).unwrap_or_default()).map_err(engine)?);
             }
             _ => {}
         }
@@ -328,10 +329,18 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
         (
             "ruzstd (Fastest)",
             |b| Ok(ruzstd::encoding::compress_to_vec(b, ruzstd::encoding::CompressionLevel::Fastest)),
-            |b| ecad_file::pack::decode_ruzstd(b),
+            |b| ecad_file::pack::decode_ruzstd(b).map_err(|e| e.to_string()),
         ),
-        ("zstd 1", |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()), |b| ecad_file::pack::unpack(ecad_file::pack::ZSTD, b)),
-        ("zstd 3", |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()), |b| ecad_file::pack::unpack(ecad_file::pack::ZSTD, b)),
+        (
+            "zstd 1",
+            |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()),
+            |b| ecad_file::pack::unpack(ecad_file::pack::ZSTD, b).map_err(|e| e.to_string()),
+        ),
+        (
+            "zstd 3",
+            |b| zstd::bulk::compress(b, 3).map_err(|e| e.to_string()),
+            |b| ecad_file::pack::unpack(ecad_file::pack::ZSTD, b).map_err(|e| e.to_string()),
+        ),
     ];
     for (name, enc, dec) in all {
         let t = Instant::now();

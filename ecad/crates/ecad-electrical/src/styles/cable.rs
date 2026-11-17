@@ -10,6 +10,7 @@
 use ecad_model::{CableId, Document, StyleRef};
 
 use super::{Catalogue, Field};
+use crate::CmdError;
 use crate::defaults::{Kind, Slot};
 use crate::rating::fields;
 
@@ -199,30 +200,30 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
 ///
 /// # Errors
 /// In plain words, bounded: the core is not the cable's, or the value is not yes or no.
-pub fn unused_value(doc: &Document, k: CableId, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn unused_value(doc: &Document, k: CableId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let label = key.strip_prefix(UNUSED_PREFIX).unwrap_or_default();
     let clearing = value.map(str::trim).is_none_or(|v| v.is_empty() || ecad_model::words::flag(v) == Some(false));
     if clearing && doc.cables.get(&k).is_some_and(|c| c.properties.contains_key(key)) {
         return Ok(None);
     }
     if label.is_empty() || label.chars().nth(MAX_LABEL_CHARS).is_some() || label.chars().any(char::is_control) {
-        return Err(format!(
+        return Err(CmdError::refused(format!(
             "Not used names a core of the cable: unused.<core>, the core 1 to {MAX_LABEL_CHARS} characters with no control characters."
-        ));
+        )));
     }
     let cores = core_labels(doc, k);
     if !cores.iter().any(|c| c == label) {
         let shown: Vec<&str> = cores.iter().take(12).map(String::as_str).collect();
         let more = if cores.len() > shown.len() { ", …" } else { "" };
         let list = if cores.is_empty() { "none".to_string() } else { format!("{}{more}", shown.join(", ")) };
-        return Err(format!("This cable has no core {label}; its cores are {list}."));
+        return Err(CmdError::refused(format!("This cable has no core {label}; its cores are {list}.")));
     }
     if clearing {
         return Ok(None);
     }
     match value.map(str::trim) {
         Some(v) if ecad_model::words::flag(v) == Some(true) => Ok(Some(ecad_model::words::flag_word(true).into())),
-        _ => Err("Not used is yes or no (or null to clear it).".into()),
+        _ => Err(CmdError::refused("Not used is yes or no (or null to clear it).")),
     }
 }
 

@@ -233,7 +233,7 @@ fn r_make_its_page_refuses_in_words() {
         (json!({"card": cpu.hex()}), "is a rack"),
         (json!({"card": ai.hex(), "after": "999999999999"}), "No page 999999999999."),
         (json!({"card": ai.hex(), "after": "x".repeat(10_000)}), "`after` is a page number"),
-        (json!({"card": ai.hex(), "after": [1]}), "`after` is a page number"),
+        (json!({"card": ai.hex(), "after": [1]}), "`after` must be text"),
         (json!({"card": "-Z99"}), ""),
         (json!({}), ""),
     ] {

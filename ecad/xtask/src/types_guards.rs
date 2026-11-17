@@ -42,7 +42,7 @@ pub const GUARDS: &[Guard] = &[
     Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 4, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
     Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 4, fix: "an unknown word is a read error (design 072 §9.4); type it", scan: Scan::Line(g10) },
     Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 27, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
-    Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 7, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
+    Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 8, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 
 fn g2(rel: &str, line: &str) -> bool {

@@ -127,12 +127,12 @@ fn c15_a_table_reads_round_trips_and_refuses_bad_rows() {
     assert_eq!(d.grouping("E", 1), Some((1.0, 1)));
     assert_eq!(dataset::parse_strict(&dataset::to_csv(&d)).unwrap().rows, d.rows);
     let bad = "capacity,Q,pvc,3,1.5,20\ngrouping,E,3,x\ncapacity,E,pvc,3,1.5,20\ncapacity,E,pvc,3,1.50,21\n";
-    let e = dataset::parse_strict(bad).unwrap_err();
+    let e = dataset::parse_strict(bad).unwrap_err().to_string();
     assert!(e.contains("line 1") && e.contains("line 2") && e.contains("line 4") && e.contains("repeats"), "{e}");
     let kept = dataset::parse(bad);
     assert_eq!((kept.rows.len(), kept.bad_count), (1, 3));
-    assert!(dataset::parse_strict(&"grouping,E,3,0.9\n".repeat(dataset::MAX_ROWS + 1)).unwrap_err().contains("more than"));
-    assert!(dataset::parse_strict(&"#".repeat(300 * 1024)).unwrap_err().contains("KiB"));
+    assert!(dataset::parse_strict(&"grouping,E,3,0.9\n".repeat(dataset::MAX_ROWS + 1)).unwrap_err().to_string().contains("more than"));
+    assert!(dataset::parse_strict(&"#".repeat(300 * 1024)).unwrap_err().to_string().contains("KiB"));
     for hostile in ["capacity,E,pvc,3,1.5,NaN", "capacity,E,pvc,3,1.5,1e3", "capacity,E,pvc,3,1.5,-1", "ambient,pvc,95,0.5", "resistance,3,1.5,1"] {
         assert!(dataset::parse_strict(hostile).is_err(), "{hostile}");
     }

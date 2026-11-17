@@ -99,7 +99,7 @@ pub fn log(store: &Store, name: &str, last: u64) -> Result<String, StoreError> {
     let from = head.saturating_sub(last.max(1)) + 1;
     let mut s = String::new();
     for (seq, flag, chain_value, body) in r.tx_range(id, from..=head)? {
-        let record = pack::unpack(flag, &body).map_err(StoreError::Damaged)?;
+        let record = pack::unpack(flag, &body).map_err(|e| StoreError::Damaged(e.to_string()))?;
         s.push_str(&format!(
             "# {seq}: {} stored bytes ({}), {} bytes of record, chain {}\n{}\n",
             body.len() + 33,
@@ -168,17 +168,17 @@ pub fn decode_raw(table: &str, value: &[u8]) -> Result<(Option<u8>, Value), Stri
     Ok(match table {
         "meta" | "branches" | "versions" => (None, json_of(value)),
         "transactions" => {
-            let (flag, c, body) = split_tx_value(value)?;
-            let record = pack::unpack(flag, body)?;
+            let (flag, c, body) = split_tx_value(value).map_err(|e| e.to_string())?;
+            let record = pack::unpack(flag, body).map_err(|e| e.to_string())?;
             (Some(flag), json!({"chain": chain::hex(&c), "record": json_of(&record)}))
         }
         "chunks" => {
             let flag = *value.first().ok_or("an empty chunk row")?;
-            let body = pack::unpack(flag, value.get(1..).unwrap_or_default())?;
+            let body = pack::unpack(flag, value.get(1..).unwrap_or_default()).map_err(|e| e.to_string())?;
             (Some(flag), json_of(&body))
         }
         "assets" => {
-            let (media, bytes) = split_asset_value(value)?;
+            let (media, bytes) = split_asset_value(value).map_err(|e| e.to_string())?;
             (None, json!({"media_type": media, "bytes": bytes.len()}))
         }
         other => return Err(format!("unknown table {other}")),

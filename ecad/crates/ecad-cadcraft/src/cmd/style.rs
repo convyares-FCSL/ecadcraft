@@ -7,54 +7,67 @@
 //! a name shared by two styles asks for the ID. Refusals say what is allowed, in the registry's
 //! words. Nothing here draws: the projection reads the styles ([`crate::styles`]).
 //!
+//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! [`ecad_electrical::cmd::style`] decide, and the shim commits the ops and answers in JSON.
+//!
 //! Excluded: exporting a standard as a file of its own, and library origins (2.1).
 
+use std::collections::BTreeMap;
+
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_model::style::{BASED_ON_IEC, MAX_STYLES_PER_CATALOGUE, StandardHeader, StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::{Document, ObjectRef, Op, StandardId};
-use serde_json::{Map, Value, json};
+use ecad_electrical::CmdError;
+use ecad_electrical::cmd::style::{self as rules, FieldInput, StandardChange, StyleEdit};
+use ecad_model::Document;
+use ecad_model::style::{MAX_STYLES_PER_CATALOGUE, StyleLayer};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Map, Number, Value, json};
 
-use crate::cmd::{err, with_any_page, with_project};
-use crate::defaults::{self, Kind};
+use crate::cmd::err;
+use crate::cmd::input::{Command, Typed};
+use crate::cmd::{on_any_page, on_project};
+use crate::defaults;
 use crate::styles::{self, Catalogue, Layer};
+pub use ecad_electrical::cmd::style::{
+    BUILTIN_KEPT, IEC, NEEDS_NAME, NOTHING_TO_COPY, STANDARD_FIRST, STYLE_NEEDS_NAME, field_rule, rewrite_users, standard_counts, users_words,
+};
 
-/// Refusals, in words.
-pub const STANDARD_FIRST: &str = "This project uses IEC (built in). Make a standard first (`standard {new}`).";
-pub const NEEDS_NAME: &str = "A standard needs a name (1 to 64 characters, no control characters).";
-pub const STYLE_NEEDS_NAME: &str = "A style needs a name (1 to 64 characters, no control characters).";
-pub const BUILTIN_KEPT: &str = "Built-in styles cannot be deleted; reset its fields instead.";
-pub const NOTHING_TO_COPY: &str = "That project uses IEC (built in); nothing to copy.";
-/// The words of IEC (built in), the standard of a project without one.
-pub const IEC: &str = "IEC (built in)";
-/// Most fields one `style` call sets (a guard on hostile input: the record's own bound).
-const MAX_FIELDS_PER_CALL: usize = ecad_model::style::MAX_FIELDS_PER_STYLE;
+/// The commands of this module with a typed input (`category`, registered here, is
+/// [`crate::cmd::wire`]'s).
+pub const TYPED: &[Typed] = &[
+    Typed::of::<StandardParams>("standard"),
+    Typed::of::<SetstyleParams>("setstyle"),
+    Typed::of::<DeletestyleParams>("deletestyle"),
+    Typed::of::<PromoteParams>("promote"),
+    Typed::of::<StylesParams>("styles"),
+];
 
 /// The commands of this module, registered through [`crate::lanes`].
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("standard", "Standard", run_standard)
+        CommandSpec::new("standard", "Standard", crate::cmd::input::typed::<StandardParams>)
             .params(
                 "{} (read) | {new: name} | {name: name} (rename) | {from: path to a .ecad} (copy its standard) | \
 {remove: true, replace_with?: {catalogue: style}} (back to IEC); one transaction",
             )
             .noundo(),
-        CommandSpec::new("setstyle", "Set Style", run_style)
+        CommandSpec::new("setstyle", "Set Style", crate::cmd::input::typed::<SetstyleParams>)
             .params(
                 "{catalogue, id? | name?, new?: true, copy_of?: style, rename?: name, fields?: {key: value|null}, \
 layer?: \"project\"|\"standard\"} (one transaction)",
             )
             .noundo(),
-        CommandSpec::new("deletestyle", "Delete Style", run_deletestyle)
+        CommandSpec::new("deletestyle", "Delete Style", crate::cmd::input::typed::<DeletestyleParams>)
             .params("{catalogue, id | name, replace_with?: style} (own styles only; its users move to replace_with)")
             .noundo(),
-        CommandSpec::new("promote", "Promote to Standard", run_promote)
+        CommandSpec::new("promote", "Promote to Standard", crate::cmd::input::typed::<PromoteParams>)
             .params("{catalogue, id | name} (a project-only style moves to the standard) | {key} (a project value moves to the standard)")
             .noundo(),
         // Brief 050b (design 050 §6.9).
         CommandSpec::new("category", "Wire Category", crate::cmd::input::typed::<crate::cmd::wire::CategoryParams>)
             .params("{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)")
             .noundo(),
-        CommandSpec::new("styles", "Styles", run_styles).params("{catalogue?, users?: bool} (read only)").noundo(),
+        CommandSpec::new("styles", "Styles", crate::cmd::input::typed::<StylesParams>).params("{catalogue?, users?: bool} (read only)").noundo(),
     ]
 }
 
@@ -77,11 +90,6 @@ pub fn standard_json(doc: &Document) -> Value {
             })
         }
     }
-}
-
-/// The header line's counts: the standard's values and styles.
-pub fn standard_counts(doc: &Document) -> (usize, usize) {
-    doc.standard.as_ref().map_or((0, 0), |s| (s.values.len(), s.styles.values().map(|m| m.len()).sum()))
 }
 
 /// One style as `styles` returns it.
@@ -129,513 +137,279 @@ fn value_json(r: &defaults::Resolved<'_>) -> Value {
     }
 }
 
-/// `styles {catalogue?, users?}`: every style, catalogue by catalogue; records of catalogues this
-/// build does not know are listed apart (a newer file opens in an older build).
-fn run_styles(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let only = text_param(params, "catalogue").map(str::to_string);
-    if let Some(w) = &only
-        && styles::catalogue(w).is_none()
-    {
-        return Err(err(no_catalogue(w)));
-    }
-    let users = params.get("users").and_then(Value::as_bool).unwrap_or(false);
-    with_any_page(s, |p, _| {
-        let doc = p.ledger.document();
-        let mut out = Vec::new();
-        for cat in styles::CATALOGUES.iter().filter(|c| only.as_deref().is_none_or(|w| w == c.word)) {
-            for row in styles::rows(doc, cat) {
-                out.push(style_json(doc, cat, &row, users));
+/// `styles {catalogue?, users?}` (read only): every style, catalogue by catalogue; records of
+/// catalogues this build does not know are listed apart (a newer file opens in an older build).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StylesParams {
+    /// Only this catalogue: text, location, frame, wire, …
+    #[serde(default)]
+    catalogue: Option<String>,
+    /// Also count each style's users.
+    #[serde(default)]
+    users: Option<bool>,
+}
+
+impl Command for StylesParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let only = self.catalogue.as_deref().map(rules::catalogue).transpose().map_err(|e| err(e.to_string()))?;
+        let users = self.users.unwrap_or(false);
+        on_any_page(s, |p, _| {
+            let doc = p.ledger.document();
+            let mut out = Vec::new();
+            for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.word == c.word)) {
+                for row in styles::rows(doc, cat) {
+                    out.push(style_json(doc, cat, &row, users));
+                }
             }
-        }
-        let mut unknown = Vec::new();
-        if only.is_none() {
-            for layer in [StyleLayer::Standard, StyleLayer::Project] {
-                for (word, m) in ecad_model::style::layer_of(doc, layer).into_iter().flatten() {
-                    if styles::catalogue(word).is_none() {
-                        unknown.push(json!({"catalogue": word, "layer": layer.word(), "styles": m.len().min(MAX_STYLES_PER_CATALOGUE)}));
+            let mut unknown = Vec::new();
+            if only.is_none() {
+                for layer in [StyleLayer::Standard, StyleLayer::Project] {
+                    for (word, m) in ecad_model::style::layer_of(doc, layer).into_iter().flatten() {
+                        if styles::catalogue(word).is_none() {
+                            unknown.push(json!({"catalogue": word, "layer": layer.word(), "styles": m.len().min(MAX_STYLES_PER_CATALOGUE)}));
+                        }
                     }
                 }
             }
-        }
-        Ok(json!({"styles": out, "unknown_catalogues": unknown}))
-    })
-}
-
-fn no_catalogue(w: &str) -> String {
-    format!("No catalogue {w:?}; the catalogues are {}.", styles::words())
+            Ok(json!({"styles": out, "unknown_catalogues": unknown}))
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
-// Parameters
+// Fields
 
-fn text_param<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
-    params.get(key).and_then(Value::as_str).map(str::trim)
+/// A field's value in `fields`: text, a number, or null (back to the inherited value).
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum FieldParam {
+    /// Text.
+    Text(String),
+    /// A number.
+    Number(Number),
 }
 
-fn catalogue_param(params: &Value) -> Result<&'static Catalogue, String> {
-    let w = text_param(params, "catalogue").ok_or_else(|| format!("`catalogue` is required: {}.", styles::words()))?;
-    styles::catalogue(w).ok_or_else(|| no_catalogue(w))
-}
-
-/// The style a call names (`id` or `name`).
-fn target(doc: &Document, cat: &Catalogue, params: &Value) -> Result<StyleRef, String> {
-    let t = text_param(params, "id").or_else(|| text_param(params, "name")).ok_or("Name the style: `id` or `name`.")?;
-    styles::find(doc, cat.word, t)
-}
-
-fn layer_param(doc: &Document, params: &Value) -> Result<StyleLayer, String> {
-    match text_param(params, "layer") {
-        None | Some("project") => Ok(StyleLayer::Project),
-        Some("standard") if doc.standard.is_some() => Ok(StyleLayer::Standard),
-        Some("standard") => Err(STANDARD_FIRST.into()),
-        Some(other) => Err(format!("Unknown layer {other:?}: project or standard.")),
-    }
-}
-
-/// What field `f` takes, in the registry's words (design 050 §6.2).
-pub fn field_rule(f: &styles::Field) -> String {
-    match f.kind {
-        Kind::Length { min, max } if f.key == "height" => format!("{} is {min} to {max} mm (cap height)", f.key),
-        Kind::Length { min, max } => format!("{} is {min} to {max} mm", f.key),
-        Kind::Number { min, max } => format!("{} is a number from {min} to {max}", f.key),
-        Kind::Choice(words) => format!("{} is one of {}", f.key, words.join(", ")),
-        Kind::Parsed { .. } if matches!(f.key, "colour" | "line_colour" | "fill") => {
-            format!("{} is none, one IEC 60757 colour code (RD, BU…) or #rrggbb", f.key)
-        }
-        Kind::Text { max_chars } | Kind::Parsed { max_chars, .. } => format!("{} is 1 to {max_chars} characters", f.key),
-        Kind::Style(c) => format!("{} is a style of the {c} catalogue (its ID or name)", f.key),
-    }
-}
-
-/// The stored text of `v` for field `f`, checked (`None`: clear it).
-fn field_value(doc: &Document, f: &styles::Field, v: &Value) -> Result<Option<String>, String> {
-    let typed = match v {
-        Value::Null => return Ok(None),
-        Value::String(s) => s.trim().to_string(),
-        Value::Number(n) => n.to_string(),
-        _ => return Err(format!("{}.", field_rule(f))),
+/// The `fields` of a typed call, in the rules' form.
+pub(crate) fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
+    let input = |v: Option<FieldParam>| match v {
+        None => FieldInput::Clear,
+        Some(FieldParam::Text(t)) => FieldInput::Value(t),
+        Some(FieldParam::Number(n)) => FieldInput::Value(n.to_string()),
     };
-    if let Kind::Style(c) = f.kind {
-        return styles::find(doc, c, &typed).map(|id| Some(id.text())).map_err(|_| format!("{}.", field_rule(f)));
-    }
-    let parsed = defaults::parse_value_in(doc, f.kind, &typed).ok_or_else(|| format!("{}.", field_rule(f)))?;
-    Ok(Some(match parsed {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
-        defaults::Value::Choice(w) => w.to_string(),
-        defaults::Value::Text(t) => t.to_string(),
-    }))
-}
-
-/// The `fields` of a call, each checked against the catalogue.
-pub(crate) fn fields_param(doc: &Document, cat: &Catalogue, params: &Value) -> Result<Vec<(String, Option<String>)>, String> {
-    let Some(v) = params.get("fields").filter(|v| !v.is_null()) else { return Ok(Vec::new()) };
-    let o = v.as_object().ok_or("`fields` is an object of field: value | null.")?;
-    if o.len() > MAX_FIELDS_PER_CALL {
-        return Err(format!("At most {MAX_FIELDS_PER_CALL} fields per call."));
-    }
-    let mut out = Vec::new();
-    for (k, v) in o {
-        let f = cat.field(k).ok_or_else(|| {
-            let keys: Vec<&str> = cat.fields.iter().map(|f| f.key).collect();
-            format!("No field {k:?}; {} have {}.", cat.plural, keys.join(", "))
-        })?;
-        out.push((f.key.to_string(), field_value(doc, f, v)?));
-    }
-    Ok(out)
-}
-
-// ---------------------------------------------------------------------------------------------
-// Users and their rewrites
-
-/// `4 devices`, `1 wire`, `2 pages and 1 device`: explicit users in words.
-pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
-    let (mut d, mut w, mut p) = (0, 0, 0);
-    for (_, o) in users {
-        match o {
-            ObjectRef::Component(_) => d += 1,
-            ObjectRef::Conductor(_) | ObjectRef::Cable(_) => w += 1,
-            ObjectRef::Page(_) => p += 1,
-            ObjectRef::Project | ObjectRef::Standard => {}
-        }
-    }
-    let one = |n: usize, s: &str, pl: &str| (n > 0).then(|| format!("{n} {}", if n == 1 { s } else { pl }));
-    let parts: Vec<String> = [one(d, "device", "devices"), one(w, "wire", "wires"), one(p, "page", "pages")].into_iter().flatten().collect();
-    parts.join(" and ")
-}
-
-fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
-    match o {
-        ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
-        ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
-        ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
-        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),
-        ObjectRef::Project => Some(&doc.properties),
-        ObjectRef::Standard => doc.standard.as_ref().map(|s| &s.values),
-    }
-}
-
-/// Ops moving every choice of `id` (objects', the project's and the standard's) to `to`.
-pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleRef) -> Vec<Op> {
-    let mut out = Vec::new();
-    let mut put = |o: ObjectRef, key: &str| {
-        let before = props_of(doc, o).and_then(|p| p.get(key)).cloned();
-        if before.as_deref().and_then(StyleRef::parse).as_ref() == Some(id) {
-            out.push(Op::SetProperty { object: o, key: key.to_string(), before, after: Some(to.text()) });
-        }
-    };
-    for (key, o) in styles::explicit_users(doc, cat.word, id) {
-        put(o, key);
-    }
-    for e in (cat.choices)() {
-        put(ObjectRef::Project, e.key);
-        if doc.standard.is_some() {
-            put(ObjectRef::Standard, e.key);
-        }
-    }
-    out
-}
-
-/// Whether the project's or the standard's own choice names `id`.
-fn chosen_by_levels(doc: &Document, cat: &Catalogue, id: &StyleRef) -> bool {
-    (cat.choices)().iter().any(|e| {
-        [Some(&doc.properties), doc.standard.as_ref().map(|s| &s.values)]
-            .into_iter()
-            .flatten()
-            .any(|p| p.get(e.key).and_then(|v| StyleRef::parse(v)).as_ref() == Some(id))
-    })
+    fields.into_iter().flatten().map(|(k, v)| (k, input(v))).collect()
 }
 
 // ---------------------------------------------------------------------------------------------
 // standard
 
-/// `standard {}` / `{new}` / `{name}` / `{from}` / `{remove, replace_with?}` (design 050 §6.1).
-fn run_standard(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let given = ["new", "name", "from", "remove"].iter().any(|k| params.get(*k).is_some_and(|v| !v.is_null()));
-    if !given {
-        return with_any_page(s, |p, _| Ok(standard_json(p.ledger.document())));
-    }
-    // Copying reads the other project before this one is locked; that file is never changed.
-    let from = match text_param(params, "from") {
-        Some(path) => Some(read_standard(path).map_err(err)?),
-        None => None,
-    };
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let (ops, label, message) = if let Some(name) = params.get("new").filter(|v| !v.is_null()) {
-            let name = name.as_str().map(str::trim).filter(|n| is_name(n)).ok_or(NEEDS_NAME)?;
-            if let Some(s) = &doc.standard {
-                return Err(format!("This project already has a standard ({}). Rename it, or go back to IEC first.", s.header.name));
-            }
-            let id: StandardId = p.ids.fresh();
-            let header = StandardHeader { id, name: name.to_string(), based_on: BASED_ON_IEC.into(), origin: None };
-            let ops = vec![Op::SetStandard { before: None, after: Some(header) }];
-            (ops, format!("Make standard {name}"), format!("Made standard {name}, based on IEC."))
-        } else if let Some(name) = params.get("name").filter(|v| !v.is_null()) {
-            let name = name.as_str().map(str::trim).filter(|n| is_name(n)).ok_or(NEEDS_NAME)?;
-            let cur = doc.standard.as_ref().ok_or(STANDARD_FIRST)?;
-            if cur.header.name == name {
-                return Ok(json!({"changed": false, "standard": standard_json(doc)}));
-            }
-            let after = StandardHeader { name: name.to_string(), ..cur.header.clone() };
-            let ops = vec![Op::SetStandard { before: Some(cur.header.clone()), after: Some(after) }];
-            (ops, format!("Rename standard {name}"), format!("Renamed the standard {name}."))
-        } else if let Some(src) = &from {
-            let mut ops = clear_standard(doc);
-            let (v, n) = (src.values.len(), src.styles.values().map(|m| m.len().min(MAX_STYLES_PER_CATALOGUE)).sum::<usize>());
-            ops.push(Op::SetStandard { before: None, after: Some(src.header.clone()) });
-            for (k, v) in &src.values {
-                ops.push(Op::SetProperty { object: ObjectRef::Standard, key: k.clone(), before: None, after: Some(v.clone()) });
-            }
-            for (cat, m) in &src.styles {
-                for (id, r) in m.iter().take(MAX_STYLES_PER_CATALOGUE) {
-                    ops.push(Op::SetStyle {
-                        layer: StyleLayer::Standard,
-                        catalogue: cat.clone(),
-                        id: id.clone(),
-                        before: None,
-                        after: Some(r.clone()),
-                    });
-                }
-            }
-            let label = format!("Copy standard {}", src.header.name);
-            (ops, label, format!("Copied standard {} ({v} values, {n} styles). Your project values stay.", src.header.name))
-        } else {
-            let cur = doc.standard.as_ref().ok_or(STANDARD_FIRST)?;
-            let mut ops = Vec::new();
-            // Explicit users of a standard-only own style need a replacement (design 050 §6.1).
-            for cat in styles::CATALOGUES {
-                for (id, _) in styles::records(doc, StyleLayer::Standard, cat.word) {
-                    if cat.builtin(id).is_some() || styles::record(doc, StyleLayer::Project, cat.word, id).is_some() {
-                        continue;
-                    }
-                    let users = styles::explicit_users(doc, cat.word, id);
-                    if users.is_empty() && !chosen_by_levels(doc, cat, id) {
-                        continue;
-                    }
-                    let Some(w) = params.get("replace_with").and_then(|r| r.get(cat.word)).and_then(Value::as_str) else {
-                        let who = if users.is_empty() { "The project".to_string() } else { users_words(&users) };
-                        let verb = if users.len() <= 1 { "uses" } else { "use" };
-                        return Err(format!(
-                            "{who} {verb} {}, which only the standard has; give replace_with {{\"{}\": style}}.",
-                            styles::name(doc, cat.word, id),
-                            cat.word
-                        ));
-                    };
-                    let to = styles::find(doc, cat.word, w)?;
-                    let standard_only = cat.builtin(&to).is_none() && styles::record(doc, StyleLayer::Project, cat.word, &to).is_none();
-                    if standard_only {
-                        return Err(format!(
-                            "{} is the standard's too; replace it with a built-in or a project style.",
-                            styles::name(doc, cat.word, &to)
-                        ));
-                    }
-                    ops.extend(rewrite_users(doc, cat, id, &to));
-                }
-            }
-            let (v, n) = standard_counts(doc);
-            // The rewrites above may change the standard's own values: clear from the state after them.
-            let mut after = doc.clone();
-            for op in &ops {
-                op.apply(&mut after).map_err(|e| e.to_string())?;
-            }
-            ops.extend(clear_standard(&after));
-            let label = format!("Back to IEC from {}", cur.header.name);
-            (ops, label, format!("{v} values and {n} styles went back to IEC; project values stay."))
-        };
-        p.apply_edit(pg, "standard", &label, ops)?;
-        let doc = p.ledger.document();
-        Ok(json!({"changed": true, "message": message, "standard": standard_json(doc)}))
-    })
+/// `standard {}` / `{new}` / `{name}` / `{from}` / `{remove, replace_with?}` (design 050 §6.1): no
+/// field reads the standard; the first given of `new`, `name`, `from` and `remove` is done.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StandardParams {
+    /// Make a standard with this name, based on IEC.
+    #[serde(default)]
+    new: Option<String>,
+    /// Rename the standard.
+    #[serde(default)]
+    name: Option<String>,
+    /// Copy the standard of this .ecad file (opened read-only).
+    #[serde(default)]
+    from: Option<String>,
+    /// Back to IEC.
+    #[serde(default)]
+    remove: Option<bool>,
+    /// Back to IEC: the style each catalogue's users of a standard-only style move to,
+    /// {catalogue: style}.
+    #[serde(default)]
+    replace_with: Option<BTreeMap<String, String>>,
 }
 
-/// The ops removing the standard: its values, its records, then its header (so undo restores
-/// them, design 050 §3.1).
-fn clear_standard(doc: &Document) -> Vec<Op> {
-    let Some(s) = &doc.standard else { return Vec::new() };
-    let mut ops = Vec::new();
-    for (k, v) in &s.values {
-        ops.push(Op::SetProperty { object: ObjectRef::Standard, key: k.clone(), before: Some(v.clone()), after: None });
-    }
-    for (cat, m) in &s.styles {
-        for (id, r) in m {
-            ops.push(Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.clone(), id: id.clone(), before: Some(r.clone()), after: None });
+impl Command for StandardParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        if self.new.is_none() && self.name.is_none() && self.from.is_none() && self.remove.is_none() {
+            return on_any_page(s, |p, _| Ok(standard_json(p.ledger.document())));
         }
+        // Copying reads the other project before this one is locked; that file is never changed.
+        let from = match self.from.as_deref().map(str::trim) {
+            Some(path) => Some(read_standard(path).map_err(|e| err(e.to_string()))?),
+            None => None,
+        };
+        let change = match (self.new, self.name, from) {
+            (Some(n), _, _) => StandardChange::New(n),
+            (None, Some(n), _) => StandardChange::Rename(n),
+            (None, None, Some(src)) => StandardChange::Copy(Box::new(src)),
+            (None, None, None) => StandardChange::Remove(self.replace_with.unwrap_or_default()),
+        };
+        on_project(s, |p, pg, _| {
+            let Some(plan) = rules::plan_standard(p.ledger.document(), &mut p.ids, change)? else {
+                return Ok(json!({"changed": false, "standard": standard_json(p.ledger.document())}));
+            };
+            p.apply_edit(pg, "standard", &plan.label, plan.ops)?;
+            let doc = p.ledger.document();
+            Ok(json!({"changed": true, "message": plan.message, "standard": standard_json(doc)}))
+        })
     }
-    ops.push(Op::SetStandard { before: Some(s.header.clone()), after: None });
-    ops
 }
 
 /// The standard of the project file at `path`, opened read-only and closed again (question 6).
 ///
 /// # Errors
 /// The file cannot be opened, or uses IEC (built in), in words.
-pub fn read_standard(path: &str) -> Result<ecad_model::Standard, String> {
+pub fn read_standard(path: &str) -> Result<ecad_model::Standard, CmdError> {
     let path = crate::file::normalize(path)?;
     let opened = crate::file::Binding::open_read_only(&path, 0x050a, "ecad standard copy")?;
     let doc = opened.ledger.document();
-    doc.standard.clone().ok_or_else(|| NOTHING_TO_COPY.to_string())
+    doc.standard.clone().ok_or(CmdError::refused(NOTHING_TO_COPY))
 }
 
 // ---------------------------------------------------------------------------------------------
-// style
+// setstyle
 
-/// `style {catalogue, id|name, new?, copy_of?, rename?, fields?, layer?}` (design 050 §6.2).
-fn run_style(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cat = catalogue_param(params).map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let layer = layer_param(doc, params)?;
-        let fields = fields_param(doc, cat, params)?;
-        let (ops, id, label) = if params.get("new").and_then(Value::as_bool) == Some(true) {
-            let name = text_param(params, "name").filter(|n| is_name(n)).ok_or(STYLE_NEEDS_NAME)?;
-            if styles::rows(doc, cat).iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
-                return Err(format!("A {} is already called {name:?}; choose another name.", cat.one.to_lowercase()));
-            }
-            // Brief 057: a catalogue with no built-in styles (cable types, rating tables) starts an
-            // empty style.
-            let from = match text_param(params, "copy_of") {
-                Some(t) => Some(styles::find(doc, cat.word, t)?),
-                None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
-            };
-            let id = StyleRef::Own(p.ids.fresh::<u128>());
-            let mut rec = StyleRecord { name: name.to_string(), fields: Default::default(), body: None };
-            for f in cat.fields {
-                let Some(from) = &from else { break };
-                // 050b: a copy is no potential's default (one category per potential).
-                if cat.word == "wire" && f.key == "potential" {
-                    continue;
-                }
-                let v = styles::field(doc, cat, from, f, None).text();
-                if !v.is_empty() {
-                    rec.fields.insert(f.key.to_string(), v);
-                }
-            }
-            let rec = styles::with_fields(Some(&rec), None, &fields);
-            styles::check_record(doc, cat, &id, layer, &rec)?;
-            let op = Op::SetStyle { layer, catalogue: cat.word.into(), id: id.clone(), before: None, after: Some(rec) };
-            (vec![op], id, format!("New {} {name}", cat.one.to_lowercase()))
-        } else {
-            let id = target(doc, cat, params)?;
-            let rename = text_param(params, "rename");
-            if let Some(n) = rename {
-                if !is_name(n) {
-                    return Err(STYLE_NEEDS_NAME.into());
-                }
-                if id.is_builtin() {
-                    return Err("A built-in style keeps its name; make a new style from it (`new`, `copy_of`) instead.".into());
-                }
-                if styles::rows(doc, cat).iter().any(|r| r.id != id && r.name.eq_ignore_ascii_case(n)) {
-                    return Err(format!("A {} is already called {n:?}; choose another name.", cat.one.to_lowercase()));
-                }
-            }
-            if rename.is_none() && fields.is_empty() {
-                return Err("Give `fields` to set, `rename`, or `new: true`.".into());
-            }
-            // A rename goes to the layer holding the style's name.
-            let name_layer = if styles::record(doc, StyleLayer::Standard, cat.word, &id).is_some_and(|r| !r.name.is_empty()) {
-                StyleLayer::Standard
-            } else {
-                StyleLayer::Project
-            };
-            let mut ops = Vec::new();
-            for l in [StyleLayer::Standard, StyleLayer::Project] {
-                let f: Vec<(String, Option<String>)> = if l == layer { fields.clone() } else { Vec::new() };
-                let n = rename.filter(|_| l == name_layer);
-                if f.is_empty() && n.is_none() {
-                    continue;
-                }
-                let before = styles::record(doc, l, cat.word, &id).cloned();
-                let rec = styles::with_fields(before.as_ref(), n, &f);
-                // A built-in's override with nothing left is no record; an own style keeps its
-                // named record.
-                let keep = !rec.fields.is_empty() || !rec.name.is_empty();
-                let after = keep.then_some(rec);
-                if let Some(r) = &after {
-                    styles::check_record(doc, cat, &id, l, r)?;
-                }
-                if after != before {
-                    ops.push(Op::SetStyle { layer: l, catalogue: cat.word.into(), id: id.clone(), before, after });
-                }
-            }
-            // Design 050 §3.5: history names the style and the fields that changed
-            // (`Text style Tag: colour none → RD`).
-            let changes: Vec<String> = fields
-                .iter()
-                .map(|(k, v)| {
-                    let was = styles::field_of(doc, cat.word, &id, k, None).map(|r| r.text()).unwrap_or_default();
-                    format!("{k} {was} → {}", v.as_deref().unwrap_or("(reset)"))
-                })
-                .collect();
-            let name = rename.map_or_else(|| styles::name(doc, cat.word, &id), str::to_string);
-            let label = if changes.is_empty() { format!("{} {name}", cat.one) } else { format!("{} {name}: {}", cat.one, changes.join(", ")) };
-            (ops, id, label)
+/// `setstyle {catalogue, id|name, new?, copy_of?, rename?, fields?, layer?}` (design 050 §6.2): a
+/// new style, or a style's fields and name, as one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SetstyleParams {
+    /// The catalogue: text, location, frame, wire, …
+    catalogue: String,
+    /// The style's ID (a built-in word or `#<32 hex>`).
+    #[serde(default)]
+    id: Option<String>,
+    /// The style's name (with `new`: the new style's).
+    #[serde(default)]
+    name: Option<String>,
+    /// Make a new style called `name`.
+    #[serde(default)]
+    new: Option<bool>,
+    /// The style a new one copies (default: the catalogue's first built-in).
+    #[serde(default)]
+    copy_of: Option<String>,
+    /// A new name.
+    #[serde(default)]
+    rename: Option<String>,
+    /// The fields to set: {key: value | null} (null: back to the inherited value).
+    #[serde(default)]
+    fields: Option<BTreeMap<String, Option<FieldParam>>>,
+    /// "project" (default) or "standard".
+    #[serde(default)]
+    layer: Option<String>,
+}
+
+impl Command for SetstyleParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let cat = rules::catalogue(&self.catalogue).map_err(|e| err(e.to_string()))?;
+        let edit = StyleEdit {
+            new: self.new == Some(true),
+            id: self.id,
+            name: self.name,
+            copy_of: self.copy_of,
+            rename: self.rename,
+            fields: field_inputs(self.fields),
+            layer: self.layer,
         };
-        let changed = !ops.is_empty();
-        if changed {
-            p.apply_edit(pg, "setstyle", &label, ops)?;
-        }
-        let doc = p.ledger.document();
-        let row = styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| styles::Row {
-            id: id.clone(),
-            name: styles::name(doc, cat.word, &id),
-            layer: Layer::Project,
-            overridden: false,
-        });
-        let mut v = style_json(doc, cat, &row, false);
-        v["changed"] = json!(changed);
-        Ok(v)
-    })
+        on_project(s, |p, pg, _| {
+            let plan = rules::plan_style(p.ledger.document(), &mut p.ids, cat, edit)?;
+            let changed = !plan.ops.is_empty();
+            if changed {
+                p.apply_edit(pg, "setstyle", &plan.label, plan.ops)?;
+            }
+            let doc = p.ledger.document();
+            let id = plan.id;
+            let row = styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| styles::Row {
+                id: id.clone(),
+                name: styles::name(doc, cat.word, &id),
+                layer: Layer::Project,
+                overridden: false,
+            });
+            let mut v = style_json(doc, cat, &row, false);
+            v["changed"] = json!(changed);
+            Ok(v)
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
 // deletestyle
 
-/// `deletestyle {catalogue, id|name, replace_with?}` (design 050 §6.3).
-fn run_deletestyle(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let cat = catalogue_param(params).map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let id = target(doc, cat, params)?;
-        if id.is_builtin() {
-            return Err(BUILTIN_KEPT.into());
-        }
-        let name = styles::name(doc, cat.word, &id);
-        let users = styles::explicit_users(doc, cat.word, &id);
-        let mut ops = Vec::new();
-        if !users.is_empty() || chosen_by_levels(doc, cat, &id) {
-            let Some(w) = text_param(params, "replace_with") else {
-                let who = if users.is_empty() { "The project".to_string() } else { users_words(&users) };
-                let verb = if users.len() <= 1 { "uses" } else { "use" };
-                return Err(format!("{who} {verb} {name}; give replace_with."));
-            };
-            let to = styles::find(doc, cat.word, w)?;
-            if to == id {
-                return Err("replace_with must be another style.".into());
-            }
-            ops.extend(rewrite_users(doc, cat, &id, &to));
-        }
-        for l in [StyleLayer::Project, StyleLayer::Standard] {
-            if let Some(r) = ecad_model::style::record(doc, l, cat.word, &id) {
-                ops.push(Op::SetStyle { layer: l, catalogue: cat.word.into(), id: id.clone(), before: Some(r.clone()), after: None });
-            }
-        }
-        let moved = users.len();
-        p.apply_edit(pg, "deletestyle", &format!("Delete {} {name}", cat.one.to_lowercase()), ops)?;
-        Ok(json!({"changed": true, "deleted": id.text(), "moved": moved, "message": format!("Deleted {name}.")}))
-    })
+/// `deletestyle {catalogue, id|name, replace_with?}` (design 050 §6.3): an own style deleted; its
+/// users move to `replace_with`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeletestyleParams {
+    /// The catalogue: text, location, frame, wire, …
+    catalogue: String,
+    /// The style's ID.
+    #[serde(default)]
+    id: Option<String>,
+    /// The style's name.
+    #[serde(default)]
+    name: Option<String>,
+    /// The style its users move to (its ID or name).
+    #[serde(default)]
+    replace_with: Option<String>,
+}
+
+impl Command for DeletestyleParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let cat = rules::catalogue(&self.catalogue).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
+            let doc = p.ledger.document();
+            let id = rules::target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
+            let plan = rules::plan_delete(doc, cat, id, self.replace_with.as_deref())?;
+            p.apply_edit(pg, "deletestyle", &format!("Delete {} {}", cat.one.to_lowercase(), plan.name), plan.ops)?;
+            Ok(json!({"changed": true, "deleted": plan.id.text(), "moved": plan.moved, "message": format!("Deleted {}.", plan.name)}))
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
 // promote
 
-/// `promote {catalogue, id|name}` or `promote {key}` (design 050 §6.4).
-fn run_promote(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    if let Some(key) = text_param(params, "key") {
-        let entry = defaults::find(key).ok_or_else(|| err(format!("No default \"{key}\".")))?;
-        return with_project(s, |p, pg, _| {
+/// `promote {catalogue, id|name}` or `promote {key}` (design 050 §6.4): a project-only style, or
+/// the project's own value of a default, moves to the standard.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PromoteParams {
+    /// A default's key: its project value moves to the standard.
+    #[serde(default)]
+    key: Option<String>,
+    /// The style's catalogue: text, location, frame, wire, …
+    #[serde(default)]
+    catalogue: Option<String>,
+    /// The style's ID.
+    #[serde(default)]
+    id: Option<String>,
+    /// The style's name.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+impl Command for PromoteParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        if let Some(key) = self.key.as_deref().map(str::trim) {
+            let entry = rules::promote_entry(key).map_err(|e| err(e.to_string()))?;
+            return on_project(s, |p, pg, _| {
+                let doc = p.ledger.document();
+                rules::needs_standard(doc)?;
+                if !entry.allows(defaults::Level::Standard) {
+                    return Err(CmdError::refused(crate::cmd::default::level_refused(entry, defaults::Level::Standard)));
+                }
+                let (mut ops, text) = rules::promote_value(doc, entry)?;
+                ops.extend(crate::cmd::default::ops(doc, entry, defaults::Level::Project, crate::cmd::default::Target::Project, None)?);
+                p.apply_edit(pg, "promote", &format!("Promote {}", entry.label), ops)?;
+                Ok(json!({"changed": true, "key": entry.key, "value": text}))
+            });
+        }
+        let cat = rules::required_catalogue(self.catalogue.as_deref()).map_err(|e| err(e.to_string()))?;
+        on_project(s, |p, pg, _| {
             let doc = p.ledger.document();
-            let std = doc.standard.as_ref().ok_or(STANDARD_FIRST)?;
-            if !entry.allows(defaults::Level::Standard) {
-                return Err(crate::cmd::default::level_refused(entry, defaults::Level::Standard));
-            }
-            let r = defaults::resolve(doc, entry, defaults::Scope::project());
-            if r.from != defaults::Source::Project {
-                return Err(format!("The project has no value of its own for `{key}` to promote."));
-            }
-            let text = r.text();
-            if let Some(v) = std.values.get(key).filter(|v| entry.parse_in(doc, v).is_some_and(|x| x != r.value)) {
-                return Err(format!("The standard says {v}; use setdefault level standard to change it."));
-            }
-            let mut ops = Vec::new();
-            let before = std.values.get(key).cloned();
-            if before.as_deref() != Some(text.as_str()) {
-                ops.push(Op::SetProperty { object: ObjectRef::Standard, key: key.to_string(), before, after: Some(text.clone()) });
-            }
-            ops.extend(crate::cmd::default::ops(doc, entry, defaults::Level::Project, crate::cmd::default::Target::Project, None)?);
-            p.apply_edit(pg, "promote", &format!("Promote {}", entry.label), ops)?;
-            Ok(json!({"changed": true, "key": key, "value": text}))
-        });
+            rules::needs_standard(doc)?;
+            let id = rules::target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
+            let (ops, name) = rules::plan_promote_style(doc, cat, &id)?;
+            p.apply_edit(pg, "promote", &format!("Promote {name}"), ops)?;
+            Ok(json!({"changed": true, "id": id.text(), "message": format!("{name} is in the standard now.")}))
+        })
     }
-    let cat = catalogue_param(params).map_err(err)?;
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        if doc.standard.is_none() {
-            return Err(STANDARD_FIRST.into());
-        }
-        let id = target(doc, cat, params)?;
-        if id.is_builtin() {
-            return Err("A built-in style is in every standard; set its fields at standard level instead (setstyle … layer: \"standard\").".into());
-        }
-        if styles::record(doc, StyleLayer::Standard, cat.word, &id).is_some() {
-            return Err(format!("{} is already in the standard.", styles::name(doc, cat.word, &id)));
-        }
-        let rec = styles::record(doc, StyleLayer::Project, cat.word, &id).cloned().ok_or("Only a project style can be promoted.")?;
-        let name = styles::name(doc, cat.word, &id);
-        let ops = vec![
-            Op::SetStyle { layer: StyleLayer::Project, catalogue: cat.word.into(), id: id.clone(), before: Some(rec.clone()), after: None },
-            Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.word.into(), id: id.clone(), before: None, after: Some(rec) },
-        ];
-        p.apply_edit(pg, "promote", &format!("Promote {name}"), ops)?;
-        Ok(json!({"changed": true, "id": id.text(), "message": format!("{name} is in the standard now.")}))
-    })
 }

@@ -26,6 +26,8 @@
 //!
 //! This module reads the document and plans ops; it commits nothing itself.
 
+use crate::CmdError;
+use ecad_model::Noun;
 use std::collections::BTreeMap;
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
@@ -85,11 +87,11 @@ pub fn kind_of(doc: &Document, c: ComponentId) -> Option<&str> {
 ///
 /// # Errors
 /// [`NAME_RULE`].
-pub fn valid_name(text: &str) -> Result<String, String> {
+pub fn valid_name(text: &str) -> Result<String, CmdError> {
     let t = text.trim();
     let ok =
         !t.is_empty() && t.chars().count() <= MAX_NAME_CHARS && t.chars().all(|c| c.is_alphanumeric() || matches!(c, '+' | '-' | '/' | '.' | '_'));
-    if ok { Ok(t.to_string()) } else { Err(NAME_RULE.into()) }
+    if ok { Ok(t.to_string()) } else { Err(CmdError::refused(NAME_RULE)) }
 }
 
 // ---------------------------------------------------------------- labels (§7)
@@ -432,7 +434,7 @@ pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(Con
 /// The starter definition cannot be built (never expected).
 pub fn plan_tagless(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, s: &Starter, placement: Placement, props: ecad_model::Properties,
-) -> Result<Tagless, String> {
+) -> Result<Tagless, CmdError> {
     let mut ops = Vec::new();
     let definition = match symbols::embedded(doc, s) {
         Some(d) => d,
@@ -530,9 +532,9 @@ pub struct Junction {
 /// # Errors
 /// Design 022 §3.1's refusals: a cable core, a wire drawn on more than one page, a junction
 /// already there, the point at a route end.
-pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, on: OnWire) -> Result<Junction, String> {
+pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, on: OnWire) -> Result<Junction, CmdError> {
     let c = on.conductor;
-    let cond = doc.conductors.get(&c).ok_or("No such wire.")?;
+    let cond = doc.conductors.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
     if let Some(k) = doc.cables_of(c).first() {
         let cable = crate::references::cable_words(doc, *k);
         let core = doc
@@ -541,13 +543,13 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
             .and_then(|x| x.members.iter().find(|m| m.conductor == c))
             .and_then(|m| m.core.clone())
             .map_or_else(String::new, |n| format!("'s core {n}"));
-        return Err(format!("{cable}{core} can't take a junction: a cable core runs end to end."));
+        return Err(CmdError::refused(format!("{cable}{core} can't take a junction: a cable core runs end to end.")));
     }
     let pages: std::collections::BTreeSet<PageId> = doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page).collect();
     if pages.len() > 1 {
-        return Err(format!("This wire is drawn on {} pages; add the junction where it is a single wire.", pages.len()));
+        return Err(CmdError::refused(format!("This wire is drawn on {} pages; add the junction where it is a single wire.", pages.len())));
     }
-    let (item_id, item, v) = route_vertices(doc, c, page).ok_or("The wire has no route on this page.")?;
+    let (item_id, item, v) = route_vertices(doc, c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
     for (_, r) in doc.representations_on(page) {
         let Subject::Component(j) = r.subject else { continue };
         if kind_of(doc, j) != Some(JUNCTION) {
@@ -555,14 +557,14 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
         }
         let here = doc.terminals_of(j).any(|(t, _)| ecad_model::derive::terminal_position(doc, page, t).is_some_and(|p| p.near(on.at, ON_WIRE)));
         if here {
-            return Err("There is a junction here already.".into());
+            return Err(CmdError::refused("There is a junction here already."));
         }
     }
-    let (first, last) = (v.first().copied().ok_or("empty route")?, v.last().copied().ok_or("empty route")?);
+    let (first, last) = (v.first().copied().ok_or(CmdError::refused("empty route"))?, v.last().copied().ok_or(CmdError::refused("empty route"))?);
     if on.at.near(first, ON_WIRE) || on.at.near(last, ON_WIRE) {
-        return Err("Click on a wire, not its end: an end can attach to a connection point.".into());
+        return Err(CmdError::refused("Click on a wire, not its end: an end can attach to a connection point."));
     }
-    let starter = junction_starter().ok_or("the junction symbol is missing")?;
+    let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
     let placement = Placement { origin: on.at, rotation: 0.0, mirror: false, scale: 1.0 };
@@ -830,21 +832,21 @@ fn wire_words(doc: &Document, c: ConductorId) -> String {
 }
 
 /// Refuse merging wire `c` with a new wire of potential `potential` (design 032 §2.2).
-fn merge_potential(doc: &Document, c: ConductorId, potential: Option<&str>) -> Result<(), String> {
+fn merge_potential(doc: &Document, c: ConductorId, potential: Option<&str>) -> Result<(), CmdError> {
     let conn = doc.connectivity();
     let Some(net) = conn.net_of_conductor(c).and_then(|n| conn.net(n)) else { return Ok(()) };
     let theirs = ecad_model::wiring::net_potential(doc, net).name;
     if let (Some(x), Some(y)) = (theirs.as_deref(), potential)
         && !x.eq_ignore_ascii_case(y)
     {
-        return Err(format!("That wire carries {x} and this one {y}; joining them would short them. {JOIN_WAY_OUT}"));
+        return Err(CmdError::refused(format!("That wire carries {x} and this one {y}; joining them would short them. {JOIN_WAY_OUT}")));
     }
     Ok(())
 }
 
 /// Refuse folding wires `a` and `b` into one (design 032 §2.2): potentials, fixed numbers, stored
 /// cross-sections and colours that disagree.
-pub fn fold_sense(doc: &Document, a: ConductorId, b: ConductorId) -> Result<(), String> {
+pub fn fold_sense(doc: &Document, a: ConductorId, b: ConductorId) -> Result<(), CmdError> {
     let conn = doc.connectivity();
     if let (Some(na), Some(nb)) = (conn.net_of_conductor(a), conn.net_of_conductor(b))
         && na != nb
@@ -854,12 +856,12 @@ pub fn fold_sense(doc: &Document, a: ConductorId, b: ConductorId) -> Result<(), 
         if let (Some(px), Some(py)) = (&px, &py)
             && !px.eq_ignore_ascii_case(py)
         {
-            return Err(format!("That wire carries {px} and this one {py}; joining them would short them. {JOIN_WAY_OUT}"));
+            return Err(CmdError::refused(format!("That wire carries {px} and this one {py}; joining them would short them. {JOIN_WAY_OUT}")));
         }
         if ecad_model::wiring::net_fixed(x) && ecad_model::wiring::net_fixed(y) {
             let (fx, fy) = (ecad_model::wiring::net_number(doc, x).unwrap_or_default(), ecad_model::wiring::net_number(doc, y).unwrap_or_default());
             if fx != fy {
-                return Err(format!("Both wires have fixed numbers of their own ({fx} and {fy}). {JOIN_WAY_OUT}"));
+                return Err(CmdError::refused(format!("Both wires have fixed numbers of their own ({fx} and {fy}). {JOIN_WAY_OUT}")));
             }
         }
     }
@@ -868,7 +870,7 @@ pub fn fold_sense(doc: &Document, a: ConductorId, b: ConductorId) -> Result<(), 
         if let (Some(x), Some(y)) = (ca.properties.get(key), cb.properties.get(key))
             && x != y
         {
-            return Err(format!("The two wires have different {words} ({x} and {y}). {JOIN_WAY_OUT}"));
+            return Err(CmdError::refused(format!("The two wires have different {words} ({x} and {y}). {JOIN_WAY_OUT}")));
         }
     }
     Ok(())
@@ -878,7 +880,7 @@ pub fn fold_sense(doc: &Document, a: ConductorId, b: ConductorId) -> Result<(), 
 /// design 032 §2.2: never lose them silently). Net-wide numbering keys are left to the numbering
 /// pass. A value both wires store differently is refused by [`fold_sense`] (cross-section,
 /// colour) or here (any other key), with words.
-fn fold_properties(doc: &Document, s: ConductorId, o: ConductorId) -> Result<Vec<Op>, String> {
+fn fold_properties(doc: &Document, s: ConductorId, o: ConductorId) -> Result<Vec<Op>, CmdError> {
     let (Some(sc), Some(oc)) = (doc.conductors.get(&s), doc.conductors.get(&o)) else { return Ok(Vec::new()) };
     let mut ops = Vec::new();
     for (k, v) in &oc.properties {
@@ -887,7 +889,7 @@ fn fold_properties(doc: &Document, s: ConductorId, o: ConductorId) -> Result<Vec
         }
         match sc.properties.get(k) {
             Some(x) if x == v => {}
-            Some(x) => return Err(format!("The two wires have different values of {k} ({x} and {v}). {JOIN_WAY_OUT}")),
+            Some(x) => return Err(CmdError::refused(format!("The two wires have different values of {k} ({x} and {v}). {JOIN_WAY_OUT}"))),
             None => ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Conductor(s), key: k.clone(), before: None, after: Some(v.clone()) }),
         }
     }
@@ -901,8 +903,8 @@ pub fn has_fixed_number(doc: &Document, c: ConductorId) -> bool {
 }
 
 /// A junction made at `at` (no wire split): it attaches the open ends there.
-fn junction_here(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, at: Pt) -> Result<Tagless, String> {
-    let starter = junction_starter().ok_or("the junction symbol is missing")?;
+fn junction_here(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, at: Pt) -> Result<Tagless, CmdError> {
+    let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
     plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 }, props)
@@ -919,18 +921,18 @@ pub fn joinable_ends_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> V
 }
 
 /// What the end of a new wire at `at` meets (design 032 §2.1, step 2), and the point it snaps to.
-fn meet_at(doc: &Document, ids: &mut IdAllocator, page: PageId, style: &Style, at: Pt, quiet: &[Pt]) -> Result<(Meets, Pt), String> {
+fn meet_at(doc: &Document, ids: &mut IdAllocator, page: PageId, style: &Style, at: Pt, quiet: &[Pt]) -> Result<(Meets, Pt), CmdError> {
     let loose = joinable_ends_at(doc, page, at, quiet);
     let through = interior_wire_at(doc, page, at);
     match (loose.as_slice(), through) {
         ([], None) => Ok((Meets::Open, at)),
         ([(c, e)], None) if mergeable(doc, *c, page) => {
-            let route = route_vertices(doc, *c, page).ok_or("The wire has no route on this page.")?;
+            let route = route_vertices(doc, *c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
             let p = end_point(doc, *c, *e, page).unwrap_or(at);
             Ok((Meets::Merge { conductor: *c, end: *e, route }, p))
         }
         (_, Some(on)) => {
-            let j = plan_junction(doc, ids, page, style.clone(), on).map_err(|why| format!("{why} {JOIN_WAY_OUT}"))?;
+            let j = plan_junction(doc, ids, page, style.clone(), on).map_err(|why| CmdError::refused(format!("{why} {JOIN_WAY_OUT}")))?;
             let touched = j.tagless.attached.iter().map(|(c, _)| *c).collect();
             let meets = Meets::Junction {
                 ops: j.tagless.ops,
@@ -1036,12 +1038,13 @@ pub struct WireInput<'a> {
 /// # Errors
 /// Design 032 §2.2's refusals (potentials, fixed numbers, a loop, too many points or splits), and
 /// a junction that cannot be placed; nothing is planned then.
-pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) -> Result<WirePlan, String> {
+pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) -> Result<WirePlan, CmdError> {
     let WireInput { page, style, points: mut pts, potential, join, tol, quiet, max_points } = input;
-    let (Some(first), Some(last)) = (pts.first().copied(), pts.last().copied()) else { return Err("a wire needs two points".into()) };
+    let (Some(first), Some(last)) = (pts.first().copied(), pts.last().copied()) else { return Err(CmdError::refused("a wire needs two points")) };
     let mut shown = ShownOnce::new(doc, page);
-    let loop_refusal =
-        |c: ConductorId| format!("This wire meets wire {} at two places, which would close it into a loop. {JOIN_WAY_OUT}", wire_words(doc, c));
+    let loop_refusal = |c: ConductorId| {
+        CmdError::refused(format!("This wire meets wire {} at two places, which would close it into a loop. {JOIN_WAY_OUT}", wire_words(doc, c)))
+    };
     // 1. The ends.
     let mut meets: Vec<Meets> = Vec::with_capacity(2);
     for (i, at) in [first, last].into_iter().enumerate() {
@@ -1063,7 +1066,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     if let (Meets::Merge { conductor: a, .. }, Meets::Merge { conductor: b, .. }) = (&ma, &mb)
         && a == b
     {
-        return Err(format!("Both ends land on the ends of one wire: that would close it into a loop. {JOIN_WAY_OUT}"));
+        return Err(CmdError::refused(format!("Both ends land on the ends of one wire: that would close it into a loop. {JOIN_WAY_OUT}")));
     }
     // Conductors this plan splits or merges: each at most once, and no other end of the plan
     // attaches to them (else the ops would contradict each other).
@@ -1085,7 +1088,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     if join {
         let on_path = ends_on_path(doc, page, &pts, quiet);
         if on_path.len() > max_points {
-            return Err(format!("This wire crosses more than {max_points} wire ends; draw it in parts."));
+            return Err(CmdError::refused(format!("This wire crosses more than {max_points} wire ends; draw it in parts.")));
         }
         if !on_path.is_empty() {
             let mut current: Vec<Pt> = Vec::new();
@@ -1118,7 +1121,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
             }
             pieces.push(current);
             if pieces.iter().any(|p| p.len() < 2) || pieces.len() != splits.len() + 1 {
-                return Err("This wire would split where it starts or ends; draw it in parts.".into());
+                return Err(CmdError::refused("This wire would split where it starts or ends; draw it in parts."));
             }
         }
     }
@@ -1193,7 +1196,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
             });
         }
     };
-    let too_long = || format!("The joined wire would have more than {max_points} points.");
+    let too_long = || CmdError::refused(format!("The joined wire would have more than {max_points} points."));
     let mut attach: Vec<Op> = Vec::new();
     let mut tail: Vec<Op> = Vec::new();
     let mut owner: Option<(ConductorId, ItemId)> = None;
@@ -1220,7 +1223,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
         if !carries_potential {
             give_potential(s, &mut ops);
         }
-        let oc = doc.conductors.get(&o).ok_or("No such wire.")?;
+        let oc = doc.conductors.get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
         let far = other_end(eo);
         let mut gone = oc.clone();
         if let Some(t) = oc.end(far) {
@@ -1296,7 +1299,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     }
     ops.extend(attach);
     ops.extend(tail);
-    let (c, i) = owner.ok_or("the wire has no route")?;
+    let (c, i) = owner.ok_or(CmdError::refused("the wire has no route"))?;
     plan.conductor = c;
     plan.item = i;
     plan.ops = ops;
@@ -1320,9 +1323,9 @@ pub struct EndJoin {
 /// `Ok(None)`, the caller places a junction instead), and §2.2's refusals.
 pub fn plan_end_join(
     doc: &Document, page: PageId, a: (ConductorId, End), b: (ConductorId, End), max_points: usize,
-) -> Result<Option<EndJoin>, String> {
+) -> Result<Option<EndJoin>, CmdError> {
     if a.0 == b.0 {
-        return Err(format!("Both ends belong to one wire: joining them would close it into a loop. {JOIN_WAY_OUT}"));
+        return Err(CmdError::refused(format!("Both ends belong to one wire: joining them would close it into a loop. {JOIN_WAY_OUT}")));
     }
     if !mergeable(doc, a.0, page) || !mergeable(doc, b.0, page) {
         return Ok(None);
@@ -1334,8 +1337,8 @@ pub fn plan_end_join(
         _ => a.0 < b.0,
     };
     let ((s, es), (o, eo)) = if a_survives { (a, b) } else { (b, a) };
-    let rs = route_vertices(doc, s, page).ok_or("The wire has no route on this page.")?;
-    let ro = route_vertices(doc, o, page).ok_or("The wire has no route on this page.")?;
+    let rs = route_vertices(doc, s, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
+    let ro = route_vertices(doc, o, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
     let o_from_end = if eo == End::A { ro.2.clone() } else { reversed(&ro.2) };
     // The other wire's open end lies on the survivor's (within ON_WIRE): it starts there.
     let mut add = o_from_end;
@@ -1344,14 +1347,14 @@ pub fn plan_end_join(
     }
     let route = merged_route(&rs.2, es, &add);
     if route.len() > max_points {
-        return Err(format!("The joined wire would have more than {max_points} points."));
+        return Err(CmdError::refused(format!("The joined wire would have more than {max_points} points.")));
     }
     let mut ops = Vec::new();
     let mut after = rs.1.clone();
     after.kind = ItemKind::Primitive(path_of(route));
     ops.push(Op::ModifyItem { id: rs.0, before: rs.1.clone(), after });
     ops.extend(fold_properties(doc, s, o)?);
-    let oc = doc.conductors.get(&o).ok_or("No such wire.")?;
+    let oc = doc.conductors.get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
     let far = other_end(eo);
     let mut gone = oc.clone();
     if let Some(t) = oc.end(far) {

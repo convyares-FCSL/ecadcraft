@@ -199,7 +199,7 @@ pub mod numbering_seam {
     /// # Errors
     /// 026's refusal or a bad `provisional`.
     pub fn plan(p: &mut Project, params: &Value) -> Result<crate::cmd::numbering::BeforeIssue, String> {
-        crate::cmd::numbering::plan_before_issue(p, params)
+        crate::cmd::numbering::plan_before_issue(p, params).map_err(String::from)
     }
 
     /// Record a planned Finalise numbering.
@@ -207,7 +207,7 @@ pub mod numbering_seam {
     /// # Errors
     /// The commit was refused.
     pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::numbering::Plan) -> Result<(), String> {
-        crate::cmd::numbering::commit_finalise(p, pg, plan)
+        crate::cmd::numbering::commit_finalise(p, pg, plan).map_err(String::from)
     }
 }
 
@@ -906,8 +906,8 @@ pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<St
             "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
         ));
     }
-    if let Err(e) = crate::cmd::sheet::plan_issue(p, &json!({})) {
-        return Some(e);
+    if let Err(e) = crate::cmd::sheet::plan_issue(p) {
+        return Some(e.to_string());
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
     // folder ships (review of PR #54, 2): checked by `release_pending` once it has them.
@@ -1224,7 +1224,7 @@ pub(crate) fn release_pending(
     }
     // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
     // the issue's, on the current document.
-    let mut plan = crate::cmd::sheet::plan_issue(p, &json!({}))?;
+    let mut plan = crate::cmd::sheet::plan_issue(p)?;
     if finalise.is_some() {
         // The issue names the step before it: Finalise, once recorded.
         plan.head += 1;
@@ -1300,7 +1300,8 @@ pub(crate) fn release_pending(
         }
         finalise_tx = Some(p.ledger.head());
     }
-    let issued = injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()));
+    let issued =
+        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()).map_err(String::from));
     if let Err(e) = issued {
         clear_staging(&staging);
         if finalise_tx.is_some() {

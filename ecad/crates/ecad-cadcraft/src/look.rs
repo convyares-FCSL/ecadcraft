@@ -1149,27 +1149,40 @@ pub fn pick_routes(p: &crate::Project, page: PageId, selection: &[cadcraft_engin
     Some(out)
 }
 
-/// `canvassheet {dark: bool}` (brief 040): the sheet the app shows, for the colours ECAD draws
-/// in; the open page is redrawn when it changes. Display only, nothing recorded.
+/// The commands of this module with a typed input.
+pub const TYPED: &[crate::cmd::input::Typed] = &[crate::cmd::input::Typed::of::<CanvassheetParams>("canvassheet")];
+
+/// The commands this module adds.
 pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
     vec![
-        cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", run_canvassheet)
+        cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::cmd::input::typed::<CanvassheetParams>)
             .params("{dark: bool} (display only: the sheet the page is drawn on)")
             .noundo(),
     ]
 }
 
-fn run_canvassheet(s: &mut cadcraft_engine::Session, params: &serde_json::Value) -> cadcraft_engine::Result<serde_json::Value> {
-    let dark = params.get("dark").and_then(serde_json::Value::as_bool).ok_or_else(|| crate::cmd::err("`dark` is true or false."))?;
-    let changed = DARK_SHEET.swap(dark, std::sync::atomic::Ordering::Relaxed) != dark;
-    if changed {
-        // The open page only: there is one page window, and a page is projected afresh when shown.
-        let _ = crate::cmd::with_any_page(s, |p, pg| {
-            p.redraw_window(pg, Some("canvassheet"));
-            Ok(())
-        });
+/// `canvassheet {dark}` (brief 040): the sheet the app shows, for the colours ECAD draws in; the
+/// open page is redrawn when it changes. Display only, nothing recorded.
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CanvassheetParams {
+    /// The dark sheet (true) or the paper one (false).
+    dark: bool,
+}
+
+impl crate::cmd::input::Command for CanvassheetParams {
+    fn run(self, s: &mut cadcraft_engine::Session) -> cadcraft_engine::Result<serde_json::Value> {
+        let dark = self.dark;
+        let changed = DARK_SHEET.swap(dark, std::sync::atomic::Ordering::Relaxed) != dark;
+        if changed {
+            // The open page only: there is one page window, and a page is projected afresh when shown.
+            let _ = crate::cmd::on_any_page(s, |p, pg| {
+                p.redraw_window(pg, Some("canvassheet"));
+                Ok(())
+            });
+        }
+        Ok(serde_json::json!({"dark": dark, "changed": changed}))
     }
-    Ok(serde_json::json!({"dark": dark, "changed": changed}))
 }
 
 /// A token colour as CADCraft's RGB.

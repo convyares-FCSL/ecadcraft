@@ -19,6 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CmdError;
 use ecad_model::Word;
 use ecad_model::derive::terminal_positions;
 use ecad_model::tag::{self, TAG_KEY};
@@ -26,7 +27,7 @@ use ecad_model::{
     Component, ComponentId, Definition, DefinitionId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
-use ecad_model::{TextHAlign as HAlign, TextVAlign as VAlign};
+use ecad_model::{Noun, TextHAlign as HAlign, TextVAlign as VAlign};
 use serde_json::{Value, json};
 
 use crate::symbols::{self, Kind, STARTERS, Starter, StarterKey as K};
@@ -129,7 +130,7 @@ impl TagHigh {
     ///
     /// # Errors
     /// As [`TagHigh::next`].
-    pub fn next_auto(&mut self, ledger: &Ledger, prefix: &str) -> Result<String, String> {
+    pub fn next_auto(&mut self, ledger: &Ledger, prefix: &str) -> Result<String, CmdError> {
         self.catch_up(ledger);
         self.next_auto_in(ledger.document(), prefix)
     }
@@ -138,7 +139,7 @@ impl TagHigh {
     ///
     /// # Errors
     /// As [`TagHigh::next`].
-    pub fn next_auto_in(&mut self, doc: &Document, prefix: &str) -> Result<String, String> {
+    pub fn next_auto_in(&mut self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
         if ecad_model::numbering::provisional_on(doc) { Ok(self.next_provisional_in(doc, prefix)) } else { self.next_in(doc, prefix) }
     }
 
@@ -156,7 +157,7 @@ impl TagHigh {
     ///
     /// # Errors
     /// As [`TagHigh::next`].
-    pub fn peek_auto(&self, doc: &Document, prefix: &str) -> Result<String, String> {
+    pub fn peek_auto(&self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
         if ecad_model::numbering::provisional_on(doc) { Ok(ecad_model::numbering::next_provisional(doc, prefix)) } else { self.peek(doc, prefix) }
     }
 
@@ -165,7 +166,7 @@ impl TagHigh {
     ///
     /// # Errors
     /// The prefix has no number left.
-    pub fn next(&mut self, ledger: &Ledger, prefix: &str) -> Result<String, String> {
+    pub fn next(&mut self, ledger: &Ledger, prefix: &str) -> Result<String, CmdError> {
         self.catch_up(ledger);
         self.next_in(ledger.document(), prefix)
     }
@@ -175,7 +176,7 @@ impl TagHigh {
     ///
     /// # Errors
     /// As [`TagHigh::next`].
-    pub fn next_in(&mut self, doc: &Document, prefix: &str) -> Result<String, String> {
+    pub fn next_in(&mut self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
         let (prefix, n, t) = self.first_free(doc, prefix)?;
         self.high.insert(prefix, n);
         Ok(t)
@@ -187,11 +188,11 @@ impl TagHigh {
     ///
     /// # Errors
     /// As [`TagHigh::next`].
-    pub fn peek(&self, doc: &Document, prefix: &str) -> Result<String, String> {
+    pub fn peek(&self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
         self.first_free(doc, prefix).map(|(_, _, t)| t)
     }
 
-    fn first_free(&self, doc: &Document, prefix: &str) -> Result<(String, u64, String), String> {
+    fn first_free(&self, doc: &Document, prefix: &str) -> Result<(String, u64, String), CmdError> {
         let prefix = prefix.trim_start_matches('-').to_ascii_uppercase();
         let first = self.high.get(&prefix).copied().unwrap_or(0).saturating_add(1);
         // Bounded: a hostile file may hold many tags above the highest the log shows.
@@ -202,7 +203,7 @@ impl TagHigh {
                 return Ok((prefix, n, t));
             }
         }
-        Err(format!("No tag number is left for -{prefix}; type a tag."))
+        Err(CmdError::refused(format!("No tag number is left for -{prefix}; type a tag.")))
     }
 }
 
@@ -324,7 +325,7 @@ pub fn cable_prefix(doc: &Document) -> String {
 ///
 /// # Errors
 /// A typed tag that cannot be stored, or that a device or cable holds (with the next free one).
-pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -> Result<String, String> {
+pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -> Result<String, CmdError> {
     high.catch_up(ledger);
     let doc = ledger.document();
     match typed {
@@ -336,7 +337,7 @@ pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -
             if let Some(h) = tag_holder(doc, &t, None) {
                 let next = tag::prefix_of(&t).and_then(|p| high.peek(doc, &p).ok());
                 let way = next.map_or_else(|| "Choose another tag.".to_string(), |n| format!("Choose another tag (the next free one is {n})."));
-                return Err(format!("Tag {t} is already used by {}. {way}", holder_words_of(doc, h)));
+                return Err(CmdError::refused(format!("Tag {t} is already used by {}. {way}", holder_words_of(doc, h))));
             }
             Ok(t)
         }
@@ -380,13 +381,13 @@ pub fn labels_of(doc: &Document, c: ComponentId) -> BTreeSet<String> {
 ///
 /// # Errors
 /// Design 018 §3.1's refusals (T3).
-pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, String> {
+pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
     let mut used = labels_of(doc, c);
     used.extend(extra.iter().cloned());
     let who = tag_words(doc, c);
     // Brief 044: a connector holds connector halves and pins only.
     if crate::connectors::is_connector(doc, c) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
-        return Err(format!("{who} is a connector; place a connector half or pin on it, or Enter for a new device."));
+        return Err(CmdError::refused(format!("{who} is a connector; place a connector half or pin on it, or Enter for a new device.")));
     }
     match s.kind {
         Kind::Contact { make } => {
@@ -403,21 +404,22 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
         }
         // Brief 045 (FP7): a channel joins a card as its next free channel; its labels are pins.
         Kind::Channel(_) => crate::plc::channels::join_labels(doc, c, s, extra),
-        Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
+        Kind::Tagless => Err(CmdError::refused(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase()))),
         // Brief 034: the label rule lives in the catalogue.
         Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),
         // Brief 044: a connector half joins by its own rules (design 044 §4.4), through `place`.
-        Kind::ConnectorHalf { .. } => {
-            Err(format!("A {} joins a connector only: place it with Place ▸ Connector, or name a connector.", s.name.to_lowercase()))
-        }
+        Kind::ConnectorHalf { .. } => Err(CmdError::refused(format!(
+            "A {} joins a connector only: place it with Place ▸ Connector, or name a connector.",
+            s.name.to_lowercase()
+        ))),
         Kind::Fixed { exclusive } => {
             // Design 052 §3.4: the device's head by type, whichever symbol was placed first.
             if exclusive && let Some(h) = crate::reps::head(doc, c) {
-                return Err(format!("{who} already has a {}.", head_noun(doc, h)));
+                return Err(CmdError::refused(format!("{who} already has a {}.", head_noun(doc, h))));
             }
             let labels = s.labels();
             if let Some(l) = labels.iter().find(|l| used.contains(*l)) {
-                return Err(format!("{who} already has connection point {l}."));
+                return Err(CmdError::refused(format!("{who} already has connection point {l}.")));
             }
             Ok(labels)
         }
@@ -458,7 +460,7 @@ pub struct Placed {
 #[allow(clippy::too_many_arguments)]
 pub fn plan_place(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, s: &Starter, placement: Placement, target: Target,
-) -> Result<Placed, String> {
+) -> Result<Placed, CmdError> {
     let doc = ledger.document();
     let mut ops = Vec::new();
     let definition = match symbols::embedded(doc, s) {
@@ -476,7 +478,7 @@ pub fn plan_place(
             Some(c) => Target::Join(c),
             // Devices and cables share one namespace (brief 026).
             None if !doc.cables_tagged(&t).is_empty() => {
-                return Err(format!("Tag {t} is a cable's; choose another tag for a device."));
+                return Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a device.")));
             }
             None => Target::New(Some(t)),
         },
@@ -522,7 +524,7 @@ pub fn plan_place(
         }
         Target::Join(c) => {
             if !doc.components.contains_key(&c) {
-                return Err("No such device.".into());
+                return Err(CmdError::NotFound(Noun::Device));
             }
             let labels = join_labels(doc, c, s, &BTreeSet::new())?;
             let mut cps = BTreeMap::new();
@@ -588,13 +590,13 @@ pub(crate) fn shown_terminals(doc: &Document, c: ComponentId, r: &Representation
 ///
 /// # Errors
 /// A label or exclusive symbol `into` already has (T3).
-pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into: ComponentId) -> Result<Vec<Op>, String> {
+pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into: ComponentId) -> Result<Vec<Op>, CmdError> {
     if from == into {
-        return Err("A device cannot be merged with itself.".into());
+        return Err(CmdError::refused("A device cannot be merged with itself."));
     }
-    let from_c = doc.components.get(&from).ok_or("No such device.")?.clone();
+    let from_c = doc.components.get(&from).ok_or(CmdError::NotFound(Noun::Device))?.clone();
     if !doc.components.contains_key(&into) {
-        return Err("No such device.".into());
+        return Err(CmdError::NotFound(Noun::Device));
     }
     let mut assigned: BTreeSet<String> = BTreeSet::new();
     let mut new_terminal: BTreeMap<TerminalId, TerminalId> = BTreeMap::new();
@@ -608,7 +610,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
     // stays unlabelled, so it prints no label (bug 1); one whose name `into` already has is
     // renamed to the next free `<name>2`, `<name>3`… and still prints nothing. A labelled point
     // whose label is taken is refused.
-    let name_for = |old: TerminalId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), String> {
+    let name_for = |old: TerminalId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), CmdError> {
         let taken = |n: &str| into_labels.contains(n) || assigned.contains(n);
         let unlabelled = doc.terminals.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
         if !taken(&label) {
@@ -618,7 +620,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         if unlabelled && let Some(n) = (2..=MAX_RENAMED).map(|n| format!("{label}{n}")).find(|n| !taken(n)) {
             return Ok((n, None));
         }
-        Err(format!("{who} already has connection point {label}."))
+        Err(CmdError::refused(format!("{who} already has connection point {label}.")))
     };
     let add = |old: TerminalId,
                (name, label): (String, Option<String>),
@@ -642,9 +644,9 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
         // nobody can act on: say what is wrong instead.
         if r.form == Form::Symbol && shown.is_empty() && rep_definition(doc, r).is_some_and(|(def, _)| !def.terminals.is_empty()) {
             let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.clone());
-            return Err(format!(
+            return Err(CmdError::refused(format!(
                 "Cannot merge {from_words}: its symbol on page \"{page}\" is not linked to any of its connection points. Delete that symbol and place it again, then merge."
-            ));
+            )));
         }
         let starter = rep_starter(doc, r);
         let labels: Vec<String> = match starter {
@@ -660,7 +662,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: ComponentId, into
             _ => {
                 if let Some(s) = starter.filter(|s| matches!(s.kind, Kind::Fixed { exclusive: true })) {
                     if exclusive_taken {
-                        return Err(format!("{who} already has a {}.", noun(s)));
+                        return Err(CmdError::refused(format!("{who} already has a {}.", noun(s))));
                     }
                     exclusive_taken = true;
                 }
@@ -1433,8 +1435,8 @@ pub fn device_json(doc: &Document, c: ComponentId) -> Value {
 ///
 /// # Errors
 /// T4: no such symbol.
-pub fn starter(key: &str) -> Result<&'static Starter, String> {
-    symbols::by_key(key).ok_or_else(|| format!("No symbol \"{}\". Type List to see them.", key.trim()))
+pub fn starter(key: &str) -> Result<&'static Starter, CmdError> {
+    symbols::by_key(key).ok_or_else(|| CmdError::refused(format!("No symbol \"{}\". Type List to see them.", key.trim())))
 }
 
 /// A device property value as stored (design 018 §6.1): trimmed; `location` with a leading `+`,
@@ -1442,13 +1444,13 @@ pub fn starter(key: &str) -> Result<&'static Starter, String> {
 ///
 /// # Errors
 /// T6: too long or a control character.
-pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if key == TAG_KEY {
-        return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some).map_err(String::from);
+        return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some).map_err(CmdError::from);
     }
     if v.chars().count() > MAX_PROPERTY_CHARS || v.chars().any(char::is_control) {
-        return Err(format!("`{key}` can be at most {MAX_PROPERTY_CHARS} characters, with no control characters"));
+        return Err(CmdError::refused(format!("`{key}` can be at most {MAX_PROPERTY_CHARS} characters, with no control characters")));
     }
     Ok(Some(match key {
         "location" if !v.starts_with('+') => format!("+{v}"),

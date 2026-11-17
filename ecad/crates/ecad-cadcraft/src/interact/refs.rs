@@ -90,7 +90,7 @@ struct CableRef {
 
 impl CableRef {
     fn choose(s: &Session, k: CableId) -> Result<(), String> {
-        read(s, |p, page| refs::check_reference(p.ledger.document(), page, k))
+        read(s, |p, page| refs::check_reference(p.ledger.document(), page, k).map_err(String::from))
     }
 
     fn place(&mut self, s: &mut Session, k: CableId, at: Pt) -> R<Step> {
@@ -245,7 +245,7 @@ fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
 
 /// The checks of step 1 (R2, R4 to R6) for `cable` on `page`, without any geometry.
 fn check_continue(doc: &Document, page: PageId, cable: CableId) -> Result<(), String> {
-    refs::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0).map(|_| ())
+    refs::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0).map(|_| ()).map_err(String::from)
 }
 
 impl Continue {

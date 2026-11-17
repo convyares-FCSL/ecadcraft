@@ -47,6 +47,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CmdError;
 use ecad_model::{
     CableId, ComponentId, ContactMirror, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
 };
@@ -132,8 +133,8 @@ pub fn not_a_contact_list(text: &str) -> String {
 ///
 /// # Errors
 /// Unreadable text, no poles, or more than [`MAX_POLES`].
-pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, String> {
-    let bad = || not_a_contact_list(text);
+pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
+    let bad = || CmdError::refused(not_a_contact_list(text));
     let mut out: Vec<OfferedPole> = Vec::new();
     let (mut power_n, mut seq) = (0u32, 0u32);
     for entry in text.split(['+', ',']) {
@@ -164,7 +165,7 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, String> {
                 return Err(bad());
             }
             if out.len() + n > MAX_POLES {
-                return Err(format!("A part offers at most {MAX_POLES} contacts."));
+                return Err(CmdError::refused(format!("A part offers at most {MAX_POLES} contacts.")));
             }
             for _ in 0..n {
                 // A counted pole skips labels already offered (an explicit pair written before it).
@@ -185,7 +186,7 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, String> {
             }
         }
         if out.len() > MAX_POLES {
-            return Err(format!("A part offers at most {MAX_POLES} contacts."));
+            return Err(CmdError::refused(format!("A part offers at most {MAX_POLES} contacts.")));
         }
     }
     if out.is_empty() {
@@ -205,10 +206,10 @@ pub fn offer_of(doc: &Document, c: ComponentId) -> Option<(String, Vec<OfferedPo
 ///
 /// # Errors
 /// As [`parse_offer`].
-pub fn offer_value(text: Option<&str>) -> Result<Option<String>, String> {
+pub fn offer_value(text: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.chars().count() > crate::devices::MAX_PROPERTY_CHARS {
-        return Err(not_a_contact_list(t));
+        return Err(CmdError::refused(not_a_contact_list(t)));
     }
     parse_offer(t)?;
     Ok(Some(t.to_string()))
@@ -266,17 +267,20 @@ pub fn not_a_placement(text: &str) -> String {
 ///
 /// # Errors
 /// Not one of the words, or an offset that is not two finite numbers within [`MAX_OFFSET_MM`].
-pub fn parse_mirror(text: &str) -> Result<Placement, String> {
+pub fn parse_mirror(text: &str) -> Result<Placement, CmdError> {
     let t = text.trim();
     if let Some(m) = ContactMirror::parse(t) {
         return Ok(Placement::of_default(m));
     }
     let lower = t.to_ascii_lowercase();
-    let rest = lower.strip_prefix("at").ok_or_else(|| not_a_placement(t))?.trim();
-    let (a, b) = rest.split_once(',').ok_or_else(|| not_a_placement(t))?;
-    let (x, y) = (a.trim().parse::<f64>().map_err(|_| not_a_placement(t))?, b.trim().parse::<f64>().map_err(|_| not_a_placement(t))?);
+    let rest = lower.strip_prefix("at").ok_or_else(|| CmdError::refused(not_a_placement(t)))?.trim();
+    let (a, b) = rest.split_once(',').ok_or_else(|| CmdError::refused(not_a_placement(t)))?;
+    let (x, y) = (
+        a.trim().parse::<f64>().map_err(|_| CmdError::refused(not_a_placement(t)))?,
+        b.trim().parse::<f64>().map_err(|_| CmdError::refused(not_a_placement(t)))?,
+    );
     if !(x.is_finite() && y.is_finite() && x.abs() <= MAX_OFFSET_MM && y.abs() <= MAX_OFFSET_MM) {
-        return Err(not_a_placement(t));
+        return Err(CmdError::refused(not_a_placement(t)));
     }
     Ok(Placement::At(Pt::new(x, y)))
 }
@@ -285,7 +289,7 @@ pub fn parse_mirror(text: &str) -> Result<Placement, String> {
 ///
 /// # Errors
 /// As [`parse_mirror`].
-pub fn mirror_value(text: Option<&str>) -> Result<Option<String>, String> {
+pub fn mirror_value(text: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.eq_ignore_ascii_case("default") || t.to_ascii_lowercase().starts_with("project default") {
         return Ok(None);
@@ -1585,7 +1589,7 @@ impl RefIndex {
     ///
     /// # Errors
     /// The kept index differs from a rebuilt one.
-    pub fn verify(&self, doc: &Document) -> Result<(), String> {
+    pub fn verify(&self, doc: &Document) -> Result<(), CmdError> {
         let fresh = RefIndex::build(doc);
         if *self == fresh {
             return Ok(());
@@ -1599,7 +1603,7 @@ impl RefIndex {
                 fresh.member.iter().find(|(r, _)| !self.member.contains_key(r)).map(|(r, v)| format!("member {} missing (rebuilt as {v:?})", r.hex()))
             })
             .unwrap_or_else(|| "edges differ".into());
-        Err(format!("The reference index differs from a rebuild: {first}."))
+        Err(CmdError::refused(format!("The reference index differs from a rebuild: {first}.")))
     }
 }
 
@@ -1993,11 +1997,11 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 /// Unknown component, cable or page.
 pub fn xrefs_json(
     doc: &Document, idx: &RefIndex, component: Option<ComponentId>, cable: Option<CableId>, page: Option<PageId>, limit: usize, after: usize,
-) -> Result<Value, String> {
+) -> Result<Value, CmdError> {
     let groups: BTreeSet<Group> = match (component, cable) {
         (Some(c), _) => {
             if !doc.components.contains_key(&c) {
-                return Err("no such component".into());
+                return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
             }
             // Brief 049 (design 049 §5.5): an arrow lists its other ends.
             match crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)) {
@@ -2007,14 +2011,14 @@ pub fn xrefs_json(
         }
         (None, Some(k)) => {
             if !doc.cables.contains_key(&k) {
-                return Err("no such cable".into());
+                return Err(CmdError::refused(crate::msg::NO_SUCH_CABLE));
             }
             BTreeSet::from([Group::Cable(k)])
         }
         (None, None) => match page {
             Some(p) => {
                 if !doc.pages.contains_key(&p) {
-                    return Err("no such page".into());
+                    return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
                 }
                 doc.representations_on(p).filter_map(|(r, _)| idx.member(r).map(|(g, _)| g)).collect()
             }
@@ -2090,9 +2094,9 @@ pub fn xrefs_json(
 ///
 /// # Errors
 /// Unknown component.
-pub fn contacts_json_measured(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Result<Value, String> {
+pub fn contacts_json_measured(doc: &Document, c: ComponentId, m: &dyn TextMetrics) -> Result<Value, CmdError> {
     if !doc.components.contains_key(&c) {
-        return Err("no such component".into());
+        return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
     }
     let dev = device(doc, c);
     let offer = offer_of(doc, c);
@@ -2315,7 +2319,7 @@ mod tests {
         for bad in ["3X", "", "+", "0NO", "NO", "/14 NO", "33NO+", "1NO++1NC"] {
             assert!(parse_offer(bad).is_err(), "{bad:?}");
         }
-        assert_eq!(parse_offer("3X").unwrap_err(), "\"3X\" is not a contact list. Write it like 3P+1NO+1NC, or 13/14 NO, 21/22 NC.");
+        assert_eq!(parse_offer("3X").unwrap_err().to_string(), "\"3X\" is not a contact list. Write it like 3P+1NO+1NC, or 13/14 NO, 21/22 NC.");
         assert!(parse_offer("32NO").is_ok());
         assert!(parse_offer("33NO").is_err());
         assert!(parse_offer("30NO+3NC").is_err());

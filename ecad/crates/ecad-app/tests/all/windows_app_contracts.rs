@@ -61,7 +61,7 @@ fn reserved_device_names_are_refused_in_every_spelling() {
         "C:/dev/ecad-projects/com1",
     ];
     for typed in refused {
-        let e = normalize_with(typed, Some(home)).expect_err(typed);
+        let e = normalize_with(typed, Some(home)).expect_err(typed).to_string();
         assert!(e.contains("reserve"), "{typed:?}: {e}");
     }
     for ok in ["COM10.ecad", "NULL.ecad", "conduit", "AUXILIARY.ecad", "lpt.ecad", "prn-plan"] {
@@ -312,7 +312,7 @@ fn odd_arguments_never_panic() {
 /// The error for `~` without a home folder names the problem and suggests the full path.
 #[test]
 fn tilde_without_a_home_says_what_to_do() {
-    let e = normalize_with("~/x", None).unwrap_err();
+    let e = normalize_with("~/x", None).unwrap_err().to_string();
     assert_eq!(e, HOME_UNKNOWN);
     assert!(e.contains("full path"));
 }

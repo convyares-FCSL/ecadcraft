@@ -47,7 +47,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
         let k = v["cable"].as_str().unwrap().to_string();
         let (_, ops) = one_by_agent(&mut c, "cableedit", json!({"cable": k, "set": {"length": 12}}), "Edit cable");
         assert_eq!(ops.len(), 1, "{ops:?}");
-        refused_writes_nothing(&mut c, "cableedit", json!({"cable": k, "set": {"colour": 1}}), "unknown field");
+        refused_writes_nothing(&mut c, "cableedit", json!({"cable": k, "set": {"colour": 1}}), "is not a parameter of this command");
         // More wires than free cores: refused.
         refused_writes_nothing(&mut c, "cableslash", json!({"from": [-5, 25], "to": [35, 25], "cable": k}), "free cores");
         // Three wires: assigned.
@@ -56,7 +56,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
         assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
         refused_writes_nothing(&mut c, "cableedit", json!({"cable": k, "set": {"cores": "2G"}}), "has wires on cores");
         refused_writes_nothing(&mut c, "cableremove", json!({"cable": k}), "is drawn on");
-        refused_writes_nothing(&mut c, "cableremove", json!({"cable": k, "drawn": "unassign"}), "unknown field");
+        refused_writes_nothing(&mut c, "cableremove", json!({"cable": k, "drawn": "unassign"}), "is not a parameter of this command");
         let (v, _) = one_by_agent(&mut c, "cablenew", json!({}), "Create cable");
         let spare = v["cable"].as_str().unwrap().to_string();
         let (_, ops) = one_by_agent(&mut c, "cableremove", json!({"cable": spare}), "Remove cable");

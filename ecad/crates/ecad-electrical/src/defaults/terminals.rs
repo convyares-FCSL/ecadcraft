@@ -21,6 +21,8 @@ use ecad_model::ProjectSettings;
 
 use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
+use crate::CmdError;
+
 const GROUP: &str = "Terminals";
 const BRIEF: &str = "036";
 /// A standard (reserved), the project and the strip may override.
@@ -222,7 +224,7 @@ pub fn is_label_key(key: &str) -> bool {
 ///
 /// # Errors
 /// A value the entry does not accept, in words.
-pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let e = super::find(key).filter(|e| e.key.starts_with("terminal."))?;
     Some(match value {
         None => Ok(None),
@@ -231,13 +233,13 @@ pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<Str
         Some(v) => match e.parse(v) {
             Some(_) => Ok(Some(v.trim().to_string())),
             None if e.key == SEPARATOR.key => {
-                Err("A level separator is 1 to 3 characters that are not letters, digits, spaces or commas, or empty for none.".into())
+                Err(CmdError::refused("A level separator is 1 to 3 characters that are not letters, digits, spaces or commas, or empty for none."))
             }
-            None if e.key.ends_with(".levels") => Err(format!(
+            None if e.key.ends_with(".levels") => Err(CmdError::refused(format!(
                 "`{key}` is the level names, comma-separated, one per level, each 1 to 6 characters without dots or spaces, all different; \
 a name of digits only must be its level's number (so 1.2 in a link is always level 2)."
-            )),
-            None => Err(format!("`{key}` is 1 to 64 characters, with no control characters.")),
+            ))),
+            None => Err(CmdError::refused(format!("`{key}` is 1 to 64 characters, with no control characters."))),
         },
     })
 }

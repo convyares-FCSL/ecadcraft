@@ -14,6 +14,7 @@
 //!
 //! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
+use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -189,18 +190,18 @@ pub struct Join {
 /// The refusals of §4.4, each with the way out.
 pub fn join(
     doc: &Document, c: ComponentId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>,
-) -> Result<Join, String> {
+) -> Result<Join, CmdError> {
     let who = crate::devices::tag_words(doc, c);
-    let t = cell_type(s).ok_or("That symbol is not a PLC channel.")?;
+    let t = cell_type(s).ok_or(CmdError::refused("That symbol is not a PLC channel."))?;
     let ct = match card_type_of(doc, c) {
         Some(ct) => ct,
-        None => return Err(format!("{who} is not a PLC card; pick a card, or place the channel on its own for a new card.")),
+        None => return Err(CmdError::refused(format!("{who} is not a PLC card; pick a card, or place the channel on its own for a new card."))),
     };
     if !ct.has_channels() {
-        return Err(format!("{who} is a {}; channels go on its cards. Pick a card, or place a card body first.", ct.noun()));
+        return Err(CmdError::refused(format!("{who} is a {}; channels go on its cards. Pick a card, or place a card body first.", ct.noun())));
     }
     if ct != t {
-        return Err(format!("{who} is a {}; pick a {} channel ({}), or another card.", ct.noun(), ct.code(), cells_words(ct)));
+        return Err(CmdError::refused(format!("{who} is a {}; pick a {} channel ({}), or another card.", ct.noun(), ct.code(), cells_words(ct))));
     }
     let n = channel_count(doc, c, ct);
     let pts = points(doc, c);
@@ -209,25 +210,25 @@ pub fn join(
     let next_free = (0..n.min(MAX_CHANNELS)).find(|i| !drawn(*i));
     let index = match named {
         Some(shown) => {
-            let i = shown.checked_sub(first).ok_or_else(|| format!("{who}'s channels start at {first}."))?;
+            let i = shown.checked_sub(first).ok_or_else(|| CmdError::refused(format!("{who}'s channels start at {first}.")))?;
             if i > MAX_INDEX {
-                return Err(format!("{who} has {n} channels."));
+                return Err(CmdError::refused(format!("{who} has {n} channels.")));
             }
             if let Some((_, t0, _)) = pts.get(&i).and_then(|v| v.first()) {
                 let next = next_free.map_or_else(|| "none is free".to_string(), |x| (x + first).to_string());
-                return Err(format!(
+                return Err(CmdError::refused(format!(
                     "Channel {shown} of {who} is drawn on {}. Pick another channel, or Enter for the next free one ({next}).",
                     drawn_words(doc, *t0)
-                ));
+                )));
             }
             if taken.contains(&i) {
-                return Err(format!("Channel {shown} of {who} is already being placed."));
+                return Err(CmdError::refused(format!("Channel {shown} of {who} is already being placed.")));
             }
             i
         }
-        None => {
-            next_free.ok_or_else(|| format!("{who}'s {n} channels are all drawn. Raise its channel count in Properties, or pick another card."))?
-        }
+        None => next_free.ok_or_else(|| {
+            CmdError::refused(format!("{who}'s {n} channels are all drawn. Raise its channel count in Properties, or pick another card."))
+        })?,
     };
     let mut used = crate::devices::labels_of(doc, c);
     used.extend(extra.iter().cloned());
@@ -240,7 +241,7 @@ pub fn join(
 ///
 /// # Errors
 /// As [`join`].
-pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, String> {
+pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
     join(doc, c, s, None, extra, &BTreeSet::new()).map(|j| j.pins.into_iter().map(|(_, p)| p).collect())
 }
 
@@ -260,7 +261,7 @@ pub struct Cell {
 pub fn plan_cell(
     ids: &mut IdAllocator, page: PageId, style: Style, def_id: DefinitionId, s: &Starter, card: ComponentId, j: &Join, placement: Placement,
     ops: &mut Vec<Op>,
-) -> Result<Cell, String> {
+) -> Result<Cell, CmdError> {
     let def = s.definition()?;
     let mut terminals = Vec::new();
     let mut cps = BTreeMap::new();
@@ -270,7 +271,7 @@ pub fn plan_cell(
             .iter()
             .find(|td| td.key.strip_prefix('.') == Some(*role) || parse_legacy(&td.key).is_some_and(|x| x.1 == *role))
             .map(|td| td.at)
-            .ok_or("The channel symbol has no point for that role.")?;
+            .ok_or(CmdError::refused("The channel symbol has no point for that role."))?;
         let t: TerminalId = ids.fresh();
         ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: card, label: Some(pin.clone()), key: Some(key(j.index, role)) } });
         cps.insert(t, at);
@@ -297,7 +298,7 @@ pub fn plan_cell(
 pub fn new_card_ops(
     ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
     tag: Option<String>, ops: &mut Vec<Op>,
-) -> Result<(ComponentId, String), String> {
+) -> Result<(ComponentId, String), CmdError> {
     let doc = ledger.document();
     let tag = match tag {
         Some(t) => t,
@@ -356,14 +357,12 @@ pub fn role_at(terms: &[ecad_model::TerminalDef], role: &str) -> Option<Pt> {
 ///
 /// # Errors
 /// No such point, naming the cell's points.
-pub fn role_named(s: &Starter, word: &str) -> Result<&'static str, String> {
+pub fn role_named(s: &Starter, word: &str) -> Result<&'static str, CmdError> {
     let roles = roles_of(s);
     let w = word.trim();
-    roles
-        .iter()
-        .copied()
-        .find(|r| r.eq_ignore_ascii_case(w))
-        .ok_or_else(|| format!("A {} cell has no point \"{}\". Its points: {}.", s.key, w.chars().take(16).collect::<String>(), roles.join(", ")))
+    roles.iter().copied().find(|r| r.eq_ignore_ascii_case(w)).ok_or_else(|| {
+        CmdError::refused(format!("A {} cell has no point \"{}\". Its points: {}.", s.key, w.chars().take(16).collect::<String>(), roles.join(", ")))
+    })
 }
 
 /// The point a cell lands on a single wire by default (pack re-run, bug 10): an IO-Link port's
@@ -437,7 +436,7 @@ pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::sla
 ///
 /// # Errors
 /// As [`crate::connectors::plan_land`].
-pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, String> {
+pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, CmdError> {
     let land = crate::connectors::plan_land(doc, ids, page, on, t)?;
     let Some(cond) = doc.conductors.get(&land.conductor) else { return Ok(land.ops) };
     if !doc.cables_of(land.conductor).is_empty() {
@@ -512,7 +511,7 @@ pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
 ///
 /// # Errors
 /// Too long, or a control character.
-pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match what {
         super::signals::TAG => return super::signals::tag_value(value),
         super::signals::SAFE => return super::signals::safe_value(None, value),
@@ -522,14 +521,14 @@ pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, Strin
     let max = if what == "address" { MAX_ADDRESS } else { MAX_TEXT };
     if v.chars().count() > max || v.chars().any(char::is_control) {
         let noun = if what == "address" { "An address" } else { "A channel description" };
-        return Err(format!("{noun} is 1 to {max} characters, with no control characters."));
+        return Err(CmdError::refused(format!("{noun} is 1 to {max} characters, with no control characters.")));
     }
     Ok(Some(v.to_string()))
 }
 
 /// The value check of `plc.ch.<i>.text` and `plc.ch.<i>.address` with `setprop`. `None`: not a
 /// channel key.
-pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let (_, what) = parse_ch_key(key)?;
     Some(ch_value(what, value))
 }

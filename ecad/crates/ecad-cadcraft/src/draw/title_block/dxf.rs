@@ -16,6 +16,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{Drawing, Entity, EntityKind};
 use cadcraft_engine::geom::{Mat3, Vec2};
+use ecad_electrical::CmdError;
 use ecad_model::sheet::{self, FRAME_CATALOGUE, SheetSpec};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::title_block::{
@@ -25,7 +26,7 @@ use ecad_model::title_block::{
 use ecad_model::{Op, Primitive, Pt};
 use serde_json::{Value, json};
 
-use crate::cmd::{err, with_project};
+use crate::cmd::{err, on_project};
 
 /// Largest DXF read, in bytes (a guard on hostile input).
 pub const MAX_DXF_BYTES: usize = 16 * 1024 * 1024;
@@ -267,63 +268,70 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
     if params.get("item").is_some() {
         let n = params.get("item").and_then(Value::as_u64).ok_or_else(|| err("`item` is the logo item's number (from 0)."))?;
         let prims = logo(&bytes).map_err(err)?;
-        return with_project(s, |p, pg, _| {
-            let doc = p.ledger.document();
-            let id = crate::cmd::title_block::target(doc, params)?;
-            if id.is_builtin() {
-                return Err(crate::cmd::title_block::BUILTIN_READ_ONLY.into());
-            }
-            let layer = [StyleLayer::Project, StyleLayer::Standard]
-                .into_iter()
-                .find(|l| crate::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
-                .ok_or(crate::cmd::title_block::NOT_A_FRAME)?;
-            let before = crate::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
-            let mut after = before.clone().unwrap_or_default();
-            let mut layout = after.title_block().cloned().ok_or("This frame has no title block yet; add a Logo item first.")?;
-            let count = prims.len();
-            match usize::try_from(n).ok().and_then(|i| layout.items.get_mut(i)) {
-                Some(BlockItem::Logo { prims: slot, .. }) => *slot = prims,
-                _ => return Err(format!("Item {n} is not a logo.")),
-            }
-            layout.check()?;
-            after.body = Some(StyleBody::title_block(layout));
-            let name = crate::styles::name(doc, FRAME_CATALOGUE, &id);
-            let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before, after: Some(after) }];
-            p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
-            Ok(json!({"changed": true, "id": id.text(), "item": n, "shapes": count}))
+        // Brief 070: this reader still refuses in words; they become a CmdError here.
+        return on_project(s, |p, pg, _| {
+            (|| {
+                let doc = p.ledger.document();
+                let id = crate::cmd::title_block::target(doc, params)?;
+                if id.is_builtin() {
+                    return Err(crate::cmd::title_block::BUILTIN_READ_ONLY.into());
+                }
+                let layer = [StyleLayer::Project, StyleLayer::Standard]
+                    .into_iter()
+                    .find(|l| crate::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
+                    .ok_or(crate::cmd::title_block::NOT_A_FRAME)?;
+                let before = crate::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
+                let mut after = before.clone().unwrap_or_default();
+                let mut layout = after.title_block().cloned().ok_or("This frame has no title block yet; add a Logo item first.")?;
+                let count = prims.len();
+                match usize::try_from(n).ok().and_then(|i| layout.items.get_mut(i)) {
+                    Some(BlockItem::Logo { prims: slot, .. }) => *slot = prims,
+                    _ => return Err(format!("Item {n} is not a logo.")),
+                }
+                layout.check()?;
+                after.body = Some(StyleBody::title_block(layout));
+                let name = crate::styles::name(doc, FRAME_CATALOGUE, &id);
+                let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before, after: Some(after) }];
+                p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
+                Ok(json!({"changed": true, "id": id.text(), "item": n, "shapes": count}))
+            })()
+            .map_err(|e: String| CmdError::refused(e))
         });
     }
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let spec = match params.get("sheet").and_then(Value::as_str) {
-            Some(t) => SheetSpec::parse(t)?,
-            None => doc.settings.sheet(),
-        };
-        let margins = ecad_model::sheet::Margins::default();
-        let (layout, skipped) = block(&bytes, &spec, &margins)?;
-        let items = layout.items.len();
-        let base = format!("{} imported block", crate::title_block::sheet_name(&spec));
-        let name = match params.get("name").and_then(Value::as_str).map(str::trim) {
-            Some(n) if ecad_model::style::is_name(n) => n.to_string(),
-            Some(_) => return Err(crate::cmd::style::STYLE_NEEDS_NAME.into()),
-            None => {
-                let taken: Vec<String> =
-                    crate::styles::rows(doc, &crate::styles::frame::CATALOGUE).into_iter().map(|r| r.name.to_lowercase()).collect();
-                (1..10_000)
-                    .map(|i| if i == 1 { base.clone() } else { format!("{base} {i}") })
-                    .find(|n| !taken.contains(&n.to_lowercase()))
-                    .unwrap_or(base)
-            }
-        };
-        let mut rec = StyleRecord::new(name.clone(), Default::default());
-        rec.fields.insert(sheet::FRAME_SHEET_FIELD.into(), spec.text());
-        rec.fields.insert("block".into(), "bottom_right".into());
-        rec.body = Some(StyleBody::title_block(layout));
-        let id = StyleRef::Own(p.ids.fresh::<u128>());
-        crate::styles::check_record(doc, &crate::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;
-        let ops =
-            vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before: None, after: Some(rec) }];
-        p.apply_edit(pg, "titleblockimport", &format!("Import title block {name}"), ops)?;
-        Ok(json!({"changed": true, "id": id.text(), "name": name, "items": items, "skipped": skipped}))
+    on_project(s, |p, pg, _| {
+        (|| {
+            let doc = p.ledger.document();
+            let spec = match params.get("sheet").and_then(Value::as_str) {
+                Some(t) => SheetSpec::parse(t)?,
+                None => doc.settings.sheet(),
+            };
+            let margins = ecad_model::sheet::Margins::default();
+            let (layout, skipped) = block(&bytes, &spec, &margins)?;
+            let items = layout.items.len();
+            let base = format!("{} imported block", crate::title_block::sheet_name(&spec));
+            let name = match params.get("name").and_then(Value::as_str).map(str::trim) {
+                Some(n) if ecad_model::style::is_name(n) => n.to_string(),
+                Some(_) => return Err(crate::cmd::style::STYLE_NEEDS_NAME.into()),
+                None => {
+                    let taken: Vec<String> =
+                        crate::styles::rows(doc, &crate::styles::frame::CATALOGUE).into_iter().map(|r| r.name.to_lowercase()).collect();
+                    (1..10_000)
+                        .map(|i| if i == 1 { base.clone() } else { format!("{base} {i}") })
+                        .find(|n| !taken.contains(&n.to_lowercase()))
+                        .unwrap_or(base)
+                }
+            };
+            let mut rec = StyleRecord::new(name.clone(), Default::default());
+            rec.fields.insert(sheet::FRAME_SHEET_FIELD.into(), spec.text());
+            rec.fields.insert("block".into(), "bottom_right".into());
+            rec.body = Some(StyleBody::title_block(layout));
+            let id = StyleRef::Own(p.ids.fresh::<u128>());
+            crate::styles::check_record(doc, &crate::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;
+            let ops =
+                vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before: None, after: Some(rec) }];
+            p.apply_edit(pg, "titleblockimport", &format!("Import title block {name}"), ops)?;
+            Ok(json!({"changed": true, "id": id.text(), "name": name, "items": items, "skipped": skipped}))
+        })()
+        .map_err(|e: String| CmdError::refused(e))
     })
 }

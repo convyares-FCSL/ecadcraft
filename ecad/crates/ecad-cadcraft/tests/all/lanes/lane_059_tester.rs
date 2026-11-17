@@ -16,7 +16,7 @@
 //!   line; MCP in `ecad-mcp`'s `lane_059_tester`).
 //! - r8: atomic, exact undo and redo, replay; update maps touch only that cable.
 
-use ecad_cadcraft::cable_cmds::{self, CableError, CableField, Side, Source};
+use ecad_cadcraft::cable_cmds::{self, CableField, Side, Source};
 use ecad_cadcraft::checks::{self, Severity};
 use ecad_cadcraft::designations::Aspect;
 use ecad_model::{CableId, ComponentId, ConductorId, Document, Op};
@@ -230,8 +230,8 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
         assert!(e.contains("-W01 is drawn on") && e.contains("Delete it on its page."), "{e}");
         bounded(&e, "Drawn");
     }
-    match cable_cmds::check_remove(&h.doc(), w) {
-        Err(CableError::Drawn { tag, pages }) => {
+    match cable_cmds::drawn(&h.doc(), w) {
+        Some(cable_cmds::Drawn { tag, pages }) => {
             assert_eq!(tag, "-W01");
             assert_eq!(pages.len(), 1, "{pages:?}");
             assert_eq!(pages[0].0, page, "the Go to's page");
@@ -284,8 +284,8 @@ fn r2_a_cable_drawn_on_two_pages_names_both() {
     }
     let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
     assert!(e.contains(" and "), "both pages: {e}");
-    match cable_cmds::check_remove(&h.doc(), w) {
-        Err(CableError::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
+    match cable_cmds::drawn(&h.doc(), w) {
+        Some(cable_cmds::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
         other => panic!("{other:?}"),
     }
 }
@@ -466,10 +466,10 @@ fn hostile_new() -> Vec<(Value, &'static str)> {
     let mut long_key = serde_json::Map::new();
     long_key.insert(big.clone(), json!(1));
     vec![
-        (json!({"colour": 1}), "unknown field"),
-        (Value::Object(long_key), "unknown field"),
-        (json!({"from": {"colour": "red"}}), "unknown field"),
-        (json!({"to": {"location": "+F", "extra": 1}}), "unknown field"),
+        (json!({"colour": 1}), "is not a parameter of this command"),
+        (Value::Object(long_key), "is not a parameter of this command"),
+        (json!({"from": {"colour": "red"}}), "is not a parameter of this command"),
+        (json!({"to": {"location": "+F", "extra": 1}}), "is not a parameter of this command"),
         (json!({"tag": big.clone()}), ""),
         (json!({"tag": "-W\u{0007}1"}), ""),
         (json!({"tag": {"a": 1}}), ""),
@@ -847,8 +847,8 @@ fn f1_removing_a_cable_drawn_on_two_pages_names_both_with_a_go_to_each() {
     let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
     assert!(e.contains("is drawn on") && e.contains(" and ") && e.contains("Delete it on its page."), "{e}");
     bounded(&e, "Drawn, two pages");
-    match cable_cmds::check_remove(&h.doc(), w) {
-        Err(CableError::Drawn { pages, .. }) => {
+    match cable_cmds::drawn(&h.doc(), w) {
+        Some(cable_cmds::Drawn { pages, .. }) => {
             let ids: Vec<ecad_model::PageId> = pages.iter().map(|p| p.0).collect();
             assert_eq!(ids, vec![p1, p2], "one Go to per page, in book order: {pages:?}");
             assert!(pages.iter().all(|p| !p.1.is_empty()));

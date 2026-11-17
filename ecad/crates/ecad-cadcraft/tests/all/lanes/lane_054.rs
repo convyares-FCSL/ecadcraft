@@ -205,10 +205,13 @@ fn renumber_pages_numbers_each_folder_from_its_start() {
 fn folder_start_numbers_are_checked_and_go_with_their_folder() {
     let mut h = H::new(5408);
     let f: FolderId = id(&h.run("newfolder", json!({"name": "Terminal"})).unwrap(), "folder");
-    for bad in [json!("1a"), json!("1234567"), json!(12)] {
+    for bad in [json!("1a"), json!("1234567")] {
         let e = h.run("folderprops", json!({"folder": f.hex(), "start": bad})).unwrap_err();
         assert!(e.contains("A start number is 1 to 6 digits."), "{e}");
     }
+    // Brief 070: a number is not text, so the input is refused in the uniform wording.
+    let e = h.run("folderprops", json!({"folder": f.hex(), "start": 12})).unwrap_err();
+    assert_eq!(e, "`start` must be text, or null");
     h.run("folderprops", json!({"folder": f.hex(), "start": "300"})).unwrap();
     assert_eq!(h.run("folderprops", json!({"folder": f.hex()})).unwrap()["start"], "300");
     let key = ecad_cadcraft::page_types::start_key(f);

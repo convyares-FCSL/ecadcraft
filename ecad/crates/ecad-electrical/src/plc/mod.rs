@@ -22,6 +22,7 @@ pub mod sheets;
 pub mod signals;
 pub mod tagtable;
 
+use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{ComponentId, Document, ObjectRef, PageId, Subject};
@@ -500,7 +501,7 @@ pub fn channel_texts(
 /// The one value rule of `plc.*` keys written with `setprop` (design 045 §4.6), called where 034's
 /// is: a card's rack, slot and channel count, a channel's text and typed address, and the registry's
 /// object-level entries. `None`: not a key of this brief.
-pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     if let Some(r) = rack::setprop_value(doc, c, key, value) {
         return Some(r);
     }
@@ -513,7 +514,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         return Some(match v {
             None => Ok(None),
             Some(t) if t.len() <= 5 && ecad_model::words::is_digits(t) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
-            Some(_) => Err(format!("{key} is a whole number of bytes from 0 to {max}.")),
+            Some(_) => Err(CmdError::refused(format!("{key} is a whole number of bytes from 0 to {max}."))),
         });
     }
     let entry = crate::defaults::find(key).filter(|e| e.key.starts_with("plc."))?;
@@ -521,10 +522,10 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
     Some(match v {
         None => Ok(None),
         Some(_) if !entry.allows(crate::defaults::Level::Object) => {
-            Err(format!("{key} is a project setting; set it with setdefault at project level."))
+            Err(CmdError::refused(format!("{key} is a project setting; set it with setdefault at project level.")))
         }
         Some(t) if entry.parse(t).is_some() => Ok(Some(t.to_string())),
-        Some(t) => Err(format!("{t} is not a value of {key}.")),
+        Some(t) => Err(CmdError::refused(format!("{t} is not a value of {key}."))),
     })
 }
 

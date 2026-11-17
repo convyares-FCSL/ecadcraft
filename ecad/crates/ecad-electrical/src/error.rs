@@ -43,6 +43,15 @@ pub enum CmdError {
     /// The model refused the ops.
     #[error(transparent)]
     Model(#[from] ModelError),
+    /// The project file's data did not read, or could not be written.
+    #[error(transparent)]
+    File(#[from] ecad_file::FileError),
+    /// A project file could not be opened or saved.
+    #[error(transparent)]
+    Binding(#[from] ecad_file::binding::BindingError),
+    /// A path typed for a project file cannot be used.
+    #[error(transparent)]
+    Path(#[from] ecad_file::binding::PathError),
 }
 
 impl CmdError {
@@ -54,21 +63,6 @@ impl CmdError {
     /// An input that does not read, in words.
     pub fn input(why: impl Into<Cow<'static, str>>) -> Self {
         CmdError::Input(why.into())
-    }
-}
-
-/// A refusal still written as text by code not yet moved to [`CmdError`] (brief 070 moves it
-/// module by module; `cargo xtask layers` counts what is left).
-impl From<String> for CmdError {
-    fn from(why: String) -> Self {
-        CmdError::Refused(why.into())
-    }
-}
-
-/// See `From<String>`.
-impl From<&'static str> for CmdError {
-    fn from(why: &'static str) -> Self {
-        CmdError::Refused(why.into())
     }
 }
 
@@ -95,6 +89,10 @@ pub mod msg {
     pub const NO_SUCH_FOLDER: &str = "no such folder";
     /// A page the input names that the project does not have (pages, folders and revisions).
     pub const NO_SUCH_PAGE: &str = "no such page";
+    /// A component the input names that the project does not have (continuations, cross-references).
+    pub const NO_SUCH_COMPONENT: &str = "no such component";
+    /// A cable the input names that the project does not have (cable references, cross-references).
+    pub const NO_SUCH_CABLE: &str = "no such cable";
     /// A folder name that does not read.
     pub const FOLDER_NAME: &str = "A folder name is 1 to 100 characters, with no control characters.";
     /// A page title that does not read.

@@ -11,6 +11,7 @@
 //!
 //! This module reads and plans; the commands commit (`ecad_cadcraft::cmd::sheet`).
 
+use crate::CmdError;
 use ecad_model::book::MAX_FOLDER_DEPTH;
 use ecad_model::{Document, FolderId, ObjectRef, Op};
 
@@ -114,19 +115,19 @@ pub struct ColumnSpec {
 /// # Errors
 /// In the design's words: a bad field name, `issued`/`released`, a bad header or width, a field
 /// twice, Rev or Description missing, more than [`MAX_COLUMNS`].
-pub fn parse_columns(text: &str) -> Result<Vec<ColumnSpec>, String> {
+pub fn parse_columns(text: &str) -> Result<Vec<ColumnSpec>, CmdError> {
     if text.chars().count() > MAX_COLUMNS_CHARS {
-        return Err(format!("A column list is at most {MAX_COLUMNS_CHARS} characters."));
+        return Err(CmdError::refused(format!("A column list is at most {MAX_COLUMNS_CHARS} characters.")));
     }
     let mut out: Vec<ColumnSpec> = Vec::new();
     for item in text.split(',').map(str::trim).filter(|t| !t.is_empty()) {
         if out.len() >= MAX_COLUMNS {
-            return Err("At most 10 columns.".into());
+            return Err(CmdError::refused("At most 10 columns."));
         }
         let (rest, width) = match item.rsplit_once('@') {
             Some((r, w)) => {
                 let x = w.trim().parse::<f64>().ok().filter(|x| x.is_finite() && (MIN_WIDTH_MM..=MAX_WIDTH_MM).contains(x));
-                (r, Some(x.ok_or_else(|| format!("\"{}\" is not a width. Use 6 to 200 (millimetres).", w.trim()))?))
+                (r, Some(x.ok_or_else(|| CmdError::refused(format!("\"{}\" is not a width. Use 6 to 200 (millimetres).", w.trim())))?))
             }
             None => (item, None),
         };
@@ -134,20 +135,20 @@ pub fn parse_columns(text: &str) -> Result<Vec<ColumnSpec>, String> {
             Some((f, h)) => {
                 let h = h.trim();
                 if !(1..=MAX_FIELD_CHARS).contains(&h.chars().count()) || h.chars().any(char::is_control) {
-                    return Err(format!("\"{h}\" is not a header. Use 1 to 20 characters."));
+                    return Err(CmdError::refused(format!("\"{h}\" is not a header. Use 1 to 20 characters.")));
                 }
                 (f.trim(), Some(h.to_string()))
             }
             None => (rest.trim(), None),
         };
         if field == ISSUED || field == RELEASED {
-            return Err(format!("\"{field}\" is set by issuing."));
+            return Err(CmdError::refused(format!("\"{field}\" is set by issuing.")));
         }
         if !FIELDS.contains(&field) && !is_custom_field(field) {
-            return Err(format!("\"{field}\" is not a field name. Use 1 to 20 letters, digits or _."));
+            return Err(CmdError::refused(format!("\"{field}\" is not a field name. Use 1 to 20 letters, digits or _.")));
         }
         if out.iter().any(|c| c.field == field) {
-            return Err(format!("\"{field}\" is a column twice."));
+            return Err(CmdError::refused(format!("\"{field}\" is a column twice.")));
         }
         out.push(ColumnSpec { field: field.to_string(), header, width });
     }
@@ -155,7 +156,7 @@ pub fn parse_columns(text: &str) -> Result<Vec<ColumnSpec>, String> {
         return Ok(Vec::new());
     }
     if !out.iter().any(|c| c.field == "rev") || !out.iter().any(|c| c.field == "description") {
-        return Err("Rev and Description must be columns.".into());
+        return Err(CmdError::refused("Rev and Description must be columns."));
     }
     Ok(out)
 }
@@ -390,13 +391,13 @@ pub fn pending_rev(doc: &Document) -> String {
 ///
 /// # Errors
 /// In words.
-pub fn check_rev(doc: &Document, rev: &str) -> Result<(), String> {
+pub fn check_rev(doc: &Document, rev: &str) -> Result<(), CmdError> {
     let n = rev.chars().count();
     if !(1..=MAX_REV_CHARS).contains(&n) || !rev.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err("Rev is 1 to 8 letters or digits.".into());
+        return Err(CmdError::refused("Rev is 1 to 8 letters or digits."));
     }
     if issued(doc).iter().any(|r| r.rev().eq_ignore_ascii_case(rev)) {
-        return Err(format!("Rev {rev} was issued before; choose another."));
+        return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     Ok(())
 }
@@ -484,7 +485,7 @@ mod tests {
             ("rev, x@1e308, description", "is not a width"),
             ("rev, rev, description", "a column twice"),
         ] {
-            let e = parse_columns(bad).unwrap_err();
+            let e = parse_columns(bad).unwrap_err().to_string();
             assert!(e.contains(words), "{bad}: {e}");
         }
         let many = (0..1000).map(|i| format!("f{i}")).collect::<Vec<_>>().join(", ");

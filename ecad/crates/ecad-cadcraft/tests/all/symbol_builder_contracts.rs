@@ -121,9 +121,9 @@ fn row_3_refusals_write_nothing() {
     }
     // Hostile sizes (brief criterion 11): refused before anything is collected or built.
     let many: Vec<Value> = (0..10_000).map(|i| json!({"key": i.to_string(), "at": [0, i * 5]})).collect();
-    assert!(h.run("symbolnew", float(json!({"key": "f3", "points": many}))).unwrap_err().contains("too many connection points"));
+    assert!(h.run("symbolnew", float(json!({"key": "f3", "points": many}))).unwrap_err().contains("`points` takes at most 512 entries"));
     let shapes: Vec<Value> = (0..100_000).map(|_| rect()).collect();
-    assert!(h.run("symbolnew", float(json!({"key": "f3", "graphics": shapes}))).unwrap_err().contains("too large"));
+    assert!(h.run("symbolnew", float(json!({"key": "f3", "graphics": shapes}))).unwrap_err().contains("`graphics` takes at most 4000 entries"));
     assert!(h.run("symbolnew", float(json!({"key": "k".repeat(10_000)}))).is_err());
     assert!(h.run("symbolnew", float(json!({"name": "n".repeat(10_000)}))).is_err());
     let nan = json!({"kind": "line", "a": [0, 0], "b": [1e300, 0]});

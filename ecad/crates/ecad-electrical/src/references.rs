@@ -22,6 +22,7 @@
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CmdError;
 use ecad_model::derive::{CableReference, cable_references, cable_references_of, route_ends_by_page};
 use ecad_model::{CableId, ConductorId, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, Subject, TerminalId};
 
@@ -282,18 +283,18 @@ pub const TOWARD_EQUAL: &str = "`toward` must differ from `at`";
 ///
 /// # Errors
 /// `no such cable`, or the refusal's words.
-pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(), String> {
-    let c = doc.cables.get(&cable).ok_or("no such cable")?;
+pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(), CmdError> {
+    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let refs = references_of(doc, cable);
     if refs.iter().any(|(_, r)| r.page == page) {
-        return Err(already_here(doc, cable));
+        return Err(CmdError::refused(already_here(doc, cable)));
     }
     if refs.len() >= MAX_REFERENCES_PER_CABLE {
-        return Err(already_continues(doc, cable));
+        return Err(CmdError::refused(already_continues(doc, cable)));
     }
     let routes = route_ends_by_page(doc);
     if !c.members.iter().any(|m| routes.contains_key(&(m.conductor, page))) {
-        return Err(no_wires_here(doc, cable));
+        return Err(CmdError::refused(no_wires_here(doc, cable)));
     }
     Ok(())
 }
@@ -351,26 +352,26 @@ fn in_range(p: Pt) -> bool {
 /// The refusals of design 010 §4.4 and §7.2 in words.
 pub fn plan_continue(
     doc: &Document, page: PageId, cable: CableId, members: Option<&[ConductorId]>, at: Pt, toward: Pt, tol: f64,
-) -> Result<Plan, String> {
+) -> Result<Plan, CmdError> {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     if !(in_range(at) && in_range(toward)) {
-        return Err(crate::words::OUT_OF_RANGE.into());
+        return Err(CmdError::refused(crate::words::OUT_OF_RANGE));
     }
     if at.near(toward, tol) {
-        return Err(TOWARD_EQUAL.into());
+        return Err(CmdError::refused(TOWARD_EQUAL));
     }
-    let c = doc.cables.get(&cable).ok_or("no such cable")?;
+    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     // 032 §3.4: cores that end on continuations are continued by a slash there, not here.
     if cores_end_on_continuations(doc, cable, members) {
-        return Err(cores_on_continuations(doc, cable));
+        return Err(CmdError::refused(cores_on_continuations(doc, cable)));
     }
     let refs = references_of(doc, cable);
-    let Some((source, s)) = refs.first().map(|(id, r)| (*id, *r)) else { return Err(no_reference(doc, cable)) };
+    let Some((source, s)) = refs.first().map(|(id, r)| (*id, *r)) else { return Err(CmdError::refused(no_reference(doc, cable))) };
     if refs.len() >= MAX_REFERENCES_PER_CABLE {
-        return Err(already_continues(doc, cable));
+        return Err(CmdError::refused(already_continues(doc, cable)));
     }
     if s.page == page {
-        return Err(drawn_here(doc, cable));
+        return Err(CmdError::refused(drawn_here(doc, cable)));
     }
     let source_at = s.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
@@ -381,15 +382,15 @@ pub fn plan_continue(
         None => c.members.iter().map(|m| m.conductor).collect(),
         Some(list) => {
             if list.len() > crate::slash::MAX_CABLE_MEMBERS {
-                return Err(too_many_members());
+                return Err(CmdError::refused(too_many_members()));
             }
             let mut seen = BTreeSet::new();
             for w in list {
                 if !in_cable.contains(w) {
-                    return Err(format!("conductor {} is not a member of cable {}", w.hex(), cable.hex()));
+                    return Err(CmdError::refused(format!("conductor {} is not a member of cable {}", w.hex(), cable.hex())));
                 }
                 if !seen.insert(*w) {
-                    return Err(format!("conductor {} is listed twice", w.hex()));
+                    return Err(CmdError::refused(format!("conductor {} is listed twice", w.hex())));
                 }
             }
             list.to_vec()
@@ -397,7 +398,7 @@ pub fn plan_continue(
     };
     let routes = route_ends_by_page(doc);
     if !candidates.is_empty() && candidates.iter().all(|w| routes.contains_key(&(*w, page))) {
-        return Err(drawn_here(doc, cable));
+        return Err(CmdError::refused(drawn_here(doc, cable)));
     }
     let mut going: Vec<(ConductorId, End)> = Vec::new();
     let mut skipped = Vec::new();
@@ -422,13 +423,13 @@ pub fn plan_continue(
         going.push((*w, free));
     }
     if going.is_empty() {
-        return Err(none_can_continue(doc, cable));
+        return Err(CmdError::refused(none_can_continue(doc, cable)));
     }
     let spacing = sizes(doc).spacing;
     let (dx, dy) = (toward.x - at.x, toward.y - at.y);
     let l = dx.hypot(dy);
     if !(l.is_finite() && l > tol) {
-        return Err(TOWARD_EQUAL.into());
+        return Err(CmdError::refused(TOWARD_EQUAL));
     }
     let d = Pt::new(dx / l, dy / l);
     let n = Pt::new(-d.y, d.x);
@@ -439,7 +440,7 @@ pub fn plan_continue(
         let s0 = Pt::new(at.x + n.x * off, at.y + n.y * off);
         let o = Pt::new(s0.x + d.x * l, s0.y + d.y * l);
         if !(in_range(s0) && in_range(o)) {
-            return Err(crate::words::OUT_OF_RANGE.into());
+            return Err(CmdError::refused(crate::words::OUT_OF_RANGE));
         }
         let (a, b) = if *free == End::B { (s0, o) } else { (o, s0) };
         stubs.push(Stub { conductor: *w, a, b, free_end: *free });
@@ -449,7 +450,7 @@ pub fn plan_continue(
     let half = spacing / 2.0;
     let slash = (Pt::new(m.x - n.x * h - d.x * half, m.y - n.y * h - d.y * half), Pt::new(m.x + n.x * h + d.x * half, m.y + n.y * h + d.y * half));
     if !(in_range(slash.0) && in_range(slash.1)) {
-        return Err(crate::words::OUT_OF_RANGE.into());
+        return Err(CmdError::refused(crate::words::OUT_OF_RANGE));
     }
     Ok(Plan { source, source_page: s.page, stubs, skipped, slash })
 }
@@ -947,14 +948,14 @@ pub struct Continued {
 ///
 /// # Errors
 /// The refusals of §3.3 in words.
-pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed: &[ConductorId]) -> Result<Vec<Continued>, String> {
-    let c = doc.cables.get(&cable).ok_or("no such cable")?;
+pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed: &[ConductorId]) -> Result<Vec<Continued>, CmdError> {
+    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let tag = title(doc, cable);
     if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
-        return Err(format!("{tag} already has a slash on this page."));
+        return Err(CmdError::refused(format!("{tag} already has a slash on this page.")));
     }
     if c.members.len().saturating_add(crossed.len()) > crate::slash::MAX_CABLE_MEMBERS {
-        return Err(crate::slash::too_many());
+        return Err(CmdError::refused(crate::slash::too_many()));
     }
     let members: Vec<ConductorId> = c.members.iter().map(|m| m.conductor).collect();
     let groups = continuation_groups(doc, &members);
@@ -985,9 +986,9 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
                 if used.insert(i, *w).is_some() {
                     // Fix round (review of #65, tester t13c): plain words, with the way out.
                     let core = chains.get(i).and_then(label_of).map_or_else(|| format!("core at continuation {name}"), |l| format!("core {l}"));
-                    return Err(format!(
+                    return Err(CmdError::refused(format!(
                         "Two of the wires continue {tag}'s {core}. Slash only one wire per core, or give one of the continuations another name."
-                    ));
+                    )));
                 }
                 out.push(Continued { conductor: *w, core: chains.get(i).and_then(label_of), continues: m });
             }
@@ -1003,7 +1004,7 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
         if more > 0 {
             lines.push(format!("+{more}"));
         }
-        return Err(lines.join("\n"));
+        return Err(CmdError::refused(lines.join("\n")));
     }
     Ok(out)
 }

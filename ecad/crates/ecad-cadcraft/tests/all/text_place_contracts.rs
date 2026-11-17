@@ -100,7 +100,8 @@ fn movetext_refusals() {
     let mut h = H::new(SEED);
     let (_, r) = place(&mut h, "no", [100.0, 150.0]);
     for (p, words) in [
-        (json!({"representation": r.hex(), "kind": "tag", "to": [1]}), "A text position must be a finite point."),
+        (json!({"representation": r.hex(), "kind": "tag", "to": [1]}), "`to` must be a point [x, y], or null"),
+        (json!({"representation": r.hex(), "kind": "tag"}), "A text position must be a finite point."),
         (json!({"representation": r.hex(), "kind": "tag", "to": [1, 2], "justify": "XX"}), "Justify is two letters"),
         (json!({"representation": r.hex(), "kind": "point_label", "to": [1, 2]}), "point_label needs the connection point's key."),
         (json!({"representation": "00000000000000000000000000000001", "kind": "tag", "to": [1, 2]}), "No representation"),

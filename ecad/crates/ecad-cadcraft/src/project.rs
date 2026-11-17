@@ -14,6 +14,7 @@ use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
+use ecad_electrical::CmdError;
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
     Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
@@ -1400,9 +1401,10 @@ impl Project {
     pub fn open_file_with(
         s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings, reading: bool,
     ) -> Result<(ProjectHandle, String), String> {
-        let path = crate::file::normalize(path)?;
+        let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
         let mut o =
-            if reading { crate::file::Binding::open_read_only(&path, seed, &writer())? } else { crate::file::Binding::open(&path, seed, &writer())? };
+            if reading { crate::file::Binding::open_read_only(&path, seed, &writer()) } else { crate::file::Binding::open(&path, seed, &writer()) }
+                .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
         let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
@@ -1662,9 +1664,9 @@ impl Project {
         let target = path.filter(|p| !p.trim().is_empty());
         let r: Result<(Option<String>, Option<String>), String> = match target {
             None if save_as => Err(crate::file::SAVE_AS_NEEDS_PATH.into()),
-            None => self.file.save(&mut self.ledger).map(|()| (None, None)),
-            Some(p) => crate::file::normalize(p).and_then(|p| {
-                let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms())?;
+            None => self.file.save(&mut self.ledger).map(|()| (None, None)).map_err(|e| e.to_string()),
+            Some(p) => crate::file::normalize(p).map_err(|e| e.to_string()).and_then(|p| {
+                let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms()).map_err(|e| e.to_string())?;
                 Ok((
                     Some(p),
                     match w {
@@ -2330,7 +2332,7 @@ impl Project {
     ///
     /// # Errors
     /// Validation failure; nothing changes.
-    pub(crate) fn apply_edit(&mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>) -> Result<ecad_model::TxId, String> {
+    pub(crate) fn apply_edit(&mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>) -> Result<ecad_model::TxId, CmdError> {
         self.apply_edit_with(pg, command, label, ops, true)
     }
 
@@ -2338,8 +2340,8 @@ impl Project {
     /// Restore (brief 020) records exactly the state it returns to, wire numbers included.
     pub(crate) fn apply_edit_with(
         &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool,
-    ) -> Result<ecad_model::TxId, String> {
-        self.apply_tx(pg, command, label, ops, numbering, None)
+    ) -> Result<ecad_model::TxId, CmdError> {
+        self.apply_tx(pg, command, label, ops, numbering, None).map_err(CmdError::refused)
     }
 
     /// Commit a merge (brief 020b): `ops` as one transaction of `kind` (a merge), updated in the
@@ -2370,7 +2372,7 @@ impl Project {
         // they bring back).
         let mut ops = ops;
         let rack_page = if kind.is_none() && numbering {
-            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops)?;
+            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops).map_err(String::from)?;
             ops.extend(more);
             id
         } else {
