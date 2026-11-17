@@ -233,13 +233,61 @@ pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Opti
 /// The members of rack `r` read straight from the document (texts and commands, which have no
 /// kept model): its cards with a slot, in slot order.
 pub fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
-    rack::cards_naming(doc, r)
+    let Some(station) = super::edit::station_of(doc, r) else { return Vec::new() };
+    station
+        .modules(doc, r)
         .into_iter()
         .filter_map(|(c, s)| {
             let ty = super::card_type_of(doc, c)?;
             (!ty.is_rack()).then_some((c, ty, rack::channel_count(doc, c), s?))
         })
         .collect()
+}
+
+/// What has a PLC address (design 072 §2.4, A10): a module's block is its own method, so the
+/// Checks, the I/O list and the overview read it rather than work it out again.
+pub trait Addressed {
+    /// Module `id`'s address block in its station; `None` when it is in no station's slot.
+    fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block>;
+}
+
+impl Addressed for ecad_model::plc::PlcModule {
+    fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block> {
+        let r = self.rack.filter(|r| rack::is_rack(doc, *r))?;
+        self.slot?;
+        blocks(doc, r, &members_of(doc, r)).get(&id).copied()
+    }
+}
+
+/// A station's own reads (design 072 §3): its modules, from the index's station → modules map.
+pub trait Station {
+    /// Station `id`'s modules with their slots, by slot then tag.
+    fn modules(&self, doc: &Document, id: DeviceId) -> Vec<(DeviceId, Option<u32>)>;
+    /// How many input and output channels its modules have.
+    fn io_count(&self, doc: &Document, id: DeviceId) -> (u32, u32);
+}
+
+impl Station for ecad_model::plc::PlcRack {
+    fn modules(&self, doc: &Document, id: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
+        rack::cards_naming(doc, id)
+    }
+
+    fn io_count(&self, doc: &Document, id: DeviceId) -> (u32, u32) {
+        let mut io = (0u32, 0u32);
+        for (c, _) in self.modules(doc, id) {
+            let (Some(ty), n) = (super::card_type_of(doc, c), rack::channel_count(doc, c)) else { continue };
+            match ty.direction() {
+                Direction::Input => io.0 = io.0.saturating_add(n),
+                Direction::Output => io.1 = io.1.saturating_add(n),
+                Direction::Both => {
+                    io.0 = io.0.saturating_add(n);
+                    io.1 = io.1.saturating_add(n);
+                }
+                Direction::None => {}
+            }
+        }
+        io
+    }
 }
 
 /// The direction of channel addresses a card shows first: its input, else its output.

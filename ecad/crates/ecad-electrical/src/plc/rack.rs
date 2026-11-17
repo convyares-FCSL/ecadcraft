@@ -265,29 +265,10 @@ pub fn racks(doc: &Document) -> Vec<DeviceId> {
     v.into_iter().map(|(_, c)| c).collect()
 }
 
-thread_local! {
-    /// How many whole-project walks [`cards_naming`] made on this thread (the update-map tests
-    /// count them: a path with the kept model makes none).
-    static SCANS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-/// How many times this thread has walked the project for a rack's cards.
-pub fn scans() -> u64 {
-    SCANS.with(std::cell::Cell::get)
-}
-
-/// The cards whose module names `rack` (a station or not), with their slots. Walks every
-/// device: commands and checks of one edit only; kept-model paths use `crate::plc::Plc`.
+/// The cards whose module names `rack` (a station or not), with their slots, by slot then tag:
+/// the index's station → modules map (design 072 §3, `PlcRack::modules`).
 pub fn cards_naming(doc: &Document, rack: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
-    SCANS.with(|n| n.set(n.get() + 1));
-    let mut v: Vec<(DeviceId, Option<u32>)> = doc
-        .devices
-        .iter()
-        .filter_map(|(c, x)| match &x.device_type {
-            ecad_model::DeviceType::PlcModule(m) if m.rack == Some(rack) => Some((*c, m.slot.map(u32::from))),
-            _ => None,
-        })
-        .collect();
+    let mut v: Vec<(DeviceId, Option<u32>)> = doc.plc_modules(rack).map(|c| (c, slot_of(doc, c))).collect();
     v.sort_by_key(|(c, s)| (*s, crate::devices::tag_words(doc, *c)));
     v
 }

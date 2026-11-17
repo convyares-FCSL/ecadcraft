@@ -660,6 +660,14 @@ impl ModuleFunction {
     }
 }
 
+impl crate::Document {
+    /// The modules naming station `rack` (whether or not it is a station now), in ID order: the
+    /// index's station → modules map, never a walk of the project.
+    pub fn plc_modules(&self, rack: DeviceId) -> impl Iterator<Item = DeviceId> + '_ {
+        crate::index::referrers(&self.index.station_modules, &rack)
+    }
+}
+
 impl PlcModule {
     /// A module doing `function`, in no station, with nothing pinned.
     pub fn new(function: ModuleFunction) -> PlcModule {

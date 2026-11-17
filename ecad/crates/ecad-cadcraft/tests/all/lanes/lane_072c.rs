@@ -179,3 +179,25 @@ fn a_card_type_change_keeps_channel_data() {
     assert_eq!(m.slot, slot);
     assert_eq!(m.channel(1).and_then(|c| c.text.as_ref()).map(|t| t.as_str()), Some("Spare lamp"));
 }
+
+/// A10: a module's address block is its own method and agrees with the kept model the Checks and
+/// lists read; a station's modules and I/O count come from the index.
+#[test]
+fn address_blocks_and_station_reads_are_methods() {
+    use ecad_cadcraft::plc::address::{Addressed, Station};
+    let mut h = H::new(0x72_c8);
+    let cpu = placed(&mut h, "plccpu", [40.0, 40.0]);
+    let di = placed(&mut h, "plcdi", [140.0, 40.0]);
+    let dq = placed(&mut h, "plcdq", [180.0, 40.0]);
+    let ai = placed(&mut h, "plcai", [220.0, 40.0]);
+    let doc = h.doc();
+    let kept = ecad_cadcraft::outputs::Outputs::build(&doc);
+    for c in [di, dq, ai] {
+        assert_eq!(module(&doc, c).address_block(&doc, c), kept.plc.blocks.get(&c).copied(), "{c:?}");
+    }
+    assert!(module(&doc, di).address_block(&doc, di).is_some_and(|b| b.input.is_some() && b.output.is_none()));
+    let s = station(&doc, cpu);
+    let mods: Vec<DeviceId> = s.modules(&doc, cpu).into_iter().map(|(c, _)| c).collect();
+    assert_eq!(mods, [di, dq, ai], "by slot");
+    assert_eq!(s.io_count(&doc, cpu), (20, 16), "16 DI + 4 AI in, 16 DQ out");
+}
