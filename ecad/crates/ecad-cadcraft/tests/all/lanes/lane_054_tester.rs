@@ -537,10 +537,12 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
                 catalogue: ecad_model::StyleCatalogue::Page,
                 id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
                 before,
-                after: Some(ecad_model::style::StyleRecord {
-                    fields: [("sheet".to_string(), bad.to_string()), ("holds".to_string(), "x".to_string())].into_iter().collect(),
-                    ..Default::default()
-                }),
+                after: Some(ecad_model::style::StyleRecord::new(
+                    "",
+                    ecad_model::style::StyleBody::Page(
+                        [("sheet".to_string(), bad.to_string()), ("holds".to_string(), "x".to_string())].into_iter().collect(),
+                    ),
+                )),
             }],
         );
         assert!(sheet_text(&mut h, p[0]).starts_with("A3"), "{bad:.20}: falls through");
@@ -903,7 +905,7 @@ fn ac15_ten_thousand_categories_in_use_are_bounded() {
     let (mut h, cover, sch) = with_cover(0x54_1502);
     h.activate(sch);
     for i in 0..10_000u32 {
-        let id = h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colour": "BU", "cross_section": format!("{}.5", i % 50)}}));
+        let id = h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colours": "BU", "size": format!("{}.5", i % 50)}}));
         let Ok(id) = id else { break };
         let w = h.run("wire", json!({"points": [[0.0, i as f64 * 0.01], [10.0, i as f64 * 0.01]]})).unwrap();
         h.run("category", json!({"conductor": s(&w["conductor"]), "value": s(&id["id"])})).ok();

@@ -41,7 +41,7 @@ fn ops_that_read_no_reference_touch_no_cable() {
         catalogue,
         id: StyleRef::builtin("tag").unwrap(),
         before: None,
-        after: Some(StyleRecord::default()),
+        after: Some(StyleRecord::empty(catalogue)),
     };
     for catalogue in [ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location] {
         assert_eq!(touched(vec![style(catalogue)]), Some(Default::default()), "a {catalogue} style");

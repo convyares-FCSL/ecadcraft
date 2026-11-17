@@ -106,7 +106,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
             let mut wire = Vec::new();
             for i in 0..runs.max(1) {
                 let colour = if i % 2 == 0 { "RD" } else { "BU" };
-                wire.push(exec(&mut s, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": colour}}))?);
+                wire.push(exec(&mut s, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": colour}}))?);
             }
             out.wire_category_ms = median(&mut wire);
             let net = project.read(&mut s, |p, _| {

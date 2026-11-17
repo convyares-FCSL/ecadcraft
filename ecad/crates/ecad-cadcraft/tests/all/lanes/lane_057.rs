@@ -432,7 +432,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     let doc = f.h.doc();
     let before = styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::RatingTable, &id).cloned();
     let mut rec: StyleRecord = before.clone().unwrap();
-    rec.fields.insert(ratingtable::ROWS.into(), padded(cap + 1));
+    rec.fields_mut().unwrap().insert(ratingtable::ROWS.into(), padded(cap + 1));
     f.h.cfg(|p| {
         p.ledger.commit(
             ecad_model::Author::User,

@@ -115,7 +115,7 @@ pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: boo
     let unknown: std::collections::BTreeSet<String> = [StyleLayer::Standard, StyleLayer::Project]
         .into_iter()
         .filter_map(|l| styles::record(doc, l, cat.catalogue, &row.id))
-        .flat_map(|r| r.fields.keys())
+        .flat_map(|r| r.fields().into_iter().flat_map(|p| p.keys()))
         .filter(|k| cat.field(k).is_none())
         .cloned()
         .collect();
@@ -136,6 +136,8 @@ fn value_json(r: &defaults::Resolved<'_>) -> Value {
         defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
         defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        defaults::Value::Size(s) => json!(s.to_string()),
+        defaults::Value::Colours(c) => json!(c.to_string()),
     }
 }
 

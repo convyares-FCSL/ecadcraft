@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model::style::{BASED_ON_IEC, MAX_STYLES_PER_CATALOGUE, is_name};
-use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRecord, StyleRef};
+use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
 use crate::defaults::{self, Entry, Kind};
 use crate::error::CmdError;
@@ -128,6 +128,8 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.to_string(),
         defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
+        defaults::Value::Size(s) => s.to_string(),
+        defaults::Value::Colours(c) => c.to_string(),
     }))
 }
 
@@ -418,19 +420,20 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
             None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
         };
         let id = StyleRef::Own(ids.fresh::<u128>());
-        let mut rec = StyleRecord { name: name.clone(), fields: Default::default(), body: None };
+        let mut copied: Vec<(String, Option<String>)> = Vec::new();
         for f in cat.fields {
             let Some(from) = &from else { break };
-            // 050b: a copy is no potential's default (one category per potential).
+            // 050b: a copy is no potential's default (one type per potential).
             if cat.catalogue == ecad_model::StyleCatalogue::Wire && f.key == "potential" {
                 continue;
             }
             let v = styles::field(doc, cat, from, f, None).text();
             if !v.is_empty() {
-                rec.fields.insert(f.key.to_string(), v);
+                copied.push((f.key.to_string(), Some(v)));
             }
         }
-        let rec = styles::with_fields(Some(&rec), None, &fields);
+        copied.extend(fields.iter().cloned());
+        let rec = styles::with_fields(cat.catalogue, None, Some(&name), &copied)?;
         styles::check_record(doc, cat, &id, layer, &rec)?;
         let op = Op::SetStyle { layer, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) };
         return Ok(StylePlan { ops: vec![op], id, label: format!("New {} {name}", cat.one.to_lowercase()) });
@@ -465,10 +468,10 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
             continue;
         }
         let before = styles::record(doc, l, cat.catalogue, &id).cloned();
-        let rec = styles::with_fields(before.as_ref(), n, &f);
+        let rec = styles::with_fields(cat.catalogue, before.as_ref(), n, &f)?;
         // A built-in's override with nothing left is no record; an own style keeps its named
         // record.
-        let keep = !rec.fields.is_empty() || !rec.name.is_empty();
+        let keep = !rec.body.is_empty() || !rec.name.is_empty();
         let after = keep.then_some(rec);
         if let Some(r) = &after {
             styles::check_record(doc, cat, &id, l, r)?;

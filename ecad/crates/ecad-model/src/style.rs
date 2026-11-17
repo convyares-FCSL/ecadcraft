@@ -17,7 +17,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
-use crate::title_block::StyleBody;
+
+pub mod wire;
+
+pub use wire::WireType;
 
 /// The most styles a layer may hold per catalogue. Guard, not a default: it keeps a hostile
 /// file from making the catalogue tables and the users index unbounded. Records past it are kept
@@ -172,45 +175,166 @@ impl<'de> Deserialize<'de> for StyleRef {
     }
 }
 
-/// What a standard or a project stores about one style (design 050 §2.3): its name and the
-/// fields it sets. For a built-in style the name is empty and the record holds only the fields
-/// it overrides. Unknown field keys are kept and ignored.
+/// What a standard or a project stores about one style (design 050 §2.3, design 072 §8): its name
+/// and its typed body. For a built-in style the name is empty and the body holds only the fields
+/// it overrides.
 ///
-/// Brief 055 (FP1): a `frame` record may carry a typed [`StyleBody`], its title block; left out
-/// while absent, so older files read and save the same. Merge treats the record, body included,
-/// as one unit.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// The body's catalogue is the catalogue the record is filed under; a record filed under another
+/// catalogue is refused on apply.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StyleRecord {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub fields: Properties,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<StyleBody>,
+    pub body: StyleBody,
 }
 
 impl StyleRecord {
-    /// A record with `name` and `fields`, without a body.
-    pub fn new(name: impl Into<String>, fields: Properties) -> StyleRecord {
-        StyleRecord { name: name.into(), fields, body: None }
+    /// A record with `name` and `body`.
+    pub fn new(name: impl Into<String>, body: StyleBody) -> StyleRecord {
+        StyleRecord { name: name.into(), body }
     }
 
-    /// Its title block, if its body holds one.
+    /// An unnamed record of `catalogue` that sets nothing.
+    pub fn empty(catalogue: StyleCatalogue) -> StyleRecord {
+        StyleRecord { name: String::new(), body: StyleBody::empty(catalogue) }
+    }
+
+    /// Which catalogue its body belongs to.
+    pub fn catalogue(&self) -> StyleCatalogue {
+        self.body.catalogue()
+    }
+
+    /// Its title block, if it is a frame style holding one.
     pub fn title_block(&self) -> Option<&crate::title_block::TitleBlockLayout> {
-        self.body.as_ref()?.title_block.as_ref()
+        match &self.body {
+            StyleBody::Frame(f) => f.title_block.as_ref(),
+            StyleBody::Cable(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
     }
 
-    /// Its stored value of `key`, within the bounds: at most [`MAX_FIELDS_PER_STYLE`] fields
-    /// (by key order) count, and a value longer than [`MAX_FIELD_CHARS`] counts as absent.
+    /// The fields of a catalogue not typed yet (lane G works through them).
+    pub fn fields(&self) -> Option<&Properties> {
+        match &self.body {
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => Some(p),
+            StyleBody::Frame(f) => Some(&f.fields),
+            StyleBody::Wire(_) => None,
+        }
+    }
+
+    /// [`StyleRecord::fields`], to change.
+    pub fn fields_mut(&mut self) -> Option<&mut Properties> {
+        match &mut self.body {
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => Some(p),
+            StyleBody::Frame(f) => Some(&mut f.fields),
+            StyleBody::Wire(_) => None,
+        }
+    }
+
+    /// Its stored value of `key` (a catalogue not typed yet), within the bounds: at most
+    /// [`MAX_FIELDS_PER_STYLE`] fields (by key order) count, and a value longer than
+    /// [`MAX_FIELD_CHARS`] counts as absent.
     pub fn field(&self, key: &str) -> Option<&str> {
-        let v = self.fields.get(key)?;
-        if self.fields.len() > MAX_FIELDS_PER_STYLE
-            && self.fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
+        let fields = self.fields()?;
+        let v = fields.get(key)?;
+        if fields.len() > MAX_FIELDS_PER_STYLE
+            && fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
         {
             return None;
         }
         (v.chars().count() <= MAX_FIELD_CHARS).then_some(v.as_str())
     }
+}
+
+/// A style record's typed body (design 072 §8): one variant per catalogue, so a record can only
+/// hold its own catalogue's fields.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum StyleBody {
+    Cable(Properties),
+    Frame(FrameFields),
+    Location(Properties),
+    Page(Properties),
+    #[serde(rename = "ratingtable")]
+    RatingTable(Properties),
+    Text(Properties),
+    Wire(WireType),
+}
+
+impl StyleBody {
+    /// A body of `catalogue` that sets nothing.
+    pub fn empty(catalogue: StyleCatalogue) -> StyleBody {
+        match catalogue {
+            StyleCatalogue::Cable => StyleBody::Cable(Properties::new()),
+            StyleCatalogue::Frame => StyleBody::Frame(FrameFields::default()),
+            StyleCatalogue::Location => StyleBody::Location(Properties::new()),
+            StyleCatalogue::Page => StyleBody::Page(Properties::new()),
+            StyleCatalogue::RatingTable => StyleBody::RatingTable(Properties::new()),
+            StyleCatalogue::Text => StyleBody::Text(Properties::new()),
+            StyleCatalogue::Wire => StyleBody::Wire(WireType::default()),
+        }
+    }
+
+    /// Which catalogue it belongs to.
+    pub fn catalogue(&self) -> StyleCatalogue {
+        match self {
+            StyleBody::Cable(_) => StyleCatalogue::Cable,
+            StyleBody::Frame(_) => StyleCatalogue::Frame,
+            StyleBody::Location(_) => StyleCatalogue::Location,
+            StyleBody::Page(_) => StyleCatalogue::Page,
+            StyleBody::RatingTable(_) => StyleCatalogue::RatingTable,
+            StyleBody::Text(_) => StyleCatalogue::Text,
+            StyleBody::Wire(_) => StyleCatalogue::Wire,
+        }
+    }
+
+    /// The fields it sets, as `(key, stored text)`: for messages and the inspector.
+    pub fn entries(&self) -> Vec<(String, String)> {
+        match self {
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => {
+                p.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            }
+            StyleBody::Frame(f) => f.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            StyleBody::Wire(w) => w.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        }
+    }
+
+    /// Whether it sets nothing.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => p.is_empty(),
+            StyleBody::Frame(f) => f.fields.is_empty() && f.title_block.is_none(),
+            StyleBody::Wire(w) => *w == WireType::default(),
+        }
+    }
+
+    /// Its wire type, if it is one.
+    pub fn wire(&self) -> Option<&WireType> {
+        match self {
+            StyleBody::Wire(w) => Some(w),
+            StyleBody::Cable(_)
+            | StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_) => None,
+        }
+    }
+}
+
+/// A frame style's fields and its title block (brief 055, FP1).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrameFields {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: Properties,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<crate::title_block::TitleBlockLayout>,
 }
 
 /// A layer's style records: catalogue → style → record.

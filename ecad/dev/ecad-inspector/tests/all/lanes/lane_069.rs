@@ -197,7 +197,7 @@ fn every_op_ledger() -> Ledger {
             catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
-            after: Some(StyleRecord { name: "Thin".into(), ..StyleRecord::default() }),
+            after: Some(StyleRecord::new("Thin", ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Wire))),
         },
         Op::SetStandard { before: None, after: Some(header) },
         // Lane 072 E (A15): the project's lists changed.

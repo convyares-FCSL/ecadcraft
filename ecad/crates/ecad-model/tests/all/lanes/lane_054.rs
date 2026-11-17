@@ -5,9 +5,7 @@ use ecad_model::sheet::{SheetSpec, derived_page_type, page_type_of, sheet_of};
 use ecad_model::{Author, IdAllocator, Ledger, Op, Page, PageId, StyleLayer, StyleRecord, StyleRef};
 
 fn record(sheet: &str) -> StyleRecord {
-    let mut r = StyleRecord::default();
-    r.fields.insert("sheet".into(), sheet.into());
-    r
+    StyleRecord::new("", ecad_model::style::StyleBody::Page([("sheet".to_string(), sheet.to_string())].into()))
 }
 
 fn set_style(id: &str, after: Option<StyleRecord>, before: Option<StyleRecord>) -> Op {

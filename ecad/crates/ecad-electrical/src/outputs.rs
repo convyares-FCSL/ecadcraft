@@ -578,8 +578,8 @@ impl Scope {
                         }
                     }
                     for r in [before, after].into_iter().flatten() {
-                        if let Some(pot) = r.fields.get("potential") {
-                            self.potentials.insert(pot.trim().to_lowercase());
+                        if let Some(pot) = r.body.wire().and_then(|w| w.potential.as_ref()) {
+                            self.potentials.insert(pot.as_str().to_lowercase());
                         }
                     }
                     if let Some(r) = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None) {

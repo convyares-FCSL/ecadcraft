@@ -20,8 +20,7 @@ use ecad_electrical::CmdError;
 use ecad_model::sheet::{self, FRAME_CATALOGUE, SheetSpec};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::title_block::{
-    Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, StyleBody, TextLook, TitleBlockLayout,
-    logo_words,
+    Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextLook, TitleBlockLayout, logo_words,
 };
 use ecad_model::{Op, Primitive, Pt};
 use serde_json::{Value, json};
@@ -281,7 +280,7 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                     .find(|l| crate::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
                     .ok_or(crate::cmd::title_block::NOT_A_FRAME)?;
                 let before = crate::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
-                let mut after = before.clone().unwrap_or_default();
+                let mut after = before.clone().unwrap_or_else(|| StyleRecord::empty(FRAME_CATALOGUE));
                 let mut layout = after.title_block().cloned().ok_or("This frame has no title block yet; add a Logo item first.")?;
                 let count = prims.len();
                 match usize::try_from(n).ok().and_then(|i| layout.items.get_mut(i)) {
@@ -289,7 +288,9 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                     _ => return Err(format!("Item {n} is not a logo.")),
                 }
                 layout.check()?;
-                after.body = Some(StyleBody::title_block(layout));
+                if let ecad_model::style::StyleBody::Frame(f) = &mut after.body {
+                    f.title_block = Some(layout);
+                }
                 let name = crate::styles::name(doc, FRAME_CATALOGUE, &id);
                 let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }];
                 p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
@@ -321,10 +322,9 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                         .unwrap_or(base)
                 }
             };
-            let mut rec = StyleRecord::new(name.clone(), Default::default());
-            rec.fields.insert(sheet::FRAME_SHEET_FIELD.into(), spec.text());
-            rec.fields.insert("block".into(), "bottom_right".into());
-            rec.body = Some(StyleBody::title_block(layout));
+            let fields = [(sheet::FRAME_SHEET_FIELD.to_string(), spec.text()), ("block".to_string(), "bottom_right".to_string())].into();
+            let body = ecad_model::style::StyleBody::Frame(ecad_model::style::FrameFields { fields, title_block: Some(layout) });
+            let rec = StyleRecord::new(name.clone(), body);
             let id = StyleRef::Own(p.ids.fresh::<u128>());
             crate::styles::check_record(doc, &crate::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;
             let ops = vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];

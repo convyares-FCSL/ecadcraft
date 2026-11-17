@@ -686,6 +686,9 @@ impl Op {
                         &mut doc.standard.as_mut().ok_or_else(|| pre(format!("style {catalogue}/{id}: the project has no standard")))?.styles
                     }
                 };
+                if let Some(r) = after.as_ref().filter(|r| r.catalogue() != *catalogue) {
+                    return Err(pre(format!("style {catalogue}/{id}: a {} record filed under {catalogue}", r.catalogue())));
+                }
                 let current = cats.get(catalogue).and_then(|c| c.get(id));
                 if checked && current != before.as_ref() {
                     return Err(pre(format!("style {catalogue}/{id} ({}) differs from the recorded value", layer.word())));

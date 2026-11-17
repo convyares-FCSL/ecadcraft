@@ -276,7 +276,7 @@ fn type_of_page(doc: &Document, page: PageId) -> Option<StyleRef> {
 /// bounds; a value past [`crate::style::MAX_FIELD_CHARS`] reads as absent).
 fn type_field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<&'a str> {
     [StyleLayer::Project, StyleLayer::Standard].into_iter().find_map(|l| {
-        type_record(doc, l, id).and_then(|r| r.fields.get(key)).map(String::as_str).filter(|v| v.chars().count() <= crate::style::MAX_FIELD_CHARS)
+        type_record(doc, l, id).and_then(|r| r.fields()?.get(key)).map(String::as_str).filter(|v| v.chars().count() <= crate::style::MAX_FIELD_CHARS)
     })
 }
 
@@ -511,7 +511,7 @@ fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crat
 pub fn type_sheet(doc: &Document, id: &crate::StyleRef) -> Option<SheetSpec> {
     use crate::style::{MAX_FIELD_CHARS, StyleLayer};
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
-        let Some(v) = type_record(doc, layer, id).and_then(|r| r.fields.get("sheet")) else { continue };
+        let Some(v) = type_record(doc, layer, id).and_then(|r| r.fields()?.get("sheet")) else { continue };
         if v.chars().count() > MAX_FIELD_CHARS {
             continue;
         }

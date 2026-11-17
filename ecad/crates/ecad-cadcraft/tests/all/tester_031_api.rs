@@ -35,7 +35,12 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
         let style = k.strip_prefix("text.").and_then(|r| r.rsplit_once('.')).filter(|(_, f)| ["height", "weight", "font"].contains(f));
         match style {
             Some((kind, field)) => {
-                records.entry(kind.to_string()).or_default().fields.insert(field.to_string(), (*v).into());
+                records
+                    .entry(kind.to_string())
+                    .or_insert_with(|| ecad_model::StyleRecord::empty(ecad_model::StyleCatalogue::Text))
+                    .fields_mut()
+                    .unwrap()
+                    .insert(field.to_string(), (*v).into());
             }
             None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }),
         }

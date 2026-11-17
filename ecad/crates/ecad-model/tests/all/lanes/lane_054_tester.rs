@@ -11,7 +11,7 @@ use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, IdAllocator, Ledger, Op, Page, PageId, StandardId, Word};
 
 fn rec(fields: &[(&str, &str)]) -> StyleRecord {
-    StyleRecord { fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() }
+    StyleRecord::new("", ecad_model::style::StyleBody::Page(fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()))
 }
 
 fn set_type(layer: StyleLayer, id: StyleRef, before: Option<StyleRecord>, after: Option<StyleRecord>) -> Op {

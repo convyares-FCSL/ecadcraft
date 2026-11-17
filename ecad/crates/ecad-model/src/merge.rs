@@ -925,7 +925,7 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
                     let show = |r: Option<&StyleRecord>| match r {
                         None => "removed".to_string(),
                         Some(r) => {
-                            let f: Vec<String> = r.fields.iter().map(|(k, v)| format!("{k} {v}")).collect();
+                            let f: Vec<String> = r.body.entries().iter().map(|(k, v)| format!("{k} {v}")).collect();
                             if f.is_empty() { "no changes".into() } else { f.join(", ") }
                         }
                     };

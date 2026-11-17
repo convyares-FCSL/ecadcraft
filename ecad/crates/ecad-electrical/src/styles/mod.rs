@@ -26,7 +26,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::style::{
-    self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleCatalogue, StyleLayer, StyleRecord, StyleRef,
+    self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleBody, StyleCatalogue, StyleLayer, StyleRecord, StyleRef,
 };
 use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject, Word};
 
@@ -178,13 +178,43 @@ pub fn field_cap(catalogue: StyleCatalogue, key: &str) -> usize {
 /// A record's stored value of `key`, within the bounds (at most [`MAX_FIELDS_PER_STYLE`] fields,
 /// values of at most [`field_cap`] characters).
 fn stored<'a>(r: &'a StyleRecord, catalogue: StyleCatalogue, key: &str) -> Option<&'a str> {
-    let v = r.fields.get(key)?;
-    if r.fields.len() > MAX_FIELDS_PER_STYLE
-        && r.fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
+    let fields = r.fields()?;
+    let v = fields.get(key)?;
+    if fields.len() > MAX_FIELDS_PER_STYLE
+        && fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
     {
         return None;
     }
     (v.chars().nth(field_cap(catalogue, key)).is_none()).then_some(v.as_str())
+}
+
+/// Whether `v` is in field kind `kind`'s range (a typed body's numbers are not checked on read).
+fn in_range(kind: Kind, v: &Value<'_>) -> bool {
+    match (kind, v) {
+        (Kind::Length { min, max } | Kind::Number { min, max }, Value::Length(x) | Value::Number(x)) => x.is_finite() && (min..=max).contains(x),
+        _ => true,
+    }
+}
+
+/// The text of the value record `r` sets for field `key` (tables of what each layer stores).
+pub fn record_text(r: &StyleRecord, key: &str) -> Option<String> {
+    match &r.body {
+        StyleBody::Wire(w) => wire::get(w, key).map(|value| Resolved { value, from: Source::Project }.text()),
+        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) => {
+            r.field(key).map(str::to_string)
+        }
+    }
+}
+
+/// The value field `f` of record `r` sets: a typed body's field (within the field's range), or a
+/// stored text that parses.
+fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &Field) -> Option<Value<'a>> {
+    match &r.body {
+        StyleBody::Wire(w) => wire::get(w, f.key).filter(|v| in_range(f.kind, v)),
+        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) => {
+            stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s))
+        }
+    }
 }
 
 /// Whether `id` names a style of `catalogue` in `doc`: a built-in one, or a record in the project
@@ -206,10 +236,10 @@ pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, o
     if let Some(value) = cat.project_field.and_then(|read| read(doc, id, f.key)).filter(|v| defaults::accepts(f.kind, v)) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Project, cat.catalogue, id).and_then(|r| stored(r, cat.catalogue, f.key)).and_then(parse) {
+    if let Some(value) = record(doc, StyleLayer::Project, cat.catalogue, id).and_then(|r| record_value(doc, r, cat, f)) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Standard, cat.catalogue, id).and_then(|r| stored(r, cat.catalogue, f.key)).and_then(parse) {
+    if let Some(value) = record(doc, StyleLayer::Standard, cat.catalogue, id).and_then(|r| record_value(doc, r, cat, f)) {
         return Resolved { value, from: Source::Standard };
     }
     if let Some(value) = cat.builtin(id).and_then(|b| b.value(f.key)) {
@@ -457,7 +487,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
             // 050b: a category that is (or becomes, or was) a potential's default reaches every
             // net of that potential, on any page (there is no potential index): every page.
             if cat.catalogue == ecad_model::StyleCatalogue::Wire {
-                let names_potential = |r: &Option<StyleRecord>| r.as_ref().is_some_and(|r| r.fields.contains_key("potential"));
+                let names_potential = |r: &Option<StyleRecord>| r.as_ref().and_then(|r| r.body.wire()).is_some_and(|w| w.potential.is_some());
                 let (before, after) = match op {
                     Op::SetStyle { before, after, .. } => (before, after),
                     _ => return None,
@@ -488,11 +518,16 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     if !r.name.is_empty() && !ms::is_name(&r.name) {
         return Err(CmdError::refused("A style needs a name (1 to 64 characters, no control characters)."));
     }
-    if r.fields.len() > MAX_FIELDS_PER_STYLE {
-        return Err(CmdError::refused(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields.")));
+    if r.catalogue() != cat.catalogue {
+        return Err(CmdError::refused(format!("A {} record is not a {}.", r.catalogue(), cat.one.to_lowercase())));
     }
-    if let Some((k, _)) = r.fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.catalogue, k)).is_some()) {
-        return Err(CmdError::refused(format!("{k} is at most {} characters.", field_cap(cat.catalogue, k))));
+    if let Some(fields) = r.fields() {
+        if fields.len() > MAX_FIELDS_PER_STYLE {
+            return Err(CmdError::refused(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields.")));
+        }
+        if let Some((k, _)) = fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.catalogue, k)).is_some()) {
+            return Err(CmdError::refused(format!("{k} is at most {} characters.", field_cap(cat.catalogue, k))));
+        }
     }
     // Brief 057 (design 057 §3.1): a rating's reference temperature is below the conductor's
     // maximum.
@@ -500,8 +535,7 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
         return Err(CmdError::refused(why));
     }
     // 050b (design 050 §5.4): one category per potential.
-    if cat.catalogue == ecad_model::StyleCatalogue::Wire
-        && let Some(p) = r.fields.get("potential").map(|p| p.trim()).filter(|p| !p.is_empty())
+    if let Some(p) = r.body.wire().and_then(|w| w.potential.as_ref()).map(|p| p.as_str())
         && let Some(other) = wire::WireLooks::new(doc).for_potential(p).filter(|o| *o != id)
     {
         return Err(CmdError::refused(format!(
@@ -516,19 +550,35 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     Ok(())
 }
 
-/// The record a `style` command writes for `fields` set or cleared on `before` (design 050 §6.2).
-pub fn with_fields(before: Option<&StyleRecord>, name: Option<&str>, fields: &[(String, Option<String>)]) -> StyleRecord {
-    let mut r = before.cloned().unwrap_or_default();
+/// The record a `style` command writes for `fields` set or cleared on `before` (design 050 §6.2),
+/// in catalogue `catalogue`. The values are as [`crate::cmd::style::fields`] checked them.
+///
+/// # Errors
+/// A value the typed field does not take, in words.
+pub fn with_fields(
+    catalogue: StyleCatalogue, before: Option<&StyleRecord>, name: Option<&str>, fields: &[(String, Option<String>)],
+) -> Result<StyleRecord, CmdError> {
+    let mut r = before.cloned().unwrap_or_else(|| StyleRecord::empty(catalogue));
     if let Some(n) = name {
         r.name = n.to_string();
     }
     for (k, v) in fields {
-        match v {
-            Some(v) => r.fields.insert(k.clone(), v.clone()),
-            None => r.fields.remove(k),
-        };
+        match &mut r.body {
+            StyleBody::Wire(w) => wire::set(w, k, v.as_deref())?,
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => {
+                set_text(p, k, v.as_deref())
+            }
+            StyleBody::Frame(f) => set_text(&mut f.fields, k, v.as_deref()),
+        }
     }
-    r
+    Ok(r)
+}
+
+fn set_text(p: &mut Properties, k: &str, v: Option<&str>) {
+    match v {
+        Some(v) => p.insert(k.to_string(), v.to_string()),
+        None => p.remove(k),
+    };
 }
 
 /// Whether `s` is a colour a style field takes (design 050 §4.1): `none`, one IEC 60757 code

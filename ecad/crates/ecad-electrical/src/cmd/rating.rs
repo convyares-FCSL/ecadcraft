@@ -372,14 +372,15 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
     let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&w.name)).map(|r| r.id);
     let id = existing.clone().unwrap_or_else(|| StyleRef::Own(ids.fresh::<u128>()));
     let before = styles::record(doc, w.layer, cat.catalogue, &id).cloned();
-    let mut rec = before.clone().unwrap_or(StyleRecord { name: w.name.clone(), fields: Default::default(), body: None });
+    let mut rec = before.clone().unwrap_or_else(|| StyleRecord::new(w.name.clone(), ecad_model::style::StyleBody::empty(cat.catalogue)));
     if rec.name.is_empty() && existing.is_none() {
         rec.name = w.name.clone();
     }
-    rec.fields.insert(ratingtable::ROWS.into(), w.csv.clone());
+    let mut set = vec![(ratingtable::ROWS.to_string(), Some(w.csv.clone()))];
     if let Some(src) = &w.source {
-        rec.fields.insert(ratingtable::SOURCE.into(), src.clone());
+        set.push((ratingtable::SOURCE.to_string(), Some(src.clone())));
     }
+    let rec = styles::with_fields(cat.catalogue, Some(&rec), None, &set)?;
     styles::check_record(doc, cat, &id, w.layer, &rec)?;
     let rows = data.rows.len();
     let label = format!("Rating table {}: {rows} row{}", w.name, if rows == 1 { "" } else { "s" });

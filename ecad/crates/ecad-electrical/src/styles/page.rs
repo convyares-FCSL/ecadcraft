@@ -246,7 +246,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
         .copied()
         .filter(|p| doc.pages.get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
         .collect();
-    let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("sheet").cloned());
+    let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.field("sheet").map(str::to_string));
     // A new or removed record can also make a `page.type` start or stop naming a type.
     let sheet_changed = sheet(before) != sheet(after) || before.is_none() != after.is_none();
     Some((pages, sheet_changed))

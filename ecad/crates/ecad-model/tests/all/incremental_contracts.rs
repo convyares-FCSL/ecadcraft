@@ -199,7 +199,7 @@ fn header(b: &mut Base) -> StandardHeader {
 }
 
 fn record() -> StyleRecord {
-    StyleRecord { name: "Thin".into(), ..StyleRecord::default() }
+    StyleRecord::new("Thin", ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Wire))
 }
 
 fn bytes(doc: &Document) -> Vec<u8> {

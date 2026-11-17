@@ -53,23 +53,6 @@ pub const MAX_TEXT_MM: f64 = 20.0;
 /// Deepest nesting of a kept unknown body ([`Raw`]). Guard: recursion on hostile input.
 pub const MAX_RAW_DEPTH: usize = 32;
 
-/// A frame style record's body (FP1): the title block, and any body kinds a newer build wrote.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct StyleBody {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title_block: Option<TitleBlockLayout>,
-    /// Body kinds this build does not know, kept as read and ignored.
-    #[serde(flatten)]
-    pub other: BTreeMap<String, Raw>,
-}
-
-impl StyleBody {
-    /// A body holding `layout`.
-    pub fn title_block(layout: TitleBlockLayout) -> StyleBody {
-        StyleBody { title_block: Some(layout), other: BTreeMap::new() }
-    }
-}
-
 /// A title block: its size (width × height, mm) and its items in drawing order.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TitleBlockLayout {

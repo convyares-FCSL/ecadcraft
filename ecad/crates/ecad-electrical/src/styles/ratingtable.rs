@@ -58,7 +58,7 @@ pub fn chosen(doc: &Document) -> Option<StyleRef> {
 /// The stored rows of table `id`: the project's record, else the standard's; within the cap.
 pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
-        if let Some(v) = super::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| r.fields.get(ROWS))
+        if let Some(v) = super::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| r.fields()?.get(ROWS))
             && v.len() <= dataset::MAX_BYTES
         {
             return v.as_str();

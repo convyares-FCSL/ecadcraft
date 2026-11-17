@@ -177,3 +177,37 @@ is made: a terminal plan of every strip, or of one strip.
 
 Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
 tried these steps by hand yet.
+
+## Lane G: wire types are typed records
+
+What changed for someone using the app:
+
+- **Wire categories are now wire types.** A wire type stores its values as fields, not free text:
+  potential, size (`2.5` mm² or `18 AWG`), colours as an ordered list (`GN/YE`), **insulation**
+  (new: `pvc`, `xlpe`, `epr`, `rubber`, `silicone`, `ptfe`, `lszh`), part number, maker,
+  description, allowance, rating and the drawn line.
+- In `setstyle` on the `wire` catalogue the fields are now `size` (was `cross_section`) and
+  `colours` (was `colour`). Typing is lenient as for a wire (`6 mm²`, `green/yellow`, `XLPE`); what
+  is stored is one form only.
+- Two new built-in types, **230 V AC L** (`ac230_l`) and **230 V AC N** (`ac230_n`): brown and
+  blue, 1.5 mm², no potential of their own.
+- A style record in a file now holds a body of its own catalogue (`"body": {"wire": {…}}`); a
+  field the type does not have, or a value in another form, makes the project open read-only.
+  Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
+
+### Try it
+
+1. Open **Standards ▸ Wire types**: the list shows the twelve built-in types, with the two
+   230 V ones.
+2. Select **Protective earth**, set Insulation to `xlpe` and Size to `6`: a wire of potential PE
+   now labels `… 6 GN/YE`.
+3. Type `paper` as the insulation: it is refused with the words it takes.
+
+The headless tests (automated, not tried by hand):
+
+```sh
+cargo test -p ecad-model --test all lane_072g
+cargo test -p ecad-electrical styles::wire
+cargo test -p ecad-mcp --test all lane_072g
+cargo test -p ecad-inspector --test all lane_072g
+```
