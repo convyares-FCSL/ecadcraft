@@ -533,6 +533,91 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Brief 066d (owner, 2026-11-16): drawn text never ignores its style. The crates that draw and
+/// lay out pages ([`DRAWN_TEXT_CRATES`]) hold no literal text height, style name or text-size
+/// constant outside the places that define styles ([`DRAWN_TEXT_EXEMPT`]): a text's height, weight,
+/// font and colour come from its `TextKind`'s style. A hard zero.
+const DRAWN_TEXT_CRATES: &[&str] = &["ecad-cadcraft", "ecad-electrical"];
+
+/// Paths (fragments of a file's path under the workspace) where literal text styling is allowed,
+/// each with why: the styles, their engine half (fonts and CADCraft styles) and their data define
+/// the sizes; symbol definitions and builders draw
+/// glyph text as line art in symbol units (overseer ruling 1); screen-only overlays (`interact/`)
+/// are sized in pixels; an imported title block keeps the user's own sizes (ruling 4); commands
+/// draw nothing.
+const DRAWN_TEXT_EXEMPT: &[&str] = &[
+    "/styles/",
+    "/defaults/",
+    "ecad-electrical/src/text_style",
+    "ecad-cadcraft/src/draw/text_style.rs",
+    "ecad-electrical/src/symbols",
+    "ecad-cadcraft/src/interact/",
+    "ecad-cadcraft/src/draw/title_block/dxf.rs",
+    "ecad-cadcraft/src/cmd/",
+    "ecad-electrical/src/cmd/",
+];
+
+/// The lines of one source file (`rel`) that style drawn text literally, before its test module,
+/// outside `//` comments: a numeric `height:`, a quoted `style:` or `"Standard"`, the style names
+/// `STYLE_BOLD` / `STYLE_REGULAR`, or a text-size constant (`..._TEXT_MM`, `..._HEIGHT_MM`,
+/// `LABEL_HEIGHT`…; bounds named `MIN_`/`MAX_` are guards and allowed).
+fn drawn_text_places(rel: &str, text: &str) -> Vec<String> {
+    let code = strip_line_comments(text);
+    let lines: Vec<&str> = code.lines().collect();
+    let end = (0..lines.len())
+        .find(|&i| {
+            lines[i].trim() == "#[cfg(test)]"
+                && lines.get(i + 1).is_some_and(|n| n.trim_start().starts_with("mod ") || n.trim_start().starts_with("pub mod "))
+        })
+        .unwrap_or(lines.len());
+    let numeric_after = |l: &str, key: &str| {
+        l.match_indices(key).any(|(i, _)| {
+            let rest = l.get(i + key.len()..).unwrap_or_default().trim_start().trim_start_matches('-');
+            rest.chars().next().is_some_and(|c| c.is_ascii_digit())
+        })
+    };
+    let size_const = |l: &str| {
+        let t = l.trim_start().trim_start_matches("pub ").trim_start_matches("pub(crate) ");
+        let Some(rest) = t.strip_prefix("const ") else { return false };
+        let name: String = rest.chars().take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_').collect();
+        let sizes = ["TEXT_MM", "TEXT_HEIGHT", "HEIGHT_MM", "LABEL_HEIGHT", "CAP_HEIGHT", "TEXT_SIZE"];
+        !name.starts_with("MIN_") && !name.starts_with("MAX_") && sizes.iter().any(|s| name.contains(s)) && numeric_after(rest, "f64 =")
+    };
+    let mut out: Vec<String> = lines
+        .get(..end)
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| numeric_after(l, "height:") || l.contains("style: \"") || l.contains("\"Standard\"") || size_const(l))
+        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
+        .collect();
+    out.extend(name_places(rel, text, lines.get(..end).unwrap_or_default(), &["STYLE_BOLD", "STYLE_REGULAR"]));
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// [`drawn_text_places`] over [`DRAWN_TEXT_CRATES`], outside [`DRAWN_TEXT_EXEMPT`].
+fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
+    const WHY: &str = "drawn text reads its TextKind's style: height, weight, font and colour come from the styles and their TOML data (brief 066d)";
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut out = Vec::new();
+    for (name, _, dir, _) in classed_packages(meta)? {
+        let (true, Some(dir)) = (DRAWN_TEXT_CRATES.contains(&name), dir) else { continue };
+        let mut files = Vec::new();
+        rust_files(&dir.join("src"), &mut files);
+        for f in files {
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            if DRAWN_TEXT_EXEMPT.iter().any(|e| rel.contains(e)) {
+                continue;
+            }
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            out.extend(drawn_text_places(&rel, &text).into_iter().map(|p| format!("{p} ({WHY})")));
+        }
+    }
+    Ok(out)
+}
+
 /// Brief 070: per crate, the lines that still report an error as text: `Result<_, String>` and
 /// `Err(format!(`. Each crate's two counts only fall as its errors move to its `thiserror` enum.
 /// A crate without an entry must have none (`ecad-file` and `ecad-store`, since batch 8); `xtask`
@@ -1058,6 +1143,7 @@ fn layers() -> Result<(), String> {
     v.extend(core_os_violations(&meta)?);
     v.extend(readme_violations(&meta)?);
     v.extend(string_error_violations(&meta)?);
+    v.extend(drawn_text_violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -1363,6 +1449,35 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    /// Brief 066d: literal text styling in drawing code is found; styles, bounds, comments and the
+    /// test module are not.
+    #[test]
+    fn drawn_text_guard_finds_literal_text_styling() {
+        let cases: &[(&str, usize)] = &[
+            ("fn f() { let t = Text { height: 2.5, style: x }; }", 1),
+            ("fn f() { let t = Text { height: -1.0 }; }", 1),
+            ("fn f() { t.style = \"Standard\".into(); }", 1),
+            ("fn f() { let s = STYLE_BOLD; }", 1),
+            ("pub const XREF_TEXT_MM: f64 = 2.5;", 1),
+            ("const FULL_HEIGHT_MM: f64 = 260.0;", 1),
+            ("const MAX_TEXT_MM: f64 = 10.0;", 0),
+            ("fn f() { let t = Text { height: style.height }; }", 0),
+            ("// height: 2.5 in a comment", 0),
+            ("const GAP_MM: f64 = 1.0;", 0),
+            (
+                "fn f() {}
+#[cfg(test)]
+mod tests {
+    fn t() { let h = Text { height: 2.5 }; }
+}",
+                0,
+            ),
+        ];
+        for (text, n) in cases {
+            assert_eq!(drawn_text_places("x.rs", text).len(), *n, "{text}");
+        }
+    }
+
     use super::*;
 
     #[test]

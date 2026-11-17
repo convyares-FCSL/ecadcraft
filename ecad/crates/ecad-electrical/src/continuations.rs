@@ -324,7 +324,7 @@ fn reference_part(a: &Arrow, value: String, s: &Settings) -> Part {
     Part {
         rep: a.rep,
         index: REF_INDEX,
-        shape: Shape::Text { at, value, height: s.ref_height, halign, valign: VAlign::Middle, rotation },
+        shape: Shape::Text { kind: TextKind::Reference, at, value, height: s.ref_height, halign, valign: VAlign::Middle, rotation },
         // Ink 2 of the sheet in use ([`colour`]), not a cable colour (review of #85, 3).
         aci: None,
         row: None,
@@ -441,7 +441,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, cap
         };
         if p.is_finite() {
             let index = CAPTION_INDEX.saturating_add(u32::try_from(i).unwrap_or(u32::MAX));
-            out.push(part(index, Shape::Text { at: p, value: line, height: h, halign, valign, rotation: 0.0 }));
+            out.push(part(index, Shape::Text { kind: TextKind::ContinuationCaption, at: p, value: line, height: h, halign, valign, rotation: 0.0 }));
         }
     }
     out

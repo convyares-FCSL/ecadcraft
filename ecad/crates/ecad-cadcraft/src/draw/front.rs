@@ -13,11 +13,12 @@ use crate::text_style::{Look, TextKind};
 
 /// The layer the screen-only outlines are drawn on (not printed).
 const OVERLAY: &str = crate::convert::MARKER_LAYER;
-/// Board 1.16's sizes, millimetres on A3: block titles, body text, captions, the customer line.
-const BLOCK_TITLE_MM: f64 = 5.0;
-const BODY_MM: f64 = 3.5;
-const CAPTION_MM: f64 = 2.4;
-const CUSTOMER_MM: f64 = 3.8;
+/// Board 1.16's lines as fractions of the `Cover` text style's height (brief 066d, overseer ruling
+/// 5): block titles, body text, column heads, the customer line. The factors are `[layout]` data in
+/// `pages.toml`.
+fn cover_factor(key: &str) -> f64 {
+    crate::defaults::data::layout(key)
+}
 /// `ecad.front.derived` and `ecad.front.typed` in ACI (blue, orange).
 const DERIVED_ACI: u8 = 5;
 const TYPED_ACI: u8 = 30;
@@ -200,10 +201,11 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         take,
         fit,
     } = layout(doc, input, cover_look.mm);
-    let sized = |kind, mm: f64| TextLook { mm: mm * s, ..look(kind) };
-    let heading_look = sized(TextKind::TableHeading, BLOCK_TITLE_MM);
-    let small = sized(TextKind::Table, BODY_MM);
-    let caption = sized(TextKind::Table, CAPTION_MM);
+    let cover = look(TextKind::Cover);
+    let sized = |key: &str| TextLook { mm: cover.mm * cover_factor(key) * s, ..cover };
+    let heading_look = sized("front.cover.block_title");
+    let small = sized("front.cover.body");
+    let caption = sized("front.cover.column_head");
     let on = |b: Block| b.on(doc);
     let prop = |k: &str| doc.properties.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
 
@@ -222,7 +224,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     if on(Block::CustomerSite) {
         let cs: Vec<String> = [prop(crate::frames::CUSTOMER), prop("site")].into_iter().flatten().collect();
         if !cs.is_empty() {
-            d.text((mid, customer_y), sized(TextKind::Table, CUSTOMER_MM), &cs.join(" · "), HAlign::Center, Some(LABEL_ACI), Some(r - l));
+            d.text((mid, customer_y), sized("front.cover.customer"), &cs.join(" · "), HAlign::Center, Some(LABEL_ACI), Some(r - l));
         }
     }
     let mut y = blocks_y;

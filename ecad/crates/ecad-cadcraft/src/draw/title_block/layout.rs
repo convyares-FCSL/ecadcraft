@@ -23,6 +23,9 @@ pub const TICK_MM: f64 = 3.0;
 pub use crate::title_block::INSET_MM;
 /// Gap under a caption before the value area, mm.
 pub const CAPTION_GAP_MM: f64 = 1.5;
+/// The most of a revision row its text may fill: a fit bound (it keeps a large `TitleValue` style
+/// inside the row), not a text size.
+pub const ROW_FILL: f64 = 0.7;
 
 /// Draws in paper millimetres (origin at the paper's bottom-left corner).
 pub struct Pen {
@@ -258,7 +261,7 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
         }
     }
     let mut look = input.text.value;
-    look.mm = look.mm.min(rh * 0.7);
+    look.mm = look.mm.min(rh * ROW_FILL);
     let shown = input.revisions.len().min(usize::from(rows));
     for (k, rev) in input.revisions.iter().take(shown).enumerate() {
         // Row index from the top among the data rows.

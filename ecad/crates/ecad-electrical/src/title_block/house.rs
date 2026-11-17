@@ -30,7 +30,7 @@ pub const MIN_TABLE_MM: f64 = 60.0;
 
 fn look(size: f64, bold: bool, align: Align) -> TextLook {
     // The text styles keep their own bounds; a block keeps its own (design 055 §1.3).
-    let size = if size.is_finite() { size.clamp(MIN_TEXT_MM, MAX_TEXT_MM) } else { 2.5 };
+    let size = if size.is_finite() { size.clamp(MIN_TEXT_MM, MAX_TEXT_MM) } else { MIN_TEXT_MM };
     TextLook { size: (size * 100.0).round() / 100.0, bold, align, colour: Ink::Ink }
 }
 
@@ -72,29 +72,47 @@ pub fn house(width: f64, text: &FrameText) -> TitleBlockLayout {
         // The revision table: header and rows, newest at the top.
         BlockItem::RevTable { at: Rect::new(0.0, 0.0, xp, h), rows: TABLE_ROWS as u8, header: true, newest: Newest::Top },
         // Counters.
-        field(Rect::new(xc, y1, COUNTERS_MM, TOP_ROW_MM), Source::Page, "number", "Page", look(text.page.mm, true, Align::Centre)),
-        field(Rect::new(xc, y2, COUNTERS_MM, ROW_MM), Source::Page, "next", "Next", look(value, false, Align::Centre)),
-        field(Rect::new(xc, 0.0, COUNTERS_MM, ROW_MM), Source::Page, "total", "Of", look(value, false, Align::Centre)),
+        field(Rect::new(xc, y1, COUNTERS_MM, TOP_ROW_MM), Source::Page, "number", "Page", look(text.page.mm, text.page.bold(), Align::Centre)),
+        field(Rect::new(xc, y2, COUNTERS_MM, ROW_MM), Source::Page, "next", "Next", look(value, text.value.bold(), Align::Centre)),
+        field(Rect::new(xc, 0.0, COUNTERS_MM, ROW_MM), Source::Page, "total", "Of", look(value, text.value.bold(), Align::Centre)),
         // Drawing.
-        field(Rect::new(xd, y1, DRAWING_MM, TOP_ROW_MM), Source::Page, "title", "Title", look(main, true, Align::Left)),
-        field(Rect::new(xd, y2, DRAWING_MM - REV_MM, ROW_MM), Source::Project, "drawing_number", "Drawing no.", look(main, true, Align::Left)),
-        field(Rect::new(r - COUNTERS_MM - REV_MM, y2, REV_MM, ROW_MM), Source::Revision, "rev", "Rev", look(text.rev.mm, true, Align::Centre)),
-        field(Rect::new(xd, 0.0, 32.5, ROW_MM), Source::Page, "function", "Function", look(value, false, Align::Left)),
-        field(Rect::new(xd + 32.5, 0.0, 32.5, ROW_MM), Source::Page, "location", "Location", look(value, false, Align::Left)),
-        field(Rect::new(r - COUNTERS_MM - REV_MM, 0.0, REV_MM, ROW_MM), Source::Print, "sheet", "Size", look(value, false, Align::Centre)),
+        field(Rect::new(xd, y1, DRAWING_MM, TOP_ROW_MM), Source::Page, "title", "Title", look(main, text.main.bold(), Align::Left)),
+        field(
+            Rect::new(xd, y2, DRAWING_MM - REV_MM, ROW_MM),
+            Source::Project,
+            "drawing_number",
+            "Drawing no.",
+            look(main, text.main.bold(), Align::Left),
+        ),
+        field(
+            Rect::new(r - COUNTERS_MM - REV_MM, y2, REV_MM, ROW_MM),
+            Source::Revision,
+            "rev",
+            "Rev",
+            look(text.rev.mm, text.rev.bold(), Align::Centre),
+        ),
+        field(Rect::new(xd, 0.0, 32.5, ROW_MM), Source::Page, "function", "Function", look(value, text.value.bold(), Align::Left)),
+        field(Rect::new(xd + 32.5, 0.0, 32.5, ROW_MM), Source::Page, "location", "Location", look(value, text.value.bold(), Align::Left)),
+        field(
+            Rect::new(r - COUNTERS_MM - REV_MM, 0.0, REV_MM, ROW_MM),
+            Source::Print,
+            "sheet",
+            "Size",
+            look(value, text.value.bold(), Align::Centre),
+        ),
         // Project: a logo box and the owner line, the project, the customer and the status.
         BlockItem::Logo { at: Rect::new(xp + 2.0, y1 + 4.0, PROJECT_MM - 4.0, TOP_ROW_MM - 5.0), name: String::new(), prims: Vec::new() },
         BlockItem::Field {
             at: Rect::new(xp + 2.0, y1 + 0.5, PROJECT_MM - 4.0, 3.0),
             bind: Binding::new(Source::Project, "company"),
             label: None,
-            look: look(text.caption.mm, false, Align::Centre),
+            look: look(text.caption.mm, text.caption.bold(), Align::Centre),
             if_empty: IfEmpty::Blank,
         },
-        field(Rect::new(xp, y2, PROJECT_MM, ROW_MM), Source::Project, "title", "Project", look(main, true, Align::Left)),
-        field(Rect::new(xp, 0.0, 45.0, ROW_MM), Source::Project, "customer", "Customer", look(value, false, Align::Left)),
+        field(Rect::new(xp, y2, PROJECT_MM, ROW_MM), Source::Project, "title", "Project", look(main, text.main.bold(), Align::Left)),
+        field(Rect::new(xp, 0.0, 45.0, ROW_MM), Source::Project, "customer", "Customer", look(value, text.value.bold(), Align::Left)),
     ];
-    let mut status = look(value, true, Align::Left);
+    let mut status = look(value, text.value.bold(), Align::Left);
     status.colour = Ink::Red;
     items.push(field(Rect::new(xp + 45.0, 0.0, 35.0, ROW_MM), Source::Project, "status", "Status", status));
     TitleBlockLayout { size: (w, h), items }

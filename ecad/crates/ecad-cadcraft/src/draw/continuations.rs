@@ -44,6 +44,7 @@ mod tests {
             rep: RepresentationId(7),
             index: 0,
             shape: Shape::Text {
+                kind: crate::text_style::TextKind::Reference,
                 at: Pt::new(1.0, 2.0),
                 value: "100-B-3".into(),
                 height: 2.5,
@@ -56,7 +57,8 @@ mod tests {
             bar: false,
         };
         let h = cadcraft_engine::doc::Handle(0x42);
-        let before = crate::devices::text_entity_with(
+        let look = crate::text_style::Look::new(&ecad_model::Document::default());
+        let mut before = crate::devices::text_entity_with(
             "100-B-3",
             Pt::new(1.0, 2.0),
             2.5,
@@ -65,6 +67,8 @@ mod tests {
             h,
             crate::devices::TAG_LAYER,
         );
-        assert_eq!(format!("{:?}", crate::project::xref_entity(&part, h)), format!("{before:?}"));
+        // Brief 066d: and in the Reference text style, as every reference text.
+        crate::draw::text_style::LookApply::apply(&look.0, &mut before, crate::text_style::TextKind::Reference);
+        assert_eq!(format!("{:?}", crate::project::xref_entity(&look, &part, h)), format!("{before:?}"));
     }
 }

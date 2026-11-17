@@ -223,10 +223,11 @@ fn text_heights_follow_the_text_styles() {
     let page = strip_page(&mut g);
     let height = |p: &[Part]| texts(p).into_iter().find(|(t, _)| t == "+CP1").map(|(_, h)| h).unwrap();
     let before = height(&parts(&mut g.h, page));
-    // Brief 050a: the table text's height is its text style's.
-    g.h.run("setstyle", json!({"catalogue": "text", "id": "table", "fields": {"height": 3.5}})).unwrap();
+    // Brief 050a: a text's height is its text style's; brief 066d: the strip's location is a
+    // location label, in the `location` text style.
+    g.h.run("setstyle", json!({"catalogue": "text", "id": "location", "fields": {"height": 3.5}})).unwrap();
     let after = height(&parts(&mut g.h, page));
-    assert!((after - 3.5).abs() < 1e-9 && (before - 2.5).abs() < 1e-9, "{before} → {after}");
+    assert!((after - 3.5).abs() < 1e-9 && (before - 1.6).abs() < 1e-9, "{before} → {after}");
 }
 
 /// §11 #7–#9: the update map. A wire on -X01:3 redraws the shown page once; an edit no strip shows

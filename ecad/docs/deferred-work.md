@@ -56,6 +56,17 @@ started.
 - **Open calls then:** does a set freeze when it reaches `dev` or at a release (design 066 call 13)?
   Is **Keep how it looks** on by default (call 15)?
 
+## Forward compatibility of stored words: at the v1 format freeze (brief 072, owner 2026-11-16)
+
+- **What:** pre-v1, ECAD does not read files from newer builds or other tools. A word this build
+  doesn't know (a style catalogue, a role, a device kind, a settings word) is a read error: the
+  project opens read-only, the message names the word, the setting and where it is, and the file
+  is never changed (design [`design/072-types.md`](design/072-types.md) §4.1). Enums are strict;
+  there is no "keep the unknown word" variant.
+- **Revisit at the v1 format freeze:** whether a v1 build keeps and writes back words from a newer
+  build (and how a person sees them), and the **explicit import step** for files from other tools,
+  which is where foreign words are mapped or refused.
+
 ## Company standard file and later defaults-to-data moves (brief 066, owner 2026-11-15)
 
 - **Company standard file** (design 066 §4): loading a house standard from a TOML file into the

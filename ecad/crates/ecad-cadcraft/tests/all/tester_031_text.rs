@@ -356,7 +356,7 @@ const DEFAULTS: &[(&str, f64, &str, &str)] = &[
     ("description", 1.6, "regular", "off"),
     ("part_number", 1.6, "regular", "off"),
     ("continuation_name", 2.0, "regular", "off"),
-    ("reference", 2.0, "regular", "on"),
+    ("reference", 2.5, "regular", "on"),
     ("wire_label", 2.5, "regular", "on"),
     ("cable_text", 1.6, "regular", "on"),
     ("location", 1.6, "regular", "on"),

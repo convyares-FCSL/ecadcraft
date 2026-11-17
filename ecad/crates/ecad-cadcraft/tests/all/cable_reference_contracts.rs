@@ -922,8 +922,8 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");
 
     let (flag, text_at) = drawn_flag(h, page, cable);
-    let hh = ecad_cadcraft::look::LABEL_HEIGHT;
-    let w = ecad_cadcraft::look::font_width(&m.text);
+    let hh = hh();
+    let w = ecad_cadcraft::look::font_width(&m.text) * hh;
     for p in &flag {
         assert!(along(*p) >= -0.5 * hh - 1e-9, "flag point {p:?} reaches back into the wires ({u:?})");
     }
@@ -1112,4 +1112,10 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     r.h.activate(r.supply);
     assert!(drawn_texts(&mut r.h, r.supply).iter().any(|t| t.contains("2/F1")));
     r.h.check();
+}
+
+/// The cable look's text height in a project with the built-in styles (brief 066d: the
+/// `CableText` text style's).
+fn hh() -> f64 {
+    ecad_cadcraft::look::label_height(&ecad_model::Document::default())
 }
