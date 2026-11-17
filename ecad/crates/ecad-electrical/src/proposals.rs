@@ -132,7 +132,7 @@ fn context(doc: &Document, a: Aspect, s: &Spot, extra: &[LocBox], cache: &mut lo
 /// A typed code that is not valid.
 pub fn plan(
     doc: &Document, ids: &mut IdAllocator, spots: &[Spot], modes: &[Mode; 2], extra: &[LocBox], pending: &mut Pending,
-) -> Result<Planned, String> {
+) -> Result<Planned, CmdError> {
     let mut out = Planned::default();
     let mut cache = locations::BoxCache::default();
     let mut seen = BTreeSet::new();
@@ -313,7 +313,7 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
 /// The follow-up of a move (design 052 §5.4) on `doc` (after the move): for each aspect, the
 /// moved symbols whose context changed to a value propose it. Leaving every box never prompts: a
 /// context changed to none proposes nothing.
-pub fn after_move(doc: &Document, ids: &mut IdAllocator, moved: &[Moved]) -> Result<Planned, String> {
+pub fn after_move(doc: &Document, ids: &mut IdAllocator, moved: &[Moved]) -> Result<Planned, CmdError> {
     let mut out = Planned::default();
     let mut cache = locations::BoxCache::default();
     let mut pending = Pending::default();
@@ -487,7 +487,7 @@ pub fn half_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
 ///
 /// # Errors
 /// Not one of the three words.
-pub fn proposal_param(params: &Value) -> Result<Mode, String> {
+pub fn proposal_param(params: &Value) -> Result<Mode, CmdError> {
     const WORDS: &str = "`proposal` is \"propose\", \"move\" or \"keep\"";
     match params.get("proposal") {
         None | Some(Value::Null) => Ok(Mode::Propose),
@@ -495,9 +495,9 @@ pub fn proposal_param(params: &Value) -> Result<Mode, String> {
             "propose" => Ok(Mode::Propose),
             "move" => Ok(Mode::Move),
             "keep" => Ok(Mode::Keep),
-            _ => Err(WORDS.into()),
+            _ => Err(CmdError::refused(WORDS)),
         },
-        Some(_) => Err(WORDS.into()),
+        Some(_) => Err(CmdError::refused(WORDS)),
     }
 }
 

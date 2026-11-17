@@ -395,7 +395,10 @@ impl Place {
                                 if self.project.is_some() {
                                     return Err(other(PROJECT_JOINS));
                                 }
-                                read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())).map_err(other)?;
+                                read(s, |p, _| {
+                                    devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()).map_err(String::from)
+                                })
+                                .map_err(other)?;
                                 self.join = Some(c);
                             }
                             self.go_to_point(s);
@@ -502,10 +505,12 @@ impl Place {
             },
             Stage::ConfirmJoin(c, _) => match (yes(&i), &i) {
                 (Some(true), _) | (None, Input::Enter) => {
-                    read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())).map_err(|e| {
-                        self.stage = Stage::Tag;
-                        other(e)
-                    })?;
+                    read(s, |p, _| devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()).map_err(String::from)).map_err(
+                        |e| {
+                            self.stage = Stage::Tag;
+                            other(e)
+                        },
+                    )?;
                     self.join = Some(c);
                     self.tag = None;
                     self.go_to_point(s);

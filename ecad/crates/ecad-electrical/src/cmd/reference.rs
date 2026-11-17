@@ -50,7 +50,7 @@ fn reference_ops(ids: &mut IdAllocator, page: PageId, style: Style, cable: Cable
 /// No such cable; the cable already has a reference here, already has two, or has no wire drawn
 /// here (R1 to R3).
 pub fn reference(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, at: Pt) -> Result<Referenced, CmdError> {
-    references::check_reference(doc, page, cable).map_err(CmdError::refused)?;
+    references::check_reference(doc, page, cable)?;
     Ok(reference_ops(ids, page, style, cable, at))
 }
 
@@ -91,7 +91,7 @@ pub fn continue_cable(
     if members.is_some_and(|m| m.len() > crate::slash::MAX_CABLE_MEMBERS) {
         return Err(CmdError::refused(references::too_many_members()));
     }
-    let plan = references::plan_continue(doc, page, cable, members, at, toward, tol).map_err(CmdError::refused)?;
+    let plan = references::plan_continue(doc, page, cable, members, at, toward, tol)?;
     let reference = reference_ops(ids, page, style.clone(), cable, at);
     let mut ops = reference.ops.clone();
     let mut routes = Vec::with_capacity(plan.stubs.len());

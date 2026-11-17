@@ -508,7 +508,7 @@ fn refusals_say_why_and_change_nothing() {
     for w in f.w {
         both.conductors.get_mut(&w).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
     }
-    let e = plan_continue(&both, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap_err();
+    let e = plan_continue(&both, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap_err().to_string();
     assert_eq!(e, "None of cable -C01's wires can continue: each is connected at both ends or already drawn on this page.");
     // A mixed cable: the both-ends wire is skipped and reported.
     let mut mixed = doc.clone();

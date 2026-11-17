@@ -20,6 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use crate::CmdError;
 use ecad_model::{Definition, DefinitionId, Document, LibraryId, ObjectRef, Origin, Primitive, Pt, Subject, TerminalDef};
 
 /// The library ID of the starter symbols.
@@ -182,17 +183,17 @@ impl Starter {
     /// # Errors
     /// Its content hash could not be computed (never for the built-in symbols; a definition is
     /// never stored with a made-up origin hash).
-    pub fn definition(&self) -> Result<&'static Definition, String> {
-        static BUILT: OnceLock<BTreeMap<&'static str, Result<Definition, String>>> = OnceLock::new();
+    pub fn definition(&self) -> Result<&'static Definition, CmdError> {
+        static BUILT: OnceLock<BTreeMap<&'static str, Result<Definition, CmdError>>> = OnceLock::new();
         let built = BUILT.get_or_init(|| STARTERS.iter().map(|s| (s.key, s.build())).collect());
         match built.get(self.key) {
             Some(Ok(d)) => Ok(d),
             Some(Err(e)) => Err(e.clone()),
-            None => Err(format!("{} is not a starter symbol", self.key)),
+            None => Err(CmdError::refused(format!("{} is not a starter symbol", self.key))),
         }
     }
 
-    fn build(&self) -> Result<Definition, String> {
+    fn build(&self) -> Result<Definition, CmdError> {
         // Brief 044 (FP2): a connector half's bridge joins the side keys written at placement.
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY.to_string(), PLUG_KEY.to_string()]],
@@ -206,7 +207,8 @@ impl Starter {
             terminals: terminals(self.key),
             ..Default::default()
         };
-        let content_hash = ecad_file::definition_hash(&d).map_err(|e| format!("The symbol {} could not be prepared ({e}).", self.name))?;
+        let content_hash =
+            ecad_file::definition_hash(&d).map_err(|e| CmdError::refused(format!("The symbol {} could not be prepared ({e}).", self.name)))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: self.library_seq(), content_hash });
         Ok(d)
     }
@@ -788,7 +790,7 @@ pub fn is_quiet(s: &Starter, point: &str) -> bool {
 ///
 /// # Errors
 /// s would be over 9: `<who> already has 9 contacts.`
-pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<String>, String> {
+pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<String>, CmdError> {
     sequence_labels(used, &BTreeSet::new(), &['1', '2', '4'], who)
 }
 
@@ -804,7 +806,7 @@ pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<Strin
 ///
 /// # Errors
 /// s would be over 9: `<who> already has 9 contacts.`
-pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixes: &[char], who: &str) -> Result<Vec<String>, String> {
+pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixes: &[char], who: &str) -> Result<Vec<String>, CmdError> {
     let highest = used
         .iter()
         .filter(|l| !skip.contains(*l))
@@ -816,7 +818,10 @@ pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixe
         .unwrap_or(0);
     let labels = |s: u32| suffixes.iter().map(|x| format!("{s}{x}")).collect::<Vec<_>>();
     // At most nine digits are tried.
-    (highest + 1..=9).map(labels).find(|l| !l.iter().any(|x| used.contains(x))).ok_or_else(|| format!("{who} already has 9 contacts."))
+    (highest + 1..=9)
+        .map(labels)
+        .find(|l| !l.iter().any(|x| used.contains(x)))
+        .ok_or_else(|| CmdError::refused(format!("{who} already has 9 contacts.")))
 }
 
 /// The output labels of device `c`'s fuse bank (its head), which are not contact labels; empty
@@ -864,7 +869,7 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
 /// # Errors
 /// A value the 018 rules refuse; `rating.<n>` on a device that is not a fuse bank, or for a fuse
 /// it does not have (`-F01 has no fuse 13.`).
-pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let ObjectRef::Component(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
         return Ok(value.map(str::to_string));
@@ -882,7 +887,9 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         if crate::strips::is_strip(doc, c) {
             let fuse = !long && crate::terminal_types::positions(doc, c).iter().any(|p| p.label == n && p.ty.code == "fuse");
             if !fuse {
-                return Err(format!("{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position."));
+                return Err(CmdError::refused(format!(
+                    "{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position."
+                )));
             }
             return crate::devices::property_value(doc, key, value);
         }
@@ -893,11 +900,11 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
             .find(|s| s.kind == Kind::Fixed { exclusive: true })
             .filter(|s| is_fuse_bank(s));
         let Some(bank) = bank else {
-            return Err(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank."));
+            return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
         };
         let has = !long && bank.labels().iter().any(|l| l == n && l.bytes().all(|b| b.is_ascii_digit()));
         if !has {
-            return Err(format!("{who} has no fuse {shown}{more}."));
+            return Err(CmdError::refused(format!("{who} has no fuse {shown}{more}.")));
         }
     }
     crate::devices::property_value(doc, key, value)
@@ -1915,7 +1922,7 @@ mod tests {
         let set = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<BTreeSet<_>>();
         assert_eq!(changeover_labels(&set(&["A1", "A2"]), "-K01").unwrap(), ["11", "12", "14"]);
         assert_eq!(changeover_labels(&set(&["A1", "11", "12", "14", "23", "24"]), "-K01").unwrap(), ["31", "32", "34"]);
-        assert_eq!(changeover_labels(&set(&["91", "92"]), "-K01").unwrap_err(), "-K01 already has 9 contacts.");
+        assert_eq!(changeover_labels(&set(&["91", "92"]), "-K01").unwrap_err().to_string(), "-K01 already has 9 contacts.");
         // Interplay with 018's NO/NC digits, both ways: a change-over after NO and NC takes the
         // next digit, and its `s1`/`s2`/`s4` count as that digit for later contacts.
         assert_eq!(changeover_labels(&set(&["13", "14", "21", "22"]), "-K01").unwrap(), ["31", "32", "34"]);
