@@ -643,7 +643,7 @@ impl Outputs {
         let shown = |k: Option<String>| k.map(|k| (crate::designations::code_of(doc, crate::designations::Aspect::Location, &k), k));
         let location = match shown(clean(props.get(LOCATION_KEY))) {
             Some((value, key)) => Located { value, source: Source::Device, key: Some(key) },
-            None => match shown(clean(doc.properties.get(LOCATION_KEY))) {
+            None => match shown(crate::designations::default_key(&doc.project, crate::designations::Aspect::Location)) {
                 Some((value, key)) => Located { value, source: Source::Project, key: Some(key) },
                 None => Located { value: None, source: Source::None, key: None },
             },

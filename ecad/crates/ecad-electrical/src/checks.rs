@@ -1544,30 +1544,32 @@ impl Scope {
                             }
                         }
                     }
-                    if ch.display.iter().any(|k| crate::designations::Aspect::of_property(k).is_some()) {
+                    if ch.location || ch.function {
                         self.devices_on(doc, *p);
                     }
                 }
                 // Brief 052 (design 052 §6): a page's function or location is a context for the
                 // devices on it; the project's for every device (rare); the list's codes for the
                 // objects storing that entry, and the duplicate rows.
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices_on(doc, *p);
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices.extend(doc.devices.keys().copied());
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
-                    self.relocate = true;
-                    self.designations = true;
-                    if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
-                        // Brief 059: the cables planning an end there (their rows name its code).
-                        self.cables.extend(crate::cables::planning(doc, entry));
-                        for (c, x) in &doc.devices {
-                            if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                                self.devices.insert(*c);
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    for a in Aspect::ALL {
+                        if default_key(before, a) != default_key(after, a) {
+                            self.relocate = true;
+                            self.devices.extend(doc.devices.keys().copied());
+                        }
+                        let changed = changed_codes(before, after, a);
+                        if !changed.is_empty() {
+                            self.relocate = true;
+                            self.designations = true;
+                        }
+                        for entry in &changed {
+                            // Brief 059: the cables planning an end there (their rows name its code).
+                            self.cables.extend(crate::cables::planning(doc, entry));
+                            for (c, x) in &doc.devices {
+                                if x.properties.iter().any(|(k, v)| Aspect::of_property(k).is_some() && v == entry) {
+                                    self.devices.insert(*c);
+                                }
                             }
                         }
                     }

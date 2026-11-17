@@ -28,6 +28,21 @@ pub enum ObjectRef {
     Standard,
 }
 
+impl ObjectRef {
+    /// The kind of holder it is; `None` for the standard's registry values.
+    pub fn holder(self) -> Option<crate::keys::Holder> {
+        use crate::keys::Holder;
+        match self {
+            ObjectRef::Device(_) => Some(Holder::Device),
+            ObjectRef::Wire(_) => Some(Holder::Wire),
+            ObjectRef::Cable(_) => Some(Holder::Cable),
+            ObjectRef::Page(_) => Some(Holder::Page),
+            ObjectRef::Project => Some(Holder::Project),
+            ObjectRef::Standard => None,
+        }
+    }
+}
+
 /// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
 pub(crate) fn settle(doc: &mut Document) {
     let mut conn = std::mem::take(&mut doc.conn);
@@ -208,6 +223,12 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Change the project's own data (design 072 §5.3): its location and function lists and
+    /// defaults, as one whole value.
+    ModifyProject {
+        before: crate::project::Project,
+        after: crate::project::Project,
+    },
     /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
     /// write is refused while the project has no standard.
     SetStyle {
@@ -288,6 +309,7 @@ impl Op {
             Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
             Op::SetStyle { layer, catalogue, id, before, after } => Op::SetStyle { layer, catalogue, id, before: after, after: before },
             Op::SetStandard { before, after } => Op::SetStandard { before: after, after: before },
+            Op::ModifyProject { before, after } => Op::ModifyProject { before: after, after: before },
         }
     }
 
@@ -522,7 +544,11 @@ impl Op {
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
-                if crate::keys::is_reserved(key) {
+                let reserved = match object.holder() {
+                    Some(h) => crate::keys::is_reserved_on(h, key),
+                    None => crate::keys::is_reserved(key),
+                };
+                if reserved {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
                 }
                 let props = match object {
@@ -602,6 +628,12 @@ impl Op {
             Op::RemoveDefinition { id, definition } => {
                 holds(&doc.definitions, *id, definition, "definition", checked)?;
                 doc.definitions.remove(id);
+            }
+            Op::ModifyProject { before, after } => {
+                if checked && &doc.project != before {
+                    return Err(pre("the project's lists differ from the recorded value".into()));
+                }
+                doc.project = after.clone();
             }
             Op::SetProjectSettings { before, after } => {
                 if checked && &doc.settings != before {
@@ -722,6 +754,7 @@ impl Op {
             Op::ModifyFolder { .. } => "ModifyFolder",
             Op::SetStyle { .. } => "SetStyle",
             Op::SetStandard { .. } => "SetStandard",
+            Op::ModifyProject { .. } => "ModifyProject",
         }
     }
 }

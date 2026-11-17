@@ -395,13 +395,13 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
 /// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
 /// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
-    use crate::designations::{Aspect, Uses, code_of, description_property};
+    use crate::designations::{Aspect, Uses, code_of, description_of};
     let uses = Uses::of(doc);
     let list = |a: Aspect| {
         let shown: BTreeSet<String> = uses
             .keys(a)
             .take(200)
-            .map(|k| match (code_of(doc, a, k), doc.properties.get(&description_property(a, k)).filter(|d| !d.trim().is_empty())) {
+            .map(|k| match (code_of(doc, a, k), description_of(doc, a, k).filter(|d| !d.trim().is_empty())) {
                 (Some(code), Some(d)) => format!("{code} {d}"),
                 (Some(code), None) => code,
                 (None, _) => "?".to_string(),
@@ -461,7 +461,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
                 || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (codes_on && (crate::designations::Aspect::of_property(key).is_some() || crate::designations::is_list_property(key)))
+                || (codes_on && crate::designations::Aspect::of_property(key).is_some())
         }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
         // A text style's size changes the cover's texts; a wire category's name, colour or
@@ -475,9 +475,12 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
+        Op::ModifyProject { before, after } => {
+            codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a))
+        }
         Op::ModifyPage { before, after, .. } => {
             let ch = before.change(after);
-            codes_on && ch.display.iter().any(|k| crate::designations::Aspect::of_property(k).is_some())
+            codes_on && (ch.location || ch.function)
         }
         Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()

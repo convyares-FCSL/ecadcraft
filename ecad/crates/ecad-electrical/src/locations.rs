@@ -383,11 +383,11 @@ pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes
     {
         return Located::of(doc, a, k, Source::Box { component: b.component, page });
     }
-    if let Some(k) = doc.pages.get(&page).and_then(|p| p.display.get(a.property())) {
-        return Located::of(doc, a, k, Source::Page(page));
+    if let Some(k) = doc.pages.get(&page).and_then(|p| designations::page_key(p, a)) {
+        return Located::of(doc, a, &k, Source::Page(page));
     }
-    if let Some(k) = doc.properties.get(a.property()) {
-        return Located::of(doc, a, k, Source::Project);
+    if let Some(k) = designations::default_key(&doc.project, a) {
+        return Located::of(doc, a, &k, Source::Project);
     }
     Located::none()
 }
@@ -751,9 +751,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
         k.as_ref().and_then(|k| {
             designations::code_of(doc, a, k).or_else(|| {
                 p.ops.iter().find_map(|op| match op {
-                    Op::SetProperty { object: ecad_model::ObjectRef::Project, key, after, .. } if *key == designations::code_property(a, k) => {
-                        after.clone()
-                    }
+                    Op::ModifyProject { after, .. } => designations::code_in_project(after, a, k),
                     _ => None,
                 })
             })

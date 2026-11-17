@@ -256,6 +256,9 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // The project.
     if project {
         props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
+        if from.project != to.project {
+            changes.push(Op::ModifyProject { before: from.project.clone(), after: to.project.clone() });
+        }
         if from.settings != to.settings {
             changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
         }
@@ -349,6 +352,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
                 StyleRef::Builtin(w) => ("style", w.bytes().fold(0u128, |h, b| h.wrapping_mul(31).wrapping_add(u128::from(b)))),
             },
             Op::SetProjectSettings { .. } => ("settings", 0),
+            Op::ModifyProject { .. } => ("project", 0),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => continue,
         };
         *out.entry(key).or_insert(0) += 1;

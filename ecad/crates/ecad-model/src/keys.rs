@@ -262,6 +262,28 @@ pub const RESERVED: &[PropKey] = &[
     WIRE_NUMBER_FIXED,
 ];
 
+/// Keys that became struct fields on one holder only (design 072 §5.3): a page's and the
+/// project's location and function are ids now; a device's stay in its bag until lane B moves them.
+#[rustfmt::skip]
+pub const RESERVED_ON: &[(Holder, PropKey)] = &[
+    (Holder::Page, LOCATION),
+    (Holder::Page, FUNCTION),
+    (Holder::Project, LOCATION),
+    (Holder::Project, FUNCTION),
+];
+
+/// Key prefixes that became struct fields on one holder: the project's location and function
+/// lists (`designation.l.<id>.code`, design 072 §5.3).
+pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[(Holder::Project, "designation.")];
+
+/// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],
+/// [`RESERVED_PREFIXES`]).
+pub fn is_reserved_on(holder: Holder, key: &str) -> bool {
+    is_reserved(key)
+        || RESERVED_ON.iter().any(|(h, k)| *h == holder && k.0 == key)
+        || RESERVED_PREFIXES.iter().any(|(h, p)| *h == holder && key.starts_with(p))
+}
+
 /// The fixed key `key`, if it is one.
 pub fn spec(key: &str) -> Option<&'static KeySpec> {
     KEYS.iter().find(|s| s.key.0 == key)

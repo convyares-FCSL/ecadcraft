@@ -540,16 +540,13 @@ pub fn page_props(
             Some(t) => Some(pending.store(doc, ids, a, t, &mut ops)?),
             None => None,
         };
-        let old = old.display.get(key).cloned();
+        let old = designations::page_key(&old, a);
         if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
             let code = code_with(doc, &pending, a, k);
             let spots = proposals::spots_on_page(doc, a, page);
             absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &change.mode));
         }
-        match stored {
-            Some(k) => now.display.insert(key.to_string(), k),
-            None => now.display.remove(key),
-        };
+        now = designations::with_page_key(&now, a, stored.as_deref());
     }
     if let Some(v) = &change.sheet {
         let v = v.as_ref().map(|t| t.trim()).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("project"));
@@ -576,7 +573,7 @@ pub fn page_props(
 /// A key written by another command, a reserved key, or not 1 to 40 characters a-z, 0-9 or _.
 pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
     // Brief 052: the project's list of functions and locations changes through its commands.
-    if designations::is_list_property(key) {
+    if ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Project, key) && key.starts_with("designation.") {
         return Err(CmdError::refused(
             "Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.",
         ));
@@ -791,14 +788,23 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             (Some(_), None) => None,
             (None, _) => value(doc, k, v.as_deref())?,
         };
-        if let (Some(a), Some(key)) = (aspect, after.as_ref())
-            && doc.properties.get(*k) != Some(key)
-        {
+        let Some(a) = aspect else {
+            ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+            continue;
+        };
+        // Design 072 §5.3: the project's own function and location are fields of the project.
+        let old = designations::default_key(&doc.project, a);
+        if let Some(key) = after.as_ref().filter(|key| old.as_ref() != Some(*key)) {
             let code = code_with(doc, &pending, a, key);
             let spots = proposals::spots_of_project(doc, a);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, doc.properties.get(*k).map(String::as_str), key, &code, &change.mode));
+            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), key, &code, &change.mode));
         }
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+        let before = pending.project(doc).clone();
+        let now = designations::with_default_key(&before, a, after.as_deref());
+        if now != before {
+            ops.push(Op::ModifyProject { before, after: now.clone() });
+            pending.set_project(now);
+        }
     }
     ops.extend(proposed.ops.iter().cloned());
     for (k, v) in &change.props {

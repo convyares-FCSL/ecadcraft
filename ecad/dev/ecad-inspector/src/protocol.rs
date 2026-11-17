@@ -459,8 +459,21 @@ fn project(d: &Document) -> Value {
             props.insert(k.clone(), json!(v));
         }
     }
+    // Design 072 §5.3 (A15): the location and function lists and the project's defaults.
+    let list = |l: Vec<(String, String, Option<String>, Vec<String>)>| -> Vec<Value> {
+        l.into_iter().map(|(id, code, tag, descriptions)| json!({"id": id, "code": code, "tag": tag, "descriptions": descriptions})).collect()
+    };
+    let entry = |id: String, code: &ecad_model::ListCode, tag: &Option<ecad_model::ListCode>, ds: &[ecad_model::ListDescription]| {
+        (id, code.to_string(), tag.as_ref().map(ToString::to_string), ds.iter().map(ToString::to_string).collect())
+    };
+    let locations = list(d.project.locations.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
+    let functions = list(d.project.functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     json!({
         "properties": props,
+        "locations": locations,
+        "functions": functions,
+        "location": d.project.location.map(|l| location_code(d, l)),
+        "function": d.project.function.map(|f| function_code(d, f)),
         "revisions": revisions,
         "reference_style": format!("{:?}", d.settings.reference_style()),
         "versions": d.versions,
@@ -476,6 +489,16 @@ fn project(d: &Document) -> Value {
             "items": d.items.len(),
         },
     })
+}
+
+/// A location id as its code, or `? (id)` when the list has no such entry.
+fn location_code(d: &Document, id: ecad_model::LocationId) -> String {
+    d.project.location(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
+}
+
+/// A function id as its code, or `? (id)` when the list has no such entry.
+fn function_code(d: &Document, id: ecad_model::FunctionId) -> String {
+    d.project.function(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
 }
 
 fn pages(d: &Document) -> Vec<Value> {
@@ -511,6 +534,8 @@ fn pages(d: &Document) -> Vec<Value> {
                 "page_type": p.page_type.as_ref().map(ToString::to_string),
                 "sheet": p.sheet.map(|s| s.text()),
                 "title_block": p.title_block.as_ref().map(ToString::to_string),
+                "location": p.location.map(|l| location_code(d, l)),
+                "function": p.function.map(|f| function_code(d, f)),
                 "display": p.display,
                 "items": items.get(id).copied().unwrap_or(0),
                 "devices": devices.get(id).map_or(0, BTreeSet::len),

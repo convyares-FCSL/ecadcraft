@@ -45,6 +45,7 @@ pub mod numbering;
 pub mod op;
 pub mod page;
 pub mod prefix;
+pub mod project;
 pub mod sheet;
 pub mod strict;
 pub mod style;
@@ -68,13 +69,14 @@ pub use doc::{
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, DefinitionId, DeviceId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId, StandardId, TerminalId,
-    TxId, WireId,
+    CableId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, PageId, ProjectId, RepresentationId,
+    StandardId, TerminalId, TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use page::{GenKind, PageKind, PageTitle};
+pub use project::{Function, ListCode, ListDescription, ListEntry, Location, Project};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use words::{Side, Word};

@@ -35,6 +35,7 @@
 //! | I19 | The folder order lists each folder exactly once (brief 019) | folders, folder order | any folder added or removed (whole order, which is short) |
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
+//! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -84,6 +85,8 @@ pub struct Touched {
     pub page_properties: BTreeSet<PageId>,
     /// The standard or a style record changed (brief 050a): the style invariants are checked.
     pub styles: bool,
+    /// The project's own data changed (design 072 §5.3): I22 is checked.
+    pub project: bool,
 }
 
 impl Touched {
@@ -159,6 +162,7 @@ impl Touched {
                 self.folders.insert(*id);
             }
             Effect::Style { .. } | Effect::Standard { .. } => self.styles = true,
+            Effect::Project { .. } => self.project = true,
         }
     }
 }
@@ -208,7 +212,18 @@ impl Document {
             self.check_page_folder(*id)?;
         }
         self.check_styles()?;
+        self.check_project()?;
         Ok(())
+    }
+
+    /// I22 (design 072 §5.3): the location and function lists are well formed
+    /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
+    /// is not a breach: it shows `?`.
+    fn check_project(&self) -> Result<()> {
+        match self.project.problem() {
+            Some(p) => bad(p),
+            None => Ok(()),
+        }
     }
 
     /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
@@ -368,6 +383,9 @@ impl Document {
         }
         if touched.styles {
             self.check_styles()?;
+        }
+        if touched.project {
+            self.check_project()?;
         }
         Ok(())
     }

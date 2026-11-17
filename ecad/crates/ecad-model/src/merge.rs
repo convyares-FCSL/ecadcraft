@@ -116,6 +116,7 @@ impl Scope {
                     | Op::SetProjectSettings { .. }
                     | Op::SetStyle { .. }
                     | Op::SetStandard { .. }
+                    | Op::ModifyProject { .. }
             ) {
                 self.project = true;
             }
@@ -574,7 +575,9 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
         Obj::Wire(i) => a.wires.get(&i) != b.wires.get(&i),
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
-        Obj::Project => a.properties != b.properties || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles,
+        Obj::Project => {
+            a.properties != b.properties || a.project != b.project || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles
+        }
     }
 }
 
@@ -727,6 +730,12 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         &s.title_block,
                         &|x| shown_value(x.as_ref()),
                     ),
+                    location: field(ctx, obj, "location", format!("{what} · location"), &a.location, &t.location, &s.location, &|x| {
+                        x.map_or_else(|| "(project's)".to_string(), crate::id::LocationId::short)
+                    }),
+                    function: field(ctx, obj, "function", format!("{what} · function"), &a.function, &t.function, &s.function, &|x| {
+                        x.map_or_else(|| "(project's)".to_string(), crate::id::FunctionId::short)
+                    }),
                     display: merge_props(ctx, obj, &what, &a.display, &t.display, &s.display, &all),
                 });
                 set(&mut m.pages, id, v);
@@ -781,6 +790,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Project => {
                 m.properties = merge_props(ctx, obj, "Project", &a.properties, &t.properties, &s.properties, ctx.inp.keep_project_key);
+                m.project = merge_project(ctx, obj, &a.project, &t.project, &s.project);
                 m.settings =
                     field(ctx, obj, "settings", "Project settings · changed on both".into(), &a.settings, &t.settings, &s.settings, &|_| {
                         "its settings".into()
@@ -789,6 +799,39 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
         }
     }
+}
+
+/// The project's own data (design 072 §5.3): each list merges entry by entry (an entry changed on
+/// both sides differently is a conflict), the defaults field by field.
+fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project) -> crate::Project {
+    crate::Project {
+        locations: merge_list(ctx, obj, "location", &a.locations, &t.locations, &s.locations),
+        functions: merge_list(ctx, obj, "function", &a.functions, &t.functions, &s.functions),
+        location: field(ctx, obj, "location", "Project · location".into(), &a.location, &t.location, &s.location, &|x| {
+            x.map_or_else(|| "(none)".to_string(), crate::id::LocationId::short)
+        }),
+        function: field(ctx, obj, "function", "Project · function".into(), &a.function, &t.function, &s.function, &|x| {
+            x.map_or_else(|| "(none)".to_string(), crate::id::FunctionId::short)
+        }),
+    }
+}
+
+/// One list of the project, merged by entry id: the target's order, then the source's new entries.
+fn merge_list<I: Copy + Ord + std::fmt::Display>(
+    ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, a: &[crate::ListEntry<I>], t: &[crate::ListEntry<I>], s: &[crate::ListEntry<I>],
+) -> Vec<crate::ListEntry<I>> {
+    let find = |l: &[crate::ListEntry<I>], id: I| l.iter().find(|e| e.id == id).cloned();
+    let mut ids: Vec<I> = t.iter().map(|e| e.id).collect();
+    ids.extend(s.iter().map(|e| e.id).filter(|id| !t.iter().any(|e| e.id == *id)));
+    ids.extend(a.iter().map(|e| e.id).filter(|id| !t.iter().chain(s).any(|e| e.id == *id)));
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let v = field(ctx, obj, &format!("{what}.{id}"), format!("Project · {what} {id}"), &find(a, id), &find(t, id), &find(s, id), &|x| {
+            x.as_ref().map_or_else(|| "(removed)".to_string(), |e| format!("\"{}\"", e.code))
+        });
+        out.extend(v);
+    }
+    out
 }
 
 /// The standard and the style records (brief 050a, design 050 §3.5): the standard's header is

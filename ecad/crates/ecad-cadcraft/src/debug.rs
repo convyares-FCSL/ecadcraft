@@ -929,6 +929,7 @@ pub fn op_view(op: &Op) -> OpView {
             val(&json!({"layer": layer, "catalogue": catalogue, "id": id, "record": after})),
         ),
         Op::SetStandard { before, after } => (val(before), val(after)),
+        Op::ModifyProject { before, after } => (val(before), val(after)),
     };
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
@@ -1020,7 +1021,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             ecad_model::ObjectRef::Project | ecad_model::ObjectRef::Standard => ObjectId::Settings,
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
-        Op::SetProjectSettings { .. } => out.push(ObjectId::Settings),
+        Op::SetProjectSettings { .. } | Op::ModifyProject { .. } => out.push(ObjectId::Settings),
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
         // Folders (brief 019) are not among the debugger's objects yet.
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}

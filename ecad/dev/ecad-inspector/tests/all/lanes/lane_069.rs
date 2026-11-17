@@ -200,6 +200,14 @@ fn every_op_ledger() -> Ledger {
             after: Some(StyleRecord { name: "Thin".into(), ..StyleRecord::default() }),
         },
         Op::SetStandard { before: None, after: Some(header) },
+        // Lane 072 E (A15): the project's lists changed.
+        Op::ModifyProject {
+            before: ecad_model::Project::default(),
+            after: ecad_model::Project {
+                locations: vec![ecad_model::Location::new(ids.fresh(), ecad_model::ListCode::new("+CP1").unwrap())],
+                ..ecad_model::Project::default()
+            },
+        },
     ];
     for op in ops {
         let name = op.name();

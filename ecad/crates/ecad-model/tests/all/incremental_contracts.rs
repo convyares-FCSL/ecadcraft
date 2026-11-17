@@ -261,7 +261,14 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             after: Some(record()),
         },
         Op::SetStandard { before: None, after: Some(header(b)) },
+        Op::ModifyProject { before: ecad_model::Project::default(), after: lists(b) },
     ]
+}
+
+/// A project holding one location (design 072 §5.3).
+fn lists(b: &mut Base) -> ecad_model::Project {
+    let entry = ecad_model::Location::new(b.ids.fresh(), ecad_model::ListCode::new("+CP1").unwrap());
+    ecad_model::Project { locations: vec![entry], ..ecad_model::Project::default() }
 }
 
 /// Ops of every type whose preconditions fail on the base document, several of them only after
@@ -334,6 +341,7 @@ fn failing(b: &mut Base) -> Vec<Op> {
             after: None,
         },
         Op::SetStandard { before: Some(header(b)), after: None },
+        Op::ModifyProject { before: lists(b), after: ecad_model::Project::default() },
     ]
 }
 

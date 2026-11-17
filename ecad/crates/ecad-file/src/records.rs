@@ -40,6 +40,10 @@ pub struct Page {
     pub sheet: Option<SheetSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_block: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<m::LocationId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<m::FunctionId>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: BTreeMap<String, String>,
 }
@@ -842,6 +846,11 @@ pub enum Op {
         before: Option<StandardHeader>,
         after: Option<StandardHeader>,
     },
+    /// Design 072 §5.3: the project's own data, the model's strict record.
+    ModifyProject {
+        before: m::Project,
+        after: m::Project,
+    },
 }
 
 /// Where a style record lives (brief 050a).
@@ -1077,6 +1086,8 @@ impl From<&m::Page> for Page {
             page_type: p.page_type.clone(),
             sheet: p.sheet.as_ref().map(SheetSpec::from),
             title_block: p.title_block.clone(),
+            location: p.location,
+            function: p.function,
             display: p.display.clone(),
         }
     }
@@ -1092,6 +1103,8 @@ impl From<Page> for m::Page {
             page_type: p.page_type,
             sheet: p.sheet.map(m::SheetSpec::from),
             title_block: p.title_block,
+            location: p.location,
+            function: p.function,
             display: p.display,
         }
     }
@@ -1200,6 +1213,7 @@ impl From<&m::Op> for Op {
             m::Op::SetStandard { before, after } => {
                 Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
             }
+            m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
         }
     }
 }
@@ -1449,6 +1463,7 @@ impl TryFrom<Op> for m::Op {
                 m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
             }
             Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
+            Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
         })
     }
 }

@@ -16,6 +16,7 @@ use crate::doc::{Cable, CableMember, Definition, Device, End, Folder, Item, Laye
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
+use crate::project::Project;
 use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
@@ -136,6 +137,11 @@ pub enum Effect<'a> {
         before: Option<&'a StandardHeader>,
         after: Option<&'a StandardHeader>,
     },
+    /// The project's own data changed (`ModifyProject`, design 072 §5.3).
+    Project {
+        before: &'a Project,
+        after: &'a Project,
+    },
 }
 
 /// The kind of an [`Effect`], without its data: for tests, the update-map matrix and cheap "any
@@ -160,11 +166,12 @@ pub enum EffectKind {
     Folder,
     Style,
     Standard,
+    Project,
 }
 
 impl EffectKind {
     /// Every kind, in declaration order.
-    pub const ALL: [EffectKind; 18] = [
+    pub const ALL: [EffectKind; 19] = [
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
@@ -183,6 +190,7 @@ impl EffectKind {
         EffectKind::Folder,
         EffectKind::Style,
         EffectKind::Standard,
+        EffectKind::Project,
     ];
 
     fn bit(self) -> u32 {
@@ -260,6 +268,7 @@ impl Effect<'_> {
             Effect::Folder { .. } => EffectKind::Folder,
             Effect::Style { .. } => EffectKind::Style,
             Effect::Standard { .. } => EffectKind::Standard,
+            Effect::Project { .. } => EffectKind::Project,
         }
     }
 }
@@ -408,6 +417,7 @@ fn classify(op: &Op) -> Effect<'_> {
             Effect::Style { layer: *layer, catalogue, id, before: before.as_ref(), after: after.as_ref() }
         }
         Op::SetStandard { before, after } => Effect::Standard { before: before.as_ref(), after: after.as_ref() },
+        Op::ModifyProject { before, after } => Effect::Project { before, after },
     }
 }
 
@@ -437,7 +447,8 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Version { .. }
         | Effect::Folder { .. }
         | Effect::Style { .. }
-        | Effect::Standard { .. } => None,
+        | Effect::Standard { .. }
+        | Effect::Project { .. } => None,
     }
 }
 
