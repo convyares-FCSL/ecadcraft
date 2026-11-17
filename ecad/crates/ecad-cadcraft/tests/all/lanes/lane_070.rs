@@ -52,8 +52,6 @@ const UNTYPED: &[&str] = &[
     "merge",
     "undomerge",
     "agentaccess",
-    "termlabel",
-    "toposition",
     "canvassheet",
     "setdefault",
     "contcaption",
@@ -1463,4 +1461,57 @@ fn the_typed_release_commands_still_work() {
     assert!(v.is_object(), "{v}");
     let same = h.run("prerelease", json!({})).unwrap_or_else(|e| json!(e));
     assert_eq!(v, same);
+}
+
+/// Input refusals of the terminal label commands: one wording.
+#[test]
+fn the_level_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("termlabel", json!({"strip": "1", "level": "x"}), "`level` must be a whole number, or null"),
+        ("termlabel", json!({"strip": "1", "text": 5}), "`text` must be text, or null"),
+        ("termlabel", json!({"terminal": "1", "move_to": "far"}), "`move_to` must be one of \"next\", \"new\", or null"),
+        ("toposition", json!({}), "`device` (hex id) is required"),
+        ("toposition", json!({"device": "1", "position": 3}), "`position` must be text, or null"),
+    ];
+    let mut h = H::new(7063);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the terminal label commands keep their words.
+#[test]
+fn the_level_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("termlabel", json!({}), "`terminal` or `strip` (hex id) is required"),
+        ("termlabel", json!({"terminal": "1"}), "No such terminal."),
+        ("termlabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `terminal`."),
+        ("termlabel", json!({"strip": "1", "at": "1"}), "That device is not a terminal strip."),
+        ("toposition", json!({"device": "1"}), "No such device."),
+    ];
+    let mut h = H::new(7064);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed terminal label commands still work, and answer as before.
+#[test]
+fn the_typed_level_commands_still_work() {
+    let mut h = H::new(7065);
+    for x in [0, 20] {
+        assert!(h.run("wire", json!({"points": [[x, 0], [x, 100]]})).is_ok());
+    }
+    let f = h.run("terminals", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
+    let strip = f["strip"].clone();
+    let r = h.run("termlabel", json!({"strip": strip, "at": "2", "position": " 7 "})).unwrap_or_else(|e| json!(e));
+    assert_eq!(r["changed"], json!(true), "{r}");
+    assert!(r["message"].as_str().is_some_and(|m| m.ends_with(":7 (1 level).")), "{r}");
+    let t = h.run("termlabel", json!({"strip": strip, "at": "7", "text": "L1"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(t["changed"], json!(true), "{t}");
+    let clear = h.run("termlabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(clear["changed"], json!(true), "{clear}");
+    let none = h.run("termlabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(none, json!({"changed": false, "message": "Nothing to change."}));
 }
