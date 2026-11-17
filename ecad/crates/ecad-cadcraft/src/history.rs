@@ -23,13 +23,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
 use ecad_file::schema::{BranchId, BranchRecord, BranchStatus, VersionKind};
 use ecad_model::{Document, Op, Transaction, TxKind};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::access::Pages;
+use crate::cmd::input::{Command, Typed, typed};
 use crate::cmd::sheet::{RevisionView, next_view_id};
-use crate::cmd::{err, with_any_page, with_project};
+use crate::cmd::{on_any_page, on_project};
 use crate::project::Project;
 use crate::revisions;
 
@@ -811,42 +815,75 @@ pub fn find_branch(p: &Project, text: &str) -> Result<(BranchId, BranchRecord), 
     by_name.first().map(|f| (*f).clone()).ok_or_else(|| format!("There is no branch \"{t}\"."))
 }
 
-/// The point `params` names on its branch's line.
+/// A point of the history as a command names it: a version, an issued revision or a step, on
+/// `branch` (default the branch shown); `branch` or `now` alone is that branch's head.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema)]
+pub struct PointQuery {
+    /// The branch: its ID or name (default: the branch shown).
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    pub revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    pub now: Option<bool>,
+}
+
+/// The point `params` names on its branch's line, read as a [`PointQuery`] (other keys are left
+/// alone: the agent gate reads `restore`'s whole parameters).
 ///
 /// # Errors
-/// Missing or unknown point, in words.
+/// Parameters that do not read; a missing or unknown point, in words.
 pub fn point(p: &Project, params: &Value) -> Result<Point, String> {
-    let branch = match params.get("branch").and_then(Value::as_str) {
-        Some(b) => find_branch(p, b)?.0,
+    let q = PointQuery::deserialize(params).map_err(|e| e.to_string())?;
+    Ok(point_at(p, &q)?)
+}
+
+/// The point `q` names on its branch's line.
+///
+/// # Errors
+/// A missing or unknown point, in words.
+pub fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
+    let branch = match &q.branch {
+        Some(b) => find_branch(p, b).map_err(CmdError::refused)?.0,
         None => current(p),
     };
-    let head = if branch == current(p) { p.ledger.head() } else { find_branch(p, &branch.hex())?.1.head.seq };
-    if let Some(name) = params.get("version").and_then(Value::as_str) {
-        let n = named_points(p, branch)?
+    let head = if branch == current(p) { p.ledger.head() } else { find_branch(p, &branch.hex()).map_err(CmdError::refused)?.1.head.seq };
+    if let Some(name) = &q.version {
+        let n = named_points(p, branch)
+            .map_err(CmdError::refused)?
             .into_iter()
             .find(|n| !n.revision && n.name.eq_ignore_ascii_case(name.trim()))
-            .ok_or_else(|| format!("There is no version \"{}\" on this branch's line.", name.trim()))?;
+            .ok_or_else(|| CmdError::refused(format!("There is no version \"{}\" on this branch's line.", name.trim())))?;
         return Ok(Point { branch: n.branch, seq: n.seq, title: format!("Version \"{}\"", n.name), kind: NodeKind::Version });
     }
-    if let Some(rev) = params.get("revision").and_then(Value::as_str) {
+    if let Some(rev) = &q.revision {
         let want = revisions::version_name(rev.trim().trim_start_matches("Rev ").trim());
-        let n = named_points(p, branch)?
+        let n = named_points(p, branch)
+            .map_err(CmdError::refused)?
             .into_iter()
             .find(|n| n.revision && n.name.eq_ignore_ascii_case(&want))
-            .ok_or_else(|| format!("{want} has not been issued on this branch's line."))?;
+            .ok_or_else(|| CmdError::refused(format!("{want} has not been issued on this branch's line.")))?;
         return Ok(Point { branch: n.branch, seq: n.seq, title: n.name, kind: NodeKind::Revision });
     }
-    if let Some(seq) = params.get("seq").and_then(Value::as_u64) {
+    if let Some(seq) = q.seq {
         if seq > head {
-            return Err(format!("This branch has no step {seq} (its last is {head})."));
+            return Err(CmdError::refused(format!("This branch has no step {seq} (its last is {head}).")));
         }
         let kind = if seq == head { NodeKind::Now } else { NodeKind::Fork };
         return Ok(Point { branch, seq, title: format!("Step {seq}"), kind });
     }
-    if params.get("now").and_then(Value::as_bool) == Some(true) || params.get("branch").is_some() {
+    if q.now == Some(true) || q.branch.is_some() {
         return Ok(Point { branch, seq: head, title: "Now".into(), kind: NodeKind::Now });
     }
-    Err("Name a point: {\"version\": name}, {\"revision\": \"B\"} or {\"seq\": n}.".into())
+    Err(CmdError::refused("Name a point: {\"version\": name}, {\"revision\": \"B\"} or {\"seq\": n}."))
 }
 
 /// The document at `pt` (on a copy, design 020 §2.4): the ledger for the branch shown, else read
@@ -1195,36 +1232,55 @@ fn device_changes(
 
 // ---------------------------------------------------------------- the commands
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<HistoryParams>("history"),
+    Typed::of::<StepsParams>("steps"),
+    Typed::of::<PointinfoParams>("pointinfo"),
+    Typed::of::<VersionParams>("version"),
+    Typed::of::<ShowpointParams>("showpoint"),
+    Typed::of::<ClosepointParams>("closepoint"),
+    Typed::of::<RestoreParams>("restore"),
+    Typed::of::<BranchesParams>("branches"),
+    Typed::of::<BranchParams>("branch"),
+    Typed::of::<RenamebranchParams>("renamebranch"),
+    Typed::of::<SwitchbranchParams>("switchbranch"),
+    Typed::of::<ArchivebranchParams>("archivebranch"),
+    Typed::of::<ReopenbranchParams>("reopenbranch"),
+];
+
 /// The commands this module adds (design 020 §10). Merge is brief 020b.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("history", "History", run_history)
+        CommandSpec::new("history", "History", typed::<HistoryParams>)
             .params("{autos?: bool, archived?: bool, limit?: 200} (the History graph, newest first, `limit` rows; read only)")
             .noundo(),
-        CommandSpec::new("steps", "History Steps", run_steps).params("{branch?, before?: seq, limit?: 50} (steps newest first, read only)").noundo(),
-        CommandSpec::new("pointinfo", "Point Info", run_pointinfo)
+        CommandSpec::new("steps", "History Steps", typed::<StepsParams>)
+            .params("{branch?, before?: seq, limit?: 50} (steps newest first, read only)")
+            .noundo(),
+        CommandSpec::new("pointinfo", "Point Info", typed::<PointinfoParams>)
             .params("{branch?, version?|revision?|seq?} (the details of a point, read only)")
             .noundo(),
-        CommandSpec::new("version", "New Version", run_version)
+        CommandSpec::new("version", "New Version", typed::<VersionParams>)
             .params("{name, description?} (keeps the project as it is now under this name: one step)")
             .noundo(),
-        CommandSpec::new("showpoint", "Show Point", run_showpoint)
+        CommandSpec::new("showpoint", "Show Point", typed::<ShowpointParams>)
             .params("{branch?, version?|revision?|seq?} (that state read only; records nothing)")
             .noundo(),
-        CommandSpec::new("closepoint", "Back to Current", run_closepoint).params("{}").noundo(),
-        CommandSpec::new("restore", "Restore", run_restore)
+        CommandSpec::new("closepoint", "Back to Current", typed::<ClosepointParams>).params("{}").noundo(),
+        CommandSpec::new("restore", "Restore", typed::<RestoreParams>)
             .params("{version?|revision?|seq?, branch?, preview?: bool} (makes the project as it was there: one step, undoable; preview only asks)")
             .noundo(),
-        CommandSpec::new("branches", "Branches", run_branches).params("{} (the branch list, read only)").noundo(),
-        CommandSpec::new("branch", "New Branch", run_branch)
+        CommandSpec::new("branches", "Branches", typed::<BranchesParams>).params("{} (the branch list, read only)").noundo(),
+        CommandSpec::new("branch", "New Branch", typed::<BranchParams>)
             .params("{name, from?: {branch?, version?|revision?|seq?}, switch?: true} (saves first; written at once)")
             .noundo(),
-        CommandSpec::new("renamebranch", "Rename Branch", run_renamebranch).params("{branch, name}").noundo(),
-        CommandSpec::new("switchbranch", "Switch Branch", run_switchbranch)
+        CommandSpec::new("renamebranch", "Rename Branch", typed::<RenamebranchParams>).params("{branch, name}").noundo(),
+        CommandSpec::new("switchbranch", "Switch Branch", typed::<SwitchbranchParams>)
             .params("{branch, save?: bool} (refused with unsaved changes unless save is true)")
             .noundo(),
-        CommandSpec::new("archivebranch", "Archive Branch", run_archivebranch).params("{branch}").noundo(),
-        CommandSpec::new("reopenbranch", "Reopen Branch", run_reopenbranch)
+        CommandSpec::new("archivebranch", "Archive Branch", typed::<ArchivebranchParams>).params("{branch}").noundo(),
+        CommandSpec::new("reopenbranch", "Reopen Branch", typed::<ReopenbranchParams>)
             .params("{branch, name?} (name: reopen under that name, in one step, when another open branch has its name)")
             .noundo(),
     ]
@@ -1255,21 +1311,39 @@ pub fn status_word(s: &BranchStatus) -> &'static str {
     }
 }
 
-fn run_history(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let show = Show {
-        autos: params.get("autos").and_then(Value::as_bool).unwrap_or(false),
-        archived: params.get("archived").and_then(Value::as_bool).unwrap_or(false),
-        limit: params.get("limit").and_then(Value::as_u64).map_or(0, |l| usize::try_from(l).unwrap_or(usize::MAX).max(1)),
-    };
-    with_any_page(s, |p, _| {
-        let g = graph(p, show)?;
-        Ok(json!({
-            "current": g.current.map(|c| c.hex()),
-            "branches": g.branches.iter().map(branch_json).collect::<Vec<_>>(),
-            "nodes": g.nodes.iter().map(node_json).collect::<Vec<_>>(),
-            "more": g.more,
-        }))
-    })
+/// `history {autos?, archived?, limit?}` (read only): the History graph, newest first, `limit`
+/// rows.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryParams {
+    /// Also the automatic steps.
+    #[serde(default)]
+    autos: Option<bool>,
+    /// Also merged and archived branches.
+    #[serde(default)]
+    archived: Option<bool>,
+    /// Rows to read (default one page).
+    #[serde(default)]
+    limit: Option<u64>,
+}
+
+impl Command for HistoryParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let show = Show {
+            autos: self.autos.unwrap_or(false),
+            archived: self.archived.unwrap_or(false),
+            limit: self.limit.map_or(0, |l| usize::try_from(l).unwrap_or(usize::MAX).max(1)),
+        };
+        on_any_page(s, |p, _| {
+            let g = graph(p, show).map_err(CmdError::refused)?;
+            Ok(json!({
+                "current": g.current.map(|c| c.hex()),
+                "branches": g.branches.iter().map(branch_json).collect::<Vec<_>>(),
+                "nodes": g.nodes.iter().map(node_json).collect::<Vec<_>>(),
+                "more": g.more,
+            }))
+        })
+    }
 }
 
 /// Steps of `branch` newest first, `limit` of them, before `before` (exclusive; default after
@@ -1298,47 +1372,104 @@ fn kind_word(k: TxKind) -> &'static str {
     }
 }
 
-fn run_steps(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let before = params.get("before").and_then(Value::as_u64);
-    let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(STEPS_PAGE).clamp(1, 1_000);
-    let branch = params.get("branch").and_then(Value::as_str).map(str::to_string);
-    with_any_page(s, |p, _| {
-        let b = match &branch {
-            Some(t) => find_branch(p, t)?.0,
-            None => current(p),
-        };
-        let v = steps(p, b, before, limit)?;
-        Ok(json!({"steps": v.iter().map(|t| json!({
-            "seq": t.seq, "label": t.label, "author": author_text(&t.author), "time": t.time_ms, "kind": kind_word(t.kind),
-        })).collect::<Vec<_>>()}))
-    })
+/// `steps {branch?, before?, limit?}` (read only): the steps of a branch newest first.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StepsParams {
+    /// The branch: its ID or name (default: the branch shown).
+    #[serde(default)]
+    branch: Option<String>,
+    /// Only steps before this one.
+    #[serde(default)]
+    before: Option<u64>,
+    /// At most this many (default 50, at most 1000).
+    #[serde(default)]
+    limit: Option<u64>,
 }
 
-fn run_pointinfo(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| {
-        let pt = point(p, params)?;
-        point_info(p, &pt)
-    })
+impl Command for StepsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let limit = self.limit.unwrap_or(STEPS_PAGE).clamp(1, 1_000);
+        on_any_page(s, |p, _| {
+            let b = match &self.branch {
+                Some(t) => find_branch(p, t).map_err(CmdError::refused)?.0,
+                None => current(p),
+            };
+            let v = steps(p, b, self.before, limit).map_err(CmdError::refused)?;
+            Ok(json!({"steps": v.iter().map(|t| json!({
+                "seq": t.seq, "label": t.label, "author": author_text(&t.author), "time": t.time_ms, "kind": kind_word(t.kind),
+            })).collect::<Vec<_>>()}))
+        })
+    }
 }
 
-fn run_version(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let name = params.get("name").and_then(Value::as_str).ok_or_else(|| err("`name` is required"))?.to_string();
-    let description = params.get("description").and_then(Value::as_str).map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
-    with_project(s, |p, pg, _| {
-        let head = p.ledger.head();
-        if head == 0 {
-            return Err("Nothing to keep yet: draw or change something first.".into());
-        }
-        let name = check_version_name(p, &name)?;
-        if description.as_ref().is_some_and(|d| d.chars().count() > 1_000 || d.chars().any(|c| c.is_control() && c != '\n')) {
-            return Err("A description is at most 1 000 characters.".into());
-        }
-        let ops = vec![Op::NameVersion { name: name.clone(), at: head, description: description.clone() }];
-        p.apply_edit(pg, "version", &format!("Create version \"{name}\""), ops)?;
-        let line = format!("Version \"{name}\" created. Save to keep it.");
-        pg.echo(line.clone());
-        Ok(json!({"name": name, "at": head, "transaction": p.ledger.head(), "message": line}))
-    })
+/// `pointinfo {branch?, version? | revision? | seq?, now?}` (read only): the details of a point.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PointinfoParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+}
+
+impl PointinfoParams {
+    fn query(self) -> PointQuery {
+        PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now }
+    }
+}
+
+impl Command for PointinfoParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let q = self.query();
+        on_any_page(s, |p, _| {
+            let pt = point_at(p, &q)?;
+            point_info(p, &pt).map_err(CmdError::refused)
+        })
+    }
+}
+
+/// `version {name, description?}`: keep the project as it is now under this name; one step.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct VersionParams {
+    /// The version's name.
+    name: String,
+    /// What it is (at most 1 000 characters).
+    #[serde(default)]
+    description: Option<String>,
+}
+
+impl Command for VersionParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let description = self.description.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
+        on_project(s, |p, pg, _| {
+            let head = p.ledger.head();
+            if head == 0 {
+                return Err(CmdError::refused("Nothing to keep yet: draw or change something first."));
+            }
+            let name = check_version_name(p, &self.name).map_err(CmdError::refused)?;
+            if description.as_ref().is_some_and(|d| d.chars().count() > 1_000 || d.chars().any(|c| c.is_control() && c != '\n')) {
+                return Err(CmdError::refused("A description is at most 1 000 characters."));
+            }
+            let ops = vec![Op::NameVersion { name: name.clone(), at: head, description: description.clone() }];
+            p.apply_edit(pg, "version", &format!("Create version \"{name}\""), ops)?;
+            let line = format!("Version \"{name}\" created. Save to keep it.");
+            pg.echo(line.clone());
+            Ok(json!({"name": name, "at": head, "transaction": p.ledger.head(), "message": line}))
+        })
+    }
 }
 
 /// The point bar's text (design 020 §2.4).
@@ -1350,40 +1481,76 @@ pub fn bar_text(p: &Project, pt: &Point) -> String {
     }
 }
 
-fn run_showpoint(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| {
-        let pt = point(p, params)?;
-        // An issued revision is shown as issued (brief 027 §16): the step after the point it
-        // names, so its title block reads it.
-        let shown = match pt.kind {
-            NodeKind::Revision => issue_seq(p, pt.branch, pt.seq, &pt.title).map_or_else(|| pt.clone(), |seq| Point { seq, ..pt.clone() }),
-            _ => pt.clone(),
-        };
-        let then = state_at(p, &shown)?;
-        let book = ecad_model::book::Book::of(&then);
-        let pages: Vec<Value> = book
-            .order
-            .iter()
-            .map(|pg| json!({"page": pg.hex(), "number": book.number(&then, *pg), "title": then.pages.get(pg).map(|x| x.title.clone())}))
-            .collect();
-        let bar = bar_text(p, &pt);
-        p.revision_view = Some(RevisionView {
-            rev: pt.title.clone(),
-            date: String::new(),
-            at: pt.seq,
-            doc: Arc::new(then),
-            bar: Some(bar.clone()),
-            id: next_view_id(),
-        });
-        Ok(json!({"title": pt.title, "branch": pt.branch.hex(), "seq": pt.seq, "bar": bar, "pages": pages}))
-    })
+/// `showpoint {branch?, version? | revision? | seq?, now?}`: that state, read only; records
+/// nothing.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ShowpointParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
 }
 
-fn run_closepoint(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| {
-        let was = p.revision_view.take().map(|v| v.rev);
-        Ok(json!({"closed": was}))
-    })
+impl Command for ShowpointParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let q = PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now };
+        on_any_page(s, |p, _| show_point(p, &q))
+    }
+}
+
+/// `showpoint`'s work: the point's state as a read-only view.
+fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
+    let pt = point_at(p, q)?;
+    // An issued revision is shown as issued (brief 027 §16): the step after the point it
+    // names, so its title block reads it.
+    let shown = match pt.kind {
+        NodeKind::Revision => issue_seq(p, pt.branch, pt.seq, &pt.title).map_or_else(|| pt.clone(), |seq| Point { seq, ..pt.clone() }),
+        _ => pt.clone(),
+    };
+    let then = state_at(p, &shown).map_err(CmdError::refused)?;
+    let book = ecad_model::book::Book::of(&then);
+    let pages: Vec<Value> = book
+        .order
+        .iter()
+        .map(|pg| json!({"page": pg.hex(), "number": book.number(&then, *pg), "title": then.pages.get(pg).map(|x| x.title.clone())}))
+        .collect();
+    let bar = bar_text(p, &pt);
+    p.revision_view = Some(RevisionView {
+        rev: pt.title.clone(),
+        date: String::new(),
+        at: pt.seq,
+        doc: Arc::new(then),
+        bar: Some(bar.clone()),
+        id: next_view_id(),
+    });
+    Ok(json!({"title": pt.title, "branch": pt.branch.hex(), "seq": pt.seq, "bar": bar, "pages": pages}))
+}
+
+/// `closepoint {}`: back to the current state.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct ClosepointParams {}
+
+impl Command for ClosepointParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| {
+            let was = p.revision_view.take().map(|v| v.rev);
+            Ok(json!({"closed": was}))
+        })
+    }
 }
 
 /// The confirmation text of a restore (design 020 §2.5.3).
@@ -1406,38 +1573,83 @@ pub fn restore_question(p: &Project, pt: &Point, plan: &RestorePlan) -> String {
     q
 }
 
-fn run_restore(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    with_project(s, |p, pg, _| {
-        let pt = point(p, params)?;
-        let plan = plan_restore(p, &pt)?;
-        let quoted = match pt.kind {
-            NodeKind::Version => pt.title.trim_start_matches("Version ").to_string(),
-            _ => format!("\"{}\"", pt.title),
-        };
-        if plan.objects == 0 || plan.ops.is_empty() {
-            return Err(format!("The project is already as it was at {quoted}."));
-        }
-        if params.get("preview").and_then(Value::as_bool) == Some(true) {
-            // The Restore dialog's question; nothing is recorded.
-            return Ok(json!({"question": restore_question(p, &pt, &plan), "objects": plan.objects, "pages": plan.pages}));
-        }
-        p.apply_edit_with(pg, "restore", &format!("Restore {quoted}"), plan.ops.clone(), false)?;
-        let line = format!("Restored {quoted} ({} changes). Undo takes it back.", plan.objects);
-        pg.echo(line.clone());
-        Ok(json!({"restored": pt.title, "objects": plan.objects, "pages": plan.pages, "transaction": p.ledger.head(), "message": line}))
-    })
+/// `restore {version? | revision? | seq?, branch?, now?, preview?}`: make the project as it was
+/// there; one step, undoable. `preview` only asks.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RestoreParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+    /// Only the question the Restore dialog asks; nothing is recorded.
+    #[serde(default)]
+    preview: Option<bool>,
 }
 
-fn run_branches(s: &mut Session, _params: &Value) -> cadcraft_engine::Result<Value> {
-    with_any_page(s, |p, _| {
-        let cur = current(p);
-        let rows = branch_rows(p)?;
-        Ok(json!({"current": cur.hex(), "branches": rows.iter().map(|(id, b)| json!({
-            "id": id.hex(), "name": b.name, "status": status_word(&b.status), "current": *id == cur,
-            "parent": b.parent, "fork": b.fork_point.as_ref().map(|f| f.seq), "head": if *id == cur { p.ledger.head() } else { b.head.seq },
-        })).collect::<Vec<_>>()}))
-    })
+impl Command for RestoreParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let preview = self.preview == Some(true);
+        let q = PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now };
+        on_project(s, |p, pg, _| restore(p, pg, &q, preview))
+    }
 }
+
+/// `restore`'s work.
+fn restore(p: &mut Project, pg: &mut Pages<'_>, q: &PointQuery, preview: bool) -> Result<Value, CmdError> {
+    let pt = point_at(p, q)?;
+    let plan = plan_restore(p, &pt).map_err(CmdError::refused)?;
+    let quoted = match pt.kind {
+        NodeKind::Version => pt.title.trim_start_matches("Version ").to_string(),
+        _ => format!("\"{}\"", pt.title),
+    };
+    if plan.objects == 0 || plan.ops.is_empty() {
+        return Err(CmdError::refused(format!("The project is already as it was at {quoted}.")));
+    }
+    if preview {
+        // The Restore dialog's question; nothing is recorded.
+        return Ok(json!({"question": restore_question(p, &pt, &plan), "objects": plan.objects, "pages": plan.pages}));
+    }
+    p.apply_edit_with(pg, "restore", &format!("Restore {quoted}"), plan.ops.clone(), false)?;
+    let line = format!("Restored {quoted} ({} changes). Undo takes it back.", plan.objects);
+    pg.echo(line.clone());
+    Ok(json!({"restored": pt.title, "objects": plan.objects, "pages": plan.pages, "transaction": p.ledger.head(), "message": line}))
+}
+
+/// `branches {}` (read only): the branch list.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct BranchesParams {}
+
+impl Command for BranchesParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| {
+            let cur = current(p);
+            let rows = branch_rows(p).map_err(CmdError::refused)?;
+            Ok(json!({"current": cur.hex(), "branches": rows.iter().map(|(id, b)| json!({
+                "id": id.hex(), "name": b.name, "status": status_word(&b.status), "current": *id == cur,
+                "parent": b.parent, "fork": b.fork_point.as_ref().map(|f| f.seq), "head": if *id == cur { p.ledger.head() } else { b.head.seq },
+            })).collect::<Vec<_>>()}))
+        })
+    }
+}
+
+/// Branch actions with no version 2 file yet (design 020 §2.6).
+const SAVE_FIRST: &str = "Branches live in the project file. Save it first.";
+/// The file went away under a branch action.
+const NO_FILE: &str = "no file";
 
 /// Why branch actions cannot run: no version 2 file yet (design 020 §2.6), or read-only.
 pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
@@ -1450,14 +1662,15 @@ pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
     }
 }
 
-/// Where a new branch starts: `from` in `params`, or the head of the branch shown.
-fn fork_of(p: &Project, params: &Value) -> Result<Point, String> {
-    match params.get("from") {
-        None | Some(Value::Null) => Ok(Point { branch: current(p), seq: p.ledger.head(), title: "Now".into(), kind: NodeKind::Now }),
-        Some(v) => {
-            let mut pt = point(p, v)?;
-            if v.get("version").is_none() && v.get("revision").is_none() && v.get("seq").is_none() {
-                let head = if pt.branch == current(p) { p.ledger.head() } else { find_branch(p, &pt.branch.hex())?.1.head.seq };
+/// Where a new branch starts: the point `from` names, or the head of the branch shown.
+fn fork_of(p: &Project, from: Option<&PointQuery>) -> Result<Point, CmdError> {
+    match from {
+        None => Ok(Point { branch: current(p), seq: p.ledger.head(), title: "Now".into(), kind: NodeKind::Now }),
+        Some(q) => {
+            let mut pt = point_at(p, q)?;
+            if q.version.is_none() && q.revision.is_none() && q.seq.is_none() {
+                let head =
+                    if pt.branch == current(p) { p.ledger.head() } else { find_branch(p, &pt.branch.hex()).map_err(CmdError::refused)?.1.head.seq };
                 pt.seq = head;
             }
             Ok(pt)
@@ -1475,27 +1688,69 @@ fn from_text(p: &Project, pt: &Point) -> String {
     }
 }
 
-fn run_branch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let name = params.get("name").and_then(Value::as_str).ok_or_else(|| err("`name` is required"))?.to_string();
-    let switch = params.get("switch").and_then(Value::as_bool).unwrap_or(true);
-    with_any_page(s, |p, pg| {
-        branch_file(p)?;
-        let from = fork_of(p, params)?;
-        ecad_file::project::check_branch_name(&name).map_err(|e| e.to_string())?;
-        // Saved first (owner answer 3): the fork point and the branch row are in the file.
-        p.save_pending(pg)?;
-        let by = Some(author_text(&p.author));
-        let v = p.file.v2_mut().ok_or("Branches live in the project file. Save it first.")?;
-        let (id, rec) = v.create_branch(&name, from.branch, from.seq, crate::project::now_ms(), by).map_err(|e| e.to_string())?;
-        p.note_branch_change();
-        let mut line = format!("Branch \"{}\" created from {}.", rec.name, from_text(p, &from));
-        if switch {
-            switch_to(p, pg, id)?;
-            line.push_str(&format!(" Now on branch \"{}\".", rec.name));
-        }
-        pg.echo(line.clone());
-        Ok(json!({"branch": id.hex(), "name": rec.name, "from": {"branch": from.branch.hex(), "seq": from.seq}, "switched": switch, "message": line}))
-    })
+/// Where a new branch starts: a point of the history.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FromParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+}
+
+/// `branch {name, from?, switch?}`: a new branch (saving first; written at once), shown unless
+/// `switch` is false.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BranchParams {
+    /// The new branch's name.
+    name: String,
+    /// Where it starts (default: the head of the branch shown).
+    #[serde(default)]
+    from: Option<FromParams>,
+    /// Show it (default true).
+    #[serde(default)]
+    switch: Option<bool>,
+}
+
+impl Command for BranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let switch = self.switch.unwrap_or(true);
+        let from = self.from.map(|f| PointQuery { branch: f.branch, version: f.version, revision: f.revision, seq: f.seq, now: f.now });
+        let name = self.name;
+        on_any_page(s, |p, pg| {
+            branch_file(p).map_err(CmdError::refused)?;
+            let from = fork_of(p, from.as_ref())?;
+            ecad_file::project::check_branch_name(&name).map_err(|e| CmdError::refused(e.to_string()))?;
+            // Saved first (owner answer 3): the fork point and the branch row are in the file.
+            p.save_pending(pg).map_err(CmdError::refused)?;
+            let by = Some(author_text(&p.author));
+            let v = p.file.v2_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
+            let (id, rec) =
+                v.create_branch(&name, from.branch, from.seq, crate::project::now_ms(), by).map_err(|e| CmdError::refused(e.to_string()))?;
+            p.note_branch_change();
+            let mut line = format!("Branch \"{}\" created from {}.", rec.name, from_text(p, &from));
+            if switch {
+                switch_to(p, pg, id).map_err(CmdError::refused)?;
+                line.push_str(&format!(" Now on branch \"{}\".", rec.name));
+            }
+            pg.echo(line.clone());
+            Ok(
+                json!({"branch": id.hex(), "name": rec.name, "from": {"branch": from.branch.hex(), "seq": from.seq}, "switched": switch, "message": line}),
+            )
+        })
+    }
 }
 
 /// Show branch `id` (saved already), and say so.
@@ -1512,19 +1767,29 @@ pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Re
     Ok(())
 }
 
-fn run_renamebranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let which = params.get("branch").and_then(Value::as_str).ok_or_else(|| err("`branch` is required"))?.to_string();
-    let name = params.get("name").and_then(Value::as_str).ok_or_else(|| err("`name` is required"))?.to_string();
-    with_any_page(s, |p, pg| {
-        branch_file(p)?;
-        let (id, old) = find_branch(p, &which)?;
-        let v = p.file.v2_mut().ok_or("no file")?;
-        let rec = v.rename_branch(id, &name).map_err(|e| e.to_string())?;
-        p.note_branch_change();
-        let line = format!("Branch \"{}\" renamed \"{}\".", old.name, rec.name);
-        pg.echo(line.clone());
-        Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
-    })
+/// `renamebranch {branch, name}`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenamebranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+    /// Its new name.
+    name: String,
+}
+
+impl Command for RenamebranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, pg| {
+            branch_file(p).map_err(CmdError::refused)?;
+            let (id, old) = find_branch(p, &self.branch).map_err(CmdError::refused)?;
+            let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+            let rec = v.rename_branch(id, &self.name).map_err(|e| CmdError::refused(e.to_string()))?;
+            p.note_branch_change();
+            let line = format!("Branch \"{}\" renamed \"{}\".", old.name, rec.name);
+            pg.echo(line.clone());
+            Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
+        })
+    }
 }
 
 /// The refusal of a switch with unsaved changes on a file that cannot be written (design 020
@@ -1544,77 +1809,105 @@ pub fn unsaved_refusal(p: &Project) -> String {
     format!("{} has {n} unsaved change{}; add \"save\": true to save them and switch.", current_name(p), if n == 1 { "" } else { "s" })
 }
 
-fn run_switchbranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let which = params.get("branch").and_then(Value::as_str).ok_or_else(|| err("`branch` is required"))?.to_string();
-    let save = params.get("save").and_then(Value::as_bool).unwrap_or(false);
-    with_any_page(s, |p, pg| {
-        if p.file.v2().is_none() {
-            return Err("Branches live in the project file. Save it first.".into());
-        }
-        let (id, rec) = find_branch(p, &which)?;
-        if id == current(p) {
-            return Ok(json!({"branch": id.hex(), "name": rec.name, "switched": false, "message": format!("Already on branch \"{}\".", rec.name)}));
-        }
-        let read_only = p.file.v2().and_then(|v| v.read_only()).is_some();
-        if p.unsaved() && read_only {
-            // Never a silent loss (design 020 §3.3): the edits can only be kept by Save As.
-            return Err(read_only_refusal(p));
-        }
-        if p.unsaved() {
-            if !save {
-                return Err(unsaved_refusal(p));
-            }
-            p.save_pending(pg)?;
-        }
-        switch_to(p, pg, id)?;
-        let from = match rec.fork_point.as_ref() {
-            Some(f) => {
-                let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
-                let named = named_points(p, parent).unwrap_or_default();
-                match named.iter().find(|n| n.branch == parent && n.seq == f.seq) {
-                    Some(n) => format!(" (from {})", n.name),
-                    None => String::new(),
-                }
-            }
-            None => String::new(),
-        };
-        let line = format!("Now on branch \"{}\"{from}. Undo works on this branch's own steps.", rec.name);
-        pg.echo(line.clone());
-        Ok(json!({"branch": id.hex(), "name": rec.name, "switched": true, "message": line}))
-    })
+/// `switchbranch {branch, save?}`: show another branch; refused with unsaved changes unless
+/// `save` is true.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SwitchbranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+    /// Save unsaved changes first.
+    #[serde(default)]
+    save: Option<bool>,
 }
 
-fn run_archivebranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let which = params.get("branch").and_then(Value::as_str).ok_or_else(|| err("`branch` is required"))?.to_string();
-    with_any_page(s, |p, pg| {
-        branch_file(p)?;
-        let (id, rec) = find_branch(p, &which)?;
-        if id == main_of(p) {
-            return Err("main is the release line and cannot be archived.".into());
+impl Command for SwitchbranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let save = self.save.unwrap_or(false);
+        on_any_page(s, |p, pg| switch_branch(p, pg, &self.branch, save))
+    }
+}
+
+/// `switchbranch`'s work.
+fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -> Result<Value, CmdError> {
+    if p.file.v2().is_none() {
+        return Err(CmdError::refused(SAVE_FIRST));
+    }
+    let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
+    if id == current(p) {
+        return Ok(json!({"branch": id.hex(), "name": rec.name, "switched": false, "message": format!("Already on branch \"{}\".", rec.name)}));
+    }
+    let read_only = p.file.v2().and_then(|v| v.read_only()).is_some();
+    if p.unsaved() && read_only {
+        // Never a silent loss (design 020 §3.3): the edits can only be kept by Save As.
+        return Err(CmdError::refused(read_only_refusal(p)));
+    }
+    if p.unsaved() {
+        if !save {
+            return Err(CmdError::refused(unsaved_refusal(p)));
         }
-        let mut line = String::new();
-        if id == current(p) {
-            // Archiving the branch shown first switches to its parent, saving first; a parent that
-            // is not open itself gives main instead, saying so (never a refusal after the save).
+        p.save_pending(pg).map_err(CmdError::refused)?;
+    }
+    switch_to(p, pg, id).map_err(CmdError::refused)?;
+    let from = match rec.fork_point.as_ref() {
+        Some(f) => {
             let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
-            let rows = branch_rows(p)?;
-            let parent_row = rows.iter().find(|(i, _)| *i == parent).map(|(_, b)| b.clone());
-            let (to, why) = match parent_row {
-                Some(b) if b.status == BranchStatus::Open => (parent, String::new()),
-                Some(b) => (main_of(p), format!("Its parent \"{}\" is {}, so the project shows main. ", b.name, status_word(&b.status))),
-                None => (main_of(p), String::new()),
-            };
-            p.save_pending(pg)?;
-            switch_to(p, pg, to)?;
-            line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
+            let named = named_points(p, parent).unwrap_or_default();
+            match named.iter().find(|n| n.branch == parent && n.seq == f.seq) {
+                Some(n) => format!(" (from {})", n.name),
+                None => String::new(),
+            }
         }
-        let v = p.file.v2_mut().ok_or("no file")?;
-        v.set_branch_open(id, false).map_err(|e| e.to_string())?;
-        p.note_branch_change();
-        line.push_str(&format!("Branch \"{}\" archived; reopen it from \"Show merged and archived\".", rec.name));
-        pg.echo(line.clone());
-        Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
-    })
+        None => String::new(),
+    };
+    let line = format!("Now on branch \"{}\"{from}. Undo works on this branch's own steps.", rec.name);
+    pg.echo(line.clone());
+    Ok(json!({"branch": id.hex(), "name": rec.name, "switched": true, "message": line}))
+}
+
+/// `archivebranch {branch}`: archive a branch (the branch shown first gives way to its parent).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ArchivebranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+}
+
+impl Command for ArchivebranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, pg| archive_branch(p, pg, &self.branch))
+    }
+}
+
+/// `archivebranch`'s work.
+fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Value, CmdError> {
+    branch_file(p).map_err(CmdError::refused)?;
+    let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
+    if id == main_of(p) {
+        return Err(CmdError::refused("main is the release line and cannot be archived."));
+    }
+    let mut line = String::new();
+    if id == current(p) {
+        // Archiving the branch shown first switches to its parent, saving first; a parent that
+        // is not open itself gives main instead, saying so (never a refusal after the save).
+        let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
+        let rows = branch_rows(p).map_err(CmdError::refused)?;
+        let parent_row = rows.iter().find(|(i, _)| *i == parent).map(|(_, b)| b.clone());
+        let (to, why) = match parent_row {
+            Some(b) if b.status == BranchStatus::Open => (parent, String::new()),
+            Some(b) => (main_of(p), format!("Its parent \"{}\" is {}, so the project shows main. ", b.name, status_word(&b.status))),
+            None => (main_of(p), String::new()),
+        };
+        p.save_pending(pg).map_err(CmdError::refused)?;
+        switch_to(p, pg, to).map_err(CmdError::refused)?;
+        line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
+    }
+    let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+    v.set_branch_open(id, false).map_err(|e| CmdError::refused(e.to_string()))?;
+    p.note_branch_change();
+    line.push_str(&format!("Branch \"{}\" archived; reopen it from \"Show merged and archived\".", rec.name));
+    pg.echo(line.clone());
+    Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
 }
 
 /// A name no open branch has: `base`, else `base (2)`, `base (3)`… (a reopen whose name was
@@ -1632,41 +1925,56 @@ pub fn free_branch_name(p: &Project, base: &str, except: Option<BranchId>) -> St
     (2..).map(|n| format!("{base} ({n})")).find(|n| !taken.contains(&n.to_lowercase())).unwrap_or_else(|| base.to_string())
 }
 
-fn run_reopenbranch(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let which = params.get("branch").and_then(Value::as_str).ok_or_else(|| err("`branch` is required"))?.to_string();
-    let name = params.get("name").and_then(Value::as_str).map(str::to_string);
-    with_any_page(s, |p, pg| {
-        branch_file(p)?;
-        let (id, rec) = find_branch(p, &which)?;
-        if rec.status == BranchStatus::Open {
-            let line = format!("Branch \"{}\" is already open.", rec.name);
-            return Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}));
+/// `reopenbranch {branch, name?}`: open an archived or merged branch again; `name` reopens it under
+/// that name, in one step, when another open branch has its name.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ReopenbranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+    /// A new name for it.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+impl Command for ReopenbranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, pg| reopen_branch(p, pg, &self.branch, self.name.as_deref()))
+    }
+}
+
+/// `reopenbranch`'s work.
+fn reopen_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, name: Option<&str>) -> Result<Value, CmdError> {
+    branch_file(p).map_err(CmdError::refused)?;
+    let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
+    if rec.status == BranchStatus::Open {
+        let line = format!("Branch \"{}\" is already open.", rec.name);
+        return Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}));
+    }
+    let free = free_branch_name(p, &rec.name, Some(id));
+    let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+    let reopened = match name {
+        Some(n) => v.reopen_as(id, n),
+        None => v.set_branch_open(id, true),
+    };
+    let rec2 = match reopened {
+        Ok(r) => r,
+        Err(ecad_file::BranchError::NameTaken(other)) => {
+            return Err(CmdError::refused(format!(
+                "Another open branch is called \"{other}\"; reopen this one under a new name, for example {{\"branch\": \"{}\", \"name\": \"{free}\"}}.",
+                id.hex()
+            )));
         }
-        let free = free_branch_name(p, &rec.name, Some(id));
-        let v = p.file.v2_mut().ok_or("no file")?;
-        let reopened = match &name {
-            Some(n) => v.reopen_as(id, n),
-            None => v.set_branch_open(id, true),
-        };
-        let rec2 = match reopened {
-            Ok(r) => r,
-            Err(ecad_file::BranchError::NameTaken(other)) => {
-                return Err(format!(
-                    "Another open branch is called \"{other}\"; reopen this one under a new name, for example {{\"branch\": \"{}\", \"name\": \"{free}\"}}.",
-                    id.hex()
-                ));
-            }
-            Err(e) => return Err(e.to_string()),
-        };
-        p.note_branch_change();
-        let line = if rec2.name == rec.name {
-            format!("Branch \"{}\" is open again.", rec.name)
-        } else {
-            format!("Branch \"{}\" is open again as \"{}\".", rec.name, rec2.name)
-        };
-        pg.echo(line.clone());
-        Ok(json!({"branch": id.hex(), "name": rec2.name, "message": line}))
-    })
+        Err(e) => return Err(CmdError::refused(e.to_string())),
+    };
+    p.note_branch_change();
+    let line = if rec2.name == rec.name {
+        format!("Branch \"{}\" is open again.", rec.name)
+    } else {
+        format!("Branch \"{}\" is open again as \"{}\".", rec.name, rec2.name)
+    };
+    pg.echo(line.clone());
+    Ok(json!({"branch": id.hex(), "name": rec2.name, "message": line}))
 }
 
 #[cfg(test)]

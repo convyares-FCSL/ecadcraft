@@ -309,6 +309,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::cable_draw::TYPED,
         crate::cmd::reference::TYPED,
         crate::cmd::page::TYPED,
+        crate::history::TYPED,
     ]
     .concat()
 }

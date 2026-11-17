@@ -539,7 +539,7 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 95, 22),
-    ("ecad-cadcraft", 187, 53),
+    ("ecad-cadcraft", 186, 50),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 136, 129),
