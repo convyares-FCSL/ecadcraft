@@ -62,9 +62,6 @@ const UNTYPED: &[&str] = &[
     "setdefault",
     "connector",
     "pinlabel",
-    "partline",
-    "bomitem",
-    "article",
     "contcaption",
     "conflicts",
     "setlocation",
@@ -1058,4 +1055,80 @@ fn the_typed_rating_commands_still_work() {
     assert_eq!((r["boxes"].clone(), r["temperature"].clone(), r["changed"].clone()), (json!(1), json!("44"), json!(true)), "{r}");
     let r = h.run("rating", json!({"location": "+CAB1", "temperature": null})).unwrap_or_else(|e| json!(e));
     assert_eq!((r["temperature"].clone(), r["changed"].clone()), (Value::Null, json!(true)), "{r}");
+}
+
+/// Input refusals of the BOM commands: one wording.
+#[test]
+fn the_bom_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("partline", json!({"component": "zz"}), "`component` must be a hex id, or null"),
+        ("partline", json!({"component": "1", "add": 5}), "`add` must be a list of objects, or null"),
+        ("partline", json!({"component": "1", "line": "x"}), "`line` must be a whole number, or null"),
+        ("partline", json!({"component": "1", "remove": "yes"}), "`remove` must be true or false, or null"),
+        ("bomitem", json!({"description": true}), "`description` must be text, or null"),
+        ("bomitem", json!({"colour": "red"}), "`colour` is not a parameter of this command; it takes "),
+        ("article", json!({"article_number": "A1"}), "`part_number` (text) is required"),
+        ("article", json!({"part_number": "P1"}), "`article_number` (text, or null) is required"),
+        ("article", json!({"part_number": "P1", "maker": 3, "article_number": null}), "`maker` must be text, or null"),
+    ];
+    let mut h = H::new(7042);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// Rule refusals of the BOM commands keep their words.
+#[test]
+fn the_bom_commands_keep_their_rule_words() {
+    let mut h = H::new(7043);
+    let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
+    let rows: &[(&str, Value, &str)] = &[
+        ("partline", json!({"add": {"maker": "M"}}), "`component` or `components` (hex id) is required"),
+        ("partline", json!({"components": [], "add": {"maker": "M"}}), "`components` is empty"),
+        ("partline", json!({"component": "ab", "add": {"maker": "M"}}), "No component 000000000000000000000000000000ab."),
+        ("partline", json!({"component": k, "add": []}), "`add` names no line"),
+        ("partline", json!({"component": k, "add": {"kit": "K"}}), "`kit` is not a part line field. Use part_number,"),
+        (
+            "partline",
+            json!({"component": k, "add": {"part_number": " "}}),
+            "A part line needs at least one field: part_number, maker or description.",
+        ),
+        ("partline", json!({"component": k}), "`line` (1 to 99) is required with `set` or `remove`, or give `add`"),
+        ("partline", json!({"component": k, "line": 1}), "-K"),
+        ("bomitem", json!({"qty": "2"}), "An item needs a description."),
+        ("bomitem", json!({"description": "x", "set": {}}), "`set` is not an item field. Use description,"),
+        ("bomitem", json!({"item": k, "delete": true}), "is not an item."),
+        ("article", json!({"part_number": " ", "article_number": "A"}), "`part_number` is required"),
+        ("article", json!({"part_number": "NOPE", "article_number": "A"}), "No part NOPE in this project."),
+    ];
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says) || (cmd == &"bomitem" && e.ends_with(says)), "{cmd} {params}: {e}");
+    }
+    let e = h.run("partline", json!({"component": k, "line": 1, "set": {"maker": "M"}})).err().unwrap_or_default();
+    assert!(e.ends_with("has no part line 1."), "{e}");
+}
+
+/// The typed BOM commands still work, and answer as before.
+#[test]
+fn the_typed_bom_commands_still_work() {
+    let mut h = H::new(7044);
+    let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
+    let add = h.run("partline", json!({"component": k, "add": [{"part_number": "P1", "maker": "M", "qty": 2}, {"description": "D"}]}));
+    let add = add.unwrap_or_else(|e| json!(e));
+    assert_eq!((add["lines"].clone(), add["changed"].clone()), (json!([1, 2]), json!(true)), "{add}");
+    let set = h.run("partline", json!({"component": k, "line": 2, "set": {"maker": "N", "description": null}})).unwrap_or_else(|e| json!(e));
+    assert_eq!(set["message"], json!("Edited part line 2."), "{set}");
+    let rm = h.run("partline", json!({"component": k, "line": 2, "remove": true})).unwrap_or_else(|e| json!(e));
+    assert_eq!(rm["message"], json!("Removed part line 2."), "{rm}");
+    let art = h.run("article", json!({"part_number": "P1", "article_number": 1234})).unwrap_or_else(|e| json!(e));
+    assert_eq!((art["changed"].clone(), art["parts"].clone()), (json!(true), json!(1)), "{art}");
+    let item = h.run("bomitem", json!({"description": "Trunking", "qty": "3.5", "unit": "m"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(item["changed"], json!(true), "{item}");
+    let id = item["item"].clone();
+    let same = h.run("bomitem", json!({"item": id, "set": {"description": "Trunking"}})).unwrap_or_else(|e| json!(e));
+    assert_eq!(same["changed"], json!(false), "{same}");
+    let gone = h.run("bomitem", json!({"item": id, "delete": true})).unwrap_or_else(|e| json!(e));
+    assert!(gone["message"].as_str().is_some_and(|m| m.starts_with("Deleted item Trunking")), "{gone}");
 }
