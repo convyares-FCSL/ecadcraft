@@ -12,6 +12,7 @@
 //!
 //! Building a [`Book`] costs one pass over the pages and folders, never over their items.
 
+use crate::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -35,7 +36,7 @@ pub const MAX_FOLDER_DEPTH: usize = 8;
 
 /// The folder `page` is in, by its `folder` property, when that reads as a folder ID.
 pub fn folder_of(doc: &Document, page: PageId) -> Option<FolderId> {
-    doc.pages.get(&page).and_then(|p| p.properties.get(FOLDER_KEY)).and_then(|t| FolderId::parse(t))
+    doc.pages.get(&page).and_then(|p| p.properties.text(crate::keys::FOLDER)).and_then(FolderId::parse)
 }
 
 /// One node of the page tree, in book order.
@@ -92,7 +93,7 @@ impl Outline {
                 if *index <= self.page_order.len() {
                     self.page_order.insert(*index, *id);
                 }
-                match page.properties.get(FOLDER_KEY).and_then(|t| FolderId::parse(t)) {
+                match page.properties.text(crate::keys::FOLDER).and_then(FolderId::parse) {
                     Some(f) => self.page_folder.insert(*id, f),
                     None => self.page_folder.remove(id),
                 };
@@ -233,7 +234,7 @@ impl Book {
 
 /// `page`'s stored number, if it has one.
 pub fn stored_number(doc: &Document, page: PageId) -> Option<&str> {
-    doc.pages.get(&page).and_then(|p| p.properties.get(NUMBER_KEY)).map(String::as_str)
+    doc.pages.get(&page).and_then(|p| p.properties.text(crate::keys::NUMBER))
 }
 
 /// The number `page` is shown with (see [`Book::number`]). Builds the book order only when the

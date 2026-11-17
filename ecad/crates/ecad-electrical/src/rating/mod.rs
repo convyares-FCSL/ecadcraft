@@ -36,6 +36,7 @@ pub mod load;
 pub mod parse;
 pub mod trace;
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, ComponentId, ConductorId, Document, NetId, ObjectRef, Op, StyleRef};
@@ -437,7 +438,7 @@ pub struct BoxTemp {
 pub fn box_temp(doc: &Document, c: ComponentId) -> Option<BoxTemp> {
     let x = doc.components.get(&c).filter(|x| crate::locations::is_box_component(x))?;
     let v = x.properties.get(TEMPERATURE)?;
-    let location = x.properties.get(ecad_model::book::LOCATION_KEY).map(|l| l.trim().to_string()).unwrap_or_default();
+    let location = x.properties.text(ecad_model::keys::LOCATION).map(|l| l.trim().to_string()).unwrap_or_default();
     Some(BoxTemp { location, temp: parse::ambient(v).ok_or_else(|| v.chars().take(32).collect()) })
 }
 

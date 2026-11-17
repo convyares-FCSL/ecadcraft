@@ -148,7 +148,7 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
         .filter(|f| super::exists(doc, "frame", f));
-    let zones = field(doc, id, "zones").is_none_or(|r| r.word() != "off");
+    let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false));
     let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
     let checks = msheet::type_checks(doc, id);
     TypeLook { sheet, frame, title_block, zones, holds, checks }

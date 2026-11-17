@@ -18,6 +18,7 @@
 //!
 //! This module holds no invariant logic and no I/O.
 
+use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use crate::doc::{Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
@@ -181,7 +182,7 @@ impl Index {
     }
 
     pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {
-        if let Some(f) = p.properties.get(crate::book::FOLDER_KEY) {
+        if let Some(f) = p.properties.text(crate::keys::FOLDER) {
             self.page_folder(id, f, delta);
         }
         self.style_choices(ObjectRef::Page(id), &p.properties, delta);
