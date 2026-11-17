@@ -17,6 +17,7 @@ use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, Libr
 use crate::page::{PageKind, PageTitle};
 use crate::sheet::SheetSpec;
 use crate::style::StyleRef;
+use crate::units::Radians;
 pub use crate::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
@@ -194,7 +195,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_default")]
         halign: TextHAlign,
@@ -593,9 +594,9 @@ pub struct TextSlot {
     pub h: TextHAlign,
     #[serde(default, skip_serializing_if = "is_default")]
     pub v: TextVAlign,
-    /// Radians, counter-clockwise.
+    /// Counter-clockwise.
     #[serde(default, skip_serializing_if = "is_default")]
-    pub rotation: f64,
+    pub rotation: Radians,
 }
 
 impl TextSlot {

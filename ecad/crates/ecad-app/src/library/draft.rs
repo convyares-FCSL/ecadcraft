@@ -7,6 +7,8 @@
 //! Pure data and rules: no egui, no project lock. The rules themselves are the commands'
 //! ([`symbol_cmds::problems`]), so the builder and the JSON form refuse in the same words.
 
+use ecad_model::units::Degrees;
+use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::symbol_cmds::{self, Content, POINT_GRID_MM};
@@ -387,7 +389,7 @@ impl Draft {
             return Err(format!("The symbol has too many text slots ({} at most).", symbol_cmds::MAX_SLOTS));
         }
         self.step();
-        self.shape.slots.push(TextSlot { text: text.to_string(), at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: 0.0 });
+        self.shape.slots.push(TextSlot { text: text.to_string(), at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: Radians(0.0) });
         Ok(self.shape.slots.len() - 1)
     }
 
@@ -399,8 +401,8 @@ impl Draft {
         self.step();
         if let Some(s) = self.shape.slots.get_mut(i) {
             let quarter = std::f64::consts::FRAC_PI_2;
-            let r = s.rotation + quarter;
-            s.rotation = if r >= 2.0 * std::f64::consts::PI - 1e-9 { 0.0 } else { r };
+            let r = s.rotation.0 + quarter;
+            s.rotation = Radians(if r >= 2.0 * std::f64::consts::PI - 1e-9 { 0.0 } else { r });
         }
     }
 
@@ -609,8 +611,12 @@ impl Draft {
     pub fn params(&self) -> Value {
         let graphics: Vec<ecad_file::records::Primitive> = self.shape.graphics.iter().map(ecad_file::records::Primitive::from).collect();
         let points: Vec<Value> = self.shape.points.iter().map(|p| json!({"key": p.key, "label": p.label, "at": [p.at.x, p.at.y]})).collect();
-        let slots: Vec<Value> =
-            self.shape.slots.iter().map(|s| json!({"text": s.text, "at": [s.at.x, s.at.y], "h": s.h, "v": s.v, "rotation": s.rotation})).collect();
+        let slots: Vec<Value> = self
+            .shape
+            .slots
+            .iter()
+            .map(|s| json!({"text": s.text, "at": [s.at.x, s.at.y], "h": s.h, "v": s.v, "rotation": Degrees::from(s.rotation).0}))
+            .collect();
         json!({
             "name": self.name.trim(), "key": self.key.trim(), "graphics": graphics, "points": points, "slots": slots,
             "defaults": self.defaults(),
@@ -742,7 +748,7 @@ mod tests {
         let text = Primitive::Text {
             at: Pt::new(12.0, 0.0),
             height: 2.5,
-            rotation: 0.0,
+            rotation: Radians(0.0),
             value: "-LS1".into(),
             halign: TextHAlign::Left,
             valign: TextVAlign::Baseline,

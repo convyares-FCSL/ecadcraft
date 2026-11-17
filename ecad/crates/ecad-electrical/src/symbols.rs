@@ -20,6 +20,7 @@
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
@@ -1803,7 +1804,7 @@ fn circle(c: (f64, f64), radius: f64) -> Primitive {
 }
 
 fn text(at: (f64, f64), height: f64, value: &str) -> Primitive {
-    Primitive::Text { at: p(at.0, at.1), height, rotation: 0.0, value: value.into(), halign: Default::default(), valign: Default::default() }
+    Primitive::Text { at: p(at.0, at.1), height, rotation: Radians(0.0), value: value.into(), halign: Default::default(), valign: Default::default() }
 }
 
 fn shifted(prims: Vec<Primitive>, dx: f64) -> Vec<Primitive> {

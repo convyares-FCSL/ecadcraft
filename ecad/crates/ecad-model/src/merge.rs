@@ -911,13 +911,14 @@ fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
 }
 
 /// A style record's name in texts: `Text style "Tag large"` (`Wire category "24 V DC"`).
-pub fn style_words(catalogue: &str, id: &StyleRef, record: Option<&StyleRecord>) -> String {
+pub fn style_words(catalogue: crate::style::StyleCatalogue, id: &StyleRef, record: Option<&StyleRecord>) -> String {
+    use crate::style::StyleCatalogue as C;
     let kind = match catalogue {
-        "text" => "Text style",
-        "location" => "Location box style",
-        "frame" => "Frame style",
-        "wire" => "Wire category",
-        _ => "Style",
+        C::Text => "Text style",
+        C::Location => "Location box style",
+        C::Frame => "Frame style",
+        C::Wire => "Wire category",
+        C::Page | C::Cable | C::RatingTable => "Style",
     };
     match record.map(|r| r.name.as_str()).filter(|n| !n.is_empty()) {
         Some(n) => format!("{kind} \"{n}\""),
@@ -928,9 +929,9 @@ pub fn style_words(catalogue: &str, id: &StyleRef, record: Option<&StyleRecord>)
 /// Merge one layer's style records, each record whole.
 fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogues, t: &StyleCatalogues, s: &StyleCatalogues) -> StyleCatalogues {
     let mut out = t.clone();
-    let cats: BTreeSet<&String> = a.keys().chain(t.keys()).chain(s.keys()).collect();
+    let cats: BTreeSet<crate::style::StyleCatalogue> = a.keys().chain(t.keys()).chain(s.keys()).copied().collect();
     for cat in cats {
-        let get = |c: &'_ StyleCatalogues| c.get(cat).cloned().unwrap_or_default();
+        let get = |c: &'_ StyleCatalogues| c.get(&cat).cloned().unwrap_or_default();
         let (ra, rt, rs) = (get(a), get(t), get(s));
         let ids: BTreeSet<&StyleRef> = ra.keys().chain(rt.keys()).chain(rs.keys()).collect();
         for id in ids {

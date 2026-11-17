@@ -89,7 +89,7 @@ pub enum Kind {
     Parsed { max_chars: usize, parse: fn(&str) -> bool },
     /// A style of this catalogue (brief 050a, design 050 §2.4): its ID, a built-in word or
     /// `#<32 hex>`. A stored ID naming no style of the catalogue counts as absent.
-    Style(&'static str),
+    Style(ecad_model::StyleCatalogue),
 }
 
 /// A value of an entry: its built-in, or a stored value that parsed.

@@ -511,7 +511,8 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 // ---------------------------------------------------------------- per commit (brief 014)
 
 /// Style catalogues no cable reference reads (brief 053): a change of one reaches no reference.
-const NO_REFERENCE_STYLES: &[&str] = &["text", "wire", "location"];
+const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
+    &[ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location];
 
 /// The cables whose references, or whose drawing at a reference end on any page, `ops` could
 /// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
@@ -591,7 +592,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
                 }
             }
             // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
-            Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+            Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                 if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                     for p in pages {
                         out.extend(cables_on(doc, p));
@@ -626,7 +627,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // so they reach none (before, every cable: `textstyle` derived every reference twice).
             // Any other catalogue (the frame, one added later) and a standard, which may come to
             // carry sheets, still reach every cable.
-            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(&catalogue.as_str()) => {}
+            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
             // Brief 053: a deleted component has no terminals and no representations left (the
             // model's invariants I8 and I10); removing those is its own op above, so the record
             // itself reaches no reference (`toposition` derived every one twice).

@@ -362,10 +362,10 @@ fn act(t: &mut App, d: Do) {
         Do::Set(id, fields) => {
             let f: serde_json::Map<String, serde_json::Value> =
                 fields.into_iter().map(|(k, v)| (k.to_string(), v.map_or(serde_json::Value::Null, serde_json::Value::String))).collect();
-            run(t, "setstyle", json!({"catalogue": ptype::WORD, "id": id.text(), "fields": f}));
+            run(t, "setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": id.text(), "fields": f}));
         }
         Do::Rename(id, name) => {
-            run(t, "setstyle", json!({"catalogue": ptype::WORD, "id": id.text(), "rename": name}));
+            run(t, "setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": id.text(), "rename": name}));
         }
         Do::Add(from) => {
             let name = t
@@ -376,7 +376,9 @@ fn act(t: &mut App, d: Do) {
                 .and_then(|s| s.rows.iter().find(|r| r.id == from))
                 .map(|r| format!("{} 2", r.name))
                 .unwrap_or_default();
-            if let Some(v) = run(t, "setstyle", json!({"catalogue": ptype::WORD, "new": true, "copy_of": from.text(), "name": name})) {
+            if let Some(v) =
+                run(t, "setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "new": true, "copy_of": from.text(), "name": name}))
+            {
                 let id = ["id", "style"].iter().filter_map(|k| v.get(*k).and_then(serde_json::Value::as_str)).find_map(StyleRef::parse);
                 if let Some(id) = id {
                     t.settings.pages.selected = Some(id);
@@ -384,14 +386,14 @@ fn act(t: &mut App, d: Do) {
             }
         }
         Do::Delete(id) => {
-            run(t, "deletestyle", json!({"catalogue": ptype::WORD, "id": id.text(), "replace_with": ptype::SCHEMATIC}));
+            run(t, "deletestyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": id.text(), "replace_with": ptype::SCHEMATIC}));
         }
         Do::Promote(id) => {
-            run(t, "promote", json!({"catalogue": ptype::WORD, "id": id.text()}));
+            run(t, "promote", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": id.text()}));
         }
         Do::Reset(id) => {
             let keys = ptype::CATALOGUE.fields.iter().map(|f| (f.key.to_string(), serde_json::Value::Null)).collect::<serde_json::Map<_, _>>();
-            run(t, "setstyle", json!({"catalogue": ptype::WORD, "id": id.text(), "fields": keys}));
+            run(t, "setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": id.text(), "fields": keys}));
         }
     }
 }

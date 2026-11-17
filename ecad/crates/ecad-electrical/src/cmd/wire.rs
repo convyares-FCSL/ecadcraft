@@ -2,6 +2,7 @@
 //! numbers, potentials and categories, the wiring settings, junctions, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
@@ -95,7 +96,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         .collect();
     let looks = crate::styles::wire::WireLooks::new(doc);
     let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| looks.category(doc, *c).0).collect();
-    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, "wire", id) };
+    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id) };
     let uncategorised = net.wires.iter().any(|c| looks.category(doc, *c).0.is_none());
     let (category, categories) = match (cats.len(), uncategorised) {
         (1, false) => (cats.first().map(named), None),
@@ -297,11 +298,11 @@ fn open_end(doc: &Document, net: &NetData) -> Option<(WireId, End, PageId, Pt, P
 }
 
 /// The rotation that points a continuation's arrow along `d` (snapped to 90°).
-fn arrow_rotation(d: Pt) -> f64 {
+fn arrow_rotation(d: Pt) -> Radians {
     // The arrow runs to local (0, −5): rotation θ maps it to (sin θ, −cos θ).
     let theta = d.x.atan2(-d.y);
     let q = std::f64::consts::FRAC_PI_2;
-    (theta / q).round() * q
+    Radians((theta / q).round() * q)
 }
 
 /// The number the net `choice` names has now, to fix it as it is (the Properties panel's Fixed
@@ -469,7 +470,9 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 /// No such wire.
 pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let key = wiring::WIRE_CATEGORY;
-    let pot = value.and_then(|id| crate::styles::field_of(doc, "wire", id, "potential", None)).and_then(|r| crate::styles::wire::filled(&r));
+    let pot = value
+        .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
+        .and_then(|r| crate::styles::wire::filled(&r));
     let conn = doc.connectivity();
     let mut ops = Vec::new();
     let mut kept: Option<String> = None;
@@ -534,12 +537,12 @@ pub fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Result<Cat
         Wires::Many(v) => v,
     };
     let id = match value {
-        Some(v) => Some(crate::styles::find(doc, "wire", v)?),
+        Some(v) => Some(crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, v)?),
         None => None,
     };
     let (ops, message) = category_ops(doc, &conductors, id.as_ref())?;
     let label = match &id {
-        Some(i) => format!("Category {}", crate::styles::name(doc, "wire", i)),
+        Some(i) => format!("Category {}", crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, i)),
         None => "Clear category".into(),
     };
     Ok(Categorised { ops, label, wires: conductors.len(), category: id, message })
@@ -686,7 +689,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
                 wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
             })
             .unwrap_or(at);
-        let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
+        let placement = Placement { origin: snapped, rotation: Radians(0.0), mirror: false, scale: 1.0 };
         let t = wires::plan_tagless(doc, ids, page, style, starter, placement, props)?;
         let done = Junctioned { junction: t.component, terminal: t.terminal, conductor: None, at: snapped, attached: Some(t.attached.len()) };
         return Ok((t.ops, done));
@@ -743,7 +746,7 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
     let doc = ledger.document();
     let mut plan = wires::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
-        let id = crate::styles::find(doc, "wire", c)?;
+        let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
         let after = ledger.preview(&plan.ops)?;
         let (more, _) = category_ops(&after, &[plan.conductor], Some(&id))?;
         plan.ops.extend(more);

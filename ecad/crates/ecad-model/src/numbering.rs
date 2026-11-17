@@ -997,7 +997,7 @@ mod tests {
                     style: style.clone(),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: DefinitionId(9),
-                        placement: Placement { origin: Pt::new(*x, *y), rotation: 0.0, mirror: false, scale: 1.0 },
+                        placement: Placement { origin: Pt::new(*x, *y), rotation: crate::units::Radians(0.0), mirror: false, scale: 1.0 },
                     }),
                 },
             );

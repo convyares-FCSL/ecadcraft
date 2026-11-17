@@ -1,5 +1,6 @@
 //! Small geometry value types owned by the model (no CADCraft types, principle P10).
 
+use crate::units::Radians;
 use serde::{Deserialize, Serialize};
 
 /// A point on a page, in drawing units.
@@ -37,14 +38,14 @@ impl Pt {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Placement {
     pub origin: Pt,
-    pub rotation: f64,
+    pub rotation: Radians,
     pub mirror: bool,
     pub scale: f64,
 }
 
 impl Default for Placement {
     fn default() -> Self {
-        Self { origin: Pt::default(), rotation: 0.0, mirror: false, scale: 1.0 }
+        Self { origin: Pt::default(), rotation: Radians(0.0), mirror: false, scale: 1.0 }
     }
 }
 

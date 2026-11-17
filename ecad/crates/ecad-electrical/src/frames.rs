@@ -301,7 +301,11 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         // look and its texts' styles).
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
         // Brief 054: a page type's sheet, frame, title block or zones.
-        Op::SetStyle { catalogue, .. } => catalogue == "frame" || catalogue == "text" || catalogue == crate::styles::page::WORD,
+        Op::SetStyle { catalogue, .. } => {
+            *catalogue == ecad_model::StyleCatalogue::Frame
+                || *catalogue == ecad_model::StyleCatalogue::Text
+                || *catalogue == ecad_model::StyleCatalogue::Page
+        }
         // Review of #110, 2: switching one standard for another may change its frame records and
         // its `print.frame.style`.
         Op::SetStandard { before, after } => before != after,

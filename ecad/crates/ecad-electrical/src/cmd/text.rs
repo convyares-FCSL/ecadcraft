@@ -222,11 +222,11 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
 /// One project-level `SetStyle` per style whose record changes (brief 050a).
 fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
     for (id, fields) in style {
-        let before = ecad_model::style::record(doc, StyleLayer::Project, "text", id).cloned();
+        let before = ecad_model::style::record(doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, id).cloned();
         let rec = crate::styles::with_fields(before.as_ref(), None, fields);
         let after = (!rec.name.is_empty() || !rec.fields.is_empty() || !id.is_builtin()).then_some(rec);
         if after != before {
-            ops.push(Op::SetStyle { layer: StyleLayer::Project, catalogue: "text".into(), id: id.clone(), before, after });
+            ops.push(Op::SetStyle { layer: StyleLayer::Project, catalogue: ecad_model::StyleCatalogue::Text, id: id.clone(), before, after });
         }
     }
 }

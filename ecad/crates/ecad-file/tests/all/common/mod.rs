@@ -74,7 +74,7 @@ impl Fixture {
                     style: style(self.layer),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: def,
-                        placement: Placement { origin: at, rotation, mirror: false, scale: 1.0 },
+                        placement: Placement { origin: at, rotation: ecad_model::units::Radians(rotation), mirror: false, scale: 1.0 },
                     }),
                 },
             },
@@ -146,7 +146,7 @@ pub fn fixture() -> Fixture {
                 kind: ItemKind::Primitive(Primitive::Text {
                     at: Pt::new(-2.5, 1e21),
                     height: 2.5,
-                    rotation: std::f64::consts::FRAC_PI_2,
+                    rotation: ecad_model::units::Radians(std::f64::consts::FRAC_PI_2),
                     value: "K1 \"quoted\" \\ tab\t ünï 😀".into(),
                     halign: Default::default(),
                     valign: Default::default(),
