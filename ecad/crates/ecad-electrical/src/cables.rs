@@ -187,10 +187,6 @@ pub fn clip(t: &str) -> String {
     ecad_model::text::clip(t, MAX_ECHO)
 }
 
-/// A character a value never holds (tester 059a, rule 7): the one rule in `ecad_model::words`.
-/// Kept for the cable commands until they take `Text<N>` (design 072 §10).
-pub use ecad_model::words::is_hidden;
-
 /// Shortest and longest cable length stored, in metres.
 pub const MIN_LENGTH: f64 = 0.1;
 

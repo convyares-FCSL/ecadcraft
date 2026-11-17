@@ -58,6 +58,17 @@ pub fn check(text: &str, max: usize) -> Result<(), TextError> {
     checked(text, max, false).map(|_| ())
 }
 
+/// Whether `text` holds a hidden character (a control, invisible or bidi character): the check for
+/// a value that is not yet a [`Text`].
+pub fn has_hidden(text: &str) -> bool {
+    text.chars().any(is_hidden)
+}
+
+/// `text` without its hidden characters.
+pub fn strip_hidden(text: &str) -> String {
+    text.chars().filter(|c| !is_hidden(*c)).collect()
+}
+
 /// `text` without its hidden characters, cut to `max` characters with `…` when cut: a value
 /// echoed in a message.
 pub fn clip(text: &str, max: usize) -> String {

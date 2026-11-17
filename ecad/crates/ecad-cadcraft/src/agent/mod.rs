@@ -48,20 +48,11 @@ pub fn not_offered(name: &str) -> String {
     format!("unknown tool `{name}`.{why} `tools/list` shows the tools this server offers.")
 }
 
-/// Characters that change how text is shown without being visible: bidirectional overrides and
-/// isolates, zero-width spaces and joiners, and the byte-order mark. An author name never holds
-/// them, so a name cannot pose as another.
-fn invisible(c: char) -> bool {
-    matches!(
-        c,
-        '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'
-    )
-}
-
-/// An author name as recorded: control, bidirectional and zero-width characters dropped, spaces
-/// trimmed, at most [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
+/// An author name as recorded: hidden characters (control, bidirectional, zero-width: the one
+/// rule in `ecad_model::words`) dropped, so a name cannot pose as another; spaces trimmed,
+/// at most [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
 pub fn agent_name(given: &str) -> String {
-    let s: String = given.chars().filter(|c| !c.is_control() && !invisible(*c)).take(MAX_AGENT_NAME).collect();
+    let s: String = ecad_model::text::strip_hidden(given).chars().take(MAX_AGENT_NAME).collect();
     let s = s.trim();
     if s.is_empty() { UNNAMED_AGENT.to_string() } else { s.to_string() }
 }
