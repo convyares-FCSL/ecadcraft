@@ -54,7 +54,6 @@ const UNTYPED: &[&str] = &[
     "agentaccess",
     "canvassheet",
     "setdefault",
-    "contcaption",
     "titleblockimport",
 ];
 
@@ -1514,4 +1513,29 @@ fn the_typed_level_commands_still_work() {
     assert_eq!(clear["changed"], json!(true), "{clear}");
     let none = h.run("termlabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
     assert_eq!(none, json!({"changed": false, "message": "Nothing to change."}));
+}
+
+/// Input refusals and rule words of `contcaption`.
+#[test]
+fn contcaption_refuses_input_uniformly_and_keeps_its_rule_words() {
+    let input: &[(Value, &str)] = &[
+        (json!({"caption": "X"}), "`continuations` (list of hex ids) is required"),
+        (json!({"continuations": ["1"]}), "`caption` (text, or null) is required"),
+        (json!({"continuations": ["1"], "caption": 5}), "`caption` must be text, or null"),
+        (json!({"continuations": "1", "caption": "X"}), "`continuations` must be a list of hex ids"),
+    ];
+    let mut h = H::new(7066);
+    for (params, says) in input {
+        assert_eq!(h.run("contcaption", params.clone()).err().as_deref(), Some(*says), "{params}");
+    }
+    let rules: &[(Value, &str)] = &[
+        (json!({"continuations": [], "caption": "X"}), "Name at least one continuation arrow in `continuations`."),
+        (json!({"continuations": ["1"], "caption": "A\nB"}), ecad_cadcraft::continuations::CAPTION_RULE),
+    ];
+    for (params, says) in rules {
+        let e = h.run("contcaption", params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{params}: {e}");
+    }
+    let schema = schema_of("contcaption").unwrap_or(Value::Null);
+    assert_eq!(schema["required"], json!(["continuations", "caption"]), "{schema}");
 }
