@@ -119,6 +119,8 @@ fn every_op_ledger() -> Ledger {
     let cable_v = Cable { members: vec![CableMember { conductor: wire, core: None }], ..Cable::default() };
     let folder: ecad_model::FolderId = ids.fresh();
     let folder_v = Folder { name: "F".into(), parent: None };
+    let route: ecad_model::RouteId = ids.fresh();
+    let route_v = ecad_model::Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(9.0, 0.0)], [ecad_model::RouteEnd::Free; 2]);
     ledger
         .commit(
             Author::User,
@@ -137,6 +139,7 @@ fn every_op_ledger() -> Ledger {
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
+                Op::AddRoute { id: route, route: route_v.clone() },
             ],
         )
         .unwrap();
@@ -169,6 +172,13 @@ fn every_op_ledger() -> Ledger {
         Op::DeleteWire { id: wire, conductor: wire_v.clone() },
         Op::ModifyWire { id: wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
         Op::AttachEnd { conductor: wire2, end: End::B, before: None, after: Some(term) },
+        Op::AddRoute { id: ids.fresh(), route: route_v.clone() },
+        Op::ModifyRoute {
+            id: route,
+            before: route_v.clone(),
+            after: ecad_model::Route { points: vec![Pt::new(0.0, 0.0), Pt::new(0.0, 9.0)], ..route_v.clone() },
+        },
+        Op::RemoveRoute { id: route, route: route_v.clone() },
         Op::CreateCable { id: ids.fresh(), cable: cable_v.clone() },
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
         Op::AddCableMember { cable, index: 1, member: CableMember { conductor: wire2, core: Some("2".into()) } },

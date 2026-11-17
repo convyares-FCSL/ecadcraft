@@ -57,3 +57,44 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
     .unwrap();
     assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()));
 }
+
+#[test]
+fn routes_and_their_ops_are_shown_raw_and_readable() {
+    use ecad_model::{PageId, Pt, Route, RouteEnd, RouteId};
+    let dir = TempDir::new("072d-route");
+    let mut l = history();
+    let page: PageId = *l.document().page_order.first().unwrap();
+    let mut ids = IdAllocator::seeded(73);
+    let (r1, r2): (RouteId, RouteId) = (ids.fresh(), ids.fresh());
+    let a = Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Free, RouteEnd::Free]);
+    let tee = Route::new(page, vec![Pt::new(20.0, 30.0), Pt::new(20.0, 0.0)], [RouteEnd::Free, RouteEnd::On { route: r1, at: Pt::new(20.0, 0.0) }]);
+    l.commit(Author::User, "draw", vec![Op::AddRoute { id: r1, route: a.clone() }, Op::AddRoute { id: r2, route: tee }]).unwrap();
+    let mut b = a.clone();
+    b.points.insert(1, Pt::new(10.0, -5.0));
+    l.commit(Author::User, "move", vec![Op::ModifyRoute { id: r1, before: a, after: b }]).unwrap();
+    let path = written(&dir, &l);
+
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "2"]).unwrap();
+    for want in ["AddRoute", "ModifyRoute", "on"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let keys: Vec<String> = rows.iter().rev().take(2).filter_map(|r| r["key"].as_str().map(str::to_string)).collect();
+    let mut text = String::new();
+    for key in &keys {
+        let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+        text.push_str(&readable["ok"]["decoded"].to_string());
+        let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+        assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row of {key}");
+    }
+    for want in ["AddRoute", "ModifyRoute", "points", "ends", "free"] {
+        assert!(text.contains(want), "{want} in the readable records: {text}");
+    }
+    // The snapshot keeps the routes in the page's chunk.
+    let summary = ask(s, serde_json::json!({"op": "summary"}));
+    assert!(summary.get("ok").is_some(), "{summary}");
+}

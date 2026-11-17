@@ -90,6 +90,8 @@ pub(crate) struct Base {
     cable_v: Cable,
     pub(crate) folder: ecad_model::FolderId,
     pub(crate) folder_v: Folder,
+    route: ecad_model::RouteId,
+    route_v: ecad_model::Route,
 }
 
 pub(crate) fn base() -> Base {
@@ -142,6 +144,9 @@ pub(crate) fn base() -> Base {
     let cable_v = Cable { members: vec![CableMember { conductor: wire, core: None }], ..Cable::default() };
     let folder = ids.fresh();
     let folder_v = Folder { name: "F".into(), parent: None };
+    let route = ids.fresh();
+    let route_v =
+        ecad_model::Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(9.0, 0.0)], [ecad_model::RouteEnd::Point(term), ecad_model::RouteEnd::Free]);
     ledger
         .commit(
             Author::User,
@@ -160,6 +165,7 @@ pub(crate) fn base() -> Base {
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
+                Op::AddRoute { id: route, route: route_v.clone() },
             ],
         )
         .unwrap();
@@ -191,6 +197,8 @@ pub(crate) fn base() -> Base {
         cable_v,
         folder,
         folder_v,
+        route,
+        route_v,
     }
 }
 
@@ -235,6 +243,13 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::DeleteWire { id: b.wire, conductor: b.wire_v.clone() },
         Op::ModifyWire { id: b.wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
         Op::AttachEnd { conductor: b.wire2, end: End::B, before: None, after: Some(b.term) },
+        Op::AddRoute { id: b.ids.fresh(), route: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() } },
+        Op::ModifyRoute {
+            id: b.route,
+            before: b.route_v.clone(),
+            after: ecad_model::Route { points: vec![Pt::new(0.0, 0.0), Pt::new(0.0, 9.0)], ..b.route_v.clone() },
+        },
+        Op::RemoveRoute { id: b.route, route: b.route_v.clone() },
         Op::CreateCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: Some("2".into()) } },
@@ -294,6 +309,14 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::ModifyWire { id: missing_conductor, before: Wire::default(), after: Wire::default() },
         Op::AttachEnd { conductor: b.wire, end: End::A, before: None, after: Some(b.term) },
         Op::AttachEnd { conductor: missing_conductor, end: End::A, before: None, after: Some(b.term) },
+        Op::AddRoute { id: b.route, route: b.route_v.clone() },
+        Op::AddRoute { id: b.ids.fresh(), route: ecad_model::Route { points: Vec::new(), ..b.route_v.clone() } },
+        Op::RemoveRoute { id: b.ids.fresh(), route: b.route_v.clone() },
+        Op::ModifyRoute {
+            id: b.route,
+            before: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() },
+            after: b.route_v.clone(),
+        },
         Op::CreateCable { id: b.cable, cable: Cable::default() },
         Op::DeleteCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 5, member: CableMember { conductor: b.wire2, core: None } },
@@ -403,6 +426,12 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     let ops = vec![
         Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
         Op::AttachEnd { conductor: b.wire, end: End::A, before: Some(b.term), after: None },
+        // The route landing on it is freed too (design 072 F31).
+        Op::ModifyRoute {
+            id: b.route,
+            before: b.route_v.clone(),
+            after: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() },
+        },
     ];
     b.ledger.commit(Author::User, "detach and delete", ops).unwrap();
     assert!(b.ledger.document().terminals.is_empty());

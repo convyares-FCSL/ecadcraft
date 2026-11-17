@@ -38,6 +38,9 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::AttachEnd { conductor, .. } => {
                 t.wires.insert(*conductor);
             }
+            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
+                t.routes.insert(*id);
+            }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 t.cables.insert(*id);
             }

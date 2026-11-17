@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId, WireId,
+    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, StandardId, TerminalId, TxId, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -196,6 +196,25 @@ pub enum Subject {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
+    Route(RouteId),
+}
+
+/// A route (design 072 F31): a line drawn on a page and what its ends land on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Route {
+    pub page: PageId,
+    pub points: Vec<Pt>,
+    pub ends: [RouteEnd; 2],
+}
+
+/// What one end of a route lands on.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum RouteEnd {
+    Point(TerminalId),
+    On { route: RouteId, at: Pt },
+    Free,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -749,6 +768,20 @@ pub enum Op {
         before: Option<TerminalId>,
         after: Option<TerminalId>,
     },
+    /// Design 072 F31.
+    AddRoute {
+        id: RouteId,
+        route: Route,
+    },
+    RemoveRoute {
+        id: RouteId,
+        route: Route,
+    },
+    ModifyRoute {
+        id: RouteId,
+        before: Route,
+        after: Route,
+    },
     CreateCable {
         id: CableId,
         cable: Cable,
@@ -996,6 +1029,7 @@ impl From<&m::Representation> for Representation {
                 m::Subject::Device(c) => Subject::Device(c),
                 m::Subject::Wire(c) => Subject::Wire(c),
                 m::Subject::Cable(c) => Subject::Cable(c),
+                m::Subject::Route(c) => Subject::Route(c),
             },
             page: r.page,
             form: match r.form {
@@ -1028,6 +1062,28 @@ impl From<&m::Wire> for Wire {
             load: c.load,
             display: c.display.clone(),
         }
+    }
+}
+
+impl From<&m::Route> for Route {
+    fn from(r: &m::Route) -> Self {
+        let end = |e: m::RouteEnd| match e {
+            m::RouteEnd::Point(t) => RouteEnd::Point(t),
+            m::RouteEnd::On { route, at } => RouteEnd::On { route, at: pt(at) },
+            m::RouteEnd::Free => RouteEnd::Free,
+        };
+        Route { page: r.page, points: r.points.iter().map(|p| pt(*p)).collect(), ends: r.ends.map(end) }
+    }
+}
+
+impl From<Route> for m::Route {
+    fn from(r: Route) -> Self {
+        let end = |e: RouteEnd| match e {
+            RouteEnd::Point(t) => m::RouteEnd::Point(t),
+            RouteEnd::On { route, at } => m::RouteEnd::On { route, at: mpt(at) },
+            RouteEnd::Free => m::RouteEnd::Free,
+        };
+        m::Route { page: r.page, points: r.points.into_iter().map(mpt).collect(), ends: r.ends.map(end) }
     }
 }
 
@@ -1148,6 +1204,9 @@ impl From<&m::Op> for Op {
             m::Op::AttachEnd { conductor, end: e, before, after } => {
                 Op::AttachEnd { conductor: *conductor, end: end(*e), before: *before, after: *after }
             }
+            m::Op::AddRoute { id, route } => Op::AddRoute { id: *id, route: route.into() },
+            m::Op::RemoveRoute { id, route } => Op::RemoveRoute { id: *id, route: route.into() },
+            m::Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id: *id, before: before.into(), after: after.into() },
             m::Op::CreateCable { id, cable } => Op::CreateCable { id: *id, cable: cable.into() },
             m::Op::DeleteCable { id, cable } => Op::DeleteCable { id: *id, cable: cable.into() },
             m::Op::AddCableMember { cable, index, member } => Op::AddCableMember { cable: *cable, index: ix(*index), member: member.into() },
@@ -1278,6 +1337,7 @@ impl From<Representation> for m::Representation {
                 Subject::Device(c) => m::Subject::Device(c),
                 Subject::Wire(c) => m::Subject::Wire(c),
                 Subject::Cable(c) => m::Subject::Cable(c),
+                Subject::Route(c) => m::Subject::Route(c),
             },
             page: r.page,
             form: match r.form {
@@ -1404,6 +1464,9 @@ impl TryFrom<Op> for m::Op {
             Op::DeleteWire { id, conductor } => m::Op::DeleteWire { id, conductor: conductor.into() },
             Op::ModifyWire { id, before, after } => m::Op::ModifyWire { id, before: before.into(), after: after.into() },
             Op::AttachEnd { conductor, end, before, after } => m::Op::AttachEnd { conductor, end: mend(end), before, after },
+            Op::AddRoute { id, route } => m::Op::AddRoute { id, route: route.into() },
+            Op::RemoveRoute { id, route } => m::Op::RemoveRoute { id, route: route.into() },
+            Op::ModifyRoute { id, before, after } => m::Op::ModifyRoute { id, before: before.into(), after: after.into() },
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },
             Op::AddCableMember { cable, index: i, member } => m::Op::AddCableMember { cable, index: index(i)?, member: member.into() },

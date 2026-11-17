@@ -35,6 +35,7 @@
 //! | I19 | The folder order lists each folder exactly once (brief 019) | folders, folder order | any folder added or removed (whole order, which is short) |
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
+//! | I22 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal or on a touched route |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -56,7 +57,7 @@ use crate::doc::{
 };
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
 
@@ -77,6 +78,8 @@ pub struct Touched {
     pub representations: BTreeSet<RepresentationId>,
     pub wires: BTreeSet<WireId>,
     pub cables: BTreeSet<CableId>,
+    /// Routes drawn, removed or changed (design 072 F31).
+    pub routes: BTreeSet<RouteId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
     pub folder_order: bool,
@@ -132,6 +135,9 @@ impl Touched {
             }
             Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
                 self.cables.insert(*id);
+            }
+            Effect::Route { id, .. } => {
+                self.routes.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
                 ObjectRef::Device(id) => {
@@ -200,6 +206,9 @@ impl Document {
         }
         for (id, c) in &self.cables {
             self.check_cable(*id, c)?;
+        }
+        for (id, r) in &self.routes {
+            self.check_route(*id, r)?;
         }
         self.check_folder_order()?;
         for id in self.folders.keys() {
@@ -292,7 +301,8 @@ impl Document {
         let mut reps = touched.representations.clone();
         let subjects = (touched.devices.iter().map(|c| Subject::Device(*c)))
             .chain(touched.wires.iter().map(|c| Subject::Wire(*c)))
-            .chain(touched.cables.iter().map(|c| Subject::Cable(*c)));
+            .chain(touched.cables.iter().map(|c| Subject::Cable(*c)))
+            .chain(touched.routes.iter().map(|c| Subject::Route(*c)));
         for s in subjects {
             reps.extend(referrers(&ix.subject_reps, &s));
         }
@@ -335,6 +345,22 @@ impl Document {
         for id in &cables {
             if let Some(c) = self.cables.get(id) {
                 self.check_cable(*id, c)?;
+            }
+        }
+
+        let mut routes = touched.routes.clone();
+        for p in &touched.pages {
+            routes.extend(referrers(&ix.page_routes, p));
+        }
+        for t in &touched.terminals {
+            routes.extend(referrers(&ix.terminal_routes, t));
+        }
+        for r in &touched.routes {
+            routes.extend(referrers(&ix.route_tees, r));
+        }
+        for id in &routes {
+            if let Some(r) = self.routes.get(id) {
+                self.check_route(*id, r)?;
             }
         }
 
@@ -448,12 +474,36 @@ impl Document {
         Ok(())
     }
 
+    /// I22: a route is well formed, on an existing page, and lands on existing connection points
+    /// and on existing routes of its own page.
+    fn check_route(&self, id: RouteId, r: &crate::route::Route) -> Result<()> {
+        if let Err(e) = r.check(id) {
+            return bad(format!("route {id}: {e}"));
+        }
+        if !self.pages.contains_key(&r.page) {
+            return bad(format!("route {id} is on a missing page"));
+        }
+        for e in r.ends {
+            match e {
+                crate::route::RouteEnd::Point(t) if !self.terminals.contains_key(&t) => {
+                    return bad(format!("route {id} lands on a missing connection point {t}"));
+                }
+                crate::route::RouteEnd::On { route, .. } if self.routes.get(&route).is_none_or(|o| o.page != r.page) => {
+                    return bad(format!("route {id} lands on route {route}, which is not on its page"));
+                }
+                crate::route::RouteEnd::Point(_) | crate::route::RouteEnd::On { .. } | crate::route::RouteEnd::Free => {}
+            }
+        }
+        Ok(())
+    }
+
     /// I10 to I16. `doc05` is called for each listed item, in order, and decides I13.
     fn check_representation(&self, id: RepresentationId, r: &Representation, mut doc05: impl FnMut(ItemId) -> Result<()>) -> Result<()> {
         let subject_exists = match r.subject {
             Subject::Device(c) => self.devices.contains_key(&c),
             Subject::Wire(c) => self.wires.contains_key(&c),
             Subject::Cable(c) => self.cables.contains_key(&c),
+            Subject::Route(c) => self.routes.contains_key(&c),
         };
         if !subject_exists {
             return bad(format!("representation {id} depicts a missing subject"));

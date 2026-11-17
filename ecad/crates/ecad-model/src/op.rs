@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::doc::{Cable, CableMember, Definition, Device, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::Delta;
+use crate::route::Route;
 use crate::style::{Standard, StandardHeader, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
@@ -132,6 +133,21 @@ pub enum Op {
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
+    },
+    /// A route drawn (design 072 F31).
+    AddRoute {
+        id: RouteId,
+        route: Route,
+    },
+    RemoveRoute {
+        id: RouteId,
+        route: Route,
+    },
+    /// A route redrawn or its ends moved, the whole struct recorded.
+    ModifyRoute {
+        id: RouteId,
+        before: Route,
+        after: Route,
     },
     CreateCable {
         id: CableId,
@@ -265,6 +281,9 @@ impl Op {
             Op::DeleteWire { id, conductor } => Op::CreateWire { id, conductor },
             Op::ModifyWire { id, before, after } => Op::ModifyWire { id, before: after, after: before },
             Op::AttachEnd { conductor, end, before, after } => Op::AttachEnd { conductor, end, before: after, after: before },
+            Op::AddRoute { id, route } => Op::RemoveRoute { id, route },
+            Op::RemoveRoute { id, route } => Op::AddRoute { id, route },
+            Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
             Op::AddCableMember { cable, index, member } => Op::RemoveCableMember { cable, index, member },
@@ -472,6 +491,26 @@ impl Op {
                 c.set_end(*end, *after);
                 doc.index.conductor_end(*conductor, *end, current, Delta::Remove);
                 doc.index.conductor_end(*conductor, *end, *after, Delta::Add);
+            }
+            Op::AddRoute { id, route } => {
+                absent(&doc.routes, *id, "route")?;
+                route.check(*id).map_err(|e| pre(format!("route {id}: {e}")))?;
+                doc.index.route(*id, route, Delta::Add);
+                doc.routes.insert(*id, route.clone());
+            }
+            Op::RemoveRoute { id, route } => {
+                holds(&doc.routes, *id, route, "route", checked)?;
+                if let Some(old) = doc.routes.remove(id) {
+                    doc.index.route(*id, &old, Delta::Remove);
+                }
+            }
+            Op::ModifyRoute { id, before, after } => {
+                holds(&doc.routes, *id, before, "route", checked)?;
+                after.check(*id).map_err(|e| pre(format!("route {id}: {e}")))?;
+                if let Some(old) = doc.routes.insert(*id, after.clone()) {
+                    doc.index.route(*id, &old, Delta::Remove);
+                }
+                doc.index.route(*id, after, Delta::Add);
             }
             Op::CreateCable { id, cable } => {
                 absent(&doc.cables, *id, "cable")?;
@@ -688,6 +727,9 @@ impl Op {
             Op::DeleteWire { .. } => "DeleteWire",
             Op::ModifyWire { .. } => "ModifyWire",
             Op::AttachEnd { .. } => "AttachEnd",
+            Op::AddRoute { .. } => "AddRoute",
+            Op::RemoveRoute { .. } => "RemoveRoute",
+            Op::ModifyRoute { .. } => "ModifyRoute",
             Op::CreateCable { .. } => "CreateCable",
             Op::DeleteCable { .. } => "DeleteCable",
             Op::AddCableMember { .. } => "AddCableMember",

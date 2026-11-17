@@ -1470,7 +1470,7 @@ impl RefIndex {
                 // Brief 049: an arrow's name group.
                 out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
             }
-            Subject::Wire(_) => {}
+            Subject::Wire(_) | Subject::Route(_) => {}
         };
         for op in ops {
             match op {
@@ -1638,7 +1638,7 @@ impl Scope {
                 s.devices.insert(c);
             }
             Subject::Wire(w) => ends(s, w),
-            Subject::Cable(_) => {}
+            Subject::Cable(_) | Subject::Route(_) => {}
         };
         let mut moved = false;
         for op in ops {

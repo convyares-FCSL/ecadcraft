@@ -489,6 +489,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 Subject::Device(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
                 Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, w, page),
+                Subject::Route(_) => return None,
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
                     let shown = match p.view_of(k) {

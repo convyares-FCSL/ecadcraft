@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::device::DeviceType;
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 pub use crate::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
@@ -276,6 +276,8 @@ pub enum Subject {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
+    /// A route's drawing (design 072 F31).
+    Route(RouteId),
 }
 
 /// The two representation forms (proposal §4.1).
@@ -623,6 +625,8 @@ pub struct Document {
     pub representations: BTreeMap<RepresentationId, Representation>,
     pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
+    /// The lines drawn on pages (design 072 F31).
+    pub routes: BTreeMap<RouteId, crate::route::Route>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
@@ -663,6 +667,8 @@ struct DocumentData {
     representations: BTreeMap<RepresentationId, Representation>,
     wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
+    #[serde(default)]
+    routes: BTreeMap<RouteId, crate::route::Route>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
@@ -690,6 +696,7 @@ impl From<DocumentData> for Document {
             representations,
             wires,
             cables,
+            routes,
             definitions,
             settings,
             versions,
@@ -709,6 +716,7 @@ impl From<DocumentData> for Document {
             representations,
             wires,
             cables,
+            routes,
             definitions,
             settings,
             versions,
@@ -738,6 +746,7 @@ impl PartialEq for Document {
             representations,
             wires,
             cables,
+            routes,
             definitions,
             settings,
             versions,
@@ -758,6 +767,7 @@ impl PartialEq for Document {
             && *representations == other.representations
             && *wires == other.wires
             && *cables == other.cables
+            && *routes == other.routes
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions

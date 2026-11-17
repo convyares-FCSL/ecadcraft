@@ -163,6 +163,7 @@ fn label_of(doc: &Document, s: Subject) -> String {
         Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| "untagged device".into()),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into()),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
+        Subject::Route(r) => doc.routes.get(&r).map_or_else(|| "line".into(), |x| format!("line on page {}", x.page.short())),
     }
 }
 
@@ -188,6 +189,9 @@ fn index(doc: &Document) -> Vec<Value> {
     }
     for id in doc.cables.keys() {
         push("cable", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Cable(*id)));
+    }
+    for id in doc.routes.keys() {
+        push("route", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Route(*id)));
     }
     for (id, r) in &doc.representations {
         push("representation", format!("{:032x}", id.0), id.short(), format!("{} of {}", r.role, label_of(doc, r.subject)));

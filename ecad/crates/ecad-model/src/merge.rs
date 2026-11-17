@@ -39,9 +39,10 @@ use crate::diff;
 use crate::doc::{
     Cable, CableMember, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
 };
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
+use crate::route::{Route, RouteEnd};
 use crate::style::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 use crate::tag::{self, HighWater};
 
@@ -58,6 +59,8 @@ pub enum Obj {
     Item(ItemId),
     Wire(WireId),
     Cable(CableId),
+    /// A route (design 072 F31).
+    Route(RouteId),
     Project,
 }
 
@@ -75,6 +78,7 @@ impl Obj {
             Obj::Item(i) => i.hex(),
             Obj::Wire(i) => i.hex(),
             Obj::Cable(i) => i.hex(),
+            Obj::Route(i) => i.hex(),
             Obj::Project => "project".into(),
         }
     }
@@ -92,6 +96,7 @@ impl Obj {
             Obj::Item(_) => "drawing item",
             Obj::Wire(_) => "wire",
             Obj::Cable(_) => "cable",
+            Obj::Route(_) => "route",
             Obj::Project => "project",
         }
     }
@@ -134,6 +139,7 @@ impl Scope {
             + t.representations.len()
             + t.wires.len()
             + t.cables.len()
+            + t.routes.len()
             + t.definitions.len()
             + t.folders.len()
             + usize::from(self.project)
@@ -281,6 +287,8 @@ pub struct Inputs<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Use {
     End(End),
+    /// A route's end (0 or 1) lands on it.
+    RouteEnd(usize),
     ConnectionPoint,
     Member,
     PageFolder,
@@ -494,6 +502,10 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(n) => format!("Cable {n}"),
             None => format!("Cable {}", c.short()),
         },
+        Obj::Route(r) => match docs.iter().find_map(|d| d.routes.get(&r)) {
+            Some(x) => format!("Line on {}", page_of(x.page).to_lowercase()),
+            None => format!("Line {}", r.short()),
+        },
         Obj::Page(p) => {
             let title = docs.iter().find_map(|d| d.pages.get(&p)).map(|p| p.title.clone()).unwrap_or_default();
             if title.is_empty() { page_of(p) } else { format!("{} \"{title}\"", page_of(p)) }
@@ -507,6 +519,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
                     Subject::Device(c) => tag_of(c),
                     Subject::Wire(c) => name_of(docs, Obj::Wire(c)),
                     Subject::Cable(c) => name_of(docs, Obj::Cable(c)),
+                    Subject::Route(c) => name_of(docs, Obj::Route(c)),
                 };
                 format!("{subject} symbol on {}", page_of(rep.page).to_lowercase())
             }
@@ -529,6 +542,7 @@ fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
         Obj::Device(c) => doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).next(),
         Obj::Wire(c) => doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page).next(),
         Obj::Cable(c) => doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page).next(),
+        Obj::Route(r) => doc.routes.get(&r).map(|r| r.page),
         Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, Obj::Device(t.component))),
         _ => None,
     }
@@ -549,6 +563,7 @@ fn scope_objects(scope: &Scope) -> Vec<Obj> {
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
     out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
+    out.extend(t.routes.iter().map(|x| Obj::Route(*x)));
     if scope.project {
         out.push(Obj::Project);
     }
@@ -568,6 +583,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
         Obj::Wire(i) => a.wires.get(&i) != b.wires.get(&i),
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
+        Obj::Route(i) => a.routes.get(&i) != b.routes.get(&i),
         Obj::Project => a.properties != b.properties || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles,
     }
 }
@@ -585,6 +601,7 @@ fn holds(doc: &Document, obj: Obj) -> bool {
         Obj::Item(i) => doc.items.contains_key(&i),
         Obj::Wire(i) => doc.wires.contains_key(&i),
         Obj::Cable(i) => doc.cables.contains_key(&i),
+        Obj::Route(i) => doc.routes.contains_key(&i),
         Obj::Project => true,
     }
 }
@@ -608,6 +625,7 @@ fn copy(to: &mut Document, from: &Document, obj: Obj) {
         Obj::Item(i) => put(&mut to.items, &from.items, i),
         Obj::Wire(i) => put(&mut to.wires, &from.wires, i),
         Obj::Cable(i) => put(&mut to.cables, &from.cables, i),
+        Obj::Route(i) => put(&mut to.routes, &from.routes, i),
         Obj::Project => {}
     }
 }
@@ -700,6 +718,16 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     members: merge_members(&a.members, &t.members, &s.members),
                 });
                 set(&mut m.cables, id, v);
+            }
+            Obj::Route(id) => {
+                let v = object(ctx, obj, &what, a.routes.get(&id), t.routes.get(&id), s.routes.get(&id), |ctx, a, t, s| Route {
+                    page: field(ctx, obj, "page", format!("{what} · page"), &a.page, &t.page, &s.page, &|p| name_of(&docs, Obj::Page(*p))),
+                    points: field(ctx, obj, "points", format!("{what} · drawn differently on both"), &a.points, &t.points, &s.points, &|p| {
+                        format!("{} points", p.len())
+                    }),
+                    ends: field(ctx, obj, "ends", format!("{what} · ends"), &a.ends, &t.ends, &s.ends, &|e| format!("{e:?}")),
+                });
+                set(&mut m.routes, id, v);
             }
             Obj::Page(id) => {
                 let v = object(ctx, obj, &what, a.pages.get(&id), t.pages.get(&id), s.pages.get(&id), |ctx, a, t, s| Page {
@@ -1115,6 +1143,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                         Subject::Device(c) => Obj::Device(c),
                         Subject::Wire(c) => Obj::Wire(c),
                         Subject::Cable(c) => Obj::Cable(c),
+                        Subject::Route(c) => Obj::Route(c),
                     },
                     Use::Whole,
                 ));
@@ -1147,6 +1176,18 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 out.push((Obj::Folder(p), Use::FolderParent));
             }
         }
+        Obj::Route(r) => {
+            if let Some(r) = m.routes.get(&r) {
+                out.push((Obj::Page(r.page), Use::Whole));
+                for (i, e) in r.ends.iter().enumerate() {
+                    match e {
+                        RouteEnd::Point(t) => out.push((Obj::Terminal(*t), Use::RouteEnd(i))),
+                        RouteEnd::On { route, .. } => out.push((Obj::Route(*route), Use::RouteEnd(i))),
+                        RouteEnd::Free => {}
+                    }
+                }
+            }
+        }
         Obj::Layer(_) | Obj::Definition(_) | Obj::Project => {}
     }
     out
@@ -1160,6 +1201,11 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         Obj::Terminal(t) => {
             all.extend(m.wires.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(k, _)| Obj::Wire(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.connection_points.contains_key(&t)).map(|(k, _)| Obj::Representation(*k)));
+            all.extend(m.routes.iter().filter(|(_, r)| r.ends.contains(&RouteEnd::Point(t))).map(|(k, _)| Obj::Route(*k)));
+        }
+        Obj::Route(x) => {
+            all.extend(m.routes.iter().filter(|(_, r)| r.ends.iter().any(|e| e.route() == Some(x))).map(|(k, _)| Obj::Route(*k)));
+            all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Route(x)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Device(c) => {
             all.extend(m.terminals.iter().filter(|(_, t)| t.component == c).map(|(k, _)| Obj::Terminal(*k)));
@@ -1179,6 +1225,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         Obj::Page(p) => {
             all.extend(m.items.iter().filter(|(_, x)| x.page == p).map(|(k, _)| Obj::Item(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.page == p).map(|(k, _)| Obj::Representation(*k)));
+            all.extend(m.routes.iter().filter(|(_, r)| r.page == p).map(|(k, _)| Obj::Route(*k)));
         }
         Obj::Layer(l) => all.extend(m.items.iter().filter(|(_, x)| x.style.layer == l).map(|(k, _)| Obj::Item(*k))),
         Obj::Definition(d) => {
@@ -1199,6 +1246,11 @@ fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj
         (Obj::Wire(c), Use::End(e)) => {
             if let Some(c) = m.wires.get_mut(&c) {
                 c.set_end(e, None);
+            }
+        }
+        (Obj::Route(r), Use::RouteEnd(i)) => {
+            if let Some(e) = m.routes.get_mut(&r).and_then(|r| r.ends.get_mut(i)) {
+                *e = RouteEnd::Free;
             }
         }
         (Obj::Representation(r), Use::ConnectionPoint) => {
@@ -1740,6 +1792,7 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
                 Subject::Device(c) => Obj::Device(c),
                 Subject::Wire(c) => Obj::Wire(c),
                 Subject::Cable(c) => Obj::Cable(c),
+                Subject::Route(c) => Obj::Route(c),
             };
             if objects.contains(&subject) && differs(a, s, subject) && holds(a, subject) == holds(a, shown_as) {
                 continue;
@@ -1976,6 +2029,9 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
                 }
                 Obj::Cable(i) => {
                     scope.cables.insert(i);
+                }
+                Obj::Route(i) => {
+                    scope.routes.insert(i);
                 }
                 Obj::Project => {}
             }

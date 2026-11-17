@@ -34,8 +34,8 @@ use std::sync::Arc;
 use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_inspect::Event;
 use ecad_model::{
-    CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject, TerminalId,
-    Transaction, TxId, TxKind, WireId,
+    CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, RouteId, Subject,
+    TerminalId, Transaction, TxId, TxKind, WireId,
 };
 use serde_json::{Value, json};
 
@@ -60,6 +60,8 @@ pub enum ObjectId {
     Representation(RepresentationId),
     Wire(WireId),
     Cable(CableId),
+    /// A route (design 072 F31).
+    Route(RouteId),
     Definition(DefinitionId),
     /// The project settings (one per project).
     Settings,
@@ -77,6 +79,7 @@ impl ObjectId {
             ObjectId::Representation(_) => "representation",
             ObjectId::Wire(_) => "conductor",
             ObjectId::Cable(_) => "cable",
+            ObjectId::Route(_) => "route",
             ObjectId::Definition(_) => "definition",
             ObjectId::Settings => "settings",
         }
@@ -93,6 +96,7 @@ impl ObjectId {
             ObjectId::Representation(i) => i.short(),
             ObjectId::Wire(i) => i.short(),
             ObjectId::Cable(i) => i.short(),
+            ObjectId::Route(i) => i.short(),
             ObjectId::Definition(i) => i.short(),
             ObjectId::Settings => "settings".into(),
         }
@@ -109,6 +113,7 @@ impl ObjectId {
             ObjectId::Representation(i) => i.hex(),
             ObjectId::Wire(i) => i.hex(),
             ObjectId::Cable(i) => i.hex(),
+            ObjectId::Route(i) => i.hex(),
             ObjectId::Definition(i) => i.hex(),
             ObjectId::Settings => String::new(),
         }
@@ -127,6 +132,7 @@ impl From<Subject> for ObjectId {
             Subject::Device(c) => ObjectId::Device(c),
             Subject::Wire(c) => ObjectId::Wire(c),
             Subject::Cable(c) => ObjectId::Cable(c),
+            Subject::Route(c) => ObjectId::Route(c),
         }
     }
 }
@@ -910,6 +916,9 @@ pub fn op_view(op: &Op) -> OpView {
         Op::DeleteWire { conductor, .. } => (val(conductor), None),
         Op::ModifyWire { before, after, .. } => (val(before), val(after)),
         Op::AttachEnd { end, before, after, .. } => (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after}))),
+        Op::AddRoute { route, .. } => (None, val(route)),
+        Op::RemoveRoute { route, .. } => (val(route), None),
+        Op::ModifyRoute { before, after, .. } => (val(before), val(after)),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
         Op::AddCableMember { index, member, .. } => (None, val(&json!({"index": index, "member": member}))),
@@ -995,6 +1004,15 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         Op::AttachEnd { conductor, before, after, .. } => {
             out.push(ObjectId::Wire(*conductor));
             out.extend(before.iter().chain(after.iter()).map(|t| ObjectId::Terminal(*t)));
+        }
+        Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
+            out.push(ObjectId::Route(*id));
+            out.push(ObjectId::Page(route.page));
+            out.extend(route.points_landed().map(ObjectId::Terminal));
+        }
+        Op::ModifyRoute { id, before, after } => {
+            out.push(ObjectId::Route(*id));
+            out.extend(before.points_landed().chain(after.points_landed()).map(ObjectId::Terminal));
         }
         Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
             out.push(ObjectId::Cable(*id));
@@ -1104,6 +1122,7 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
         ObjectId::Representation(i) => doc.representations.get(&i).and_then(val),
         ObjectId::Wire(i) => doc.wires.get(&i).and_then(val),
         ObjectId::Cable(i) => doc.cables.get(&i).and_then(val),
+        ObjectId::Route(i) => doc.routes.get(&i).and_then(val),
         ObjectId::Definition(i) => doc.definitions.get(&i).and_then(val),
         ObjectId::Settings => val(&doc.settings),
     }
@@ -1138,7 +1157,13 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Device(c) => {
             doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(i, _)| ObjectId::Terminal(*i)).chain(reps_of(Subject::Device(c))).collect()
         }
-        ObjectId::Terminal(t) => doc.wires.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| ObjectId::Wire(*i)).collect(),
+        ObjectId::Terminal(t) => doc
+            .wires
+            .iter()
+            .filter(|(_, c)| c.ends.contains(&Some(t)))
+            .map(|(i, _)| ObjectId::Wire(*i))
+            .chain(doc.routes.iter().filter(|(_, r)| r.points_landed().any(|p| p == t)).map(|(i, _)| ObjectId::Route(*i)))
+            .collect(),
         ObjectId::Wire(c) => doc
             .cables
             .iter()
@@ -1153,7 +1178,20 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .flat_map(|k| k.members.iter().map(|m| ObjectId::Wire(m.conductor)))
             .chain(reps_of(Subject::Cable(c)))
             .collect(),
-        ObjectId::Page(p) => doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect(),
+        ObjectId::Route(r) => doc
+            .routes
+            .iter()
+            .filter(|(_, x)| x.ends.iter().any(|e| e.route() == Some(r)))
+            .map(|(i, _)| ObjectId::Route(*i))
+            .chain(reps_of(Subject::Route(r)))
+            .collect(),
+        ObjectId::Page(p) => doc
+            .representations
+            .iter()
+            .filter(|(_, r)| r.page == p)
+            .map(|(i, _)| ObjectId::Representation(*i))
+            .chain(doc.routes.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Route(*i)))
+            .collect(),
         ObjectId::Representation(r) => match doc.representations.get(&r) {
             Some(rep) if crate::references::is_reference(rep) => {
                 let mut out: Vec<ObjectId> = vec![ObjectId::from(rep.subject)];
@@ -1177,6 +1215,7 @@ fn subject_label(doc: &Document, s: Subject) -> String {
         Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Route(r) => doc.routes.get(&r).map(|x| format!("line on {}", x.page.short())),
     };
     t.unwrap_or_else(|| format!("untagged {}", ObjectId::from(s).kind()))
 }
@@ -1205,6 +1244,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
             }
         }
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
+        ObjectId::Route(r) => subject_label(doc, Subject::Route(r)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
@@ -1231,6 +1271,7 @@ pub fn objects(doc: &Document) -> Vec<ObjectId> {
     out.extend(doc.terminals.keys().map(|i| ObjectId::Terminal(*i)));
     out.extend(doc.wires.keys().map(|i| ObjectId::Wire(*i)));
     out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));
+    out.extend(doc.routes.keys().map(|i| ObjectId::Route(*i)));
     out.extend(doc.representations.keys().map(|i| ObjectId::Representation(*i)));
     out.extend(doc.items.keys().map(|i| ObjectId::Item(*i)));
     out.extend(doc.definitions.keys().map(|i| ObjectId::Definition(*i)));

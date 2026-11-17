@@ -154,7 +154,7 @@ impl Scope {
                 Subject::Wire(c) => {
                     s.routes.insert(c);
                 }
-                Subject::Cable(_) => {}
+                Subject::Cable(_) | Subject::Route(_) => {}
             }
         };
         for op in ops {

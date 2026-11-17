@@ -905,6 +905,7 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
         Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
+        Some(Subject::Route(_)) => "A line".to_string(),
         None => "Part of the selection".to_string(),
     };
     format!("{what} is not plain geometry; Make symbol takes lines, arcs and text.")
