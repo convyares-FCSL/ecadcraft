@@ -4,7 +4,7 @@
 //! JSON forms on a small fixture of loose vertical wires.
 
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{ComponentId, ConductorId, TerminalId};
+use ecad_model::{ComponentId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -20,7 +20,7 @@ fn same_as_built(h: &mut H) {
 }
 
 /// Three loose vertical wires at x = 10, 20, 30 between `y0` and `y0 + 40`.
-fn wires(h: &mut H, y0: f64) -> Vec<ConductorId> {
+fn wires(h: &mut H, y0: f64) -> Vec<WireId> {
     (1..=3)
         .map(|i| {
             let x = 10.0 * f64::from(i);
@@ -131,11 +131,11 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     same_as_built(&mut h);
     // A fuse position on a wire: in and out on two nets.
     let mut h = H::new(0x0360_0004);
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(10.0, 0.0), (10.0, 80.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(10.0, 0.0), (10.0, 80.0)])})).unwrap(), "conductor");
     let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [20, 40]})).unwrap();
     let x1: ComponentId = id(&f, "strip");
     let t_in: TerminalId = id(&f["terminals"][0], "terminal");
-    let new: ConductorId = id(&f["terminals"][0], "new");
+    let new: WireId = id(&f["terminals"][0], "new");
     let doc = h.doc();
     let conn = doc.connectivity();
     assert_ne!(conn.net_of_conductor(w), conn.net_of_conductor(new), "the fuse breaks the net");
@@ -192,8 +192,8 @@ fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
     let ft = fence(&mut h, None, "Feedthrough", "1", 20.0);
     let x1: ComponentId = id(&ft, "strip");
     let f5: ComponentId = id(&h.run("place", json!({"symbol": "fuseterm", "at": [100, 100]})).unwrap(), "component");
-    let w1: ConductorId = id(&h.run("wire", json!({"points": pts(&[(100.0, 110.0), (100.0, 140.0)])})).unwrap(), "conductor");
-    let w2: ConductorId = id(&h.run("wire", json!({"points": pts(&[(100.0, 90.0), (100.0, 60.0)])})).unwrap(), "conductor");
+    let w1: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 110.0), (100.0, 140.0)])})).unwrap(), "conductor");
+    let w2: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 90.0), (100.0, 60.0)])})).unwrap(), "conductor");
     h.run("setprop", json!({"component": f5.hex(), "key": "rating", "value": "4A"})).unwrap();
     let nets_before = {
         let d = h.doc();
@@ -293,7 +293,7 @@ fn nothing_is_lost_silently() {
     assert_eq!(h.doc().components[&x1].properties.get("term_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
     same_as_built(&mut h);
     // A fixed wire number on a wire a fuse position splits: the out half's loss is reported.
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(100.0, 0.0), (100.0, 80.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 0.0), (100.0, 80.0)])})).unwrap(), "conductor");
     h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-07"})).unwrap();
     let f = h.run("terminals", json!({"type": "FUSE", "from": [90, 40], "to": [110, 40]})).unwrap();
     assert_eq!(f["dropped_wire_numbers"][0]["number"], "24V-07", "{f}");

@@ -5,7 +5,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::strips::Strips;
-use ecad_model::{Author, CableId, ComponentId, ConductorId, End, Op, PageId, TerminalId};
+use ecad_model::{Author, CableId, ComponentId, End, Op, PageId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -16,7 +16,7 @@ struct T {
     h: H,
     page: PageId,
     k1: ComponentId,
-    wires: [ConductorId; 4],
+    wires: [WireId; 4],
     cable: CableId,
     m1: ComponentId,
 }
@@ -49,7 +49,7 @@ fn fixture(seed: u64) -> T {
     for r in &routes {
         let v = h.run("wire", json!({"points": pts(r)})).unwrap();
         assert_eq!(v["attached"].as_array().unwrap().len(), 2, "{v}");
-        wires.push(id::<ConductorId>(&v, "conductor"));
+        wires.push(id::<WireId>(&v, "conductor"));
     }
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: CableId = id(&v, "cable");
@@ -89,12 +89,12 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["tag"], "-X01", "{v}");
     assert!(v["message"].as_str().unwrap().starts_with("Placed -X01:1 on wire"), "{v}");
-    let new: ConductorId = id(&v["split"], "new");
+    let new: WireId = id(&v["split"], "new");
     let x1: ComponentId = id(&v, "component");
     let term: TerminalId = id(&v["terminals"][0], "terminal");
     let doc = t.h.doc();
-    assert_eq!(doc.conductors[&t.wires[0]].end(End::B), Some(term));
-    assert_eq!(doc.conductors[&new].end(End::A), Some(term));
+    assert_eq!(doc.wires[&t.wires[0]].end(End::B), Some(term));
+    assert_eq!(doc.wires[&new].end(End::A), Some(term));
     let conn = doc.connectivity();
     assert_eq!(conn.net_of_conductor(t.wires[0]), conn.net_of_conductor(new), "one net");
     // The cable's slash crosses the second half, so it keeps the membership.
@@ -112,7 +112,7 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(row["inside"][0]["wire"], row["outside"][0]["wire"], "one wire number");
     t.h.cmdline("u");
     let after = t.h.doc();
-    assert_eq!(after.conductors, before.conductors);
+    assert_eq!(after.wires, before.wires);
     assert!(!after.components.contains_key(&x1));
     same_as_built(&mut t.h);
     // Refusals with a way forward.
@@ -143,7 +143,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let doc = t.h.doc();
     // The cable's members are the field halves (§3.1).
     for (i, x) in v["terminals"].as_array().unwrap().iter().enumerate() {
-        let new: ConductorId = id(x, "new");
+        let new: WireId = id(x, "new");
         assert!(doc.cables[&t.cable].members.iter().any(|m| m.conductor == new), "member {i}");
     }
     same_as_built(&mut t.h);
@@ -152,7 +152,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let b = t.h.run("bridge", json!({"from": terms[2].hex(), "to": terms[3].hex()})).unwrap();
     assert_eq!(t.h.head(), head + 1);
     assert_eq!(b["bridge"], true);
-    let bridge: ConductorId = id(&b, "conductor");
+    let bridge: WireId = id(&b, "conductor");
     let plan = strip_plan(&mut t.h);
     let rows = plan["strips"][0]["rows"].as_array().unwrap();
     assert_eq!(rows[2]["bridge_group"], json!(1), "{plan}");
@@ -181,7 +181,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     assert_eq!(r["to_devices"], json!(["-M01", "-S01"]), "{r}");
     // A fifth wire added to -W01 takes core 5.
     let w5 = t.h.run("wire", json!({"points": pts(&[(300.0, 200.0), (300.0, 50.0)])})).unwrap();
-    let w5: ConductorId = id(&w5, "conductor");
+    let w5: WireId = id(&w5, "conductor");
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": [w5.hex()]})).unwrap();
     let doc = t.h.doc();
     assert_eq!(doc.cables[&t.cable].members.iter().find(|m| m.conductor == w5).unwrap().core.as_deref(), Some("5"));
@@ -194,7 +194,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let mut more = Vec::new();
     for x in [310.0, 320.0, 330.0] {
         let w = t.h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 50.0)])})).unwrap();
-        more.push(id::<ConductorId>(&w, "conductor").hex());
+        more.push(id::<WireId>(&w, "conductor").hex());
     }
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": more})).unwrap();
     let checks = t.h.run("checks", json!({"kinds": ["too-many-cores"]})).unwrap();
@@ -230,7 +230,7 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+FIELD"})).unwrap();
     // A wire from -K01's coil top? Use a free wire from (330,175) to the lamp X1 (340, 70).
     let k = t.h.run("wire", json!({"points": pts(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)])})).unwrap();
-    let _w: ConductorId = id(&k, "conductor");
+    let _w: WireId = id(&k, "conductor");
     // Land -X01:5 on it inside +CP1.
     let x = t.h.run("place", json!({"symbol": "terminal", "at": [330, 170], "tag": "-X01"})).unwrap();
     assert_eq!(x["joined"], true, "{x}");

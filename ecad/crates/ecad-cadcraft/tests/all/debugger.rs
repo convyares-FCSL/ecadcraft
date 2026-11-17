@@ -94,18 +94,18 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     let Some(mapped @ Mapped::Item(item)) = sel.mapped else { panic!("the route is an ECAD item: {sel:?}") };
     let r = resolve(&snap.doc, mapped);
     assert_eq!(r.item, Some(item));
-    assert_eq!(r.subject, Some(Subject::Conductor(w)));
+    assert_eq!(r.subject, Some(Subject::Wire(w)));
     assert_eq!(r.terminals.len(), 2, "both attached terminals");
-    let conductor = debug::object_json(&snap.doc, ObjectId::Conductor(w)).unwrap();
+    let conductor = debug::object_json(&snap.doc, ObjectId::Wire(w)).unwrap();
     assert_eq!(conductor["ends"].as_array().unwrap().len(), 2);
 
     // → the transactions that touched them, with before/after values.
     let ids: BTreeSet<ObjectId> = r.ids.iter().copied().collect();
     let touching: Vec<u64> = panel.log.iter().filter(|t| touches(t, &ids)).map(|t| t.seq).collect();
-    let wire_seq = panel.log.iter().find(|t| t.ops.iter().any(|o| matches!(o, ecad_model::Op::CreateConductor { id, .. } if *id == w))).unwrap().seq;
+    let wire_seq = panel.log.iter().find(|t| t.ops.iter().any(|o| matches!(o, ecad_model::Op::CreateWire { id, .. } if *id == w))).unwrap().seq;
     assert!(touching.contains(&wire_seq), "{touching:?}");
     let attach = panel.tx(wire_seq).ops.iter().map(op_view).find(|v| v.name == "AttachEnd").expect("the wire transaction attaches its ends");
-    assert_eq!(attach.targets[0], ObjectId::Conductor(w));
+    assert_eq!(attach.targets[0], ObjectId::Wire(w));
     assert!(attach.before.as_ref().unwrap()["terminal"].is_null());
     assert!(attach.after.as_ref().unwrap()["terminal"].is_string());
 
@@ -331,8 +331,8 @@ fn relations_lead_from_a_definition_to_its_instances_and_from_a_terminal_to_its_
     let users = debug::used_by(&doc, ObjectId::Definition(def));
     assert!(users.contains(&ObjectId::Component(c2)));
     assert!(users.iter().any(|u| matches!(u, ObjectId::Item(_))), "the symbol instance");
-    let t = doc.conductors[&w].ends[0].unwrap();
-    assert_eq!(debug::used_by(&doc, ObjectId::Terminal(t)), vec![ObjectId::Conductor(w)]);
+    let t = doc.wires[&w].ends[0].unwrap();
+    assert_eq!(debug::used_by(&doc, ObjectId::Terminal(t)), vec![ObjectId::Wire(w)]);
     let of_c1 = debug::used_by(&doc, ObjectId::Component(c1));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Terminal(_))));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Representation(_))));

@@ -15,7 +15,8 @@ Code, file and command names may differ, as noted.
 **In code and files** the connection point is still `Terminal` / `TerminalId`, the op is
 `AddTerminal`, the command `addterminal`, and JSON parameters say `terminal`. They stay until the
 next major format version: op names are written in `.ecad` files. MCP command names stay as they
-are.
+are. A conductor is a `Wire` / `WireId` in code (design 072, F20), its ops `CreateWire` and
+`DeleteWire`, its record kind `wire`; command parameters still say `conductor`.
 
 ## Devices and what draws them
 

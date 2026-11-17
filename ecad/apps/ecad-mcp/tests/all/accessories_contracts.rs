@@ -57,7 +57,7 @@ fn accessory_and_jumper_commands_through_execute() {
     one(&mut c, "jumper", json!({"terminals": [terms[0], terms[2]]}), "link.1");
     let (_, ops) = last_by_agent(&mut c);
     assert!(
-        ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Conductor(_), key, .. } if key == "wire_number")),
+        ops.iter().any(|o| matches!(o, Op::ModifyWire { before, after, .. } if before.number != after.number)),
         "wire numbers in the link's transaction"
     );
     one(&mut c, "jumper", json!({"strip": strip, "positions": "2, 4", "skip": true}), "link.2");

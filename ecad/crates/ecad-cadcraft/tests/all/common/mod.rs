@@ -7,7 +7,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
 use ecad_cadcraft::{Mapped, PagesRef, Project, ProjectHandle};
 use ecad_model::derive::mismatches;
-use ecad_model::{ComponentId, ConductorId, Document, ItemKind, PageId, Pt, TerminalId};
+use ecad_model::{ComponentId, Document, ItemKind, PageId, Pt, TerminalId, WireId};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -161,13 +161,13 @@ impl H {
         out
     }
 
-    pub fn route_handle(&mut self, page: PageId, c: ConductorId) -> Handle {
+    pub fn route_handle(&mut self, page: PageId, c: WireId) -> Handle {
         let doc = self.doc();
         let (item, _) = ecad_model::derive::route_on_page(&doc, c, page).expect("route");
         self.handle_of(page, item)
     }
 
-    pub fn route_ends(&mut self, page: PageId, c: ConductorId) -> (Pt, Pt) {
+    pub fn route_ends(&mut self, page: PageId, c: WireId) -> (Pt, Pt) {
         let doc = self.doc();
         let (_, prim) = ecad_model::derive::route_on_page(&doc, c, page).expect("route");
         prim.path_ends().unwrap()
@@ -294,7 +294,7 @@ pub fn pts(v: &[(f64, f64)]) -> Value {
 }
 
 /// A small project: a drawn component with a terminal, a placed symbol, a wire between them.
-pub fn small_project(seed: u64) -> (H, ComponentId, ComponentId, ConductorId) {
+pub fn small_project(seed: u64) -> (H, ComponentId, ComponentId, WireId) {
     let mut h = H::new(seed);
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let first = h.first_page();
@@ -306,8 +306,8 @@ pub fn small_project(seed: u64) -> (H, ComponentId, ComponentId, ConductorId) {
     let doc = h.doc();
     let (rid, _) = doc.representations_of(ecad_model::Subject::Component(c2)).next().unwrap();
     let to = ecad_model::derive::terminal_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
-    assert!(doc.conductors.is_empty());
-    assert!(h.doc().conductors[&w].ends.iter().all(Option::is_some), "both ends attached");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
+    assert!(doc.wires.is_empty());
+    assert!(h.doc().wires[&w].ends.iter().all(Option::is_some), "both ends attached");
     (h, c1, c2, w)
 }

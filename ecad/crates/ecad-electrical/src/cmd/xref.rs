@@ -33,7 +33,7 @@ pub fn goto(
         Subject::Component(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
         Subject::Component(_) => "This symbol shows no reference: its device has no coil or no contacts.",
         Subject::Cable(_) => "this reference has no other end",
-        Subject::Conductor(_) => "That is not a reference.",
+        Subject::Wire(_) => "That is not a reference.",
     };
     if idx.member(source).is_none() {
         return Err(CmdError::refused(none));
@@ -64,7 +64,7 @@ pub fn goto(
             _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
         },
         Subject::Cable(k) => format!("the other end of cable {}", crate::cables::cable_title(doc, k)),
-        Subject::Conductor(_) => "the reference".into(),
+        Subject::Wire(_) => "the reference".into(),
     };
     let message = format!("{}, {what} ({place}).", crate::references::page_words(doc, tr.page).replacen("page", "Page", 1));
     Ok(Jump { page: tr.page, at, item: tr.items.first().copied(), target: t, message })

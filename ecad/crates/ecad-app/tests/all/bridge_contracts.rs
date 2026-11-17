@@ -156,7 +156,7 @@ pub(crate) fn log_len(h: &mut H) -> usize {
 pub(crate) fn conductors(h: &mut H) -> usize {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
-    p.read(&mut t.cad.session, |p, _| p.ledger.document().conductors.len()).unwrap()
+    p.read(&mut t.cad.session, |p, _| p.ledger.document().wires.len()).unwrap()
 }
 
 /// A person's edit, through the ECAD command field.

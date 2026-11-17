@@ -17,7 +17,7 @@ use common::{H, id};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::views::{self, FAN_REFUSED, FanOnPage, Settings, View};
 use ecad_cadcraft::{Mapped, Persistence, ProjectHandle};
-use ecad_model::{CableId, ConductorId, ItemId, PageId, Pt, Transaction};
+use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 50_05;
@@ -47,7 +47,7 @@ struct G {
     page: PageId,
     c1: CableId,
     slash: ItemId,
-    wires: [ConductorId; 3],
+    wires: [WireId; 3],
 }
 
 fn rectangle(h: &mut H, page: PageId, line: &str) -> Vec<Handle> {
@@ -64,9 +64,9 @@ fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     }
 }
 
-fn wire(h: &mut H, points: Value, tag: &str) -> ConductorId {
-    let c: ConductorId = id(&h.run("wire", json!({ "points": points })).unwrap(), "conductor");
-    h.run("setprop", json!({"conductor": c.hex(), "key": "tag", "value": tag})).unwrap();
+fn wire(h: &mut H, points: Value, tag: &str) -> WireId {
+    let c: WireId = id(&h.run("wire", json!({ "points": points })).unwrap(), "conductor");
+    h.run("wirenumber", json!({"conductor": c.hex(), "value": tag})).unwrap();
     c
 }
 
@@ -79,7 +79,7 @@ fn fixture() -> G {
     let wires =
         [wire(&mut h, json!([[0, 0], [60, 0]]), "W0"), wire(&mut h, json!([[0, 5], [60, 5]]), "W5"), wire(&mut h, json!([[0, 10], [60, 10]]), "W10")];
     let d = h.doc();
-    assert!(wires.iter().all(|w| d.conductors[w].ends.iter().all(Option::is_some)), "attached at both ends");
+    assert!(wires.iter().all(|w| d.wires[w].ends.iter().all(Option::is_some)), "attached at both ends");
     let r = h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap();
     h.run("zoom", json!({"mode": "window", "p1": [-20, -30], "p2": [80, 50]})).unwrap();
     G { h, page, c1: id(&r, "cable"), slash: id(&r, "item"), wires }
@@ -321,7 +321,7 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     assert_eq!(e, views::LAYER_RESERVED);
     // JSON forms act on IDs whatever the view.
     g.h.run("disconnect", json!({"conductor": g.wires[0].hex(), "end": "A"})).unwrap();
-    assert!(g.h.doc().conductors[&g.wires[0]].ends[0].is_none());
+    assert!(g.h.doc().wires[&g.wires[0]].ends[0].is_none());
     assert_eq!(g.h.head(), head + 1);
     g.h.run("u", Value::Null).unwrap();
     assert_eq!(g.h.head(), head + 2);
@@ -482,7 +482,7 @@ fn fans_of_many_shapes_draw_sensibly() {
     }
     // Different routes: one with bends, the reference drawn right to left.
     h.run("wire", json!({"points": [[0, 300], [60, 300]]})).unwrap();
-    let rl: ConductorId = id(&h.run("wire", json!({"points": [[60, 305], [0, 305]]})).unwrap(), "conductor");
+    let rl: WireId = id(&h.run("wire", json!({"points": [[60, 305], [0, 305]]})).unwrap(), "conductor");
     h.run("wire", json!({"points": [[0, 310], [30, 310], [30, 320], [60, 320]]})).unwrap();
     let odd: CableId = id(&h.run("cableslash", json!({"from": [10, 295], "to": [10, 315]})).unwrap(), "cable");
     assert_eq!(h.doc().cables[&odd].members[1].conductor, rl, "the right-to-left wire is the reference");
@@ -496,7 +496,7 @@ fn fans_of_many_shapes_draw_sensibly() {
         assert!(tails.iter().any(|t| t.last().is_some_and(|q| q.near(e, 1e-9))), "{e:?} in {tails:?}");
     }
     // A cable left with one wire is drawn traditional on the page (design 009 §4.1).
-    let members: Vec<ConductorId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
+    let members: Vec<WireId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
     h.run("ecaddelete", json!({"conductor": members[0].hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), FanOnPage::TooFew);
@@ -521,8 +521,8 @@ fn hostile_geometry_falls_back_to_traditional() {
     view(&mut h, big, "fan");
     h.check();
     // Two wires of no length, made one cable by their IDs.
-    let a: ConductorId = id(&h.run("wire", json!({"points": [[5, 5], [5, 5]]})).unwrap(), "conductor");
-    let b: ConductorId = id(&h.run("wire", json!({"points": [[6, 6], [6, 6]]})).unwrap(), "conductor");
+    let a: WireId = id(&h.run("wire", json!({"points": [[5, 5], [5, 5]]})).unwrap(), "conductor");
+    let b: WireId = id(&h.run("wire", json!({"points": [[6, 6], [6, 6]]})).unwrap(), "conductor");
     let k: CableId = id(&h.run("cableadd", json!({"conductors": [a.hex(), b.hex()]})).unwrap(), "cable");
     view(&mut h, k, "fan");
     let doc = h.doc();

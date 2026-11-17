@@ -109,12 +109,15 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let (k1b, _) = device(&mut ids, "-K1", &["A1"]);
     let (x1, x1t) = device(&mut ids, "-X1", &["3", "4"]);
     l.commit(Author::User, "Devices", [k1, k1b, x1].concat()).unwrap();
-    let wire = |ids: &mut IdAllocator, number: &str, a: TerminalId, b: TerminalId| -> (ConductorId, Op) {
-        let w: ConductorId = ids.fresh();
-        let mut props = ecad_model::doc::Properties::new();
-        props.insert("wire_number".into(), number.into());
-        props.insert("cross_section".into(), "1.5".into());
-        (w, Op::CreateConductor { id: w, conductor: Conductor { properties: props, ends: [Some(a), Some(b)] } })
+    let wire = |ids: &mut IdAllocator, number: &str, a: TerminalId, b: TerminalId| -> (WireId, Op) {
+        let w: WireId = ids.fresh();
+        let conductor = Wire {
+            ends: [Some(a), Some(b)],
+            number: ecad_model::text::Text::new(number).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false }),
+            size: ecad_model::wire::WireSize::parse("1.5"),
+            ..Wire::default()
+        };
+        (w, Op::CreateWire { id: w, conductor })
     };
     let (w1, op1) = wire(&mut ids, "101", k1t[0], x1t[0]);
     let (_, op2) = wire(&mut ids, "101", x1t[0], x1t[1]);

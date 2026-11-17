@@ -315,7 +315,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     let d = doc(&mut h);
     let (_, rep) = d.representations_of(Subject::Component(c)).next().expect("the same device");
     assert_eq!(rep.form, ecad_model::Form::Symbol);
-    let w = ecad_model::ConductorId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    let w = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     assert!(d.terminals_of(c).any(|(term, _)| d.ends_at(term).iter().any(|(x, _)| *x == w)), "the wire stays attached");
     let v = symbols::project_by_key(&d, "mine").unwrap();
     let slot = v.def.texts.first().expect("the tag slot");
@@ -376,9 +376,9 @@ fn make_symbol_on_a_wire_refuses_naming_it() {
     let w = run(&mut h, "wire", json!({"points": [[400.0, 100.0], [450.0, 100.0]]}));
     run(&mut h, "wirenumber", json!({"conductor": w["conductor"], "value": "24V-05"}));
     let d = doc(&mut h);
-    let c = ecad_model::ConductorId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    let c = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     let page = d.page_order[0];
-    let route = d.representations_of(Subject::Conductor(c)).find(|(_, r)| r.page == page).and_then(|(_, r)| r.items.first().copied()).unwrap();
+    let route = d.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).and_then(|(_, r)| r.items.first().copied()).unwrap();
     let handle = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();

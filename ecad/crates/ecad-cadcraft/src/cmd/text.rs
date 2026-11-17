@@ -8,7 +8,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
-use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, TerminalId};
+use ecad_model::{ComponentId, Document, PageId, RepresentationId, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -304,7 +304,7 @@ pub(crate) struct ShowtextParams {
     component: Option<ComponentId>,
     /// A wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A page.
     #[serde(default)]
     page: Option<PageId>,
@@ -327,7 +327,7 @@ impl Command for ShowtextParams {
             let target = match level {
                 ShowLevel::Symbol(r, _) => json!(r.hex()),
                 ShowLevel::Device(c) => json!(c.hex()),
-                ShowLevel::Conductor(c) => json!(c.hex()),
+                ShowLevel::Wire(c) => json!(c.hex()),
                 ShowLevel::Page(pg) => json!(pg.hex()),
                 ShowLevel::Project => Value::Null,
             };

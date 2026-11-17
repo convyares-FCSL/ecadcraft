@@ -180,7 +180,7 @@ fn look_check_screenshots() {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = doc.page_order[0];
-            let w = doc.conductors.keys().find(|c| ecad_model::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V"))).copied().unwrap();
+            let w = doc.wires.keys().find(|c| ecad_model::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V"))).copied().unwrap();
             let (item, _) = ecad_model::derive::route_on_page(doc, w, page).unwrap();
             p.pages[&page].map.item(item).unwrap()
         })

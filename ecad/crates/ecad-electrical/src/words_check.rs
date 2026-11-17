@@ -42,8 +42,8 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     for (id, c) in &doc.components {
         bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
     }
-    for (id, c) in &doc.conductors {
-        bag(&c.properties, WordPlace::Wire(*id), Level::Object, &mut out);
+    for (id, c) in &doc.wires {
+        bag(&c.display, WordPlace::Wire(*id), Level::Object, &mut out);
     }
     for (id, c) in &doc.cables {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);

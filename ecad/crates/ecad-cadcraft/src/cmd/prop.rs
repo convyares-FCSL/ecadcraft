@@ -8,7 +8,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::location::{self as location_rules, MAX_DEVICES};
 use ecad_electrical::cmd::prop::{self as rules, Build, Conflict, DeviceSet, TagSet};
 use ecad_model::tag::TAG_KEY;
-use ecad_model::{CableId, ComponentId, ConductorId, ObjectRef};
+use ecad_model::{CableId, ComponentId, ObjectRef, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -36,7 +36,7 @@ pub(crate) struct SetpropParams {
     components: Option<Bounded<ComponentId, 0, MAX_HANDLES>>,
     /// A wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A cable.
     #[serde(default)]
     cable: Option<CableId>,
@@ -101,7 +101,7 @@ impl Command for SetpropParams {
         let object = if let Some(c) = self.component {
             ObjectRef::Component(c)
         } else if let Some(c) = self.conductor {
-            ObjectRef::Conductor(c)
+            ObjectRef::Wire(c)
         } else if let Some(c) = self.cable {
             ObjectRef::Cable(c)
         } else {
@@ -135,6 +135,11 @@ impl Command for SetpropParams {
                     _ => set_value(p, pg, object, &key, typed.as_deref()),
                 },
                 Build::Value(_) | Build::Aspect => set_value(p, pg, object, &key, typed.as_deref()),
+                Build::Record(_) => {
+                    let Some(op) = rules::plan_record(doc, object, &key, typed.as_deref())? else { return Ok(json!({"changed": false})) };
+                    p.apply_edit(pg, "setprop", "Set property", vec![op])?;
+                    Ok(json!({"changed": true}))
+                }
             }
         })
     }

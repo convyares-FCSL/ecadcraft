@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, ConductorId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId};
+use ecad_model::{ComponentId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
 
 use crate::connectors::{self as cn, Family, Names, Shown};
 use crate::defaults::{self, Scope};
@@ -162,8 +162,8 @@ pub struct Made {
     pub tag: String,
     pub new: bool,
     pub shown: Vec<Shown>,
-    pub splits: Vec<(ConductorId, ConductorId)>,
-    pub dropped: Vec<(ConductorId, String)>,
+    pub splits: Vec<(WireId, WireId)>,
+    pub dropped: Vec<(WireId, String)>,
     /// The transaction's ops.
     pub ops: Vec<Op>,
 }
@@ -186,7 +186,7 @@ pub struct ConnectorInput {
     /// The line pins are placed along.
     pub line: Option<(Pt, Pt)>,
     /// The wire one pin lands on.
-    pub wire: Option<ConductorId>,
+    pub wire: Option<WireId>,
     /// 0, 90, 180 or 270.
     pub degrees: f64,
     /// A row's halves swapped.
@@ -299,7 +299,7 @@ pub fn echo(doc: &Document, c: &Connector) -> String {
 }
 
 /// A point on wire `w`'s route on `page`: the middle of its longest segment.
-fn wire_point(doc: &Document, page: PageId, w: ConductorId) -> Option<Pt> {
+fn wire_point(doc: &Document, page: PageId, w: WireId) -> Option<Pt> {
     let (_, _, v) = crate::wires::route_vertices(doc, w, page)?;
     let mut best: Option<(f64, Pt)> = None;
     for pair in v.windows(2) {
@@ -431,7 +431,7 @@ struct Pins<'a> {
     pin: Option<&'a str>,
     from: Pt,
     to: Pt,
-    wire: Option<ConductorId>,
+    wire: Option<WireId>,
 }
 
 /// Pins: one pin symbol on each wire the line crosses (design 044 §4.2, §4.4, §4.5).

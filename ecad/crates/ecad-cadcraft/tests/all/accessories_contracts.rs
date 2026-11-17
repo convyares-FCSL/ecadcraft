@@ -3,7 +3,7 @@
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{ComponentId, ConductorId, TerminalId};
+use ecad_model::{ComponentId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -14,7 +14,7 @@ struct F {
     h: H,
     strip: ComponentId,
     terms: Vec<TerminalId>,
-    wires: Vec<ConductorId>,
+    wires: Vec<WireId>,
 }
 
 fn fixture(seed: u64) -> F {
@@ -24,7 +24,7 @@ fn fixture(seed: u64) -> F {
     for i in 0..6 {
         let x = 50.0 + 40.0 * f64::from(i);
         let v = h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
-        wires.push(id::<ConductorId>(&v, "conductor"));
+        wires.push(id::<WireId>(&v, "conductor"));
     }
     let v = h.run("terminals", json!({"from": [30, 160], "to": [280, 160]})).unwrap();
     let strip: ComponentId = id(&v, "strip");
@@ -91,7 +91,7 @@ impl F {
     fn number(&mut self, i: usize) -> Option<String> {
         let doc = self.h.doc();
         let (w, _) = *doc.ends_at(self.terms[i]).first()?;
-        doc.conductors[&w].properties.get("wire_number").cloned()
+        doc.wires[&w].number_text().map(str::to_string)
     }
 }
 
@@ -344,7 +344,7 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     // Keys on a device that is not a strip.
     let w = f.wires[0];
     let doc = f.h.doc();
-    let far = doc.conductors[&w].ends.iter().flatten().find_map(|t| {
+    let far = doc.wires[&w].ends.iter().flatten().find_map(|t| {
         let c = doc.terminals[t].component;
         (c != f.strip).then_some(c)
     });

@@ -8,7 +8,7 @@ use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::frame;
 use ecad_model::book::Book;
 use ecad_model::derive::cable_references;
-use ecad_model::{CableId, ConductorId, FolderId, ObjectRef, Op, PageId};
+use ecad_model::{CableId, FolderId, ObjectRef, Op, PageId, WireId};
 use serde_json::{Value, json};
 
 /// The frame's texts on the active page `page`.
@@ -43,7 +43,7 @@ fn fixture() -> S {
     let mut h = H::new(0x5EE7);
     let supply = h.first_page();
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
-    let mut w: Vec<ConductorId> = Vec::new();
+    let mut w: Vec<WireId> = Vec::new();
     for y in [0.0, 5.0, 10.0] {
         w.push(id(&h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap(), "conductor"));
     }
@@ -273,13 +273,13 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(e, "Rev A is issued and cannot change.");
     // Draw a wire after the issue; Rev A shows the project without it.
     s.h.run("wire", json!({"points": [[0, 150], [40, 150]]})).unwrap();
-    let now = s.h.doc().conductors.len();
+    let now = s.h.doc().wires.len();
     let head = s.h.head();
     let v = s.h.run("openrevision", json!({"rev": "A"})).unwrap();
     assert_eq!(s.h.head(), head, "opening records nothing");
     assert_eq!(v["at"], json!(at));
     let then = s.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
-    assert_eq!(then.conductors.len(), now - 1, "Rev A has no wire drawn after it");
+    assert_eq!(then.wires.len(), now - 1, "Rev A has no wire drawn after it");
     s.h.run("closerevision", json!({})).unwrap();
     assert!(s.h.p(|p| p.revision_view.is_none()));
     // Undo the wire, then a plain `u` across the issue stops and asks.
@@ -368,7 +368,7 @@ fn wire_and_reference_properties_follow_the_objects_they_name() {
     let coil: ecad_model::ComponentId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
     let doc = s.h.doc();
     let (_, _, at) = ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].component == coil).unwrap();
-    let w: ConductorId = id(&s.h.run("wire", json!({"points": [[at.x, at.y], [at.x + 40.0, at.y]]})).unwrap(), "conductor");
+    let w: WireId = id(&s.h.run("wire", json!({"points": [[at.x, at.y], [at.x + 40.0, at.y]]})).unwrap(), "conductor");
     let route = s.h.route_handle(s.supply, w);
     let v = props_of(&mut s.h, s.supply, &[route]);
     assert!(row(&v, "from").starts_with("-K01:") || row(&v, "to").starts_with("-K01:"), "{v:?}");

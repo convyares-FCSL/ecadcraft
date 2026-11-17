@@ -18,9 +18,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Cable, CableId, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, Document, Folder, FolderId, Item, ItemId, Layer,
-    LayerId, ObjectRef, Op, Page, PageId, ProjectSettings, Representation, RepresentationId, Standard, StyleCatalogues, Terminal, TerminalId,
-    Touched,
+    Cable, CableId, Component, ComponentId, Definition, DefinitionId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
+    PageId, ProjectSettings, Representation, RepresentationId, Standard, StyleCatalogues, Terminal, TerminalId, Touched, Wire, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +47,7 @@ pub struct ModelMeta {
 pub const MAX_BUCKETS: u32 = 1 << 20;
 
 /// The model kinds split into chunks, by their key name.
-pub const KINDS: [&str; 6] = ["layer", "component", "terminal", "conductor", "cable", "definition"];
+pub const KINDS: [&str; 6] = ["layer", "component", "terminal", "wire", "cable", "definition"];
 
 /// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
@@ -91,7 +90,7 @@ trait RawId: Copy + Ord + std::fmt::Display {
 macro_rules! raw_id {
     ($($t:ty),*) => {$(impl RawId for $t { fn raw(self) -> u128 { self.0 } })*};
 }
-raw_id!(LayerId, ComponentId, TerminalId, ConductorId, CableId, DefinitionId);
+raw_id!(LayerId, ComponentId, TerminalId, WireId, CableId, DefinitionId);
 
 /// A version row's `chunks`: key → hex hash.
 pub type ChunkHashes = BTreeMap<String, String>;
@@ -155,7 +154,7 @@ impl Dirty {
         add("layer", t.layers.iter().map(|i| i.0).collect());
         add("component", t.components.iter().map(|i| i.0).collect());
         add("terminal", t.terminals.iter().map(|i| i.0).collect());
-        add("conductor", t.conductors.iter().map(|i| i.0).collect());
+        add("wire", t.wires.iter().map(|i| i.0).collect());
         add("cable", t.cables.iter().map(|i| i.0).collect());
         add("definition", t.definitions.iter().map(|i| i.0).collect());
         for op in ops {
@@ -252,7 +251,7 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
         "layer" => encode(&pick(&doc.layers, b, count)),
         "component" => encode(&pick(&doc.components, b, count)),
         "terminal" => encode(&pick(&doc.terminals, b, count)),
-        "conductor" => encode(&pick(&doc.conductors, b, count)),
+        "wire" => encode(&pick(&doc.wires, b, count)),
         "cable" => encode(&pick(&doc.cables, b, count)),
         "definition" => encode(&pick(&doc.definitions, b, count)),
         other => Err(FileError::ModelKind(other.to_string())),
@@ -264,7 +263,7 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
         "layer" => doc.layers.len(),
         "component" => doc.components.len(),
         "terminal" => doc.terminals.len(),
-        "conductor" => doc.conductors.len(),
+        "wire" => doc.wires.len(),
         "cable" => doc.cables.len(),
         "definition" => doc.definitions.len(),
         _ => 0,
@@ -398,7 +397,7 @@ enum Parsed {
     Layer(BTreeMap<LayerId, Layer>),
     Component(BTreeMap<ComponentId, Component>),
     Terminal(BTreeMap<TerminalId, Terminal>),
-    Conductor(BTreeMap<ConductorId, Conductor>),
+    Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
 }
@@ -452,7 +451,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
         "component" => Parsed::Component(typed(body, key, b, count)?),
         "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
-        "conductor" => Parsed::Conductor(typed(body, key, b, count)?),
+        "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
         other => return Err(FileError::ChunkKind { key: key.to_string(), kind: other.to_string() }),
@@ -552,7 +551,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
             Parsed::Layer(m) => merge(&mut doc.layers, m, "layer")?,
             Parsed::Component(m) => merge(&mut doc.components, m, "component")?,
             Parsed::Terminal(m) => merge(&mut doc.terminals, m, "terminal")?,
-            Parsed::Conductor(m) => merge(&mut doc.conductors, m, "conductor")?,
+            Parsed::Wire(m) => merge(&mut doc.wires, m, "wire")?,
             Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
             Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,
         }

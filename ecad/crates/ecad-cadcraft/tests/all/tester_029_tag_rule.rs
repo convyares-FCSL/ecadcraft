@@ -29,7 +29,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     let (page, layer): (PageId, LayerId) = (ids.fresh(), ids.fresh());
     let (k1, x1): (ComponentId, ComponentId) = (ids.fresh(), ids.fresh());
     let (a1, t3): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
-    let wire: ConductorId = ids.fresh();
+    let wire: WireId = ids.fresh();
     l.commit(
         Author::User,
         "Setup",
@@ -40,7 +40,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
             Op::CreateComponent { id: x1, component: Component { properties: tagged("-X1"), definition: None } },
             Op::AddTerminal { id: a1, terminal: Terminal { component: k1, label: Some("A1".into()), key: None } },
             Op::AddTerminal { id: t3, terminal: Terminal { component: x1, label: Some("3".into()), key: None } },
-            Op::CreateConductor { id: wire, conductor: Conductor { properties: Default::default(), ends: [Some(a1), Some(t3)] } },
+            Op::CreateWire { id: wire, conductor: Wire::between(Some(a1), Some(t3)) },
         ],
     )
     .unwrap();

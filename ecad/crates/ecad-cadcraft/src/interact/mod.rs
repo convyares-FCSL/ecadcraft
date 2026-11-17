@@ -45,7 +45,7 @@ use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
 use cadcraft_engine::{EngineError, Session};
 use ecad_model::derive::terminal_positions;
-use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId};
+use ecad_model::{CableId, ComponentId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId, WireId};
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
@@ -333,11 +333,11 @@ pub(crate) fn preview_text(s: &Session, at: Pt, px: f64, value: String, aci: u8)
 }
 
 /// Where conductor routes on `page` start and end, once per conductor (its first route).
-fn route_ends(doc: &Document, page: PageId) -> Vec<(ConductorId, Pt, Pt)> {
+fn route_ends(doc: &Document, page: PageId) -> Vec<(WireId, Pt, Pt)> {
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     for r in doc.representations.values().filter(|r| r.page == page) {
-        let Subject::Conductor(c) = r.subject else { continue };
+        let Subject::Wire(c) = r.subject else { continue };
         if seen.contains(&c) {
             continue;
         }
@@ -381,7 +381,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     let markers = crate::references::markers_on_page(doc, page);
     let quiet = p.pages.get(&page).map(|v| v.map.quiet_ends()).unwrap_or_default();
     for (c, a, b) in route_ends(doc, page) {
-        let Some(conductor) = doc.conductors.get(&c) else { continue };
+        let Some(conductor) = doc.wires.get(&c) else { continue };
         for (end, at) in [(End::A, a), (End::B, b)] {
             if conductor.end(end).is_none() && quiet.iter().any(|q| q.near(at, p.tolerance)) {
                 continue;
@@ -490,7 +490,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
                 Subject::Component(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
                 Subject::Component(c) => component_lines(doc, c),
-                Subject::Conductor(w) => wire_lines(doc, w, page),
+                Subject::Wire(w) => wire_lines(doc, w, page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
                     let shown = match p.view_of(k) {
@@ -638,7 +638,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
 }
 
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
-fn core_of(doc: &Document, k: CableId, w: ConductorId) -> Option<String> {
+fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
     let core = doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.as_deref()?;
     (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
 }
@@ -680,9 +680,9 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     lines
 }
 
-fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
-    let conductor = doc.conductors.get(&w);
-    let mut lines = vec![format!("Wire {}", conductor.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", w.hex())];
+fn wire_lines(doc: &Document, w: WireId, page: PageId) -> Vec<String> {
+    let conductor = doc.wires.get(&w);
+    let mut lines = vec![format!("Wire {}", conductor.and_then(|x| x.number_text()).unwrap_or("(no number)")), format!("id {}", w.hex())];
     if let Some(k) = doc.cables_of(w).first() {
         let name = match doc.cables.get(k).and_then(|x| tag(&x.properties)) {
             Some(t) => t.to_string(),

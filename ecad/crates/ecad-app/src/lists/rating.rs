@@ -6,6 +6,7 @@
 //! **Update map.** Nothing of its own: it shows the result the view holds this frame.
 
 use ecad_cadcraft::rating::{self, Basis, RatedSubject, Rating, dataset};
+use ecad_model::Word;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::{line, space, ui_type};
 use eframe::egui::{self, Stroke, pos2, vec2};
@@ -48,7 +49,7 @@ pub fn summary(r: &Rating) -> (String, Option<Tone>) {
 
 fn subject_key(s: RatedSubject) -> (&'static str, String) {
     match s {
-        RatedSubject::Conductor(c) => ("wire", c.hex()),
+        RatedSubject::Wire(c) => ("wire", c.hex()),
         RatedSubject::Cable(k) => ("cable", k.hex()),
     }
 }
@@ -267,7 +268,7 @@ impl crate::App {
         match f {
             Fix::ShowRating(s) => self.show_rating(s),
             Fix::UseSize(c, size) => {
-                let _ = self.run_value("setprop", json!({"conductor": c.hex(), "key": "cross_section", "value": dataset::fmt_num(size)}));
+                let _ = self.run_value("setprop", json!({"conductor": c.hex(), "key": "size", "value": dataset::fmt_num(size)}));
             }
             Fix::PickCableType(..) => self.open_standards_at("cable"),
             Fix::SetBasis(s, b) => {
@@ -293,13 +294,13 @@ impl crate::App {
     /// Select subject `s` in Project ▸ Wires or Cables (its Rating section is open by default).
     pub(crate) fn show_rating(&mut self, s: RatedSubject) {
         self.shell.lists = match s {
-            RatedSubject::Conductor(_) => crate::shell::ListsView::Wires,
+            RatedSubject::Wire(_) => crate::shell::ListsView::Wires,
             RatedSubject::Cable(_) => crate::shell::ListsView::Cables,
         };
         self.set_workspace(crate::shell::Workspace::Lists);
         if let Some(r) = &mut self.reports {
             match s {
-                RatedSubject::Conductor(c) => {
+                RatedSubject::Wire(c) => {
                     if let Some(k) = r.wires.source.ids.iter().position(|x| *x == c) {
                         r.wires.table.selection.set([k]);
                         r.wires.table.reveal(&[k]);

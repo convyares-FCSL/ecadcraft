@@ -416,7 +416,7 @@ pub const PARTS: &str = "ecad.inspector.parts";
 enum What {
     Page(PageId),
     Symbol(ecad_model::ComponentId, RepresentationId),
-    Conductor(ecad_model::ConductorId),
+    Wire(ecad_model::WireId),
 }
 
 /// One default as the inspector shows it.
@@ -641,7 +641,7 @@ fn style_row(
             (Some(n), _) => n,
             (None, _) => "None".into(),
         };
-        let own = doc.conductors.get(&c).and_then(|x| x.properties.get(e.key));
+        let own = doc.wires.get(&c).and_then(|x| x.display.get(e.key));
         let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| "Not found: drawn without a category".to_string());
         let _ = r;
         return (value, list, dangling);
@@ -710,12 +710,12 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(ecad_model::Word::word(s.key))));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
-        What::Conductor(w) => {
-            deps.insert(ObjectRef::Conductor(w));
+        What::Wire(w) => {
+            deps.insert(ObjectRef::Wire(w));
             let es = defaults::all()
                 .filter(|e| e.key == defaults::text::WIRE_LABEL_HEIGHT.key || e.group == "Wire labels" || e.key.starts_with("wire."))
                 .collect();
-            (Scope { conductor: Some(w), ..Scope::project() }, es, Some((Level::Object, Target::Conductor(w))))
+            (Scope { conductor: Some(w), ..Scope::project() }, es, Some((Level::Object, Target::Wire(w))))
         }
     };
     let rows = entries
@@ -847,7 +847,7 @@ fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft:
             Mapped::Item(item) => match doc.representation_of_item(item) {
                 Some((rid, r)) => match r.subject {
                     Subject::Component(c) => What::Symbol(c, rid),
-                    Subject::Conductor(w) => What::Conductor(w),
+                    Subject::Wire(w) => What::Wire(w),
                     Subject::Cable(_) => return None,
                 },
                 None => return None,
@@ -856,7 +856,7 @@ fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft:
                 Some(Subject::Component(c)) => What::Symbol(c, r),
                 _ => return None,
             },
-            Mapped::Label(w) => What::Conductor(w),
+            Mapped::Label(w) => What::Wire(w),
             _ => return None,
         };
         match found {
@@ -922,7 +922,7 @@ impl Inspector {
                     if let Some(id) = pick {
                         // Brief 050b: a wire's category runs `category` (it may set the potential).
                         let line = match target {
-                            Target::Conductor(c) if row.key == ecad_model::wiring::WIRE_CATEGORY => {
+                            Target::Wire(c) if row.key == ecad_model::wiring::WIRE_CATEGORY => {
                                 format!("category {}", serde_json::json!({"conductor": c.hex(), "value": id}))
                             }
                             _ => default_cmds::line(row.key, level, target, Some(&id)),

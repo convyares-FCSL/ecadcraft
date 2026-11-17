@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, ComponentId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
+pub use crate::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
@@ -218,7 +219,7 @@ pub struct Terminal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Subject {
     Component(ComponentId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Cable(CableId),
 }
 
@@ -247,45 +248,10 @@ pub struct Representation {
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
-/// One end of a conductor. End A is the first route vertex, end B the last.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum End {
-    A,
-    B,
-}
-
-impl End {
-    pub const BOTH: [End; 2] = [End::A, End::B];
-    fn index(self) -> usize {
-        match self {
-            End::A => 0,
-            End::B => 1,
-        }
-    }
-}
-
-/// A conductor (stored intent). Attachments are references (DOC-03).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct Conductor {
-    pub properties: Properties,
-    pub ends: [Option<TerminalId>; 2],
-}
-
-impl Conductor {
-    pub fn end(&self, end: End) -> Option<TerminalId> {
-        self.ends.get(end.index()).copied().flatten()
-    }
-    pub fn set_end(&mut self, end: End, t: Option<TerminalId>) {
-        if let Some(slot) = self.ends.get_mut(end.index()) {
-            *slot = t;
-        }
-    }
-}
-
 /// A conductor's membership of a cable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CableMember {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub core: Option<String>,
 }
 
@@ -596,7 +562,7 @@ pub struct Document {
     pub components: BTreeMap<ComponentId, Component>,
     pub terminals: BTreeMap<TerminalId, Terminal>,
     pub representations: BTreeMap<RepresentationId, Representation>,
-    pub conductors: BTreeMap<ConductorId, Conductor>,
+    pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
@@ -636,7 +602,7 @@ struct DocumentData {
     components: BTreeMap<ComponentId, Component>,
     terminals: BTreeMap<TerminalId, Terminal>,
     representations: BTreeMap<RepresentationId, Representation>,
-    conductors: BTreeMap<ConductorId, Conductor>,
+    wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
@@ -663,7 +629,7 @@ impl From<DocumentData> for Document {
             components,
             terminals,
             representations,
-            conductors,
+            wires,
             cables,
             definitions,
             settings,
@@ -682,7 +648,7 @@ impl From<DocumentData> for Document {
             components,
             terminals,
             representations,
-            conductors,
+            wires,
             cables,
             definitions,
             settings,
@@ -711,7 +677,7 @@ impl PartialEq for Document {
             components,
             terminals,
             representations,
-            conductors,
+            wires,
             cables,
             definitions,
             settings,
@@ -731,7 +697,7 @@ impl PartialEq for Document {
             && *components == other.components
             && *terminals == other.terminals
             && *representations == other.representations
-            && *conductors == other.conductors
+            && *wires == other.wires
             && *cables == other.cables
             && *definitions == other.definitions
             && *settings == other.settings
@@ -849,8 +815,8 @@ impl Document {
         self.index.terminal_ends.get(&terminal).is_some_and(|m| !m.is_empty())
     }
 
-    /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
-    pub fn ends_at(&self, terminal: TerminalId) -> Vec<(ConductorId, End)> {
+    /// Wire ends attached to `terminal`, in conductor ID order, end A before end B.
+    pub fn ends_at(&self, terminal: TerminalId) -> Vec<(WireId, End)> {
         referrers(&self.index.terminal_ends, &terminal).collect()
     }
 
@@ -927,7 +893,7 @@ impl Document {
     }
 
     /// Cables `conductor` is a member of, in ID order.
-    pub fn cables_of(&self, conductor: ConductorId) -> Vec<CableId> {
+    pub fn cables_of(&self, conductor: WireId) -> Vec<CableId> {
         referrers(&self.index.conductor_cables, &conductor).collect()
     }
 }

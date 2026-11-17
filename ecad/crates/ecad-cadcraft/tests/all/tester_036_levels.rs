@@ -141,7 +141,7 @@ fn same_as_built_with(h: &mut H, wires: bool) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
+    (&d.components, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -572,9 +572,9 @@ fn h_toposition_converts_a_fuse_device() {
     let d0 = m.h.doc();
     let ft: Vec<TerminalId> = d0.terminals.iter().filter(|(_, t)| t.component == m.fuse_dev).map(|(i, _)| *i).collect();
     assert_eq!(ft.len(), 2);
-    let conductors_of = |d: &Document, t: TerminalId| -> Vec<ecad_model::ConductorId> {
+    let conductors_of = |d: &Document, t: TerminalId| -> Vec<ecad_model::WireId> {
         let c = d.connectivity();
-        c.net_of_terminal(t).and_then(|n| c.net(n)).map(|n| n.conductors.iter().copied().collect()).unwrap_or_default()
+        c.net_of_terminal(t).and_then(|n| c.net(n)).map(|n| n.wires.iter().copied().collect()).unwrap_or_default()
     };
     let (ca, cb) = (conductors_of(&d0, ft[0]), conductors_of(&d0, ft[1]));
     assert!(!ca.is_empty() && !cb.is_empty());

@@ -203,7 +203,7 @@ pub enum IdOf {
     /// `{"component": id}`.
     Component,
     /// `{"conductor": id}`.
-    Conductor,
+    Wire,
     /// `{"cable": id}`.
     Cable,
     /// `{"source": representation id}` (a reference's go-to).

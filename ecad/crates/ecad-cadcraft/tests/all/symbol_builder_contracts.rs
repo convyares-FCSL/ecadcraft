@@ -4,7 +4,7 @@
 //! unchanged content, `makesymbol` and promotion, superseded versions and hostile input.
 
 use ecad_cadcraft::symbols::{self, PROJECT_SYMBOLS};
-use ecad_model::{ComponentId, ConductorId, DefinitionId, Document, Op, PageId, RepresentationId, TerminalId};
+use ecad_model::{ComponentId, DefinitionId, Document, Op, PageId, RepresentationId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -40,11 +40,11 @@ fn term(d: &Document, c: ComponentId, key: &str) -> TerminalId {
 }
 
 /// A wire from point `key` of `c` straight down 20 mm.
-fn wire_from(h: &mut H, page: PageId, c: ComponentId, key: &str) -> ConductorId {
+fn wire_from(h: &mut H, page: PageId, c: ComponentId, key: &str) -> WireId {
     let d = h.doc();
     let t = term(&d, c, key);
     let at = h.terminal_pos(page, t);
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x + 20.0, at.y)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x + 20.0, at.y)])})).unwrap(), "conductor");
     assert!(h.doc().ends_at(t).iter().any(|(c, _)| *c == w), "the wire is attached to point {key}");
     w
 }
@@ -153,7 +153,7 @@ fn row_4_family_entries_resolve_and_a_project_override_wins() {
 }
 
 /// Three copies; the first wired on point 2.
-fn three(h: &mut H) -> (DefinitionId, PageId, Vec<(ComponentId, RepresentationId)>, ConductorId) {
+fn three(h: &mut H) -> (DefinitionId, PageId, Vec<(ComponentId, RepresentationId)>, WireId) {
     let v = h.run("symbolnew", float(json!({}))).unwrap();
     let def: DefinitionId = id(&v, "definition");
     let page = h.first_page();
@@ -345,7 +345,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
     let mut wires = Vec::new();
     for t in &terms {
         let at = h.terminal_pos(page, *t);
-        wires.push(id::<ConductorId>(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 20.0)])})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 20.0)])})).unwrap(), "conductor"));
     }
     let v = h.run(
         "makesymbol",
@@ -434,7 +434,7 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
 fn makesymbol_refusal_names_the_wire_it_cannot_take() {
     let mut h = H::new(4816);
     let page = h.first_page();
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(100.0, 100.0), (150.0, 100.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 100.0), (150.0, 100.0)])})).unwrap(), "conductor");
     h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-05"})).unwrap();
     let route = h.route_handle(page, w).hex();
     let before = h.head();

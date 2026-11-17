@@ -22,7 +22,7 @@
 use std::collections::BTreeMap;
 
 use cadcraft_engine::Session;
-use ecad_model::{CableId, ComponentId, ConductorId, Document, PageId, Pt, Subject};
+use ecad_model::{CableId, ComponentId, Document, PageId, Pt, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::{Project, ProjectHandle};
@@ -78,7 +78,7 @@ pub struct Built {
     /// Devices placed with a tag, by tag.
     pub devices: BTreeMap<String, ComponentId>,
     /// The wires drawn, in order.
-    pub wires: Vec<ConductorId>,
+    pub wires: Vec<WireId>,
     /// The cables made with [`ProjectBuilder::cable`], in order.
     pub cables: Vec<CableId>,
 }

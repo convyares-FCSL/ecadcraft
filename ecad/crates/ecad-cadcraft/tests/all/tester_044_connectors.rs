@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{Author, ComponentId, ConductorId, DefinitionId, Document, Op, PageId, Pt, RepresentationId, Subject, TerminalId};
+use ecad_model::{Author, ComponentId, DefinitionId, Document, Op, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -85,7 +85,7 @@ fn newpage(h: &mut H, number: &str, title: &str) -> PageId {
 }
 
 /// Vertical wires at `xs`, from y 250 to y 150, on the active page.
-fn drops(h: &mut H, xs: &[f64]) -> Vec<ConductorId> {
+fn drops(h: &mut H, xs: &[f64]) -> Vec<WireId> {
     xs.iter().map(|x| id(&h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap(), "conductor")).collect()
 }
 
@@ -96,7 +96,7 @@ fn shown_at(d: &Document, page: PageId, t: TerminalId) -> Option<Pt> {
 
 /// A wire from pin `t` (on `page`) 20 mm away from its half's body: up from a socket pin, down
 /// from a plug pin, unless the mate on the same page says the halves are swapped.
-fn wire_out(h: &mut H, page: PageId, c: ComponentId, t: TerminalId) -> ConductorId {
+fn wire_out(h: &mut H, page: PageId, c: ComponentId, t: TerminalId) -> WireId {
     h.activate(page);
     let d = h.doc();
     let at = shown_at(&d, page, t).unwrap_or_else(|| panic!("{} not on that page", name(h, t)));
@@ -110,8 +110,8 @@ fn wire_out(h: &mut H, page: PageId, c: ComponentId, t: TerminalId) -> Conductor
         _ => -1.0,
     };
     let v = h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)])})).unwrap();
-    let w: ConductorId = id(&v, "conductor");
-    assert!(h.doc().conductors[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
+    let w: WireId = id(&v, "conductor");
+    assert!(h.doc().wires[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
     w
 }
 
@@ -166,7 +166,7 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
+    (&d.components, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -264,7 +264,7 @@ struct C {
     p101: PageId,
     p102: PageId,
     /// The three wires on page 100 (24 V, 0 V, signal).
-    w: Vec<ConductorId>,
+    w: Vec<WireId>,
 }
 
 const XS: [f64; 3] = [100.0, 110.0, 120.0];
@@ -495,8 +495,8 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     let mut nets = Vec::new();
     for (i, label) in ["1", "2", "3"].iter().enumerate() {
         let (sp, pp) = (pin(&d, x, ".s", label), pin(&d, x, ".p", label));
-        let on_s: Vec<&ConductorId> = d.conductors.iter().filter(|(_, k)| k.ends.contains(&Some(sp))).map(|(w, _)| w).collect();
-        let on_p: Vec<&ConductorId> = d.conductors.iter().filter(|(_, k)| k.ends.contains(&Some(pp))).map(|(w, _)| w).collect();
+        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(sp))).map(|(w, _)| w).collect();
+        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(pp))).map(|(w, _)| w).collect();
         assert_eq!((on_s.len(), on_p.len()), (1, 1), "pin {label}: the wire is split onto both points");
         let n = net(&mut c.h, sp);
         assert!(n.is_some() && n == net(&mut c.h, pp), "pin {label}: one net through the mate");
@@ -579,7 +579,7 @@ fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
     let x = conn_of(&v);
     let d = c.h.doc();
     let sp = pin(&d, x, ".s", "1");
-    let on: Vec<&ecad_model::Conductor> = d.conductors.values().filter(|k| k.ends.contains(&Some(sp))).collect();
+    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&Some(sp))).collect();
     assert_eq!(on.len(), 1, "one point, one wire");
 }
 
@@ -801,7 +801,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     }
     // A terminal strip on the socket wire: its plan's target names the half pin (046's targets).
     let d = c.h.doc();
-    assert!(d.conductors[&ws].ends.contains(&Some(s3)));
+    assert!(d.wires[&ws].ends.contains(&Some(s3)));
     let at = shown_at(&d, c.p101, s3).unwrap();
     c.h.activate(c.p101);
     let v = c.h.run("terminals", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
@@ -1177,12 +1177,12 @@ fn r10_pinlabel_renames_on_both_halves() {
     let w1 = wire_out(&mut c.h, c.p101, x, s3);
     let w2 = wire_out(&mut c.h, c.p101, x, p3);
     let number = wire_number(&mut c.h, s3);
-    let conductors = c.h.doc().conductors.clone();
+    let conductors = c.h.doc().wires.clone();
     let v = step(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "3", "to": "PE"}));
     let d = c.h.doc();
     assert_eq!((d.terminals[&s3].label.as_deref(), d.terminals[&s3].key.as_deref()), (Some("PE"), Some(".s")), "{v}");
     assert_eq!((d.terminals[&p3].label.as_deref(), d.terminals[&p3].key.as_deref()), (Some("PE"), Some(".p")));
-    assert_eq!(d.conductors, conductors, "wires unchanged");
+    assert_eq!(d.wires, conductors, "wires unchanged");
     assert_eq!(net(&mut c.h, s3), net(&mut c.h, p3), "still mated");
     assert_eq!(wire_number(&mut c.h, s3), number);
     assert_eq!(name(&mut c.h, s3), "-X01.S:PE");

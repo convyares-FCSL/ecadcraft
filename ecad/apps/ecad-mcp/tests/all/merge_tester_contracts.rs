@@ -4,7 +4,7 @@
 //! a dead end); merging an already merged branch; undo and redo across a merge; the file verifies.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{ComponentId, ConductorId, TxKind};
+use ecad_model::{ComponentId, TxKind, WireId};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{Client, TempDir};
@@ -289,9 +289,9 @@ fn a_wire_end_attached_differently_on_both_sides_can_be_left_unconnected() {
     eprintln!("end conflict: {k}");
     // Design §5.3 and owner answer 7: a connection conflict always offers Leave unconnected.
     assert!(k["choices"].as_array().unwrap().iter().any(|x| x == "loose"), "Leave unconnected offered: {k}");
-    let cid = ConductorId::parse(&w).unwrap();
+    let cid = WireId::parse(&w).unwrap();
     every_choice_merges(&mut c, "Option W", &mut |c, _, ch| {
-        let end_b = c.doc().conductors.get(&cid).unwrap().end(ecad_model::End::B);
+        let end_b = c.doc().wires.get(&cid).unwrap().end(ecad_model::End::B);
         eprintln!("  choice {ch}: end B = {end_b:?}");
         if ch == "loose" {
             assert!(end_b.is_none(), "Leave unconnected leaves end B loose");

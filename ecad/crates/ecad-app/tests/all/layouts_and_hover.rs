@@ -171,7 +171,7 @@ mod hover_and_marks {
         pointer_to(&mut h, on_rect);
         let rect = first_hover_line(&h).unwrap_or_default();
         assert!(wrong.is_empty(), "terminal hovers wrong:\n{}", wrong.join("\n"));
-        assert_eq!(wire, "Wire (no tag)");
+        assert_eq!(wire, "Wire 01", "a wire is named by its number");
         assert_eq!(rect, "Component (no tag)");
     }
 
@@ -289,7 +289,7 @@ mod hover_and_marks {
         let d = doc(&mut h);
         let page = d.page_order[0];
         let routes: Vec<String> =
-            d.conductors.keys().filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
+            d.wires.keys().filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
         let paper: usize = h.state().cad.session.doc().unwrap().layouts.iter().map(|l| l.entities.len()).sum();
         eprintln!("wire in paper space: head {} -> {after}; routes {routes:?}; paper {paper}", before.0);
         let t = h.state_mut();
@@ -530,7 +530,7 @@ mod layout_refusals {
         let d = doc(&mut h);
         let page = d.page_order[0];
         let new_route = d
-            .conductors
+            .wires
             .keys()
             .filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page))
             .filter_map(|(_, r)| r.path_ends())

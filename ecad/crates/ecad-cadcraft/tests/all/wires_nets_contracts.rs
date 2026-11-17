@@ -3,7 +3,7 @@
 //! Driven through the commands' JSON forms.
 
 use ecad_cadcraft::checks::{Fix, Kind};
-use ecad_model::{ConductorId, Document, PageId, Pt};
+use ecad_model::{Document, PageId, Pt, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -22,11 +22,11 @@ fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> Value {
     wire_r(h, points, extra).unwrap()
 }
 
-fn net_of(doc: &Document, c: ConductorId) -> Option<ecad_model::NetId> {
+fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetId> {
     doc.connectivity().net_of_conductor(c)
 }
 
-fn route(h: &mut H, page: PageId, c: ConductorId) -> Vec<Pt> {
+fn route(h: &mut H, page: PageId, c: WireId) -> Vec<Pt> {
     h.p(|p| ecad_cadcraft::wires::route_vertices(p.ledger.document(), c, page).map(|(_, _, v)| v).unwrap_or_default())
 }
 
@@ -45,11 +45,11 @@ fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::TerminalId {
 fn a_wire_from_an_open_end_joins_it() {
     let mut h = H::new(0x32_01);
     let page = h.first_page();
-    let first: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
+    let first: WireId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
     let r = wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({}));
-    let second: ConductorId = id(&r, "conductor");
+    let second: WireId = id(&r, "conductor");
     let doc = h.doc();
-    assert_eq!(doc.conductors.len(), 1, "one conductor: {r}");
+    assert_eq!(doc.wires.len(), 1, "one conductor: {r}");
     assert_eq!(second, first, "the drawn route belongs to the existing wire: {r}");
     assert_eq!(r["created"], json!(false), "{r}");
     assert_eq!(r["joined"][0]["how"], json!("merged"), "{r}");
@@ -59,8 +59,8 @@ fn a_wire_from_an_open_end_joins_it() {
     assert!(same(&v, &[(0.0, 0.0), (50.0, 0.0), (50.0, -20.0)]), "{v:?}");
 }
 
-fn ends_of(doc: &Document, c: ConductorId) -> [Option<ecad_model::TerminalId>; 2] {
-    doc.conductors.get(&c).map(|x| x.ends).unwrap_or_default()
+fn ends_of(doc: &Document, c: WireId) -> [Option<ecad_model::TerminalId>; 2] {
+    doc.wires.get(&c).map(|x| x.ends).unwrap_or_default()
 }
 
 fn junction_count(doc: &Document) -> usize {
@@ -73,15 +73,15 @@ fn junction_count(doc: &Document) -> usize {
 fn a_straight_join_drops_the_middle_vertex() {
     let mut h = H::new(0x32_02);
     let page = h.first_page();
-    let c: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
+    let c: WireId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
     wire(&mut h, &[(50.0, 0.0), (80.0, 0.0)], json!({}));
-    assert_eq!(h.doc().conductors.len(), 1);
+    assert_eq!(h.doc().wires.len(), 1);
     let v = route(&mut h, page, c);
     assert!(same(&v, &[(0.0, 0.0), (80.0, 0.0)]), "{v:?}");
     wire(&mut h, &[(-20.0, 0.0), (0.0, 0.0)], json!({}));
     let v = route(&mut h, page, c);
     assert!(same(&v, &[(-20.0, 0.0), (80.0, 0.0)]), "{v:?}");
-    assert_eq!(h.doc().conductors.len(), 1);
+    assert_eq!(h.doc().wires.len(), 1);
 }
 
 /// §12 items 3 and 12: a wire between two open ends folds them into one; the far attachment is on
@@ -91,37 +91,37 @@ fn both_ends_fold_two_wires_into_one() {
     let mut h = H::new(0x32_03);
     let page = h.first_page();
     let x = terminal(&mut h, (100.0, 0.0), "X1");
-    let a: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
-    let c: ConductorId = id(&wire(&mut h, &[(60.0, 10.0), (100.0, 0.0)], json!({})), "conductor");
+    let a: WireId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
+    let c: WireId = id(&wire(&mut h, &[(60.0, 10.0), (100.0, 0.0)], json!({})), "conductor");
     assert_eq!(ends_of(&h.doc(), c)[1], Some(x));
     let before = h.doc();
     let head = h.head();
     let r = wire(&mut h, &[(40.0, 0.0), (60.0, 10.0)], json!({}));
     assert_eq!(h.head(), head + 1);
     let doc = h.doc();
-    assert_eq!(doc.conductors.len(), 1, "{r}");
+    assert_eq!(doc.wires.len(), 1, "{r}");
     assert_eq!(r["conductor"], json!(a.hex()));
     assert_eq!(r["removed"], json!([c.hex()]));
-    assert!(!doc.conductors.contains_key(&c));
+    assert!(!doc.wires.contains_key(&c));
     assert_eq!(ends_of(&doc, a), [None, Some(x)]);
     let v = route(&mut h, page, a);
     assert!(same(&v, &[(0.0, 0.0), (40.0, 0.0), (60.0, 10.0), (100.0, 0.0)]), "{v:?}");
     h.cmdline("u");
-    assert_eq!(h.doc().conductors, before.conductors);
+    assert_eq!(h.doc().wires, before.wires);
 }
 
 /// §12 item 4: the wire with a fixed number survives; two different fixed numbers are refused.
 #[test]
 fn a_fixed_number_survives_and_two_are_refused() {
     let mut h = H::new(0x32_04);
-    let a: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
-    let c: ConductorId = id(&wire(&mut h, &[(60.0, 0.0), (100.0, 0.0)], json!({})), "conductor");
+    let a: WireId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
+    let c: WireId = id(&wire(&mut h, &[(60.0, 0.0), (100.0, 0.0)], json!({})), "conductor");
     h.run("wirenumber", json!({"conductor": c.hex(), "value": "W-7"})).unwrap();
     let r = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     assert_eq!(r["conductor"], json!(c.hex()), "{r}");
     assert_eq!(r["removed"], json!([a.hex()]));
     assert_eq!(r["number"], json!("W-7"));
-    let d: ConductorId = id(&wire(&mut h, &[(200.0, 0.0), (240.0, 0.0)], json!({})), "conductor");
+    let d: WireId = id(&wire(&mut h, &[(200.0, 0.0), (240.0, 0.0)], json!({})), "conductor");
     h.run("wirenumber", json!({"conductor": d.hex(), "value": "W-9"})).unwrap();
     let head = h.head();
     let m = wire_r(&mut h, &[(100.0, 0.0), (200.0, 0.0)], json!({})).unwrap_err();
@@ -159,14 +159,14 @@ fn a_loop_is_refused() {
 #[test]
 fn three_ends_meet_at_one_junction() {
     let mut h = H::new(0x32_07);
-    let a: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
-    let b: ConductorId = id(&wire(&mut h, &[(50.0, 0.0), (50.0, 30.0)], json!({"join": false})), "conductor");
+    let a: WireId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
+    let b: WireId = id(&wire(&mut h, &[(50.0, 0.0), (50.0, 30.0)], json!({"join": false})), "conductor");
     let r = wire(&mut h, &[(50.0, 0.0), (90.0, 0.0)], json!({}));
     let doc = h.doc();
     assert_eq!(junction_count(&doc), 1, "{r}");
-    assert_eq!(doc.conductors.len(), 3);
+    assert_eq!(doc.wires.len(), 3);
     assert_eq!(r["joined"][0]["how"], json!("junction"));
-    let w: ConductorId = id(&r, "conductor");
+    let w: WireId = id(&r, "conductor");
     let j = ends_of(&doc, w)[0];
     assert!(j.is_some());
     assert_eq!(ends_of(&doc, a)[1], j);
@@ -179,16 +179,16 @@ fn three_ends_meet_at_one_junction() {
 #[test]
 fn an_open_end_on_the_new_wire_joins_it() {
     let mut h = H::new(0x32_08);
-    let c: ConductorId = id(&wire(&mut h, &[(30.0, 20.0), (30.0, -10.0)], json!({})), "conductor");
+    let c: WireId = id(&wire(&mut h, &[(30.0, 20.0), (30.0, -10.0)], json!({})), "conductor");
     let head = h.head();
     let r = wire(&mut h, &[(0.0, -10.0), (60.0, -10.0)], json!({}));
     let doc = h.doc();
     assert_eq!(junction_count(&doc), 1, "{r}");
-    assert_eq!(doc.conductors.len(), 3, "W is two pieces: {r}");
+    assert_eq!(doc.wires.len(), 3, "W is two pieces: {r}");
     let split = &r["splits"][0];
     assert_eq!(split["at"], json!([30.0, -10.0]));
-    let w: ConductorId = id(&r, "conductor");
-    let w2: ConductorId = id(split, "conductor");
+    let w: WireId = id(&r, "conductor");
+    let w2: WireId = id(split, "conductor");
     let j = ends_of(&doc, c)[1];
     assert!(j.is_some());
     assert_eq!(ends_of(&doc, w)[1], j);
@@ -197,7 +197,7 @@ fn an_open_end_on_the_new_wire_joins_it() {
     assert_eq!(net_of(&doc, c), net_of(&doc, w2));
     assert_eq!(h.head(), head + 1);
     h.cmdline("u");
-    assert_eq!(h.doc().conductors.len(), 1);
+    assert_eq!(h.doc().wires.len(), 1);
 }
 
 /// §12 item 9: `join: false` (or `junction: false`) leaves both ends open; Checks lists Looks
@@ -211,7 +211,7 @@ fn join_false_leaves_the_ends_open() {
         wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
         wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({key: false}));
         let doc = h.doc();
-        assert_eq!(doc.conductors.len(), 2, "{key}");
+        assert_eq!(doc.wires.len(), 2, "{key}");
         let all = ecad_cadcraft::checks::all(&doc, 1e-6);
         let looks: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
         assert_eq!(looks.len(), 1, "{all:?}");
@@ -229,15 +229,15 @@ fn join_false_leaves_the_ends_open() {
 #[test]
 fn a_cable_cores_open_end_takes_a_junction() {
     let mut h = H::new(0x32_10);
-    let core: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
+    let core: WireId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
     h.run("cableslash", json!({"from": [25, 10], "to": [25, -10]})).unwrap();
     assert_eq!(h.doc().cables_of(core).len(), 1);
     let r = wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({}));
     let doc = h.doc();
     assert_eq!(r["created"], json!(true), "{r}");
-    assert_eq!(doc.conductors.len(), 2);
+    assert_eq!(doc.wires.len(), 2);
     assert_eq!(junction_count(&doc), 1);
-    let w: ConductorId = id(&r, "conductor");
+    let w: WireId = id(&r, "conductor");
     assert_eq!(net_of(&doc, core), net_of(&doc, w));
 }
 
@@ -246,15 +246,15 @@ fn a_cable_cores_open_end_takes_a_junction() {
 fn joinwires_repairs_ends_that_meet() {
     let mut h = H::new(0x32_11);
     let page = h.first_page();
-    let a: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
+    let a: WireId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "conductor");
     wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({"join": false}));
     let head = h.head();
     let r = h.run("joinwires", json!({"at": [50, 0]})).unwrap();
     assert_eq!(h.head(), head + 1);
     assert_eq!(r["how"], json!("merged"), "{r}");
     let doc = h.doc();
-    assert_eq!(doc.conductors.len(), 1);
-    let survivor: ConductorId = id(&r, "conductor");
+    assert_eq!(doc.wires.len(), 1);
+    let survivor: WireId = id(&r, "conductor");
     assert_eq!(survivor, a, "the lower ID survives");
     let v = route(&mut h, page, a);
     assert!(same(&v, &[(0.0, 0.0), (50.0, 0.0), (50.0, -20.0)]), "{v:?}");
@@ -263,7 +263,7 @@ fn joinwires_repairs_ends_that_meet() {
     let m = h.run("joinwires", json!({"at": [500, 500]})).unwrap_err();
     assert!(m.contains("There are no wire ends to join here."), "{m}");
     h.cmdline("u");
-    assert_eq!(h.doc().conductors.len(), 2);
+    assert_eq!(h.doc().wires.len(), 2);
 }
 
 /// §12 item 11: `joinwires` on an open end lying on a wire's interior places a junction.
@@ -314,12 +314,12 @@ fn the_wire_tool_has_a_join_keyword() {
     assert!(prompt.contains("(join off)"), "{prompt}");
     h.s.cmdline("50,-20").unwrap();
     h.cmdline("");
-    assert_eq!(h.doc().conductors.len(), 2, "join off: two wires");
+    assert_eq!(h.doc().wires.len(), 2, "join off: two wires");
     h.s.start("wire").unwrap();
     h.s.cmdline("0,0").unwrap();
     h.s.cmdline("-30,0").unwrap();
     h.cmdline("");
-    assert_eq!(h.doc().conductors.len(), 2, "joining is on again when the tool starts");
+    assert_eq!(h.doc().wires.len(), 2, "joining is on again when the tool starts");
 }
 
 // ---------------------------------------------------------------- Q8: a cable across pages
@@ -331,14 +331,14 @@ struct Pack {
     p100: PageId,
     p115: PageId,
     cable: ecad_model::CableId,
-    first: Vec<ConductorId>,
-    second: Vec<ConductorId>,
+    first: Vec<WireId>,
+    second: Vec<WireId>,
 }
 
 fn pack() -> Pack {
     let mut h = H::new(0x32_20);
     let p100 = h.first_page();
-    let mut first: Vec<ConductorId> = Vec::new();
+    let mut first: Vec<WireId> = Vec::new();
     for (i, y) in [0.0, 10.0, 20.0].into_iter().enumerate() {
         terminal(&mut h, (0.0, y), "X01");
         h.run("place", json!({"symbol": "continuation", "at": [100, y], "name": format!("A{}", i + 1)})).unwrap();
@@ -374,7 +374,7 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     assert_eq!(r["cable"], json!(f.cable.hex()));
     let doc = f.h.doc();
     assert_eq!(doc.cables.len(), before, "no new cable");
-    let members: Vec<ConductorId> = doc.cables[&f.cable].members.iter().map(|m| m.conductor).collect();
+    let members: Vec<WireId> = doc.cables[&f.cable].members.iter().map(|m| m.conductor).collect();
     assert_eq!(members.len(), 6);
     let cores = r["cores"].as_array().unwrap();
     assert_eq!(cores.len(), 3);
@@ -405,7 +405,7 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let doc = f.h.doc();
     assert!(!doc.representations.contains_key(&rep));
-    let left: Vec<ConductorId> = doc.cables[&f.cable].members.iter().map(|m| m.conductor).collect();
+    let left: Vec<WireId> = doc.cables[&f.cable].members.iter().map(|m| m.conductor).collect();
     assert_eq!(left, f.first);
     let _ = f.p100;
 }
@@ -469,19 +469,19 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
     assert_eq!(labels(&mut h, page).len(), 1, "net: one label");
     h.run("wiresettings", json!({"label_rule": "each", "label_min_length": 0})).unwrap();
     // The drops' junctions split the bus: five bus pieces and four drops.
-    assert_eq!(h.doc().conductors.len(), 9);
+    assert_eq!(h.doc().wires.len(), 9);
     assert_eq!(labels(&mut h, page).len(), 9, "each, 0: every wire");
     h.run("wiresettings", json!({"label_min_length": 10})).unwrap();
     let l = labels(&mut h, page);
     assert_eq!(l.len(), 5, "each, 10: the bus pieces, no 5 mm drop");
     // A drop of the net with its own cross-section is labelled too (owner Q7).
     h.run("wiresettings", json!({"label_rule": "net"})).unwrap();
-    let drop = h.doc().conductors.keys().copied().find(|c| {
+    let drop = h.doc().wires.keys().copied().find(|c| {
         let d = h.doc();
         ecad_cadcraft::wires::route_vertices(&d, *c, page).is_some_and(|(_, _, v)| v.len() == 2 && v[0].x == 20.0 && v[0].y == 0.0)
     });
     let drop = drop.expect("the first drop");
-    h.run("setprop", json!({"conductor": drop.hex(), "key": "cross_section", "value": "2.5"})).unwrap();
+    h.run("setprop", json!({"conductor": drop.hex(), "key": "size", "value": "2.5"})).unwrap();
     let l = labels(&mut h, page);
     assert_eq!(l.len(), 2, "{l:?}");
     for (i, a) in l.iter().enumerate() {
@@ -525,7 +525,7 @@ fn the_join_default_comes_from_the_registry() {
             .unwrap();
     });
     wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({}));
-    assert_eq!(h.doc().conductors.len(), 2, "wire.join off: the ends stay open");
+    assert_eq!(h.doc().wires.len(), 2, "wire.join off: the ends stay open");
 }
 
 /// Overseer ruling on §2.2: a fold carries the folded wire's own properties onto the survivor
@@ -534,20 +534,20 @@ fn the_join_default_comes_from_the_registry() {
 #[test]
 fn a_fold_keeps_the_folded_wires_properties() {
     let mut h = H::new(0x32_15);
-    let a: ConductorId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
-    let c: ConductorId = id(&wire(&mut h, &[(60.0, 0.0), (100.0, 0.0)], json!({})), "conductor");
-    h.run("setprop", json!({"conductor": c.hex(), "key": "cross_section", "value": "2.5"})).unwrap();
+    let a: WireId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "conductor");
+    let c: WireId = id(&wire(&mut h, &[(60.0, 0.0), (100.0, 0.0)], json!({})), "conductor");
+    h.run("setprop", json!({"conductor": c.hex(), "key": "size", "value": "2.5"})).unwrap();
     let head = h.head();
     let r = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     assert_eq!(h.head(), head + 1, "one transaction, numbering included");
     assert_eq!(r["removed"], json!([c.hex()]));
     let doc = h.doc();
-    assert_eq!(doc.conductors[&a].properties.get("cross_section").map(String::as_str), Some("2.5"));
-    let numbers: std::collections::BTreeSet<_> = doc.conductors.values().filter_map(|x| x.properties.get("wire_number")).collect();
+    assert_eq!(doc.wires[&a].size.map(|s| s.to_string()).as_deref(), Some("2.5"));
+    let numbers: std::collections::BTreeSet<_> = doc.wires.values().filter_map(|x| x.number_text()).collect();
     assert!(numbers.len() <= 1, "{numbers:?}");
     // Both store a value of one key, differently: refused with words.
-    let d: ConductorId = id(&wire(&mut h, &[(200.0, 0.0), (240.0, 0.0)], json!({})), "conductor");
-    h.run("setprop", json!({"conductor": d.hex(), "key": "cross_section", "value": "1.5"})).unwrap();
+    let d: WireId = id(&wire(&mut h, &[(200.0, 0.0), (240.0, 0.0)], json!({})), "conductor");
+    h.run("setprop", json!({"conductor": d.hex(), "key": "size", "value": "1.5"})).unwrap();
     let head = h.head();
     let m = wire_r(&mut h, &[(100.0, 0.0), (200.0, 0.0)], json!({})).unwrap_err();
     assert!(m.contains("different cross-sections (2.5 and 1.5)"), "{m}");
@@ -629,10 +629,10 @@ fn quiet_ends_come_from_the_document() {
     }
     // A wire from a quiet end stays a wire of its own.
     let at = quiet[0];
-    let before = h.doc().conductors.len();
+    let before = h.doc().wires.len();
     let r = wire(&mut h, &[(at.x, at.y), (at.x + 20.0, at.y - 30.0)], json!({}));
     assert_eq!(r["created"], json!(true), "{r}");
-    assert_eq!(h.doc().conductors.len(), before + 1);
+    assert_eq!(h.doc().wires.len(), before + 1);
 }
 
 // ---------------------------------------------------------------- update maps (§8, §12 item 17)

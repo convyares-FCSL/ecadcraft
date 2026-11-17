@@ -37,19 +37,19 @@ impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
     pub fn build_with(doc: &Document, tol: f64, m: &dyn TextMetrics) -> Self {
         let mut ch = Checks { off: ecad_model::sheet::checks_off_pages(doc), ..Checks::default() };
-        for c in doc.conductors.keys() {
+        for c in doc.wires.keys() {
             ch.grid.insert(doc, *c);
         }
         let conn = doc.connectivity();
         for (id, net) in conn.nets() {
             ch.set(Key::Net(id), net_checks(doc, id, net));
-            if !net.conductors.is_empty() && net.numbers.is_empty() {
+            if !net.wires.is_empty() && net.numbers.is_empty() {
                 ch.unnumbered.insert(id);
             }
         }
-        for c in doc.conductors.keys() {
+        for c in doc.wires.keys() {
             let v = conductor_checks(doc, *c, &ch.grid, tol);
-            ch.set(Key::Conductor(*c), v);
+            ch.set(Key::Wire(*c), v);
         }
         for t in doc.terminals.keys() {
             ch.set(Key::Terminal(*t), terminal_checks(doc, *t));
@@ -188,7 +188,7 @@ impl Checks {
             self.grid.insert(doc, *c);
             let new = self.grid.cells(*c);
             let near: BTreeSet<Cell> = old.union(&new).copied().collect();
-            scope.conductors.extend(self.grid.loose_near(&near));
+            scope.wires.extend(self.grid.loose_near(&near));
         }
         let conn = doc.connectivity();
         // Nets: those named, and those sharing their numbers.
@@ -216,7 +216,7 @@ impl Checks {
             match conn.net(*id) {
                 Some(net) => {
                     self.set(Key::Net(*id), net_checks(doc, *id, net));
-                    if !net.conductors.is_empty() && net.numbers.is_empty() {
+                    if !net.wires.is_empty() && net.numbers.is_empty() {
                         self.unnumbered.insert(*id);
                     } else {
                         self.unnumbered.remove(id);
@@ -228,9 +228,9 @@ impl Checks {
                 }
             }
         }
-        for c in &scope.conductors {
+        for c in &scope.wires {
             let v = conductor_checks(doc, *c, &self.grid, tol);
-            self.set(Key::Conductor(*c), v);
+            self.set(Key::Wire(*c), v);
         }
         for t in &scope.terminals {
             self.set(Key::Terminal(*t), terminal_checks(doc, *t));
@@ -248,8 +248,8 @@ impl Checks {
         // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
         // that had a row (a wire removed or recoloured there).
         let mut pages: BTreeSet<PageId> = self.by_key.keys().filter_map(|k| if let Key::Page(p) = k { Some(*p) } else { None }).collect();
-        for c in scope.conductors.iter().chain(scope.routes.iter()) {
-            pages.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+        for c in scope.wires.iter().chain(scope.routes.iter()) {
+            pages.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
         }
         for page in pages {
             let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };

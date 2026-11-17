@@ -419,7 +419,7 @@ pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<c
                 if !seen.insert(w) {
                     continue;
                 }
-                let Some(cond) = doc.conductors.get(&w) else { continue };
+                let Some(cond) = doc.wires.get(&w) else { continue };
                 if cond.ends.iter().any(Option::is_none) {
                     continue;
                 }
@@ -457,7 +457,7 @@ pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<c
                     kind: crate::checks::Kind::WireThroughCard,
                     page: Some(page),
                     at: route.first().copied(),
-                    object: crate::checks::Object::Conductor(w),
+                    object: crate::checks::Object::Wire(w),
                     which: format!(
                         "Wire {} runs through {tag} channel {} to {other}",
                         crate::slash::wire_name(doc, w).trim_start_matches("wire "),

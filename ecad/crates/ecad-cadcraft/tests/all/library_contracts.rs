@@ -246,8 +246,8 @@ fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
     assert_eq!(rj["tag"], "-X01");
     let (p1, p2, sh) = (terminal(&rj, "1"), terminal(&rj, "2"), terminal(&rj, "SH"));
     let at = h.terminal_pos(page, p1);
-    let up: ecad_model::ConductorId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 30.0)])})).unwrap(), "conductor");
-    let down: ecad_model::ConductorId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 30.0)])})).unwrap(), "conductor");
+    let up: ecad_model::WireId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 30.0)])})).unwrap(), "conductor");
+    let down: ecad_model::WireId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 30.0)])})).unwrap(), "conductor");
     let doc = h.doc();
     let conn = doc.connectivity();
     assert_eq!(conn.net_of_conductor(up), conn.net_of_conductor(down), "a feed-through is one net");

@@ -243,10 +243,8 @@ pub const GENERATED: PropKey = PropKey(crate::sheet::GENERATED_KEY);
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
-    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
+    KeySpec { key: TAG, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Ruled },
     KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
-    KeySpec { key: WIRE_NUMBER, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Ruled },
-    KeySpec { key: WIRE_NUMBER_FIXED, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
     KeySpec { key: NUMBER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
     KeySpec { key: FOLDER, area: Area::Book, holders: &[Holder::Page], value: ValueSpec::Ruled },
@@ -268,7 +266,11 @@ pub const FAMILIES: &[Family] = &[
 
 /// Keys that became struct fields: a property bag holding one is a read error (design 072 §9.4).
 /// Lanes B–F move keys here from [`KEYS`].
-pub const RESERVED: &[PropKey] = &[];
+pub const RESERVED: &[PropKey] = &[
+    // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
+    WIRE_NUMBER,
+    WIRE_NUMBER_FIXED,
+];
 
 /// The fixed key `key`, if it is one.
 pub fn spec(key: &str) -> Option<&'static KeySpec> {

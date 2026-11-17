@@ -26,7 +26,7 @@ use std::collections::{BTreeSet, HashMap};
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_cadcraft::cad::Handle;
 use ecad_cadcraft::{Mapped, Project};
-use ecad_model::{CableId, ComponentId, ConductorId, ItemId, PageId, Subject, TerminalId};
+use ecad_model::{CableId, ComponentId, ItemId, PageId, Subject, TerminalId, WireId};
 
 /// The tab's name in the Tool Sets panel.
 pub const TAB: &str = "ECAD";
@@ -409,7 +409,7 @@ pub const MAX_PICKED: usize = 1_000;
 pub struct Picked {
     pub handles: Vec<Handle>,
     pub components: Vec<ComponentId>,
-    pub conductors: Vec<ConductorId>,
+    pub wires: Vec<WireId>,
     /// Cables whose slashes or fan lines are selected.
     pub cables: Vec<CableId>,
     /// Terminals whose markers are selected.
@@ -464,7 +464,7 @@ impl Picked {
                 }
                 // A conductor's label names its wire (brief 022).
                 Some(Mapped::Label(w)) => {
-                    subjects.insert(Subject::Conductor(w));
+                    subjects.insert(Subject::Wire(w));
                 }
                 // The sheet frame (brief 019) names nothing.
                 Some(Mapped::Frame(_)) | None => {}
@@ -475,7 +475,7 @@ impl Picked {
             truncated: handles.len() > MAX_PICKED,
             handles,
             components: subjects.iter().filter_map(|s| if let Subject::Component(c) = s { Some(*c) } else { None }).collect(),
-            conductors: subjects.iter().filter_map(|s| if let Subject::Conductor(c) = s { Some(*c) } else { None }).collect(),
+            wires: subjects.iter().filter_map(|s| if let Subject::Wire(c) = s { Some(*c) } else { None }).collect(),
             cables: subjects.iter().filter_map(|s| if let Subject::Cable(c) = s { Some(*c) } else { None }).collect(),
             terminals: terminals.into_iter().collect(),
         }
@@ -493,7 +493,7 @@ fn one<T: Copy>(v: &[T]) -> Option<T> {
 /// id).
 pub fn template(id: &str, picked: &Picked) -> Option<(String, &'static str)> {
     let component = one(&picked.components).map(ComponentId::hex);
-    let conductor = one(&picked.conductors).map(ConductorId::hex);
+    let conductor = one(&picked.wires).map(WireId::hex);
     Some(match id {
         "ecad.setprop" => {
             let target = match (component, conductor) {
@@ -508,10 +508,10 @@ value is the text, or null to remove it. Then press Enter.",
             )
         }
         "ecad.cableadd" => {
-            let wires = if picked.conductors.is_empty() {
+            let wires = if picked.wires.is_empty() {
                 r#""<conductor id>""#.to_string()
             } else {
-                picked.conductors.iter().map(|c| format!(r#""{}""#, c.hex())).collect::<Vec<_>>().join(",")
+                picked.wires.iter().map(|c| format!(r#""{}""#, c.hex())).collect::<Vec<_>>().join(",")
             };
             (
                 format!(r#"cableadd {{"conductors":[{wires}],"tag":"<cable tag>"}}"#),

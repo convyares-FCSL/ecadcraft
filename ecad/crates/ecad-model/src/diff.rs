@@ -17,7 +17,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Document, End, Properties};
+use crate::doc::{Document, End, Properties, Wire};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
@@ -99,18 +99,23 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
     // Conductors: properties and ends change in place.
-    for id in ids(&from.conductors, &to.conductors, scope.map(|s| &s.conductors)) {
-        match (from.conductors.get(&id), to.conductors.get(&id)) {
+    for id in ids(&from.wires, &to.wires, scope.map(|s| &s.wires)) {
+        match (from.wires.get(&id), to.wires.get(&id)) {
             (Some(a), Some(b)) => {
-                props(ObjectRef::Conductor(id), &a.properties, &b.properties, &all, &mut changes);
+                props(ObjectRef::Wire(id), &a.display, &b.display, &all, &mut changes);
+                let values = Wire { ends: a.ends, display: a.display.clone(), ..b.clone() };
+                let before = Wire { display: a.display.clone(), ..a.clone() };
+                if values != before {
+                    changes.push(Op::ModifyWire { id, before, after: values });
+                }
                 for end in End::BOTH {
                     if a.end(end) != b.end(end) {
                         changes.push(Op::AttachEnd { conductor: id, end, before: a.end(end), after: b.end(end) });
                     }
                 }
             }
-            (Some(a), None) => removes.push(Op::DeleteConductor { id, conductor: a.clone() }),
-            (None, Some(b)) => adds.push(Op::CreateConductor { id, conductor: b.clone() }),
+            (Some(a), None) => removes.push(Op::DeleteWire { id, conductor: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateWire { id, conductor: b.clone() }),
             (None, None) => {}
         }
     }
@@ -315,7 +320,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => ("component", id.0),
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),
+            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } | Op::AttachEnd { conductor: id, .. } => ("wire", id.0),
             Op::CreateCable { id, .. }
             | Op::DeleteCable { id, .. }
             | Op::AddCableMember { cable: id, .. }
@@ -324,7 +329,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),
             Op::SetProperty { object, .. } => match object {
                 ObjectRef::Component(c) => ("component", c.0),
-                ObjectRef::Conductor(c) => ("conductor", c.0),
+                ObjectRef::Wire(c) => ("wire", c.0),
                 ObjectRef::Cable(c) => ("cable", c.0),
                 ObjectRef::Page(c) => ("page", c.0),
                 ObjectRef::Project => ("project", 0),

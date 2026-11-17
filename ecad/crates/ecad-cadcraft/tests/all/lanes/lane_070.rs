@@ -109,7 +109,7 @@ fn an_unknown_parameter_is_refused() {
     let mut h = H::new(7002);
     let e = h.run("wire", json!({"points": [[0, 0], [9, 0]], "colour": "RD"})).err().unwrap_or_default();
     assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `junction`, `points`, `potential`");
-    assert!(h.doc().conductors.is_empty(), "nothing was drawn");
+    assert!(h.doc().wires.is_empty(), "nothing was drawn");
 }
 
 /// The typed commands still work: a wire, its net, a fixed number and a released one.

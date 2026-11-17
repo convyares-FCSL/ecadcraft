@@ -99,7 +99,7 @@ typed_id!(/// A terminal of a component.
 typed_id!(/// A representation (depiction) of a component, conductor or cable.
     RepresentationId, "rep");
 typed_id!(/// A conductor.
-    ConductorId, "cnd");
+    WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");
 typed_id!(/// An embedded definition.

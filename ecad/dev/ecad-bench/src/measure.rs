@@ -330,7 +330,7 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{Component, ComponentId, Conductor, ConductorId, Ledger, Op, Page, PageId, Terminal, TerminalId};
+    use ecad_model::{Component, ComponentId, Ledger, Op, Page, PageId, Terminal, TerminalId, Wire, WireId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
@@ -343,11 +343,10 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     ];
     let mut leaves = Vec::with_capacity(wires);
     for _ in 0..wires {
-        let (t, c): (TerminalId, ConductorId) = (ids.fresh(), ids.fresh());
+        let (t, c): (TerminalId, WireId) = (ids.fresh(), ids.fresh());
         ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: comp, label: None, key: None } });
-        let mut conductor = Conductor { ends: [Some(hub), Some(t)], ..Conductor::default() };
-        conductor.properties.insert(ecad_model::wiring::POTENTIAL_KEY.into(), "0V".into());
-        ops.push(Op::CreateConductor { id: c, conductor });
+        let conductor = Wire { ends: [Some(hub), Some(t)], potential: ecad_model::text::Text::new("0V").ok(), ..Wire::default() };
+        ops.push(Op::CreateWire { id: c, conductor });
         leaves.push(c);
     }
     ledger.commit_extended(Author::User, "Rail", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -356,7 +355,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut out = Vec::with_capacity(runs);
     for run in 0..runs {
         let victim = *leaves.get(run * 997 % wires.max(1)).ok_or("no leaf")?;
-        let cond = ledger.document().conductors.get(&victim).cloned().ok_or("leaf missing")?;
+        let cond = ledger.document().wires.get(&victim).cloned().ok_or("leaf missing")?;
         let mut ops = Vec::new();
         for end in ecad_model::End::BOTH {
             if let Some(t) = cond.end(end) {
@@ -365,7 +364,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         }
         let mut bare = cond.clone();
         bare.ends = [None, None];
-        ops.push(Op::DeleteConductor { id: victim, conductor: bare });
+        ops.push(Op::DeleteWire { id: victim, conductor: bare });
         let t = Instant::now();
         let scope = checks.scope(ledger.document(), &ops);
         ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -402,13 +401,13 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
         let (victim, size) = {
             let doc = o.ledger.document();
             let conn = doc.connectivity();
-            let free = |n: &ecad_model::NetData| n.conductors.iter().copied().find(|c| doc.cables_of(*c).is_empty());
+            let free = |n: &ecad_model::NetData| n.wires.iter().copied().find(|c| doc.cables_of(*c).is_empty());
             let (c, net) = conn
                 .nets()
                 .filter_map(|(_, n)| free(n).map(|c| (c, n)))
-                .max_by_key(|(_, n)| n.conductors.len())
+                .max_by_key(|(_, n)| n.wires.len())
                 .ok_or("no net with a wire outside a cable")?;
-            (c, net.conductors.len())
+            (c, net.wires.len())
         };
         for run in 0..runs {
             let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-net-{}", run + 1))?;
@@ -426,14 +425,14 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
 
             let doc = o.ledger.document();
             let mut ops = Vec::new();
-            for (rid, r) in doc.representations_of(Subject::Conductor(victim)) {
+            for (rid, r) in doc.representations_of(Subject::Wire(victim)) {
                 ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
                 for i in &r.items {
                     let item = doc.items.get(i).cloned().ok_or("route item missing")?;
                     ops.push(Op::RemoveItem { id: *i, item });
                 }
             }
-            let cond = doc.conductors.get(&victim).cloned().ok_or("victim missing")?;
+            let cond = doc.wires.get(&victim).cloned().ok_or("victim missing")?;
             for end in ecad_model::End::BOTH {
                 if let Some(t) = cond.end(end) {
                     ops.push(Op::AttachEnd { conductor: victim, end, before: Some(t), after: None });
@@ -441,7 +440,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
             }
             let mut bare = cond.clone();
             bare.ends = [None, None];
-            ops.push(Op::DeleteConductor { id: victim, conductor: bare });
+            ops.push(Op::DeleteWire { id: victim, conductor: bare });
             let t = Instant::now();
             let scope = checks.scope(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;

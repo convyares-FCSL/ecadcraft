@@ -301,7 +301,7 @@ fn setprop(h: &mut H, c: ComponentId, key: &str, value: Value) -> Result<Value, 
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
+    (&d.components, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
 }
 
 /// Grid position of the i-th placement, far enough apart that no two symbols touch.
@@ -667,7 +667,7 @@ fn h_bulkhead_pin_joins_both_sides() {
     let pin = term(&v, "1");
     let net = net_of(&d, pin).expect("pin 1 has a net");
     let conn = d.connectivity();
-    assert_eq!(conn.net(net).map(|n| n.conductors.len()), Some(2), "both wires are on pin 1's net");
+    assert_eq!(conn.net(net).map(|n| n.wires.len()), Some(2), "both wires are on pin 1's net");
     let sh = term(&v, "SH");
     assert_ne!(net_of(&d, sh), Some(net), "the shield is its own point");
 }

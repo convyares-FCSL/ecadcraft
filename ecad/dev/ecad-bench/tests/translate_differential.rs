@@ -84,7 +84,7 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
                 match r.subject {
                     Subject::Component(_) if r.items.first() == Some(&item) => symbols.push(*h),
-                    Subject::Conductor(c) => {
+                    Subject::Wire(c) => {
                         if let Some((id, prim)) = route_on_page(doc, c, page)
                             && id == item
                             && let Some((a, b)) = prim.path_ends()

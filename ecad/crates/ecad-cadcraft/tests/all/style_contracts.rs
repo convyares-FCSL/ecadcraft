@@ -332,7 +332,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
 
 // ------------------------------------------------------------------------- 050b: wire categories
 
-fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::ConductorId {
+fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::WireId {
     let mut p = json!({"points": [[10, y], [60, y]]});
     if let Some(pot) = potential {
         p["potential"] = json!(pot);
@@ -340,7 +340,7 @@ fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::ConductorId {
     id(&h.run("wire", p).unwrap(), "conductor")
 }
 
-fn label_of(h: &mut H, page: PageId, c: ecad_model::ConductorId) -> Option<String> {
+fn label_of(h: &mut H, page: PageId, c: ecad_model::WireId) -> Option<String> {
     h.p(|p| ecad_cadcraft::wires::labels_on_page(p.ledger.document(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text))
 }
 
@@ -370,7 +370,7 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     let (mut h, page, _) = fixture();
     let a = wire(&mut h, 150.0, Some("24V"));
     let b = wire(&mut h, 170.0, Some("24V"));
-    h.run("setprop", json!({"conductor": b.hex(), "key": "colour", "value": "WH"})).unwrap();
+    h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": "WH"})).unwrap();
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}})).unwrap();
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, a).as_deref(), Some("RD"));
@@ -379,7 +379,7 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     let look = styles::wire::wire_look(&doc, b);
     assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
-    h.run("setprop", json!({"conductor": b.hex(), "key": "colour", "value": null})).unwrap();
+    h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
     assert_eq!(ecad_cadcraft::look::conductor_colour(&h.doc(), b).as_deref(), Some("RD"));
 }
 
@@ -410,7 +410,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let before = h.head();
     let r = h.run("wire", json!({"points": [[10, 190], [60, 190]], "category": "analogue"})).unwrap();
     assert_eq!(h.head(), before + 1);
-    let c: ecad_model::ConductorId = id(&r, "conductor");
+    let c: ecad_model::WireId = id(&r, "conductor");
     assert_eq!(styles::wire::wire_look(&h.doc(), c).category, Some(StyleRef::Builtin("analogue".into())));
 }
 

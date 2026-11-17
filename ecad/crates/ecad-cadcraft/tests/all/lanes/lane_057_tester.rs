@@ -17,7 +17,7 @@
 //! - R_θ = R20 × (1 + 0.00393 × (θmax − 20)); mV/A/m = 2 R_θ (ac1, dc) or √3 R_θ (ac3);
 //!   ΔU = mV/A/m × I × L / 1000; ΔU % = 100 ΔU / U.
 
-use ecad_model::{ComponentId, ConductorId};
+use ecad_model::{ComponentId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -103,7 +103,7 @@ fn rated(h: &mut H, which: Value) -> Value {
     v
 }
 
-fn wire_r(h: &mut H, c: ConductorId) -> Value {
+fn wire_r(h: &mut H, c: WireId) -> Value {
     rated(h, json!({"wire": c.hex()}))
 }
 
@@ -157,14 +157,14 @@ fn own_id(v: &Value) -> String {
 }
 
 /// The conductor with an end on `component`'s pin `label`.
-fn conductor_at(h: &mut H, component: ComponentId, label: &str) -> ConductorId {
+fn conductor_at(h: &mut H, component: ComponentId, label: &str) -> WireId {
     let d = h.doc();
     let t = d
         .terminals_of(component)
         .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_deref() == Some(label))
         .map(|(i, _)| i)
         .unwrap_or_else(|| panic!("no pin {label}"));
-    d.conductors.iter().find(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
+    d.wires.iter().find(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
 }
 
 /// Board 2.05's shape, made up: location +CAB1 over the panel; -Q01 (mcb1, pins 1 above, 2
@@ -175,7 +175,7 @@ struct R {
     h: H,
     q01: ComponentId,
     cab: ComponentId,
-    wire: ConductorId,
+    wire: WireId,
     category: String,
 }
 
@@ -506,8 +506,8 @@ fn m01_manual_basis_and_its_hostile_values() {
     // null clears; absent keys are untouched.
     h.run("rating", json!({"wire": wire.hex(), "manual": null})).unwrap();
     let d = h.doc();
-    assert!(d.conductors.get(&wire).is_some_and(|c| !c.properties.contains_key("rating.manual")));
-    assert!(d.conductors.get(&wire).is_some_and(|c| c.properties.get("rating.basis").map(String::as_str) == Some("manual")));
+    assert!(d.wires.get(&wire).is_some_and(|c| c.rating.manual.is_none()));
+    assert!(d.wires.get(&wire).is_some_and(|c| c.rating.basis == Some(ecad_model::wire::Basis::Manual)));
 }
 
 /// Check 8: Manual Iz 3.5, -Q01 4 A, load 3 → `rating-under` only (3 ≤ 4: no load-over).
@@ -702,7 +702,7 @@ fn tr01_trace_line_side_rcd_and_two_devices() {
     // Line side of -Q01: -Q00 above feeds it; a wire -Q00:2 → -Q01:1 is protected by -Q00.
     let q00 = placed(&mut h, "mcb1", 100.0, 370.0);
     h.run("setprop", json!({"component": q00.hex(), "key": "rating", "value": "10 A"})).unwrap();
-    let w = id::<ConductorId>(&h.run("wire", json!({"points": pts(&[(100.0, 360.0), (100.0, 310.0)])})).unwrap(), "conductor");
+    let w = id::<WireId>(&h.run("wire", json!({"points": pts(&[(100.0, 360.0), (100.0, 310.0)])})).unwrap(), "conductor");
     h.run("category", json!({"conductor": w.hex(), "value": category})).unwrap();
     let r = wire_r(&mut h, w);
     assert_eq!(device_in(&r), Some(10.0), "line side of -Q01: its feeder, not -Q01: {r}");
@@ -722,10 +722,8 @@ fn tr01_trace_line_side_rcd_and_two_devices() {
     let q04 = placed(&mut h, "mcb1", 340.0, 350.0);
     h.run("setprop", json!({"component": q03.hex(), "key": "rating", "value": "6 A"})).unwrap();
     h.run("setprop", json!({"component": q04.hex(), "key": "rating", "value": "10 A"})).unwrap();
-    let w3 = id::<ConductorId>(
-        &h.run("wire", json!({"points": pts(&[(300.0, 340.0), (300.0, 300.0), (340.0, 300.0), (340.0, 340.0)])})).unwrap(),
-        "conductor",
-    );
+    let w3 =
+        id::<WireId>(&h.run("wire", json!({"points": pts(&[(300.0, 340.0), (300.0, 300.0), (340.0, 300.0), (340.0, 340.0)])})).unwrap(), "conductor");
     h.run("category", json!({"conductor": w3.hex(), "value": category})).unwrap();
     let r = wire_r(&mut h, w3);
     assert_eq!(device_in(&r), Some(10.0), "the largest In: {r}");
@@ -1179,7 +1177,7 @@ fn core02_a_core_open_at_an_end_names_the_conductor_and_its_free_end() {
     let mut h = H::new(5732);
     let page = h.first_page();
     placed(&mut h, "lamp", 300.0, 200.0);
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(300.0, 190.0), (300.0, 60.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(300.0, 190.0), (300.0, 60.0)])})).unwrap(), "conductor");
     let v = h.run("cableslash", json!({"from": [295, 120], "to": [305, 120], "tag": "-W02"})).unwrap();
     let k = ecad_model::CableId::parse(&s(&v["cable"])).unwrap();
     let open = open_of(&mut h, k);
@@ -1187,7 +1185,7 @@ fn core02_a_core_open_at_an_end_names_the_conductor_and_its_free_end() {
     let (c, end) = o.end.unwrap();
     assert_eq!(c, w, "the dangling wire");
     let d = h.doc();
-    assert!(d.conductors[&c].end(end).is_none(), "the end named is the free one");
+    assert!(d.wires[&c].end(end).is_none(), "the end named is the free one");
     let (pg, at) = ecad_cadcraft::checks::conductor_place(&d, c, Some(end));
     assert_eq!(pg, Some(page));
     let at = at.unwrap();

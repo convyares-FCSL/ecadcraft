@@ -21,8 +21,8 @@
 use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Component, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::id::{CableId, ComponentId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -65,9 +65,9 @@ pub(crate) fn referrers<'a, K: Ord, V: Copy + 'a>(map: &'a Multi<K, V>, key: &K)
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Index {
     /// Terminal → conductor ends attached to it.
-    pub(crate) terminal_ends: Multi<TerminalId, (ConductorId, End)>,
-    /// Conductor → cables listing it.
-    pub(crate) conductor_cables: Multi<ConductorId, CableId>,
+    pub(crate) terminal_ends: Multi<TerminalId, (WireId, End)>,
+    /// Wire → cables listing it.
+    pub(crate) conductor_cables: Multi<WireId, CableId>,
     /// Component → its terminals.
     pub(crate) component_terminals: Multi<ComponentId, TerminalId>,
     /// Subject → representations depicting it.
@@ -167,7 +167,7 @@ impl Index {
         for (id, t) in &doc.terminals {
             rest.terminal(*id, t, Delta::Add);
         }
-        for (id, c) in &doc.conductors {
+        for (id, c) in &doc.wires {
             rest.conductor(*id, c, Delta::Add);
         }
         for (id, c) in &doc.cables {
@@ -262,14 +262,14 @@ impl Index {
         }
     }
 
-    pub(crate) fn conductor(&mut self, id: ConductorId, c: &Conductor, delta: Delta) {
+    pub(crate) fn conductor(&mut self, id: WireId, c: &Wire, delta: Delta) {
         for end in End::BOTH {
             self.conductor_end(id, end, c.end(end), delta);
         }
-        self.style_choices(ObjectRef::Conductor(id), &c.properties, delta);
+        self.style_choices(ObjectRef::Wire(id), &c.display, delta);
     }
 
-    pub(crate) fn conductor_end(&mut self, id: ConductorId, end: End, terminal: Option<TerminalId>, delta: Delta) {
+    pub(crate) fn conductor_end(&mut self, id: WireId, end: End, terminal: Option<TerminalId>, delta: Delta) {
         if let Some(t) = terminal {
             bump(&mut self.terminal_ends, t, (id, end), delta);
         }

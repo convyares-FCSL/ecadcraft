@@ -15,6 +15,7 @@
 //!   derived from the log, unsaved state.
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
 //! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
+//! - [`wire`]: the wire and its typed values (design 072 §4.2).
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
 //! - [`words`], [`units`] and [`keys`]: the shared word readers, the unit types and the property
 //!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
@@ -49,21 +50,22 @@ pub mod text;
 pub mod title_block;
 pub mod units;
 pub mod view;
+pub mod wire;
 pub mod wiring;
 pub mod words;
 
 pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
-    Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form,
-    Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
-    SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign,
+    Cable, CableMember, Color, Component, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form, Item,
+    ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
+    SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId,
-    StandardId, TerminalId, TxId,
+    CableId, ComponentId, DefinitionId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId, StandardId,
+    TerminalId, TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};

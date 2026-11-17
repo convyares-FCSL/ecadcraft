@@ -49,7 +49,7 @@ pub fn touches(op: &Op) -> bool {
         Op::SetProperty { key, .. } => is_choice_key(key),
         // A deleted object takes its choices with it.
         Op::DeleteComponent { component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
-        Op::DeleteConductor { conductor, .. } => conductor.properties.keys().any(|k| is_choice_key(k)),
+        Op::DeleteWire { conductor, .. } => conductor.display.keys().any(|k| is_choice_key(k)),
         Op::RemovePage { page, .. } => page.properties.keys().any(|k| is_choice_key(k)),
         // Brief 054: the page type and folder rows.
         op if crate::page_types::touches_checks(op) => true,
@@ -175,11 +175,11 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     // Dangling choices held by objects (through the index).
     for (value, key, o) in doc.style_choices() {
         if key == ecad_model::wiring::WIRE_CATEGORY {
-            if let ObjectRef::Conductor(c) = o
+            if let ObjectRef::Wire(c) = o
                 && dangling(doc, "wire", value)
             {
-                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
-                out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Conductor(c), which: String::new(), fix: None });
+                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
+                out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Wire(c), which: String::new(), fix: None });
             }
             continue;
         }
@@ -196,9 +196,9 @@ pub fn rows(doc: &Document) -> Vec<Check> {
                 let page = crate::reps::goto_place_in(&mut places, c).map(|(p, _)| p);
                 (Object::Component(c), page, crate::devices::tag_words(doc, c))
             }
-            ObjectRef::Conductor(c) => {
-                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Conductor(c)).map(|(p, _)| p);
-                (Object::Conductor(c), page, "Wire".to_string())
+            ObjectRef::Wire(c) => {
+                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
+                (Object::Wire(c), page, "Wire".to_string())
             }
             ObjectRef::Page(p) => (Object::None, Some(p), format!("Page {}", ecad_model::book::page_number(doc, p))),
             _ => continue,

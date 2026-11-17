@@ -3,7 +3,7 @@
 //!
 //! Excludes: the interactive forms and the JSON.
 
-use ecad_model::{ConductorId, Document, End, Item, ItemId, ItemKind, Op, PageId, Pt, TerminalId};
+use ecad_model::{Document, End, Item, ItemId, ItemKind, Op, PageId, Pt, TerminalId, WireId};
 
 use crate::error::CmdError;
 
@@ -13,7 +13,7 @@ const NO_CONDUCTOR: &str = "no such conductor";
 const NOT_A_PATH: &str = "route is not a path";
 
 /// The route of `c` on `page`, its item, and where its `end` lies.
-fn route_and_end(doc: &Document, page: PageId, c: ConductorId, end: End) -> Result<(ItemId, Item, Pt), CmdError> {
+fn route_and_end(doc: &Document, page: PageId, c: WireId, end: End) -> Result<(ItemId, Item, Pt), CmdError> {
     let (id, _) = ecad_model::derive::route_on_page(doc, c, page).ok_or(CmdError::refused("the conductor has no route on this page"))?;
     let item = doc.items.get(&id).cloned().ok_or(CmdError::refused("route missing"))?;
     let ItemKind::Primitive(prim) = &item.kind else { return Err(CmdError::refused(NOT_A_PATH)) };
@@ -27,8 +27,8 @@ fn route_and_end(doc: &Document, page: PageId, c: ConductorId, end: End) -> Resu
 /// # Errors
 /// No such conductor or connection point; the point is not shown on `page`; the wire has no
 /// route there.
-pub fn connect(doc: &Document, page: PageId, c: ConductorId, end: End, t: TerminalId) -> Result<Vec<Op>, CmdError> {
-    let conductor = doc.conductors.get(&c).ok_or(CmdError::refused(NO_CONDUCTOR))?;
+pub fn connect(doc: &Document, page: PageId, c: WireId, end: End, t: TerminalId) -> Result<Vec<Op>, CmdError> {
+    let conductor = doc.wires.get(&c).ok_or(CmdError::refused(NO_CONDUCTOR))?;
     if !doc.terminals.contains_key(&t) {
         return Err(CmdError::refused("no such connection point"));
     }
@@ -52,8 +52,8 @@ pub fn connect(doc: &Document, page: PageId, c: ConductorId, end: End, t: Termin
 ///
 /// # Errors
 /// No such conductor; that end is not connected.
-pub fn disconnect(doc: &Document, c: ConductorId, end: End) -> Result<Op, CmdError> {
-    let before = doc.conductors.get(&c).ok_or(CmdError::refused(NO_CONDUCTOR))?.end(end);
+pub fn disconnect(doc: &Document, c: WireId, end: End) -> Result<Op, CmdError> {
+    let before = doc.wires.get(&c).ok_or(CmdError::refused(NO_CONDUCTOR))?.end(end);
     if before.is_none() {
         return Err(CmdError::refused("that end is not connected"));
     }

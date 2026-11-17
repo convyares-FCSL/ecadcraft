@@ -126,7 +126,7 @@ fn branch_from_an_old_version_with_unsaved_edits_saves_them_on_main_and_starts_a
     let r = raw(&mut h, "branch", json!({"name": "From V1", "from": {"version": "V1"}})).unwrap();
     assert_eq!(r["switched"], json!(true), "{r}");
     assert_eq!(restorable(&h.doc()), restorable(&at_v1), "the branch starts at V1's state");
-    assert!(!h.doc().conductors.is_empty());
+    assert!(!h.doc().wires.is_empty());
     assert!(!h.p(|p| p.unsaved()), "nothing unsaved right after switching");
     // The parent is untouched and kept its unsaved edits (they were saved on main first).
     raw(&mut h, "switchbranch", json!({"branch": "main"})).unwrap();

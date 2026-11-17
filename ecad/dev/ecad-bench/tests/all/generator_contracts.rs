@@ -23,9 +23,9 @@ fn check_shape(g: &Generated, doc: &Document) {
     assert_eq!(doc.pages.len(), t.pages);
     assert_eq!(doc.components.len(), t.components);
     assert_eq!(doc.terminals.len(), 2 * t.components);
-    assert_eq!(doc.conductors.len(), t.wires);
+    assert_eq!(doc.wires.len(), t.wires);
     assert_eq!(doc.cables.len(), t.cables);
-    assert!(doc.conductors.values().all(|c| c.ends.iter().all(Option::is_some)), "every wire attached at both ends");
+    assert!(doc.wires.values().all(|c| c.ends.iter().all(Option::is_some)), "every wire attached at both ends");
     assert!(ecad_model::derive::mismatches(doc, 1e-9).is_empty(), "every route ends on its terminals");
 
     let nets = ecad_model::derive::nets(doc);
@@ -33,7 +33,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     assert_eq!(nets.len(), t.components, "one net per pair of neighbouring components");
     for (got, want) in nets.iter().zip(&g.nets) {
         assert_eq!(got.terminals, want.terminals);
-        assert_eq!(got.conductors, want.conductors);
+        assert_eq!(got.wires, want.wires);
     }
 
     let per_pair = t.wires / t.components;

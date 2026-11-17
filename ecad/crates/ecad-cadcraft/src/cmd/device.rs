@@ -16,8 +16,8 @@ use ecad_electrical::cmd::device::{self as device_rules, Doomed};
 use ecad_electrical::cmd::place as rules;
 use ecad_electrical::proposals::Mode;
 use ecad_model::{
-    CableId, Color, Component, ComponentId, ConductorId, DefinitionId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    CableId, Color, Component, ComponentId, DefinitionId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation, RepresentationId, Style,
+    Subject, SymbolInstance, Terminal, TerminalId, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -370,7 +370,7 @@ impl Command for DevicepropsParams {
 pub(crate) struct EcaddeleteParams {
     /// A wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A device (or any component).
     #[serde(default)]
     component: Option<ComponentId>,
@@ -382,7 +382,7 @@ pub(crate) struct EcaddeleteParams {
 impl Command for EcaddeleteParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let doomed = match (self.conductor, self.component, self.cable) {
-            (Some(c), _, _) => Doomed::Conductor(c),
+            (Some(c), _, _) => Doomed::Wire(c),
             (None, Some(c), _) => Doomed::Component(c),
             (None, None, Some(k)) => Doomed::Cable(k),
             (None, None, None) => return Err(err("`conductor`, `component` or `cable` (hex id) is required")),

@@ -70,7 +70,7 @@ fn the_demo_nets_and_wire_numbers() {
         "1: L-02 2.5 BN",
         "1: N-01 2.5 BU",
         "1: N-02 2.5 BU",
-        "1: PE 2.5 GNYE",
+        "1: PE 2.5 GN/YE",
         "2: 0V-01 0.5 BU",
         "2: 24V-01 0.5 BU",
         "2: 24V-02 0.5 BU",
