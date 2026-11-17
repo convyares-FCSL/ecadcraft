@@ -27,7 +27,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     let mut ids = IdAllocator::seeded(0x7029);
     let mut l = Ledger::new(0x7029);
     let (page, layer): (PageId, LayerId) = (ids.fresh(), ids.fresh());
-    let (k1, x1): (ComponentId, ComponentId) = (ids.fresh(), ids.fresh());
+    let (k1, x1): (DeviceId, DeviceId) = (ids.fresh(), ids.fresh());
     let (a1, t3): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
     let wire: ConductorId = ids.fresh();
     l.commit(
@@ -36,8 +36,8 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         vec![
             Op::AddPage { id: page, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-            Op::CreateComponent { id: k1, component: Component { properties: tagged("-K1"), definition: None } },
-            Op::CreateComponent { id: x1, component: Component { properties: tagged("-X1"), definition: None } },
+            Op::CreateDevice { id: k1, device: Device { properties: tagged("-K1"), definition: None, device_type: Default::default() } },
+            Op::CreateDevice { id: x1, device: Device { properties: tagged("-X1"), definition: None, device_type: Default::default() } },
             Op::AddTerminal { id: a1, terminal: Terminal { component: k1, label: Some("A1".into()), key: None } },
             Op::AddTerminal { id: t3, terminal: Terminal { component: x1, label: Some("3".into()), key: None } },
             Op::CreateConductor { id: wire, conductor: Conductor { properties: Default::default(), ends: [Some(a1), Some(t3)] } },

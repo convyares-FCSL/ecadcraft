@@ -20,7 +20,7 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -78,7 +78,7 @@ fn populate(s: &mut Session, pages: &[PageId]) -> Result<usize, String> {
     for i in 0..50 {
         let (Some(a), Some(b)) = (page(2 * i), page(2 * i + 1)) else { break };
         let v = run(s, "connector", json!({"halves": "socket", "family": "dsub", "pins": 25, "layout": "row", "at": [X0, 320.0], "page": a.hex()}))?;
-        let c: ComponentId = hex(&v, "component")?;
+        let c: DeviceId = hex(&v, "component")?;
         run(s, "connector", json!({"halves": "plug", "device": c.hex(), "layout": "row", "at": [X0, 300.0], "page": b.hex()}))?;
         n += 1;
     }
@@ -154,7 +154,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
         let c = project
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
-                doc.components.keys().copied().find(|c| ecad_cadcraft::connectors::is_connector(doc, *c))
+                doc.devices.keys().copied().find(|c| ecad_cadcraft::connectors::is_connector(doc, *c))
             })?
             .ok_or("no connector was added")?;
         let mut label = Vec::new();

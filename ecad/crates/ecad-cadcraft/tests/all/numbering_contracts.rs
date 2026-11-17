@@ -10,7 +10,7 @@ use common::{H, id};
 use ecad_cadcraft::devices::{self, PROVISIONAL_ACI, TextOf};
 use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::sheet::Grid;
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 26;
@@ -23,7 +23,7 @@ fn cell(h: &mut H, page: PageId, col: u32, row: u32) -> [f64; 2] {
     })
 }
 
-fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> ComponentId {
+fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> DeviceId {
     let mut p = json!({"symbol": "coil", "at": at});
     if let Some(t) = tag {
         p["tag"] = json!(t);
@@ -31,7 +31,7 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> ComponentId {
     id(&h.run("place", p).unwrap(), "component")
 }
 
-fn tag(h: &mut H, c: ComponentId) -> String {
+fn tag(h: &mut H, c: DeviceId) -> String {
     h.p(|p| devices::tag_words(p.ledger.document(), c))
 }
 
@@ -40,11 +40,11 @@ fn tag(h: &mut H, c: ComponentId) -> String {
 struct N {
     h: H,
     p1: PageId,
-    k07: ComponentId,
-    k01: ComponentId,
-    k03: ComponentId,
-    k02: ComponentId,
-    q01: ComponentId,
+    k07: DeviceId,
+    k01: DeviceId,
+    k03: DeviceId,
+    k02: DeviceId,
+    q01: DeviceId,
     folder: String,
 }
 
@@ -61,7 +61,7 @@ fn fixture() -> N {
     let k03 = coil(&mut h, b, Some("-K03"));
     h.run("setprop", json!({"component": k03.hex(), "key": "tag_fixed", "value": "yes"})).unwrap();
     let k02 = coil(&mut h, d, Some("-K02"));
-    let q01: ComponentId = id(&h.run("place", json!({"symbol": "mcb1", "at": e, "tag": "-Q01"})).unwrap(), "component");
+    let q01: DeviceId = id(&h.run("place", json!({"symbol": "mcb1", "at": e, "tag": "-Q01"})).unwrap(), "component");
     h.activate(p1);
     N { h, p1, k07, k01, k03, k02, q01, folder }
 }
@@ -161,7 +161,7 @@ fn h_save_and_reopen_keep_tags_fixed_flags_the_setting_and_the_high_water_mark()
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
     assert!(ecad_model::numbering::provisional_on(&h2.doc()));
-    assert_eq!(h2.doc().components[&f.k03].properties.get("tag_fixed").map(String::as_str), Some("yes"));
+    assert_eq!(h2.doc().devices[&f.k03].properties.get("tag_fixed").map(String::as_str), Some("yes"));
     // The reset mark survives: the next real tag follows the renumbered set.
     h2.run("numbering", json!({"provisional": false})).unwrap();
     let page = h2.first_page();

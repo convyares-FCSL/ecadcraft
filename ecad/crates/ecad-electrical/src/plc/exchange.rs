@@ -19,7 +19,7 @@
 use crate::CmdError;
 use std::collections::BTreeMap;
 
-use ecad_model::{ComponentId, Document, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, ObjectRef, Op};
 
 use super::channels::ch_key;
 use super::tagtable::{self, Caps, Read, TagFormat, TagRow};
@@ -93,7 +93,7 @@ impl Export {
 /// The export rows of rack `rack` (all racks and unracked cards when `None`), design 056 §6.6:
 /// used and reserved channels with a tag and an address, one row each (IO-Link: one per
 /// direction).
-pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<ComponentId>, f: &dyn TagFormat) -> Export {
+pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<DeviceId>, f: &dyn TagFormat) -> Export {
     let mut out = Export::default();
     for card in iolist::cards_in_order(plc) {
         if rack.is_some_and(|r| card.rack != super::rack::RackRef::Rack(r)) {
@@ -204,7 +204,7 @@ impl Fill {
 /// Two channels of one PLC would share a tag; in words, naming both.
 pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: bool) -> Result<Fill, CmdError> {
     // Every channel by its normalised address, per card in list order.
-    let mut at: BTreeMap<String, (ComponentId, u32)> = BTreeMap::new();
+    let mut at: BTreeMap<String, (DeviceId, u32)> = BTreeMap::new();
     for card in iolist::cards_in_order(plc) {
         let idx = iolist::indexes(card);
         for (i, a) in idx.iter().zip(card_addresses(doc, plc, card, &idx)) {
@@ -215,8 +215,8 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
     }
     let mut fill = Fill::default();
     // The tag each changed channel gets.
-    let mut new_tags: BTreeMap<(ComponentId, u32), String> = BTreeMap::new();
-    let mut cards: Vec<ComponentId> = Vec::new();
+    let mut new_tags: BTreeMap<(DeviceId, u32), String> = BTreeMap::new();
+    let mut cards: Vec<DeviceId> = Vec::new();
     for r in rows {
         let Some((c, i)) = at.get(&r.address).copied() else {
             fill.no_card.push(r.address.clone());
@@ -228,16 +228,16 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
         if tags && ch.and_then(|x| x.tag.as_deref()) != Some(r.name.as_str()) {
             let name = signals::tag_value(Some(&r.name))?.unwrap_or_default();
             new_tags.insert((c, i), name.clone());
-            let before = doc.components.get(&c).and_then(|x| x.properties.get(&ch_key(i, signals::TAG))).cloned();
-            fill.ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: ch_key(i, signals::TAG), before, after: Some(name) });
+            let before = doc.devices.get(&c).and_then(|x| x.properties.get(&ch_key(i, signals::TAG))).cloned();
+            fill.ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: ch_key(i, signals::TAG), before, after: Some(name) });
             fill.tags += 1;
             changed = true;
         }
         let comment = r.comment.trim();
         if texts && !comment.is_empty() && ch.and_then(|x| x.text.as_deref()) != Some(comment) {
             let text = super::channels::ch_value("text", Some(comment))?;
-            let before = doc.components.get(&c).and_then(|x| x.properties.get(&ch_key(i, "text"))).cloned();
-            fill.ops.push(Op::SetProperty { object: ObjectRef::Component(c), key: ch_key(i, "text"), before, after: text });
+            let before = doc.devices.get(&c).and_then(|x| x.properties.get(&ch_key(i, "text"))).cloned();
+            fill.ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: ch_key(i, "text"), before, after: text });
             fill.descriptions += 1;
             changed = true;
         }
@@ -251,7 +251,7 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
     }
     // Tags stay unique per PLC: the channels' tags after the import, compared without case.
     if !new_tags.is_empty() {
-        let mut seen: BTreeMap<(Option<ComponentId>, String), (ComponentId, u32)> = BTreeMap::new();
+        let mut seen: BTreeMap<(Option<DeviceId>, String), (DeviceId, u32)> = BTreeMap::new();
         for card in iolist::cards_in_order(plc) {
             let rack = match card.rack {
                 super::rack::RackRef::Rack(r) => Some(r),
@@ -264,7 +264,7 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
                 };
                 let Some(tag) = tag else { continue };
                 if let Some(first) = seen.insert((rack, signals::name_key(&tag)), (card.id, i)) {
-                    let words = |(c, j): (ComponentId, u32)| {
+                    let words = |(c, j): (DeviceId, u32)| {
                         let (auto, _) = super::address::of_channel(doc, c, j, Some(plc), &mut BTreeMap::new());
                         let (a, _) = super::address::shown(doc, c, j, auto);
                         let a = a.map(|a| format!(" ({a})")).unwrap_or_default();

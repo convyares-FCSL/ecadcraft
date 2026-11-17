@@ -14,7 +14,7 @@
 //! # Update map (design 024 §9)
 //! | Op (kind, target) | Recomputed |
 //! | --- | --- |
-//! | `CreateComponent` / `DeleteComponent` / `SetProperty` / terminal and representation ops of a device, its items moved | that device; the conductors at its connection points; their cables |
+//! | `CreateDevice` / `DeleteDevice` / `SetProperty` / terminal and representation ops of a device, its items moved | that device; the conductors at its connection points; their cables |
 //! | the same of a location box on page P | P's box checks only: a device's location is stored, never derived from a box (brief 052, design 052 §8.3) |
 //! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | conductors routed on P (their Page cell); no device row |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
@@ -25,8 +25,8 @@
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
-//! | Brief 047: `SetProperty(Component c, part.<n>.* / article_number)`, c a device or strip | c's entries (its main part and part lines) move between rows; the article index of their part keys; c's uncovered fuses |
-//! | Brief 047: `CreateComponent` / `DeleteComponent` / `SetProperty` of an item | that item's entry |
+//! | Brief 047: `SetProperty(Device c, part.<n>.* / article_number)`, c a device or strip | c's entries (its main part and part lines) move between rows; the article index of their part keys; c's uncovered fuses |
+//! | Brief 047: `CreateDevice` / `DeleteDevice` / `SetProperty` of an item | that item's entry |
 //! | Brief 047: `SetProperty(Project, location)` | also the items whose location is the project's |
 //! | Brief 047: `SetProperty(Project, bom.*)` | no row: the tables and page re-read the view (`BomView`); the sheet count switches to the other kept count |
 //! | anything else | nothing |
@@ -36,7 +36,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::{LOCATION_KEY, NUMBER_KEY};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{CableId, ConductorId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 use crate::bom::{self, Qty};
@@ -100,7 +100,7 @@ pub fn end_points(doc: &Document, w: ConductorId, cx: &PageCx) -> [Option<(PageI
 /// One device as the reports see it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceRow {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub tag: String,
     pub description: Option<String>,
     pub maker: Option<String>,
@@ -126,11 +126,11 @@ fn tag_key(t: &str) -> (String, u64, String) {
 /// case-insensitively, and the unit (brief 047: pieces and metres never add up); an entry with no
 /// part number is a group of its own.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PartKey(String, String, String, Option<(ComponentId, u8)>, bool);
+pub struct PartKey(String, String, String, Option<(DeviceId, u8)>, bool);
 
 impl PartKey {
     /// The same part, but a row of its own for entry `own` (the nested layout's device rows).
-    fn alone(&self, own: (ComponentId, u8)) -> PartKey {
+    fn alone(&self, own: (DeviceId, u8)) -> PartKey {
         PartKey(self.0.clone(), self.1.clone(), self.2.clone(), Some(own), self.4)
     }
 }
@@ -138,7 +138,7 @@ impl PartKey {
 /// Brief 047 (design 047 §4.1): one BOM entry, a line of a part set or an item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
-    pub component: ComponentId,
+    pub component: DeviceId,
     /// 0 for a device's main part or an item, else the part line.
     pub line: u8,
     pub item: bool,
@@ -160,7 +160,7 @@ pub struct Entry {
 }
 
 /// An entry's place in its row: tagged entries by tag, then items by description and part number.
-type EntrySort = (bool, (String, u64, String), ComponentId, u8);
+type EntrySort = (bool, (String, u64, String), DeviceId, u8);
 
 impl Entry {
     fn part_key(&self) -> PartKey {
@@ -222,7 +222,7 @@ pub struct EndCell {
     pub junction: Option<Option<ecad_model::derive::Place>>,
     /// The device's location; `None` with `device` set means the device has none.
     pub location: Option<String>,
-    pub device: Option<ComponentId>,
+    pub device: Option<DeviceId>,
     /// (page position, column, row) of the end, for the From/To order.
     pub order: (usize, u32, u32),
     /// Brief 032: the end is a continuation (a core chain's inner end, design 032 §3.2).
@@ -339,7 +339,7 @@ pub struct BomRow {
     /// The sum overflowed (never a panic): `qty` is its last good value, flagged.
     pub overflow: bool,
     pub tags: Vec<String>,
-    pub devices: Vec<ComponentId>,
+    pub devices: Vec<DeviceId>,
     pub description: Option<String>,
     pub maker: Option<String>,
     pub part_number: Option<String>,
@@ -349,7 +349,7 @@ pub struct BomRow {
     pub article_flag: Option<String>,
     /// Brief 047: the entries counted, `(component, line)`; empty for strip terminal and
     /// accessory rows.
-    pub entries: Vec<(ComponentId, u8)>,
+    pub entries: Vec<(DeviceId, u8)>,
     /// Brief 047: the row lists items only.
     pub item: bool,
     /// Brief 047, nested layout: the part line this row lists under its device, and its kit.
@@ -439,7 +439,7 @@ impl Table {
 /// What a transaction could change in the models (see the module's update map).
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
-    devices: BTreeSet<ComponentId>,
+    devices: BTreeSet<DeviceId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
     conductors: BTreeSet<ConductorId>,
@@ -485,10 +485,10 @@ impl Scope {
 
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
         match s {
-            Subject::Component(c) if locations::is_box(doc, c) => {
+            Subject::Device(c) if locations::is_box(doc, c) => {
                 self.pages.insert(page);
             }
-            Subject::Component(c) => {
+            Subject::Device(c) => {
                 self.devices.insert(c);
             }
             Subject::Conductor(w) => {
@@ -504,23 +504,23 @@ impl Scope {
     pub fn collect(&mut self, doc: &Document, ops: &[Op]) {
         for op in ops {
             match op {
-                Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
-                    if locations::is_box_component(component) {
-                        self.pages.extend(doc.representations_of(Subject::Component(*id)).map(|(_, r)| r.page));
+                Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } | Op::ModifyDevice { id, after: device, .. } => {
+                    if locations::is_box_component(device) {
+                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetComponentDefinition { id, .. } => {
+                Op::SetDeviceDefinition { id, .. } => {
                     if locations::is_box(doc, *id) {
-                        self.pages.extend(doc.representations_of(Subject::Component(*id)).map(|(_, r)| r.page));
+                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     if locations::is_box(doc, *c) {
-                        self.pages.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                        self.pages.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*c);
                     }
@@ -663,7 +663,7 @@ impl Scope {
         self.conductors.extend(mates);
         // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
-            for (c, x) in &doc.components {
+            for (c, x) in &doc.devices {
                 if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && self.renamed.contains(v)) {
                     self.devices.insert(*c);
                 }
@@ -675,8 +675,8 @@ impl Scope {
 /// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
 /// `c` included, read on `doc` (called on the state before and after a rename, so both the old
 /// and the new group): their core chains may join or break.
-fn continuation_group_cables(doc: &Document, c: ComponentId) -> BTreeSet<CableId> {
-    let Some(key) = doc.components.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+fn continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<CableId> {
+    let Some(key) = doc.devices.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
         return BTreeSet::new();
     };
     let mut group = doc.continuations_named(&key);
@@ -742,7 +742,7 @@ fn subs_has(subs: &bom::Subs, s: &str) -> bool {
 /// Whether `page` exists and is drawn from the report models.
 /// A half row's group (design 024 §6.1 as for devices): maker, part number, description, compared
 /// without case; a half with no part number is a group of its own (its connector and tag).
-type HalfKey = (String, String, String, Option<(ComponentId, String)>);
+type HalfKey = (String, String, String, Option<(DeviceId, String)>);
 
 fn half_key(r: &BomRow) -> HalfKey {
     let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
@@ -752,7 +752,7 @@ fn half_key(r: &BomRow) -> HalfKey {
 
 /// Connector `c`'s BOM rows, one per drawn half (design 044 §8.1), each at its half's stored
 /// location (design 052 §5.2).
-fn connector_rows(doc: &Document, c: ComponentId, cache: &mut BoxCache) -> Vec<BomRow> {
+fn connector_rows(doc: &Document, c: DeviceId, cache: &mut BoxCache) -> Vec<BomRow> {
     let halves = crate::connectors::half_rows(doc, c, cache);
     halves
         .into_iter()
@@ -900,7 +900,7 @@ pub fn gap_pe(s: &crate::strips::StripData, gap: &str) -> bool {
 pub fn accessory_checks(s: &crate::strips::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
-    let obj = |r: Option<&crate::strips::TermRow>| r.and_then(|r| r.terminal).map_or(Object::Component(s.component), Object::Terminal);
+    let obj = |r: Option<&crate::strips::TermRow>| r.and_then(|r| r.terminal).map_or(Object::Device(s.component), Object::Terminal);
     for (i, (key, items)) in s.acc.orphans.iter().enumerate() {
         let spot = crate::accessories::spot_of(key);
         let label = spot.as_ref().and_then(|x| x.label()).unwrap_or("?");

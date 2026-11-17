@@ -52,12 +52,12 @@ use crate::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::doc::{
-    Cable, Component, Conductor, DEFINITION_DEFAULT_KEYS, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal,
+    Cable, Conductor, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal,
     TextSlot,
 };
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
 
@@ -73,7 +73,7 @@ pub struct Touched {
     pub pages: BTreeSet<PageId>,
     pub layers: BTreeSet<LayerId>,
     pub items: BTreeSet<ItemId>,
-    pub components: BTreeSet<ComponentId>,
+    pub devices: BTreeSet<DeviceId>,
     pub terminals: BTreeSet<TerminalId>,
     pub representations: BTreeSet<RepresentationId>,
     pub conductors: BTreeSet<ConductorId>,
@@ -119,8 +119,8 @@ impl Touched {
             Effect::Item { id, .. } => {
                 self.items.insert(*id);
             }
-            Effect::Component { id, .. } | Effect::ComponentDefinition { id, .. } => {
-                self.components.insert(*id);
+            Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
+                self.devices.insert(*id);
             }
             Effect::Terminal { id, .. } => {
                 self.terminals.insert(*id);
@@ -135,8 +135,8 @@ impl Touched {
                 self.cables.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
-                ObjectRef::Component(id) => {
-                    self.components.insert(*id);
+                ObjectRef::Device(id) => {
+                    self.devices.insert(*id);
                 }
                 ObjectRef::Conductor(id) => {
                     self.conductors.insert(*id);
@@ -185,7 +185,7 @@ impl Document {
         for (id, t) in &self.terminals {
             self.check_terminal(*id, t)?;
         }
-        for (id, c) in &self.components {
+        for (id, c) in &self.devices {
             self.check_component(*id, c)?;
         }
         let mut owner: BTreeMap<ItemId, RepresentationId> = BTreeMap::new();
@@ -271,7 +271,7 @@ impl Document {
         }
 
         let mut terminals = touched.terminals.clone();
-        for c in &touched.components {
+        for c in &touched.devices {
             terminals.extend(referrers(&ix.component_terminals, c));
         }
         for id in &terminals {
@@ -280,18 +280,18 @@ impl Document {
             }
         }
 
-        let mut components = touched.components.clone();
+        let mut devices = touched.devices.clone();
         for d in &touched.definitions {
-            components.extend(referrers(&ix.definition_components, d));
+            devices.extend(referrers(&ix.definition_components, d));
         }
-        for id in &components {
-            if let Some(c) = self.components.get(id) {
+        for id in &devices {
+            if let Some(c) = self.devices.get(id) {
                 self.check_component(*id, c)?;
             }
         }
 
         let mut reps = touched.representations.clone();
-        let subjects = (touched.components.iter().map(|c| Subject::Component(*c)))
+        let subjects = (touched.devices.iter().map(|c| Subject::Device(*c)))
             .chain(touched.conductors.iter().map(|c| Subject::Conductor(*c)))
             .chain(touched.cables.iter().map(|c| Subject::Cable(*c)));
         for s in subjects {
@@ -429,14 +429,14 @@ impl Document {
 
     /// I8.
     fn check_terminal(&self, id: TerminalId, t: &Terminal) -> Result<()> {
-        if !self.components.contains_key(&t.component) {
+        if !self.devices.contains_key(&t.component) {
             return bad(format!("terminal {id} belongs to a missing component"));
         }
         Ok(())
     }
 
     /// I9.
-    fn check_component(&self, id: ComponentId, c: &Component) -> Result<()> {
+    fn check_component(&self, id: DeviceId, c: &Device) -> Result<()> {
         if let Some(d) = c.definition
             && !self.definitions.contains_key(&d)
         {
@@ -448,7 +448,7 @@ impl Document {
     /// I10 to I16. `doc05` is called for each listed item, in order, and decides I13.
     fn check_representation(&self, id: RepresentationId, r: &Representation, mut doc05: impl FnMut(ItemId) -> Result<()>) -> Result<()> {
         let subject_exists = match r.subject {
-            Subject::Component(c) => self.components.contains_key(&c),
+            Subject::Device(c) => self.devices.contains_key(&c),
             Subject::Conductor(c) => self.conductors.contains_key(&c),
             Subject::Cable(c) => self.cables.contains_key(&c),
         };
@@ -479,13 +479,13 @@ impl Document {
                 let Some(inst) = instance else {
                     return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
                 };
-                let Subject::Component(c) = r.subject else {
+                let Subject::Device(c) = r.subject else {
                     return bad(format!("symbol representation {id} must depict a component"));
                 };
                 // Without connection points its terminals are matched to the definition by key, so
                 // the symbol shown must be the component's own definition. With them (one device
                 // drawn as a coil and its contacts, brief 018), any embedded definition (I5).
-                if r.connection_points.is_empty() && self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
+                if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
                     return bad(format!("symbol representation {id} shows a definition its component does not use"));
                 }
             }
@@ -496,7 +496,7 @@ impl Document {
             }
         }
         for (t, p) in &r.connection_points {
-            let Subject::Component(c) = r.subject else {
+            let Subject::Device(c) = r.subject else {
                 return bad(format!("representation {id} of a non-component has connection points"));
             };
             if self.terminals.get(t).map(|t| t.component) != Some(c) {

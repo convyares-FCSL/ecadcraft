@@ -8,17 +8,17 @@ use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::continuations::{self, CAPTION_KEY, CAPTION_RULE, TEXT_DERIVED};
 use ecad_cadcraft::project::Mapped;
 use ecad_cadcraft::xref::{self, Group, HAlign, Places, RefIndex, Shape};
-use ecad_model::{ComponentId, ObjectRef, PageId, Pt, RepresentationId};
+use ecad_model::{DeviceId, ObjectRef, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
 struct F {
     h: H,
     pages: [PageId; 3],
     /// The `24V` arrows on 101, 102 and 103: component and symbol.
-    arrows: [(ComponentId, RepresentationId); 3],
+    arrows: [(DeviceId, RepresentationId); 3],
 }
 
-fn arrow(h: &mut H, at: (f64, f64), name: &str) -> (ComponentId, RepresentationId) {
+fn arrow(h: &mut H, at: (f64, f64), name: &str) -> (DeviceId, RepresentationId) {
     let v = h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap();
     (id(&v, "component"), id(&v, "representation"))
 }
@@ -83,7 +83,7 @@ fn index_matches(h: &mut H) {
     h.p(|p| p.xref.verify(p.ledger.document())).unwrap();
 }
 
-fn item_handle(h: &mut H, page: PageId, c: ComponentId) -> String {
+fn item_handle(h: &mut H, page: PageId, c: DeviceId) -> String {
     let item = h.symbol_item(c);
     h.handle_of(page, item).hex()
 }
@@ -285,7 +285,7 @@ fn caption_rules_and_wrapping() {
     let e = f.h.run("setprop", json!({"component": c.hex(), "key": CAPTION_KEY, "value": "A\nB"})).unwrap_err();
     assert_eq!(e, CAPTION_RULE);
     let coil = f.h.run("place", json!({"symbol": "coil", "at": [250, 150]})).unwrap();
-    let k: ComponentId = id(&coil, "component");
+    let k: DeviceId = id(&coil, "component");
     let e = f.h.run("contcaption", json!({"continuations": [k.hex()], "caption": "X"})).unwrap_err();
     assert_eq!(e, "Only continuation arrows have a caption; -K01 is a device.");
     let e = f.h.run("setprop", json!({"component": k.hex(), "key": CAPTION_KEY, "value": "X"})).unwrap_err();
@@ -303,9 +303,9 @@ fn caption_rules_and_wrapping() {
         })
         .collect();
     assert!((2..=3).contains(&lines.len()), "{lines:?}");
-    let pc: ComponentId = id(&v, "component");
+    let pc: DeviceId = id(&v, "component");
     f.h.run("setprop", json!({"component": pc.hex(), "key": CAPTION_KEY, "value": "  "})).unwrap();
-    assert_eq!(f.h.doc().components[&pc].properties.get(CAPTION_KEY), None, "blank removes it");
+    assert_eq!(f.h.doc().devices[&pc].properties.get(CAPTION_KEY), None, "blank removes it");
     // Hostile: 10 000 characters and control characters are refused, never a panic.
     for bad in ["y".repeat(10_000), "A\u{7}B".to_string()] {
         assert!(f.h.run("setprop", json!({"component": pc.hex(), "key": CAPTION_KEY, "value": bad})).is_err());

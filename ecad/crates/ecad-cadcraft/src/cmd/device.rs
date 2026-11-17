@@ -16,8 +16,8 @@ use ecad_electrical::cmd::device::{self as device_rules, Doomed};
 use ecad_electrical::cmd::place as rules;
 use ecad_electrical::proposals::Mode;
 use ecad_model::{
-    CableId, Color, Component, ComponentId, ConductorId, DefinitionId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    CableId, Color, ConductorId, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation, RepresentationId,
+    Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -122,7 +122,7 @@ impl PlaceParams {
     ///
     /// # Errors
     /// Text that is not one.
-    pub(crate) fn device_id(&self) -> Result<Option<ComponentId>, EngineError> {
+    pub(crate) fn device_id(&self) -> Result<Option<DeviceId>, EngineError> {
         rules::device_id(self.device.as_deref()).map_err(|e| err(e.to_string()))
     }
 }
@@ -281,8 +281,8 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
                 }
             },
         };
-        let (c, item, r): (ComponentId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-        ops.push(Op::CreateComponent { id: c, component: Component { definition: Some(def_id), ..Component::default() } });
+        let (c, item, r): (DeviceId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+        ops.push(Op::CreateDevice { id: c, device: Device { definition: Some(def_id), ..Device::default() } });
         let mut terminals = Vec::new();
         for td in &def.terminals {
             let t: TerminalId = p.ids.fresh();
@@ -297,7 +297,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
         ops.push(Op::LinkRepresentation {
             id: r,
             rep: Representation {
-                subject: Subject::Component(c),
+                subject: Subject::Device(c),
                 page,
                 form: Form::Symbol,
                 role: crate::symbols::of_definition(&def).map_or_else(|| "symbol".to_string(), |s| s.key.to_string()),
@@ -348,14 +348,14 @@ impl Command for DevicesParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct DevicepropsParams {
     /// The device.
-    component: ComponentId,
+    component: DeviceId,
 }
 
 impl Command for DevicepropsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
             let doc = p.ledger.document();
-            if !doc.components.contains_key(&self.component) {
+            if !doc.devices.contains_key(&self.component) {
                 return Err(CmdError::NotFound(Noun::Device));
             }
             Ok(devices::device_json(doc, self.component))
@@ -373,7 +373,7 @@ pub(crate) struct EcaddeleteParams {
     conductor: Option<ConductorId>,
     /// A device (or any component).
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// A cable.
     #[serde(default)]
     cable: Option<CableId>,
@@ -383,7 +383,7 @@ impl Command for EcaddeleteParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let doomed = match (self.conductor, self.component, self.cable) {
             (Some(c), _, _) => Doomed::Conductor(c),
-            (None, Some(c), _) => Doomed::Component(c),
+            (None, Some(c), _) => Doomed::Device(c),
             (None, None, Some(k)) => Doomed::Cable(k),
             (None, None, None) => return Err(err("`conductor`, `component` or `cable` (hex id) is required")),
         };
@@ -413,13 +413,13 @@ fn delete(s: &mut Session, doomed: Doomed) -> cadcraft_engine::Result<Value> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct DevicedeleteParams {
     /// The device.
-    component: ComponentId,
+    component: DeviceId,
 }
 
 impl Command for DevicedeleteParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let tag = on_any_page(s, |p, _| Ok(devices::tag_words(p.ledger.document(), self.component)))?;
-        let r = delete(s, Doomed::Component(self.component))?;
+        let r = delete(s, Doomed::Device(self.component))?;
         Ok(json!({"deleted": r.get("deleted").cloned().unwrap_or(Value::Bool(true)), "message": format!("Deleted {tag}.")}))
     }
 }

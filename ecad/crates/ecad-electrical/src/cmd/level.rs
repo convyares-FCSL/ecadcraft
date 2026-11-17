@@ -6,9 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{
-    ComponentId, Document, IdAllocator, ItemKind, Noun, ObjectRef, Op, Representation, RepresentationId, Subject, Terminal, TerminalId,
-};
+use ecad_model::{DeviceId, Document, IdAllocator, ItemKind, Noun, ObjectRef, Op, Representation, RepresentationId, Subject, Terminal, TerminalId};
 
 use crate::error::CmdError;
 use crate::strips::is_fuse_device;
@@ -55,7 +53,7 @@ pub struct TermlabelInput {
     /// A terminal of the position (and its level).
     pub terminal: Option<TerminalId>,
     /// With `at` (or `position`): the strip.
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
     /// The position's current label.
     pub at: Option<String>,
     /// With `strip`: the level (default 1).
@@ -169,7 +167,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         {
             return Err(CmdError::refused(format!("A level's label is 1 to {} characters, with no control characters.", tt::MAX_LABEL_CHARS)));
         }
-        let before = doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let before = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
         // A relabel above moved the old key; the new one is empty unless that move wrote it.
         let moved = ops.iter().rev().find_map(|o| match o {
             Op::SetProperty { key: k, after, .. } if *k == key => Some(after.clone()),
@@ -177,7 +175,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         });
         let before = moved.unwrap_or(before);
         if before != *t {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key, before, after: t.clone() });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key, before, after: t.clone() });
         }
         let lvl = tt::level_name(doc, c, here.ty, n);
         let words = match t {
@@ -196,7 +194,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
 #[derive(Debug, Clone)]
 pub struct ToPosition {
     pub ops: Vec<Op>,
-    pub strip: ComponentId,
+    pub strip: DeviceId,
     pub position: String,
     /// Properties that go with the device: every one but `rating`, which moves to `rating.<p>`.
     pub lost: Vec<String>,
@@ -225,9 +223,9 @@ impl ToPosition {
 /// # Errors
 /// Not a fuse terminal device, more than one symbol, no strip on its page, an unknown strip.
 pub fn plan_toposition(
-    doc: &Document, ids: &mut IdAllocator, device: ComponentId, strip: Option<ComponentId>, position: Option<&str>,
+    doc: &Document, ids: &mut IdAllocator, device: DeviceId, strip: Option<DeviceId>, position: Option<&str>,
 ) -> Result<ToPosition, CmdError> {
-    let comp = doc.components.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
+    let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
     let tag = crate::devices::tag_words(doc, device);
     if crate::strips::is_strip(doc, device) {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
@@ -237,7 +235,7 @@ pub fn plan_toposition(
             "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterm) into a strip position."
         )));
     }
-    let reps: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Component(device)).collect();
+    let reps: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Device(device)).collect();
     let [(rid, rep)] = reps.as_slice() else {
         let other = reps.get(1).map(|(r, _)| r.hex().get(..8).unwrap_or_default().to_string()).unwrap_or_default();
         return Err(CmdError::refused(if reps.is_empty() {
@@ -265,11 +263,11 @@ pub fn plan_toposition(
             c
         }
         None => {
-            let mut best: Option<(f64, ComponentId)> = None;
-            let strips: std::collections::BTreeSet<ComponentId> = doc
+            let mut best: Option<(f64, DeviceId)> = None;
+            let strips: std::collections::BTreeSet<DeviceId> = doc
                 .representations_on(page)
                 .filter_map(|(_, r)| match r.subject {
-                    Subject::Component(c) if crate::strips::is_strip(doc, c) => Some(c),
+                    Subject::Device(c) if crate::strips::is_strip(doc, c) => Some(c),
                     _ => None,
                 })
                 .collect();
@@ -321,7 +319,7 @@ pub fn plan_toposition(
     ops.push(Op::LinkRepresentation {
         id: new_rep,
         rep: Representation {
-            subject: Subject::Component(strip),
+            subject: Subject::Device(strip),
             page,
             form: rep.form,
             role: "termfuse".into(),
@@ -335,20 +333,20 @@ pub fn plan_toposition(
     let props = comp.properties.clone();
     if let Some(r) = props.get("rating").filter(|r| !r.trim().is_empty()) {
         let key = tt::rating_key(&pos);
-        let before = doc.components.get(&strip).and_then(|x| x.properties.get(&key)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Component(strip), key, before, after: Some(r.clone()) });
+        let before = doc.devices.get(&strip).and_then(|x| x.properties.get(&key)).cloned();
+        ops.push(Op::SetProperty { object: ObjectRef::Device(strip), key, before, after: Some(r.clone()) });
     }
     let keep = ["rating"];
     // Everything else goes with the device and is listed (review M1: no silent loss), its own
     // text placements included.
     let lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
-    let strip_part = doc.components.get(&strip).and_then(|x| x.properties.get(&crate::strips::type_key(ty, "part_number"))).cloned();
+    let strip_part = doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::strips::type_key(ty, "part_number"))).cloned();
     let note = match (props.get("part_number"), &strip_part) {
         (Some(a), Some(b)) if a != b => {
             Some(format!("{tag}'s part {a} differs from {stag}'s fuse terminal part {b}; set {stag}'s part if {a} is right."))
         }
         _ => None,
     };
-    ops.push(Op::DeleteComponent { id: device, component: comp.clone() });
+    ops.push(Op::DeleteDevice { id: device, device: comp.clone() });
     Ok(ToPosition { ops, strip, position: pos.clone(), lost, note, label: format!("{tag} \u{2192} {stag}:{pos}") })
 }

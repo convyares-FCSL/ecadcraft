@@ -39,7 +39,7 @@ pub mod trace;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, ComponentId, ConductorId, Document, NetId, ObjectRef, Op, StyleRef};
+use ecad_model::{CableId, ConductorId, DeviceId, Document, NetId, ObjectRef, Op, StyleRef};
 
 use crate::defaults::{self, Scope};
 use crate::styles::{self, cable, ratingtable, wire};
@@ -262,7 +262,7 @@ pub struct Factor {
 /// The device that protects a subject.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
-    pub component: ComponentId,
+    pub component: DeviceId,
     /// The fuse of a bank, or a strip's fuse position.
     pub fuse: Option<String>,
     /// `-Q01`, `-F01:3`.
@@ -308,7 +308,7 @@ pub enum Issue {
     NoDevice(bool),
     TwoDevices(String, String),
     /// A device whose rating does not read.
-    DeviceUnread(ComponentId, String),
+    DeviceUnread(DeviceId, String),
     NamedDevice(String),
     NoData(String),
     NoTable(String),
@@ -417,7 +417,7 @@ impl Context {
     }
 
     /// A context from kept location boxes (no scan of the components).
-    fn with_boxes(doc: &Document, boxes: &BTreeMap<ComponentId, BoxTemp>) -> Self {
+    fn with_boxes(doc: &Document, boxes: &BTreeMap<DeviceId, BoxTemp>) -> Self {
         let mut temps: BTreeMap<String, f64> = BTreeMap::new();
         for b in boxes.values() {
             if let Temp::Read(t) = b.temp {
@@ -450,8 +450,8 @@ pub enum Temp {
 }
 
 /// The temperature of location box `c`, if it is one and sets one.
-pub fn box_temp(doc: &Document, c: ComponentId) -> Option<BoxTemp> {
-    let x = doc.components.get(&c).filter(|x| crate::locations::is_box_component(x))?;
+pub fn box_temp(doc: &Document, c: DeviceId) -> Option<BoxTemp> {
+    let x = doc.devices.get(&c).filter(|x| crate::locations::is_box_component(x))?;
     let v = x.properties.get(TEMPERATURE)?;
     let location = x.properties.text(ecad_model::keys::LOCATION).map(|l| l.trim().to_string()).unwrap_or_default();
     Some(BoxTemp { location, temp: parse::ambient(v).map_or_else(|| Temp::Unread(v.chars().take(32).collect()), Temp::Read) })
@@ -463,8 +463,8 @@ pub fn location_code(doc: &Document, key: &str) -> String {
 }
 
 /// Every location box that sets a temperature (open, reload, first show).
-pub fn box_temps(doc: &Document) -> BTreeMap<ComponentId, BoxTemp> {
-    doc.components.keys().filter_map(|c| box_temp(doc, *c).map(|b| (*c, b))).collect()
+pub fn box_temps(doc: &Document) -> BTreeMap<DeviceId, BoxTemp> {
+    doc.devices.keys().filter_map(|c| box_temp(doc, *c).map(|b| (*c, b))).collect()
 }
 
 fn project_number(doc: &Document, e: &defaults::Entry) -> f64 {
@@ -998,14 +998,14 @@ pub struct Touch {
     /// Re-trace these too.
     pub retrace: BTreeSet<RatedSubject>,
     pub nets: BTreeSet<NetId>,
-    pub devices: BTreeSet<ComponentId>,
+    pub devices: BTreeSet<DeviceId>,
     pub styles: BTreeSet<(String, StyleRef)>,
     /// Locations whose temperature changed: `at[location]` (D1).
     pub locations: BTreeSet<String>,
     /// Location boxes to read again.
-    pub boxes: BTreeSet<ComponentId>,
+    pub boxes: BTreeSet<DeviceId>,
     /// Devices whose location may have changed: their wires' results.
-    pub moved: BTreeSet<ComponentId>,
+    pub moved: BTreeSet<DeviceId>,
     /// Pages a location box moved on: the wires of the devices drawn there.
     pub pages: BTreeSet<ecad_model::PageId>,
     /// Every result again (no re-trace).
@@ -1039,8 +1039,8 @@ impl Touch {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.retrace.insert(RatedSubject::Cable(*k));
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, before, after } => {
-                    let is_box = doc.components.get(c).is_some_and(crate::locations::is_box_component);
+                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
+                    let is_box = doc.devices.get(c).is_some_and(crate::locations::is_box_component);
                     if is_box {
                         // A box's temperature or location: the wires at its locations (§10).
                         if key == TEMPERATURE || key == ecad_model::book::LOCATION_KEY {
@@ -1113,14 +1113,16 @@ impl Touch {
                     }
                 }
                 Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => net_of_terminal(*id, self),
-                Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } if crate::locations::is_box_component(component) => {
+                Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component }
+                    if crate::locations::is_box_component(component) =>
+                {
                     self.boxes.insert(*id);
                     if let Some(l) = component.properties.get(ecad_model::book::LOCATION_KEY) {
                         self.locations.insert(l.trim().to_string());
                     }
                     self.box_pages(doc, *id);
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
                     for (t, _) in doc.terminals_of(*id) {
                         net_of_terminal(t, self);
@@ -1146,8 +1148,8 @@ impl Touch {
                 // A device moved may enter another location box: its wires; a box moved: the wires at
                 // its location and those of the devices on its page.
                 Op::ModifyRepresentation { after, .. } | Op::LinkRepresentation { rep: after, .. } | Op::UnlinkRepresentation { rep: after, .. } => {
-                    if let ecad_model::Subject::Component(c) = after.subject {
-                        if doc.components.get(&c).is_some_and(crate::locations::is_box_component) {
+                    if let ecad_model::Subject::Device(c) = after.subject {
+                        if doc.devices.get(&c).is_some_and(crate::locations::is_box_component) {
                             self.boxes.insert(c);
                             self.box_locations(doc, c);
                             self.pages.insert(after.page);
@@ -1168,12 +1170,12 @@ pub struct Kept {
     pub results: BTreeMap<RatedSubject, Rating>,
     traces: BTreeMap<RatedSubject, Found>,
     /// device → subjects it protects (by the trace or by name).
-    protects: BTreeMap<ComponentId, BTreeSet<RatedSubject>>,
+    protects: BTreeMap<DeviceId, BTreeSet<RatedSubject>>,
     /// net → subjects whose trace crossed it.
     path: BTreeMap<NetId, BTreeSet<RatedSubject>>,
     tally: Tally,
     /// Devices whose rating does not read → how many results name them.
-    unread: BTreeMap<ComponentId, (usize, String)>,
+    unread: BTreeMap<DeviceId, (usize, String)>,
     /// The rating table's own rows.
     table_rows: Vec<Issue>,
     /// How many subjects the last build or update evaluated, and re-traced (the update map's
@@ -1191,7 +1193,7 @@ pub struct Kept {
     /// The chosen rating table as last parsed; read again only when an op reaches it.
     table: Option<std::sync::Arc<ratingtable::Table>>,
     /// Location boxes that set a temperature (read again only when an op reaches one).
-    boxes: BTreeMap<ComponentId, BoxTemp>,
+    boxes: BTreeMap<DeviceId, BoxTemp>,
     /// location → the wires whose ends are there (design 057 §10, `at`).
     at: BTreeMap<String, BTreeSet<RatedSubject>>,
     /// Panel wires a device protects that have no rating data (`rating-no-data`, §7 and check 13),
@@ -1428,10 +1430,10 @@ impl Kept {
                 results.extend(set.iter().copied());
             }
         }
-        let mut moved: BTreeSet<ComponentId> = touch.moved.clone();
+        let mut moved: BTreeSet<DeviceId> = touch.moved.clone();
         for page in &touch.pages {
             moved.extend(doc.representations_on(*page).filter_map(|(_, r)| match r.subject {
-                ecad_model::Subject::Component(c) => Some(c),
+                ecad_model::Subject::Device(c) => Some(c),
                 _ => None,
             }));
         }
@@ -1472,7 +1474,7 @@ impl Kept {
     }
 
     /// Location boxes whose temperature does not read: (box, location, text).
-    pub fn bad_boxes(&self) -> impl Iterator<Item = (ComponentId, &str, &str)> {
+    pub fn bad_boxes(&self) -> impl Iterator<Item = (DeviceId, &str, &str)> {
         self.boxes.iter().filter_map(|(c, b)| match &b.temp {
             Temp::Unread(v) => Some((*c, b.location.as_str(), v.as_str())),
             Temp::Read(_) => None,
@@ -1480,7 +1482,7 @@ impl Kept {
     }
 
     /// Devices whose rating does not read, with their rating text.
-    pub fn unread(&self) -> impl Iterator<Item = (ComponentId, &str)> {
+    pub fn unread(&self) -> impl Iterator<Item = (DeviceId, &str)> {
         self.unread.iter().map(|(c, (_, t))| (*c, t.as_str()))
     }
 
@@ -1489,7 +1491,7 @@ impl Kept {
     }
 
     /// The subjects a device protects.
-    pub fn protected_by(&self, c: ComponentId) -> usize {
+    pub fn protected_by(&self, c: DeviceId) -> usize {
         self.protects.get(&c).map_or(0, BTreeSet::len)
     }
 
@@ -1520,14 +1522,14 @@ fn table_issues(ctx: &Context) -> Vec<Issue> {
 }
 
 impl Touch {
-    fn box_locations(&mut self, doc: &Document, c: ComponentId) {
-        if let Some(l) = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
+    fn box_locations(&mut self, doc: &Document, c: DeviceId) {
+        if let Some(l) = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
             self.locations.insert(l.trim().to_string());
         }
     }
 
-    fn box_pages(&mut self, doc: &Document, c: ComponentId) {
-        self.pages.extend(doc.representations_of(ecad_model::Subject::Component(c)).map(|(_, r)| r.page));
+    fn box_pages(&mut self, doc: &Document, c: DeviceId) {
+        self.pages.extend(doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r.page));
     }
 
     /// Whether the ops reach anything here.
@@ -1723,12 +1725,12 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     }
     for (c, text) in k.unread() {
         let tag = crate::devices::tag_words(doc, c);
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingDeviceUnread,
             page,
             at,
-            object: Object::Component(c),
+            object: Object::Device(c),
             which: format!("{tag}'s rating '{text}' has no current; write it as 16 A"),
             fix: None,
         });
@@ -1736,12 +1738,12 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     for (c, loc, v) in k.bad_boxes() {
         // Brief 052: the box stores an entry key; the row names the entry's code.
         let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingBadValue,
             page,
             at,
-            object: Object::Component(c),
+            object: Object::Device(c),
             which: format!(
                 "{} has {TEMPERATURE} '{v}', which ECAD does not read (\u{2212}40 to 90 \u{b0}C)",
                 if loc.is_empty() { "A location box" } else { loc.as_str() }

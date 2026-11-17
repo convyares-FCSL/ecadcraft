@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{Component, ComponentId, Document, IdAllocator, ObjectRef, Op, Properties};
+use ecad_model::{Device, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties};
 
 use crate::bom::*;
 use crate::designations::{Aspect, Pending};
@@ -37,27 +37,27 @@ pub struct PartlinePlan {
     /// Empty when nothing changes.
     pub ops: Vec<Op>,
     /// Each device and the lines written.
-    pub rows: Vec<(ComponentId, Vec<u8>)>,
+    pub rows: Vec<(DeviceId, Vec<u8>)>,
     pub label: String,
     pub message: String,
 }
 
-/// The devices a `partline` call names: `components` when given, else `component`; each one a
+/// The devices a `partline` call names: `devices` when given, else `component`; each one a
 /// device or strip.
 ///
 /// # Errors
 /// None named, an empty list, no such component, or one that takes no part lines.
-pub fn partline_targets(doc: &Document, component: Option<ComponentId>, components: Option<Vec<ComponentId>>) -> Result<Vec<ComponentId>, CmdError> {
-    let cs = match (components, component) {
+pub fn partline_targets(doc: &Document, component: Option<DeviceId>, devices: Option<Vec<DeviceId>>) -> Result<Vec<DeviceId>, CmdError> {
+    let cs = match (devices, component) {
         (Some(cs), _) => cs,
         (None, Some(c)) => vec![c],
-        (None, None) => return Err(CmdError::input("`component` or `components` (hex id) is required")),
+        (None, None) => return Err(CmdError::input("`component` or `devices` (hex id) is required")),
     };
     if cs.is_empty() {
-        return Err(CmdError::input("`components` is empty"));
+        return Err(CmdError::input("`devices` is empty"));
     }
     for c in &cs {
-        if !doc.components.contains_key(c) {
+        if !doc.devices.contains_key(c) {
             return Err(CmdError::refused(format!("No component {}.", c.hex())));
         }
         if !takes_lines(doc, *c) {
@@ -73,7 +73,7 @@ pub fn partline_targets(doc: &Document, component: Option<ComponentId>, componen
 /// # Errors
 /// [`partline_targets`]'s refusals, a line that does not read, a device with no room or without
 /// that line.
-pub fn plan_partline(doc: &Document, cs: &[ComponentId], change: PartlineChange) -> Result<PartlinePlan, CmdError> {
+pub fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) -> Result<PartlinePlan, CmdError> {
     let mut ops = Vec::new();
     let mut rows = Vec::new();
     let no_component = || CmdError::refused("no such component");
@@ -94,7 +94,7 @@ pub fn plan_partline(doc: &Document, cs: &[ComponentId], change: PartlineChange)
             }
             let lines: Vec<LineFields> = lines.into_iter().map(sorted).collect();
             for c in cs {
-                let props = doc.components.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
+                let props = doc.devices.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
                 let mut used = used_lines(props);
                 let mut ns = Vec::new();
                 for fields in &lines {
@@ -130,14 +130,14 @@ pub fn plan_partline(doc: &Document, cs: &[ComponentId], change: PartlineChange)
             let n = n.ok_or_else(|| CmdError::input(format!("`line` (1 to {MAX_LINES}) is required with `set` or `remove`, or give `add`")))?;
             let set = set.map(sorted);
             for c in cs {
-                let props = doc.components.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
+                let props = doc.devices.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
                 if !used_lines(props).contains(&n) {
                     return Err(CmdError::refused(format!("{} has no part line {n}.", crate::devices::tag_words(doc, *c))));
                 }
                 if remove {
                     let prefix = format!("{PART_PREFIX}{n}.");
                     for (k, v) in props.range(prefix.clone()..).take_while(|(k, _)| k.starts_with(&prefix)) {
-                        ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: k.clone(), before: Some(v.clone()), after: None });
+                        ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: k.clone(), before: Some(v.clone()), after: None });
                     }
                 } else if let Some(fields) = &set {
                     ops.extend(line_ops(doc, *c, n, fields)?);
@@ -183,7 +183,7 @@ pub enum ItemChange {
     /// Add an item with these fields.
     Add(ItemFields),
     /// Delete item `item`, or set its fields.
-    Edit { item: ComponentId, delete: bool, set: Option<ItemFields> },
+    Edit { item: DeviceId, delete: bool, set: Option<ItemFields> },
 }
 
 /// What `bomitem` records and says.
@@ -191,7 +191,7 @@ pub enum ItemChange {
 pub struct ItemPlan {
     /// Empty when nothing changes.
     pub ops: Vec<Op>,
-    pub item: ComponentId,
+    pub item: DeviceId,
     pub label: &'static str,
     /// What happened, in words (none when nothing changes).
     pub message: Option<String>,
@@ -206,13 +206,13 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
     match change {
         ItemChange::Edit { item, delete, set } => {
             let comp = doc
-                .components
+                .devices
                 .get(&item)
                 .filter(|c| is_item_component(c))
                 .ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
             if delete {
                 let words = item_words(doc, &comp.properties);
-                let ops = vec![Op::DeleteComponent { id: item, component: comp.clone() }];
+                let ops = vec![Op::DeleteDevice { id: item, device: comp.clone() }];
                 return Ok(ItemPlan { ops, item, label: "Delete item", message: Some(format!("Deleted item {words}.")) });
             }
             let fields = set.ok_or(CmdError::input("Give `set: {field: value}` or `delete: true` with `item`."))?;
@@ -236,7 +236,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 };
                 let before = props.get(key).cloned();
                 if before != after {
-                    ops.push(Op::SetProperty { object: ObjectRef::Component(item), key: key.to_string(), before, after });
+                    ops.push(Op::SetProperty { object: ObjectRef::Device(item), key: key.to_string(), before, after });
                 }
             }
             let message = (!ops.is_empty()).then(|| "Edited the item.".to_string());
@@ -246,7 +246,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
             if !fields.contains_key("description") {
                 return Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION));
             }
-            let items = doc.components.values().filter(|c| is_item_component(c)).count();
+            let items = doc.devices.values().filter(|c| is_item_component(c)).count();
             if items >= MAX_ITEMS {
                 return Err(CmdError::refused(format!("This project has {items} items, the most a project holds.")));
             }
@@ -276,8 +276,11 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 }
             }
             let words = item_words(doc, &props);
-            let item: ComponentId = ids.fresh();
-            ops.push(Op::CreateComponent { id: item, component: Component { properties: props, definition: None } });
+            let item: DeviceId = ids.fresh();
+            ops.push(Op::CreateDevice {
+                id: item,
+                device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
+            });
             Ok(ItemPlan { ops, item, label: "Add item", message: Some(format!("Added item {words}.")) })
         }
     }
@@ -317,7 +320,7 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
     for (object, key, what) in &targets {
         *counts.entry(what).or_default() += 1;
         let before = match object {
-            ObjectRef::Component(c) => doc.components.get(c).and_then(|x| x.properties.get(key)).cloned(),
+            ObjectRef::Device(c) => doc.devices.get(c).and_then(|x| x.properties.get(key)).cloned(),
             _ => doc.properties.get(key).cloned(),
         };
         if before != after {

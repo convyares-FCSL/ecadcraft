@@ -39,7 +39,7 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     for (id, p) in &doc.pages {
         bag(&p.properties, WordPlace::Page(*id), Level::Page, &mut out);
     }
-    for (id, c) in &doc.components {
+    for (id, c) in &doc.devices {
         bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
     }
     for (id, c) in &doc.conductors {
@@ -121,7 +121,7 @@ fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_model::{Component, ComponentId, PageId};
+    use ecad_model::{Device, DeviceId, PageId};
 
     fn doc() -> Document {
         Document::default()
@@ -158,10 +158,10 @@ mod tests {
         if let Some(p) = d.pages.get_mut(&page) {
             p.properties.insert("text.tag.show".into(), "sometimes".into());
         }
-        let c = ComponentId(2);
-        d.components.insert(c, Component::default());
+        let c = DeviceId(2);
+        d.devices.insert(c, Device::default());
         let rep = RepresentationId(0xab);
-        if let Some(comp) = d.components.get_mut(&c) {
+        if let Some(comp) = d.devices.get_mut(&c) {
             comp.properties.insert(defaults::symbol_key("text.tag.show", rep), "never".into());
         }
         let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
@@ -171,15 +171,15 @@ mod tests {
     #[test]
     fn stored_flags_hold_only_yes_or_no() {
         let mut d = doc();
-        let c = ComponentId(3);
-        d.components.insert(c, Component::default());
+        let c = DeviceId(3);
+        d.devices.insert(c, Device::default());
         d.properties.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
-        if let Some(comp) = d.components.get_mut(&c) {
+        if let Some(comp) = d.devices.get_mut(&c) {
             comp.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
         }
         assert!(check(&d).is_empty(), "the written words pass");
         for typed in ["on", "true", "1", "off", "Yes", " no"] {
-            if let Some(comp) = d.components.get_mut(&c) {
+            if let Some(comp) = d.devices.get_mut(&c) {
                 comp.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
             }
             let found = check(&d);

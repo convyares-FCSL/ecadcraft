@@ -21,7 +21,7 @@ fn last_by_agent(c: &mut Client) -> (String, Vec<Op>) {
 }
 
 fn sets(ops: &[Op], key: &str) -> bool {
-    ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), key: k, .. } if k == key))
+    ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key: k, .. } if k == key))
 }
 
 #[test]

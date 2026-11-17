@@ -58,7 +58,7 @@ fn status(h: &mut H, name: &str) -> String {
     b["branches"].as_array().unwrap().iter().find(|x| x["name"] == json!(name)).map(|x| x["status"].as_str().unwrap().to_string()).unwrap_or_default()
 }
 
-fn opened(tag: &str) -> (H, PathBuf, ecad_model::ComponentId) {
+fn opened(tag: &str) -> (H, PathBuf, ecad_model::DeviceId) {
     let dir = std::env::temp_dir().join(format!("ecad-020b-tui-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = demo_file(&dir);
@@ -69,11 +69,11 @@ fn opened(tag: &str) -> (H, PathBuf, ecad_model::ComponentId) {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     click(&mut h, history_panel::HISTORY_TAB);
-    let k1 = doc(&mut h).components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-K01")).map(|(k, _)| *k).unwrap();
+    let k1 = doc(&mut h).devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-K01")).map(|(k, _)| *k).unwrap();
     (h, dir, k1)
 }
 
-fn setdesc(h: &mut H, k1: ecad_model::ComponentId, v: &str) {
+fn setdesc(h: &mut H, k1: ecad_model::DeviceId, v: &str) {
     ok(h, &format!(r#"setprop {{"component":"{}","key":"description","value":"{v}"}}"#, k1.hex()));
 }
 
@@ -147,7 +147,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     assert_eq!(branch(&mut h), "Option D");
     assert!(last_label(&mut h).starts_with("Update from main"), "{}", last_label(&mut h));
     assert!(echoed(&h, "Updated \"Option D\" from main"), "{:?}", h.state().cad.session.log.last());
-    let desc = doc(&mut h).components.get(&k1).and_then(|c| c.properties.get("description").cloned());
+    let desc = doc(&mut h).devices.get(&k1).and_then(|c| c.properties.get("description").cloned());
     assert_eq!(desc.as_deref(), Some("Main pump"));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -251,8 +251,8 @@ fn a_versions_details_name_the_devices_it_added() {
     ok(&mut h, r#"version {"name":"Before"}"#);
     h.state_mut().save().unwrap();
     let placed = run(&mut h, "place", json!({"symbol": "coil", "at": [60, 150]}));
-    let c = ecad_model::ComponentId::parse(placed["component"].as_str().unwrap()).unwrap();
-    let tag = doc(&mut h).components.get(&c).and_then(|x| x.properties.get("tag").cloned()).unwrap();
+    let c = ecad_model::DeviceId::parse(placed["component"].as_str().unwrap()).unwrap();
+    let tag = doc(&mut h).devices.get(&c).and_then(|x| x.properties.get("tag").cloned()).unwrap();
     ok(&mut h, r#"version {"name":"After"}"#);
     h.state_mut().save().unwrap();
     let info = run(&mut h, "pointinfo", json!({"version": "After"}));

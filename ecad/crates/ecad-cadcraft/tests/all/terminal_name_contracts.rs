@@ -9,7 +9,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use common::H;
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::json;
 
 fn new_h() -> H {
@@ -42,7 +42,7 @@ fn edge(h: &H, x: f64) -> Handle {
         .unwrap()
 }
 
-fn rect(h: &mut H, x0: f64) -> ComponentId {
+fn rect(h: &mut H, x0: f64) -> DeviceId {
     let before: Vec<Handle> = h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
     h.cmdline(&format!("line {x0},0 {},0 {},20 {x0},20 c", x0 + 40.0, x0 + 40.0));
     let hs: Vec<String> =
@@ -59,7 +59,7 @@ fn rect(h: &mut H, x0: f64) -> ComponentId {
     common::id(&r, "component")
 }
 
-fn labels(h: &mut H, c: ComponentId) -> Vec<String> {
+fn labels(h: &mut H, c: DeviceId) -> Vec<String> {
     let mut l: Vec<String> = h.doc().terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     l.sort();
     l
@@ -214,7 +214,7 @@ fn numbered_and_number_free_prompts_follow_the_cursor() {
     h.s.cmdline("N").unwrap();
     h.s.input(Input::Enter).unwrap();
     let d = h.doc();
-    let b = d.components.keys().copied().find(|c| d.terminals_of(*c).count() == 0).unwrap();
+    let b = d.devices.keys().copied().find(|c| d.terminals_of(*c).count() == 0).unwrap();
     h.s.cmdline("100,10").unwrap();
     assert_eq!(labels(&mut h, b), ["1"]);
     h.s.cancel();

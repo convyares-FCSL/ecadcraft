@@ -105,14 +105,14 @@ fn replay_verified_runs_the_full_check_in_any_build() {
 #[test]
 fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     let mut l = Ledger::new(7);
-    let (page, layer, c, t1, t2, w, cable) = (PageId(1), LayerId(2), ComponentId(3), TerminalId(4), TerminalId(5), ConductorId(6), CableId(7));
+    let (page, layer, c, t1, t2, w, cable) = (PageId(1), LayerId(2), DeviceId(3), TerminalId(4), TerminalId(5), ConductorId(6), CableId(7));
     l.commit(
         Author::User,
         "setup",
         vec![
             Op::AddPage { id: page, page: Page::new("1"), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-            Op::CreateComponent { id: c, component: Component::default() },
+            Op::CreateDevice { id: c, device: Device::default() },
             Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: None, key: None } },
             Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: None, key: None } },
             Op::CreateConductor { id: w, conductor: Conductor::default() },

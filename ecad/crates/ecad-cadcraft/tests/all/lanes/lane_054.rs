@@ -487,7 +487,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     // A coil there is in no reference group: the device has no head.
     h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let d = h.doc();
-    let coil = d.components.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == plain));
+    let coil = d.devices.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == plain));
     if let Some(c) = coil {
         assert!(ecad_cadcraft::xref::device(&d, c).head.is_none(), "no references from a Plain page");
     }
@@ -546,10 +546,10 @@ fn structure_codes_show_the_052_codes_and_follow_a_rename() {
     let first = h.first_page();
     h.activate(first);
     h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c = h.doc().components.keys().copied().next().unwrap();
+    let c = h.doc().devices.keys().copied().next().unwrap();
     h.run("setlocation", json!({"component": c.hex(), "value": "+CP1"})).unwrap();
     h.run("setdefault", json!({"key": "front.cover.structure_codes", "level": "project", "value": "on"})).unwrap();
-    let key = h.doc().components.get(&c).and_then(|x| x.properties.get("location").cloned()).unwrap();
+    let key = h.doc().devices.get(&c).and_then(|x| x.properties.get("location").cloned()).unwrap();
     assert_ne!(key, "+CP1", "052 stores the entry key");
     let t = cover_texts(&mut h, cover);
     assert!(t.iter().any(|x| x == "+CP1"), "{t:?}");

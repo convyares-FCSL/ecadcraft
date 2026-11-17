@@ -54,7 +54,7 @@ impl DeviceList {
     fn apply(&mut self, doc: &Document, t: &DeviceTouch) -> bool {
         let mut changed = false;
         let mut resort = false;
-        for c in &t.components {
+        for c in &t.devices {
             let now = device_entry(doc, *c);
             let at = self.entries.iter().position(|e| e.id == *c);
             match (at, now) {

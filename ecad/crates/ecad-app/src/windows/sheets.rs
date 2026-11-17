@@ -162,7 +162,7 @@ impl App {
                         let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
                     } else if let Some(c) = g.strip_prefix("showplan:") {
                         // Brief 028: Reports ▸ Terminals on this strip.
-                        self.show_plan(ecad_model::ComponentId::parse(c));
+                        self.show_plan(ecad_model::DeviceId::parse(c));
                     } else if let Some(k) = g.strip_prefix("showcores:").and_then(ecad_model::CableId::parse) {
                         self.show_cores(k);
                     } else if let Some(rest) = g.strip_prefix("refgoto:") {

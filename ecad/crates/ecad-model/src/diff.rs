@@ -7,7 +7,8 @@
 //!   first, then additions, then changes in place; pages and folders are removed and inserted at
 //!   indices valid at that point. Invariants hold at the end because `to` is a valid document.
 //! - An object present in both with a different value is changed in place where an op can
-//!   (`ModifyItem`, `ModifyRepresentation`, `ModifyFolder`, `SetProperty`, `AttachEnd`), else
+//!   (`ModifyItem`, `ModifyDevice`, `ModifyRepresentation`, `ModifyFolder`, `SetProperty`,
+//!   `AttachEnd`), else
 //!   removed and added again.
 //! - Pages and folders keep the longest run already in the target's order; only the others move.
 //! - Named versions are never touched (they are history). `keep_project_key` says which project
@@ -135,18 +136,22 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             }
         }
     }
-    // Components: properties in place; another definition is `SetComponentDefinition` (brief 048,
-    // FP5), after the definitions are embedded.
-    for id in ids(&from.components, &to.components, scope.map(|s| &s.components)) {
-        match (from.components.get(&id), to.components.get(&id)) {
+    // Devices: properties in place; another definition is `SetDeviceDefinition` (brief 048,
+    // FP5), after the definitions are embedded; another type makes it one `ModifyDevice` (design
+    // 072 F13).
+    for id in ids(&from.devices, &to.devices, scope.map(|s| &s.devices)) {
+        match (from.devices.get(&id), to.devices.get(&id)) {
+            (Some(a), Some(b)) if a.device_type != b.device_type => {
+                changes.push(Op::ModifyDevice { id, before: a.clone(), after: b.clone() });
+            }
             (Some(a), Some(b)) => {
-                props(ObjectRef::Component(id), &a.properties, &b.properties, &all, &mut changes);
+                props(ObjectRef::Device(id), &a.properties, &b.properties, &all, &mut changes);
                 if a.definition != b.definition {
-                    changes.push(Op::SetComponentDefinition { id, before: a.definition, after: b.definition });
+                    changes.push(Op::SetDeviceDefinition { id, before: a.definition, after: b.definition });
                 }
             }
-            (Some(a), None) => removes.push(Op::DeleteComponent { id, component: a.clone() }),
-            (None, Some(b)) => adds.push(Op::CreateComponent { id, component: b.clone() }),
+            (Some(a), None) => removes.push(Op::DeleteDevice { id, device: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateDevice { id, device: b.clone() }),
             (None, None) => {}
         }
     }
@@ -312,7 +317,9 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::AddPage { id, .. } | Op::RemovePage { id, .. } => ("page", id.0),
             Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => ("layer", id.0),
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => ("item", id.0),
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => ("component", id.0),
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                ("device", id.0)
+            }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),
@@ -323,7 +330,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => ("definition", id.0),
             Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),
             Op::SetProperty { object, .. } => match object {
-                ObjectRef::Component(c) => ("component", c.0),
+                ObjectRef::Device(c) => ("device", c.0),
                 ObjectRef::Conductor(c) => ("conductor", c.0),
                 ObjectRef::Cable(c) => ("cable", c.0),
                 ObjectRef::Page(c) => ("page", c.0),

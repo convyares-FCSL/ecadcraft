@@ -86,7 +86,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     // of the demo has its locations stored.
     let d = doc(&mut h);
     let mut proposed: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
-    for c in d.components.keys().copied().filter(|c| ecad_cadcraft::locations::is_device(&d, *c)) {
+    for c in d.devices.keys().copied().filter(|c| ecad_cadcraft::locations::is_device(&d, *c)) {
         let Some(r) = ecad_cadcraft::reps::goto(&d, c, None) else { continue };
         let ctx = ecad_cadcraft::locations::rep_context(&d, &d.representations[&r], &mut ecad_cadcraft::locations::BoxCache::default());
         if let Some(v) = ctx.value {
@@ -95,7 +95,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     }
     assert!(proposed.contains_key("+CP1"), "{proposed:?}");
     for (v, cs) in proposed {
-        ok(&mut h, &format!(r#"setlocation {{"components":{},"value":"{v}"}}"#, serde_json::json!(cs)));
+        ok(&mut h, &format!(r#"setlocation {{"devices":{},"value":"{v}"}}"#, serde_json::json!(cs)));
     }
 
     // 2. Page 3: the box +JB1 round -X02, a polyline box added, and -K01's NC contact prefixed.

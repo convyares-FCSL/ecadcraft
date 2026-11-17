@@ -168,7 +168,7 @@ fn continuation_handles(h: &mut H, page: PageId) -> Vec<String> {
     let map = h.p(|p| p.pages[&page].map.clone());
     let mut out = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
-        if matches!(r.subject, Subject::Component(_)) {
+        if matches!(r.subject, Subject::Device(_)) {
             continue;
         }
         out.extend(r.items.iter().filter_map(|i| map.item(*i)).map(|x| x.hex()));

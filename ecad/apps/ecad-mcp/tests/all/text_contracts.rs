@@ -160,7 +160,7 @@ fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_write
         .doc()
         .representations
         .iter()
-        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
         .unwrap();
     for (p, level) in [
@@ -217,7 +217,7 @@ fn movetext_and_its_reset_are_one_transaction_each_and_refused_with_writes_off()
         .doc()
         .representations
         .iter()
-        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
         .unwrap();
     let r = one_by_agent(&mut c, "movetext", json!({"representation": rep, "kind": "tag", "to": [130, 170]}));

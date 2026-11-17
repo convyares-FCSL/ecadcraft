@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{Author, ComponentId, Document, Op, PageId, Subject, TerminalId};
+use ecad_model::{Author, DeviceId, Document, Op, PageId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -34,12 +34,12 @@ fn drops(h: &mut H, xs: &[f64]) {
 
 /// Place Terminals' JSON form with a type and a level (design §3.2), a fence at y 200 from `x0`
 /// to `x1`. Returns the strip and the new terminals.
-fn fence(h: &mut H, strip: Option<ComponentId>, ty: &str, level: &str, x0: f64, x1: f64) -> (ComponentId, Vec<TerminalId>) {
+fn fence(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x1: f64) -> (DeviceId, Vec<TerminalId>) {
     let v = fence_v(h, strip, ty, level, x0, x1).unwrap_or_else(|e| panic!("terminals {ty} {level}: {e}"));
     (id(&v, "strip"), ids(&v))
 }
 
-fn fence_v(h: &mut H, strip: Option<ComponentId>, ty: &str, level: &str, x0: f64, x1: f64) -> Result<Value, String> {
+fn fence_v(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x1: f64) -> Result<Value, String> {
     let s = strip.map(|c| Value::String(c.hex())).unwrap_or(Value::Null);
     h.run("terminals", json!({"strip": s, "type": ty, "level": level, "from": [x0, 200.0], "to": [x1, 200.0]}))
 }
@@ -53,7 +53,7 @@ fn key(d: &Document, t: TerminalId) -> String {
 }
 
 /// A strip's terminals by position label, then level key.
-fn positions(d: &Document, strip: ComponentId) -> BTreeMap<String, BTreeMap<String, TerminalId>> {
+fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String, TerminalId>> {
     let mut out: BTreeMap<String, BTreeMap<String, TerminalId>> = BTreeMap::new();
     for (tid, t) in &d.terminals {
         if t.component == strip {
@@ -63,15 +63,15 @@ fn positions(d: &Document, strip: ComponentId) -> BTreeMap<String, BTreeMap<Stri
     out
 }
 
-fn prop(h: &mut H, c: ComponentId, k: &str) -> Option<String> {
-    h.doc().components.get(&c).and_then(|x| x.properties.get(k).cloned())
+fn prop(h: &mut H, c: DeviceId, k: &str) -> Option<String> {
+    h.doc().devices.get(&c).and_then(|x| x.properties.get(k).cloned())
 }
 
 fn squash(v: Option<String>) -> Option<String> {
     v.map(|s| s.chars().filter(|c| !c.is_whitespace()).collect())
 }
 
-fn plan(h: &mut H, strip: ComponentId) -> Value {
+fn plan(h: &mut H, strip: DeviceId) -> Value {
     h.run("stripplan", json!({"strip": strip.hex(), "limit": 5000})).unwrap()["strips"][0].clone()
 }
 
@@ -141,7 +141,7 @@ fn same_as_built_with(h: &mut H, wires: bool) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
+    (&d.devices, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -204,7 +204,7 @@ fn read_everything(h: &mut H) {
 /// The representation (symbol) that shows terminal `t`, and its item.
 fn symbol_of(d: &Document, t: TerminalId) -> Option<(ecad_model::RepresentationId, ecad_model::ItemId, PageId)> {
     let comp = d.terminals.get(&t)?.component;
-    d.representations_of(Subject::Component(comp))
+    d.representations_of(Subject::Device(comp))
         .find(|(_, r)| r.connection_points.contains_key(&t))
         .and_then(|(rid, r)| Some((rid, *r.items.first()?, r.page)))
 }
@@ -230,7 +230,7 @@ struct M {
     h: H,
     p1: PageId,
     p2: PageId,
-    fuse_dev: ComponentId,
+    fuse_dev: DeviceId,
 }
 
 const L_XS: [f64; 3] = [100.0, 110.0, 120.0];
@@ -254,7 +254,7 @@ fn fixture_m(seed: u64) -> M {
     drops(&mut h, &M_XS);
     drops(&mut h, &[500.0]);
     let f = h.run("place", json!({"symbol": "fuseterm", "at": [400, 200]})).unwrap();
-    let fuse_dev: ComponentId = id(&f, "component");
+    let fuse_dev: DeviceId = id(&f, "component");
     h.run("wire", json!({"points": pts(&[(400.0, 210.0), (400.0, 260.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(400.0, 190.0), (400.0, 140.0)])})).unwrap();
     h.run("setprop", json!({"component": fuse_dev.hex(), "key": "rating", "value": "4A"})).unwrap();
@@ -263,7 +263,7 @@ fn fixture_m(seed: u64) -> M {
 }
 
 /// Fixture M after check A: `-X01` L/N/PE positions 1…3 on page 1.
-fn with_lnpe(seed: u64) -> (M, ComponentId) {
+fn with_lnpe(seed: u64) -> (M, DeviceId) {
     let mut m = fixture_m(seed);
     let (x1, _) = fence(&mut m.h, None, "LNPE", "L", 90.0, 130.0);
     fence(&mut m.h, Some(x1), "LNPE", "N", 190.0, 230.0);
@@ -272,7 +272,7 @@ fn with_lnpe(seed: u64) -> (M, ComponentId) {
 }
 
 /// `-X02` sensor positions 1…4 on page 2 (S, + and − fences).
-fn with_sensor(m: &mut M) -> ComponentId {
+fn with_sensor(m: &mut M) -> DeviceId {
     m.h.activate(m.p2);
     let (x2, _) = fence(&mut m.h, None, "SEN", "S", 90.0, 140.0);
     fence(&mut m.h, Some(x2), "SEN", "+", 190.0, 240.0);
@@ -289,7 +289,7 @@ fn with_sensor(m: &mut M) -> ComponentId {
 fn a_lnpe_fences_fill_positions_one_transaction_each() {
     let mut m = fixture_m(0x7036_0001);
     let v = step(&mut m.h, "terminals", json!({"strip": null, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]}));
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     assert_eq!(ids(&v).len(), 3, "{v}");
     step(&mut m.h, "terminals", json!({"strip": x1.hex(), "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}));
     let v = step(&mut m.h, "terminals", json!({"strip": x1.hex(), "type": "lnpe", "level": "PE", "from": [290, 200], "to": [330, 200]}));
@@ -450,7 +450,7 @@ fn d_old_one_level_strip_reads_the_same() {
     let mut h = H::new(0x7036_0006);
     drops(&mut h, &[100.0, 110.0, 120.0, 130.0]);
     let v = h.run("terminals", json!({"from": [90, 200], "to": [140, 200]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     let t = ids(&v);
     h.run("setprop", json!({"component": x1.hex(), "key": "part_number", "value": "FT-1"})).unwrap();
     h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-4"})).unwrap();
@@ -580,7 +580,7 @@ fn h_toposition_converts_a_fuse_device() {
     assert!(!ca.is_empty() && !cb.is_empty());
     let v = step(&mut m.h, "toposition", json!({"device": m.fuse_dev.hex(), "strip": x2.hex()}));
     let d = m.h.doc();
-    assert!(!d.components.contains_key(&m.fuse_dev), "-F gone: {v}");
+    assert!(!d.devices.contains_key(&m.fuse_dev), "-F gone: {v}");
     let pos = positions(&d, x2);
     let (p, l) = pos.iter().find(|(_, l)| l.contains_key(".1i")).map(|(p, l)| (p.clone(), l.clone())).unwrap_or_else(|| panic!("{pos:?}"));
     assert_eq!(p, "5", "§3.3 new position");
@@ -611,9 +611,9 @@ fn h_toposition_refusals() {
     m.h.activate(m.p2);
     refused(&mut m.h, "toposition", json!({"device": m.fuse_dev.hex()}), "Name a strip: there is none on this page.");
     let x2 = with_sensor(&mut m);
-    let coil: ComponentId = id(&m.h.run("place", json!({"symbol": "coil", "at": [700, 200]})).unwrap(), "component");
+    let coil: DeviceId = id(&m.h.run("place", json!({"symbol": "coil", "at": [700, 200]})).unwrap(), "component");
     survives(&mut m.h, "toposition", json!({"device": coil.hex(), "strip": x2.hex()}));
-    assert!(m.h.doc().components.contains_key(&coil));
+    assert!(m.h.doc().devices.contains_key(&coil));
     survives(&mut m.h, "toposition", json!({"device": x2.hex(), "strip": x2.hex()}));
     survives(&mut m.h, "toposition", json!({"device": m.fuse_dev.hex(), "strip": m.fuse_dev.hex()}));
     survives(&mut m.h, "toposition", json!({"device": "zz", "strip": x2.hex()}));
@@ -626,9 +626,9 @@ fn h_toposition_refusals() {
     let mut m2 = fixture_m(0x7036_000C);
     let _ = with_sensor(&mut m2);
     m2.h.run("place", json!({"symbol": "fuseterm", "at": [800, 200], "device": m2.fuse_dev.hex()})).ok();
-    let n = m2.h.doc().representations_of(Subject::Component(m2.fuse_dev)).count();
+    let n = m2.h.doc().representations_of(Subject::Device(m2.fuse_dev)).count();
     if n > 1 {
-        let strip = m2.h.doc().components.keys().copied().find(|c| *c != m2.fuse_dev && positions(&m2.h.doc(), *c).len() == 4).unwrap();
+        let strip = m2.h.doc().devices.keys().copied().find(|c| *c != m2.fuse_dev && positions(&m2.h.doc(), *c).len() == 4).unwrap();
         refused(&mut m2.h, "toposition", json!({"device": m2.fuse_dev.hex(), "strip": strip.hex()}), "move them first");
     }
 }
@@ -642,7 +642,7 @@ fn i_offer_type_codes_spares_and_bom() {
     let mut m = fixture_m(0x7036_000D);
     // `-X03`: one feed-through drawn.
     let v = m.h.run("terminals", json!({"from": [95, 200], "to": [105, 200]})).unwrap();
-    let x3: ComponentId = id(&v, "strip");
+    let x3: DeviceId = id(&v, "strip");
     for (k, part) in [("part_number", "FT-1"), ("part_number.pe", "PE-1"), ("part_number.x3", "X3-1")] {
         m.h.run("setprop", json!({"component": x3.hex(), "key": k, "value": part})).unwrap();
     }
@@ -731,7 +731,7 @@ fn j_termlabel_position_and_level_text() {
     // A single one-level terminal reads `1.L` by an override.
     let (xf, tf) = {
         let v = m.h.run("terminals", json!({"from": [495, 200], "to": [505, 200]})).unwrap();
-        (id::<ComponentId>(&v, "strip"), ids(&v))
+        (id::<DeviceId>(&v, "strip"), ids(&v))
     };
     step_with(&mut m.h, "termlabel", json!({"terminal": tf[0].hex(), "text": "1.L"}), true);
     assert_eq!(s(&level_rows(&plan(&mut m.h, xf))[0]["label"]), "1.L");
@@ -796,7 +796,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
         m.h.run("setprop", json!({"component": x1.hex(), "key": k, "value": v})).unwrap();
     }
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "2", "items": ["partition"]})).unwrap();
-    let props_before: BTreeMap<String, String> = m.h.doc().components[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let props_before: BTreeMap<String, String> = m.h.doc().devices[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let d = m.h.doc();
     let (_, item, page) = symbol_of(&d, pos["2"][".2"]).unwrap();
     let hnd = m.h.handle_of(page, item);
@@ -804,7 +804,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
     m.h.run("erase", json!({"handles": [hnd.hex()]})).unwrap();
     let d = m.h.doc();
     assert_eq!(label(&d, pos["2"][".1"]), "2", "position keeps its label");
-    let props_after: BTreeMap<String, String> = d.components[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let props_after: BTreeMap<String, String> = d.devices[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     for k in ["term_label.2.1", "link.1", "acc.after.2"] {
         assert_eq!(props_after.get(k), props_before.get(k), "{k} kept");
     }

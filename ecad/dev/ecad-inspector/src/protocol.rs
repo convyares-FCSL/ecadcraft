@@ -20,7 +20,7 @@ use ecad_file::Store;
 use ecad_file::schema::VersionKind;
 use ecad_file::store::TABLES as TABLES_ORDER;
 use ecad_file::verify::VerifyReport;
-use ecad_model::{ComponentId, ConductorId, Document, Subject, TerminalId};
+use ecad_model::{ConductorId, DeviceId, Document, Subject, TerminalId};
 use serde_json::{Map, Value, json};
 
 use crate::source::{Opened, Problem, Source, VerifyState, size_text};
@@ -387,7 +387,7 @@ fn summary(s: &dyn Source) -> Value {
             let d = &o.doc;
             out["counts"] = json!({
                 "pages": d.pages.len(),
-                "devices": d.components.len(),
+                "devices": d.devices.len(),
                 "wires": d.conductors.len(),
                 "cables": d.cables.len(),
                 "nets": d.connectivity().len(),
@@ -427,8 +427,8 @@ fn tag_of(props: &ecad_model::doc::Properties) -> Option<&String> {
     props.get(ecad_model::tag::TAG_KEY)
 }
 
-fn device_name(d: &Document, c: ComponentId) -> String {
-    d.components.get(&c).and_then(|x| tag_of(&x.properties)).cloned().unwrap_or_else(|| format!("({})", c.short()))
+fn device_name(d: &Document, c: DeviceId) -> String {
+    d.devices.get(&c).and_then(|x| tag_of(&x.properties)).cloned().unwrap_or_else(|| format!("({})", c.short()))
 }
 
 fn point_name(d: &Document, t: TerminalId) -> String {
@@ -467,7 +467,7 @@ fn project(d: &Document) -> Value {
         "counts": {
             "pages": d.pages.len(),
             "folders": d.folders.len(),
-            "devices": d.components.len(),
+            "devices": d.devices.len(),
             "connection_points": d.terminals.len(),
             "wires": d.conductors.len(),
             "cables": d.cables.len(),
@@ -483,11 +483,11 @@ fn pages(d: &Document) -> Vec<Value> {
     for it in d.items.values() {
         *items.entry(it.page).or_default() += 1;
     }
-    let mut devices: BTreeMap<ecad_model::PageId, BTreeSet<ComponentId>> = BTreeMap::new();
+    let mut devices: BTreeMap<ecad_model::PageId, BTreeSet<DeviceId>> = BTreeMap::new();
     let mut wires: BTreeMap<ecad_model::PageId, BTreeSet<ConductorId>> = BTreeMap::new();
     for r in d.representations.values() {
         match r.subject {
-            Subject::Component(c) => {
+            Subject::Device(c) => {
                 devices.entry(r.page).or_default().insert(c);
             }
             Subject::Conductor(c) => {
@@ -517,7 +517,7 @@ fn pages(d: &Document) -> Vec<Value> {
 
 fn devices(d: &Document, detail: bool) -> Vec<Value> {
     let mut tags: BTreeMap<&String, usize> = BTreeMap::new();
-    for c in d.components.values() {
+    for c in d.devices.values() {
         if let Some(t) = tag_of(&c.properties) {
             *tags.entry(t).or_default() += 1;
         }
@@ -528,17 +528,17 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             attached.entry(*t).or_default().push(*id);
         }
     }
-    let mut on_pages: BTreeMap<ComponentId, BTreeSet<usize>> = BTreeMap::new();
+    let mut on_pages: BTreeMap<DeviceId, BTreeSet<usize>> = BTreeMap::new();
     let order: BTreeMap<ecad_model::PageId, usize> = d.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     for r in d.representations.values() {
-        if let Subject::Component(c) = r.subject
+        if let Subject::Device(c) = r.subject
             && let Some(i) = order.get(&r.page)
         {
             on_pages.entry(c).or_default().insert(*i);
         }
     }
     let mut out: Vec<(String, Value)> = d
-        .components
+        .devices
         .iter()
         .map(|(id, c)| {
             let tag = tag_of(&c.properties).cloned();

@@ -6,7 +6,7 @@
 
 use ecad_cadcraft::rating::dataset::{self, Insulation};
 use ecad_cadcraft::rating::{self, parse};
-use ecad_model::{CableId, ComponentId, ConductorId};
+use ecad_model::{CableId, ConductorId, DeviceId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -36,7 +36,7 @@ fn texts(rows: &[Value]) -> Vec<String> {
     rows.iter().map(|r| r["text"].as_str().unwrap_or_default().to_string()).collect()
 }
 
-fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> ComponentId {
+fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> DeviceId {
     id(&h.run("place", json!({"symbol": symbol, "at": at, "tag": tag})).unwrap_or_else(|e| panic!("place {symbol}: {e}")), "component")
 }
 
@@ -57,7 +57,7 @@ fn ratings(h: &mut H, p: Value) -> Value {
 /// -K01 at (50, 50): pins 3 (50, 60), 4 (50, 40); -X01 at (50, 0); -X02 at (150, 0).
 struct Fx {
     h: H,
-    q01: ComponentId,
+    q01: DeviceId,
     l2: ConductorId,
     core: ConductorId,
     w01: CableId,
@@ -456,7 +456,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
 // ------------------------------------------------------------------------------- fix round
 
 /// A location box `+CAB1` over the fixture (its devices at x 50–150, y 0–110).
-fn cab1(h: &mut H) -> ComponentId {
+fn cab1(h: &mut H) -> DeviceId {
     id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[0, -30], [200, 130]]})).unwrap(), "component")
 }
 
@@ -468,7 +468,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     let b = cab1(&mut f.h);
     let r = f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
     assert_eq!(r["boxes"], json!(1), "{r}");
-    assert_eq!(f.h.doc().components[&b].properties.get(rating::TEMPERATURE).map(String::as_str), Some("44"));
+    assert_eq!(f.h.doc().devices[&b].properties.get(rating::TEMPERATURE).map(String::as_str), Some("44"));
     let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
     let panel = r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap();
     // round2(√(26/40)) = round2(0.8062) = 0.81.
@@ -513,7 +513,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
             ecad_model::Author::User,
             "hostile box temperature",
             vec![ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Component(b),
+                object: ecad_model::ObjectRef::Device(b),
                 key: rating::TEMPERATURE.into(),
                 before: Some("45".into()),
                 after: Some("95".into()),

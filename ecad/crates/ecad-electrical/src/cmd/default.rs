@@ -18,7 +18,7 @@
 //!
 //! Excluded: any entry's levels, which only the registry sets.
 
-use ecad_model::{ComponentId, ConductorId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
+use ecad_model::{ConductorId, DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
 
 use crate::defaults::{self, Entry, Level, ProjectSource};
 use crate::error::CmdError;
@@ -151,7 +151,7 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
 pub enum Target {
     Project,
     Page(PageId),
-    Component(ComponentId),
+    Device(DeviceId),
     Conductor(ConductorId),
     Symbol(RepresentationId),
 }
@@ -186,14 +186,12 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
         (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.properties), entry.key.to_string()),
         (Level::Object, Target::Symbol(rep)) => {
             let c = match doc.representations.get(&rep).map(|r| r.subject) {
-                Some(ecad_model::Subject::Component(c)) => c,
+                Some(ecad_model::Subject::Device(c)) => c,
                 _ => return Err(CmdError::refused(format!("No symbol {}.", rep.hex()))),
             };
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
+            property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
-        (Level::Object, Target::Component(c)) => {
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
+        (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
         (Level::Object, Target::Conductor(c)) => {
             property(ObjectRef::Conductor(c), doc.conductors.get(&c).map(|c| &c.properties), entry.key.to_string())
         }
@@ -246,7 +244,7 @@ pub fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Objects {
     pub representation: Option<RepresentationId>,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub conductor: Option<ConductorId>,
 }
 
@@ -260,7 +258,7 @@ pub fn target(level: Level, page: Option<PageId>, shown: PageId, o: Objects) -> 
         Level::Page => Target::Page(page.unwrap_or(shown)),
         Level::Object => match (o.representation, o.component, o.conductor) {
             (Some(r), _, _) => Target::Symbol(r),
-            (None, Some(c), _) => Target::Component(c),
+            (None, Some(c), _) => Target::Device(c),
             (None, None, Some(c)) => Target::Conductor(c),
             _ => return Err(CmdError::refused(NEEDS_OBJECT)),
         },

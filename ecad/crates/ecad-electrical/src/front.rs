@@ -469,13 +469,13 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetStyle { catalogue, .. } => catalogue == "text" || catalogue == "wire",
         // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => !doc.items_using(*id).is_empty(),
-        Op::SetComponentDefinition { .. } => true,
+        Op::SetDeviceDefinition { .. } => true,
         Op::CreateCable { .. } => doc.cables.len() == 1,
         Op::DeleteCable { .. } => doc.cables.is_empty(),
-        Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Component(_), key, .. } => {
+        Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
-        Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
+        Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()
         }
         _ => false,
@@ -535,7 +535,7 @@ impl Uses {
             Op::SetStyle { catalogue, .. } => catalogue == "wire",
             Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
             Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => key == crate::defaults::styles::WIRE_CATEGORY.key,
-            Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
+            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
                 ecad_model::connectivity::continuation_key(&component.properties).is_some()
             }
             _ => false,
@@ -567,7 +567,7 @@ impl Uses {
                     at(*before, &mut seeds);
                     at(*after, &mut seeds);
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. }
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. }
                     if key == ecad_model::connectivity::POTENTIAL
                         || key == ecad_model::connectivity::NAME
                         || key == ecad_model::connectivity::KIND =>

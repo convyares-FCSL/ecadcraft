@@ -98,7 +98,7 @@ impl App {
     }
 
     /// The header's Row button: Project ▸ Devices with the device's row selected.
-    pub fn show_device_row(&mut self, c: ecad_model::ComponentId) {
+    pub fn show_device_row(&mut self, c: ecad_model::DeviceId) {
         self.panel.devices.selected = Some(c);
         self.shell.lists = super::ListsView::Devices;
         self.set_workspace(super::Workspace::Lists);
@@ -120,7 +120,7 @@ pub struct Cx<'a> {
 }
 
 /// The header's words for what is selected.
-fn head_words(insp: &Inspector, sh: &crate::sheets_ui::PropsShared) -> (String, String, Option<ecad_model::ComponentId>) {
+fn head_words(insp: &Inspector, sh: &crate::sheets_ui::PropsShared) -> (String, String, Option<ecad_model::DeviceId>) {
     if let Some(d) = &insp.device {
         let sub: Vec<&str> = [d.description.as_str(), d.symbol_words.as_str(), d.place.as_str()].into_iter().filter(|s| !s.is_empty()).collect();
         return (d.tag.clone(), sub.join(" \u{b7} "), d.component);
@@ -415,7 +415,7 @@ pub const PARTS: &str = "ecad.inspector.parts";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum What {
     Page(PageId),
-    Symbol(ecad_model::ComponentId, RepresentationId),
+    Symbol(ecad_model::DeviceId, RepresentationId),
     Conductor(ecad_model::ConductorId),
 }
 
@@ -470,7 +470,7 @@ pub struct ConnectorRow {
 
 /// The connector rows for symbol `rep` of `c` (design 044 §9.4): Pins, each drawn half's
 /// Description, Maker, Part number and Location, and for a pin symbol its Pin and Mate.
-fn connector_rows(doc: &ecad_model::Document, c: ecad_model::ComponentId, rep: RepresentationId) -> Vec<ConnectorRow> {
+fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: RepresentationId) -> Vec<ConnectorRow> {
     use ecad_cadcraft::connectors as cn;
     use ecad_cadcraft::symbols::Side;
     if !cn::is_connector(doc, c) {
@@ -549,7 +549,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::ComponentId, rep: R
     out
 }
 
-fn json_id(c: ecad_model::ComponentId) -> String {
+fn json_id(c: ecad_model::DeviceId) -> String {
     c.hex()
 }
 
@@ -649,7 +649,7 @@ fn style_row(
     let id = styles::chosen(doc, e, scope);
     let list = styles::catalogue(cat).map(|c| styles::rows(doc, c).into_iter().map(|x| (x.id.text(), x.name)).collect()).unwrap_or_default();
     let own = match scope.component {
-        Some(c) => doc.components.get(&c).and_then(|x| x.properties.get(e.key)),
+        Some(c) => doc.devices.get(&c).and_then(|x| x.properties.get(e.key)),
         None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.properties.get(e.key)),
     };
     let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", styles::name(doc, cat, &id)));
@@ -690,7 +690,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             (Scope::page(pg), defaults::all().filter(|e| e.allows(Level::Page)).collect(), Some((Level::Page, Target::Page(pg))))
         }
         What::Symbol(c, rep) => {
-            deps.insert(ObjectRef::Component(c));
+            deps.insert(ObjectRef::Device(c));
             let mut es: Vec<&'static Entry> = Vec::new();
             // Brief 050a (design 050 §7.4): a Style row per text kind, chosen for the device.
             for k in SYMBOL_KINDS {
@@ -701,12 +701,8 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             if ecad_cadcraft::locations::is_box(doc, c) {
                 es.push(&defaults::styles::LOCATION);
             }
-            let starter = doc
-                .components
-                .get(&c)
-                .and_then(|c| c.definition)
-                .and_then(|d| doc.definitions.get(&d))
-                .and_then(ecad_cadcraft::symbols::of_definition);
+            let starter =
+                doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_cadcraft::symbols::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(ecad_model::Word::word(s.key))));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
@@ -725,7 +721,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             // A style choice is set on the device (its component), not on one symbol.
             let target = match (e.kind, here) {
                 (Kind::Style(_), Some((Level::Object, Target::Symbol(_)))) => match what {
-                    What::Symbol(c, _) => Some((Level::Object, Target::Component(c))),
+                    What::Symbol(c, _) => Some((Level::Object, Target::Device(c))),
                     _ => here,
                 },
                 _ => here,
@@ -751,7 +747,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         })
         .collect();
     let placements = match what {
-        What::Symbol(c, _) => doc.representations_of(Subject::Component(c)).map(|(id, _)| id).collect(),
+        What::Symbol(c, _) => doc.representations_of(Subject::Device(c)).map(|(id, _)| id).collect(),
         _ => Vec::new(),
     };
     let connector = match what {
@@ -846,14 +842,14 @@ fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft:
         let w = match map.get(*h)? {
             Mapped::Item(item) => match doc.representation_of_item(item) {
                 Some((rid, r)) => match r.subject {
-                    Subject::Component(c) => What::Symbol(c, rid),
+                    Subject::Device(c) => What::Symbol(c, rid),
                     Subject::Conductor(w) => What::Conductor(w),
                     Subject::Cable(_) => return None,
                 },
                 None => return None,
             },
             Mapped::Tag(r) | Mapped::Marker(r, _) | Mapped::Xref(r) => match doc.representations.get(&r).map(|x| x.subject) {
-                Some(Subject::Component(c)) => What::Symbol(c, r),
+                Some(Subject::Device(c)) => What::Symbol(c, r),
                 _ => return None,
             },
             Mapped::Label(w) => What::Conductor(w),

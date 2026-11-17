@@ -424,9 +424,9 @@ fn the_quick_start_runs_headless() {
     let page = dc.page_order[0];
     // 4. Connected movement: move the rectangle; the wire end follows.
     let (rid, rep) =
-        dc.representations.iter().find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Component(_))).unwrap();
+        dc.representations.iter().find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Device(_))).unwrap();
     let rid = *rid;
-    let ecad_model::Subject::Component(component) = rep.subject else { panic!("not a component") };
+    let ecad_model::Subject::Device(component) = rep.subject else { panic!("not a component") };
     let mut moved: Vec<String> = Vec::new();
     for i in &rep.items {
         moved.push(p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(*i).unwrap().hex()).unwrap());

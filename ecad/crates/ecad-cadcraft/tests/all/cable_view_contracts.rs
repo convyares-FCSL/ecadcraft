@@ -299,7 +299,7 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     assert_eq!(prompt(&g.h), "Select wire near the end to connect:");
     g.h.s.input(Input::Enter).unwrap();
     assert_eq!(g.h.head(), head);
-    // Convert to Component and Add Connection Point on a fan line.
+    // Convert to Device and Add Connection Point on a fan line.
     let e = g.h.run("convertcomponent", json!({"handles": [fans[3].hex()]})).unwrap_err();
     assert!(e.contains(FAN_REFUSED), "{e}");
     let e = g.h.run("addterminal", json!({"handle": fans[3].hex(), "at": [1, 1]})).unwrap_err();
@@ -336,7 +336,7 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
     view(&mut g.h, g.c1, "fan");
     let doc = g.h.doc();
     let right = doc
-        .components
+        .devices
         .keys()
         .copied()
         .find(|c| ecad_model::derive::terminal_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].component == *c && at.x > 30.0))

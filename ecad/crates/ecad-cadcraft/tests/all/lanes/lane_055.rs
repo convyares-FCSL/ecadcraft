@@ -424,7 +424,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     }
     let c1: ecad_model::CableId = crate::common::id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 12], "tag": "C1"})).unwrap(), "cable");
     h.run("cableref", json!({"cable": c1.hex(), "at": [380, 5]})).unwrap();
-    let coil: ecad_model::ComponentId =
+    let coil: ecad_model::DeviceId =
         crate::common::id(&h.run("place", json!({"symbol": "coil", "at": [200, 150], "tag": "K1"})).unwrap(), "component");
     let id = new_frame(&mut h, "A2");
     let doc = h.doc();
@@ -436,7 +436,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     for key in ["print.frame.style", "title_block"] {
         let op = Op::SetProperty { object: ObjectRef::Page(page), key: key.into(), before: None, after: Some(id.clone()) };
         assert!(references::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
-        assert!(device_list::devices_touched(&doc, &[op]).components.contains(&coil), "{key}");
+        assert!(device_list::devices_touched(&doc, &[op]).devices.contains(&coil), "{key}");
     }
     // A frame record: its sheet reaches its pages; its weight reaches nothing.
     let own = ecad_model::StyleRef::parse(&id).unwrap();

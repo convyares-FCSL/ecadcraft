@@ -9,9 +9,10 @@ use crate::index::{Index, referrers};
 
 use serde::{Deserialize, Serialize};
 
+use crate::device::DeviceType;
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
@@ -197,18 +198,34 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-/// A component (stored intent).
+/// A device (design 072 §2.1): a real part with its symbols, its connection points and its type.
+///
+/// # Semantics
+/// What the device is lives in [`Device::device_type`], copied from its symbol's
+/// [`Definition::device_type`] when the symbol is placed as a new device; it is never worked out
+/// from the symbol, the tag or a property. The fields not yet typed (design 072 lane B steps 2–5)
+/// are still in [`Device::properties`].
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct Component {
+#[serde(deny_unknown_fields)]
+pub struct Device {
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
+    /// What the device is.
+    pub device_type: DeviceType,
+}
+
+impl Device {
+    /// A new device drawn by `definition` (`id`), with the type the symbol declares.
+    pub fn of_definition(id: DefinitionId, definition: &Definition, properties: Properties) -> Device {
+        Device { properties, definition: Some(id), device_type: definition.device_type.clone() }
+    }
 }
 
 /// A terminal of a component.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Terminal {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub label: Option<String>,
     /// The definition terminal this one was created from (LIB-02).
     pub key: Option<String>,
@@ -217,7 +234,7 @@ pub struct Terminal {
 /// What a representation depicts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Subject {
-    Component(ComponentId),
+    Device(DeviceId),
     Conductor(ConductorId),
     Cable(CableId),
 }
@@ -565,6 +582,10 @@ pub struct Definition {
     /// the reader, so a cycle cannot loop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
+    /// What a device this symbol starts is (design 072 §2.3, F15): placing the symbol as a new
+    /// device copies it. Left out of the file for [`DeviceType::General`].
+    #[serde(default, skip_serializing_if = "DeviceType::is_general")]
+    pub device_type: DeviceType,
 }
 
 impl Definition {
@@ -593,7 +614,7 @@ pub struct Document {
     pub page_order: Vec<PageId>,
     pub layers: BTreeMap<LayerId, Layer>,
     pub items: BTreeMap<ItemId, Item>,
-    pub components: BTreeMap<ComponentId, Component>,
+    pub devices: BTreeMap<DeviceId, Device>,
     pub terminals: BTreeMap<TerminalId, Terminal>,
     pub representations: BTreeMap<RepresentationId, Representation>,
     pub conductors: BTreeMap<ConductorId, Conductor>,
@@ -633,7 +654,7 @@ struct DocumentData {
     page_order: Vec<PageId>,
     layers: BTreeMap<LayerId, Layer>,
     items: BTreeMap<ItemId, Item>,
-    components: BTreeMap<ComponentId, Component>,
+    devices: BTreeMap<DeviceId, Device>,
     terminals: BTreeMap<TerminalId, Terminal>,
     representations: BTreeMap<RepresentationId, Representation>,
     conductors: BTreeMap<ConductorId, Conductor>,
@@ -660,7 +681,7 @@ impl From<DocumentData> for Document {
             page_order,
             layers,
             items,
-            components,
+            devices,
             terminals,
             representations,
             conductors,
@@ -679,7 +700,7 @@ impl From<DocumentData> for Document {
             page_order,
             layers,
             items,
-            components,
+            devices,
             terminals,
             representations,
             conductors,
@@ -708,7 +729,7 @@ impl PartialEq for Document {
             page_order,
             layers,
             items,
-            components,
+            devices,
             terminals,
             representations,
             conductors,
@@ -728,7 +749,7 @@ impl PartialEq for Document {
             && *page_order == other.page_order
             && *layers == other.layers
             && *items == other.items
-            && *components == other.components
+            && *devices == other.devices
             && *terminals == other.terminals
             && *representations == other.representations
             && *conductors == other.conductors
@@ -784,17 +805,17 @@ impl Document {
 
     /// Continuation components whose name has the key `key` ([`crate::connectivity::name_key`]),
     /// in ID order, through the name index.
-    pub fn continuations_named(&self, key: &str) -> Vec<ComponentId> {
+    pub fn continuations_named(&self, key: &str) -> Vec<DeviceId> {
         referrers(&self.index.continuations, &key.to_string()).collect()
     }
 
     /// Every continuation name key and its components, through the name index.
-    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, ComponentId)> {
+    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, DeviceId)> {
         self.index.continuations.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
     }
 
     /// Components made from `definition`, in ID order.
-    pub fn components_using(&self, definition: DefinitionId) -> Vec<ComponentId> {
+    pub fn components_using(&self, definition: DefinitionId) -> Vec<DeviceId> {
         referrers(&self.index.definition_components, &definition).collect()
     }
 
@@ -840,7 +861,7 @@ impl Document {
     }
 
     /// Terminals of `component`, in ID order.
-    pub fn terminals_of(&self, component: ComponentId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
+    pub fn terminals_of(&self, component: DeviceId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
         referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
@@ -856,13 +877,13 @@ impl Document {
 
     /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
     /// through the tag index: the cost does not grow with the project.
-    pub fn components_tagged(&self, tag: &str) -> Vec<ComponentId> {
+    pub fn components_tagged(&self, tag: &str) -> Vec<DeviceId> {
         referrers(&self.index.tags, &crate::tag::key(tag)).collect()
     }
 
     /// Every tagged component through the tag index (brief 018), by tag key ([`crate::tag::key`]),
     /// then ID: no scan of the components.
-    pub fn tagged(&self) -> impl Iterator<Item = (&str, ComponentId)> {
+    pub fn tagged(&self) -> impl Iterator<Item = (&str, DeviceId)> {
         self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
     }
 

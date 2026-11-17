@@ -57,7 +57,7 @@ fn wire_handle(h: &mut H, w: ConductorId) -> String {
 }
 
 fn component_line(h: &mut H) -> String {
-    let c1 = *h.doc().components.keys().next().unwrap();
+    let c1 = *h.doc().devices.keys().next().unwrap();
     let page = h.first_page();
     h.rep_handles(page, c1)[0].clone()
 }
@@ -304,7 +304,7 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
         let (mut h, _, _) = fixture(2360);
         let head = h.head();
         let conductors = h.doc().conductors.len();
-        let components = h.doc().components.len();
+        let devices = h.doc().devices.len();
         h.s.start(tool).unwrap();
         if tool == "wire" {
             h.s.cmdline("0,100").unwrap();
@@ -336,13 +336,13 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
         let d = h.doc();
         match tool {
             "wire" => assert_eq!(d.conductors.len(), conductors + 1, "{tool} {transparent}"),
-            _ => assert_eq!(d.components.len(), components + 1, "{tool} {transparent}"),
+            _ => assert_eq!(d.devices.len(), devices + 1, "{tool} {transparent}"),
         }
         assert!(h.s.state().unwrap().undo.is_empty());
         h.check();
         h.cmdline("u");
         assert_eq!(h.doc().conductors.len(), conductors);
-        assert_eq!(h.doc().components.len(), components);
+        assert_eq!(h.doc().devices.len(), devices);
     }
 }
 

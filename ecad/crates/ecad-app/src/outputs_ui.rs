@@ -100,14 +100,14 @@ pub struct Reports {
     /// The project's table copy and the (serial, revision, tab, group) it was taken at.
     table: Table,
     counts: [usize; 4],
-    seen: Option<(u64, u64, Tab, Group, Option<ecad_model::ComponentId>, Option<ecad_model::CableId>)>,
+    seen: Option<(u64, u64, Tab, Group, Option<ecad_model::DeviceId>, Option<ecad_model::CableId>)>,
     /// The (project, models revision) the tab counts were taken at.
     counted: Option<(u64, u64, Group)>,
     /// The strips revision the strip picker was taken at.
     strips_seen: Option<(u64, u64)>,
     /// Brief 028: the strip the Terminals tab shows (`None`: all), and the strips to pick from.
-    pub strip: Option<ecad_model::ComponentId>,
-    pub strips: Vec<(ecad_model::ComponentId, String)>,
+    pub strip: Option<ecad_model::DeviceId>,
+    pub strips: Vec<(ecad_model::DeviceId, String)>,
     /// Brief 030: the Accessories check box is off (gap rows hidden; view only).
     pub hide_accessories: bool,
     /// Brief 059 (design 059 §5.8, Q3): Include not-drawn cables is off for this run (view only;
@@ -153,7 +153,7 @@ pub struct Reports {
     /// the BOM as CSV (Qty a number, a Unit column), row for row with the shown table.
     pub view: BomView,
     pub writable: bool,
-    pub items: Vec<Option<ecad_model::ComponentId>>,
+    pub items: Vec<Option<ecad_model::DeviceId>>,
     csv: Option<Table>,
 }
 
@@ -753,7 +753,7 @@ impl PrintBook {
 }
 
 /// The Accessory menu's items (design 030 §2.4): (words, `accessory` params) for strip `c`.
-pub fn accessory_menu(c: ecad_model::ComponentId) -> Vec<(&'static str, serde_json::Value)> {
+pub fn accessory_menu(c: ecad_model::DeviceId) -> Vec<(&'static str, serde_json::Value)> {
     use serde_json::json;
     let s = c.hex();
     vec![

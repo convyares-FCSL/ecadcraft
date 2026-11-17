@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{ComponentId, Document, tag};
+use ecad_model::{DeviceId, Document, tag};
 use serde_json::{Value, json};
 
 use crate::common::writer;
@@ -23,12 +23,12 @@ fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> Strin
 }
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.components.get(&ComponentId::parse(comp).unwrap()).and_then(|x| x.properties.get("tag").cloned())
+    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.properties.get("tag").cloned())
 }
 
 fn assert_unique(doc: &Document, step: &str) {
     let mut seen = BTreeSet::new();
-    for t in doc.components.values().filter_map(|c| c.properties.get("tag")).chain(doc.cables.values().filter_map(|c| c.properties.get("tag"))) {
+    for t in doc.devices.values().filter_map(|c| c.properties.get("tag")).chain(doc.cables.values().filter_map(|c| c.properties.get("tag"))) {
         assert!(seen.insert(tag::key(t)), "{step}: duplicate tag {t}");
     }
 }
@@ -270,10 +270,10 @@ fn update_from_main_with_one_joins_and_keeps_tags_unique() {
     assert_eq!(r["merged"], json!(true), "{r}");
     let doc = c.doc();
     assert_unique(&doc, "after the update");
-    let bid = ComponentId::parse(&bk).unwrap();
-    assert!(doc.components.contains_key(&bid), "the branch keeps its device");
-    assert!(!doc.components.contains_key(&ComponentId::parse(&mk).unwrap()), "main's device joined the branch's");
-    assert_eq!(doc.representations_of(ecad_model::Subject::Component(bid)).count(), 2);
+    let bid = DeviceId::parse(&bk).unwrap();
+    assert!(doc.devices.contains_key(&bid), "the branch keeps its device");
+    assert!(!doc.devices.contains_key(&DeviceId::parse(&mk).unwrap()), "main's device joined the branch's");
+    assert_eq!(doc.representations_of(ecad_model::Subject::Device(bid)).count(), 2);
 }
 
 /// Both sides add `-K?1`: no conflict row, the branch's gets the next provisional number.
@@ -320,6 +320,6 @@ fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     c.exec("finalise", json!({}));
     let doc = c.doc();
     let t = tag_of(&doc, &x).unwrap_or_default();
-    let fixed = doc.components[&ComponentId::parse(&x).unwrap()].properties.get("tag_fixed").cloned();
+    let fixed = doc.devices[&DeviceId::parse(&x).unwrap()].properties.get("tag_fixed").cloned();
     assert!(!tag::is_provisional(&t), "Finalise left {t} (tag_fixed {fixed:?})");
 }

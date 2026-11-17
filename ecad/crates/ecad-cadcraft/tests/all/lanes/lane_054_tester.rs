@@ -20,7 +20,7 @@
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_model::book::Book;
-use ecad_model::{ComponentId, FolderId, PageId};
+use ecad_model::{DeviceId, FolderId, PageId};
 use serde_json::{Value, json};
 
 use crate::common::tmp_dir;
@@ -108,7 +108,7 @@ fn sheet_text(h: &mut H, page: PageId) -> String {
     ecad_model::sheet::sheet_of(&d, page).text()
 }
 
-fn coil(h: &mut H, x: f64) -> ComponentId {
+fn coil(h: &mut H, x: f64) -> DeviceId {
     id(&h.run("place", json!({"symbol": "coil", "at": [x, 100]})).unwrap(), "component")
 }
 

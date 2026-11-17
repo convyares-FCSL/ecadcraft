@@ -124,7 +124,7 @@ fn record_and_definition_hashes_are_pinned() {
         ("coil", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
         ("d1", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
         ("d2", "0fcefba53f430d7f0e8467eb0eddb6166605310dee1a02896b16543e6ca99682"),
-        ("head", "bc68b675c9a5001fd9c5ab70d5b8993b7d0c444bdd766282b9a16a2659e28272"),
+        ("head", "66d5db6fb71d2a689d0569ec3cbf47a908872ab03664a626b38d859f72d96798"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

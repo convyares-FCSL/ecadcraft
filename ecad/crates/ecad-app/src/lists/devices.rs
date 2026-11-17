@@ -14,7 +14,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use ecad_cadcraft::device_list::DeviceEntry;
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
@@ -86,8 +86,8 @@ pub struct DeviceRow {
 #[derive(Debug)]
 pub struct DevicesSource {
     cols: Vec<Column>,
-    keys: Vec<ComponentId>,
-    rows: HashMap<ComponentId, DeviceRow>,
+    keys: Vec<DeviceId>,
+    rows: HashMap<DeviceId, DeviceRow>,
     /// The search matches as the Devices filter does (`k1` finds `-K01`).
     pub search: bool,
 }
@@ -98,7 +98,7 @@ impl Default for DevicesSource {
     }
 }
 
-fn location(doc: &ecad_model::Document, c: ComponentId, cache: &mut ecad_cadcraft::locations::BoxCache) -> String {
+fn location(doc: &ecad_model::Document, c: DeviceId, cache: &mut ecad_cadcraft::locations::BoxCache) -> String {
     ecad_cadcraft::locations::resolve_with(doc, c, cache).shown(doc)
 }
 
@@ -110,12 +110,12 @@ fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_cadcraft::l
 }
 
 impl DevicesSource {
-    pub fn row(&self, c: ComponentId) -> Option<&DeviceRow> {
+    pub fn row(&self, c: DeviceId) -> Option<&DeviceRow> {
         self.rows.get(&c)
     }
 
     /// Whether `c` is a row.
-    pub fn contains_key(&self, c: ComponentId) -> bool {
+    pub fn contains_key(&self, c: DeviceId) -> bool {
         self.rows.contains_key(&c)
     }
 
@@ -127,7 +127,7 @@ impl DevicesSource {
     }
 
     /// Re-read the rows of `touched` from `entries` (added, changed or removed), and the order.
-    pub fn patch(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry], touched: &BTreeSet<ComponentId>) {
+    pub fn patch(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry], touched: &BTreeSet<DeviceId>) {
         let mut cache = ecad_cadcraft::locations::BoxCache::default();
         for c in touched {
             match entries.iter().find(|e| e.id == *c) {
@@ -146,21 +146,21 @@ impl DevicesSource {
 }
 
 impl TableSource for DevicesSource {
-    type Key = ComponentId;
+    type Key = DeviceId;
 
     fn columns(&self) -> &[Column] {
         &self.cols
     }
 
-    fn keys(&self) -> &[ComponentId] {
+    fn keys(&self) -> &[DeviceId] {
         &self.keys
     }
 
-    fn contains(&self, key: ComponentId) -> bool {
+    fn contains(&self, key: DeviceId) -> bool {
         self.rows.contains_key(&key)
     }
 
-    fn cell(&self, key: ComponentId, col: ColumnId) -> Cell {
+    fn cell(&self, key: DeviceId, col: ColumnId) -> Cell {
         let Some(r) = self.rows.get(&key) else { return Cell::Empty };
         let e = &r.entry;
         let prop = |i: usize| e.properties.get(i).cloned().flatten().unwrap_or_default();
@@ -209,7 +209,7 @@ impl TableSource for DevicesSource {
         }
     }
 
-    fn row_label(&self, key: ComponentId) -> String {
+    fn row_label(&self, key: DeviceId) -> String {
         self.rows.get(&key).map(|r| crate::devices_panel::device_label(&r.entry)).unwrap_or_default()
     }
 
@@ -217,7 +217,7 @@ impl TableSource for DevicesSource {
         &[PROVISIONAL, NOT_PLACED]
     }
 
-    fn chip(&self, key: ComponentId, chip: usize) -> bool {
+    fn chip(&self, key: DeviceId, chip: usize) -> bool {
         let Some(e) = self.rows.get(&key).map(|r| &r.entry) else { return false };
         match chip {
             0 => e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional),
@@ -226,7 +226,7 @@ impl TableSource for DevicesSource {
         }
     }
 
-    fn matches(&self, key: ComponentId, query: &str) -> Option<bool> {
+    fn matches(&self, key: DeviceId, query: &str) -> Option<bool> {
         if !self.search {
             return None;
         }
@@ -236,18 +236,18 @@ impl TableSource for DevicesSource {
 
 /// What the device feed says changed for the Devices table since change `since`: `All` when it
 /// cannot say (rolled over) or when every row may differ (pages, a location box, settings).
-pub fn changes(p: &ecad_cadcraft::Project, since: Option<u64>) -> (Changed<ComponentId>, BTreeSet<ComponentId>) {
+pub fn changes(p: &ecad_cadcraft::Project, since: Option<u64>) -> (Changed<DeviceId>, BTreeSet<DeviceId>) {
     let Some(t) = since.and_then(|n| p.device_changes_since(n)) else { return (Changed::All, BTreeSet::new()) };
     if t.pages || t.settings {
         return (Changed::All, BTreeSet::new());
     }
     let doc = p.ledger.document();
     // A location box changed: every device's location may differ (it is read from the boxes).
-    if t.components.iter().any(|c| ecad_cadcraft::locations::is_box(doc, *c)) {
+    if t.devices.iter().any(|c| ecad_cadcraft::locations::is_box(doc, *c)) {
         return (Changed::All, BTreeSet::new());
     }
-    if t.components.is_empty() {
+    if t.devices.is_empty() {
         return (Changed::Nothing, BTreeSet::new());
     }
-    (Changed::Keys(t.components.iter().copied().collect()), t.components)
+    (Changed::Keys(t.devices.iter().copied().collect()), t.devices)
 }

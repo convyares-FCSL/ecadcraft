@@ -5,7 +5,7 @@
 
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::plc::tagtable::{self, Caps, TagFormat};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
 use crate::common::H;
@@ -60,7 +60,7 @@ fn line(h: &mut H, l: &str) -> Result<Value, String> {
 
 struct F {
     h: H,
-    a03: ComponentId,
+    a03: DeviceId,
 }
 
 fn p56(seed: u64) -> F {
@@ -127,7 +127,7 @@ fn c_a_tag_is_one_transaction_and_a_duplicate_is_refused_in_words() {
     // same channel keeping its own tag is not a duplicate.
     h.run("plcchannel", json!({"card": "-A03", "channel": 2, "tag": "Valve_Inlet"})).unwrap();
     h.cmdline("u");
-    assert!(!h.doc().components[&a03].properties.contains_key("plc.ch.9.tag"), "u undoes the tag");
+    assert!(!h.doc().devices[&a03].properties.contains_key("plc.ch.9.tag"), "u undoes the tag");
     let e = h.run("plcchannel", json!({"card": "-A03", "channel": 9, "tag": "x".repeat(129)})).unwrap_err();
     assert!(e.contains("1 to 128 characters"), "{e}");
     let e = h.run("plcchannel", json!({"card": "-A03", "channel": 9, "tag": "bad\u{7}tag"})).unwrap_err();
@@ -205,7 +205,7 @@ fn i_export_then_import_round_trips_and_counts_untagged() {
     let v = import(&mut h, &text, json!({})).unwrap();
     assert_eq!(h.head(), head + 1);
     assert_eq!((v["tags"].clone(), v["descriptions"].clone()), (json!(2), json!(1)), "{v}");
-    let p = h.doc().components[&a03].properties.clone();
+    let p = h.doc().devices[&a03].properties.clone();
     assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"));
     assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve open"));
     same_as_built(&mut h);
@@ -229,7 +229,7 @@ fn f_g_import_an_io_list_fills_tags_and_descriptions_one_way() {
     assert_eq!(v["written"], true);
     let label = h.p(|p| p.ledger.log().last().map(|t| t.label.clone()));
     assert_eq!(label.as_deref(), Some("Import an I/O list"));
-    let p = h.doc().components[&a03].properties.clone();
+    let p = h.doc().devices[&a03].properties.clone();
     assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_In"));
     assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve"));
     assert_eq!(p.get("plc.ch.12.tag").map(String::as_str), Some("Spare_Out4"));
@@ -237,7 +237,7 @@ fn f_g_import_an_io_list_fills_tags_and_descriptions_one_way() {
     assert!(!h.doc().properties.keys().any(|k| k.starts_with("plc.sync.")), "nothing of the table is kept");
     same_as_built(&mut h);
     h.cmdline("u");
-    let p = h.doc().components[&a03].properties.clone();
+    let p = h.doc().devices[&a03].properties.clone();
     assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"), "u undoes the import whole");
     assert!(!p.contains_key("plc.ch.12.tag"));
     // `what: tags` leaves descriptions alone; the `;` variant reads the same.
@@ -293,7 +293,7 @@ fn exported_fields_never_run_as_formulas_and_read_back() {
     assert!(text.contains(",'@SUM(A1),"), "{text}");
     h.run("plcchannel", json!({"card": "-A03", "channel": 0, "text": null})).unwrap();
     import(&mut h, &text, json!({})).unwrap();
-    let p = h.doc().components[&a03].properties.clone();
+    let p = h.doc().devices[&a03].properties.clone();
     assert_eq!(p.get("plc.ch.0.text").map(String::as_str), Some("=HYPERLINK(\"http://x\")"), "read back as written");
 }
 
@@ -357,7 +357,7 @@ fn a_type_change_keeps_tags_and_descriptions_and_changes_the_signal_type() {
     assert_eq!(v["message"], "-A03 is now a DI card. Its channels become digital inputs (they were digital outputs); tags and descriptions stay.");
     let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
     assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Di));
-    let p = h.doc().components[&a03].properties.clone();
+    let p = h.doc().devices[&a03].properties.clone();
     assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"), "tags stay");
     assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve open"), "descriptions stay");
     assert!(!p.contains_key("plc.ch.4.safe"), "an input has no safe state");
@@ -368,7 +368,7 @@ fn a_type_change_keeps_tags_and_descriptions_and_changes_the_signal_type() {
     h.cmdline("u");
     let ty = h.cfg(|p| ecad_cadcraft::plc::card_type_of(p.ledger.document(), a03));
     assert_eq!(ty, Some(ecad_cadcraft::plc::rack::CardType::Dq), "u undoes it");
-    assert_eq!(h.doc().components[&a03].properties.get("plc.ch.4.safe").map(String::as_str), Some("on"));
+    assert_eq!(h.doc().devices[&a03].properties.get("plc.ch.4.safe").map(String::as_str), Some("on"));
     // An AO card with room: -A05 (AO, 4 channels) to DQ.
     h.run("plcchannel", json!({"card": "-A05", "channel": 0, "tag": "Damper_Pos", "text": "Damper position"})).unwrap();
     let v = h.run("plccardtype", json!({"card": "-A05", "type": "DQ"})).unwrap();
@@ -403,7 +403,7 @@ fn make_tags_fills_empty_tags_from_descriptions_uniquely() {
     assert_eq!(h.head(), head + 1);
     assert_eq!(v["made"], 3, "{v}");
     assert_eq!(v["message"], "Made 3 tags on -A03.");
-    let p = h.doc().components[&a03].properties.clone();
+    let p = h.doc().devices[&a03].properties.clone();
     assert_eq!(p.get("plc.ch.9.tag").map(String::as_str), Some("Inlet_valve_open"));
     assert_eq!(p.get("plc.ch.10.tag").map(String::as_str), Some("_7_segment_display"));
     assert_eq!(p.get("plc.ch.11.tag").map(String::as_str), Some("Fan_On_2"), "unique in the PLC");

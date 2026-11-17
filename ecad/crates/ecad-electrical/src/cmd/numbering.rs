@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::numbering::{self, Kind, Request, Scope};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, FolderId, Noun, PageId, TerminalId};
+use ecad_model::{CableId, ConductorId, DeviceId, Document, FolderId, Noun, PageId, TerminalId};
 
 use crate::error::CmdError;
 
@@ -72,7 +72,7 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
             "provisional" | "unnumbered" => Ok(Scope::Provisional),
             // Brief 028: a terminal renumber may name its strips in `strips` alone.
             "selection" if input.objects.is_none() && input.strips.is_some() => {
-                Ok(Scope::Selection { components: BTreeSet::new(), cables: BTreeSet::new(), conductors: BTreeSet::new() })
+                Ok(Scope::Selection { devices: BTreeSet::new(), cables: BTreeSet::new(), conductors: BTreeSet::new() })
             }
             "selection" => {
                 let list = input
@@ -83,11 +83,11 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
                 if list.len() > max_objects {
                     return Err(CmdError::input(format!("at most {max_objects} entries in `objects` per call")));
                 }
-                let (mut components, mut cables, mut conductors) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+                let (mut devices, mut cables, mut conductors) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
                 for t in list {
                     let n = hex(t, "objects")?;
-                    if doc.components.contains_key(&ComponentId(n)) {
-                        components.insert(ComponentId(n));
+                    if doc.devices.contains_key(&DeviceId(n)) {
+                        devices.insert(DeviceId(n));
                     } else if doc.cables.contains_key(&CableId(n)) {
                         cables.insert(CableId(n));
                     } else if doc.conductors.contains_key(&ConductorId(n)) {
@@ -96,7 +96,7 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
                         return Err(CmdError::refused(format!("{t} in `objects` is not a device, cable or wire.")));
                     }
                 }
-                Ok(Scope::Selection { components, cables, conductors })
+                Ok(Scope::Selection { devices, cables, conductors })
             }
             other => Err(CmdError::refused(format!(
                 "`scope` must be \"all\", \"selection\", \"provisional\", {{prefix}}, {{folder}} or {{pages}}, not {other:?}"
@@ -140,21 +140,21 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
 ///
 /// # Errors
 /// A named strip that is not a terminal strip or one of its terminals.
-pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSet<ComponentId>, CmdError> {
-    let all = || doc.components.keys().copied().filter(|c| crate::strips::is_strip(doc, *c));
+pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSet<DeviceId>, CmdError> {
+    let all = || doc.devices.keys().copied().filter(|c| crate::strips::is_strip(doc, *c));
     Ok(match scope {
         Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
         Scope::Prefix(p) => {
             let p = p.trim_start_matches('-').to_ascii_uppercase();
             all().filter(|c| crate::devices::tag_of(doc, *c).and_then(ecad_model::tag::parse).is_some_and(|(q, _)| q == p)).collect()
         }
-        Scope::Selection { components, .. } => {
-            let mut out: BTreeSet<ComponentId> = components.iter().copied().filter(|c| crate::strips::is_strip(doc, *c)).collect();
+        Scope::Selection { devices, .. } => {
+            let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::strips::is_strip(doc, *c)).collect();
             for t in named {
                 let n = hex(t, "strips")?;
                 let c = match doc.terminals.get(&TerminalId(n)) {
                     Some(t) => t.component,
-                    None => ComponentId(n),
+                    None => DeviceId(n),
                 };
                 if !crate::strips::is_strip(doc, c) {
                     return Err(CmdError::refused(format!("{t} in `strips` is not a terminal strip or one of its terminals.")));

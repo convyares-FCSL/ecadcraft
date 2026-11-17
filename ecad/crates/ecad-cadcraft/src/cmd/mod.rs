@@ -90,7 +90,7 @@ pub fn specs() -> Vec<CommandSpec> {
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("convertcomponent", "Convert to Component", crate::cmd::input::typed::<crate::cmd::device::ConvertcomponentParams>)
+        CommandSpec::new("convertcomponent", "Convert to Device", crate::cmd::input::typed::<crate::cmd::device::ConvertcomponentParams>)
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
@@ -153,7 +153,7 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("setprop", "Set Property", crate::cmd::input::typed::<crate::cmd::prop::SetpropParams>)
             .params(
-                "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {components: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_fixed`: \"yes\" or null)",
+                "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_fixed`: \"yes\" or null)",
             )
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", crate::cmd::input::typed::<crate::cmd::cable_draw::CableaddParams>)

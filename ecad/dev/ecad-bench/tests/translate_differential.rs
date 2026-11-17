@@ -83,7 +83,7 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                 let Some(Mapped::Item(item)) = map.get(*h) else { continue };
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
                 match r.subject {
-                    Subject::Component(_) if r.items.first() == Some(&item) => symbols.push(*h),
+                    Subject::Device(_) if r.items.first() == Some(&item) => symbols.push(*h),
                     Subject::Conductor(c) => {
                         if let Some((id, prim)) = route_on_page(doc, c, page)
                             && id == item

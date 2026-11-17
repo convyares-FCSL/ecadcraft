@@ -64,7 +64,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         let v = c.exec("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [250, 100]}));
         let ops = assert_one_by_agent(&mut c, n, &format!("connector row → {v}")).ops;
         let x1 = conn(&v);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1, "{ops:?}");
+        assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1, "{ops:?}");
         let embeds: Vec<&ecad_model::Definition> =
             ops.iter().filter_map(|o| if let Op::EmbedDefinition { definition, .. } = o { Some(definition) } else { None }).collect();
         assert_eq!(embeds.len(), 2, "socket4 and plug4: {ops:?}");
@@ -100,7 +100,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         let mut got = sides(&ops);
         got.sort();
         assert_eq!(got, [(".p".to_string(), "4".to_string()), (".s".to_string(), "4".to_string())], "next free pin");
-        assert!(!ops.iter().any(|o| matches!(o, Op::CreateComponent { .. })), "joins, no new device");
+        assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "joins, no new device");
 
         // (3) pinlabel, setprop of FP4 keys, setdefault of the connector area: one each.
         let s3 = pin(&mut c, &x1, ".s", "3");

@@ -4,7 +4,7 @@
 use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::plc::overview::{self, Square, TileKind};
 use ecad_cadcraft::plc::sheets::{self, Seg};
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
 use super::plc_contracts::placed;
@@ -14,10 +14,10 @@ use crate::common::{H, id, pts};
 /// DQ card in slot 3, none of the AI's or DQ's channels drawn (045's I/O fixture).
 struct F {
     h: H,
-    cpu: ComponentId,
-    di: ComponentId,
-    ai: ComponentId,
-    dq: ComponentId,
+    cpu: DeviceId,
+    di: DeviceId,
+    ai: DeviceId,
+    dq: DeviceId,
 }
 
 fn fixture(seed: u64) -> F {
@@ -215,7 +215,7 @@ fn l_make_its_page_draws_a_card_with_no_body_and_places_it() {
     placed(&mut h, "plccpu", 50.0, 400.0);
     // A card drawn only by a channel cell (no body), then its page draws the rest and the body.
     let v = h.run("place", json!({"symbol": "chdq", "at": [100.0, 100.0]})).unwrap();
-    let card: ComponentId = id(&v, "component");
+    let card: DeviceId = id(&v, "component");
     let r = h.run("plcpage", json!({"card": card.hex()})).unwrap();
     assert_eq!(r["body"], true);
     assert_eq!(r["channels"].as_array().map(Vec::len), Some(15));
@@ -337,7 +337,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     h.run("plcchannels", json!({"card": di.hex(), "rest": true})).unwrap();
     let d = h.doc();
     let body = d
-        .representations_of(ecad_model::Subject::Component(di))
+        .representations_of(ecad_model::Subject::Device(di))
         .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Plcdi))
         .map(|(_, r)| r.items[0])
         .unwrap();
@@ -421,7 +421,7 @@ fn review_1_a_body_with_no_frame_keeps_its_tag() {
     let mut h = H::new(5130);
     placed(&mut h, "plccpu", 50.0, 400.0);
     let v = h.run("place", json!({"symbol": "plcdi", "at": [150.0, 300.0], "rotation": 90.0})).unwrap();
-    let di: ComponentId = id(&v, "component");
+    let di: DeviceId = id(&v, "component");
     let page = h.first_page();
     let d = h.doc();
     assert!(ecad_cadcraft::plc::look::runs_on_page(&d, page).iter().all(|r| r.card != di), "no run at 90°");

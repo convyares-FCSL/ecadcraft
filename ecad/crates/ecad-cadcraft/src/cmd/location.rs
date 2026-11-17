@@ -12,7 +12,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::location::{self as rules, Answer, MAX_DEVICES, Pick};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -43,18 +43,18 @@ fn own_specs() -> Vec<CommandSpec> {
             .noundo(),
         CommandSpec::new("setlocation", "Set Location", crate::cmd::input::typed::<SetlocationParams>)
             .params(
-                "{component: id | components: [id], value: code | null, aspect?: \"location\" (default) | \"function\", type?: \"socket\" | \"plug\" | \"terminal\" | a symbol type (an override, location only)} \
+                "{component: id | devices: [id], value: code | null, aspect?: \"location\" (default) | \"function\", type?: \"socket\" | \"plug\" | \"terminal\" | a symbol type (an override, location only)} \
 (one transaction; a code not in the project's list adds its entry; null clears it)",
             )
             .noundo(),
         CommandSpec::new("setfunction", "Set Function", crate::cmd::input::typed::<SetfunctionParams>)
-            .params("{component: id | components: [id], value: code | null} (as setlocation with aspect \"function\")")
+            .params("{component: id | devices: [id], value: code | null} (as setlocation with aspect \"function\")")
             .noundo(),
     ]
 }
 
 /// Run a set on the project and answer in JSON.
-pub(crate) fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
+pub(crate) fn apply(s: &mut Session, objects: Vec<DeviceId>, prop: String, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
     let a = rules::aspect_of(&prop).map_err(|e| err(e.to_string()))?;
     let v = on_project(s, |p, pg, _| {
         let doc = p.ledger.document();
@@ -96,10 +96,10 @@ pub(crate) fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, te
 pub(crate) struct SetlocationParams {
     /// One device or box.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Several (at most 10000; one named twice is set once).
     #[serde(default)]
-    components: Option<Bounded<ComponentId, 0, MAX_DEVICES>>,
+    devices: Option<Bounded<DeviceId, 0, MAX_DEVICES>>,
     /// The code, such as +CP1, or null to clear it.
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "OrNull<String>")]
@@ -115,7 +115,7 @@ pub(crate) struct SetlocationParams {
 impl Command for SetlocationParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let a = rules::aspect(self.aspect.as_deref()).map_err(|e| err(e.to_string()))?;
-        let objects = rules::objects(self.component, self.components.map(|c| c.0)).map_err(|e| err(e.to_string()))?;
+        let objects = rules::objects(self.component, self.devices.map(|c| c.0)).map_err(|e| err(e.to_string()))?;
         let prop = rules::property_for(a, self.r#type.as_deref()).map_err(|e| err(e.to_string()))?;
         let command = "setlocation";
         apply(s, objects, prop, self.value.flatten(), command)
@@ -128,10 +128,10 @@ impl Command for SetlocationParams {
 pub(crate) struct SetfunctionParams {
     /// One device or box.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Several (at most 10000; one named twice is set once).
     #[serde(default)]
-    components: Option<Bounded<ComponentId, 0, MAX_DEVICES>>,
+    devices: Option<Bounded<DeviceId, 0, MAX_DEVICES>>,
     /// The code, such as =F1, or null to clear it.
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "OrNull<String>")]
@@ -146,13 +146,13 @@ impl Command for SetfunctionParams {
         if self.r#type.is_some() {
             return Err(err(rules::NO_FUNCTION_OVERRIDES));
         }
-        let objects = rules::objects(self.component, self.components.map(|c| c.0)).map_err(|e| err(e.to_string()))?;
+        let objects = rules::objects(self.component, self.devices.map(|c| c.0)).map_err(|e| err(e.to_string()))?;
         apply(s, objects, Aspect::Function.property().to_string(), self.value.flatten(), "setfunction")
     }
 }
 
 /// `conflicts {answer?, components?, aspect?}` (design 052 §5.5): the waiting conflicts; Move,
-/// Half or Leave. `components` and `aspect` choose rows (Choose: one row is one device and one
+/// Half or Leave. `devices` and `aspect` choose rows (Choose: one row is one device and one
 /// aspect). Move and Half act only on the rows that still hold (an undo may have taken them away).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -162,7 +162,7 @@ pub(crate) struct ConflictsParams {
     answer: Option<String>,
     /// Choose: only these devices.
     #[serde(default)]
-    components: Option<Bounded<ComponentId, 0, MAX_HANDLES>>,
+    devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
     /// Choose: only this aspect, location or function.
     #[serde(default)]
     aspect: Option<String>,
@@ -175,7 +175,7 @@ impl Command for ConflictsParams {
             None => None,
             Some(w) => Some(Aspect::of_word(w).ok_or_else(|| err(rules::ASPECT_WORDS))?),
         };
-        let pick = Pick { only: self.components.map(|c| c.0), aspect };
+        let pick = Pick { only: self.devices.map(|c| c.0), aspect };
         let v = match answer {
             Answer::List => on_any_page(s, |p, _| {
                 let doc = p.ledger.document();

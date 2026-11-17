@@ -2,7 +2,7 @@
 //! conditions).
 
 use cadcraft_engine::Input;
-use ecad_model::{ComponentId, Op};
+use ecad_model::{DeviceId, Op};
 use serde_json::json;
 
 use super::*;
@@ -19,7 +19,7 @@ fn a_six_cards_take_the_rack_and_the_next_free_slot() {
     let rack_hex = p.rack.hex();
     for (i, (sym, t, slot)) in CARDS.iter().enumerate() {
         let v = step(&mut p.h, "place", json!({"symbol": sym, "at": [140.0 + 40.0 * i as f64, 200]}));
-        let c: ComponentId = id(&v, "component");
+        let c: DeviceId = id(&v, "component");
         let d = p.h.doc();
         assert_eq!(tag(&d, c), *t);
         assert_eq!(prop(&d, c, "plc.rack").as_deref(), Some(rack_hex.as_str()), "FP1: the rack's 32-hex ID");
@@ -108,7 +108,7 @@ fn a_place_prompts_rack_then_slot() {
 fn a_no_rack_no_prompt() {
     let mut h = H::new(0x7045_a004);
     let v = step(&mut h, "place", json!({"symbol": "plcdi", "at": [100, 200]}));
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let d = h.doc();
     assert_eq!((prop(&d, c, "plc.rack"), prop(&d, c, "plc.slot")), (None, None));
     let v = h.run("plcracks", json!({})).unwrap();
@@ -160,7 +160,7 @@ fn b_two_racks_need_a_name() {
     p.h.activate(p.cpu_page);
     p.h.run("place", json!({"symbol": "plcim", "at": [400, 200], "tag": "-A20"})).unwrap();
     let v = place_card(&mut p.h, "plcdi", 140.0, json!({"rack": null}));
-    let card: ComponentId = id(&v, "component");
+    let card: DeviceId = id(&v, "component");
     refused(&mut p.h, "plcslot", json!({"card": card.hex()}), &["Name a rack: the project has 2 (-A01, -A20)."]);
 }
 
@@ -276,16 +276,16 @@ fn d_round_trip_and_retag() {
     let cpu_page = p.cpu_page;
     let mut h = reload(p.h, "round trip", 0x7045_d101);
     let after = h.doc();
-    assert_eq!(after.components, before.components, "every property, plc.rack included, round-trips");
+    assert_eq!(after.devices, before.devices, "every property, plc.rack included, round-trips");
     assert_eq!(slots(&mut h, "-A01"), rows_before);
     let rack = by_tag(&after, "-A01");
-    let props_before: Vec<_> = c.values().map(|x| after.components[x].properties.clone()).collect();
+    let props_before: Vec<_> = c.values().map(|x| after.devices[x].properties.clone()).collect();
     h.activate(cpu_page);
     let caps: Vec<String> = text_values(&mut h, cpu_page).into_iter().filter(|t| t.starts_with("-A01 slot ")).collect();
     assert_eq!(caps.len(), 6, "a caption per card in a rack (§7.2): {caps:?}");
     step(&mut h, "setprop", json!({"component": rack.hex(), "key": "tag", "value": "-A10"}));
     let d = h.doc();
-    let props_after: Vec<_> = c.values().map(|x| d.components[x].properties.clone()).collect();
+    let props_after: Vec<_> = c.values().map(|x| d.devices[x].properties.clone()).collect();
     assert_eq!(props_before, props_after, "retagging the rack touches no card");
     assert_eq!(slots(&mut h, "-A10").len(), rows_before.len());
     let texts = text_values(&mut h, cpu_page);
@@ -305,9 +305,9 @@ fn fp1_deleting_a_rack_takes_its_cards_out_in_one_transaction() {
     p.h.run("devicedelete", json!({"component": p.rack.hex()})).unwrap();
     assert_eq!(p.h.head(), head + 1, "one transaction");
     let d = p.h.doc();
-    assert!(!d.components.contains_key(&p.rack));
+    assert!(!d.devices.contains_key(&p.rack));
     for x in c.values() {
-        assert!(d.components.contains_key(x), "cards stay");
+        assert!(d.devices.contains_key(x), "cards stay");
         assert_eq!((prop(&d, *x, "plc.rack"), prop(&d, *x, "plc.slot")), (None, None), "{}", tag(&d, *x));
     }
     let ops = p.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone())).unwrap_or_default();
@@ -331,7 +331,7 @@ fn fp1_erasing_the_rack_body_never_leaves_a_dangling_id() {
     p.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     assert_eq!(p.h.head(), head + 1);
     let d = p.h.doc();
-    if !d.components.contains_key(&p.rack) {
+    if !d.devices.contains_key(&p.rack) {
         for x in c.values() {
             assert_eq!(prop(&d, *x, "plc.rack"), None, "{}", tag(&d, *x));
         }

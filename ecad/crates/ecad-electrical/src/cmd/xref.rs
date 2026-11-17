@@ -2,7 +2,7 @@
 //! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`xrefs`,
 //! `contacts`) are [`crate::xref`]'s own; the engine crate's shims open pages and answer in JSON.
 
-use ecad_model::{ComponentId, Document, ItemId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, ItemId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
 
 use crate::error::CmdError;
 use crate::xref::{self, Placement, RefIndex};
@@ -30,8 +30,8 @@ pub fn goto(
     let arrow = matches!(idx.member(source), Some((xref::Group::Continuation(_), _)));
     let none = match r.subject {
         // Brief 049: a lonely continuation arrow.
-        Subject::Component(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
-        Subject::Component(_) => "This symbol shows no reference: its device has no coil or no contacts.",
+        Subject::Device(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
+        Subject::Device(_) => "This symbol shows no reference: its device has no coil or no contacts.",
         Subject::Cable(_) => "this reference has no other end",
         Subject::Conductor(_) => "That is not a reference.",
     };
@@ -53,13 +53,13 @@ pub fn goto(
     let mut places = xref::Places::new(doc);
     let place = places.text(tr.page, Some(at));
     let what = match tr.subject {
-        Subject::Component(c) if crate::continuations::is_continuation(doc, c) => {
+        Subject::Device(c) if crate::continuations::is_continuation(doc, c) => {
             format!(
                 "continuation {}",
-                doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default()
+                doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default()
             )
         }
-        Subject::Component(c) => match xref::device(doc, c).head {
+        Subject::Device(c) => match xref::device(doc, c).head {
             Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
             _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
         },
@@ -75,7 +75,7 @@ pub fn goto(
 ///
 /// # Errors
 /// Neither `at` nor `placement`, both, an unreadable word, or a point too far from the coil.
-pub fn mirror_for(doc: &Document, c: ComponentId, at: Option<Pt>, placement: Option<&str>) -> Result<Option<String>, CmdError> {
+pub fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Option<String>, CmdError> {
     let placement = match (at, placement) {
         (Some(_), Some(_)) => return Err(CmdError::input("give `at` or `placement`, not both")),
         (None, None) => return Err(CmdError::input("`at` ([x, y]) or `placement` (auto, below, right, off) is required")),
@@ -125,8 +125,8 @@ pub struct Mirrored {
 ///
 /// # Errors
 /// No such component, or [`mirror_for`]'s refusals.
-pub fn plan_mirrormove(doc: &Document, c: ComponentId, at: Option<Pt>, placement: Option<&str>) -> Result<Mirrored, CmdError> {
-    let comp = doc.components.get(&c).ok_or(CmdError::refused("no such component"))?;
+pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Mirrored, CmdError> {
+    let comp = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
     let after = mirror_for(doc, c, at, placement)?;
     let before = comp.properties.get(xref::MIRROR_KEY).cloned();
     if before == after {
@@ -139,6 +139,6 @@ pub fn plan_mirrormove(doc: &Document, c: ComponentId, at: Option<Pt>, placement
         Some(w) => format!("is placed {w}"),
     };
     let message = format!("{}'s contact table {words}.", crate::devices::tag_words(doc, c));
-    let ops = vec![Op::SetProperty { object: ObjectRef::Component(c), key: xref::MIRROR_KEY.into(), before, after: after.clone() }];
+    let ops = vec![Op::SetProperty { object: ObjectRef::Device(c), key: xref::MIRROR_KEY.into(), before, after: after.clone() }];
     Ok(Mirrored { ops, mirror: after, message })
 }

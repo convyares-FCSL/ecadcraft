@@ -8,7 +8,7 @@ use common::{H, hex, id, pts};
 use ecad_cadcraft::ProjectHandle;
 use ecad_inspect::EventKind;
 use ecad_model::derive::nets;
-use ecad_model::{ComponentId, ConductorId, Document, End, PageId, Pt, Subject, TerminalId};
+use ecad_model::{ConductorId, DeviceId, Document, End, PageId, Pt, Subject, TerminalId};
 use serde_json::{Value, json};
 
 #[test]
@@ -26,7 +26,7 @@ fn scenario_s1_to_s16() {
 
     // S2: convert to a component, add three terminals.
     let r = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
-    let c1: ComponentId = id(&r, "component");
+    let c1: DeviceId = id(&r, "component");
     let mut t = Vec::new();
     for y in [15.0, 10.0, 5.0] {
         let r = h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, y]})).unwrap();
@@ -37,7 +37,7 @@ fn scenario_s1_to_s16() {
 
     // S3: place a symbol rotated 90°.
     let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
-    let c2: ComponentId = id(&r, "component");
+    let c2: DeviceId = id(&r, "component");
     let keys: Vec<(String, TerminalId)> =
         r["terminals"].as_array().unwrap().iter().map(|x| (x["key"].as_str().unwrap().to_string(), id(x, "terminal"))).collect();
     let (s1, s2) = (keys[0].1, keys[1].1);
@@ -99,8 +99,8 @@ fn scenario_s1_to_s16() {
     sel.push(h.route_handle(p1, w2).hex());
     h.run("copy", json!({"handles": sel, "delta": [0, -60]})).unwrap();
     let after = h.doc();
-    assert_eq!(after.components.len(), before.components.len() + 1);
-    let c1b = *after.components.keys().find(|c| !before.components.contains_key(c)).unwrap();
+    assert_eq!(after.devices.len(), before.devices.len() + 1);
+    let c1b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
     let new_terms: Vec<TerminalId> = after.terminals_of(c1b).map(|(t, _)| t).collect();
     assert_eq!(new_terms.len(), 3);
     assert!(new_terms.iter().all(|t| !before.terminals.contains_key(t)), "new terminal IDs");
@@ -109,8 +109,8 @@ fn scenario_s1_to_s16() {
     assert_eq!(after.terminals[&t2b].component, c1b, "attached to the copied component, not the original");
     assert!(h.terminal_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
     assert_eq!(after.conductors[&w2b].end(End::B), None);
-    for k in before.components.keys() {
-        assert_eq!(before.components[k], after.components[k], "originals unchanged");
+    for k in before.devices.keys() {
+        assert_eq!(before.devices[k], after.devices[k], "originals unchanged");
     }
     assert_eq!(before.conductors[&w2], after.conductors[&w2]);
     // COPYCLIP / PASTECLIP the symbol.
@@ -121,8 +121,8 @@ fn scenario_s1_to_s16() {
     let before = h.doc();
     h.run("pasteclip", json!({"at": [base.x, base.y - 60.0]})).unwrap();
     let after = h.doc();
-    let c2b = *after.components.keys().find(|c| !before.components.contains_key(c)).unwrap();
-    assert_eq!(after.components[&c2b].definition, after.components[&c2].definition, "same embedded definition");
+    let c2b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
+    assert_eq!(after.devices[&c2b].definition, after.devices[&c2].definition, "same embedded definition");
     let keys_b: Vec<_> = after.terminals_of(c2b).map(|(_, t)| t.key.clone()).collect();
     assert_eq!(keys_b.len(), 2);
     assert!(keys_b.contains(&Some("A1".into())) && keys_b.contains(&Some("A2".into())));
@@ -159,7 +159,7 @@ fn scenario_s1_to_s16() {
     h.run("u", Value::Null).unwrap();
     h.run("u", Value::Null).unwrap();
     let doc = h.doc();
-    assert!(!doc.components[&c1b].properties.contains_key("tag"), "SETPROP undone");
+    assert!(!doc.devices[&c1b].properties.contains_key("tag"), "SETPROP undone");
     assert!(doc.cables.is_empty(), "cable undone");
     assert!(!doc.conductors.contains_key(&w4), "WIRE on page 2 undone");
     // Brief 016 (AC8): the undo of the wire on page 2 brings page 2 to the front, without it.

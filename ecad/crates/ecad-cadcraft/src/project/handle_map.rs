@@ -31,7 +31,7 @@ pub enum Mapped {
     /// A segment of a strip's link line (brief 030, design 030 §5.3), by strip and link number:
     /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
-    Link(ComponentId, u32),
+    Link(DeviceId, u32),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -65,7 +65,7 @@ pub struct HandleMap {
     /// The part each cross-reference handle is.
     xref_parts: HashMap<Handle, (RepresentationId, u32)>,
     /// Brief 030: link line segments: (strip, link, index) → handle.
-    links: BTreeMap<(ComponentId, u32, u32), Handle>,
+    links: BTreeMap<(DeviceId, u32, u32), Handle>,
     /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
     /// the conductor as its label is (derived: left out of an edit with other objects, refused
     /// alone), and each dash's route handle.
@@ -184,10 +184,10 @@ impl HandleMap {
         self.xrefs.get(&(rep, index)).copied()
     }
     /// Brief 030: the handle of segment `index` of link `n` of `strip`.
-    pub fn link(&self, strip: ComponentId, n: u32, index: u32) -> Option<Handle> {
+    pub fn link(&self, strip: DeviceId, n: u32, index: u32) -> Option<Handle> {
         self.links.get(&(strip, n, index)).copied()
     }
-    pub fn insert_link(&mut self, strip: ComponentId, n: u32, index: u32, h: Handle) {
+    pub fn insert_link(&mut self, strip: DeviceId, n: u32, index: u32, h: Handle) {
         self.links.insert((strip, n, index), h);
         self.by_handle.insert(h, Mapped::Link(strip, n));
     }

@@ -3,7 +3,7 @@
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{ComponentId, ConductorId, TerminalId};
+use ecad_model::{ConductorId, DeviceId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -12,7 +12,7 @@ use crate::common::{H, id, pts};
 /// with fixture A's project parts (design 030 §12).
 struct F {
     h: H,
-    strip: ComponentId,
+    strip: DeviceId,
     terms: Vec<TerminalId>,
     wires: Vec<ConductorId>,
 }
@@ -27,7 +27,7 @@ fn fixture(seed: u64) -> F {
         wires.push(id::<ConductorId>(&v, "conductor"));
     }
     let v = h.run("terminals", json!({"from": [30, 160], "to": [280, 160]})).unwrap();
-    let strip: ComponentId = id(&v, "strip");
+    let strip: DeviceId = id(&v, "strip");
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     assert_eq!(terms.len(), 6, "{v}");
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "12+2PE"})).unwrap();
@@ -70,7 +70,7 @@ impl F {
     }
 
     fn prop(&mut self, key: &str) -> Option<String> {
-        self.h.doc().components[&self.strip].properties.get(key).cloned()
+        self.h.doc().devices[&self.strip].properties.get(key).cloned()
     }
 
     fn same_as_built(&mut self) {
@@ -295,7 +295,7 @@ fn accessory_edits_recompute_only_what_they_touch() {
         xs.push(x);
     }
     let v = f.h.run("terminals", json!({"from": [330, 160], "to": [420, 160]})).unwrap();
-    let x2: ComponentId = id(&v, "strip");
+    let x2: DeviceId = id(&v, "strip");
     f.h.run("setprop", json!({"component": x2.hex(), "key": "end_stop.part_number", "value": "OWN"})).unwrap();
     f.h.run("accessory", json!({"strip": x2.hex(), "at": "start", "items": ["end_stop"]})).unwrap();
     f.acc(json!({"at": "start", "items": ["end_stop"]}));
@@ -352,7 +352,7 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
         refused(&mut f, "setprop", json!({"component": c.hex(), "key": "acc.start", "value": "end_stop"}));
     }
     let coil = f.h.run("place", json!({"symbol": "coil", "at": [500, 200]})).unwrap();
-    let k1: ComponentId = id(&coil, "component");
+    let k1: DeviceId = id(&coil, "component");
     refused(&mut f, "setprop", json!({"component": k1.hex(), "key": "link.1", "value": "1-2"}));
     refused(&mut f, "accessory", json!({"strip": k1.hex(), "at": "start", "items": ["end_stop"]}));
     f.same_as_built();
@@ -397,7 +397,7 @@ fn renumbering_onto_a_spare_position_in_a_link() {
         h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
     }
     let v = h.run("terminals", json!({"from": [30, 160], "to": [150, 160]})).unwrap();
-    let strip: ComponentId = id(&v, "strip");
+    let strip: DeviceId = id(&v, "strip");
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let before = h.doc().terminals[&terms[2]].clone();
     let mut after = before.clone();

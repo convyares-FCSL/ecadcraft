@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId,
+    CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -171,15 +171,18 @@ pub struct Item {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Component {
+pub struct Device {
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
+    /// What the device is (design 072 F15): the model's own type, whose words and fields are
+    /// strict.
+    pub device_type: m::DeviceType,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Terminal {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub label: Option<String>,
     pub key: Option<String>,
 }
@@ -187,7 +190,7 @@ pub struct Terminal {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Subject {
-    Component(ComponentId),
+    Device(DeviceId),
     Conductor(ConductorId),
     Cable(CableId),
 }
@@ -282,6 +285,9 @@ pub struct Definition {
     /// The origin an edited copy came from (brief 048, FP4). Left out when none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
+    /// What a device this symbol starts is (design 072 F15). Left out for `general`.
+    #[serde(default, skip_serializing_if = "m::DeviceType::is_general")]
+    pub device_type: m::DeviceType,
 }
 
 /// A text slot of a definition (brief 048, FP1).
@@ -549,7 +555,7 @@ impl From<SheetSpec> for m::SheetSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ObjectRef {
-    Component(ComponentId),
+    Device(DeviceId),
     Conductor(ConductorId),
     Cable(CableId),
     /// Brief 019 (decision FP1).
@@ -665,17 +671,23 @@ pub enum Op {
         id: ItemId,
         item: Item,
     },
-    CreateComponent {
-        id: ComponentId,
-        component: Component,
+    CreateDevice {
+        id: DeviceId,
+        device: Device,
     },
-    DeleteComponent {
-        id: ComponentId,
-        component: Component,
+    DeleteDevice {
+        id: DeviceId,
+        device: Device,
+    },
+    /// Design 072 F13.
+    ModifyDevice {
+        id: DeviceId,
+        before: Device,
+        after: Device,
     },
     /// Brief 048, FP5.
-    SetComponentDefinition {
-        id: ComponentId,
+    SetDeviceDefinition {
+        id: DeviceId,
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
@@ -936,9 +948,9 @@ impl From<&m::Item> for Item {
     }
 }
 
-impl From<&m::Component> for Component {
-    fn from(c: &m::Component) -> Self {
-        Component { properties: c.properties.clone(), definition: c.definition }
+impl From<&m::Device> for Device {
+    fn from(c: &m::Device) -> Self {
+        Device { properties: c.properties.clone(), definition: c.definition, device_type: c.device_type.clone() }
     }
 }
 
@@ -952,7 +964,7 @@ impl From<&m::Representation> for Representation {
     fn from(r: &m::Representation) -> Self {
         Representation {
             subject: match r.subject {
-                m::Subject::Component(c) => Subject::Component(c),
+                m::Subject::Device(c) => Subject::Device(c),
                 m::Subject::Conductor(c) => Subject::Conductor(c),
                 m::Subject::Cable(c) => Subject::Cable(c),
             },
@@ -1004,6 +1016,7 @@ impl From<&m::Definition> for Definition {
             texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults.clone(),
             derived_from: d.derived_from.as_ref().map(origin),
+            device_type: d.device_type.clone(),
         }
     }
 }
@@ -1062,7 +1075,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
 
 fn object(o: m::ObjectRef) -> ObjectRef {
     match o {
-        m::ObjectRef::Component(c) => ObjectRef::Component(c),
+        m::ObjectRef::Device(c) => ObjectRef::Device(c),
         m::ObjectRef::Conductor(c) => ObjectRef::Conductor(c),
         m::ObjectRef::Cable(c) => ObjectRef::Cable(c),
         m::ObjectRef::Page(p) => ObjectRef::Page(p),
@@ -1082,9 +1095,10 @@ impl From<&m::Op> for Op {
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
             m::Op::ModifyItem { id, before, after } => Op::ModifyItem { id: *id, before: before.into(), after: after.into() },
             m::Op::RemoveItem { id, item } => Op::RemoveItem { id: *id, item: item.into() },
-            m::Op::CreateComponent { id, component } => Op::CreateComponent { id: *id, component: component.into() },
-            m::Op::DeleteComponent { id, component } => Op::DeleteComponent { id: *id, component: component.into() },
-            m::Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id: *id, before: *before, after: *after },
+            m::Op::CreateDevice { id, device } => Op::CreateDevice { id: *id, device: device.into() },
+            m::Op::DeleteDevice { id, device } => Op::DeleteDevice { id: *id, device: device.into() },
+            m::Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id: *id, before: before.into(), after: after.into() },
+            m::Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id: *id, before: *before, after: *after },
             m::Op::AddTerminal { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
             m::Op::RemoveTerminal { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
@@ -1206,9 +1220,9 @@ impl From<Item> for m::Item {
     }
 }
 
-impl From<Component> for m::Component {
-    fn from(c: Component) -> Self {
-        m::Component { properties: c.properties, definition: c.definition }
+impl From<Device> for m::Device {
+    fn from(c: Device) -> Self {
+        m::Device { properties: c.properties, definition: c.definition, device_type: c.device_type }
     }
 }
 
@@ -1222,7 +1236,7 @@ impl From<Representation> for m::Representation {
     fn from(r: Representation) -> Self {
         m::Representation {
             subject: match r.subject {
-                Subject::Component(c) => m::Subject::Component(c),
+                Subject::Device(c) => m::Subject::Device(c),
                 Subject::Conductor(c) => m::Subject::Conductor(c),
                 Subject::Cable(c) => m::Subject::Cable(c),
             },
@@ -1274,6 +1288,7 @@ impl From<Definition> for m::Definition {
             texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults,
             derived_from: d.derived_from.map(morigin),
+            device_type: d.device_type,
         }
     }
 }
@@ -1308,7 +1323,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
 
 fn mobject(o: ObjectRef) -> m::ObjectRef {
     match o {
-        ObjectRef::Component(c) => m::ObjectRef::Component(c),
+        ObjectRef::Device(c) => m::ObjectRef::Device(c),
         ObjectRef::Conductor(c) => m::ObjectRef::Conductor(c),
         ObjectRef::Cable(c) => m::ObjectRef::Cable(c),
         ObjectRef::Page(p) => m::ObjectRef::Page(p),
@@ -1328,9 +1343,10 @@ impl TryFrom<Op> for m::Op {
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
             Op::ModifyItem { id, before, after } => m::Op::ModifyItem { id, before: before.into(), after: after.into() },
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
-            Op::CreateComponent { id, component } => m::Op::CreateComponent { id, component: component.into() },
-            Op::DeleteComponent { id, component } => m::Op::DeleteComponent { id, component: component.into() },
-            Op::SetComponentDefinition { id, before, after } => m::Op::SetComponentDefinition { id, before, after },
+            Op::CreateDevice { id, device } => m::Op::CreateDevice { id, device: device.into() },
+            Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: device.into() },
+            Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: before.into(), after: after.into() },
+            Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },

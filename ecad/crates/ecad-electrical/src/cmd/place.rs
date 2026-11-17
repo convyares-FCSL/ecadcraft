@@ -7,7 +7,7 @@
 //! `place` shim).
 
 use ecad_model::tag::{self, Style};
-use ecad_model::{ComponentId, Document, Noun};
+use ecad_model::{DeviceId, Document, Noun};
 
 use crate::devices::{self, Target};
 use crate::error::CmdError;
@@ -17,12 +17,10 @@ use crate::symbols::{Side, Starter};
 ///
 /// # Errors
 /// Text that is not a hex ID.
-pub fn device_id(device: Option<&str>) -> Result<Option<ComponentId>, CmdError> {
+pub fn device_id(device: Option<&str>) -> Result<Option<DeviceId>, CmdError> {
     match device {
         None => Ok(None),
-        Some(t) => {
-            u128::from_str_radix(t.trim(), 16).map(|n| Some(ComponentId::from(n))).map_err(|_| CmdError::input("`device` (hex id) is required"))
-        }
+        Some(t) => u128::from_str_radix(t.trim(), 16).map(|n| Some(DeviceId::from(n))).map_err(|_| CmdError::input("`device` (hex id) is required")),
     }
 }
 
@@ -46,9 +44,9 @@ fn style(doc: &Document) -> Style {
 ///
 /// # Errors
 /// No such device; a connector half's tag (brief 044, tester D5); a tag that does not read.
-pub fn device_target(doc: &Document, device: Option<ComponentId>, tag: Option<&str>) -> Result<Target, CmdError> {
+pub fn device_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<Target, CmdError> {
     match (device, tag) {
-        (Some(c), _) if doc.components.contains_key(&c) => Ok(Target::Join(c)),
+        (Some(c), _) if doc.devices.contains_key(&c) => Ok(Target::Join(c)),
         (Some(_), _) => Err(CmdError::NotFound(Noun::Device)),
         (None, Some(t)) => {
             if let Some(Ok((c, Some(side), _))) = crate::connectors::resolve(doc, t) {
@@ -71,7 +69,7 @@ pub fn device_target(doc: &Document, device: Option<ComponentId>, tag: Option<&s
 ///
 /// # Errors
 /// A tag that does not read, or a cable's.
-pub fn project_target(doc: &Document, device: Option<ComponentId>, tag: Option<&str>) -> Result<(Option<ComponentId>, Option<String>), CmdError> {
+pub fn project_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
     let Some(t) = tag else { return Ok((device, None)) };
     let t = tag::normalise(t, style(doc))?;
     match devices::holder_of(doc, &t, None) {
@@ -86,12 +84,12 @@ pub fn project_target(doc: &Document, device: Option<ComponentId>, tag: Option<&
 ///
 /// # Errors
 /// No such device; a device that is not a strip; a tag that does not read, or a cable's.
-pub fn strip_target(doc: &Document, device: Option<ComponentId>, tag: Option<&str>) -> Result<(Option<ComponentId>, Option<String>), CmdError> {
-    let not_strip = |c: ComponentId| {
+pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
+    let not_strip = |c: DeviceId| {
         CmdError::refused(format!("{} is not a terminal strip. Name a strip (-X01), or leave it out for a new one.", devices::tag_words(doc, c)))
     };
     match (device, tag) {
-        (Some(c), _) if !doc.components.contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
+        (Some(c), _) if !doc.devices.contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
         (Some(c), _) if !crate::strips::is_strip(doc, c) => Err(not_strip(c)),
         (Some(c), _) => Ok((Some(c), None)),
         (None, Some(t)) => {
@@ -112,9 +110,9 @@ pub fn strip_target(doc: &Document, device: Option<ComponentId>, tag: Option<&st
 ///
 /// # Errors
 /// No such device; a tag that does not read.
-pub fn card_target(doc: &Document, device: Option<ComponentId>, tag: Option<&str>) -> Result<(Option<ComponentId>, Option<String>), CmdError> {
+pub fn card_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
     match (device, tag) {
-        (Some(c), _) if doc.components.contains_key(&c) => Ok((Some(c), None)),
+        (Some(c), _) if doc.devices.contains_key(&c) => Ok((Some(c), None)),
         (Some(_), _) => Err(CmdError::NotFound(Noun::Device)),
         (None, Some(t)) => {
             let t = tag::normalise(t, style(doc))?;
@@ -134,9 +132,7 @@ pub fn card_target(doc: &Document, device: Option<ComponentId>, tag: Option<&str
 /// # Errors
 /// A device that cannot be found; both `device` and `tag`; the other half's tag; a cable's tag; a
 /// device that is not a connector.
-pub fn connector_target(
-    doc: &Document, side: Side, device: Option<&str>, tag: Option<&str>,
-) -> Result<(Option<ComponentId>, Option<String>), CmdError> {
+pub fn connector_target(doc: &Document, side: Side, device: Option<&str>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
     let mut found = super::connector::device(doc, device)?;
     one_of(device.is_some(), tag.is_some(), "connector")?;
     let mut new_tag = None;

@@ -9,7 +9,7 @@ use ecad_model::book::{self, Book, FOLDER_KEY, FUNCTION_KEY, LOCATION_KEY, MAX_F
 use ecad_model::sheet::{SHEET_KEY, SheetSpec};
 use ecad_model::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
 use ecad_model::{
-    ComponentId, Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, PageId, ProjectSettings, Properties, ReferenceStyle, StyleRef,
+    DeviceId, Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, PageId, ProjectSettings, Properties, ReferenceStyle, StyleRef,
 };
 
 use crate::defaults::strip_pages;
@@ -336,7 +336,7 @@ pub struct NewPageKind {
     /// The terminal plan's style word (`table` or `graphic`).
     pub style: Option<String>,
     /// The one strip a terminal plan shows.
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
 }
 
 /// `newpage`'s `generated`, `style` and `strip` read together.
@@ -344,7 +344,7 @@ pub struct NewPageKind {
 /// # Errors
 /// A kind or style word that does not read; a style or strip for a page that is not a terminal
 /// plan.
-pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option<ComponentId>) -> Result<NewPageKind, CmdError> {
+pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option<DeviceId>) -> Result<NewPageKind, CmdError> {
     // Brief 024 (FP1): a generated page's kind, set only here.
     let generated = match generated {
         Some(t) => Some(
@@ -754,9 +754,9 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> 
     if rewrite {
         let mut seen: HashMap<String, String> = HashMap::new();
         let objects = doc
-            .components
+            .devices
             .iter()
-            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Component(*id), t)))
+            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Device(*id), t)))
             .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
