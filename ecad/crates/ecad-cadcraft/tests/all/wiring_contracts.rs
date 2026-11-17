@@ -379,7 +379,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     compare(&mut h, "delete");
     // An unrelated edit (a device property) changes no row and re-checks no net.
     let before = h.cfg(|p| p.checks().clone());
-    let lamp = h.doc().devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
+    let lamp = h.doc().devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
     if let Some(lamp) = lamp {
         h.run("setprop", json!({"component": lamp.hex(), "key": "description", "value": "Spare"})).unwrap();
     }

@@ -19,7 +19,6 @@
 //! This module has no UI and records nothing: the commands that use it commit through their JSON
 //! forms (`ecad_cadcraft::cmd`).
 
-use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
@@ -796,7 +795,7 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &eca
     let comp = doc
         .devices
         .get(&term.component)
-        .and_then(|x| x.properties.text(ecad_model::keys::TAG).map(str::to_string))
+        .and_then(|x| x.tag().map(str::to_string))
         .unwrap_or_else(|| format!("{}…", term.component.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_types::terminal_name(doc, t)))
 }

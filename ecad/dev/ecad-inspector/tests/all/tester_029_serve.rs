@@ -439,10 +439,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
         vec![
             Op::AddPage { id: p1, page: Page::new(X), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
-            Op::CreateDevice {
-                id: k,
-                device: Device { properties: props(&[("tag", X), ("note", X)]), definition: None, device_type: Default::default() },
-            },
+            Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
             Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None } },
             Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None } },
             Op::CreateConductor { id: w, conductor: Conductor { properties: props(&[("wire_number", X)]), ends: [Some(a), Some(b)] } },

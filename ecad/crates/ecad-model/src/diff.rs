@@ -141,7 +141,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // 072 F13).
     for id in ids(&from.devices, &to.devices, scope.map(|s| &s.devices)) {
         match (from.devices.get(&id), to.devices.get(&id)) {
-            (Some(a), Some(b)) if a.device_type != b.device_type => {
+            (Some(a), Some(b)) if a.fields_differ(b) => {
                 changes.push(Op::ModifyDevice { id, before: a.clone(), after: b.clone() });
             }
             (Some(a), Some(b)) => {

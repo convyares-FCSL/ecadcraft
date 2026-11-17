@@ -597,7 +597,7 @@ fn capped(lines: &mut Vec<String>) {
 
 fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
     let component = doc.devices.get(&c);
-    let mut lines = vec![format!("Device {}", component.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", c.hex())];
+    let mut lines = vec![format!("Device {}", component.and_then(|x| x.tag()).unwrap_or("(no tag)")), format!("id {}", c.hex())];
     let terminals: Vec<(TerminalId, String)> =
         doc.terminals_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
     lines.push(format!("Connection points: {}", terminals.len()));
@@ -613,7 +613,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     let of = term
         .map(|x| {
             let c = doc.devices.get(&x.component);
-            c.and_then(|c| tag(&c.properties)).map_or_else(|| x.component.hex(), str::to_string)
+            c.and_then(|c| c.tag()).map_or_else(|| x.component.hex(), str::to_string)
         })
         .unwrap_or_default();
     let mut lines = vec![
@@ -707,7 +707,7 @@ fn wire_lines(doc: &Document, w: ConductorId, page: PageId) -> Vec<String> {
                     .get(&t)
                     .map(|x| {
                         let c = doc.devices.get(&x.component);
-                        c.and_then(|c| tag(&c.properties)).map_or_else(|| short(&x.component.hex()).to_string(), str::to_string)
+                        c.and_then(|c| c.tag()).map_or_else(|| short(&x.component.hex()).to_string(), str::to_string)
                     })
                     .unwrap_or_default();
                 format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))

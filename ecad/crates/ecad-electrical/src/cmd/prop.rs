@@ -404,7 +404,7 @@ pub fn plan_device(
 ) -> Result<DeviceSet, CmdError> {
     let component = doc.devices.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let value = value(doc, ObjectRef::Device(c), key, typed)?;
-    let before = component.properties.get(key).cloned();
+    let before = component.value(key);
     if key == TAG_KEY
         && let Some(t) = &value
         && let Some(holder) = devices::holder_of(doc, t, Some(c))
@@ -425,7 +425,12 @@ pub fn plan_device(
         return Ok(DeviceSet::Unchanged(value));
     }
     let label = if key == TAG_KEY { "Set tag" } else { "Set property" };
-    let op = Op::SetProperty { object: ObjectRef::Device(c), key: key.to_string(), before, after: value.clone() };
+    let op = if key == TAG_KEY {
+        let after = ecad_model::Device { tag_fixed: component.tag_fixed && value.is_some(), ..component.with_tag(value.as_deref()) };
+        Op::ModifyDevice { id: c, before: component.clone(), after }
+    } else {
+        Op::SetProperty { object: ObjectRef::Device(c), key: key.to_string(), before, after: value.clone() }
+    };
     Ok(DeviceSet::Set { op: Box::new(op), label, value })
 }
 
@@ -466,10 +471,42 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
     Ok(c.or(merge.then_some(Conflict::Merge)))
 }
 
-fn tag_props(doc: &Document, o: ObjectRef) -> Option<&Properties> {
+/// The tag `o` holds and whether its fixed flag is stored: a device's fields (design 072 §2.1), a
+/// cable's properties. `None` for anything else, or an object that is not there.
+fn tag_of(doc: &Document, o: ObjectRef) -> Option<(Option<String>, bool)> {
     match o {
-        ObjectRef::Device(_) | ObjectRef::Cable(_) => props_of(doc, o),
+        ObjectRef::Device(c) => doc.devices.get(&c).map(|d| (d.tag().map(str::to_string), d.tag_fixed)),
+        ObjectRef::Cable(_) => {
+            props_of(doc, o).map(|p| (p.get(TAG_KEY).cloned(), ecad_model::keys::PropsExt::flag(p, ecad_model::keys::TAG_FIXED) == Some(true)))
+        }
         _ => None,
+    }
+}
+
+/// Whether `o`'s tag counts as fixed ([`ecad_model::numbering::is_fixed`]).
+fn fixed_of(doc: &Document, o: ObjectRef) -> bool {
+    match o {
+        ObjectRef::Device(c) => doc.devices.get(&c).is_some_and(ecad_model::Device::is_fixed),
+        _ => props_of(doc, o).is_some_and(ecad_model::numbering::is_fixed),
+    }
+}
+
+/// The op giving `o` tag `tag` and fixed flag `fixed`: one `ModifyDevice` on a device, the
+/// properties' `SetProperty` ops on a cable.
+fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> Vec<Op> {
+    match o {
+        ObjectRef::Device(c) => {
+            let Some(d) = doc.devices.get(&c) else { return Vec::new() };
+            let after = ecad_model::Device { tag_fixed: fixed, ..d.with_tag(tag.as_deref()) };
+            if after == *d { Vec::new() } else { vec![Op::ModifyDevice { id: c, before: d.clone(), after }] }
+        }
+        _ => {
+            let Some(props) = props_of(doc, o) else { return Vec::new() };
+            let mut ops = Vec::new();
+            ops.extend(set(o, TAG_KEY, props.get(TAG_KEY), tag));
+            ops.extend(set(o, FIXED_KEY, props.get(FIXED_KEY), fixed.then(|| ecad_model::words::flag_word(true).to_string())));
+            ops
+        }
     }
 }
 
@@ -479,12 +516,8 @@ fn set(o: ObjectRef, key: &str, before: Option<&String>, after: Option<String>) 
 
 /// The ops writing `tag` on `o` and its fixed flag (`fixed`; a provisional tag is never fixed).
 fn tag_ops(doc: &Document, o: ObjectRef, tag_value: Option<String>, fixed: bool) -> Vec<Op> {
-    let Some(props) = tag_props(doc, o) else { return Vec::new() };
     let fixed = fixed && tag_value.as_deref().is_some_and(|t| !tag::is_provisional(t));
-    let mut ops = Vec::new();
-    ops.extend(set(o, TAG_KEY, props.get(TAG_KEY), tag_value));
-    ops.extend(set(o, FIXED_KEY, props.get(FIXED_KEY), fixed.then(|| ecad_model::words::flag_word(true).to_string())));
-    ops
+    write_tag(doc, o, tag_value, fixed)
 }
 
 /// `device` or `cable`.
@@ -536,8 +569,7 @@ pub enum TagSet {
 /// [`NO_SUCH_OBJECT`]; a tag that does not read; a connector's half tag; a taken tag without a
 /// conflict answer, or with one that does not apply.
 pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>) -> Result<TagSet, CmdError> {
-    let props = tag_props(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
-    let before = props.get(TAG_KEY).cloned();
+    let (before, _) = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let value = match typed.map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
         Some(v) => {
@@ -580,7 +612,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
                 return Err(CmdError::refused(format!("This {} has no tag to give the other; give conflict: \"next\" or \"merge\".", noun(o))));
             };
             let h = holder.object();
-            let h_fixed = tag_props(doc, h).is_some_and(ecad_model::numbering::is_fixed);
+            let h_fixed = fixed_of(doc, h);
             let mut ops = tag_ops(doc, o, Some(t.clone()), typed_fixed);
             ops.extend(tag_ops(doc, h, Some(mine.clone()), h_fixed));
             let other = if tag::is_provisional(&mine) { format!("provisional {mine}") } else { mine.clone() };
@@ -637,13 +669,13 @@ pub fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<F
         Some("") => false,
         Some(v) => ecad_model::words::flag(v).ok_or_else(|| CmdError::refused(format!("`tag_fixed` is \"yes\" or null, not {v:?}")))?,
     };
-    let props = tag_props(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+    let (tag_now, _) = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     if on {
-        match props.get(TAG_KEY) {
+        match &tag_now {
             None => return Err(CmdError::refused(format!("This {} has no tag to fix.", noun(o)))),
             Some(t) if tag::is_provisional(t) => return Err(CmdError::refused(PROVISIONAL_FIXED)),
             Some(_) => {}
         }
     }
-    Ok(FixedSet { on, op: set(o, FIXED_KEY, props.get(FIXED_KEY), on.then(|| ecad_model::words::flag_word(true).to_string())) })
+    Ok(FixedSet { on, op: write_tag(doc, o, tag_now, on).into_iter().next() })
 }

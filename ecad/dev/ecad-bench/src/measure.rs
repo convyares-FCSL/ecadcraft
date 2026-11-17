@@ -657,7 +657,7 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
             let b_tag: String = project.read(&mut s, |p, _| {
                 ecad_model::DeviceId::parse(&b)
                     .and_then(|id| p.ledger.document().devices.get(&id))
-                    .and_then(|c| c.properties.get("tag").cloned())
+                    .and_then(|c| c.tag().map(str::to_string))
                     .unwrap_or_default()
             })?;
             let (x, _) = run(&mut s, "setprop", json!({"component": a, "key": "tag", "value": b_tag, "conflict": "swap"}))?;

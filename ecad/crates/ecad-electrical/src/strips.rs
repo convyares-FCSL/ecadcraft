@@ -1234,7 +1234,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
     };
     let mut d = StripData {
         component: c,
-        tag: props.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| "?".into()),
+        tag: doc.devices.get(&c).and_then(|d| d.tag()).unwrap_or("?").to_string(),
         location: location.clone(),
         offer: props.get(OFFER_KEY).and_then(|v| parse_offer(v).ok()),
         part_number: clean(props.get("part_number")),

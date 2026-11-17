@@ -1122,7 +1122,7 @@ impl Touch {
                     }
                     self.box_pages(doc, *id);
                 }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
                     for (t, _) in doc.terminals_of(*id) {
                         net_of_terminal(t, self);

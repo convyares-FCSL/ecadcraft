@@ -52,7 +52,7 @@ fn verify(path: &str) {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    let mut t: Vec<String> = c.doc().devices.values().filter_map(|x| x.properties.get("tag").cloned()).collect();
+    let mut t: Vec<String> = c.doc().devices.values().filter_map(|x| x.tag().map(str::to_string)).collect();
     t.sort();
     t
 }

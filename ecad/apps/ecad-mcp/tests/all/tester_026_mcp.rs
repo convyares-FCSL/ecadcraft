@@ -23,12 +23,12 @@ fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> Strin
 }
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.properties.get("tag").cloned())
+    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag().map(str::to_string))
 }
 
 fn assert_unique(doc: &Document, step: &str) {
     let mut seen = BTreeSet::new();
-    for t in doc.devices.values().filter_map(|c| c.properties.get("tag")).chain(doc.cables.values().filter_map(|c| c.properties.get("tag"))) {
+    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.properties.get("tag").map(String::as_str))) {
         assert!(seen.insert(tag::key(t)), "{step}: duplicate tag {t}");
     }
 }
@@ -320,6 +320,6 @@ fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     c.exec("finalise", json!({}));
     let doc = c.doc();
     let t = tag_of(&doc, &x).unwrap_or_default();
-    let fixed = doc.devices[&DeviceId::parse(&x).unwrap()].properties.get("tag_fixed").cloned();
+    let fixed = doc.devices[&DeviceId::parse(&x).unwrap()].tag_fixed.then(|| "yes".to_string());
     assert!(!tag::is_provisional(&t), "Finalise left {t} (tag_fixed {fixed:?})");
 }

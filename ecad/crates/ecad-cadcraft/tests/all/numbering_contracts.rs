@@ -161,7 +161,7 @@ fn h_save_and_reopen_keep_tags_fixed_flags_the_setting_and_the_high_water_mark()
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
     assert!(ecad_model::numbering::provisional_on(&h2.doc()));
-    assert_eq!(h2.doc().devices[&f.k03].properties.get("tag_fixed").map(String::as_str), Some("yes"));
+    assert!(h2.doc().devices[&f.k03].tag_fixed);
     // The reset mark survives: the next real tag follows the renumbered set.
     h2.run("numbering", json!({"provisional": false})).unwrap();
     let page = h2.first_page();

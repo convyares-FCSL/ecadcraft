@@ -795,7 +795,7 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
     for (c, comp) in &doc.devices {
         let props = &comp.properties;
         let item = is_item_component(comp);
-        let device = !item && props.contains_key(ecad_model::tag::TAG_KEY) && !props.contains_key(ecad_model::connectivity::KIND);
+        let device = !item && comp.tag.is_some() && !props.contains_key(ecad_model::connectivity::KIND);
         if !(item || device) {
             continue;
         }

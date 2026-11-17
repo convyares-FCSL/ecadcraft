@@ -155,6 +155,11 @@ impl Plc {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                     out.insert(*id);
                 }
+                // Design 072: a device's tag (or type) changed.
+                Op::ModifyDevice { id, .. } => {
+                    out.insert(*id);
+                    out.extend(self.naming.get(id).into_iter().flatten().copied());
+                }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY || key == "part_number" || key == "maker" {
                         if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
@@ -246,7 +251,7 @@ impl Plc {
         // the cards on its nets.
         for op in ops {
             match op {
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == ecad_model::tag::TAG_KEY && !self.cards.contains_key(c) => {
+                Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !self.cards.contains_key(c) => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
                 Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {

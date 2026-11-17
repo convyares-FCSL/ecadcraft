@@ -713,7 +713,7 @@ impl Outputs {
         let goto = crate::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
-            tag: props.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_default(),
+            tag: comp.tag().unwrap_or_default().to_string(),
             description: clean(props.get("description")),
             maker: clean(props.get("maker")),
             part_number: clean(props.get("part_number")),

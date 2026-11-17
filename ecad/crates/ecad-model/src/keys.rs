@@ -211,9 +211,6 @@ impl Family {
     }
 }
 
-/// The objects a device or cable key may be held by.
-const DEVICE_CABLE: &[Holder] = &[Holder::Device, Holder::Cable];
-
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::tag::TAG_KEY);
 /// Whether a device's or cable's tag is fixed (yes/no).
@@ -243,8 +240,8 @@ pub const GENERATED: PropKey = PropKey(crate::sheet::GENERATED_KEY);
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
-    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
-    KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
+    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
+    KeySpec { key: TAG_FIXED, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Flag },
     KeySpec { key: WIRE_NUMBER, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Ruled },
     KeySpec { key: WIRE_NUMBER_FIXED, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
@@ -283,6 +280,16 @@ pub fn family_of(key: &str) -> Option<&'static Family> {
 /// Whether `key` became a struct field ([`RESERVED`]).
 pub fn is_reserved(key: &str) -> bool {
     RESERVED.iter().any(|k| k.0 == key)
+}
+
+/// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
+/// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
+/// and `SetProperty` refuses them on a device.
+pub const DEVICE_FIELDS: &[PropKey] = &[TAG, TAG_FIXED];
+
+/// Whether `key` became a struct field on `holder` ([`RESERVED`], [`DEVICE_FIELDS`]).
+pub fn is_reserved_on(key: &str, holder: Holder) -> bool {
+    is_reserved(key) || (holder == Holder::Device && DEVICE_FIELDS.iter().any(|k| k.0 == key))
 }
 
 /// The area `key` belongs to.

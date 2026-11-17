@@ -756,8 +756,8 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> 
         let objects = doc
             .devices
             .iter()
-            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Device(*id), t)))
-            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
+            .filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Device(*id), t)))
+            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t.as_str()))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
             if let Some(k) = seen.get(&new)
@@ -766,8 +766,15 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> 
                 return Err(CmdError::refused(format!("Changing the tag style would make two tags {new}; nothing was changed.")));
             }
             seen.insert(new.clone(), tag::key(old));
-            if new != *old {
-                ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.clone()), after: Some(new) });
+            if new != old {
+                match object {
+                    ObjectRef::Device(c) => {
+                        if let Some(d) = doc.devices.get(&c) {
+                            ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new)) });
+                        }
+                    }
+                    _ => ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.to_string()), after: Some(new) }),
+                }
                 n += 1;
             }
         }

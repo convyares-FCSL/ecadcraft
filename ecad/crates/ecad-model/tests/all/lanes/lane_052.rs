@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::doc::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
 use ecad_model::id::{DefinitionId, DeviceId, ItemId, LayerId, PageId, RepresentationId};
 use ecad_model::numbering::{self, Kind, Request, Scope};
-use ecad_model::tag::{HighWater, TAG_KEY};
+use ecad_model::tag::HighWater;
 use ecad_model::{Document, Placement, Pt, Subject};
 
 /// Two pages. Each symbol: (representation, device, tag, page, x, y, role).
@@ -19,8 +19,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
     }
     let style = Style { layer: LayerId(1), color: ecad_model::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (rid, c, tag, page, x, y, role) in syms {
-        let mut comp = Device::default();
-        comp.properties.insert(TAG_KEY.into(), (*tag).into());
+        let comp = Device::default().with_tag(Some(tag));
         d.devices.entry(DeviceId(*c)).or_insert(comp);
         let item = ItemId(5000 + rid);
         let pg = d.page_order[*page];
@@ -60,7 +59,7 @@ fn tags(d: &Document, rank: numbering::Rank<'_>) -> BTreeMap<u128, String> {
     for op in &p.ops {
         op.apply(&mut x).unwrap();
     }
-    x.devices.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (id.0, t.clone()))).collect()
+    x.devices.iter().filter_map(|(id, c)| c.tag().map(|t| (id.0, t.to_string()))).collect()
 }
 
 /// Device 1: a contact at the top-left of page 0 and its coil on page 1. Device 2: a coil on page

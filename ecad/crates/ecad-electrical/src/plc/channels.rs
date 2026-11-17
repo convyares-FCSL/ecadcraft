@@ -304,10 +304,18 @@ pub fn new_card_ops(
     };
     let c: DeviceId = ids.fresh();
     let mut properties = ecad_model::Properties::new();
-    properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
     let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
     properties.insert("description".into(), name.into());
-    ops.push(Op::CreateDevice { id: c, device: ecad_model::Device { properties, definition: Some(def), device_type: s.device_type() } });
+    ops.push(Op::CreateDevice {
+        id: c,
+        device: ecad_model::Device {
+            tag: Some(crate::devices::stored_tag(&tag)?),
+            properties,
+            tag_fixed: false,
+            definition: Some(def),
+            device_type: s.device_type(),
+        },
+    });
     Ok((c, tag))
 }
 

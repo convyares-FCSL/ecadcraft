@@ -126,7 +126,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
                 // Brief 044 (design 044 §4.6): a connector half's device is described `Connector`.
                 let want = if matches!(s.kind, ecad_cadcraft::symbols::Kind::ConnectorHalf { .. }) { "Connector" } else { s.name };
                 assert_eq!(props.get("description").map(String::as_str), Some(want), "{key}: default description");
-                assert_eq!(props.get("tag"), Some(&tag), "{key}: tag");
+                assert_eq!(c.doc().devices[&cid(&v)].tag(), Some(tag.as_str()), "{key}: tag");
                 if round == 0 && key == "fusebank8" {
                     fb = Some(cid(&v));
                 }
@@ -136,7 +136,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
             }
         }
         let (fb, rcbo) = (fb.unwrap(), rcbo.unwrap());
-        let fb_tag = c.doc().devices[&fb].properties.get("tag").cloned().unwrap();
+        let fb_tag = c.doc().devices[&fb].tag().map(str::to_string).unwrap();
 
         // §12 item 2: change-over join, each by the agent.
         let kv = c.exec("place", json!({"symbol": "coil", "at": [0, 2000]}));

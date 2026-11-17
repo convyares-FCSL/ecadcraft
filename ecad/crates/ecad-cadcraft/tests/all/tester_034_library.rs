@@ -243,7 +243,7 @@ fn set(v: &[&str]) -> BTreeSet<String> {
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.properties.get(key).cloned())
+    h.doc().devices.get(&c).and_then(|x| x.value(key))
 }
 
 fn tag(n: usize, prefix: &str) -> String {
@@ -779,8 +779,7 @@ fn j_quiet_spare_points_are_not_flagged() {
 fn k_bom_one_row_per_device() {
     let mut h = fixture_all(0x7034_000e);
     let d = h.doc();
-    let devices: BTreeSet<DeviceId> =
-        d.devices.iter().filter(|(_, c)| c.properties.get("tag").is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
+    let devices: BTreeSet<DeviceId> = d.devices.iter().filter(|(_, c)| c.tag().is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -795,12 +794,7 @@ fn k_bom_one_row_per_device() {
         }
     }
     for c in &devices {
-        assert_eq!(
-            seen.get(&c.hex()).copied(),
-            Some(1),
-            "{} on one BOM row: {rows:?}",
-            d.devices[c].properties.get("tag").cloned().unwrap_or_default()
-        );
+        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices[c].tag().map(str::to_string).unwrap_or_default());
     }
     assert_eq!(seen.len(), devices.len(), "nothing but devices on the BOM: {seen:?}");
     let qty: u64 = rows.iter().map(|r| r["qty"].as_u64().unwrap_or(0)).sum();
