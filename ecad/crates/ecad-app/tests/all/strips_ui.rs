@@ -69,7 +69,7 @@ fn terminal_strips_in_the_app() {
     view(&mut h, 60.0, 30.0, 300.0, 250.0);
     save(&h, &deltas, "028-strip.png");
     // Properties of a terminal: the offer, the counts, Show plan.
-    let rep = d.representations_of(Subject::Component(x1)).next().unwrap().0;
+    let rep = d.representations_of(Subject::Device(x1)).next().unwrap().0;
     h.state_mut().goto_symbol(rep).unwrap();
     h.run_steps(4);
     let sections = h.state().props.lock().unwrap().view.sections.clone();
@@ -103,8 +103,8 @@ fn terminal_strips_in_the_app() {
     // Brief 052: locations are stored, never inherited: accept each device's proposal (its go-to
     // symbol's context), as a person does from the inspector's Use link.
     let d = doc(&mut h);
-    let proposals: Vec<(ecad_model::ComponentId, String)> = d
-        .components
+    let proposals: Vec<(ecad_model::DeviceId, String)> = d
+        .devices
         .keys()
         .filter(|c| ecad_cadcraft::locations::is_device(&d, **c))
         .filter_map(|c| {
@@ -144,5 +144,5 @@ fn terminal_strips_in_the_app() {
     save(&h, &deltas, "028-checks.png");
     h.state_mut().panel_action(project_panel::Action::OfferDrawn(x1));
     h.run_steps(3);
-    assert_eq!(doc(&mut h).components[&x1].properties["terminals"], "4");
+    assert_eq!(doc(&mut h).devices[&x1].properties["terminals"], "4");
 }

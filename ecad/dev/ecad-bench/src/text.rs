@@ -50,7 +50,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText,
             let page: Option<PageId> = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count());
             let page = page.unwrap_or(PageId(0));
             let device = doc.representations_on(page).find_map(|(_, r)| match r.subject {
-                Subject::Component(c) => Some(c),
+                Subject::Device(c) => Some(c),
                 _ => None,
             });
             let symbols = doc.representations_on(page).filter(|(_, r)| r.form == ecad_model::Form::Symbol).count();

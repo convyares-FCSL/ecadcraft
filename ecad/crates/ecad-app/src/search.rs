@@ -15,7 +15,7 @@
 
 use ecad_cadcraft::devices;
 use ecad_cadcraft::symbols;
-use ecad_model::{ComponentId, Document, Subject};
+use ecad_model::{DeviceId, Document, Subject};
 use eframe::egui;
 
 /// The text field's element name (design 018 §5.1).
@@ -83,7 +83,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
     {
         for c in devices::devices(doc, Some(&q)) {
             let tag = devices::tag_words(doc, c);
-            let n = doc.representations_of(Subject::Component(c)).count();
+            let n = doc.representations_of(Subject::Device(c)).count();
             let pages = devices::pages_words(doc, c);
             out.push(Row {
                 text: format!(
@@ -148,14 +148,14 @@ pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
             let next = devices::next_tag_preview(p, s).unwrap_or_else(|| "new tag".into());
             let mut out = vec![Choice { text: format!("New device ({next})"), symbol: s.key, device: None }];
             let prefix = devices::prefix_for(doc, s);
-            let mut found: Vec<(u8, u8, ComponentId, String)> = devices::devices(doc, None)
+            let mut found: Vec<(u8, u8, DeviceId, String)> = devices::devices(doc, None)
                 .into_iter()
                 .filter_map(|c| {
                     let labels = devices::join_labels(doc, c, s, &none).ok()?;
                     let tag = devices::tag_words(doc, c);
                     let own = ecad_model::tag::parse(&tag).is_some_and(|(px, _)| px == prefix);
                     let main = doc
-                        .representations_of(Subject::Component(c))
+                        .representations_of(Subject::Device(c))
                         .filter_map(|(_, r)| devices::rep_starter(doc, r))
                         .any(|x| matches!(x.kind, symbols::Kind::Fixed { exclusive: true }));
                     let text = format!("{tag:<6} {:<26} {}", clip(&devices::description(doc, c), 26), labels.join("/"));

@@ -93,19 +93,23 @@ typed_id!(/// A layer.
 typed_id!(/// A drawn item: a primitive or a symbol instance.
     ItemId, "itm");
 typed_id!(/// A component.
-    ComponentId, "cmp");
+    DeviceId, "cmp");
 typed_id!(/// A terminal of a component.
     TerminalId, "trm");
 typed_id!(/// A representation (depiction) of a component, conductor or cable.
     RepresentationId, "rep");
 typed_id!(/// A conductor.
-    ConductorId, "cnd");
+    WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");
 typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.
     TxId, "tx");
+typed_id!(/// An entry of the project's location list (design 072 §5.3).
+    LocationId, "loc");
+typed_id!(/// An entry of the project's function list (design 072 §5.3).
+    FunctionId, "fn");
 typed_id!(/// A library (`.ecadlib`), stable across renaming its file.
     LibraryId, "lib");
 typed_id!(/// A project, stable across renaming or moving its file (the file header records it).
@@ -123,10 +127,10 @@ typed_id!(/// A standard (brief 050a, FP1): kept when a project copies it.
 ///
 /// # Example
 /// ```rust
-/// use ecad_model::{ComponentId, IdAllocator};
+/// use ecad_model::{DeviceId, IdAllocator};
 /// let mut ids = IdAllocator::seeded(7);
-/// let a: ComponentId = ids.fresh();
-/// let b: ComponentId = ids.fresh();
+/// let a: DeviceId = ids.fresh();
+/// let b: DeviceId = ids.fresh();
 /// assert_ne!(a, b);
 /// ```
 #[derive(Debug, Clone)]

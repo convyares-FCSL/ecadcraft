@@ -5,7 +5,7 @@
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ComponentId, Pt, TerminalId};
+use ecad_model::{DeviceId, Pt, TerminalId};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
@@ -14,7 +14,7 @@ use crate::cmd::terminal;
 use crate::strips;
 
 /// A picked terminal: its strip, its label and where it is drawn.
-fn picked(s: &Session, p: Vec2) -> R<(TerminalId, ComponentId, String, Pt)> {
+fn picked(s: &Session, p: Vec2) -> R<(TerminalId, DeviceId, String, Pt)> {
     if !in_range(p) {
         return Err(other(OUT_OF_RANGE));
     }
@@ -43,8 +43,8 @@ pub(crate) fn accessory(s: &Session) -> R<Box<dyn Interactive>> {
 
 struct StripAccessory {
     /// The strip, the place (`start`, `end` or a label), its words and where to put the base.
-    at: Option<(ComponentId, String, String, Option<Pt>)>,
-    last_strip: Option<(ComponentId, String)>,
+    at: Option<(DeviceId, String, String, Option<Pt>)>,
+    last_strip: Option<(DeviceId, String)>,
 }
 
 const ITEMS: [&str; 6] = ["Partition", "Endplate", "endStop", "Marker", "Label", "Remove"];
@@ -65,7 +65,7 @@ impl StripAccessory {
                 let doc_items = read(s, |p, _| {
                     let doc = p.ledger.document();
                     let key = if gap { format!("{}{at}", crate::accessories::AFTER_PREFIX) } else { format!("acc.{at}") };
-                    Ok(doc.components.get(&c).and_then(|x| x.properties.get(&key)).cloned())
+                    Ok(doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned())
                 })
                 .ok()
                 .flatten();
@@ -152,7 +152,7 @@ pub(crate) fn jumper(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 struct Jumper {
-    strip: Option<(ComponentId, String)>,
+    strip: Option<(DeviceId, String)>,
     /// The link the first pick extends.
     extend: Option<u32>,
     picks: Vec<(TerminalId, String, Pt)>,
@@ -207,7 +207,7 @@ impl Jumper {
                             let doc = p.ledger.document();
                             let tag = crate::devices::tag_words(doc, c);
                             let order = crate::accessories::positions(doc, c);
-                            let n = doc.components.get(&c).and_then(|x| {
+                            let n = doc.devices.get(&c).and_then(|x| {
                                 ecad_model::links::of(&x.properties).into_iter().find(|(_, p)| p.select(&order).contains(&&label)).map(|(n, _)| n)
                             });
                             Ok((tag, n))

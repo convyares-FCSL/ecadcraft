@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY};
+use ecad_model::book::Book;
 use ecad_model::sheet::{SheetSpec, unit_scale};
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
@@ -187,8 +187,6 @@ impl FrameInput {
     /// ([`FrameText::with`], or [`FrameText::sizes`] for a rule that only reads the layout).
     pub fn with(doc: &Document, page: PageId, book: &Book, text: FrameText) -> FrameInput {
         let prop = |k: &str| doc.properties.get(k).cloned().unwrap_or_default();
-        let pprops = doc.pages.get(&page).map(|p| &p.properties);
-        let inherited = |k: &str| pprops.and_then(|p| p.get(k)).cloned().unwrap_or_else(|| prop(k));
         let issued = crate::revisions::issued(doc);
         let rev_columns = crate::revisions::columns(doc);
         let next_page = book.next(page);
@@ -219,17 +217,17 @@ impl FrameInput {
             customer: prop(CUSTOMER),
             drawing_number: prop(DRAWING_NUMBER),
             status: prop(STATUS),
-            page_title: doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default(),
+            page_title: doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default(),
             // Brief 052: stored as entry keys of the project's list; the title block shows codes.
             function: crate::designations::shown_text(
                 doc,
                 crate::designations::Aspect::Function,
-                Some(&inherited(FUNCTION_KEY)).filter(|v| !v.is_empty()).map(String::as_str),
+                crate::designations::inherited_key(doc, page, crate::designations::Aspect::Function).as_deref(),
             ),
             location: crate::designations::shown_text(
                 doc,
                 crate::designations::Aspect::Location,
-                Some(&inherited(LOCATION_KEY)).filter(|v| !v.is_empty()).map(String::as_str),
+                crate::designations::inherited_key(doc, page, crate::designations::Aspect::Location).as_deref(),
             ),
             page: book.number(doc, page),
             rev: crate::revisions::rev_box(doc, false),
@@ -294,27 +292,33 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetStandard { before, after } => before != after,
         // Brief 052 (design 052 §8.2a, tester 052 finding 1): a rename in the project's list
         // reaches the title block when it shows the entry's old code.
-        Op::SetProperty { object: ObjectRef::Project, key, before, .. } if crate::designations::is_list_property(key) => {
-            crate::designations::parse_list_property(key).is_some_and(|(a, _, is_code)| {
-                let field = match a {
-                    crate::designations::Aspect::Function => &shown.function,
-                    crate::designations::Aspect::Location => &shown.location,
-                };
-                is_code && before.as_deref().is_some_and(|b| b == field || shown.project.values().any(|v| v == b))
-            })
-        }
+        // Design 072 §5.3: the project's default, or a code it shows renamed.
+        Op::ModifyProject { before, after } => crate::designations::Aspect::ALL.into_iter().any(|a| {
+            let field = match a {
+                crate::designations::Aspect::Function => &shown.function,
+                crate::designations::Aspect::Location => &shown.location,
+            };
+            crate::designations::default_key(before, a) != crate::designations::default_key(after, a)
+                || crate::designations::changed_codes(before, after, a).iter().any(|k| {
+                    let old = crate::designations::code_in_project(before, a, k);
+                    old.as_deref().is_some_and(|b| b == field || shown.project.values().any(|v| v == b))
+                })
+        }),
         // Brief 055 (design 055 §10.1): a project key the block's fields read (its bound key
         // set), the defaults pages inherit, and the revision keys; any other key redraws nothing.
         Op::SetProperty { object: ObjectRef::Project, key, .. } => {
             shown.project.contains_key(key.as_str())
-                || [FUNCTION_KEY, LOCATION_KEY].contains(&key.as_str())
                 // Brief 033 (design 033 §9.1).
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
                 || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
         }
-        Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
-            *p == page || key == book::FOLDER_KEY || (key == book::NUMBER_KEY && shown.next_page == Some(*p))
+        Op::SetProperty { object: ObjectRef::Page(p), .. } => *p == page,
+        // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,
+        // the numbers of unnumbered pages), a number the Next box of the page before it.
+        Op::ModifyPage { id, before, after } => {
+            let ch = before.change(after);
+            *id == page || ch.folder || (ch.number && shown.next_page == Some(*id))
         }
         // A page renamed in place changes only its own title box; a page moved changes the book
         // order (Next, and the numbers of unnumbered pages).

@@ -333,8 +333,8 @@ impl crate::App {
                 // The device's symbols on the first other page it is drawn on, all selected there.
                 let there = p.read(&mut self.cad.session, |p, _| {
                     let doc = p.ledger.document();
-                    let page = doc.representations_of(Subject::Component(c)).find(|(_, r)| Some(r.page) != here).map(|(_, r)| r.page);
-                    page.map(|pg| doc.representations_of(Subject::Component(c)).filter(|(_, r)| r.page == pg).map(|(id, _)| id).collect::<Vec<_>>())
+                    let page = doc.representations_of(Subject::Device(c)).find(|(_, r)| Some(r.page) != here).map(|(_, r)| r.page);
+                    page.map(|pg| doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == pg).map(|(id, _)| id).collect::<Vec<_>>())
                 })?;
                 self.goto_symbols(&there.ok_or_else(|| format!("{} has no symbol on another page.", t.name))?)?;
             }
@@ -354,22 +354,18 @@ impl crate::App {
                 let t = target.ok_or("no wire")?;
                 let w = t.conductor.ok_or("no wire")?;
                 let v = self.cad.run("net", json!({"conductor": w.hex()}))?;
-                let wires: Vec<ecad_model::ConductorId> = v
+                let wires: Vec<ecad_model::WireId> = v
                     .get("conductors")
                     .and_then(Value::as_array)
                     .map(|a| {
-                        a.iter()
-                            .filter_map(Value::as_str)
-                            .filter_map(|h| u128::from_str_radix(h, 16).ok())
-                            .map(ecad_model::ConductorId::from)
-                            .collect()
+                        a.iter().filter_map(Value::as_str).filter_map(|h| u128::from_str_radix(h, 16).ok()).map(ecad_model::WireId::from).collect()
                     })
                     .unwrap_or_default();
                 if let (Some(pg), Some(p)) = (page, self.project.clone()) {
                     let handles = p.read(&mut self.cad.session, |p, _| {
                         wires
                             .iter()
-                            .flat_map(|w| ecad_cadcraft::checks::handles_of(p, pg, ecad_cadcraft::checks::Object::Conductor(*w)))
+                            .flat_map(|w| ecad_cadcraft::checks::handles_of(p, pg, ecad_cadcraft::checks::Object::Wire(*w)))
                             .collect::<Vec<_>>()
                     })?;
                     self.cad.session.set_selection(handles);
@@ -489,8 +485,8 @@ impl crate::App {
 /// The JSON form's parameters for an [`Params::Id`] action on `t`.
 fn id_params(of: IdOf, t: &Target) -> Option<Value> {
     Some(match of {
-        IdOf::Component => json!({"component": t.component?.hex()}),
-        IdOf::Conductor => json!({"conductor": t.conductor?.hex()}),
+        IdOf::Device => json!({"component": t.component?.hex()}),
+        IdOf::Wire => json!({"conductor": t.conductor?.hex()}),
         IdOf::Cable => json!({"cable": t.cable?.hex()}),
         IdOf::Source => json!({"source": t.representation?.hex()}),
         IdOf::Conductors => json!({"conductors": [t.conductor?.hex()]}),

@@ -10,12 +10,12 @@ use ecad_cadcraft::defaults::{self, Scope, Source};
 use ecad_cadcraft::styles;
 use ecad_cadcraft::text_style::{TextKind, text_style};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::{ComponentId, ObjectRef, Op, PageId};
+use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
 
 const SEED: u64 = 50;
 
-fn fixture() -> (H, PageId, ComponentId) {
+fn fixture() -> (H, PageId, DeviceId) {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
@@ -70,8 +70,8 @@ fn a_standard_value_reaches_new_devices_and_undoes_back_to_iec() {
     assert!(chain.iter().any(|(s, v)| *s == Source::Standard && v.is_some()), "{chain:?}");
     assert_eq!(defaults::resolve(&doc, e, Scope::project()).from, Source::Standard);
     let r = h.run("place", json!({"symbol": "coil", "at": [150, 100]})).unwrap();
-    let c: ComponentId = id(&r, "component");
-    let tag = h.p(|p| p.ledger.document().components[&c].properties.get("tag").cloned()).unwrap();
+    let c: DeviceId = id(&r, "component");
+    let tag = h.p(|p| p.ledger.document().devices[&c].properties.get("tag").cloned()).unwrap();
     assert!(tag.starts_with("-Q"), "{tag}");
     // Undo the place, the value and the standard: IEC (built in) again.
     for _ in 0..3 {
@@ -111,12 +111,12 @@ fn a_text_style_change_restyles_every_tag_in_one_transaction() {
 fn an_own_style_for_one_device_then_deleted_with_a_replacement() {
     let (mut h, page, k1) = fixture();
     let r = h.run("place", json!({"symbol": "coil", "at": [200, 100]})).unwrap();
-    let k2: ComponentId = id(&r, "component");
+    let k2: DeviceId = id(&r, "component");
     let v = h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap();
     let large = v["id"].as_str().unwrap().to_string();
     assert!(large.starts_with('#'));
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k1.hex(), "value": "Tag large"})).unwrap();
-    let tag_of = |h: &mut H, c: ComponentId| h.p(|p| p.ledger.document().components[&c].properties["tag"].clone());
+    let tag_of = |h: &mut H, c: DeviceId| h.p(|p| p.ledger.document().devices[&c].properties["tag"].clone());
     let (t1, t2) = (tag_of(&mut h, k1), tag_of(&mut h, k2));
     let tags = tag_texts(&mut h, page, "-K");
     let height = |t: &str, h: &mut H| tag_texts(h, page, t).first().map(|x| x.0);
@@ -130,7 +130,7 @@ fn an_own_style_for_one_device_then_deleted_with_a_replacement() {
     assert_eq!(h.head(), before + 1);
     assert_eq!(height(&t1, &mut h), Some(2.5));
     let doc = h.doc();
-    assert_eq!(doc.components[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"));
+    assert_eq!(doc.devices[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"));
     assert!(!styles::exists(&doc, ecad_model::StyleCatalogue::Text, &StyleRef::parse(&large).unwrap()));
     // Built-in styles stay.
     assert!(h.run("deletestyle", json!({"catalogue": "text", "id": "tag"})).unwrap_err().contains("cannot be deleted"));
@@ -149,7 +149,7 @@ fn promote_moves_a_project_style_to_the_standard_with_the_same_id() {
     let id = StyleRef::parse(&large).unwrap();
     assert!(styles::record(&doc, StyleLayer::Standard, ecad_model::StyleCatalogue::Text, &id).is_some());
     assert!(styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, &id).is_none());
-    let tag = doc.components[&k1].properties["tag"].clone();
+    let tag = doc.devices[&k1].properties["tag"].clone();
     assert_eq!(tag_texts(&mut h, page, &tag).first().map(|x| x.0), Some(5.0), "K1 still uses it");
     // A project value moves too; the standard's own differing value is refused.
     h.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "project", "value": "KA"})).unwrap();
@@ -223,12 +223,7 @@ fn checks_report_unknown_styles_and_old_settings() {
         let ops = vec![
             Op::SetProperty { object: ObjectRef::Project, key: "text.tag.height".into(), before: None, after: Some("3".into()) },
             Op::SetProperty { object: ObjectRef::Project, key: "text.grid.height".into(), before: None, after: Some("4".into()) },
-            Op::SetProperty {
-                object: ObjectRef::Component(k1),
-                key: "text.tag.style".into(),
-                before: None,
-                after: Some(format!("#{:032x}", 0xdead)),
-            },
+            Op::SetProperty { object: ObjectRef::Device(k1), key: "text.tag.style".into(), before: None, after: Some(format!("#{:032x}", 0xdead)) },
         ];
         p.ledger.commit(ecad_model::Author::User, "old", ops).unwrap();
     });
@@ -297,7 +292,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
             after: Some(StyleRecord { name: long.clone(), fields, body: None }),
         });
         ops.push(Op::SetProperty {
-            object: ObjectRef::Component(k1),
+            object: ObjectRef::Device(k1),
             key: "text.tag.style".into(),
             before: None,
             after: Some(format!("#{:032x}", 0xbeef)),
@@ -322,7 +317,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
 
 // ------------------------------------------------------------------------- 050b: wire categories
 
-fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::ConductorId {
+fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::WireId {
     let mut p = json!({"points": [[10, y], [60, y]]});
     if let Some(pot) = potential {
         p["potential"] = json!(pot);
@@ -330,7 +325,7 @@ fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::ConductorId {
     id(&h.run("wire", p).unwrap(), "conductor")
 }
 
-fn label_of(h: &mut H, page: PageId, c: ecad_model::ConductorId) -> Option<String> {
+fn label_of(h: &mut H, page: PageId, c: ecad_model::WireId) -> Option<String> {
     h.p(|p| ecad_cadcraft::wires::labels_on_page(p.ledger.document(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text))
 }
 
@@ -360,7 +355,7 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     let (mut h, page, _) = fixture();
     let a = wire(&mut h, 150.0, Some("24V"));
     let b = wire(&mut h, 170.0, Some("24V"));
-    h.run("setprop", json!({"conductor": b.hex(), "key": "colour", "value": "WH"})).unwrap();
+    h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": "WH"})).unwrap();
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}})).unwrap();
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, a).as_deref(), Some("RD"));
@@ -369,7 +364,7 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     let look = styles::wire::wire_look(&doc, b);
     assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
-    h.run("setprop", json!({"conductor": b.hex(), "key": "colour", "value": null})).unwrap();
+    h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
     assert_eq!(ecad_cadcraft::look::conductor_colour(&h.doc(), b).as_deref(), Some("RD"));
 }
 
@@ -400,7 +395,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let before = h.head();
     let r = h.run("wire", json!({"points": [[10, 190], [60, 190]], "category": "analogue"})).unwrap();
     assert_eq!(h.head(), before + 1);
-    let c: ecad_model::ConductorId = id(&r, "conductor");
+    let c: ecad_model::WireId = id(&r, "conductor");
     assert_eq!(styles::wire::wire_look(&h.doc(), c).category, Some(StyleRef::Builtin("analogue".into())));
 }
 

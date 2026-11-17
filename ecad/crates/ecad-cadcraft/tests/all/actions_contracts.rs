@@ -6,7 +6,7 @@ use crate::common::{H, id};
 use cadcraft_engine::geom::Vec2;
 use ecad_cadcraft::interact::{intent, kind};
 use ecad_cadcraft::kinds::ObjectKind;
-use ecad_model::{ComponentId, ConductorId, End, PageId};
+use ecad_model::{DeviceId, End, PageId, WireId};
 use serde_json::json;
 
 // ---------------------------------------------------------------- what is under the cursor
@@ -28,14 +28,14 @@ fn classify(h: &mut H, at: (f64, f64), picked: Option<cadcraft_engine::doc::Hand
 }
 
 /// `-K01`'s coil at (0, 0) and a wire from its A1 to the right.
-fn coil_and_wire() -> (H, PageId, ComponentId, ConductorId) {
+fn coil_and_wire() -> (H, PageId, DeviceId, WireId) {
     let mut h = new_h();
     let page = h.first_page();
-    let k1: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [0, 0]})).unwrap(), "component");
+    let k1: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [0, 0]})).unwrap(), "component");
     let doc = h.doc();
     let a1 = doc.terminals_of(k1).find(|(_, t)| t.label.as_deref() == Some("A1")).map(|(t, _)| t).unwrap();
     let at = h.terminal_pos(page, a1);
-    let w: ConductorId = id(&h.run("wire", json!({"points": [[at.x, at.y], [at.x + 60.0, at.y]]})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": [[at.x, at.y], [at.x + 60.0, at.y]]})).unwrap(), "conductor");
     (h, page, k1, w)
 }
 

@@ -8,7 +8,7 @@ use crate::common::{H, id};
 
 use ecad_cadcraft::default_cmds::{self, Target};
 use ecad_cadcraft::defaults::{self, Entry, Kind, Level, Scope, Source};
-use ecad_model::{ComponentId, PageId, RepresentationId};
+use ecad_model::{DeviceId, PageId, RepresentationId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 42;
@@ -48,11 +48,11 @@ fn other_value(e: &Entry) -> Option<String> {
 }
 
 /// A project with a coil: its page, component and symbol.
-fn fixture() -> (H, PageId, ComponentId, RepresentationId) {
+fn fixture() -> (H, PageId, DeviceId, RepresentationId) {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c: ComponentId = id(&r, "component");
+    let c: DeviceId = id(&r, "component");
     let item: ecad_model::ItemId = id(&r, "item");
     let rep = h.p(|p| p.ledger.document().representation_of_item(item).map(|(r, _)| r)).unwrap();
     (h, page, c, rep)
@@ -60,11 +60,11 @@ fn fixture() -> (H, PageId, ComponentId, RepresentationId) {
 
 /// The levels a call can name, with the target, the scope to read at and the source the value
 /// then comes from.
-fn targets(page: PageId, c: ComponentId, rep: RepresentationId, doc: &ecad_model::Document) -> Vec<(Level, Target, Scope, Source)> {
+fn targets(page: PageId, c: DeviceId, rep: RepresentationId, doc: &ecad_model::Document) -> Vec<(Level, Target, Scope, Source)> {
     vec![
         (Level::Project, Target::Project, Scope::project(), Source::Project),
         (Level::Page, Target::Page(page), Scope::page(page), Source::Page),
-        (Level::Object, Target::Component(c), Scope { page: Some(page), component: Some(c), ..Scope::project() }, Source::Object),
+        (Level::Object, Target::Device(c), Scope { page: Some(page), component: Some(c), ..Scope::project() }, Source::Object),
         (Level::Object, Target::Symbol(rep), Scope::symbol(doc, rep), Source::Symbol),
     ]
 }
@@ -74,8 +74,8 @@ fn target_json(t: Target) -> Value {
     match t {
         Target::Project => json!({}),
         Target::Page(p) => json!({"page": p.hex()}),
-        Target::Component(c) => json!({"component": c.hex()}),
-        Target::Conductor(c) => json!({"conductor": c.hex()}),
+        Target::Device(c) => json!({"component": c.hex()}),
+        Target::Wire(c) => json!({"conductor": c.hex()}),
         Target::Symbol(r) => json!({"representation": r.hex()}),
     }
 }

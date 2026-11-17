@@ -3,20 +3,20 @@
 
 use ecad_cadcraft::checks::{Checks, Fix, Kind};
 use ecad_cadcraft::wires::{self, LABEL_LAYER};
-use ecad_model::{Author, ConductorId, Document, ObjectRef, Op, PageId};
+use ecad_model::{Author, Document, ObjectRef, Op, PageId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
-fn net_of(doc: &Document, c: ConductorId) -> Option<ecad_model::NetId> {
+fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetId> {
     doc.connectivity().net_of_conductor(c)
 }
 
-fn number(doc: &Document, c: ConductorId) -> Option<String> {
-    doc.conductors.get(&c)?.properties.get("wire_number").cloned()
+fn number(doc: &Document, c: WireId) -> Option<String> {
+    doc.wires.get(&c)?.number_text().map(str::to_string)
 }
 
-fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> ConductorId {
+fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
     let mut params = json!({"points": pts(points)});
     if let (Some(o), Some(e)) = (params.as_object_mut(), extra.as_object()) {
         for (k, v) in e {
@@ -57,7 +57,7 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let j = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
     assert_eq!(h.head(), head + 1);
     let doc = h.doc();
-    let second: ConductorId = id(&j, "conductor");
+    let second: WireId = id(&j, "conductor");
     assert_eq!(net_of(&doc, main), net_of(&doc, tee));
     assert_eq!(net_of(&doc, main), net_of(&doc, second));
     assert_eq!(number(&doc, main), number(&doc, tee));
@@ -102,8 +102,8 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
     let up = labels.iter().find(|l| l.conductor == ws[1]).unwrap();
     assert!((up.rotation.to_degrees() - 90.0).abs() < 1e-9 && up.at.x < 100.0);
     // A stored colour and cross-section win over the potential's defaults.
-    h.run("setprop", json!({"conductor": ws[0].hex(), "key": "colour", "value": "Red"})).unwrap();
-    h.run("setprop", json!({"conductor": ws[0].hex(), "key": "cross_section", "value": "18 AWG"})).unwrap();
+    h.run("setprop", json!({"conductor": ws[0].hex(), "key": "colours", "value": "Red"})).unwrap();
+    h.run("setprop", json!({"conductor": ws[0].hex(), "key": "size", "value": "18 AWG"})).unwrap();
     let doc = h.doc();
     let l = wires::labels_on_page(&doc, page).into_iter().find(|l| l.conductor == ws[0]).unwrap();
     assert!(l.text.ends_with(" 18 AWG RD"), "{}", l.text);
@@ -128,7 +128,7 @@ fn adding_a_wire_never_renumbers_and_a_fixed_number_survives() {
     let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     let numbers = |h: &mut H| {
         let doc = h.doc();
-        doc.conductors.keys().map(|c| (*c, number(&doc, *c))).collect::<std::collections::BTreeMap<_, _>>()
+        doc.wires.keys().map(|c| (*c, number(&doc, *c))).collect::<std::collections::BTreeMap<_, _>>()
     };
     let before = numbers(&mut h);
     let c = wire(&mut h, &[(80.0, 0.0), (100.0, 30.0)], json!({}));
@@ -219,8 +219,8 @@ fn each_seeded_fault_appears_once_where_it_is() {
     // Unnumbered: a conductor committed without the pass (a project older than 022); and an end
     // drawn away from its connection point. Both are written past the commands.
     let old = h.cfg(|p| {
-        let w: ConductorId = p.ids.fresh();
-        p.ledger.commit(Author::User, "old", vec![Op::CreateConductor { id: w, conductor: Default::default() }]).unwrap();
+        let w: WireId = p.ids.fresh();
+        p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, conductor: Default::default() }]).unwrap();
         let doc = p.ledger.document();
         let (item, _) = ecad_model::derive::route_on_page(doc, fa, page).unwrap();
         let before = doc.items[&item].clone();
@@ -238,11 +238,11 @@ fn each_seeded_fault_appears_once_where_it_is() {
     let has = |k: Kind, o: Object| all.iter().any(|c| c.kind == k && c.object == o);
     let listing = rows(&doc, &Checks::build(&doc, 1e-6));
     assert_eq!(count(Kind::OpenEnd), 2, "{listing:#?}");
-    assert!(has(Kind::OpenEnd, Object::Conductor(open)) && has(Kind::OpenEnd, Object::Conductor(tee)));
+    assert!(has(Kind::OpenEnd, Object::Wire(open)) && has(Kind::OpenEnd, Object::Wire(tee)));
     assert_eq!(count(Kind::LooseWire), 2, "{listing:#?}");
-    assert!(has(Kind::LooseWire, Object::Conductor(loose)) && has(Kind::LooseWire, Object::Conductor(old)));
+    assert!(has(Kind::LooseWire, Object::Wire(loose)) && has(Kind::LooseWire, Object::Wire(old)));
     assert_eq!(count(Kind::LooksConnected), 1, "{listing:#?}");
-    assert!(has(Kind::LooksConnected, Object::Conductor(tee)));
+    assert!(has(Kind::LooksConnected, Object::Wire(tee)));
     assert_eq!(count(Kind::SinglePoint), 2, "{listing:#?}");
     assert!(has(Kind::SinglePoint, Object::Terminal(x)));
     assert_eq!(count(Kind::ThinJunction), 1, "{listing:#?}");
@@ -253,7 +253,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     assert_eq!(count(Kind::TwoFixed), 1, "{listing:#?}");
     assert_eq!(count(Kind::SharedNumber), 2, "{listing:#?}");
     assert_eq!(count(Kind::DrawnAway), 1, "{listing:#?}");
-    assert!(has(Kind::DrawnAway, Object::Conductor(fa)));
+    assert!(has(Kind::DrawnAway, Object::Wire(fa)));
     assert_eq!(count(Kind::Unnumbered), 1, "{listing:#?}");
     assert_eq!(count(Kind::Unconnected), 2, "the lamp's X1 and X2: {listing:#?}");
     // Rows point at their page and point, in book order (errors first).
@@ -297,7 +297,7 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
     assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
-    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Component(_)), "{r}");
+    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Device(_)), "{r}");
     assert!(row.page.is_some() && row.at.is_some());
     // Names in the table are not rows: the net takes the potential.
     terminal(&mut h, (100.0, 0.0), "X2");
@@ -374,12 +374,12 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     let page = h.first_page();
     h.activate(page);
     let doc = h.doc();
-    let w = *doc.conductors.keys().next().unwrap();
+    let w = *doc.wires.keys().next().unwrap();
     h.run("ecaddelete", json!({"conductor": w.hex()})).unwrap();
     compare(&mut h, "delete");
     // An unrelated edit (a device property) changes no row and re-checks no net.
     let before = h.cfg(|p| p.checks().clone());
-    let lamp = h.doc().components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
+    let lamp = h.doc().devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
     if let Some(lamp) = lamp {
         h.run("setprop", json!({"component": lamp.hex(), "key": "description", "value": "Spare"})).unwrap();
     }
@@ -387,7 +387,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     let doc = h.doc();
     assert_eq!(rows(&doc, &before), rows(&doc, &after));
     let _ = PageId(0);
-    let _ = ObjectRef::Conductor(w);
+    let _ = ObjectRef::Wire(w);
 }
 
 /// Two loose ends meeting at one point look connected; Add junction joins them there with
@@ -406,7 +406,7 @@ fn add_junction_joins_loose_ends_that_only_meet() {
     assert_eq!(r["attached"], json!(2), "{r}");
     let doc = h.doc();
     assert_eq!(net_of(&doc, a), net_of(&doc, b));
-    assert_eq!(doc.conductors.len(), 2, "nothing was split");
+    assert_eq!(doc.wires.len(), 2, "nothing was split");
     assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LooksConnected));
 }
 
@@ -424,7 +424,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
     // Brief 032: two wires that meet, joined later by a junction (else they would be one wire).
     let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({"join": false}));
-    let view = |h: &mut H, w: ConductorId| {
+    let view = |h: &mut H, w: WireId| {
         let route = h.route_handle(page, w);
         h.p(|p| props::view(p, Some(page), &[route]))
     };
@@ -436,10 +436,10 @@ fn a_wires_properties_show_and_edit_its_net() {
     assert_eq!(row(&v, "wire_number_fixed").value, "no");
     let pot = row(&v, "potential");
     assert!(pot.value == "24V (continuation)" && pot.inherited, "{pot:?}");
-    let cs = row(&v, "cross_section");
+    let cs = row(&v, "size");
     // Brief 050b: the defaults are the 24 V DC category's.
     assert!(cs.value == "0.5 (24 V DC)" && cs.inherited, "{cs:?}");
-    assert_eq!(row(&v, "colour").value, "BU (24 V DC)");
+    assert_eq!(row(&v, "colours").value, "BU (24 V DC)");
     assert!(row(&v, "net").value.starts_with("1 wire"), "{v:?}");
     let target = v.sections[0].target.clone().unwrap();
     // Each edit through the line the panel sends.
@@ -459,11 +459,11 @@ fn a_wires_properties_show_and_edit_its_net() {
     assert_eq!(row(&view(&mut h, a), "wire_number_fixed").value, "yes");
     assert!(send(&mut h, "potential", Some("0V")).starts_with("potential "));
     assert_eq!(row(&view(&mut h, a), "potential").value, "0V");
-    send(&mut h, "colour", Some("Red"));
-    let c = row(&view(&mut h, a), "colour");
+    send(&mut h, "colours", Some("Red"));
+    let c = row(&view(&mut h, a), "colours");
     assert!(c.value == "RD" && !c.inherited, "{c:?}");
-    send(&mut h, "colour", None);
-    assert_eq!(row(&view(&mut h, a), "colour").value, "BU (0 V DC)", "empty returns to the default");
+    send(&mut h, "colours", None);
+    assert_eq!(row(&view(&mut h, a), "colours").value, "BU (0 V DC)", "empty returns to the default");
     // Joining b into a's net elsewhere changes a's Net block; the change meets its dependencies.
     let v = view(&mut h, a);
     let n = h.p(|p| p.change_count());
@@ -483,18 +483,19 @@ fn colours_are_iec_codes_or_three_letter_and_free_text_stays() {
     let a = wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({"potential": "24V"}));
     let b = wire(&mut h, &[(0.0, 20.0), (40.0, 20.0)], json!({"potential": "PE"}));
     let c = wire(&mut h, &[(0.0, 40.0), (40.0, 40.0)], json!({"potential": "L"}));
-    h.run("setprop", json!({"conductor": c.hex(), "key": "colour", "value": "bn"})).unwrap();
+    h.run("setprop", json!({"conductor": c.hex(), "key": "colours", "value": "bn"})).unwrap();
     let texts = |h: &mut H| {
         let doc = h.doc();
         let all = wires::labels_on_page(&doc, page);
         [a, b, c].map(|w| all.iter().find(|l| l.conductor == w).unwrap().text.clone())
     };
-    assert_eq!(texts(&mut h), ["24V-01 0.5 BU", "PE 2.5 GNYE", "L-01 2.5 BN"]);
+    assert_eq!(texts(&mut h), ["24V-01 0.5 BU", "PE 2.5 GN/YE", "L-01 2.5 BN"]);
     let r = h.run("wiresettings", json!({"colour_style": "three-letter"})).unwrap();
     assert_eq!(r["colour_style"], json!("three-letter"));
     assert_eq!(texts(&mut h), ["24V-01 0.5 BLU", "PE 2.5 GRN/YEL", "L-01 2.5 BRN"]);
-    h.run("setprop", json!({"conductor": a.hex(), "key": "colour", "value": "Violet stripe"})).unwrap();
-    assert_eq!(texts(&mut h)[0], "24V-01 0.5 Violet stripe");
+    // Design 072 §4.6: a wire's own colours are IEC 60757 colours; free text is refused.
+    let e = h.run("setprop", json!({"conductor": a.hex(), "key": "colours", "value": "Violet stripe"})).unwrap_err();
+    assert!(e.contains("not a colour list"), "{e}");
     assert!(h.run("wiresettings", json!({"colour_style": "words"})).is_err());
 }
 

@@ -45,13 +45,13 @@ fn page_type_commands_record_one_transaction_by_the_agent() {
     let v = one_by_agent(&mut c, "newpage", json!({"type": "front", "generated": "cover"}), &["AddPage"]);
     let cover = hex(&v, "page");
     one_by_agent(&mut c, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A2"}}), &["SetStyle"]);
-    one_by_agent(&mut c, "setdefault", json!({"key": "page.type", "level": "page", "page": net, "value": "singleline"}), &["SetProperty"]);
+    one_by_agent(&mut c, "setdefault", json!({"key": "page.type", "level": "page", "page": net, "value": "singleline"}), &["ModifyPage"]);
     one_by_agent(&mut c, "projectprops", json!({"props": {"cover.notes": "a\nb"}}), &["SetProperty"]);
     one_by_agent(&mut c, "setdefault", json!({"key": "front.cover.notes", "level": "project", "value": "off"}), &["SetProperty"]);
     let f = hex(&c.exec("newfolder", json!({"name": "Schematic"})), "folder");
     one_by_agent(&mut c, "folderprops", json!({"folder": f, "start": "100"}), &["SetProperty"]);
     c.exec("movepage", json!({"page": first, "folder": f}));
-    one_by_agent(&mut c, "renumberpages", json!({}), &["SetProperty"]);
+    one_by_agent(&mut c, "renumberpages", json!({}), &["ModifyPage"]);
     one_by_agent(&mut c, "deletepage", json!({"page": cover}), &["RemovePage"]);
     // Reads record nothing.
     let n = c.log().len();

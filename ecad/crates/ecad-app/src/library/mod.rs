@@ -187,7 +187,7 @@ impl App {
         {
             let found = p.read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
-                let (_, rep) = doc.representations_of(Subject::Component(c)).find(|(_, r)| r.form == Form::Drawn)?;
+                let (_, rep) = doc.representations_of(Subject::Device(c)).find(|(_, r)| r.form == Form::Drawn)?;
                 let mut prims = Vec::new();
                 for i in &rep.items {
                     if let Some(ItemKind::Primitive(pr)) = doc.items.get(i).map(|x| &x.kind) {

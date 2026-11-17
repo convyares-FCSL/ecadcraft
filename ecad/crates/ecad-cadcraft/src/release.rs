@@ -268,10 +268,10 @@ fn io_list(doc: &Document, o: &Outputs) -> Result<Option<Table>, String> {
 /// brief 028's lists only when the project has strips or cables.
 fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
-        "terminal-plan" => doc.components.keys().any(|c| crate::strips::is_strip(doc, *c)),
+        "terminal-plan" => doc.devices.keys().any(|c| crate::strips::is_strip(doc, *c)),
         "cable-schedule" => !doc.cables.is_empty(),
-        "io-list" => doc.components.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
-        "plc-racks" => doc.components.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
+        "io-list" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
+        "plc-racks" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
         _ => slot.missing_why.is_empty(),
     }
 }

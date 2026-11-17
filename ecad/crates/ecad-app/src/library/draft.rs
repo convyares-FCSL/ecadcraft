@@ -593,6 +593,7 @@ impl Draft {
             slots: self.shape.slots.clone(),
             defaults: self.defaults(),
             bridges: Vec::new(),
+            device_type: ecad_model::DeviceType::General,
         }
     }
 

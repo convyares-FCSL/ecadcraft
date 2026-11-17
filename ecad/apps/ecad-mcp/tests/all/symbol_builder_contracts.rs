@@ -52,7 +52,7 @@ fn symbol_commands_by_the_agent() {
     let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(v2["version"], 2);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).count(), 1);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetComponentDefinition { .. })).count(), 1);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetDeviceDefinition { .. })).count(), 1);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::ModifyItem { .. })).count(), 1);
 
     // The other copy is brought up to date: v1 is then unused and removed (FP8).
@@ -78,7 +78,7 @@ fn symbol_commands_by_the_agent() {
     let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(m["tag"], "-A01");
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::RemoveItem { .. })).count(), 2);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateComponent { .. })).count(), 1);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1);
 }
 
 fn line_handles(c: &mut Client) -> Vec<String> {

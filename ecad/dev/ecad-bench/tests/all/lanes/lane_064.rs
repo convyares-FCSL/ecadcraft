@@ -13,7 +13,7 @@ fn old_touched(ops: &[Op]) -> Touched {
     let mut t = Touched::default();
     for op in ops {
         match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+            Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
                 t.page_order = true;
                 t.pages.insert(*id);
             }
@@ -23,8 +23,8 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 t.items.insert(*id);
             }
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
-                t.components.insert(*id);
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                t.devices.insert(*id);
             }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
                 t.terminals.insert(*id);
@@ -32,11 +32,11 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 t.representations.insert(*id);
             }
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } => {
-                t.conductors.insert(*id);
+            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => {
+                t.wires.insert(*id);
             }
             Op::AttachEnd { conductor, .. } => {
-                t.conductors.insert(*conductor);
+                t.wires.insert(*conductor);
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 t.cables.insert(*id);
@@ -45,11 +45,11 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.cables.insert(*cable);
             }
             Op::SetProperty { object, .. } => match object {
-                ObjectRef::Component(id) => {
-                    t.components.insert(*id);
+                ObjectRef::Device(id) => {
+                    t.devices.insert(*id);
                 }
-                ObjectRef::Conductor(id) => {
-                    t.conductors.insert(*id);
+                ObjectRef::Wire(id) => {
+                    t.wires.insert(*id);
                 }
                 ObjectRef::Cable(id) => {
                     t.cables.insert(*id);
@@ -71,6 +71,7 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.folders.insert(*id);
             }
             Op::SetStyle { .. } | Op::SetStandard { .. } => t.styles = true,
+            Op::ModifyProject { .. } => t.project = true,
         }
     }
     t

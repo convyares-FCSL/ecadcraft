@@ -3,7 +3,7 @@
 //! two-colour wires on a page get their dashes. Pure rules over the document; the cable fan
 //! drawing that uses them stays in `look`.
 
-use ecad_model::{ConductorId, Document, ItemKind, PageId, Pt, Subject};
+use ecad_model::{Document, ItemKind, PageId, Pt, Subject, WireId};
 
 /// Longest core label accepted (Unicode scalar values, after trimming).
 pub const MAX_CORE_CHARS: usize = 32;
@@ -97,12 +97,12 @@ pub fn wire_colours(code: &str, sheet: &ecad_drawing_style::Sheet) -> Option<eca
 /// The colour code a conductor's route is drawn in (brief 050b, design 050 §5.5): its wire
 /// category's line colour (`wire`: the insulation colour, its own or the category's; `ink`: none;
 /// or a code). `None` when it is drawn in ink.
-pub fn conductor_colour(doc: &Document, c: ConductorId) -> Option<String> {
+pub fn conductor_colour(doc: &Document, c: WireId) -> Option<String> {
     crate::styles::wire::wire_look(doc, c).route_code()
 }
 
 /// [`conductor_colour`] with the project's categories read once (`looks`).
-pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: ConductorId) -> Option<String> {
+pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: WireId) -> Option<String> {
     looks.look(doc, c).route_code()
 }
 
@@ -176,7 +176,7 @@ pub fn dash_count(points: &[Pt], on: f64, off: f64) -> usize {
 pub struct DashBudget {
     pub dashed: std::collections::BTreeSet<ecad_model::RepresentationId>,
     /// The conductors whose dashes are left out, in route order.
-    pub left_out: Vec<ConductorId>,
+    pub left_out: Vec<WireId>,
 }
 
 /// The [`DashBudget`] of `page`.
@@ -186,7 +186,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     let mut total: usize = 0;
     let looks = crate::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
-        let Subject::Conductor(c) = r.subject else { continue };
+        let Subject::Wire(c) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
             continue;
         }

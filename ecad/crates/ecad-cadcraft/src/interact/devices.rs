@@ -9,7 +9,7 @@ use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::units::{Degrees, Radians};
-use ecad_model::{ComponentId, Placement, Subject};
+use ecad_model::{DeviceId, Placement, Subject};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
@@ -72,7 +72,7 @@ enum Stage {
     /// Step 1: which symbol.
     Symbol,
     /// §5.2: which symbol to add to this device.
-    DeviceSymbol(ComponentId),
+    DeviceSymbol(DeviceId),
     /// Step 2: where.
     Point,
     /// Step 2d: which device to join.
@@ -80,7 +80,7 @@ enum Stage {
     /// The tag of the next new device.
     Tag,
     /// The typed tag exists: add the symbol to that device?
-    ConfirmJoin(ComponentId, String),
+    ConfirmJoin(DeviceId, String),
     /// The typed device does not exist: make it a new device with that tag?
     ConfirmNew(String),
     /// Brief 045 (design 045 §2.4): which rack a new card goes in.
@@ -97,13 +97,13 @@ struct Place {
     rotation: u16,
     mirror: bool,
     /// The device the next symbol joins.
-    join: Option<ComponentId>,
+    join: Option<DeviceId>,
     /// The typed tag of the next new device.
     tag: Option<String>,
     /// The device of the most recent placement in this command.
-    last: Option<ComponentId>,
+    last: Option<DeviceId>,
     /// Brief 045: the rack the next card goes in, once answered (`Some(None)`: no rack).
-    rack: Option<Option<ComponentId>>,
+    rack: Option<Option<DeviceId>>,
     /// The slot answered for it (`None`: the next free one).
     slot: Option<u32>,
     /// Brief 048: a project symbol typed by its key (its newest version), placed instead of a
@@ -182,7 +182,7 @@ impl Place {
     }
 
     /// The rack offered by default: the rack of the last card placed, else the only rack.
-    fn default_rack(&self, s: &Session) -> Option<ComponentId> {
+    fn default_rack(&self, s: &Session) -> Option<DeviceId> {
         read(s, |p, _| {
             let doc = p.ledger.document();
             let last = self.last.or_else(|| p.last_placed.as_ref().map(|(_, c)| *c));
@@ -316,7 +316,7 @@ impl Place {
         let tag = r.get("tag").and_then(Value::as_str).unwrap_or_default().to_string();
         let labels: Vec<&str> =
             r.get("terminals").and_then(Value::as_array).into_iter().flatten().filter_map(|t| t.get("label").and_then(Value::as_str)).collect();
-        let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(ComponentId::from);
+        let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(DeviceId::from);
         // Brief 028: a terminal landed on a wire; the JSON form has said so.
         let landed = r.get("split").is_some();
         if landed {
@@ -343,7 +343,7 @@ impl Place {
 
     /// The default answer at "Enter device to join": this command's last device, else the last
     /// device placed with this prefix, else New.
-    fn default_device(&self, s: &Session) -> Option<ComponentId> {
+    fn default_device(&self, s: &Session) -> Option<DeviceId> {
         if self.last.is_some() {
             return self.last;
         }
@@ -684,7 +684,7 @@ const NOT_A_DEVICE: &str = "That is not a device.";
 const NOTHING_THERE: &str = "Nothing there. Click a device.";
 
 /// The device an object names: any item, tag text, terminal label or marker of a component.
-fn device_of(s: &Session, h: cadcraft_engine::doc::Handle) -> Result<ComponentId, String> {
+fn device_of(s: &Session, h: cadcraft_engine::doc::Handle) -> Result<DeviceId, String> {
     read(s, |p, page| {
         let map = &p.pages.get(&page).ok_or(NOTHING_THERE)?.map;
         let doc = p.ledger.document();
@@ -694,13 +694,13 @@ fn device_of(s: &Session, h: cadcraft_engine::doc::Handle) -> Result<ComponentId
             _ => None,
         };
         match rep.map(|r| r.subject) {
-            Some(Subject::Component(c)) => Ok(c),
+            Some(Subject::Device(c)) => Ok(c),
             _ => Err(NOT_A_DEVICE.into()),
         }
     })
 }
 
-fn picked(s: &Session, i: &Input) -> Option<Result<ComponentId, String>> {
+fn picked(s: &Session, i: &Input) -> Option<Result<DeviceId, String>> {
     match i {
         Input::Point(p) => Some(match pick(s, *p) {
             Some(h) => device_of(s, h),
@@ -711,7 +711,7 @@ fn picked(s: &Session, i: &Input) -> Option<Result<ComponentId, String>> {
     }
 }
 
-fn from_selection(s: &Session) -> Option<ComponentId> {
+fn from_selection(s: &Session) -> Option<DeviceId> {
     let sel = s.selection();
     let first = sel.first()?;
     device_of(s, *first).ok()
@@ -727,21 +727,21 @@ pub(crate) fn deviceprops(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 struct Props {
-    device: Option<ComponentId>,
+    device: Option<DeviceId>,
     /// The property being changed.
     key: Option<&'static str>,
     /// A typed tag another device holds: (that device, the tag), waiting for Yes / Choose another.
-    merge: Option<(ComponentId, String)>,
+    merge: Option<(DeviceId, String)>,
 }
 
 const KEYWORDS: [(&str, &str); 6] =
     [("Tag", "tag"), ("Description", "description"), ("Maker", "maker"), ("Part", "part_number"), ("Location", "location"), ("Function", "function")];
 
 impl Props {
-    fn show(s: &mut Session, c: ComponentId) {
+    fn show(s: &mut Session, c: DeviceId) {
         let lines = read(s, |p, _| {
             let doc = p.ledger.document();
-            let props = doc.components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+            let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
             Ok(devices::PROPERTIES.iter().map(|(k, label)| format!("{label}: {}", props.get(*k).map_or("?", String::as_str))).collect::<Vec<_>>())
         })
         .unwrap_or_default();
@@ -750,12 +750,12 @@ impl Props {
         }
     }
 
-    fn select(&mut self, s: &mut Session, c: ComponentId) {
+    fn select(&mut self, s: &mut Session, c: DeviceId) {
         self.device = Some(c);
         Self::show(s, c);
     }
 
-    fn set(&mut self, s: &mut Session, c: ComponentId, key: &str, value: &str, merge: bool) -> R<Step> {
+    fn set(&mut self, s: &mut Session, c: DeviceId, key: &str, value: &str, merge: bool) -> R<Step> {
         let before = read(s, |p, _| Ok(devices::tag_words(p.ledger.document(), c))).unwrap_or_default();
         let mut params = json!({"component": c.hex(), "key": key, "value": value});
         if merge {
@@ -766,12 +766,12 @@ impl Props {
             s.echo(m.to_string());
         }
         if let Some(into) = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()) {
-            self.device = Some(ComponentId::from(into));
+            self.device = Some(DeviceId::from(into));
         }
         let device = self.device.unwrap_or(c);
         let words = read(s, |p, _| {
             let doc = p.ledger.document();
-            let n = doc.representations_of(Subject::Component(device)).count();
+            let n = doc.representations_of(Subject::Device(device)).count();
             Ok((devices::tag_words(doc, device), n, devices::pages_words(doc, device)))
         });
         if !merge && let Ok((tag, n, pages)) = words {
@@ -877,7 +877,7 @@ impl Interactive for Props {
         match self.key {
             None => prompt("Enter property to change", Accept::TEXT, &KEYWORDS.iter().map(|(k, _)| *k).collect::<Vec<_>>(), None),
             Some(key) => {
-                let current = read(s, |p, _| Ok(p.ledger.document().components.get(&c).and_then(|x| x.properties.get(key).cloned()))).ok().flatten();
+                let current = read(s, |p, _| Ok(p.ledger.document().devices.get(&c).and_then(|x| x.properties.get(key).cloned()))).ok().flatten();
                 let label = devices::PROPERTIES.iter().find(|(k, _)| *k == key).map_or(key, |(_, l)| *l);
                 prompt(format!("New {}", label.to_lowercase()), Accept::TEXT, &[], current)
             }
@@ -898,7 +898,7 @@ pub(crate) fn devicedelete(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 struct Delete {
-    device: Option<ComponentId>,
+    device: Option<DeviceId>,
 }
 
 impl Interactive for Delete {
@@ -913,7 +913,7 @@ impl Interactive for Delete {
         let Some(c) = self.device else { return Prompt::new("Select a device", Accept::SELECT) };
         let (tag, n, pages) = read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok((devices::tag_words(doc, c), doc.representations_of(Subject::Component(c)).count(), devices::pages_words(doc, c)))
+            Ok((devices::tag_words(doc, c), doc.representations_of(Subject::Device(c)).count(), devices::pages_words(doc, c)))
         })
         .unwrap_or_default();
         prompt(

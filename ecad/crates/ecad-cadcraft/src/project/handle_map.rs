@@ -19,7 +19,7 @@ pub enum Mapped {
     Tag(RepresentationId),
     /// A conductor's derived label (brief 022): computed, not an item. Left out of an edit that
     /// also touches other objects; an edit of it alone is refused.
-    Label(ConductorId),
+    Label(WireId),
     /// A line or text of the page's sheet frame or title block (brief 019), by its index among
     /// the frame's parts: computed, not an item. Every edit of it is refused.
     Frame(u32),
@@ -31,7 +31,7 @@ pub enum Mapped {
     /// A segment of a strip's link line (brief 030, design 030 §5.3), by strip and link number:
     /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
-    Link(ComponentId, u32),
+    Link(DeviceId, u32),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -46,7 +46,7 @@ pub struct HandleMap {
     /// The cables drawn as fans on this page.
     fan_cables: BTreeSet<CableId>,
     /// The member and the reference end each computed part belongs to, where it has one.
-    parts: HashMap<Handle, (Option<ConductorId>, Option<RepresentationId>)>,
+    parts: HashMap<Handle, (Option<WireId>, Option<RepresentationId>)>,
     /// Loose wire ends at a cable end that stops at a reference (design 009 §7.3): no loose-end
     /// square is shown there.
     pub(super) quiet: Vec<Pt>,
@@ -56,8 +56,8 @@ pub struct HandleMap {
     refs: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
     tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
-    /// Conductor labels (brief 022): route representation → (conductor, handle).
-    labels: BTreeMap<RepresentationId, (ConductorId, Handle)>,
+    /// Wire labels (brief 022): route representation → (conductor, handle).
+    labels: BTreeMap<RepresentationId, (WireId, Handle)>,
     /// The sheet frame's parts (brief 019): index → handle.
     frame: BTreeMap<u32, Handle>,
     /// Device cross-references (brief 025): (contact or head representation, part index) → handle.
@@ -65,7 +65,7 @@ pub struct HandleMap {
     /// The part each cross-reference handle is.
     xref_parts: HashMap<Handle, (RepresentationId, u32)>,
     /// Brief 030: link line segments: (strip, link, index) → handle.
-    links: BTreeMap<(ComponentId, u32, u32), Handle>,
+    links: BTreeMap<(DeviceId, u32, u32), Handle>,
     /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
     /// the conductor as its label is (derived: left out of an edit with other objects, refused
     /// alone), and each dash's route handle.
@@ -102,7 +102,7 @@ impl HandleMap {
     }
     /// A computed part of `cable`'s drawing (brief 009): `fan` when the cable is drawn as a fan on
     /// this page; the member (`core`) and the reference end it belongs to.
-    pub fn insert_part(&mut self, cable: CableId, index: u32, h: Handle, fan: bool, core: Option<ConductorId>, reference: Option<RepresentationId>) {
+    pub fn insert_part(&mut self, cable: CableId, index: u32, h: Handle, fan: bool, core: Option<WireId>, reference: Option<RepresentationId>) {
         self.insert_fan(cable, index, h);
         if fan {
             self.fan_cables.insert(cable);
@@ -124,7 +124,7 @@ impl HandleMap {
         self.fan_cables.contains(&cable)
     }
     /// The member a computed part belongs to (a bend, a tail, a core label, a wire number).
-    pub fn core_of(&self, h: Handle) -> Option<ConductorId> {
+    pub fn core_of(&self, h: Handle) -> Option<WireId> {
         self.parts.get(&h).and_then(|(c, _)| *c)
     }
     /// The reference end a computed part belongs to (its flag or text).
@@ -163,7 +163,7 @@ impl HandleMap {
     pub fn label(&self, rep: RepresentationId) -> Option<Handle> {
         self.labels.get(&rep).map(|(_, h)| *h)
     }
-    pub fn insert_label(&mut self, rep: RepresentationId, conductor: ConductorId, h: Handle) {
+    pub fn insert_label(&mut self, rep: RepresentationId, conductor: WireId, h: Handle) {
         self.labels.insert(rep, (conductor, h));
         self.by_handle.insert(h, Mapped::Label(conductor));
     }
@@ -184,10 +184,10 @@ impl HandleMap {
         self.xrefs.get(&(rep, index)).copied()
     }
     /// Brief 030: the handle of segment `index` of link `n` of `strip`.
-    pub fn link(&self, strip: ComponentId, n: u32, index: u32) -> Option<Handle> {
+    pub fn link(&self, strip: DeviceId, n: u32, index: u32) -> Option<Handle> {
         self.links.get(&(strip, n, index)).copied()
     }
-    pub fn insert_link(&mut self, strip: ComponentId, n: u32, index: u32, h: Handle) {
+    pub fn insert_link(&mut self, strip: DeviceId, n: u32, index: u32, h: Handle) {
         self.links.insert((strip, n, index), h);
         self.by_handle.insert(h, Mapped::Link(strip, n));
     }
@@ -195,7 +195,7 @@ impl HandleMap {
     pub fn dash(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
         self.dashes.get(&(rep, index)).copied()
     }
-    pub fn insert_dash(&mut self, rep: RepresentationId, conductor: ConductorId, index: u32, h: Handle, route: Handle) {
+    pub fn insert_dash(&mut self, rep: RepresentationId, conductor: WireId, index: u32, h: Handle, route: Handle) {
         self.dashes.insert((rep, index), h);
         self.dash_routes.insert(h, route);
         self.by_handle.insert(h, Mapped::Label(conductor));

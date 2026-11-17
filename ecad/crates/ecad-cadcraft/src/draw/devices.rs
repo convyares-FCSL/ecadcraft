@@ -4,7 +4,7 @@
 
 use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle, Text, VAlign as EVAlign};
 use cadcraft_engine::geom::Vec3;
-use ecad_model::{ComponentId, Document, PageId, Pt, RepresentationId};
+use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId};
 
 use crate::devices::{DerivedText, PageText, TAG_LAYER, TextOf, kind_of, prefix_for};
 use crate::draw::text_style::{EngineMetrics, LookApply as _};
@@ -25,7 +25,7 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
 
 /// The lens of device `c` hovered through its representation `here` (design 018 §6.4), measured
 /// with CADCraft's fonts ([`crate::devices::hover_lines_measured`]).
-pub fn hover_lines(doc: &Document, c: ComponentId, here: RepresentationId) -> Vec<String> {
+pub fn hover_lines(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
     crate::devices::hover_lines_measured(doc, c, here, &EngineMetrics)
 }
 

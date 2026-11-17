@@ -55,7 +55,7 @@ use std::time::Instant;
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
 use ecad_model::{
-    Author, CableId, CableMember, ComponentId, ConductorId, End, Item, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Representation, Subject,
+    Author, CableId, CableMember, DeviceId, End, Item, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Representation, Subject, WireId,
 };
 use serde_json::json;
 
@@ -139,8 +139,8 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         for page in &pages {
             for i in 0..TERMINALS {
                 let x = X0 + PITCH * i as f64;
-                let (w, it, r): (ConductorId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-                ops.push(Op::CreateConductor { id: w, conductor: Default::default() });
+                let (w, it, r): (WireId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+                ops.push(Op::CreateWire { id: w, conductor: Default::default() });
                 ops.push(Op::AddItem {
                     id: it,
                     item: Item {
@@ -152,7 +152,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 ops.push(Op::LinkRepresentation {
                     id: r,
                     rep: Representation {
-                        subject: Subject::Conductor(w),
+                        subject: Subject::Wire(w),
                         page: *page,
                         form: ecad_model::Form::Drawn,
                         role: "route".into(),
@@ -165,7 +165,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         p.ledger.commit(Author::User, "bench wires", ops).map_err(|e| e.to_string())?;
         // A strip on each page, with bridges and cables (tags -W90001…, clear of the generator's).
         let mut serial = 0usize;
-        let mut made: Vec<ComponentId> = Vec::new();
+        let mut made: Vec<DeviceId> = Vec::new();
         for page in &pages {
             let f = ecad_cadcraft::terminal_cmds::plan_fence_in(
                 p,
@@ -181,11 +181,11 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             let mut ops = f.ops;
             for pair in f.placed.chunks(5) {
                 let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
-                let (w, it, r): (ConductorId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+                let (w, it, r): (WireId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
                 let ia = f.placed.iter().position(|x| x.0 == a.0).unwrap_or(0) as f64;
                 let (xa, xb) = (X0 + PITCH * ia, X0 + PITCH * (ia + 1.0));
                 let route = ecad_cadcraft::terminal_cmds::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
-                ops.push(Op::CreateConductor { id: w, conductor: Default::default() });
+                ops.push(Op::CreateWire { id: w, conductor: Default::default() });
                 ops.push(Op::AddItem {
                     id: it,
                     item: Item {
@@ -197,7 +197,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 ops.push(Op::LinkRepresentation {
                     id: r,
                     rep: Representation {
-                        subject: Subject::Conductor(w),
+                        subject: Subject::Wire(w),
                         page: *page,
                         form: ecad_model::Form::Drawn,
                         role: "route".into(),
@@ -209,7 +209,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 ops.push(Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b.0) });
             }
             // Half the outside halves (the second halves) as two-core cables.
-            let halves: Vec<ConductorId> = f.placed.iter().take(TERMINALS / 2).map(|x| x.3).collect();
+            let halves: Vec<WireId> = f.placed.iter().take(TERMINALS / 2).map(|x| x.3).collect();
             for two in halves.chunks(2) {
                 let k: CableId = p.ids.fresh();
                 let mut cable = ecad_model::Cable::default();
@@ -236,7 +236,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         }
         set(&mut ops, ObjectRef::Project, "strip_marker_per_card".into(), "10".into());
         for (i, c) in made.iter().enumerate() {
-            let o = ObjectRef::Component(*c);
+            let o = ObjectRef::Device(*c);
             set(&mut ops, o, "acc.start".into(), "end_stop".into());
             set(&mut ops, o, "acc.end".into(), "end_plate,end_stop".into());
             if i < 50 {
@@ -313,7 +313,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         })?;
         (out.strips, out.terminals, out.cables) = (strips, terminals, cables);
         let page1: PageId = page1.ok_or("the project has no pages")?;
-        let strip: ComponentId = first_strip.ok_or("no strip was added")?;
+        let strip: DeviceId = first_strip.ok_or("no strip was added")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
         // A terminal on a wire (its lower half), then undone.
         let mut tplace = Vec::new();
@@ -352,7 +352,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let point = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             doc.representations_on(page1).find_map(|(_, r)| {
-                let Subject::Component(c) = r.subject else { return None };
+                let Subject::Device(c) = r.subject else { return None };
                 if ecad_cadcraft::strips::is_strip(doc, c) || !ecad_cadcraft::locations::is_device(doc, c) {
                     return None;
                 }
@@ -416,7 +416,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let lv_line = |y: f64| json!({"type": "LNPE", "level": "L", "from": [X0 - 5.0, y], "to": [X0 + PITCH * TERMINALS as f64, y]});
         out.lvlfence_ms = timed(&mut s, "terminals", lv_line(120.0))?;
         let lv = run(&mut s, "terminals", lv_line(120.0))?;
-        let lv: ComponentId = hex(&lv, "strip")?;
+        let lv: DeviceId = hex(&lv, "strip")?;
         out.lvlplace_ms = timed(&mut s, "place", json!({"symbol": "termlnpe.2", "at": [X0 + PITCH, 80.0], "device": lv.hex()}))?;
         let mut sep = Vec::new();
         for i in 0..runs {
@@ -430,7 +430,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut topo = Vec::new();
         for _ in 0..runs {
             let f = run(&mut s, "place", json!({"symbol": "fuseterm", "at": [X0 - 40.0, 150.0]}))?;
-            let f: ComponentId = hex(&f, "component")?;
+            let f: DeviceId = hex(&f, "component")?;
             let t = Instant::now();
             run(&mut s, "toposition", json!({"device": f.hex(), "strip": lv.hex()}))?;
             topo.push(ms(t));
@@ -457,16 +457,16 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         // in +CP1. Its location then flips to +CP1 and back.
         run(&mut s, "setprop", json!({"component": strip.hex(), "key": "location", "value": "+CP1"}))?;
         let lamp = run(&mut s, "place", json!({"symbol": "lamp", "at": [X0, 210.0]}))?;
-        let lamp_c: ComponentId = hex(&lamp, "component")?;
+        let lamp_c: DeviceId = hex(&lamp, "component")?;
         let x2 = lamp["terminals"].as_array().and_then(|a| a.iter().find(|t| t["key"] == "X2")).cloned().ok_or("no lamp X2")?;
         let x2: ecad_model::TerminalId = hex(&x2, "terminal")?;
         let top = project
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
                 doc.representations_on(page1).find_map(|(_, r)| {
-                    let Subject::Conductor(w) = r.subject else { return None };
+                    let Subject::Wire(w) = r.subject else { return None };
                     let (a, _) = ecad_model::derive::route_ends_on(doc, w, page1)?;
-                    (a.near(Pt::new(X0, 200.0), 1e-6) && doc.conductors.get(&w)?.end(End::A).is_none()).then_some(w)
+                    (a.near(Pt::new(X0, 200.0), 1e-6) && doc.wires.get(&w)?.end(End::A).is_none()).then_some(w)
                 })
             })?
             .ok_or("no wire end at the lamp")?;
@@ -514,7 +514,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         // A wire of this strip and one of another strip; a cable of this strip.
         let (mine, other, cable) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            let wire_of = |c: ComponentId| doc.terminals_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
+            let wire_of = |c: DeviceId| doc.terminals_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
             let other = p.outputs.as_ref().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
             let cable = wire_of(strip)
                 .and_then(|_| doc.terminals_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next()));

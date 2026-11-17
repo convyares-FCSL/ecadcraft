@@ -11,7 +11,7 @@
 //! | Situation | Result |
 //! | --- | --- |
 //! | New net (no conductor carries a number) | the next free number of its scope |
-//! | Conductor added to a numbered net | it gets the net's number |
+//! | Wire added to a numbered net | it gets the net's number |
 //! | Merge, both automatic | the number on more conductors wins; a tie goes to the lower sequence |
 //! | Merge, one fixed | the fixed number wins, written fixed on all |
 //! | Merge, two different fixed | nothing is rewritten (a Checks error) |
@@ -26,16 +26,19 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetId, Node, POTENTIAL, WIRE_NUMBER, WIRE_NUMBER_FIXED, name_key, split_number};
+use crate::colour::ColourWords;
+use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetId, Node, name_key, split_number};
 use crate::doc::{Document, Subject};
-use crate::id::{ConductorId, PageId};
+use crate::id::{PageId, WireId};
 use crate::op::{ObjectRef, Op};
+use crate::text::Text;
+use crate::wire::{Colours, WireNumber};
 
 pub use crate::connectivity::{POTENTIAL as POTENTIAL_KEY, WIRE_NUMBER as WIRE_NUMBER_KEY};
 
-/// Conductor property: the cross-section shown on its label (`0.5`, `18 AWG`).
+/// Wire property: the cross-section shown on its label (`0.5`, `18 AWG`).
 pub const CROSS_SECTION: &str = "cross_section";
-/// Conductor property: the colour shown on its label (`BU`, IEC 60757; free text allowed).
+/// Wire property: the colour shown on its label (`BU`, IEC 60757; free text allowed).
 pub const COLOUR: &str = "colour";
 /// Longest wire number, cross-section or colour, in characters.
 pub const MAX_VALUE_CHARS: usize = 24;
@@ -114,6 +117,14 @@ pub enum ColourStyle {
 }
 
 impl ColourStyle {
+    /// The colour words it writes.
+    pub fn words(self) -> ColourWords {
+        match self {
+            ColourStyle::Iec => ColourWords::Code2,
+            ColourStyle::ThreeLetter => ColourWords::Code3,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             ColourStyle::Iec => "iec",
@@ -153,11 +164,9 @@ pub const COLOUR_CODES: [(&str, &str); 15] = [
 /// anything else (free text) as typed.
 pub fn colour_text(style: ColourStyle, value: &str) -> String {
     let v = value.trim();
-    let found = COLOUR_CODES.iter().find(|(iec, three)| v.eq_ignore_ascii_case(iec) || v.eq_ignore_ascii_case(three));
-    match (found, style) {
-        (Some((iec, _)), ColourStyle::Iec) => (*iec).to_string(),
-        (Some((_, three)), ColourStyle::ThreeLetter) => (*three).to_string(),
-        (None, _) => v.to_string(),
+    match Colours::parse(v) {
+        Some(c) => c.shown(style.words()),
+        None => v.to_string(),
     }
 }
 
@@ -316,7 +325,7 @@ pub fn net_potential(doc: &Document, net: &NetData) -> NetPotential {
 pub fn net_number(doc: &Document, net: &NetData) -> Option<String> {
     if net.fixed.len() > 1 {
         let first = net.first_conductor()?;
-        return doc.conductors.get(&first).and_then(|c| c.properties.get(WIRE_NUMBER)).cloned();
+        return doc.wires.get(&first).and_then(|c| c.number_text()).map(str::to_string);
     }
     if let Some(f) = net.fixed.keys().next() {
         return Some(f.clone());
@@ -362,10 +371,8 @@ pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     };
     let fallback = || ("1".to_string(), first_column(None));
     let Some(first) = net.first_conductor() else { return fallback() };
-    let order: Option<(usize, PageId)> = doc
-        .representations_of(Subject::Conductor(first))
-        .filter_map(|(_, r)| doc.page_order.iter().position(|p| *p == r.page).map(|i| (i, r.page)))
-        .min();
+    let order: Option<(usize, PageId)> =
+        doc.representations_of(Subject::Wire(first)).filter_map(|(_, r)| doc.page_order.iter().position(|p| *p == r.page).map(|i| (i, r.page))).min();
     let Some((_, page)) = order else { return fallback() };
     match crate::derive::route_ends_on(doc, first, page).and_then(|(a, _)| place(doc, page, a)) {
         Some(p) => (p.page, p.column_label),
@@ -439,21 +446,18 @@ impl Allocator {
     }
 }
 
-/// `SetProperty` ops writing `number` (and the fixed flag) on every conductor of `net` that does
-/// not already carry it.
+/// `ModifyWire` ops writing `number` (and the fixed flag) on every wire of `net` that does not
+/// already carry it. A number that is not a valid wire number writes nothing.
 pub fn write_ops(doc: &Document, net: &NetData, number: &str, fixed: bool) -> Vec<Op> {
+    let Ok(text) = Text::new(number) else { return Vec::new() };
+    let want = WireNumber { text, fixed };
     let mut ops = Vec::new();
-    for c in &net.conductors {
-        let Some(cond) = doc.conductors.get(c) else { continue };
-        let object = ObjectRef::Conductor(*c);
-        let cur = cond.properties.get(WIRE_NUMBER);
-        if cur.map(String::as_str) != Some(number) {
-            ops.push(Op::SetProperty { object, key: WIRE_NUMBER.into(), before: cur.cloned(), after: Some(number.to_string()) });
-        }
-        let flag = cond.properties.get(WIRE_NUMBER_FIXED);
-        let want = fixed.then(|| crate::words::flag_word(true).to_string());
-        if flag != want.as_ref() {
-            ops.push(Op::SetProperty { object, key: WIRE_NUMBER_FIXED.into(), before: flag.cloned(), after: want });
+    for c in &net.wires {
+        let Some(cond) = doc.wires.get(c) else { continue };
+        if cond.number.as_ref() != Some(&want) {
+            let mut after = cond.clone();
+            after.number = Some(want.clone());
+            ops.push(Op::ModifyWire { id: *c, before: cond.clone(), after });
         }
     }
     ops
@@ -462,7 +466,7 @@ pub fn write_ops(doc: &Document, net: &NetData, number: &str, fixed: bool) -> Ve
 /// Whether every conductor of `net` already carries `number` (fixed or not as `fixed` says), read
 /// from the net's counts without visiting its conductors.
 fn carries(net: &NetData, number: &str, fixed: bool) -> bool {
-    let n = u32::try_from(net.conductors.len()).unwrap_or(u32::MAX);
+    let n = u32::try_from(net.wires.len()).unwrap_or(u32::MAX);
     let all = net.numbers.len() == 1 && net.numbers.get(number) == Some(&n);
     let flags = if fixed { net.fixed.len() == 1 && net.fixed.get(number) == Some(&n) } else { net.fixed.is_empty() };
     all && flags
@@ -480,28 +484,28 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
     };
     for op in ops {
         match op {
-            Op::CreateConductor { id, .. } => add(Node::Conductor(*id), &mut nets),
-            Op::DeleteConductor { conductor, .. } => {
+            Op::CreateWire { id, .. } => add(Node::Wire(*id), &mut nets),
+            Op::DeleteWire { conductor, .. } => {
                 for t in conductor.ends.iter().flatten() {
                     add(Node::Terminal(*t), &mut nets);
                 }
             }
             Op::AttachEnd { conductor, before, after, .. } => {
-                add(Node::Conductor(*conductor), &mut nets);
+                add(Node::Wire(*conductor), &mut nets);
                 for t in [before, after].into_iter().flatten() {
                     add(Node::Terminal(*t), &mut nets);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Conductor(c), key, .. } => {
-                if key == POTENTIAL {
-                    add(Node::Conductor(*c), &mut potential);
+            Op::ModifyWire { id, before, after } => {
+                if before.potential != after.potential {
+                    add(Node::Wire(*id), &mut potential);
                 }
-                if key == POTENTIAL || key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED {
-                    add(Node::Conductor(*c), &mut nets);
+                if before.potential != after.potential || before.number != after.number {
+                    add(Node::Wire(*id), &mut nets);
                 }
             }
             // Brief 048: another definition may bridge other points.
-            Op::SetComponentDefinition { id, .. } => {
+            Op::SetDeviceDefinition { id, .. } => {
                 for (t, _) in doc.terminals_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                 }
@@ -512,7 +516,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     add(Node::Terminal(t), &mut nets);
                 }
             }
-            Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
+            Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
                 let cont = component.properties.get(KIND).is_some_and(|k| k == CONTINUATION);
                 for (t, _) in doc.terminals_of(*id) {
                     add(Node::Terminal(t), &mut nets);
@@ -527,7 +531,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if key == KIND || key == NAME => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == KIND || key == NAME => {
                 for (t, _) in doc.terminals_of(*c) {
                     add(Node::Terminal(t), &mut nets);
                     add(Node::Terminal(t), &mut potential);
@@ -541,7 +545,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
             }
             // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the
             // numbering pass merges or splits their numbers in the same transaction.
-            Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::links::link_number(key).is_some() => {
                 for v in [before, after] {
                     for t in crate::links::terminals_named(doc, *c, v.as_deref()) {
                         add(Node::Terminal(t), &mut nets);
@@ -569,8 +573,8 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
 
 /// What [`net_rank`] orders nets carrying one number by: fixed first, then more conductors,
 /// then the lower first conductor.
-fn net_rank(net: &NetData, number: &str) -> (bool, usize, std::cmp::Reverse<Option<ConductorId>>) {
-    (net.fixed.contains_key(number), net.conductors.len(), std::cmp::Reverse(net.first_conductor()))
+fn net_rank(net: &NetData, number: &str) -> (bool, usize, std::cmp::Reverse<Option<WireId>>) {
+    (net.fixed.contains_key(number), net.wires.len(), std::cmp::Reverse(net.first_conductor()))
 }
 
 /// Whether `id` keeps `number` among every net carrying it.
@@ -591,8 +595,7 @@ pub fn assign(doc: &Document, ops: &[Op]) -> Vec<Op> {
 /// [`assign`] for the nets `touched`.
 pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed: &BTreeSet<NetId>) -> Vec<Op> {
     let conn = doc.connectivity();
-    let mut order: Vec<(ConductorId, NetId)> =
-        touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
+    let mut order: Vec<(WireId, NetId)> = touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
     order.sort();
     let mut alloc = Allocator::default();
     let mut out = Vec::new();
@@ -615,8 +618,8 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
 /// Whether every route of `net`'s conductors is on a page of `pages` (and it has one).
 fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<crate::id::PageId>) -> bool {
     let mut any = false;
-    for c in &net.conductors {
-        for (_, r) in doc.representations_of(crate::doc::Subject::Conductor(*c)) {
+    for c in &net.wires {
+        for (_, r) in doc.representations_of(crate::doc::Subject::Wire(*c)) {
             if !pages.contains(&r.page) {
                 return false;
             }
@@ -628,7 +631,7 @@ fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<cra
 
 /// The number net `id` should carry, and whether fixed; `None` to leave it as it is.
 fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, alloc: &mut Allocator) -> Option<(String, bool)> {
-    if net.conductors.is_empty() {
+    if net.wires.is_empty() {
         return None;
     }
     match net.fixed.len() {
@@ -674,13 +677,13 @@ pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
     crate::numbering::plan(doc, &req, &crate::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
 }
 
-pub(crate) fn unnumbered(doc: &Document, c: ConductorId) -> bool {
-    doc.conductors.get(&c).is_some_and(|x| !x.properties.contains_key(WIRE_NUMBER))
+pub(crate) fn unnumbered(doc: &Document, c: WireId) -> bool {
+    doc.wires.get(&c).is_some_and(|x| x.number.is_none())
 }
 
 /// How many nets with conductors carry no number at all (projects older than 022).
 pub fn unnumbered_nets(doc: &Document) -> usize {
-    doc.connectivity().nets().filter(|(_, n)| !n.conductors.is_empty() && n.numbers.is_empty()).count()
+    doc.connectivity().nets().filter(|(_, n)| !n.wires.is_empty() && n.numbers.is_empty()).count()
 }
 
 /// A typed wire number, checked (design 022 §5.2): trimmed, 1-24 characters, no spaces or
@@ -734,15 +737,15 @@ pub struct Label {
 /// The label of conductor `c`: its net's number, then its own cross-section and colour. A cable
 /// core shows its number only. Brief 050b: the app labels with [`label_with`] and the wire's
 /// category (its colour and cross-section when the conductor has none of its own).
-pub fn label(doc: &Document, c: ConductorId) -> Option<Label> {
-    let own = |k: &str| doc.conductors.get(&c).and_then(|x| x.properties.get(k)).cloned();
-    label_with(doc, c, own(CROSS_SECTION), own(COLOUR))
+pub fn label(doc: &Document, c: WireId) -> Option<Label> {
+    let w = doc.wires.get(&c)?;
+    label_with(doc, c, w.size.map(|s| s.to_string()), w.colours.as_ref().map(ToString::to_string))
 }
 
 /// [`label`] with the cross-section and colour (a colour code, written in the project's colour
 /// style) given by the caller, which resolves them (brief 050b: the wire category's).
-pub fn label_with(doc: &Document, c: ConductorId, cross_section: Option<String>, colour: Option<String>) -> Option<Label> {
-    let cond = doc.conductors.get(&c)?;
+pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colour: Option<String>) -> Option<Label> {
+    let cond = doc.wires.get(&c)?;
     let conn = doc.connectivity();
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id).map(|n| (id, n)));
     let number = net.and_then(|(_, n)| net_number(doc, n));

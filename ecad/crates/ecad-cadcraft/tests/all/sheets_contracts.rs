@@ -8,7 +8,7 @@ use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::frame;
 use ecad_model::book::Book;
 use ecad_model::derive::cable_references;
-use ecad_model::{CableId, ConductorId, FolderId, ObjectRef, Op, PageId};
+use ecad_model::{CableId, FolderId, Op, PageId, WireId};
 use serde_json::{Value, json};
 
 /// The frame's texts on the active page `page`.
@@ -43,7 +43,7 @@ fn fixture() -> S {
     let mut h = H::new(0x5EE7);
     let supply = h.first_page();
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
-    let mut w: Vec<ConductorId> = Vec::new();
+    let mut w: Vec<WireId> = Vec::new();
     for y in [0.0, 5.0, 10.0] {
         w.push(id(&h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap(), "conductor"));
     }
@@ -123,7 +123,7 @@ fn page_properties_are_one_transaction_each_and_the_title_block_follows() {
     assert_eq!(s.h.head(), head + 1);
     let (label, ops) = last_ops(&mut s.h);
     assert_eq!(label, "Page properties");
-    assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ObjectRef::Page(p), key, .. }] if *p == s.supply && key == "number"));
+    assert!(matches!(ops.as_slice(), [Op::ModifyPage { id, before, after }] if *id == s.supply && before.change(after).number));
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "100"));
     assert_eq!(text_on(&mut s.h, s.field), "100/F3", "the other end names the new number");
     s.h.run("pageprops", json!({"title": "Supply A", "function": "PWR"})).unwrap();
@@ -273,13 +273,13 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(e, "Rev A is issued and cannot change.");
     // Draw a wire after the issue; Rev A shows the project without it.
     s.h.run("wire", json!({"points": [[0, 150], [40, 150]]})).unwrap();
-    let now = s.h.doc().conductors.len();
+    let now = s.h.doc().wires.len();
     let head = s.h.head();
     let v = s.h.run("openrevision", json!({"rev": "A"})).unwrap();
     assert_eq!(s.h.head(), head, "opening records nothing");
     assert_eq!(v["at"], json!(at));
     let then = s.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
-    assert_eq!(then.conductors.len(), now - 1, "Rev A has no wire drawn after it");
+    assert_eq!(then.wires.len(), now - 1, "Rev A has no wire drawn after it");
     s.h.run("closerevision", json!({})).unwrap();
     assert!(s.h.p(|p| p.revision_view.is_none()));
     // Undo the wire, then a plain `u` across the issue stops and asks.
@@ -313,7 +313,7 @@ fn save_and_reopen_keep_everything() {
     let reopened = ecad_cadcraft::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     let doc2 = reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap();
     assert_eq!(doc, doc2);
-    assert_eq!(doc2.pages[&s.field].properties.get("sheet").map(String::as_str), Some("A2"));
+    assert_eq!(doc2.pages[&s.field].sheet.map(|s| s.text()).as_deref(), Some("A2"));
     let v = s2.execute("openrevision", &json!({"rev": "A"})).unwrap();
     assert_eq!(v["rev"], "A");
 }
@@ -365,10 +365,10 @@ fn row(v: &ecad_cadcraft::props::PropsView, key: &str) -> String {
 fn wire_and_reference_properties_follow_the_objects_they_name() {
     let mut s = fixture();
     // A coil and a wire from its first connection point.
-    let coil: ecad_model::ComponentId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
+    let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
     let doc = s.h.doc();
     let (_, _, at) = ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].component == coil).unwrap();
-    let w: ConductorId = id(&s.h.run("wire", json!({"points": [[at.x, at.y], [at.x + 40.0, at.y]]})).unwrap(), "conductor");
+    let w: WireId = id(&s.h.run("wire", json!({"points": [[at.x, at.y], [at.x + 40.0, at.y]]})).unwrap(), "conductor");
     let route = s.h.route_handle(s.supply, w);
     let v = props_of(&mut s.h, s.supply, &[route]);
     assert!(row(&v, "from").starts_with("-K01:") || row(&v, "to").starts_with("-K01:"), "{v:?}");
@@ -405,11 +405,11 @@ fn old_projects_touch_only_pages_whose_position_changed() {
     let old = doc.pages[&s.supply].clone();
     let rename = vec![
         Op::RemovePage { id: s.supply, page: old.clone(), index: 0 },
-        Op::AddPage { id: s.supply, page: ecad_model::Page { title: "Renamed".into(), ..old.clone() }, index: 0 },
+        Op::AddPage { id: s.supply, page: ecad_model::Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..old.clone() }, index: 0 },
     ];
     assert_eq!(ecad_cadcraft::references::cables_touched(&doc, &rename), Some(Default::default()));
     assert!(ecad_cadcraft::device_list::devices_touched(&doc, &rename).is_empty());
-    let append = vec![Op::AddPage { id: PageId(77), page: ecad_model::Page::new("New"), index: 2 }];
+    let append = vec![Op::AddPage { id: PageId(77), page: ecad_model::Page::titled("New").unwrap(), index: 2 }];
     assert_eq!(ecad_cadcraft::references::cables_touched(&doc, &append), Some(Default::default()));
     // Moving Supply after Field: both positions change, so the cable with references on them.
     let moved = vec![Op::RemovePage { id: s.supply, page: old.clone(), index: 0 }, Op::AddPage { id: s.supply, page: old, index: 1 }];

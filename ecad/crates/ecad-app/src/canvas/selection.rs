@@ -6,7 +6,7 @@
 use ecad_cadcraft::Project;
 use ecad_cadcraft::cad::Handle;
 use ecad_cadcraft::project::Mapped;
-use ecad_model::{ComponentId, PageId, RepresentationId, Subject};
+use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 
 /// Most selected objects looked at.
 pub const MAX_LOOKED_AT: usize = 256;
@@ -17,7 +17,7 @@ pub const MAX_PLACEMENTS: usize = 1_000;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Related {
     /// The devices the selection stands for, in ID order.
-    pub devices: Vec<ComponentId>,
+    pub devices: Vec<DeviceId>,
     /// Their other placements on the selection's page, each as its drawn handles.
     pub here: Vec<Vec<Handle>>,
     /// Their placements on other pages, in page order of the document and then ID order.
@@ -38,7 +38,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
             _ => None,
         };
         let Some((rid, r)) = rep.and_then(|id| doc.representations.get(&id).map(|r| (id, r))) else { continue };
-        if let Subject::Component(c) = r.subject {
+        if let Subject::Device(c) = r.subject {
             selected.push(rid);
             if !out.devices.contains(&c) {
                 out.devices.push(c);
@@ -47,7 +47,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
     }
     out.devices.sort();
     for c in &out.devices {
-        for (rid, r) in doc.representations_of(Subject::Component(*c)) {
+        for (rid, r) in doc.representations_of(Subject::Device(*c)) {
             if selected.contains(&rid) || out.here.len() + out.elsewhere.len() >= MAX_PLACEMENTS {
                 continue;
             }

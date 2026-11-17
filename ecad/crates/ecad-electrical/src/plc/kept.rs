@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{ComponentId, Document, ObjectRef, Op, Subject};
+use ecad_model::{DeviceId, Document, ObjectRef, Op, Subject};
 use serde_json::{Value, json};
 
 use super::*;
@@ -13,23 +13,23 @@ use crate::text_style::fonts::TextMetrics;
 /// The kept PLC model (design 045 §11.1).
 #[derive(Debug, Clone, Default)]
 pub struct Plc {
-    pub racks: BTreeMap<ComponentId, RackData>,
-    pub cards: BTreeMap<ComponentId, CardData>,
+    pub racks: BTreeMap<DeviceId, RackData>,
+    pub cards: BTreeMap<DeviceId, CardData>,
     /// The cards whose `plc.rack` holds each ID (valid or not): a rack's cards without a scan.
-    pub naming: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
+    pub naming: BTreeMap<DeviceId, BTreeSet<DeviceId>>,
     /// Checks rows by group, worked out for the groups an update touched.
     checks: BTreeMap<Group, Vec<Check>>,
     /// Cards in no rack (the `unracked` count row).
-    unracked: BTreeSet<ComponentId>,
+    unracked: BTreeSet<DeviceId>,
     /// Brief 045b: each racked card's address block (design 045 §5.1), worked out per rack.
-    pub blocks: BTreeMap<ComponentId, address::Block>,
+    pub blocks: BTreeMap<DeviceId, address::Block>,
     /// Used channels without an address, by rack (the `no-address` count row).
     no_address: BTreeMap<Group, usize>,
     /// The racks and cards the last update recomputed.
-    pub last_changed: BTreeSet<ComponentId>,
+    pub last_changed: BTreeSet<DeviceId>,
     /// Brief 045c: the cards whose I/O rows the last update may have changed (their own data, a
     /// moved block, a target renamed, a wire renumbered): the I/O page and list patch these only.
-    pub rows_changed: BTreeSet<ComponentId>,
+    pub rows_changed: BTreeSet<DeviceId>,
     /// How many updates the model has had: a view that missed one rebuilds instead of patching.
     pub updates: u64,
     /// How many racks and cards the last update recomputed (tests and bench).
@@ -54,7 +54,7 @@ impl Plc {
     /// The whole model, from scratch (open, reload, first show), with text measured in `m`.
     pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> Plc {
         let mut p = Plc::default();
-        let all: Vec<ComponentId> = doc.tagged().map(|(_, c)| c).collect();
+        let all: Vec<DeviceId> = doc.tagged().map(|(_, c)| c).collect();
         let mut groups = BTreeSet::new();
         for c in all {
             p.set(doc, c, &mut groups);
@@ -73,8 +73,8 @@ impl Plc {
     }
 
     /// Recompute device `c` (a rack, a card, or neither now) and note the check groups it touches.
-    fn set(&mut self, doc: &Document, c: ComponentId, groups: &mut BTreeSet<Group>) {
-        let ty = doc.components.get(&c).and_then(|_| card_type_of(doc, c));
+    fn set(&mut self, doc: &Document, c: DeviceId, groups: &mut BTreeSet<Group>) {
+        let ty = doc.devices.get(&c).and_then(|_| card_type_of(doc, c));
         if ty.is_none() && !self.cards.contains_key(&c) && !self.racks.contains_key(&c) {
             // Neither before nor now: nothing to do, and no work counted.
             return;
@@ -112,7 +112,7 @@ impl Plc {
             return;
         }
         let r = rack::rack_ref(doc, c);
-        let props = doc.components.get(&c).map(|x| &x.properties);
+        let props = doc.devices.get(&c).map(|x| &x.properties);
         let text = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         if let RackRef::Rack(x) | RackRef::Missing(x) = r {
             self.naming.entry(x).or_default().insert(c);
@@ -146,16 +146,16 @@ impl Plc {
 
     /// The devices `ops` (the transaction just committed on `doc`) touch, by design 045 §11.1's
     /// map; anything not listed touches nothing.
-    pub fn touched(&self, doc: &Document, ops: &[Op]) -> BTreeSet<ComponentId> {
+    pub fn touched(&self, doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
         let mut out = BTreeSet::new();
         let mut all = false;
         let mut styles = false;
         for op in ops {
             match op {
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                     out.insert(*id);
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. } => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY || key == "part_number" || key == "maker" {
                         if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
                             out.insert(*c);
@@ -166,7 +166,7 @@ impl Plc {
                 }
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => all = true,
                 Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
-                    if let Subject::Component(c) = rep.subject {
+                    if let Subject::Device(c) = rep.subject {
                         out.insert(c);
                     }
                 }
@@ -190,11 +190,11 @@ impl Plc {
                 // Brief 051 (design 051 §9.1): a card's symbol moved, or a wire on one of its
                 // points re-routed, changes its runs and their Checks rows.
                 Op::ModifyItem { id, .. } => match doc.representation_of_item(*id).map(|(_, r)| r.subject) {
-                    Some(Subject::Component(c)) if self.cards.contains_key(&c) => {
+                    Some(Subject::Device(c)) if self.cards.contains_key(&c) => {
                         out.insert(c);
                     }
-                    Some(Subject::Conductor(w)) => {
-                        let ends = doc.conductors.get(&w).map(|x| x.ends).unwrap_or_default();
+                    Some(Subject::Wire(w)) => {
+                        let ends = doc.wires.get(&w).map(|x| x.ends).unwrap_or_default();
                         out.extend(
                             ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
                         );
@@ -220,14 +220,14 @@ impl Plc {
                     _ => None,
                 })
                 .collect();
-            let inherits = |c: &ComponentId| doc.components.get(c).is_none_or(|x| keys.iter().any(|k| !x.properties.contains_key(*k)));
+            let inherits = |c: &DeviceId| doc.devices.get(c).is_none_or(|x| keys.iter().any(|k| !x.properties.contains_key(*k)));
             out.extend(self.racks.keys().filter(|c| inherits(c)).copied());
             out.extend(self.cards.keys().filter(|c| inherits(c)).copied());
         }
         // Only racks and cards, before or now (a device that is neither is not touched).
         out.retain(|c| self.cards.contains_key(c) || self.racks.contains_key(c) || card_type_of(doc, *c).is_some());
         // A rack's cards read its tag and slot range.
-        let racks: Vec<ComponentId> = out.iter().filter(|c| self.racks.contains_key(c)).copied().collect();
+        let racks: Vec<DeviceId> = out.iter().filter(|c| self.racks.contains_key(c)).copied().collect();
         for r in racks {
             out.extend(self.naming.get(&r).into_iter().flatten().copied());
         }
@@ -246,10 +246,10 @@ impl Plc {
         // the cards on its nets.
         for op in ops {
             match op {
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. } if key == ecad_model::tag::TAG_KEY && !self.cards.contains_key(c) => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == ecad_model::tag::TAG_KEY && !self.cards.contains_key(c) => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
-                Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
+                Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
                 }
                 // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the
@@ -259,7 +259,7 @@ impl Plc {
                 }
                 // A continuation renamed joins or splits nets: every continuation of the old and
                 // the new name, and the nets they are on now.
-                Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if key == ecad_model::connectivity::NAME => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == ecad_model::connectivity::NAME => {
                     let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
                     for v in [before, after].into_iter().flatten() {
                         for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
@@ -269,7 +269,7 @@ impl Plc {
                     self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
                 }
                 // A strip link joins its positions' nets.
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. } if ecad_model::links::link_number(key).is_some() => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key).is_some() => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
                 _ => {}
@@ -279,7 +279,7 @@ impl Plc {
         if touched.is_empty() {
             return false;
         }
-        let before: Vec<(ComponentId, Option<CardData>, Option<RackData>)> =
+        let before: Vec<(DeviceId, Option<CardData>, Option<RackData>)> =
             touched.iter().map(|c| (*c, self.cards.get(c).cloned(), self.racks.get(c).cloned())).collect();
         let mut groups = BTreeSet::new();
         for c in &touched {
@@ -295,7 +295,7 @@ impl Plc {
         for g in groups {
             changed |= self.set_checks(doc, g, m);
         }
-        let cards: Vec<ComponentId> = touched.iter().chain(self.last_changed.iter()).filter(|c| self.cards.contains_key(c)).copied().collect();
+        let cards: Vec<DeviceId> = touched.iter().chain(self.last_changed.iter()).filter(|c| self.cards.contains_key(c)).copied().collect();
         self.rows_changed.extend(cards);
         changed || !self.rows_changed.is_empty()
     }
@@ -324,7 +324,7 @@ impl Plc {
     }
 
     /// The address of channel `i` of card `c` as shown (typed, else automatic) and whether typed.
-    pub fn address_of(&self, doc: &Document, c: ComponentId, i: u32) -> (Option<String>, bool) {
+    pub fn address_of(&self, doc: &Document, c: DeviceId, i: u32) -> (Option<String>, bool) {
         let Some(card) = self.cards.get(&c) else { return (None, false) };
         if let Some(t) = card.chans.get(&i).and_then(|x| x.typed.clone()) {
             return (Some(t), true);
@@ -333,7 +333,7 @@ impl Plc {
     }
 
     /// The automatic address of channel `i` of card `c` (`output`: its output address).
-    pub fn automatic(&self, doc: &Document, c: ComponentId, i: u32, output: bool) -> Option<String> {
+    pub fn automatic(&self, doc: &Document, c: DeviceId, i: u32, output: bool) -> Option<String> {
         let card = self.cards.get(&c)?;
         let RackRef::Rack(r) = card.rack else { return None };
         let b = self.blocks.get(&c)?;
@@ -344,7 +344,7 @@ impl Plc {
     }
 
     /// Used channels of rack `r`'s cards with no address.
-    fn no_address_of(&self, doc: &Document, r: ComponentId) -> usize {
+    fn no_address_of(&self, doc: &Document, r: DeviceId) -> usize {
         let mut n = 0;
         for card in self.cards_of(r) {
             for (i, ch) in &card.chans {
@@ -356,12 +356,12 @@ impl Plc {
         n
     }
 
-    fn tag_of(&self, c: ComponentId) -> String {
+    fn tag_of(&self, c: DeviceId) -> String {
         self.cards.get(&c).map(|x| x.tag.clone()).or_else(|| self.racks.get(&c).map(|x| x.tag.clone())).unwrap_or_else(|| "?".into())
     }
 
     /// The next free slot of rack `r` in the model.
-    pub fn next_free(&self, r: ComponentId) -> Option<u32> {
+    pub fn next_free(&self, r: DeviceId) -> Option<u32> {
         let rack = self.racks.get(&r)?;
         let taken: BTreeSet<u32> = self.naming.get(&r).into_iter().flatten().filter_map(|c| self.cards.get(c)).filter_map(|c| c.slot).collect();
         (rack.first..rack.first.saturating_add(rack.slots)).find(|s| !taken.contains(s))
@@ -382,7 +382,7 @@ impl Plc {
                 kind: Kind::RackMissing,
                 page: card.page,
                 at: None,
-                object: Object::Component(card.id),
+                object: Object::Device(card.id),
                 which: format!("{} names a rack that is not in the project", card.tag),
                 fix: Some(Fix::Plc(card.id, PlcFix::RackMissing)),
             });
@@ -397,7 +397,7 @@ impl Plc {
                     kind: Kind::SlotRange,
                     page: card.page,
                     at: None,
-                    object: Object::Component(card.id),
+                    object: Object::Device(card.id),
                     which: format!("{} is in slot {s}; {} has slots {}–{last}", card.tag, rack.tag, rack.first),
                     fix: Some(Fix::Plc(card.id, PlcFix::SlotRange)),
                 }),
@@ -405,7 +405,7 @@ impl Plc {
                     kind: Kind::SlotRange,
                     page: card.page,
                     at: None,
-                    object: Object::Component(card.id),
+                    object: Object::Device(card.id),
                     which: format!("{} is in {} but in no slot", card.tag, rack.tag),
                     fix: Some(Fix::Plc(card.id, PlcFix::SlotRange)),
                 }),
@@ -423,7 +423,7 @@ impl Plc {
                     kind: Kind::SlotTwice,
                     page: later.page,
                     at: None,
-                    object: Object::Component(later.id),
+                    object: Object::Device(later.id),
                     which: format!("{} slot {s} holds {}", rack.tag, names.join(" and ")),
                     fix: Some(Fix::Plc(later.id, PlcFix::NextFreeSlot)),
                 });
@@ -455,7 +455,7 @@ impl Plc {
                     kind: Kind::ChannelTwice,
                     page: Some(page),
                     at: None,
-                    object: Object::Component(card.id),
+                    object: Object::Device(card.id),
                     which: format!("{} channel {} is drawn twice ({})", card.tag, i + first, places.join(", ")),
                     fix: Some(Fix::Plc(card.id, PlcFix::ChannelTwice(*i))),
                 });
@@ -471,7 +471,7 @@ impl Plc {
                         kind: Kind::ChannelType,
                         page: Some(*page),
                         at: None,
-                        object: Object::Component(card.id),
+                        object: Object::Device(card.id),
                         which: format!("{} is a {}; channel {} is drawn as {}", card.tag, card.ty.noun(), i + first, t.code()),
                         fix: None,
                     });
@@ -483,7 +483,7 @@ impl Plc {
                 kind: Kind::ChannelOver,
                 page: card.page,
                 at: None,
-                object: Object::Component(card.id),
+                object: Object::Device(card.id),
                 which: format!("{} has channel {} drawn; it has {} channels", card.tag, h + first, card.channels),
                 fix: Some(Fix::Plc(card.id, PlcFix::ChannelOver(h))),
             });
@@ -501,7 +501,7 @@ impl Plc {
                     kind: Kind::AddressOverflow,
                     page: card.page,
                     at: None,
-                    object: Object::Component(card.id),
+                    object: Object::Device(card.id),
                     which: format!("{}'s block passes byte {}", card.tag, address::MAX_BYTE),
                     fix: Some(Fix::Plc(card.id, PlcFix::Unpin)),
                 });
@@ -525,7 +525,7 @@ impl Plc {
                         kind: Kind::AddressOverlap,
                         page: later.page,
                         at: None,
-                        object: Object::Component(later.id),
+                        object: Object::Device(later.id),
                         which: format!(
                             "{} {dir} {} overlap {} {dir} {} ({})",
                             later.tag,
@@ -564,7 +564,7 @@ impl Plc {
                     kind: Kind::AddressTwice,
                     page: c.page,
                     at: None,
-                    object: Object::Component(c.id),
+                    object: Object::Device(c.id),
                     which: format!("{a} is the address of {}", words.join(" and ")),
                     fix: Some(Fix::Plc(c.id, PlcFix::ClearTyped(*i))),
                 });
@@ -584,7 +584,7 @@ impl Plc {
                 at: None,
                 object: Object::None,
                 which,
-                fix: Some(Fix::Plc(ComponentId(0), PlcFix::Unracked)),
+                fix: Some(Fix::Plc(DeviceId(0), PlcFix::Unracked)),
             });
         }
         out.extend(self.signal_checks());
@@ -597,7 +597,7 @@ impl Plc {
                 at: None,
                 object: Object::None,
                 which,
-                fix: Some(Fix::Plc(ComponentId(0), PlcFix::NoAddress)),
+                fix: Some(Fix::Plc(DeviceId(0), PlcFix::NoAddress)),
             });
         }
         out
@@ -609,7 +609,7 @@ impl Plc {
     fn signal_checks(&self) -> Vec<Check> {
         let mut out = Vec::new();
         let format: &dyn tagtable::TagFormat = &tagtable::GenericCsv;
-        let mut by_plc: BTreeMap<Option<ComponentId>, BTreeMap<String, Vec<(&CardData, u32)>>> = BTreeMap::new();
+        let mut by_plc: BTreeMap<Option<DeviceId>, BTreeMap<String, Vec<(&CardData, u32)>>> = BTreeMap::new();
         for card in self.cards.values().filter(|c| c.ty.has_channels()) {
             let plc = match card.rack {
                 RackRef::Rack(r) => Some(r),
@@ -623,7 +623,7 @@ impl Plc {
                         kind: Kind::PlcTagChars,
                         page: card.page,
                         at: None,
-                        object: Object::Component(card.id),
+                        object: Object::Device(card.id),
                         which: format!("{} channel {}", card.tag, i + card.first),
                         fix: Some(Fix::Plc(card.id, PlcFix::Rename(*i))),
                     });
@@ -640,7 +640,7 @@ impl Plc {
                         kind: Kind::PlcTagTwice,
                         page: h.0.page,
                         at: None,
-                        object: Object::Component(h.0.id),
+                        object: Object::Device(h.0.id),
                         which: format!("{}: \"{tag}\" is also the tag of {}", words(h), others.join(" and ")),
                         fix: Some(Fix::Plc(h.0.id, PlcFix::Rename(h.1))),
                     });
@@ -652,7 +652,7 @@ impl Plc {
 
     /// The buttons of a PLC Checks row's fix, each a label, a command and its parameters (design
     /// 045 §9). Empty when the row's card is gone.
-    pub fn fix_commands(&self, c: ComponentId, fix: PlcFix) -> Vec<(String, &'static str, Value)> {
+    pub fn fix_commands(&self, c: DeviceId, fix: PlcFix) -> Vec<(String, &'static str, Value)> {
         let tag = self.tag_of(c);
         match fix {
             PlcFix::NextFreeSlot => {
@@ -729,7 +729,7 @@ impl Plc {
     }
 
     /// The first channel number of card `c` as the model last read it.
-    fn first_of(&self, c: ComponentId) -> u32 {
+    fn first_of(&self, c: DeviceId) -> u32 {
         self.cards.get(&c).map_or(0, |x| x.first)
     }
 
@@ -742,7 +742,7 @@ impl Plc {
 
     /// Brief 051: the Checks rows about device `c` (a card or a rack), from its own group and its
     /// rack's group (slot rows sit there).
-    pub fn checks_naming(&self, c: ComponentId) -> impl Iterator<Item = &Check> {
+    pub fn checks_naming(&self, c: DeviceId) -> impl Iterator<Item = &Check> {
         let rack = self.cards.get(&c).and_then(|x| match x.rack {
             RackRef::Rack(r) | RackRef::Missing(r) => Some(r),
             _ => None,
@@ -760,14 +760,14 @@ impl Plc {
     }
 
     /// The cards in no rack (or naming one that is missing), by tag.
-    pub fn unracked_by_tag(&self) -> Vec<ComponentId> {
+    pub fn unracked_by_tag(&self) -> Vec<DeviceId> {
         let mut v: Vec<&CardData> = self.cards.values().filter(|c| !matches!(c.rack, RackRef::Rack(_))).collect();
         v.sort_by(|a, b| (a.tag.as_str(), a.id).cmp(&(b.tag.as_str(), b.id)));
         v.into_iter().map(|c| c.id).collect()
     }
 
     /// The cards of rack `r` in slot order (then tag).
-    pub fn cards_of(&self, r: ComponentId) -> Vec<&CardData> {
+    pub fn cards_of(&self, r: DeviceId) -> Vec<&CardData> {
         let mut v: Vec<&CardData> =
             self.naming.get(&r).into_iter().flatten().filter_map(|c| self.cards.get(c)).filter(|c| c.rack == RackRef::Rack(r)).collect();
         v.sort_by(|a, b| (a.slot, a.tag.as_str(), a.id).cmp(&(b.slot, b.tag.as_str(), b.id)));
@@ -775,7 +775,7 @@ impl Plc {
     }
 
     /// One card as `plcracks` lists it.
-    pub fn card_json(&self, doc: &Document, c: ComponentId) -> Value {
+    pub fn card_json(&self, doc: &Document, c: DeviceId) -> Value {
         let Some(card) = self.cards.get(&c) else { return Value::Null };
         // Brief 051 (design 051 §7): the tile's data.
         let tile = overview::card_tile(doc, self, card, String::new());

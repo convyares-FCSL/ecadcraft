@@ -35,13 +35,13 @@ pub struct TypedLoads;
 
 impl LoadSource for TypedLoads {
     fn load(&self, doc: &Document, s: RatedSubject) -> Option<Load> {
-        let v = s.props(doc)?.get(super::LOAD)?;
-        super::parse::current(v).map(|amps| Load { amps, from: LoadFrom::Typed })
+        let (_, load) = s.inputs(doc, &mut Vec::new());
+        load.map(|amps| Load { amps, from: LoadFrom::Typed })
     }
 
     fn touched(&self, _doc: &Document, op: &Op) -> Vec<RatedSubject> {
         match op {
-            Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), key, .. } if key == super::LOAD => vec![RatedSubject::Conductor(*c)],
+            Op::ModifyWire { id, before, after } if before.load != after.load => vec![RatedSubject::Wire(*id)],
             Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), key, .. } if key == super::LOAD => vec![RatedSubject::Cable(*k)],
             _ => Vec::new(),
         }

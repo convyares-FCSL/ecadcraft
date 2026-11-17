@@ -45,22 +45,21 @@ fn show(h: &mut H, v: ListsView) {
 /// The demo, rated: Power L rated 27 A at 30 °C (synthetic), panel 40 °C, Q01 4 A, the L wire
 /// from Q01:2 bundled 0.80; -W01 on the synthetic table, method E, 35 °C, 3 grouped, 12 m,
 /// protected by Q01.
-fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::ConductorId, ecad_model::CableId) {
+fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::CableId) {
     let path = crate::checks_ui::demo_file(dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     let d = doc(h);
-    let q01 =
-        d.components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t.trim_start_matches('-') == "Q01")).map(|(id, _)| *id).unwrap();
-    let tag = d.components[&q01].properties["tag"].clone();
+    let q01 = d.devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t.trim_start_matches('-') == "Q01")).map(|(id, _)| *id).unwrap();
+    let tag = d.devices[&q01].properties["tag"].clone();
     // The L wire leaving Q01:2 (30, 110) downwards.
     let wire = d
-        .conductors
+        .wires
         .iter()
         .find(|(_, c)| {
-            c.properties.get("potential").is_some_and(|p| p == "L")
+            c.potential_name() == Some("L")
                 && c.ends.iter().flatten().any(|t| d.terminals.get(t).is_some_and(|x| x.component == q01 && x.label.as_deref() == Some("2")))
         })
         .map(|(id, _)| *id)

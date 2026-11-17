@@ -22,7 +22,7 @@ fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
 }
 
-/// FP-W3: `wire` that merges records one `Wire` transaction with no `CreateConductor`, and says
+/// FP-W3: `wire` that merges records one `Wire` transaction with no `CreateWire`, and says
 /// `created: false` with the existing wire; a wire between two open ends removes the folded wire.
 #[test]
 fn wire_merging_through_execute() {
@@ -33,13 +33,13 @@ fn wire_merging_through_execute() {
     assert_eq!(r["conductor"], first["conductor"]);
     let t = last(&mut c);
     assert_eq!(t.label, "Wire");
-    assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateConductor { .. })), "{:?}", t.ops);
+    assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "{:?}", t.ops);
     // Both ends: the folded wire is reported and no longer exists.
     let other = c.exec("wire", json!({"points": [[100, -20], [140, -20]]}));
     let r = c.exec("wire", json!({"points": [[50, -20], [100, -20]]}));
     assert_eq!(r["removed"], json!([hex(&other, "conductor")]), "{r}");
     let t = last(&mut c);
-    assert!(t.ops.iter().any(|o| matches!(o, Op::DeleteConductor { id, .. } if id.hex() == hex(&other, "conductor"))));
+    assert!(t.ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id.hex() == hex(&other, "conductor"))));
 }
 
 /// `joinwires`: one `Join wires` transaction by the agent.

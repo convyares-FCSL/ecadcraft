@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::book::Book;
 use crate::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, ConductorId, ItemId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, ItemId, PageId, RepresentationId, TerminalId, WireId};
 use crate::sheet::Grid;
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
@@ -36,7 +36,7 @@ pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, Repr
 /// representation through the same helper, so they cannot drift apart.
 pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
     let component = doc.terminals.get(&terminal)?.component;
-    doc.representations_of(Subject::Component(component))
+    doc.representations_of(Subject::Device(component))
         .filter(|(_, r)| r.page == page)
         .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == terminal).map(|(_, p)| p))
 }
@@ -44,7 +44,7 @@ pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> 
 /// The terminals a component representation shows, with their positions, in the order
 /// [`terminal_positions`] lists them.
 fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
-    let Subject::Component(component) = r.subject else { return Vec::new() };
+    let Subject::Device(component) = r.subject else { return Vec::new() };
     match r.form {
         Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
         Form::Symbol => {
@@ -68,8 +68,8 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
 }
 
 /// The route of a conductor on a page: its first route item's path.
-pub fn route_on_page(doc: &Document, conductor: ConductorId, page: PageId) -> Option<(crate::id::ItemId, Primitive)> {
-    doc.representations_of(Subject::Conductor(conductor)).filter(|(_, r)| r.page == page).find_map(|(_, r)| {
+pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<(crate::id::ItemId, Primitive)> {
+    doc.representations_of(Subject::Wire(conductor)).filter(|(_, r)| r.page == page).find_map(|(_, r)| {
         let id = *r.items.first()?;
         match &doc.items.get(&id)?.kind {
             ItemKind::Primitive(p) if p.path_ends().is_some() => Some((id, p.clone())),
@@ -81,7 +81,7 @@ pub fn route_on_page(doc: &Document, conductor: ConductorId, page: PageId) -> Op
 /// An attached conductor end whose drawn route end is not at its terminal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Mismatch {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub end: End,
     pub terminal: TerminalId,
     pub page: PageId,
@@ -100,8 +100,8 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
     for page in &doc.page_order {
         positions.insert(*page, terminal_positions(doc, *page));
     }
-    for (cid, c) in &doc.conductors {
-        for (_, r) in doc.representations_of(Subject::Conductor(*cid)) {
+    for (cid, c) in &doc.wires {
+        for (_, r) in doc.representations_of(Subject::Wire(*cid)) {
             let Some((a, b)) = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                 ItemKind::Primitive(p) => p.path_ends(),
                 ItemKind::Symbol(_) => None,
@@ -125,7 +125,7 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Net {
     pub terminals: Vec<TerminalId>,
-    pub conductors: Vec<ConductorId>,
+    pub wires: Vec<WireId>,
 }
 
 /// Nets from stored attachments only (geometry is never consulted, DOC-03).
@@ -152,8 +152,8 @@ pub fn nets(doc: &Document) -> Vec<Net> {
         }
         x
     }
-    for (cid, c) in &doc.conductors {
-        let ci = id_of(Node::Conductor(*cid), &mut nodes, &mut parent);
+    for (cid, c) in &doc.wires {
+        let ci = id_of(Node::Wire(*cid), &mut nodes, &mut parent);
         for t in c.ends.iter().flatten() {
             let ti = id_of(Node::Terminal(*t), &mut nodes, &mut parent);
             let (a, b) = (find(&mut parent, ci), find(&mut parent, ti));
@@ -165,25 +165,25 @@ pub fn nets(doc: &Document) -> Vec<Net> {
     let mut groups: BTreeMap<usize, Net> = BTreeMap::new();
     for (i, n) in nodes.iter().enumerate() {
         let root = find(&mut parent, i);
-        let net = groups.entry(root).or_insert_with(|| Net { terminals: Vec::new(), conductors: Vec::new() });
+        let net = groups.entry(root).or_insert_with(|| Net { terminals: Vec::new(), wires: Vec::new() });
         match n {
             Node::Terminal(t) => net.terminals.push(*t),
-            Node::Conductor(c) => net.conductors.push(*c),
+            Node::Wire(c) => net.wires.push(*c),
         }
     }
     let mut out: Vec<Net> = groups.into_values().collect();
     for n in &mut out {
         n.terminals.sort();
-        n.conductors.sort();
+        n.wires.sort();
     }
-    out.sort_by(|a, b| a.conductors.cmp(&b.conductors));
+    out.sort_by(|a, b| a.wires.cmp(&b.wires));
     out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Node {
     Terminal(TerminalId),
-    Conductor(ConductorId),
+    Wire(WireId),
 }
 
 // ---------------------------------------------------------------- cable references (brief 010)
@@ -333,10 +333,10 @@ impl CableReference {
 
 /// The end points of each conductor's route per page (its first route item, as
 /// [`route_on_page`]), built in one pass so that many lookups stay cheap.
-pub fn route_ends_by_page(doc: &Document) -> BTreeMap<(ConductorId, PageId), (Pt, Pt)> {
+pub fn route_ends_by_page(doc: &Document) -> BTreeMap<(WireId, PageId), (Pt, Pt)> {
     let mut out = BTreeMap::new();
     for r in doc.representations.values() {
-        let Subject::Conductor(c) = r.subject else { continue };
+        let Subject::Wire(c) = r.subject else { continue };
         if out.contains_key(&(c, r.page)) {
             continue;
         }
@@ -353,8 +353,8 @@ pub fn route_ends_by_page(doc: &Document) -> BTreeMap<(ConductorId, PageId), (Pt
 
 /// The end points of `conductor`'s route on `page` (its first route item, as [`route_on_page`]
 /// and [`route_ends_by_page`] pick it), found through the subject index.
-pub fn route_ends_on(doc: &Document, conductor: ConductorId, page: PageId) -> Option<(Pt, Pt)> {
-    doc.representations_of(Subject::Conductor(conductor)).filter(|(_, r)| r.page == page).find_map(|(_, r)| {
+pub fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> Option<(Pt, Pt)> {
+    doc.representations_of(Subject::Wire(conductor)).filter(|(_, r)| r.page == page).find_map(|(_, r)| {
         r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
             ItemKind::Primitive(p) => p.path_ends(),
             ItemKind::Symbol(_) => None,
@@ -399,7 +399,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
     // Each page's grid and shown number, worked out once per page.
     let mut pages: BTreeMap<PageId, (Grid, String)> = BTreeMap::new();
     // Route ends per (conductor, page), looked up once each (a cable may list a conductor twice).
-    let mut routes: BTreeMap<(ConductorId, PageId), Option<(Pt, Pt)>> = BTreeMap::new();
+    let mut routes: BTreeMap<(WireId, PageId), Option<(Pt, Pt)>> = BTreeMap::new();
     // The member routes of each (cable, page) with a reference, built once per pair.
     let mut here: BTreeMap<(CableId, PageId), Vec<(Pt, Pt)>> = BTreeMap::new();
     for (_, r) in &refs {

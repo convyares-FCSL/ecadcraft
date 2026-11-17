@@ -16,7 +16,7 @@ use std::f64::consts::FRAC_PI_2;
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
 use ecad_model::sheet::unit_scale;
-use ecad_model::{CableId, ComponentId, Document, PageId, Primitive, Pt};
+use ecad_model::{CableId, DeviceId, Document, PageId, Primitive, Pt};
 
 use crate::accessories::Acc;
 use crate::convert::kind_for_primitive;
@@ -539,7 +539,7 @@ fn cables(
     doc: &Document, pen: &mut Pen, cols: &[(Col<'_>, f64)], c0: usize, leads: &[(f64, &SideCell)], g: &Geometry, fr: &Frame, lk: &Looks, o: &Outputs,
 ) {
     // Per cable on this sheet: first and last lead x, its far devices.
-    let mut bars: BTreeMap<CableId, (f64, f64, Option<String>, BTreeSet<ComponentId>)> = BTreeMap::new();
+    let mut bars: BTreeMap<CableId, (f64, f64, Option<String>, BTreeSet<DeviceId>)> = BTreeMap::new();
     for (x, c) in leads {
         let Some((k, tag)) = &c.cable else { continue };
         let e = bars.entry(*k).or_insert((*x, *x, tag.clone(), BTreeSet::new()));
@@ -551,8 +551,7 @@ fn cables(
         return;
     }
     // Lanes: greedy by first lead, then tag (stable).
-    let mut order: Vec<(CableId, f64, f64, Option<String>, BTreeSet<ComponentId>)> =
-        bars.into_iter().map(|(k, (a, b, t, f))| (k, a, b, t, f)).collect();
+    let mut order: Vec<(CableId, f64, f64, Option<String>, BTreeSet<DeviceId>)> = bars.into_iter().map(|(k, (a, b, t, f))| (k, a, b, t, f)).collect();
     order.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.3.cmp(&b.3)).then(a.0.cmp(&b.0)));
     let mut lane_end: Vec<f64> = Vec::new();
     let mut lanes: Vec<usize> = Vec::with_capacity(order.len());

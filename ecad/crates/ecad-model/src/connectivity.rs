@@ -36,24 +36,23 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use crate::doc::{Document, Properties};
-use crate::id::{ComponentId, ConductorId, TerminalId};
-use crate::keys::PropsExt;
+use crate::doc::{Document, Properties, Wire};
+use crate::id::{DeviceId, TerminalId, WireId};
 use crate::op::{ObjectRef, Op};
 
-/// Conductor property: the wire number its net carries (design 022 §5.1).
+/// Wire property: the wire number its net carries (design 022 §5.1).
 pub const WIRE_NUMBER: &str = "wire_number";
-/// Conductor property: `yes` when the wire number was fixed by hand.
+/// Wire property: `yes` when the wire number was fixed by hand.
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
-/// Conductor property: the potential (`24V`, `L1`…) the conductor carries.
+/// Wire property: the potential (`24V`, `L1`…) the conductor carries.
 pub const POTENTIAL: &str = "potential";
-/// Component property naming what a tagless component is (`junction`, `continuation`).
+/// Device property naming what a tagless component is (`junction`, `continuation`).
 pub const KIND: &str = "kind";
 /// The [`KIND`] of a continuation.
 pub const CONTINUATION: &str = "continuation";
 /// The [`KIND`] of a junction.
 pub const JUNCTION: &str = "junction";
-/// Component property: a continuation's name.
+/// Device property: a continuation's name.
 pub const NAME: &str = "name";
 
 /// The key two continuation names are compared by: trimmed, upper case.
@@ -86,7 +85,7 @@ pub fn split_number(number: &str) -> Option<(&str, u64)> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Node {
     Terminal(TerminalId),
-    Conductor(ConductorId),
+    Wire(WireId),
     /// A continuation name group, by [`name_key`].
     Name(String),
 }
@@ -104,12 +103,8 @@ pub(crate) struct Contribution {
 }
 
 impl Contribution {
-    pub(crate) fn of(props: &Properties) -> Self {
-        Self {
-            number: props.text(crate::keys::WIRE_NUMBER).map(str::to_string),
-            fixed: props.flag(crate::keys::WIRE_NUMBER_FIXED) == Some(true),
-            potential: props.get(POTENTIAL).cloned(),
-        }
+    pub(crate) fn of(wire: &Wire) -> Self {
+        Self { number: wire.number_text().map(str::to_string), fixed: wire.number_fixed(), potential: wire.potential_name().map(str::to_string) }
     }
 }
 
@@ -117,7 +112,7 @@ impl Contribution {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NetData {
     pub terminals: BTreeSet<TerminalId>,
-    pub conductors: BTreeSet<ConductorId>,
+    pub wires: BTreeSet<WireId>,
     /// Continuation name keys joined into it.
     pub names: BTreeSet<String>,
     /// Wire number → how many of its conductors carry it.
@@ -130,25 +125,25 @@ pub struct NetData {
 
 impl NetData {
     fn len(&self) -> usize {
-        self.terminals.len() + self.conductors.len() + self.names.len()
+        self.terminals.len() + self.wires.len() + self.names.len()
     }
 
     fn nodes(&self) -> Vec<Node> {
         let mut out: Vec<Node> = Vec::with_capacity(self.len());
         out.extend(self.terminals.iter().map(|t| Node::Terminal(*t)));
-        out.extend(self.conductors.iter().map(|c| Node::Conductor(*c)));
+        out.extend(self.wires.iter().map(|c| Node::Wire(*c)));
         out.extend(self.names.iter().map(|n| Node::Name(n.clone())));
         out
     }
 
     /// The members, sorted, as a comparable value.
-    fn members(&self) -> (Vec<TerminalId>, Vec<ConductorId>, Vec<String>) {
-        (self.terminals.iter().copied().collect(), self.conductors.iter().copied().collect(), self.names.iter().cloned().collect())
+    fn members(&self) -> (Vec<TerminalId>, Vec<WireId>, Vec<String>) {
+        (self.terminals.iter().copied().collect(), self.wires.iter().copied().collect(), self.names.iter().cloned().collect())
     }
 
     /// The conductor with the lowest ID (nets are ordered by it).
-    pub fn first_conductor(&self) -> Option<ConductorId> {
-        self.conductors.first().copied()
+    pub fn first_conductor(&self) -> Option<WireId> {
+        self.wires.first().copied()
     }
 }
 
@@ -198,7 +193,7 @@ impl std::fmt::Debug for Connectivity {
 fn present(doc: &Document, node: &Node) -> bool {
     match node {
         Node::Terminal(t) => doc.terminals.contains_key(t),
-        Node::Conductor(c) => doc.conductors.contains_key(c),
+        Node::Wire(c) => doc.wires.contains_key(c),
         Node::Name(k) => doc.index.continuations.contains_key(k),
     }
 }
@@ -206,7 +201,7 @@ fn present(doc: &Document, node: &Node) -> bool {
 /// The name group a terminal's component joins it to, if it is a named continuation.
 fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
     let c = doc.terminals.get(&t)?.component;
-    continuation_key(&doc.components.get(&c)?.properties)
+    continuation_key(&doc.devices.get(&c)?.properties)
 }
 
 /// The terminals bridged to `t` inside its device.
@@ -238,7 +233,7 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
             .map(|(id, _)| id)
             .collect();
     }
-    let Some(def) = doc.components.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
+    let Some(def) = doc.devices.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
         return Vec::new();
     };
     if def.bridges.is_empty() {
@@ -255,7 +250,7 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
 fn degree(doc: &Document, node: &Node) -> usize {
     match node {
         Node::Terminal(t) => doc.index.terminal_ends.get(t).map_or(0, BTreeMap::len).saturating_add(2),
-        Node::Conductor(_) => 2,
+        Node::Wire(_) => 2,
         Node::Name(k) => doc.index.continuations.get(k).map_or(0, BTreeMap::len),
     }
 }
@@ -276,8 +271,8 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
     match node {
         Node::Terminal(t) => {
             for (c, _) in doc.ends_at(*t) {
-                if doc.conductors.contains_key(&c) {
-                    out.push(Node::Conductor(c));
+                if doc.wires.contains_key(&c) {
+                    out.push(Node::Wire(c));
                 }
             }
             if let Some(k) = name_of_terminal(doc, *t) {
@@ -285,8 +280,8 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
             }
             out.extend(bridged(doc, *t).into_iter().map(Node::Terminal));
         }
-        Node::Conductor(c) => {
-            if let Some(cond) = doc.conductors.get(c) {
+        Node::Wire(c) => {
+            if let Some(cond) = doc.wires.get(c) {
                 for t in cond.ends.iter().flatten() {
                     if doc.terminals.contains_key(t) {
                         out.push(Node::Terminal(*t));
@@ -311,11 +306,11 @@ impl Connectivity {
             .terminals
             .keys()
             .map(|t| Node::Terminal(*t))
-            .chain(doc.conductors.keys().map(|k| Node::Conductor(*k)))
+            .chain(doc.wires.keys().map(|k| Node::Wire(*k)))
             .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())));
         // Link edges, worked out once per component with links (a chain per link).
         let mut link_edges: HashMap<TerminalId, Vec<TerminalId>> = HashMap::new();
-        for (id, comp) in &doc.components {
+        for (id, comp) in &doc.devices {
             for (_, p) in crate::links::of(&comp.properties) {
                 let m = crate::links::Matcher::of(&p);
                 let members: Vec<TerminalId> = doc.terminals_of(*id).filter(|(_, x)| m.matches_terminal(x)).map(|(t, _)| t).collect();
@@ -357,7 +352,7 @@ impl Connectivity {
     /// Put `node` (not in any net) into net `id` with its contributions.
     fn attach(&mut self, doc: &Document, node: Node, id: NetId) {
         let contribution = match &node {
-            Node::Conductor(c) => doc.conductors.get(c).map(|x| Contribution::of(&x.properties)),
+            Node::Wire(c) => doc.wires.get(c).map(Contribution::of),
             _ => None,
         };
         if let Some(net) = self.nets.get_mut(&id) {
@@ -365,8 +360,8 @@ impl Connectivity {
                 Node::Terminal(t) => {
                     net.terminals.insert(*t);
                 }
-                Node::Conductor(c) => {
-                    net.conductors.insert(*c);
+                Node::Wire(c) => {
+                    net.wires.insert(*c);
                 }
                 Node::Name(k) => {
                     net.names.insert(k.clone());
@@ -437,18 +432,18 @@ impl Connectivity {
                 Node::Terminal(t) => {
                     net.terminals.remove(t);
                 }
-                Node::Conductor(c) => {
-                    net.conductors.remove(c);
+                Node::Wire(c) => {
+                    net.wires.remove(c);
                 }
                 Node::Name(k) => {
                     net.names.remove(k);
                 }
             }
         }
-        if let Node::Conductor(c) = node
-            && let Some(x) = doc.conductors.get(c)
+        if let Node::Wire(c) = node
+            && let Some(x) = doc.wires.get(c)
         {
-            let con = Contribution::of(&x.properties);
+            let con = Contribution::of(x);
             self.contribute(from, &con, false);
             self.contribute(to, &con, true);
         }
@@ -457,8 +452,8 @@ impl Connectivity {
                 Node::Terminal(t) => {
                     net.terminals.insert(*t);
                 }
-                Node::Conductor(c) => {
-                    net.conductors.insert(*c);
+                Node::Wire(c) => {
+                    net.wires.insert(*c);
                 }
                 Node::Name(k) => {
                     net.names.insert(k.clone());
@@ -519,12 +514,12 @@ impl Connectivity {
 
     /// Take `node` out of its net (it no longer exists; `doc` still shows it); the rest of the net
     /// is suspect, with the node's neighbours as the frontier.
-    fn remove(&mut self, doc: &Document, doc_props: Option<&Properties>, node: &Node) {
+    fn remove(&mut self, doc: &Document, wire: Option<&Wire>, node: &Node) {
         let Some(id) = self.node_net.get(node).copied() else { return };
         let around: Vec<Node> = neighbors(doc, node).into_iter().filter(|m| m != node && self.node_net.get(m) == Some(&id)).collect();
         self.node_net.remove(node);
-        if let Some(props) = doc_props {
-            let con = Contribution::of(props);
+        if let Some(w) = wire {
+            let con = Contribution::of(w);
             self.contribute(id, &con, false);
             self.count_seq(&con, false);
         }
@@ -534,8 +529,8 @@ impl Connectivity {
                     Node::Terminal(t) => {
                         net.terminals.remove(t);
                     }
-                    Node::Conductor(c) => {
-                        net.conductors.remove(c);
+                    Node::Wire(c) => {
+                        net.wires.remove(c);
                     }
                     Node::Name(k) => {
                         net.names.remove(k);
@@ -571,7 +566,7 @@ impl Connectivity {
     }
 
     /// The terminals of `component` (present ones).
-    fn terminals_of(doc: &Document, component: ComponentId) -> Vec<Node> {
+    fn terminals_of(doc: &Document, component: DeviceId) -> Vec<Node> {
         doc.terminals_of(component).map(|(t, _)| Node::Terminal(t)).collect()
     }
 
@@ -580,42 +575,42 @@ impl Connectivity {
     /// # Update map (design 022 §11)
     /// | Op | Here |
     /// | --- | --- |
-    /// | `CreateConductor` / `DeleteConductor` | node added and joined to its ends / node removed, its net suspect |
+    /// | `CreateWire` / `DeleteWire` | node added and joined to its ends / node removed, its net suspect |
     /// | `AttachEnd` | `before` cut (net suspect), `after` joined |
     /// | `AddTerminal` / `RemoveTerminal` | node added and joined (ends, name group, bridges) / removed |
-    /// | `CreateComponent` / `DeleteComponent` of a continuation | its terminals joined to / cut from its name group |
+    /// | `CreateDevice` / `DeleteDevice` of a continuation | its terminals joined to / cut from its name group |
     /// | `SetProperty` component `kind` or `name` | cut from the old name group, joined to the new |
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
-    /// | `SetComponentDefinition` (brief 048) | its terminals cut, then joined under the new definition |
+    /// | `SetDeviceDefinition` (brief 048) | its terminals cut, then joined under the new definition |
     /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
     /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges (brief 036, FP8a; items: brief 044) | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
     pub(crate) fn before_op(&mut self, doc: &Document, op: &Op) {
         match op {
-            Op::DeleteConductor { id, .. } => {
-                let props = doc.conductors.get(id).map(|c| c.properties.clone());
-                self.remove(doc, props.as_ref(), &Node::Conductor(*id));
+            Op::DeleteWire { id, .. } => {
+                let wire = doc.wires.get(id).cloned();
+                self.remove(doc, wire.as_ref(), &Node::Wire(*id));
             }
             Op::AttachEnd { conductor, before: Some(t), .. } => {
-                self.cut(&Node::Conductor(*conductor));
+                self.cut(&Node::Wire(*conductor));
                 self.cut(&Node::Terminal(*t));
             }
             Op::RemoveTerminal { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
             // Brief 048 (FP5): another definition may bridge other points.
-            Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+            Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
                     self.cut_around(doc, &t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(id), key, .. } if key == KIND || key == NAME => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, .. } if key == KIND || key == NAME => {
                 for t in Self::terminals_of(doc, *id) {
                     self.cut_around(doc, &t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Conductor(id), key, .. } if key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED || key == POTENTIAL => {
-                if let (Some(net), Some(c)) = (self.node_net.get(&Node::Conductor(*id)).copied(), doc.conductors.get(id)) {
-                    let con = Contribution::of(&c.properties);
+            Op::ModifyWire { id, .. } => {
+                if let (Some(net), Some(c)) = (self.node_net.get(&Node::Wire(*id)).copied(), doc.wires.get(id)) {
+                    let con = Contribution::of(c);
                     self.contribute(net, &con, false);
                     self.count_seq(&con, false);
                 }
@@ -645,7 +640,7 @@ impl Connectivity {
                 }
             }
             // Brief 030: the terminals a link joined are on the sides of a cut.
-            Op::SetProperty { object: ObjectRef::Component(id), key, before, .. } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, before, .. } if crate::links::link_number(key).is_some() => {
                 for t in crate::links::terminals_named(doc, *id, before.as_deref()) {
                     self.cut(&Node::Terminal(t));
                 }
@@ -658,7 +653,7 @@ impl Connectivity {
     fn cut_around(&mut self, doc: &Document, node: &Node) {
         self.cut(node);
         for m in neighbors(doc, node) {
-            if !matches!(m, Node::Conductor(_)) {
+            if !matches!(m, Node::Wire(_)) {
                 self.cut(&m);
             }
         }
@@ -667,40 +662,40 @@ impl Connectivity {
     /// After `op` was applied to `doc`: what it joined. See [`Connectivity::before_op`].
     pub(crate) fn after_op(&mut self, doc: &Document, op: &Op) {
         match op {
-            Op::CreateConductor { id, .. } => self.ensure(doc, Node::Conductor(*id)),
+            Op::CreateWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
             Op::AttachEnd { conductor, after: Some(t), .. } => {
-                self.ensure(doc, Node::Conductor(*conductor));
+                self.ensure(doc, Node::Wire(*conductor));
                 self.ensure(doc, Node::Terminal(*t));
             }
             Op::AddTerminal { id, .. } => self.ensure(doc, Node::Terminal(*id)),
-            Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
+            Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
                 self.name_groups(doc, component.properties.get(NAME).map(|n| name_key(n)));
-                if matches!(op, Op::CreateComponent { .. }) {
+                if matches!(op, Op::CreateDevice { .. }) {
                     for t in Self::terminals_of(doc, *id) {
                         self.ensure(doc, t);
                     }
                 }
             }
-            Op::SetComponentDefinition { id, .. } => {
+            Op::SetDeviceDefinition { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
                     self.ensure(doc, t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(id), key, before, after } if key == KIND || key == NAME => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, before, after } if key == KIND || key == NAME => {
                 // The old group may be gone, the new one may be new.
                 let old = (key == NAME).then(|| before.as_deref().map(name_key)).flatten();
                 let new = (key == NAME).then(|| after.as_deref().map(name_key)).flatten();
                 self.name_groups(doc, old);
-                let current = doc.components.get(id).and_then(|c| c.properties.get(NAME)).map(|n| name_key(n));
+                let current = doc.devices.get(id).and_then(|c| c.properties.get(NAME)).map(|n| name_key(n));
                 self.name_groups(doc, current);
                 self.name_groups(doc, new);
                 for t in Self::terminals_of(doc, *id) {
                     self.ensure(doc, t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Conductor(id), key, .. } if key == WIRE_NUMBER || key == WIRE_NUMBER_FIXED || key == POTENTIAL => {
-                if let (Some(net), Some(c)) = (self.node_net.get(&Node::Conductor(*id)).copied(), doc.conductors.get(id)) {
-                    let con = Contribution::of(&c.properties);
+            Op::ModifyWire { id, .. } => {
+                if let (Some(net), Some(c)) = (self.node_net.get(&Node::Wire(*id)).copied(), doc.wires.get(id)) {
+                    let con = Contribution::of(c);
                     self.contribute(net, &con, true);
                     self.count_seq(&con, true);
                 }
@@ -712,7 +707,7 @@ impl Connectivity {
                     }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(id), key, after, .. } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, after, .. } if crate::links::link_number(key).is_some() => {
                 for t in crate::links::terminals_named(doc, *id, after.as_deref()) {
                     self.ensure(doc, Node::Terminal(t));
                 }
@@ -931,7 +926,7 @@ impl Connectivity {
     /// [`Connectivity::before_op`] did.
     pub(crate) fn repair(&mut self, doc: &Document, op: &Op) {
         match op {
-            Op::DeleteConductor { id, .. } => self.ensure(doc, Node::Conductor(*id)),
+            Op::DeleteWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
             Op::RemoveTerminal { id, .. } => self.ensure(doc, Node::Terminal(*id)),
             _ => self.after_op(doc, op),
         }
@@ -948,8 +943,8 @@ impl Connectivity {
     }
 
     /// The net of conductor `c`.
-    pub fn net_of_conductor(&self, c: ConductorId) -> Option<NetId> {
-        self.net_of(&Node::Conductor(c))
+    pub fn net_of_conductor(&self, c: WireId) -> Option<NetId> {
+        self.net_of(&Node::Wire(c))
     }
 
     /// The net of terminal `t`.
@@ -994,7 +989,7 @@ impl Connectivity {
     }
 
     /// The nets as comparable sets of members, sorted.
-    fn partition(&self) -> Vec<(Vec<TerminalId>, Vec<ConductorId>, Vec<String>)> {
+    fn partition(&self) -> Vec<(Vec<TerminalId>, Vec<WireId>, Vec<String>)> {
         let mut out: Vec<_> = self.nets.values().map(NetData::members).collect();
         out.sort();
         out
@@ -1036,7 +1031,7 @@ impl Connectivity {
         for (node, id) in &self.node_net {
             let listed = self.nets.get(id).is_some_and(|n| match node {
                 Node::Terminal(t) => n.terminals.contains(t),
-                Node::Conductor(c) => n.conductors.contains(c),
+                Node::Wire(c) => n.wires.contains(c),
                 Node::Name(k) => n.names.contains(k),
             });
             if !listed {

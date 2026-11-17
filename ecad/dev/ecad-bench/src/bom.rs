@@ -16,7 +16,7 @@ use std::time::Instant;
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
 use ecad_cadcraft::outputs::{BomView, Group, Outputs};
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
 use crate::measure::median;
@@ -49,7 +49,7 @@ fn timed(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<f64, S
 ///
 /// # Errors
 /// A refused command, too few devices, or the kept BOM differs from a rebuild.
-pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[ComponentId], bom_page: PageId, runs: usize) -> Result<MeasuredBom, String> {
+pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], bom_page: PageId, runs: usize) -> Result<MeasuredBom, String> {
     let mut out = MeasuredBom::default();
     let one = devices.get(100).or(devices.first()).ok_or("no device")?.hex();
     let fifty: Vec<String> = devices.iter().take(50).map(|c| c.hex()).collect();
@@ -62,7 +62,7 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[ComponentId]
     out.bomline_ms = median(&mut v);
     let mut v = Vec::new();
     for _ in 0..runs {
-        v.push(timed(s, "partline", json!({"components": fifty, "add": line}))?);
+        v.push(timed(s, "partline", json!({"devices": fifty, "add": line}))?);
         run(s, "undo", json!({}))?;
     }
     out.bomkit_ms = median(&mut v);
@@ -75,7 +75,7 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[ComponentId]
     // A part used by 200 entries: the line on 200 devices (in batches), then `article`.
     for chunk in devices.iter().take(200).collect::<Vec<_>>().chunks(50) {
         let cs: Vec<String> = chunk.iter().map(|c| c.hex()).collect();
-        run(s, "partline", json!({"components": cs, "add": line}))?;
+        run(s, "partline", json!({"devices": cs, "add": line}))?;
     }
     let mut v = Vec::new();
     for i in 0..runs {

@@ -50,7 +50,7 @@ pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks_panel::Row> {
     cx.checks
         .iter()
         .filter(|r| match r.check.object {
-            Object::Component(x) => x == c,
+            Object::Device(x) => x == c,
             Object::Terminal(t) => d.terminals.contains(&t),
             _ => false,
         })

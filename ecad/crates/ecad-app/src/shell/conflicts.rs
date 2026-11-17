@@ -28,7 +28,7 @@ pub const HALF: &str = "Half";
 pub const MAX_ROWS: usize = 8;
 
 /// One row: device id, tag, aspect word, from, to, and whether Half answers it.
-type Row = (ecad_model::ComponentId, String, &'static str, String, String, bool);
+type Row = (ecad_model::DeviceId, String, &'static str, String, String, bool);
 
 /// The rings' radius on the page, in millimetres.
 const RING_MM: f32 = 4.0;
@@ -39,7 +39,7 @@ impl App {
         let Some(page) = self.shell.page_rect else { return };
         // The rows, and the listed devices' symbols on the shown page (their anchors) for the
         // rings (design 052 §9.2).
-        let (rows, anchors): (Vec<Row>, Vec<(ecad_model::ComponentId, ecad_model::Pt)>) = self
+        let (rows, anchors): (Vec<Row>, Vec<(ecad_model::DeviceId, ecad_model::Pt)>) = self
             .project
             .clone()
             .and_then(|p| {
@@ -62,7 +62,7 @@ impl App {
                     let shown = p.active_page();
                     let anchors = rows
                         .iter()
-                        .flat_map(|r| doc.representations_of(ecad_model::Subject::Component(r.0)).map(move |(_, x)| (r.0, x)))
+                        .flat_map(|r| doc.representations_of(ecad_model::Subject::Device(r.0)).map(move |(_, x)| (r.0, x)))
                         .filter(|(_, x)| Some(x.page) == shown)
                         .filter_map(|(c, x)| ecad_cadcraft::locations::anchor(doc, x).map(|a| (c, a)))
                         .collect();
@@ -75,7 +75,7 @@ impl App {
             return;
         }
         let mut ask: Option<String> = None;
-        let mut chosen: Option<ecad_model::ComponentId> = None;
+        let mut chosen: Option<ecad_model::DeviceId> = None;
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.cad.session.running.is_none() {
             ask = Some(format!("conflicts {}", json!({"answer": "leave"})));
         }
@@ -107,13 +107,13 @@ impl App {
                                     let _ = prim::read_value(ui, &format!("\u{2192} {to}"));
                                     let r = ui.add(prim::Button::new("Move").small()).on_hover_text(format!("Set {tag}'s {aspect} to {to}"));
                                     if r.clicked() {
-                                        ask = Some(format!("conflicts {}", json!({"answer": "move", "components": [c.hex()], "aspect": aspect})));
+                                        ask = Some(format!("conflicts {}", json!({"answer": "move", "devices": [c.hex()], "aspect": aspect})));
                                     }
                                     // A connector half just placed: give that half its own location.
                                     if *half {
                                         let r = ui.add(prim::Button::new(HALF).small()).on_hover_text(format!("Set only this half of {tag} to {to}"));
                                         if r.clicked() {
-                                            ask = Some(format!("conflicts {}", json!({"answer": "half", "components": [c.hex()]})));
+                                            ask = Some(format!("conflicts {}", json!({"answer": "half", "devices": [c.hex()]})));
                                         }
                                     }
                                 });

@@ -18,11 +18,10 @@
 //!
 //! This module holds no invariant logic and no I/O.
 
-use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, CableMember, Component, Conductor, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -65,11 +64,11 @@ pub(crate) fn referrers<'a, K: Ord, V: Copy + 'a>(map: &'a Multi<K, V>, key: &K)
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Index {
     /// Terminal → conductor ends attached to it.
-    pub(crate) terminal_ends: Multi<TerminalId, (ConductorId, End)>,
-    /// Conductor → cables listing it.
-    pub(crate) conductor_cables: Multi<ConductorId, CableId>,
-    /// Component → its terminals.
-    pub(crate) component_terminals: Multi<ComponentId, TerminalId>,
+    pub(crate) terminal_ends: Multi<TerminalId, (WireId, End)>,
+    /// Wire → cables listing it.
+    pub(crate) conductor_cables: Multi<WireId, CableId>,
+    /// Device → its terminals.
+    pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
     /// Subject → representations depicting it.
     pub(crate) subject_reps: Multi<Subject, RepresentationId>,
     /// Page → representations on it.
@@ -85,15 +84,15 @@ pub(crate) struct Index {
     /// Definition → symbol-instance items placing it.
     pub(crate) definition_items: Multi<DefinitionId, ItemId>,
     /// Definition → components using it.
-    pub(crate) definition_components: Multi<DefinitionId, ComponentId>,
+    pub(crate) definition_components: Multi<DefinitionId, DeviceId>,
     /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
-    pub(crate) tags: Multi<String, ComponentId>,
+    pub(crate) tags: Multi<String, DeviceId>,
     /// Tag key → cables whose `tag` property has it (brief 026: devices and cables share one tag
     /// namespace).
     pub(crate) cable_tags: Multi<String, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
     /// that name (brief 022).
-    pub(crate) continuations: Multi<String, ComponentId>,
+    pub(crate) continuations: Multi<String, DeviceId>,
     /// Folder → pages whose `folder` property names it (brief 019).
     pub(crate) folder_pages: Multi<FolderId, PageId>,
     /// Folder → folders whose parent it is (brief 019).
@@ -161,13 +160,13 @@ impl Index {
     /// Everything but items and representations.
     fn add_rest(&mut self, doc: &Document) {
         let rest = self;
-        for (id, c) in &doc.components {
-            rest.component(*id, c, Delta::Add);
+        for (id, c) in &doc.devices {
+            rest.device(*id, c, Delta::Add);
         }
         for (id, t) in &doc.terminals {
             rest.terminal(*id, t, Delta::Add);
         }
-        for (id, c) in &doc.conductors {
+        for (id, c) in &doc.wires {
             rest.conductor(*id, c, Delta::Add);
         }
         for (id, c) in &doc.cables {
@@ -182,10 +181,13 @@ impl Index {
     }
 
     pub(crate) fn page(&mut self, id: PageId, p: &Page, delta: Delta) {
-        if let Some(f) = p.properties.text(crate::keys::FOLDER) {
-            self.page_folder(id, f, delta);
+        if let Some(f) = p.folder {
+            bump(&mut self.folder_pages, f, id, delta);
         }
-        self.style_choices(ObjectRef::Page(id), &p.properties, delta);
+        if let Some(t) = &p.page_type {
+            self.style_choice(ObjectRef::Page(id), crate::sheet::PAGE_TYPE_KEY, &t.to_string(), delta);
+        }
+        self.style_choices(ObjectRef::Page(id), &p.display, delta);
     }
 
     /// Every style choice among `props` (brief 050a).
@@ -199,14 +201,6 @@ impl Index {
     pub(crate) fn style_choice(&mut self, object: ObjectRef, key: &str, value: &str, delta: Delta) {
         if crate::style::is_choice_key(key) {
             bump(&mut self.style_users, (value.trim().to_string(), key.to_string()), object, delta);
-        }
-    }
-
-    /// A page's `folder` property `value` (its stored text) is added or removed. Text that is no
-    /// folder ID is indexed under no folder (the invariant check refuses it).
-    pub(crate) fn page_folder(&mut self, id: PageId, value: &str, delta: Delta) {
-        if let Some(f) = FolderId::parse(value) {
-            bump(&mut self.folder_pages, f, id, delta);
         }
     }
 
@@ -224,7 +218,7 @@ impl Index {
         }
     }
 
-    pub(crate) fn component(&mut self, id: ComponentId, c: &Component, delta: Delta) {
+    pub(crate) fn device(&mut self, id: DeviceId, c: &Device, delta: Delta) {
         if let Some(d) = c.definition {
             bump(&mut self.definition_components, d, id, delta);
         }
@@ -234,16 +228,16 @@ impl Index {
         if let Some(k) = crate::connectivity::continuation_key(&c.properties) {
             self.continuation(id, k, delta);
         }
-        self.style_choices(ObjectRef::Component(id), &c.properties, delta);
+        self.style_choices(ObjectRef::Device(id), &c.properties, delta);
     }
 
     /// A continuation's name key is added or removed (brief 022).
-    pub(crate) fn continuation(&mut self, id: ComponentId, key: String, delta: Delta) {
+    pub(crate) fn continuation(&mut self, id: DeviceId, key: String, delta: Delta) {
         bump(&mut self.continuations, key, id, delta);
     }
 
     /// A component's tag `tag` (its stored value) is added or removed.
-    pub(crate) fn tag(&mut self, id: ComponentId, tag: &str, delta: Delta) {
+    pub(crate) fn tag(&mut self, id: DeviceId, tag: &str, delta: Delta) {
         bump(&mut self.tags, crate::tag::key(tag), id, delta);
     }
 
@@ -262,14 +256,14 @@ impl Index {
         }
     }
 
-    pub(crate) fn conductor(&mut self, id: ConductorId, c: &Conductor, delta: Delta) {
+    pub(crate) fn conductor(&mut self, id: WireId, c: &Wire, delta: Delta) {
         for end in End::BOTH {
             self.conductor_end(id, end, c.end(end), delta);
         }
-        self.style_choices(ObjectRef::Conductor(id), &c.properties, delta);
+        self.style_choices(ObjectRef::Wire(id), &c.display, delta);
     }
 
-    pub(crate) fn conductor_end(&mut self, id: ConductorId, end: End, terminal: Option<TerminalId>, delta: Delta) {
+    pub(crate) fn conductor_end(&mut self, id: WireId, end: End, terminal: Option<TerminalId>, delta: Delta) {
         if let Some(t) = terminal {
             bump(&mut self.terminal_ends, t, (id, end), delta);
         }

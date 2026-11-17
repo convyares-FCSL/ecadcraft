@@ -12,7 +12,7 @@
 //! | --- | --- |
 //! | a strip in `Strips::last_changed` | that strip (sheet count, indexes) |
 //! | `SetProperty(Cable k, …)` | strips in `by_cable[k]` marked changed (box texts) |
-//! | `SetProperty(Component d, …)`, `d` in `by_far` | strips in `by_far[d]` marked changed |
+//! | `SetProperty(Device d, …)`, `d` in `by_far` | strips in `by_far[d]` marked changed |
 //! | `SetProperty(Project, strippage.*)`, the project's sheet | every strip (a layout setting) |
 //! | `SetProperty(Project, terminal.plan.style)` | nothing here; `style_changed` is set |
 //! | anything else | nothing |
@@ -23,7 +23,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::sheet::{MARGIN_MM, SheetSpec};
-use ecad_model::{CableId, ComponentId, Document, ObjectRef, Op, PageId};
+use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId};
 
 use crate::accessories::Acc;
 use crate::defaults::strip_pages as entries;
@@ -198,7 +198,7 @@ struct Kept {
     /// Sheets at the project's sheet.
     sheets: usize,
     cables: BTreeSet<CableId>,
-    far: BTreeSet<ComponentId>,
+    far: BTreeSet<DeviceId>,
 }
 
 impl Kept {
@@ -228,16 +228,16 @@ impl Kept {
 /// The graphic pages' kept layout data (see the module's update map).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StripPages {
-    kept: BTreeMap<ComponentId, Kept>,
-    by_cable: BTreeMap<CableId, BTreeSet<ComponentId>>,
-    by_far: BTreeMap<ComponentId, BTreeSet<ComponentId>>,
+    kept: BTreeMap<DeviceId, Kept>,
+    by_cable: BTreeMap<CableId, BTreeSet<DeviceId>>,
+    by_far: BTreeMap<DeviceId, BTreeSet<DeviceId>>,
     pub geometry: Geometry,
     /// The column width of the project's sheet the kept counts are for.
     avail: f64,
     /// Every strip's sheets at the project's sheet.
     pub sheets_total: usize,
     /// The strips whose drawing the last update changed.
-    pub last_changed: BTreeSet<ComponentId>,
+    pub last_changed: BTreeSet<DeviceId>,
     /// How many strips the last update laid out (tests, bench).
     pub last_work: usize,
     /// The last update changed the layout settings (every graphic page redraws).
@@ -264,13 +264,13 @@ impl Default for StripPages {
     }
 }
 
-fn index_add<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn index_add<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<DeviceId>>, keys: &BTreeSet<K>, c: DeviceId) {
     for k in keys {
         map.entry(*k).or_default().insert(c);
     }
 }
 
-fn index_remove<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<ComponentId>>, keys: &BTreeSet<K>, c: ComponentId) {
+fn index_remove<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<DeviceId>>, keys: &BTreeSet<K>, c: DeviceId) {
     for k in keys {
         if let Some(set) = map.get_mut(k) {
             set.remove(&c);
@@ -293,7 +293,7 @@ impl StripPages {
         p
     }
 
-    fn set(&mut self, c: ComponentId, s: Option<&StripData>) {
+    fn set(&mut self, c: DeviceId, s: Option<&StripData>) {
         if let Some(old) = self.kept.remove(&c) {
             self.sheets_total = self.sheets_total.saturating_sub(old.sheets);
             index_remove(&mut self.by_cable, &old.cables, c);
@@ -323,7 +323,7 @@ impl StripPages {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
                 }
-                Op::SetProperty { object: ObjectRef::Component(d), .. } => {
+                Op::SetProperty { object: ObjectRef::Device(d), .. } => {
                     self.last_changed.extend(self.by_far.get(d).into_iter().flatten().copied());
                 }
                 _ => {}
@@ -366,7 +366,7 @@ impl StripPages {
 
     /// The sheets of strip `c` at column width `avail`: kept at the project's sheet, else counted
     /// from the kept block widths (O(positions), for a page with a sheet of its own).
-    fn sheets_of(&self, c: ComponentId, avail: f64) -> usize {
+    fn sheets_of(&self, c: DeviceId, avail: f64) -> usize {
         match self.kept.get(&c) {
             None => 1,
             Some(k) if (avail - self.avail).abs() < 1e-9 => k.sheets,

@@ -107,13 +107,13 @@ fn the_merge_index_and_the_merged_status_follow_merge_undo_and_redo() {
 fn an_older_reader_refuses_a_merge_record_and_a_bad_merge_kind_is_refused() {
     let mut l = Ledger::new(SEED);
     let kind = TxKind::Edit;
-    assert!(l.commit_merge(Author::User, "x", kind, vec![Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }], None).is_err());
+    assert!(l.commit_merge(Author::User, "x", kind, vec![Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }], None).is_err());
     let merge = TxKind::Merge {
         source: [1; 16],
         source_head: StepPoint { seq: 3, chain: [2; 32] },
         ancestor: BranchPoint { branch: [3; 16], seq: 1, chain: [4; 32] },
     };
-    l.commit_merge(Author::User, "Merge", merge, vec![Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }], None).unwrap();
+    l.commit_merge(Author::User, "Merge", merge, vec![Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }], None).unwrap();
     assert_eq!(l.undo_top().map(|t| t.kind), Some(merge));
     let tx = l.log()[0].clone();
     let v = ecad_file::record::tx_value(&tx, &[0; 32]).unwrap();

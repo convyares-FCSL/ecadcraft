@@ -39,7 +39,9 @@ pub mod trace;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, ComponentId, ConductorId, Document, NetId, ObjectRef, Op, StyleRef};
+use ecad_model::units::{Amps, Celsius, Percent, Volts};
+use ecad_model::wire::{CircuitInputs, InstallMethod, SupplySystem};
+use ecad_model::{CableId, DeviceId, Document, NetId, ObjectRef, Op, StyleRef, WireId, Word};
 
 use crate::defaults::{self, Scope};
 use crate::styles::{self, cable, ratingtable, wire};
@@ -114,72 +116,65 @@ pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::style:
 /// A panel wire or a field cable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RatedSubject {
-    Conductor(ConductorId),
+    Wire(WireId),
     Cable(CableId),
 }
 
 impl RatedSubject {
     pub fn object(self) -> ObjectRef {
         match self {
-            RatedSubject::Conductor(c) => ObjectRef::Conductor(c),
+            RatedSubject::Wire(c) => ObjectRef::Wire(c),
             RatedSubject::Cable(k) => ObjectRef::Cable(k),
         }
     }
 
     fn props(self, doc: &Document) -> Option<&ecad_model::Properties> {
         match self {
-            RatedSubject::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
+            RatedSubject::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
             RatedSubject::Cable(k) => doc.cables.get(&k).map(|x| &x.properties),
+        }
+    }
+
+    /// Its own rating inputs and load: a wire's fields; a cable's stored values (lane D step 2
+    /// types them), a value that does not read raising [`Issue::BadValue`] in `issues`.
+    pub fn inputs(self, doc: &Document, issues: &mut Vec<Issue>) -> (CircuitInputs, Option<f64>) {
+        match self {
+            RatedSubject::Wire(c) => doc.wires.get(&c).map_or_else(Default::default, |w| (w.rating, w.load.map(|a| a.0))),
+            RatedSubject::Cable(_) => {
+                let props = self.props(doc);
+                let inputs = CircuitInputs {
+                    basis: own(props, BASIS, Basis::parse, issues),
+                    manual: own(props, MANUAL, parse::current, issues).map(Amps),
+                    bundling: None,
+                    method: own(props, METHOD, InstallMethod::parse, issues),
+                    ambient: own(props, AMBIENT, parse::ambient, issues).map(Celsius),
+                    grouped: own(props, GROUPED, |v| parse::count(v).and_then(|n| u8::try_from(n).ok()), issues),
+                    voltage: own(props, VOLTAGE, parse::voltage, issues).map(Volts),
+                    system: own(props, SYSTEM, SupplySystem::parse, issues),
+                    vd_limit: own(props, VD_LIMIT, parse::percent, issues).map(Percent),
+                };
+                (inputs, props.and_then(|p| p.get(LOAD)).and_then(|v| parse::current(v)))
+            }
         }
     }
 
     /// Its words in a row: the wire number (or `wire`), the cable tag.
     pub fn words(self, doc: &Document) -> String {
         match self {
-            RatedSubject::Conductor(c) => doc
-                .conductors
-                .get(&c)
-                .and_then(|x| x.properties.get(ecad_model::connectivity::WIRE_NUMBER))
-                .filter(|n| !n.trim().is_empty())
-                .cloned()
-                .unwrap_or_else(|| {
-                    let conn = doc.connectivity();
-                    conn.net_of_conductor(c)
-                        .and_then(|n| conn.net(n))
-                        .and_then(|n| ecad_model::wiring::net_number(doc, n))
-                        .unwrap_or_else(|| "wire".into())
-                }),
+            RatedSubject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string).unwrap_or_else(|| {
+                let conn = doc.connectivity();
+                conn.net_of_conductor(c)
+                    .and_then(|n| conn.net(n))
+                    .and_then(|n| ecad_model::wiring::net_number(doc, n))
+                    .unwrap_or_else(|| "wire".into())
+            }),
             RatedSubject::Cable(k) => crate::cables::cable_title(doc, k),
         }
     }
 }
 
-/// How Iz is found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Basis {
-    Datasheet,
-    Table,
-    Manual,
-}
-
-impl Basis {
-    pub fn word(self) -> &'static str {
-        match self {
-            Basis::Datasheet => "datasheet",
-            Basis::Table => "table",
-            Basis::Manual => "manual",
-        }
-    }
-
-    pub fn parse(t: &str) -> Option<Basis> {
-        match t.trim().to_ascii_lowercase().as_str() {
-            "datasheet" => Some(Basis::Datasheet),
-            "table" | "iec table" => Some(Basis::Table),
-            "manual" => Some(Basis::Manual),
-            _ => None,
-        }
-    }
-}
+/// How Iz is found: the model's [`ecad_model::wire::Basis`].
+pub use ecad_model::wire::Basis;
 
 /// Property keys (FP1, FP2, FP6).
 pub const BASIS: &str = "rating.basis";
@@ -262,7 +257,7 @@ pub struct Factor {
 /// The device that protects a subject.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
-    pub component: ComponentId,
+    pub component: DeviceId,
     /// The fuse of a bank, or a strip's fuse position.
     pub fuse: Option<String>,
     /// `-Q01`, `-F01:3`.
@@ -308,7 +303,7 @@ pub enum Issue {
     NoDevice(bool),
     TwoDevices(String, String),
     /// A device whose rating does not read.
-    DeviceUnread(ComponentId, String),
+    DeviceUnread(DeviceId, String),
     NamedDevice(String),
     NoData(String),
     NoTable(String),
@@ -417,7 +412,7 @@ impl Context {
     }
 
     /// A context from kept location boxes (no scan of the components).
-    fn with_boxes(doc: &Document, boxes: &BTreeMap<ComponentId, BoxTemp>) -> Self {
+    fn with_boxes(doc: &Document, boxes: &BTreeMap<DeviceId, BoxTemp>) -> Self {
         let mut temps: BTreeMap<String, f64> = BTreeMap::new();
         for b in boxes.values() {
             if let Temp::Read(t) = b.temp {
@@ -450,8 +445,8 @@ pub enum Temp {
 }
 
 /// The temperature of location box `c`, if it is one and sets one.
-pub fn box_temp(doc: &Document, c: ComponentId) -> Option<BoxTemp> {
-    let x = doc.components.get(&c).filter(|x| crate::locations::is_box_component(x))?;
+pub fn box_temp(doc: &Document, c: DeviceId) -> Option<BoxTemp> {
+    let x = doc.devices.get(&c).filter(|x| crate::locations::is_box_component(x))?;
     let v = x.properties.get(TEMPERATURE)?;
     let location = x.properties.text(ecad_model::keys::LOCATION).map(|l| l.trim().to_string()).unwrap_or_default();
     Some(BoxTemp { location, temp: parse::ambient(v).map_or_else(|| Temp::Unread(v.chars().take(32).collect()), Temp::Read) })
@@ -463,8 +458,8 @@ pub fn location_code(doc: &Document, key: &str) -> String {
 }
 
 /// Every location box that sets a temperature (open, reload, first show).
-pub fn box_temps(doc: &Document) -> BTreeMap<ComponentId, BoxTemp> {
-    doc.components.keys().filter_map(|c| box_temp(doc, *c).map(|b| (*c, b))).collect()
+pub fn box_temps(doc: &Document) -> BTreeMap<DeviceId, BoxTemp> {
+    doc.devices.keys().filter_map(|c| box_temp(doc, *c).map(|b| (*c, b))).collect()
 }
 
 fn project_number(doc: &Document, e: &defaults::Entry) -> f64 {
@@ -490,7 +485,7 @@ fn has_own(props: &ecad_model::Properties) -> bool {
 }
 
 /// Whether conductor `c` is a panel wire (not a cable core).
-pub fn is_panel_wire(doc: &Document, c: ConductorId) -> bool {
+pub fn is_panel_wire(doc: &Document, c: WireId) -> bool {
     doc.cables_of(c).is_empty()
 }
 
@@ -514,12 +509,12 @@ fn sheet(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: Option<&Styl
 }
 
 /// Whether conductor `c` is a rated subject (design 057 §7).
-pub fn wire_is_rated(doc: &Document, ctx: &Context, c: ConductorId) -> bool {
+pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     if !is_panel_wire(doc, c) {
         return false;
     }
-    let Some(x) = doc.conductors.get(&c) else { return false };
-    if has_own(&x.properties) {
+    let Some(x) = doc.wires.get(&c) else { return false };
+    if !x.rating.is_empty() || x.load.is_some() || x.display.contains_key(PROTECTED_BY) {
         return true;
     }
     let (cat, _) = ctx.looks.category(doc, c);
@@ -537,16 +532,16 @@ pub fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
 
 /// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
 /// the project's; with where it came from.
-pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: ConductorId) -> (f64, String) {
+pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, String) {
     let (t, from, _) = panel_temperature_at(doc, ctx, c);
     (t, from)
 }
 
 /// [`panel_temperature`], and the locations of the wire's ends (the one used first).
-fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: ConductorId) -> (f64, String, Vec<String>) {
+fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, String, Vec<String>) {
     let mut best: Option<(f64, String)> = None;
     let mut locations: Vec<String> = Vec::new();
-    if let Some(x) = doc.conductors.get(&c) {
+    if let Some(x) = doc.wires.get(&c) {
         for t in x.ends.iter().flatten() {
             let Some(comp) = doc.terminals.get(t).map(|t| t.component) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
@@ -594,13 +589,14 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let mut factors = Vec::new();
     let is_cable = matches!(s, RatedSubject::Cable(_));
     // Basis.
-    let own_basis = own(props, BASIS, Basis::parse, &mut issues);
+    let (inp, _) = s.inputs(doc, &mut issues);
+    let own_basis = inp.basis;
     let default_basis = Basis::parse(project_word(doc, if is_cable { &defaults::rating::CABLE_BASIS } else { &defaults::rating::WIRE_BASIS }))
         .unwrap_or(if is_cable { Basis::Table } else { Basis::Datasheet });
     let basis = own_basis.unwrap_or(default_basis);
     // Datasheet values, size.
     let (sh, size, assumed) = match s {
-        RatedSubject::Conductor(c) => {
+        RatedSubject::Wire(c) => {
             let look = ctx.looks.look(doc, c);
             let sh = sheet(doc, ecad_model::StyleCatalogue::Wire, look.category.as_ref());
             (sh, look.cross_section.as_ref().and_then(|(t, _)| parse::cross_section(t)), false)
@@ -630,13 +626,13 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     // The temperature the conductor sits in.
     let mut locations = Vec::new();
     let (theta, theta_from, place) = match s {
-        RatedSubject::Conductor(c) => {
+        RatedSubject::Wire(c) => {
             let (t, from, at) = panel_temperature_at(doc, ctx, c);
             locations = at;
             let place = from.strip_prefix("location ").map_or_else(|| "The panel".to_string(), str::to_string);
             (t, from, place)
         }
-        RatedSubject::Cable(_) => match own(props, AMBIENT, parse::ambient, &mut issues) {
+        RatedSubject::Cable(_) => match inp.ambient.map(|c| c.0) {
             Some(t) => (t, "set here".to_string(), s.words(doc)),
             None => (project_number(doc, &defaults::rating::AMBIENT), default_from(doc, &defaults::rating::AMBIENT).to_string(), s.words(doc)),
         },
@@ -647,9 +643,9 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let mut rated = None;
     // Grouping input: a wire's bundling, a cable's grouped count.
     let bundling = if is_cable {
-        own(props, GROUPED, parse::count, &mut issues).map(|n| (parse::Bundling::Circuits(n), "set here".to_string()))
+        inp.grouped.map(|n| (parse::Bundling::Circuits(n), "set here".to_string()))
     } else {
-        match own(props, BUNDLING, parse::bundling, &mut issues) {
+        match inp.bundling {
             Some(b) => Some((b, "set here".to_string())),
             None => {
                 let r = defaults::resolve(doc, &defaults::rating::BUNDLING, Scope::project());
@@ -657,13 +653,9 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
             }
         }
     };
-    let method: &'static str = if is_cable {
-        own(props, METHOD, dataset::method, &mut issues).unwrap_or_else(|| project_word(doc, &defaults::rating::METHOD))
-    } else {
-        "B1"
-    };
-    let system = own(props, SYSTEM, |v| ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v.trim())), &mut issues)
-        .unwrap_or_else(|| project_word(doc, &defaults::rating::SYSTEM));
+    let method: &'static str =
+        if is_cable { inp.method.map(|m| m.word()).unwrap_or_else(|| project_word(doc, &defaults::rating::METHOD)) } else { "B1" };
+    let system = inp.system.map(|s| s.word()).unwrap_or_else(|| project_word(doc, &defaults::rating::SYSTEM));
     let loaded: u8 = if system == "ac3" { 3 } else { 2 };
     let grouping_factor = |data: Option<&Dataset>, issues: &mut Vec<Issue>, factors: &mut Vec<Factor>| -> Option<f64> {
         match &bundling {
@@ -677,7 +669,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                     issues.push(Issue::NoTable(format!("{n} circuits need a rating table's grouping factor; no rating table chosen")));
                     return None;
                 };
-                match d.grouping(method, *n) {
+                match d.grouping(method, u32::from(*n)) {
                     Some((f, _)) => {
                         let k = round2(f);
                         let input =
@@ -700,7 +692,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         }
     };
     let iz = match basis {
-        Basis::Manual => match own(props, MANUAL, parse::current, &mut issues) {
+        Basis::Manual => match inp.manual.map(|a| a.0) {
             Some(x) => Some(x),
             None => {
                 issues.push(Issue::NoData("no Manual value set".into()));
@@ -710,7 +702,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         Basis::Datasheet => match sh.rated {
             None => {
                 let why = match s {
-                    RatedSubject::Conductor(c) => match ctx.looks.category(doc, c).0 {
+                    RatedSubject::Wire(c) => match ctx.looks.category(doc, c).0 {
                         Some(id) => format!("category {} has no rated current", styles::name(doc, ecad_model::StyleCatalogue::Wire, &id)),
                         None => "no wire category".into(),
                     },
@@ -833,7 +825,8 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         issues.push(Issue::LoadOver);
     }
     // Volt drop (cables only, §3.5).
-    let voltdrop = if is_cable { volt_drop_of(doc, ctx, s, props, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
+    let voltdrop =
+        if is_cable { volt_drop_of(doc, ctx, s, props, &inp, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
     Rating {
         subject: s,
         basis,
@@ -864,8 +857,8 @@ fn larger_size(ctx: &Context, size: Option<f64>, method: &str, max: f64, loaded:
 
 #[allow(clippy::too_many_arguments)]
 fn volt_drop_of(
-    doc: &Document, ctx: &Context, s: RatedSubject, props: Option<&ecad_model::Properties>, sh: &Sheet, size: Option<f64>, system: &str,
-    load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
+    doc: &Document, ctx: &Context, s: RatedSubject, props: Option<&ecad_model::Properties>, inp: &CircuitInputs, sh: &Sheet, size: Option<f64>,
+    system: &str, load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
 ) -> Option<VoltDrop> {
     let metres = props.and_then(|p| p.get("length")).and_then(|v| parse::length_m(v))?;
     let (amps, why) = match (load, device.and_then(|d| d.amps.map(|a| (a, d.tag.clone())))) {
@@ -891,16 +884,14 @@ fn volt_drop_of(
         )));
         return None;
     };
-    let mut scratch = Vec::new();
-    let (volts, vfrom) = match own(props, VOLTAGE, parse::voltage, &mut scratch) {
+    let (volts, vfrom) = match inp.voltage.map(|v| v.0) {
         Some(v) => (v, "set here"),
         None => (project_number(doc, &defaults::rating::VOLTAGE), default_from(doc, &defaults::rating::VOLTAGE)),
     };
-    let (limit, limit_from) = match own(props, VD_LIMIT, parse::percent, &mut scratch) {
+    let (limit, limit_from) = match inp.vd_limit.map(|p| p.0) {
         Some(v) => (v, "set here"),
         None => (project_number(doc, &defaults::rating::VD_LIMIT), default_from(doc, &defaults::rating::VD_LIMIT)),
     };
-    issues.extend(scratch);
     let _ = vfrom;
     let three = system == "ac3";
     let (du, pc) = volt_drop(r20, sh.max, three, amps, metres, volts)?;
@@ -969,7 +960,7 @@ fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: &mut Vec<Is
 
 /// Every rated subject of `doc`.
 pub fn subjects(doc: &Document, ctx: &Context) -> Vec<RatedSubject> {
-    let mut v: Vec<RatedSubject> = doc.conductors.keys().filter(|c| wire_is_rated(doc, ctx, **c)).map(|c| RatedSubject::Conductor(*c)).collect();
+    let mut v: Vec<RatedSubject> = doc.wires.keys().filter(|c| wire_is_rated(doc, ctx, **c)).map(|c| RatedSubject::Wire(*c)).collect();
     v.extend(doc.cables.keys().filter(|k| cable_is_rated(doc, ctx, **k)).map(|k| RatedSubject::Cable(*k)));
     v
 }
@@ -998,14 +989,14 @@ pub struct Touch {
     /// Re-trace these too.
     pub retrace: BTreeSet<RatedSubject>,
     pub nets: BTreeSet<NetId>,
-    pub devices: BTreeSet<ComponentId>,
+    pub devices: BTreeSet<DeviceId>,
     pub styles: BTreeSet<(ecad_model::StyleCatalogue, StyleRef)>,
     /// Locations whose temperature changed: `at[location]` (D1).
     pub locations: BTreeSet<String>,
     /// Location boxes to read again.
-    pub boxes: BTreeSet<ComponentId>,
+    pub boxes: BTreeSet<DeviceId>,
     /// Devices whose location may have changed: their wires' results.
-    pub moved: BTreeSet<ComponentId>,
+    pub moved: BTreeSet<DeviceId>,
     /// Pages a location box moved on: the wires of the devices drawn there.
     pub pages: BTreeSet<ecad_model::PageId>,
     /// Every result again (no re-trace).
@@ -1025,9 +1016,15 @@ impl Touch {
         };
         for op in ops {
             match op {
-                Op::SetProperty { object: ObjectRef::Conductor(c), key, .. } => {
-                    self.retrace.insert(RatedSubject::Conductor(*c));
-                    if (key == ecad_model::connectivity::POTENTIAL || key == ecad_model::connectivity::WIRE_NUMBER)
+                Op::SetProperty { object: ObjectRef::Wire(c), .. } => {
+                    self.retrace.insert(RatedSubject::Wire(*c));
+                    for k in doc.cables_of(*c) {
+                        self.retrace.insert(RatedSubject::Cable(k));
+                    }
+                }
+                Op::ModifyWire { id: c, before, after } => {
+                    self.retrace.insert(RatedSubject::Wire(*c));
+                    if (before.potential != after.potential || before.number != after.number)
                         && let Some(n) = conn.net_of_conductor(*c)
                     {
                         self.nets.insert(n);
@@ -1039,8 +1036,8 @@ impl Touch {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.retrace.insert(RatedSubject::Cable(*k));
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, before, after } => {
-                    let is_box = doc.components.get(c).is_some_and(crate::locations::is_box_component);
+                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
+                    let is_box = doc.devices.get(c).is_some_and(crate::locations::is_box_component);
                     if is_box {
                         // A box's temperature or location: the wires at its locations (§10).
                         if key == TEMPERATURE || key == ecad_model::book::LOCATION_KEY {
@@ -1063,15 +1060,15 @@ impl Touch {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-                    // Brief 052: a location entry's code changed (or the entry came or went): the
-                    // rows naming it are worded again.
-                    if let Some((crate::designations::Aspect::Location, k, true)) = crate::designations::parse_list_property(key) {
-                        self.locations.insert(k.to_string());
-                    }
                     if key.starts_with("rating.") || key.starts_with("wire.") {
                         self.all_results = true;
                         self.table |= key == defaults::rating::TABLE.key;
                     }
+                }
+                // Brief 052: a location entry's code changed (or the entry came or went): the rows
+                // naming it are worded again.
+                Op::ModifyProject { before, after } => {
+                    self.locations.extend(crate::designations::changed_codes(before, after, crate::designations::Aspect::Location));
                 }
                 Op::SetStyle { catalogue, id, .. } => {
                     if *catalogue == ecad_model::StyleCatalogue::RatingTable {
@@ -1094,8 +1091,8 @@ impl Touch {
                         self.all_results = true;
                     }
                 }
-                Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
-                    self.retrace.insert(RatedSubject::Conductor(*id));
+                Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+                    self.retrace.insert(RatedSubject::Wire(*id));
                     if let Some(n) = conn.net_of_conductor(*id) {
                         self.nets.insert(n);
                     }
@@ -1104,7 +1101,7 @@ impl Touch {
                     }
                 }
                 Op::AttachEnd { conductor, before, after, .. } => {
-                    self.retrace.insert(RatedSubject::Conductor(*conductor));
+                    self.retrace.insert(RatedSubject::Wire(*conductor));
                     if let Some(n) = conn.net_of_conductor(*conductor) {
                         self.nets.insert(n);
                     }
@@ -1113,14 +1110,16 @@ impl Touch {
                     }
                 }
                 Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => net_of_terminal(*id, self),
-                Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } if crate::locations::is_box_component(component) => {
+                Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component }
+                    if crate::locations::is_box_component(component) =>
+                {
                     self.boxes.insert(*id);
                     if let Some(l) = component.properties.get(ecad_model::book::LOCATION_KEY) {
                         self.locations.insert(l.trim().to_string());
                     }
                     self.box_pages(doc, *id);
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
                     for (t, _) in doc.terminals_of(*id) {
                         net_of_terminal(t, self);
@@ -1136,18 +1135,18 @@ impl Touch {
                 Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                     self.retrace.insert(RatedSubject::Cable(*id));
                     for m in &cable.members {
-                        self.retrace.insert(RatedSubject::Conductor(m.conductor));
+                        self.retrace.insert(RatedSubject::Wire(m.conductor));
                     }
                 }
                 Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
                     self.retrace.insert(RatedSubject::Cable(*cable));
-                    self.retrace.insert(RatedSubject::Conductor(member.conductor));
+                    self.retrace.insert(RatedSubject::Wire(member.conductor));
                 }
                 // A device moved may enter another location box: its wires; a box moved: the wires at
                 // its location and those of the devices on its page.
                 Op::ModifyRepresentation { after, .. } | Op::LinkRepresentation { rep: after, .. } | Op::UnlinkRepresentation { rep: after, .. } => {
-                    if let ecad_model::Subject::Component(c) = after.subject {
-                        if doc.components.get(&c).is_some_and(crate::locations::is_box_component) {
+                    if let ecad_model::Subject::Device(c) = after.subject {
+                        if doc.devices.get(&c).is_some_and(crate::locations::is_box_component) {
                             self.boxes.insert(c);
                             self.box_locations(doc, c);
                             self.pages.insert(after.page);
@@ -1168,12 +1167,12 @@ pub struct Kept {
     pub results: BTreeMap<RatedSubject, Rating>,
     traces: BTreeMap<RatedSubject, Found>,
     /// device → subjects it protects (by the trace or by name).
-    protects: BTreeMap<ComponentId, BTreeSet<RatedSubject>>,
+    protects: BTreeMap<DeviceId, BTreeSet<RatedSubject>>,
     /// net → subjects whose trace crossed it.
     path: BTreeMap<NetId, BTreeSet<RatedSubject>>,
     tally: Tally,
     /// Devices whose rating does not read → how many results name them.
-    unread: BTreeMap<ComponentId, (usize, String)>,
+    unread: BTreeMap<DeviceId, (usize, String)>,
     /// The rating table's own rows.
     table_rows: Vec<Issue>,
     /// How many subjects the last build or update evaluated, and re-traced (the update map's
@@ -1191,12 +1190,12 @@ pub struct Kept {
     /// The chosen rating table as last parsed; read again only when an op reaches it.
     table: Option<std::sync::Arc<ratingtable::Table>>,
     /// Location boxes that set a temperature (read again only when an op reaches one).
-    boxes: BTreeMap<ComponentId, BoxTemp>,
+    boxes: BTreeMap<DeviceId, BoxTemp>,
     /// location → the wires whose ends are there (design 057 §10, `at`).
     at: BTreeMap<String, BTreeSet<RatedSubject>>,
     /// Panel wires a device protects that have no rating data (`rating-no-data`, §7 and check 13),
     /// kept while the project rates anything.
-    unrated: BTreeSet<ConductorId>,
+    unrated: BTreeSet<WireId>,
 }
 
 impl Kept {
@@ -1254,7 +1253,7 @@ impl Kept {
     }
 
     fn forget(&mut self, s: RatedSubject) {
-        if let RatedSubject::Conductor(c) = s {
+        if let RatedSubject::Wire(c) = s {
             self.unrated.remove(&c);
         }
         if let Some(old) = self.results.remove(&s) {
@@ -1293,7 +1292,7 @@ impl Kept {
     /// Evaluate `s` again (re-tracing it when `retrace`), or drop it when it is no longer rated.
     fn put(&mut self, doc: &Document, ctx: &mut Context, s: RatedSubject, retrace: bool) {
         let rated = match s {
-            RatedSubject::Conductor(c) => wire_is_rated(doc, ctx, c),
+            RatedSubject::Wire(c) => wire_is_rated(doc, ctx, c),
             RatedSubject::Cable(k) => cable_is_rated(doc, ctx, k),
         };
         let found = if retrace || !self.traces.contains_key(&s) { None } else { self.traces.get(&s).cloned() };
@@ -1301,10 +1300,10 @@ impl Kept {
         if !rated {
             // A protected panel wire with no rating data, counted while the project rates
             // anything (§7, check 13).
-            if let RatedSubject::Conductor(c) = s
+            if let RatedSubject::Wire(c) = s
                 && !self.results.is_empty()
                 && is_panel_wire(doc, c)
-                && doc.conductors.contains_key(&c)
+                && doc.wires.contains_key(&c)
             {
                 let f = found.unwrap_or_else(|| {
                     self.retraced += 1;
@@ -1354,13 +1353,13 @@ impl Kept {
     fn unrated_pass(&mut self, doc: &Document, ctx: &mut Context) {
         if self.results.is_empty() {
             for c in std::mem::take(&mut self.unrated) {
-                self.forget(RatedSubject::Conductor(c));
+                self.forget(RatedSubject::Wire(c));
             }
             return;
         }
-        let wires: Vec<ConductorId> = doc.conductors.keys().copied().filter(|c| !self.results.contains_key(&RatedSubject::Conductor(*c))).collect();
+        let wires: Vec<WireId> = doc.wires.keys().copied().filter(|c| !self.results.contains_key(&RatedSubject::Wire(*c))).collect();
         for c in wires {
-            self.put(doc, ctx, RatedSubject::Conductor(c), false);
+            self.put(doc, ctx, RatedSubject::Wire(c), false);
         }
     }
 
@@ -1398,8 +1397,8 @@ impl Kept {
         let conn = doc.connectivity();
         for n in &touch.nets {
             if let Some(net) = conn.net(*n) {
-                for c in &net.conductors {
-                    retrace.insert(RatedSubject::Conductor(*c));
+                for c in &net.wires {
+                    retrace.insert(RatedSubject::Wire(*c));
                     for k in doc.cables_of(*c) {
                         retrace.insert(RatedSubject::Cable(k));
                     }
@@ -1428,16 +1427,16 @@ impl Kept {
                 results.extend(set.iter().copied());
             }
         }
-        let mut moved: BTreeSet<ComponentId> = touch.moved.clone();
+        let mut moved: BTreeSet<DeviceId> = touch.moved.clone();
         for page in &touch.pages {
             moved.extend(doc.representations_on(*page).filter_map(|(_, r)| match r.subject {
-                ecad_model::Subject::Component(c) => Some(c),
+                ecad_model::Subject::Device(c) => Some(c),
                 _ => None,
             }));
         }
         for c in &moved {
             for (t, _) in doc.terminals_of(*c) {
-                results.extend(doc.ends_at(t).into_iter().map(|(w, _)| RatedSubject::Conductor(w)));
+                results.extend(doc.ends_at(t).into_iter().map(|(w, _)| RatedSubject::Wire(w)));
             }
         }
         if touch.all_results || touch.table {
@@ -1472,7 +1471,7 @@ impl Kept {
     }
 
     /// Location boxes whose temperature does not read: (box, location, text).
-    pub fn bad_boxes(&self) -> impl Iterator<Item = (ComponentId, &str, &str)> {
+    pub fn bad_boxes(&self) -> impl Iterator<Item = (DeviceId, &str, &str)> {
         self.boxes.iter().filter_map(|(c, b)| match &b.temp {
             Temp::Unread(v) => Some((*c, b.location.as_str(), v.as_str())),
             Temp::Read(_) => None,
@@ -1480,7 +1479,7 @@ impl Kept {
     }
 
     /// Devices whose rating does not read, with their rating text.
-    pub fn unread(&self) -> impl Iterator<Item = (ComponentId, &str)> {
+    pub fn unread(&self) -> impl Iterator<Item = (DeviceId, &str)> {
         self.unread.iter().map(|(c, (_, t))| (*c, t.as_str()))
     }
 
@@ -1489,7 +1488,7 @@ impl Kept {
     }
 
     /// The subjects a device protects.
-    pub fn protected_by(&self, c: ComponentId) -> usize {
+    pub fn protected_by(&self, c: DeviceId) -> usize {
         self.protects.get(&c).map_or(0, BTreeSet::len)
     }
 
@@ -1520,14 +1519,14 @@ fn table_issues(ctx: &Context) -> Vec<Issue> {
 }
 
 impl Touch {
-    fn box_locations(&mut self, doc: &Document, c: ComponentId) {
-        if let Some(l) = doc.components.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
+    fn box_locations(&mut self, doc: &Document, c: DeviceId) {
+        if let Some(l) = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
             self.locations.insert(l.trim().to_string());
         }
     }
 
-    fn box_pages(&mut self, doc: &Document, c: ComponentId) {
-        self.pages.extend(doc.representations_of(ecad_model::Subject::Component(c)).map(|(_, r)| r.page));
+    fn box_pages(&mut self, doc: &Document, c: DeviceId) {
+        self.pages.extend(doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r.page));
     }
 
     /// Whether the ops reach anything here.
@@ -1578,9 +1577,9 @@ pub fn is_rating_kind(k: CheckKind) -> bool {
 /// Where a subject's rows point.
 fn place(doc: &Document, s: RatedSubject) -> (Option<ecad_model::PageId>, Option<ecad_model::Pt>, Object) {
     match s {
-        RatedSubject::Conductor(c) => {
+        RatedSubject::Wire(c) => {
             let (p, a) = crate::checks::conductor_place(doc, c, None);
-            (p, a, Object::Conductor(c))
+            (p, a, Object::Wire(c))
         }
         RatedSubject::Cable(k) => {
             let (p, a) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
@@ -1604,7 +1603,7 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
             Issue::Under { larger } => {
                 let (Some(iz), Some(d), Some(a)) = (r.iz, dev, i_n) else { continue };
                 let fix = match (larger, s) {
-                    (Some(sz), RatedSubject::Conductor(c)) => Some(Fix::UseSize(c, *sz)),
+                    (Some(sz), RatedSubject::Wire(c)) => Some(Fix::UseSize(c, *sz)),
                     (Some(sz), RatedSubject::Cable(k)) => Some(Fix::PickCableType(k, *sz)),
                     _ => show,
                 };
@@ -1672,9 +1671,7 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
 /// Whether a subject's category or cable type has a rated current (the **Use Datasheet** fix).
 fn has_datasheet(doc: &Document, s: RatedSubject) -> bool {
     match s {
-        RatedSubject::Conductor(c) => {
-            sheet(doc, ecad_model::StyleCatalogue::Wire, wire::WireLooks::new(doc).category(doc, c).0.as_ref()).rated.is_some()
-        }
+        RatedSubject::Wire(c) => sheet(doc, ecad_model::StyleCatalogue::Wire, wire::WireLooks::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
         RatedSubject::Cable(k) => sheet(doc, ecad_model::StyleCatalogue::Cable, cable::of(doc, k).as_ref()).rated.is_some(),
     }
 }
@@ -1725,12 +1722,12 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     }
     for (c, text) in k.unread() {
         let tag = crate::devices::tag_words(doc, c);
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingDeviceUnread,
             page,
             at,
-            object: Object::Component(c),
+            object: Object::Device(c),
             which: format!("{tag}'s rating '{text}' has no current; write it as 16 A"),
             fix: None,
         });
@@ -1738,12 +1735,12 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     for (c, loc, v) in k.bad_boxes() {
         // Brief 052: the box stores an entry key; the row names the entry's code.
         let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Component(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingBadValue,
             page,
             at,
-            object: Object::Component(c),
+            object: Object::Device(c),
             which: format!(
                 "{} has {TEMPERATURE} '{v}', which ECAD does not read (\u{2212}40 to 90 \u{b0}C)",
                 if loc.is_empty() { "A location box" } else { loc.as_str() }

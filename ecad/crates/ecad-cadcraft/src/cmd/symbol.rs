@@ -21,7 +21,7 @@ use ecad_electrical::cmd::symbol::{self as rules, ContentInput, MakeAt, PointInp
 pub use ecad_electrical::cmd::symbol::{
     Content, MAX_COPIES, MAX_EXTENT, MAX_NAME, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, Rules, grid_origin, not_plain, problems, shifted,
 };
-use ecad_model::{ComponentId, DefinitionId, Document, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
+use ecad_model::{DefinitionId, DeviceId, Document, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -460,7 +460,7 @@ pub(crate) struct MakeParams {
     handles: Option<Bounded<String, 0, { MAX_HANDLES }>>,
     /// A drawn component to promote instead.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// The symbol's name.
     #[serde(default)]
     name: Option<String>,

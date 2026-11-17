@@ -21,9 +21,9 @@ fn the_demo_command_list_builds_the_control_panel() {
     assert_eq!(tags, ["-G01", "-H01", "-H02", "-K01", "-M01", "-Q01", "-Q02", "-S01", "-S02", "-X01", "-X02"], "{tags:?}");
     // -K01 is one device across pages 2 and 3: coil, hold-in NO, power contacts, NC.
     let k1 = doc.components_tagged("-K01")[0];
-    assert_eq!(doc.representations_of(Subject::Component(k1)).count(), 4);
+    assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 4);
     assert_eq!(ecad_cadcraft::devices::page_numbers(&doc, k1), [2, 3]);
-    assert_eq!(doc.components[&k1].properties.get("part_number").map(String::as_str), Some("CT-9A-24VDC"));
+    assert_eq!(doc.devices[&k1].properties.get("part_number").map(String::as_str), Some("CT-9A-24VDC"));
     // Cable -W01 runs from page 2 to page 3 with linked references, three members connected to
     // -X02 on page 3.
     assert_eq!(doc.cables.len(), 1);
@@ -70,7 +70,7 @@ fn the_demo_nets_and_wire_numbers() {
         "1: L-02 2.5 BN",
         "1: N-01 2.5 BU",
         "1: N-02 2.5 BU",
-        "1: PE 2.5 GNYE",
+        "1: PE 2.5 GN/YE",
         "2: 0V-01 0.5 BU",
         "2: 24V-01 0.5 BU",
         "2: 24V-02 0.5 BU",
@@ -161,8 +161,8 @@ fn the_demo_locations_reports_and_generated_pages() {
     assert_eq!(proposal(&doc, "-M01"), (s("+FIELD"), "+FIELD".to_string(), "page"));
     assert_eq!(proposal(&doc, "-X02"), (s("+JB1"), "+JB1".to_string(), "box"));
     // Accept every device's proposal, as a person does from the inspector's Use link.
-    let tagged: Vec<(ecad_model::ComponentId, String)> = doc
-        .components
+    let tagged: Vec<(ecad_model::DeviceId, String)> = doc
+        .devices
         .keys()
         .filter(|c| ecad_cadcraft::locations::is_device(&doc, **c))
         .filter_map(|c| {

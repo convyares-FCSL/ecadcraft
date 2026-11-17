@@ -10,7 +10,7 @@ use crate::common;
 use cadcraft_engine::doc::{Handle, Space};
 use common::{H, pts, small_project};
 use ecad_inspect::EventKind;
-use ecad_model::{ConductorId, PageId, TxKind};
+use ecad_model::{PageId, TxKind, WireId};
 use serde_json::{Value, json};
 
 /// What a refusal must leave as it was.
@@ -57,7 +57,7 @@ fn last_tx(h: &mut H) -> (String, Vec<&'static str>) {
 }
 
 /// The small project plus a plain line from (50, 30) to (80, 30), its handle, and the wire.
-fn fixture() -> (H, Handle, ConductorId) {
+fn fixture() -> (H, Handle, WireId) {
     let (mut h, _, _, w) = small_project(23);
     let page = h.first_page();
     h.run("line", json!({"points": pts(&[(50.0, 30.0), (80.0, 30.0)])})).unwrap();
@@ -155,8 +155,8 @@ fn oops_of_objects_with_a_meaning_is_refused_with_a_reason() {
         let (mut h, plain, w) = fixture();
         let page = h.first_page();
         let doc = h.doc();
-        let c1 = *doc.components.keys().next().unwrap();
-        let c2 = *doc.components.keys().nth(1).unwrap();
+        let c1 = *doc.devices.keys().next().unwrap();
+        let c2 = *doc.devices.keys().nth(1).unwrap();
         let target: Vec<String> = match what {
             "wire" => vec![h.route_handle(page, w).hex()],
             "component line" => vec![h.rep_handles(page, c1)[0].clone()],
@@ -213,17 +213,17 @@ fn oops_after_undo_or_on_another_page_is_refused() {
 
 #[test]
 fn classic_array_copies_are_recorded_as_copies() {
-    let cases: [(&str, fn(&mut H, Handle, ConductorId) -> Value, &[&str]); 3] = [
+    let cases: [(&str, fn(&mut H, Handle, WireId) -> Value, &[&str]); 3] = [
         ("plain line", |_, plain, _| json!({"handles": [plain.hex()], "rows": 2, "cols": 2, "rowSpacing": 10, "colSpacing": 50}), &["AddItem"]),
         (
             "symbol",
             |h, _, _| {
-                let c2 = *h.doc().components.keys().nth(1).unwrap();
+                let c2 = *h.doc().devices.keys().nth(1).unwrap();
                 let item = h.symbol_item(c2);
                 let page = h.first_page();
                 json!({"handles": [h.handle_of(page, item).hex()], "rows": 1, "cols": 2, "colSpacing": 60})
             },
-            &["CreateComponent", "LinkRepresentation"],
+            &["CreateDevice", "LinkRepresentation"],
         ),
         (
             "wire",
@@ -231,15 +231,15 @@ fn classic_array_copies_are_recorded_as_copies() {
                 let page = h.first_page();
                 json!({"handles": [h.route_handle(page, w).hex()], "rows": 2, "cols": 1, "rowSpacing": 30})
             },
-            &["CreateConductor", "LinkRepresentation"],
+            &["CreateWire", "LinkRepresentation"],
         ),
     ];
     for (what, params, expect) in cases {
         let (mut h, plain, w) = fixture();
         let p = params(&mut h, plain, w);
         let head = h.head();
-        let components = h.doc().components.len();
-        let conductors = h.doc().conductors.len();
+        let devices = h.doc().devices.len();
+        let conductors = h.doc().wires.len();
         h.run("-array", p).unwrap();
         assert_eq!(h.head(), head + 1, "{what}: one transaction");
         let (label, ops) = last_tx(&mut h);
@@ -249,9 +249,9 @@ fn classic_array_copies_are_recorded_as_copies() {
         }
         let doc = h.doc();
         match what {
-            "symbol" => assert_eq!(doc.components.len(), components + 1, "a copied device"),
-            "wire" => assert_eq!(doc.conductors.len(), conductors + 1, "a copied wire"),
-            _ => assert_eq!((doc.components.len(), doc.conductors.len()), (components, conductors)),
+            "symbol" => assert_eq!(doc.devices.len(), devices + 1, "a copied device"),
+            "wire" => assert_eq!(doc.wires.len(), conductors + 1, "a copied wire"),
+            _ => assert_eq!((doc.devices.len(), doc.wires.len()), (devices, conductors)),
         }
         h.check();
         // One undo takes the whole array back.

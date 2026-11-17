@@ -9,7 +9,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::accessory::{self as rules, AccessoryInput, JumperInput, LinkRef, Words};
 use ecad_model::links;
-use ecad_model::{ComponentId, TerminalId};
+use ecad_model::{DeviceId, TerminalId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -68,7 +68,7 @@ impl WordsParam {
 pub(crate) struct AccessoryParams {
     /// The strip.
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// A terminal of the strip (its position is the place when `at` is absent).
     #[serde(default)]
     terminal: Option<TerminalId>,
@@ -131,7 +131,7 @@ impl Command for AccessoryParams {
 struct LinkParam {
     /// The strip.
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// The link's number, 1 to 999.
     #[serde(default)]
     n: Option<u64>,
@@ -147,7 +147,7 @@ pub(crate) struct JumperParams {
     link: Option<LinkParam>,
     /// Make: the strip.
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// Make: the picked terminals (at most 999).
     #[serde(default)]
     terminals: Option<Bounded<TerminalId, 0, MAX_PICKS>>,
@@ -197,7 +197,7 @@ impl Command for JumperParams {
                 p.apply_edit(pg, "jumper", &done.label, done.ops)?;
             }
             let doc = p.ledger.document();
-            let positions = doc.components.get(&c).and_then(|x| x.properties.get(&links::key(n))).cloned();
+            let positions = doc.devices.get(&c).and_then(|x| x.properties.get(&links::key(n))).cloned();
             let bars = p.outputs().strips.get(c).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map_or(0, |l| l.bars);
             let mut v = json!({"strip": c.hex(), "link": n, "positions": positions, "bars": bars, "changed": changed, "message": done.message});
             if let Some((m, t)) = done.split {

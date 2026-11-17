@@ -1,18 +1,16 @@
 //! Book order and page numbers (brief 019, design 019 §5.1, §6.1).
 //!
 //! # Semantics
-//! - A page's folder is its `folder` property ([`FOLDER_KEY`]): a folder's 32-hex-digit ID; absent
-//!   means the top level. Folders nest through [`crate::Folder::parent`].
+//! - A page's folder is its [`crate::Page::folder`]; `None` means the top level. Folders nest through [`crate::Folder::parent`].
 //! - **Book order**: within the top level and within each folder, pages come first (in
 //!   `page_order` order), then sub-folders (in `folder_order` order), read depth-first (owner
 //!   answer Q6). With no folders it is `page_order`. A page whose folder cannot be reached (only
 //!   from a hostile document) comes last, in `page_order` order, so every page has a place.
-//! - A page's **shown number** is its `number` property ([`NUMBER_KEY`]), else its 1-based
+//! - A page's **shown number** is its [`crate::Page::number`], else its 1-based
 //!   position in book order (old files, brief AC6).
 //!
 //! Building a [`Book`] costs one pass over the pages and folders, never over their items.
 
-use crate::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -22,9 +20,9 @@ use crate::doc::Document;
 use crate::id::{FolderId, PageId};
 use crate::text::Text;
 
-/// The page property naming the page's folder.
+/// The old page property naming the page's folder; now [`crate::Page::folder`] (a reserved key).
 pub const FOLDER_KEY: &str = "folder";
-/// The page property holding the designer's page number (`100`, `105a`).
+/// The old page property of the page number; now [`crate::Page::number`] (a reserved key).
 pub const NUMBER_KEY: &str = "number";
 /// Page and project property: the `=` function (design 019 §6.1, 018 value rules).
 pub const FUNCTION_KEY: &str = "function";
@@ -36,7 +34,7 @@ pub const MAX_FOLDER_DEPTH: usize = 8;
 
 /// The folder `page` is in, by its `folder` property, when that reads as a folder ID.
 pub fn folder_of(doc: &Document, page: PageId) -> Option<FolderId> {
-    doc.pages.get(&page).and_then(|p| p.properties.text(crate::keys::FOLDER)).and_then(FolderId::parse)
+    doc.pages.get(&page).and_then(|p| p.folder)
 }
 
 /// One node of the page tree, in book order.
@@ -87,13 +85,13 @@ impl Outline {
     /// every other op changes nothing here. Out-of-range indexes are ignored (the ledger refuses
     /// them anyway).
     pub fn apply(&mut self, op: &crate::op::Op) {
-        use crate::op::{ObjectRef, Op};
+        use crate::op::Op;
         match op {
             Op::AddPage { id, page, index } => {
                 if *index <= self.page_order.len() {
                     self.page_order.insert(*index, *id);
                 }
-                match page.properties.text(crate::keys::FOLDER).and_then(FolderId::parse) {
+                match page.folder {
                     Some(f) => self.page_folder.insert(*id, f),
                     None => self.page_folder.remove(id),
                 };
@@ -104,10 +102,10 @@ impl Outline {
                 }
                 self.page_folder.remove(id);
             }
-            Op::SetProperty { object: ObjectRef::Page(p), key, after, .. } if key == FOLDER_KEY => {
-                match after.as_deref().and_then(FolderId::parse) {
-                    Some(f) => self.page_folder.insert(*p, f),
-                    None => self.page_folder.remove(p),
+            Op::ModifyPage { id, after, .. } => {
+                match after.folder {
+                    Some(f) => self.page_folder.insert(*id, f),
+                    None => self.page_folder.remove(id),
                 };
             }
             Op::AddFolder { id, folder, index } => {
@@ -175,11 +173,11 @@ impl Outline {
 
 /// Whether `ops` can change book order at all (page and folder ops, a page's `folder`).
 pub fn moves_pages(ops: &[crate::op::Op]) -> bool {
-    use crate::op::{ObjectRef, Op};
+    use crate::op::Op;
     ops.iter().any(|op| match op {
         Op::AddPage { .. } | Op::RemovePage { .. } => true,
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
-        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == FOLDER_KEY,
+        Op::ModifyPage { before, after, .. } => before.folder != after.folder,
         _ => false,
     })
 }
@@ -234,7 +232,7 @@ impl Book {
 
 /// `page`'s stored number, if it has one.
 pub fn stored_number(doc: &Document, page: PageId) -> Option<&str> {
-    doc.pages.get(&page).and_then(|p| p.properties.text(crate::keys::NUMBER))
+    doc.pages.get(&page).and_then(|p| p.number.as_ref()).map(PageNo::as_str)
 }
 
 /// The number `page` is shown with (see [`Book::number`]). Builds the book order only when the

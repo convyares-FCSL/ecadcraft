@@ -15,7 +15,7 @@ pub use ecad_electrical::cmd::terminal::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
 };
 use ecad_model::units::{Degrees, Radians};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId};
+use ecad_model::{CableId, DeviceId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -98,7 +98,7 @@ fn land_words(doc: &Document, t: TerminalId, land: &Land) -> String {
 pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnWire> {
     let on = crate::wires::wire_at(doc, page, at, ON_WIRE, None)?;
     let (_, _, v) = crate::wires::route_vertices(doc, on.conductor, page)?;
-    let cond = doc.conductors.get(&on.conductor)?;
+    let cond = doc.wires.get(&on.conductor)?;
     for (end, p) in [(End::A, v.first()), (End::B, v.last())] {
         if p.is_some_and(|p| p.near(on.at, ON_WIRE)) && cond.end(end).is_none() {
             return None;
@@ -123,7 +123,7 @@ pub(crate) fn land_result(doc: &Document, t: TerminalId, land: &Land) -> (Value,
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
+pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
     rules::level_word(doc, c, t, word)
 }
 
@@ -133,7 +133,7 @@ pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word
 /// # Errors
 /// As [`plan_fence`].
 pub fn plan_fence_in(
-    p: &mut crate::project::Project, page: PageId, style: Style, strip: Option<ComponentId>, pe: bool, from: Pt, to: Pt,
+    p: &mut crate::project::Project, page: PageId, style: Style, strip: Option<DeviceId>, pe: bool, from: Pt, to: Pt,
 ) -> Result<Fence, CmdError> {
     let tol = p.tolerance;
     plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol)
@@ -146,7 +146,7 @@ pub fn plan_fence_in(
 pub(crate) struct TerminalsParams {
     /// The strip to join (null or absent: a new strip).
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// PE terminals (without `type`).
     #[serde(default)]
     pe: Option<bool>,
@@ -200,7 +200,7 @@ impl Command for TerminalsParams {
 }
 
 /// The net number of conductor `w`, else its name.
-fn wire_words(doc: &Document, w: ConductorId) -> String {
+fn wire_words(doc: &Document, w: WireId) -> String {
     let conn = doc.connectivity();
     conn.net_of_conductor(w)
         .and_then(|n| conn.net(n))
@@ -232,7 +232,7 @@ pub(crate) fn place_level(
         let (c, tag_text) = match strip {
             Some(c) => (c, crate::devices::tag_words(doc, c)),
             None => {
-                let c: ComponentId = p.ids.fresh();
+                let c: DeviceId = p.ids.fresh();
                 let t = match new_tag {
                     Some(t) => t,
                     None => p.tag_high.next_auto(&p.ledger, &crate::devices::prefix_for(doc, starter))?,
@@ -240,7 +240,10 @@ pub(crate) fn place_level(
                 let mut properties = ecad_model::Properties::new();
                 properties.insert(ecad_model::tag::TAG_KEY.into(), t.clone());
                 properties.insert("description".into(), "Terminal".into());
-                ops.push(Op::CreateComponent { id: c, component: ecad_model::Component { properties, definition: Some(def) } });
+                ops.push(Op::CreateDevice {
+                    id: c,
+                    device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+                });
                 (c, t)
             }
         };
@@ -542,7 +545,7 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
 pub(crate) struct StripplanParams {
     /// Only this strip.
     #[serde(default)]
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     /// At most this many rows (500, at most 5000).
     #[serde(default)]
     limit: Option<u64>,
@@ -596,7 +599,7 @@ impl Command for CablecoresParams {
             p.outputs();
             let o = p.outputs.as_ref().ok_or(CmdError::refused("The reports could not be built."))?;
             let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
-            let wire = |w: ConductorId| o.wire(w).cloned();
+            let wire = |w: WireId| o.wire(w).cloned();
             let doc = p.ledger.document();
             let style = doc.settings.reference_style();
             let o_chain = |i: usize| o.chain_ends(&row, i, style);

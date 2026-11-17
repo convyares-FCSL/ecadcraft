@@ -95,22 +95,22 @@ fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
     t.cad.session.set_selection(lines.clone());
     let before = head(&mut t);
     let mut h = harness(t);
-    assert!(h.query_by_label("Convert to Component").is_none(), "Drafting is shown first, unchanged");
+    assert!(h.query_by_label("Convert to Device").is_none(), "Drafting is shown first, unchanged");
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     assert_eq!(h.state().cad.ui.toolset_tab, "ECAD", "ECAD is a Tool Sets tab beside Drafting and Modeling");
-    h.get_by_label("Convert to Component").click();
+    h.get_by_label("Convert to Device").click();
     h.run_steps(4);
     let t = h.state_mut();
     assert!(t.cad.take_tool_requests().is_empty(), "the click was consumed");
     assert_eq!(head(t), before + 1, "one transaction, recorded once");
     let d = doc(t);
-    assert_eq!(d.components.len(), 1);
+    assert_eq!(d.devices.len(), 1);
     let rep = d.representations.values().next().unwrap();
     assert_eq!(rep.items.len(), 4, "made from the four selected lines");
     // Undo is the project's own: the component goes away.
     assert!(t.submit_command("u").is_none());
-    assert!(doc(t).components.is_empty());
+    assert!(doc(t).devices.is_empty());
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn the_interactive_buttons_start_their_prompts() {
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let firsts = [
-        ("Convert to Component", "convertcomponent", "Select objects to convert to a component:"),
+        ("Convert to Device", "convertcomponent", "Select objects to convert to a component:"),
         // No component on the page: no number is promised (fix round 2, N3).
         ("Add Connection Point", "addterminal", "Specify point for a connection point on a component or [Name]:"),
         ("Place Symbol", "place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
@@ -191,7 +191,7 @@ fn templates_take_ids_from_the_selection() {
     let mut t = new_app();
     assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
     let d = doc(&mut t);
-    let (cid, _) = d.conductors.iter().next().unwrap();
+    let (cid, _) = d.wires.iter().next().unwrap();
     let page = d.page_order[0];
     let (item, _) = ecad_model::derive::route_on_page(&d, *cid, page).unwrap();
     let p = t.project().unwrap().clone();
@@ -224,7 +224,7 @@ fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
     let lines = rectangle(&mut second);
     second.cad.session.set_selection(lines);
     second.tool("ecad.convertcomponent").unwrap();
-    assert_eq!(doc(&mut second).components.len(), 1, "edits stay in memory, as for typed commands");
+    assert_eq!(doc(&mut second).devices.len(), 1, "edits stay in memory, as for typed commands");
     assert!(second.cad.run("qsave", json!(null)).is_err(), "and still cannot be saved over the other session's file");
     drop(second);
     drop(first);
@@ -265,7 +265,7 @@ fn a_command_waiting_at_a_prompt_is_cancelled_first() {
     t.tool("ecad.convertcomponent").unwrap();
     assert!(t.cad.session.running.is_none(), "LINE was cancelled");
     assert_eq!(head(&mut t), before + 1, "and the component was made");
-    assert_eq!(doc(&mut t).components.len(), 1);
+    assert_eq!(doc(&mut t).devices.len(), 1);
     // A template is not handed to a running command either.
     assert!(t.submit_command("line").is_none());
     t.tool("ecad.setprop").unwrap();

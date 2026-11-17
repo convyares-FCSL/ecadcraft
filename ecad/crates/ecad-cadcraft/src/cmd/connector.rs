@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::connector::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
-use ecad_model::{ConductorId, Document, PageId, Placement, Pt, TerminalId};
+use ecad_model::{Document, PageId, Placement, Pt, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -124,7 +124,7 @@ pub(crate) struct ConnectorParams {
     line: Option<Bounded<Point, 2, 2>>,
     /// Pins: the one wire a pin lands on.
     #[serde(default)]
-    wire: Option<ConductorId>,
+    wire: Option<WireId>,
     /// The first pin's name.
     #[serde(default)]
     pin: Option<String>,
