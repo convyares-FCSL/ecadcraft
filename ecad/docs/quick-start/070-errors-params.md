@@ -13,6 +13,13 @@ reads stay the same. What changes is underneath, plus one thing an agent or a sc
   Before, it was silently ignored. So far this applies to the commands above.
 - Each of those commands has a JSON Schema of its parameters
   (`ecad_cadcraft::cmd::schema_of("wire")`). The `params` text in the command list is unchanged.
+- `setprop` walks one table of property rules (`ecad_electrical::cmd::prop::PROP_RULES`) for one
+  object and for several devices (`components`), so the two give the same refusals. One visible
+  difference: `tag_fixed` on several devices now follows the tag rules ("yes" or null, a tag to
+  fix, not provisional); before, it was stored as free text.
+- `place` (every form), `symbols`, `devices`, `deviceprops`, `devicedelete`, `ecaddelete`,
+  `tagsettings`, `convertcomponent` and `addterminal` are typed too. A switch given as something
+  other than true or false (`mirror: 1`, `builtins: "x"`) is now refused instead of ignored.
 - Errors have types: `ecad_model::ParseError` and `Noun`, and `ecad_electrical::CmdError`.
 - `cargo xtask layers` counts, per crate, the lines that still report errors as text; the counts
   can only fall.
