@@ -563,6 +563,10 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 "points": points,
             });
             if detail {
+                // Design 072 §2.1: the device's text fields, then what is left in its bag.
+                for f in ecad_model::TextField::ALL {
+                    row[f.key()] = json!(c.text(f));
+                }
                 row["properties"] = json!(c.properties);
             }
             (tag.unwrap_or_default().to_string(), row)

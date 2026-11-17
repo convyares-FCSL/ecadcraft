@@ -211,6 +211,16 @@ impl Family {
     }
 }
 
+/// A device's description (a cable's until lane D).
+pub const DESCRIPTION: PropKey = PropKey(crate::device::DESCRIPTION_KEY);
+/// A device's part number.
+pub const PART_NUMBER: PropKey = PropKey(crate::device::PART_NUMBER_KEY);
+/// A device's maker.
+pub const MAKER: PropKey = PropKey(crate::device::MAKER_KEY);
+/// A device's article number.
+pub const ARTICLE_NUMBER: PropKey = PropKey(crate::device::ARTICLE_KEY);
+/// A device's type text (a cable's until lane D).
+pub const TYPE_TEXT: PropKey = PropKey(crate::device::TYPE_KEY);
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::tag::TAG_KEY);
 /// Whether a device's or cable's tag is fixed (yes/no).
@@ -285,7 +295,7 @@ pub fn is_reserved(key: &str) -> bool {
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
 /// and `SetProperty` refuses them on a device.
-pub const DEVICE_FIELDS: &[PropKey] = &[TAG, TAG_FIXED];
+pub const DEVICE_FIELDS: &[PropKey] = &[TAG, TAG_FIXED, DESCRIPTION, PART_NUMBER, MAKER, ARTICLE_NUMBER, TYPE_TEXT];
 
 /// Whether `key` became a struct field on `holder` ([`RESERVED`], [`DEVICE_FIELDS`]).
 pub fn is_reserved_on(key: &str, holder: Holder) -> bool {

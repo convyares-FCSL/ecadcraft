@@ -70,7 +70,7 @@ impl F {
     }
 
     fn prop(&mut self, key: &str) -> Option<String> {
-        self.h.doc().devices[&self.strip].properties.get(key).cloned()
+        self.h.doc().devices[&self.strip].value(key)
     }
 
     fn same_as_built(&mut self) {

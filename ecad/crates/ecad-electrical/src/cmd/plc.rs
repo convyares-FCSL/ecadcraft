@@ -161,13 +161,20 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
     }
     // A description that was the old body's name (placing writes it) follows the type.
     let old_name = crate::symbols::by_key(from.body()).map(|s| s.name);
-    if let Some(d) = comp.properties.get("description").filter(|d| Some(d.trim()) == old_name) {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Device(c),
-            key: "description".into(),
-            before: Some(d.clone()),
-            after: Some(new_starter.name.to_string()),
+    if comp.description.as_ref().is_some_and(|d| Some(d.as_str()) == old_name) {
+        // The device as the definition swap and retype above leave it.
+        let swapped = comp.definition.is_some_and(|d| old_defs.contains(&d));
+        let retyped = ops.iter().rev().find_map(|o| match o {
+            Op::ModifyDevice { id, after, .. } if *id == c => Some(after.clone()),
+            _ => None,
         });
+        let before = match (retyped, swapped) {
+            (Some(d), _) => d,
+            (None, true) => ecad_model::Device { definition: Some(def), ..comp.clone() },
+            (None, false) => comp.clone(),
+        };
+        let after = ecad_model::Device { description: crate::devices::description_of(new_starter.name), ..before.clone() };
+        ops.push(Op::ModifyDevice { id: c, before, after });
     }
     // Safe states the new type cannot hold go.
     for (k, v) in comp.properties.range(crate::plc::channels::CH_PREFIX.to_string()..) {

@@ -212,6 +212,16 @@ pub struct Device {
     pub tag: Option<crate::tag::Tag>,
     /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
     pub tag_fixed: bool,
+    /// What it is for, in words (`setprop` key `description`).
+    pub description: Option<crate::device::Description>,
+    /// Its main part's number (`part_number`).
+    pub part_number: Option<crate::device::PartText>,
+    /// Its main part's maker (`maker`).
+    pub manufacturer: Option<crate::device::PartText>,
+    /// Its main part's article number (`article_number`).
+    pub article_number: Option<crate::device::PartText>,
+    /// Its type text (`type`): a terminal strip's type notation reads it.
+    pub type_text: Option<crate::device::PartText>,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
@@ -238,13 +248,92 @@ impl Device {
         typed(self) != typed(other)
     }
 
+    /// Whether `other` differs from this device in its text fields only ([`crate::TextField`]):
+    /// what a view that reads none of them (rating, connectivity) can skip.
+    pub fn only_text_differs(&self, other: &Device) -> bool {
+        let bare =
+            |d: &Device| Device { description: None, part_number: None, manufacturer: None, article_number: None, type_text: None, ..d.clone() };
+        bare(self) == bare(other)
+    }
+
     /// The value `setprop`'s key `key` names on this device (design 072 §10: the key stays a
     /// string and routes to the field): a typed field as its stored text, else the property.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
-            crate::tag::TAG_KEY => self.tag().map(str::to_string),
             crate::tag::FIXED_KEY => self.tag_fixed.then(|| crate::words::flag_word(true).to_string()),
-            _ => self.properties.get(key).cloned(),
+            _ => self.get(key).map(str::to_string),
+        }
+    }
+
+    /// The text `setprop`'s key `key` names on this device: its tag, a text field
+    /// ([`crate::TextField`]), else the property. (The tag's fixed flag is not text: [`Device::value`].)
+    pub fn get(&self, key: &str) -> Option<&str> {
+        if key == crate::tag::TAG_KEY {
+            return self.tag();
+        }
+        match crate::TextField::of_key(key) {
+            Some(f) => self.text(f),
+            None => self.properties.get(key).map(String::as_str),
+        }
+    }
+
+    /// Its text field `f`.
+    pub fn text(&self, f: crate::TextField) -> Option<&str> {
+        use crate::TextField as F;
+        match f {
+            F::Description => self.description.as_ref().map(|t| t.as_str()),
+            F::PartNumber => self.part_number.as_ref().map(|t| t.as_str()),
+            F::Manufacturer => self.manufacturer.as_ref().map(|t| t.as_str()),
+            F::ArticleNumber => self.article_number.as_ref().map(|t| t.as_str()),
+            F::TypeText => self.type_text.as_ref().map(|t| t.as_str()),
+        }
+    }
+
+    /// Set its text field `f` to `value` (`None`, or text that is blank once trimmed, clears it).
+    ///
+    /// # Errors
+    /// The [`crate::text::TextError`] of a value that is too long or holds a hidden character.
+    pub fn set_text(&mut self, f: crate::TextField, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+        use crate::TextField as F;
+        use crate::device::{Description, PartText};
+        let value = value.map(str::trim).filter(|v| !v.is_empty());
+        let part = |v: Option<&str>| v.map(PartText::new).transpose();
+        match f {
+            F::Description => self.description = value.map(Description::new).transpose()?,
+            F::PartNumber => self.part_number = part(value)?,
+            F::Manufacturer => self.manufacturer = part(value)?,
+            F::ArticleNumber => self.article_number = part(value)?,
+            F::TypeText => self.type_text = part(value)?,
+        }
+        Ok(())
+    }
+
+    /// This device with text field `f` set to `value` ([`Device::set_text`]).
+    ///
+    /// # Errors
+    /// As [`Device::set_text`].
+    pub fn with_text(&self, f: crate::TextField, value: Option<&str>) -> std::result::Result<Device, crate::text::TextError> {
+        let mut d = self.clone();
+        d.set_text(f, value)?;
+        Ok(d)
+    }
+
+    /// Set the value `setprop`'s key `key` names: a text field, else the property bag (the tag and
+    /// its flag have their own rules and are not set here). Used where a bag of values (a
+    /// symbol's defaults, an item's columns) becomes a device.
+    ///
+    /// # Errors
+    /// As [`Device::set_text`].
+    pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+        match crate::TextField::of_key(key) {
+            Some(f) => self.set_text(f, value),
+            None => {
+                match value {
+                    Some(v) => self.properties.insert(key.to_string(), v.to_string()),
+                    None => self.properties.remove(key),
+                };
+                Ok(())
+            }
         }
     }
 

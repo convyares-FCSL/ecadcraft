@@ -108,3 +108,33 @@ fn a_project_prefix_follows_a_renamed_symbol_key() {
     // Nothing names a project symbol that is not there: the open check finds nothing.
     assert!(ecad_electrical::words_check::check(&h.doc()).is_empty());
 }
+
+/// Step 2b (design 072 §2.1): a device's description, part number, maker, article number and type
+/// text are written as one `ModifyDevice` (`setprop`, `article`, `bomitem`), never into its bag.
+#[test]
+fn text_fields_are_written_as_modify_device() {
+    use ecad_model::{Op, TextField};
+    let mut h = H::new(7202);
+    let c: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
+    let placed = h.doc().devices[&c].clone();
+    assert_eq!(placed.text(TextField::Description), Some("Contactor / relay coil"), "placing writes the symbol's name as the description");
+    for f in TextField::ALL {
+        h.run("setprop", json!({"component": c.hex(), "key": f.key(), "value": format!("v-{}", f.key())})).unwrap();
+        let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+        assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{}: {ops:?}", f.key());
+    }
+    let d = h.doc().devices[&c].clone();
+    assert!(TextField::ALL.iter().all(|f| d.text(*f).is_some()) && d.properties.is_empty(), "{d:?}");
+    // `article` writes the device's article number on every part with that part number.
+    h.run("article", json!({"part_number": "v-part_number", "article_number": "A-77"})).unwrap();
+    assert_eq!(h.doc().devices[&c].text(TextField::ArticleNumber), Some("A-77"));
+    // An item's description is a field too, and can't be cleared.
+    let item: DeviceId = id(&h.run("bomitem", json!({"description": "Trunking", "qty": "2"})).unwrap(), "item");
+    assert_eq!(h.doc().devices[&item].text(TextField::Description), Some("Trunking"));
+    h.run("bomitem", json!({"item": item.hex(), "set": {"maker": "Lapp"}})).unwrap();
+    assert_eq!(h.doc().devices[&item].text(TextField::Manufacturer), Some("Lapp"));
+    assert!(h.run("setprop", json!({"component": item.hex(), "key": "description", "value": null})).is_err());
+    // Too long for the field: refused with its bound.
+    let e = h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "9".repeat(65)})).unwrap_err();
+    assert!(e.contains("at most 64"), "{e}");
+}

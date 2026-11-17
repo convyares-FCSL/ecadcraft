@@ -112,3 +112,44 @@ fn the_tag_is_a_field_not_a_property() {
     assert!(serde_json::from_str::<Device>(&hidden).is_err(), "a bidi character in a tag does not read");
     assert_eq!(Device::default().with_tag(Some("-K02")).value("tag").as_deref(), Some("-K02"));
 }
+
+/// Design 072 §2.1 (step 2b): description, part number, maker, article number and type text are
+/// fields; a device's bag never holds their keys, `SetProperty` refuses them, the values are
+/// validated text, and `setprop`'s keys route to them.
+#[test]
+fn the_text_fields_are_fields_not_properties() {
+    use ecad_model::TextField;
+    let mut ids = IdAllocator::seeded(12);
+    let mut l = Ledger::new(12);
+    let c: DeviceId = ids.fresh();
+    for f in TextField::ALL {
+        let mut bagged = Device::default();
+        bagged.properties.insert(f.key().into(), "x".into());
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{}: a bag holding it is refused", f.key());
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
+    for f in TextField::ALL {
+        let op = Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: f.key().into(), before: None, after: Some("x".into()) };
+        assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{}", f.key());
+    }
+    let mut d = Device::default();
+    for (f, v) in TextField::ALL.into_iter().zip(["Main pump", "3RT2016", "Siemens", "A-0400", "UK 2,5"]) {
+        d.set_value(f.key(), Some(v)).unwrap();
+        assert_eq!(d.text(f), Some(v));
+        assert_eq!(d.get(f.key()), Some(v));
+        assert_eq!(d.value(f.key()).as_deref(), Some(v));
+    }
+    assert!(d.properties.is_empty(), "set_value routes the keys to the fields");
+    assert_eq!(d.manufacturer.as_ref().map(|t| t.as_str()), Some("Siemens"), "`maker` is the manufacturer");
+    assert_eq!(d.type_text.as_ref().map(|t| t.as_str()), Some("UK 2,5"), "`type` is the type text");
+    // Too long, or a hidden character: refused; blank clears.
+    assert!(d.with_text(TextField::PartNumber, Some(&"9".repeat(65))).is_err());
+    assert!(d.with_text(TextField::Description, Some(&"d".repeat(256))).is_ok());
+    assert!(d.with_text(TextField::Description, Some(&"d".repeat(257))).is_err());
+    assert!(d.with_text(TextField::Manufacturer, Some("Sie\u{200b}mens")).is_err());
+    assert_eq!(d.with_text(TextField::Description, Some("  ")).unwrap().description, None);
+    let json = serde_json::to_value(&d).unwrap();
+    assert_eq!(json["manufacturer"], "Siemens");
+    let hidden = r#"{"tag":null,"tag_fixed":false,"description":"Pu\u202emp","properties":{},"definition":null,"device_type":"general"}"#;
+    assert!(serde_json::from_str::<Device>(hidden).is_err(), "a bidi character in a description does not read");
+}

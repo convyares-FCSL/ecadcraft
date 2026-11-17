@@ -24,6 +24,10 @@ pub const NO_SUCH_OBJECT: &str = "no such object";
 /// A row's check: the value to store for `key` on `object` (`None` clears it), or the refusal.
 pub type Check = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<String>, CmdError>;
 
+/// A row's plan for a key that became a struct field (design 072): the `Modify*` op recording the
+/// whole record (`None`: unchanged), or the refusal.
+pub type Plan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<Op>, CmdError>;
+
 /// How a row of [`PROP_RULES`] builds the change.
 #[derive(Clone, Copy)]
 pub enum Build {
@@ -41,6 +45,8 @@ pub enum Build {
     /// A value the check reads (and may store canonically): one `SetProperty` per object
     /// ([`plan_value`]).
     Value(Check),
+    /// A key that is a struct field (design 072): one `Modify*` op per object ([`plan_record`]).
+    Record(Plan),
 }
 
 /// One row of [`PROP_RULES`].
@@ -134,7 +140,20 @@ pub static PROP_RULES: &[PropRule] = &[
 
 /// The row of [`PROP_RULES`] that decides `key` on `object`.
 pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRule {
-    PROP_RULES.iter().find(|r| (r.claims)(doc, object, key)).unwrap_or(&FREE_TEXT)
+    super::props::LANES.iter().flat_map(|(_, rows)| rows.iter()).chain(PROP_RULES).find(|r| (r.claims)(doc, object, key)).unwrap_or(&FREE_TEXT)
+}
+
+/// `setprop` of a `Record` row on one object: its `Modify*` op, `None` when unchanged.
+///
+/// # Errors
+/// The row's refusal; a row of another kind.
+pub fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Option<Op>, CmdError> {
+    match rule_for(doc, object, key).build {
+        Build::Record(plan) => plan(doc, object, key, typed),
+        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) => {
+            Err(CmdError::input("that property is set through its own rule"))
+        }
+    }
 }
 
 fn is_component(o: ObjectRef) -> bool {
@@ -306,7 +325,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         // A device's tag is a device property too: merging into the device that holds it reads it
         // here ([`plan_device`]).
         Build::Tag => device_value,
-        Build::Fixed | Build::Aspect => return Err(CmdError::input("that property is set through its own rule")),
+        Build::Fixed | Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
     if let ObjectRef::Device(c) = object {
         crate::bom::refuse_on_item(doc, c, key, value)?;
@@ -367,9 +386,16 @@ pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>
         let comp = doc.devices.get(c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
         let key = component_key(doc, *c, key);
         let o = ObjectRef::Device(*c);
-        if let Build::Fixed = rule_for(doc, o, &key).build {
-            ops.extend(plan_fixed(doc, o, typed)?.op);
-            continue;
+        match rule_for(doc, o, &key).build {
+            Build::Fixed => {
+                ops.extend(plan_fixed(doc, o, typed)?.op);
+                continue;
+            }
+            Build::Record(plan) => {
+                ops.extend(plan(doc, o, &key, typed)?);
+                continue;
+            }
+            Build::Aspect | Build::Tag | Build::Device(_) | Build::Value(_) => {}
         }
         let after = value(doc, o, &key, typed)?;
         let before = comp.properties.get(&key).cloned();

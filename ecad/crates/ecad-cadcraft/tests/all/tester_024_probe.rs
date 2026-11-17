@@ -751,7 +751,7 @@ fn bom_csv_survives_hostile_values_end_to_end() {
     for cell in &rows[1] {
         assert!(!cell.starts_with(['=', '+', '-', '@']), "unsafe cell {cell:?} in {text:?}");
     }
-    let stored = h.doc().devices[&k].properties.get("description").cloned();
+    let stored = h.doc().devices[&k].get("description").map(str::to_string);
     if let Some(d) = stored {
         assert!(rows[1].iter().any(|c| c.trim_start_matches('\'') == d.trim()), "{rows:?}");
     }

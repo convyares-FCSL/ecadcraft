@@ -48,3 +48,29 @@ fn a_device_s_type_and_modify_device_are_shown_raw_and_readable() {
     .unwrap();
     assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()));
 }
+
+#[test]
+fn a_device_s_text_fields_are_shown_raw_and_readable() {
+    use ecad_model::TextField;
+    let dir = TempDir::new("072b-text");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(73);
+    let c: DeviceId = ids.fresh();
+    let before = Device::default();
+    let mut after = before.with_text(TextField::Description, Some("Main pump")).unwrap();
+    after.set_text(TextField::PartNumber, Some("3RT2016")).unwrap();
+    after.set_text(TextField::Manufacturer, Some("Siemens")).unwrap();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "describe", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "description", "Main pump", "part_number", "3RT2016", "manufacturer", "Siemens"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "devices", "detail": true}));
+    let text = rows["ok"].to_string();
+    assert!(text.contains("\"description\":\"Main pump\"") && text.contains("\"maker\":\"Siemens\""), "{text}");
+}

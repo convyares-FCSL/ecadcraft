@@ -49,8 +49,8 @@ pub mod kept;
 pub const DEFAULT_LIMIT: usize = 500;
 pub const MAX_LIMIT: usize = 5000;
 
-fn clean(v: Option<&String>) -> Option<String> {
-    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
+    v.map(|s| s.as_ref().trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// Each page's position in the book and shown number, worked out once per build or update

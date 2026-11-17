@@ -135,8 +135,28 @@ impl Command for SetpropParams {
                     _ => set_value(p, pg, object, &key, typed.as_deref()),
                 },
                 Build::Value(_) | Build::Aspect => set_value(p, pg, object, &key, typed.as_deref()),
+                Build::Record(_) => {
+                    let op = rules::plan_record(doc, object, &key, typed.as_deref())?;
+                    let changed = op.is_some();
+                    if let Some(op) = op {
+                        p.apply_edit(pg, "setprop", "Set property", vec![op])?;
+                    }
+                    Ok(record_answer(p, object, &key, changed))
+                }
             }
         })
+    }
+}
+
+/// A `Record` row's answer: on a device, the value now stored (and the device, when it changed),
+/// as a device property's answer gives them.
+fn record_answer(p: &Project, object: ObjectRef, key: &str, changed: bool) -> Value {
+    match object {
+        ObjectRef::Device(c) => {
+            let value = p.ledger.document().devices.get(&c).and_then(|d| d.value(key));
+            if changed { json!({"changed": true, "value": value, "component": c.hex()}) } else { json!({"changed": false, "value": value}) }
+        }
+        _ => json!({"changed": changed}),
     }
 }
 

@@ -38,6 +38,12 @@ pub fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
     tag::Tag::new(t).map_err(|_| CmdError::refused(tag::BAD_TAG))
 }
 
+/// A new device's description from a symbol's or default's name: `None` when the name is not a
+/// valid description (blank, too long, a hidden character).
+pub fn description_of(name: &str) -> Option<ecad_model::device::Description> {
+    ecad_model::device::Description::new(name).ok()
+}
+
 /// After device `c`'s symbol is swapped for `definition` (a `SetDeviceDefinition` already in the
 /// plan), the op giving it the type that symbol declares (design 072 §2.3): `None` while the group
 /// stays, so the data the device has is kept.
@@ -275,8 +281,8 @@ pub fn rep_definition<'a>(doc: &'a Document, r: &Representation) -> Option<(&'a 
 
 /// A device's description: its `description`, else its first symbol's name, else `no description`.
 pub fn description(doc: &Document, c: DeviceId) -> String {
-    if let Some(d) = doc.devices.get(&c).and_then(|x| x.properties.get("description")) {
-        return d.clone();
+    if let Some(d) = doc.devices.get(&c).and_then(|x| x.description.as_ref()) {
+        return d.to_string();
     }
     doc.representations_of(Subject::Device(c))
         .find_map(|(_, r)| rep_definition(doc, r).map(|(d, _)| d.name.clone()))
@@ -539,16 +545,14 @@ pub fn plan_place(
                 None => high.next_auto(ledger, &prefix_for(doc, s))?,
             };
             let c: DeviceId = ids.fresh();
-            let mut properties = ecad_model::Properties::new();
-            properties.insert("description".into(), s.name.into());
             ops.push(Op::CreateDevice {
                 id: c,
                 device: Device {
                     tag: Some(crate::devices::stored_tag(&t)?),
-                    properties,
-                    tag_fixed: false,
+                    description: description_of(s.name),
                     definition: Some(definition),
                     device_type: s.device_type(),
+                    ..Device::default()
                 },
             });
             for td in &def.terminals {
@@ -1220,7 +1224,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             let value = match half {
                 Some(side @ (crate::symbols::Side::Socket | crate::symbols::Side::Plug)) => crate::connectors::half_prop(doc, c, side, key),
                 Some(crate::symbols::Side::Both) => None,
-                None => props.and_then(|p| p.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+                None => doc.devices.get(&c).and_then(|d| d.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             };
             if let Some(v) = value {
                 lines.push((of, v, height_of(c, kind, text_style(doc, kind).height), shown(kind), None));
@@ -1291,8 +1295,8 @@ fn slot_texts(
 ) -> Vec<PageText> {
     use crate::text_style::fonts::width_in;
     use crate::text_style::{TextKind, text_style};
-    let props = doc.devices.get(&c).map(|x| &x.properties);
-    let prop = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let device = doc.devices.get(&c);
+    let prop = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {

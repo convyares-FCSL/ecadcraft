@@ -105,9 +105,8 @@ pub fn size_words(s: &ecad_cadcraft::text_style::TextStyle) -> String {
 pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
     use ecad_cadcraft::xref;
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
-    let props = doc.devices.get(&c).map(|x| &x.properties);
     d.tag = ecad_cadcraft::devices::tag_words(doc, c);
-    d.description = props.and_then(|p| p.get("description")).cloned().unwrap_or_default();
+    d.description = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.clone());
     let dev = xref::device(doc, c);
     let mut places = xref::Places::new(doc);

@@ -110,7 +110,7 @@ pub(crate) fn base() -> Base {
     };
     let comp = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
-    comp_v.properties.insert("maker".into(), "K1".into());
+    comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
     let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
     let sym = ids.fresh();
@@ -238,7 +238,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: Some("2".into()) } },
         Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember { conductor: b.wire, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "maker".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".into(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: b.ids.fresh(), definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
         Op::SetProjectSettings {
@@ -296,8 +296,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::DeleteCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 5, member: CableMember { conductor: b.wire2, core: None } },
         Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember { conductor: b.wire2, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "maker".into(), before: None, after: None },
-        Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "maker".into(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".into(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "note".into(), before: None, after: None },
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
         Op::SetProjectSettings {
@@ -991,7 +991,7 @@ fn a_refused_transaction_holding_nan_rolls_back() {
     let ops = vec![
         Op::AddItem { id: b.ids.fresh(), item: nan },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: moved },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "maker".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".into(), before: Some("K1".into()), after: None },
     ];
     let r = b.ledger.commit(Author::User, "nan", ops);
     assert!(matches!(r, Err(ModelError::Invariant(_))), "{r:?}");
@@ -1062,7 +1062,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
         Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "maker".into(), before: Some("K1".into()), after: Some("K2".into()) },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".into(), before: Some("K1".into()), after: Some("K2".into()) },
         Op::AddPage { id: b.ids.fresh(), page: Page::new("2"), index: 1 },
     ];
     let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];

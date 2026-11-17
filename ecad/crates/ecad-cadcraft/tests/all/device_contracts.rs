@@ -293,7 +293,7 @@ fn e_save_and_reopen_keep_tags_devices_and_embedded_definitions() {
     assert_eq!(doc, live, "tags, properties, the three symbols of -K01 and their labels");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
     assert!(doc.definitions.values().all(|d| d.origin.is_some()));
-    assert_eq!(doc.devices[&f.k1].properties["maker"], "Acme");
+    assert_eq!(doc.devices[&f.k1].get("maker").unwrap(), "Acme");
     h2.check();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
@@ -472,8 +472,8 @@ fn h_refusals_say_why_and_write_nothing() {
         let e = f.h.run("place", params.clone()).unwrap_err();
         assert!(e.contains(want), "{params}: {e}");
     }
-    let e = f.h.run("setprop", json!({"component": f.k1.hex(), "key": "maker", "value": "m".repeat(201)})).unwrap_err();
-    assert!(e.contains("at most 200 characters"), "{e}");
+    let e = f.h.run("setprop", json!({"component": f.k1.hex(), "key": "maker", "value": "m".repeat(65)})).unwrap_err();
+    assert!(e.contains("at most 64 characters"), "{e}");
     assert_eq!(f.h.head(), head);
     // Nine contacts at most.
     for i in 0..7 {

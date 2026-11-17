@@ -112,7 +112,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let plc = &p.outputs.as_ref()?.plc;
         let card = plc.cards.get(&c)?;
         let comp = doc.devices.get(&c)?;
-        let own = |k: &str| comp.properties.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let own = |k: &str| comp.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let page = overview::pages_of(doc, c).first().copied();
         // Brief 052 (design 052 §9.1): function and location are entry keys stored on the device,
         // shown as their codes; nothing is inherited. The hint says where the stored code comes

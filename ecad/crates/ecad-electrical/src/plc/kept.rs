@@ -112,8 +112,8 @@ impl Plc {
             return;
         }
         let r = rack::rack_ref(doc, c);
-        let props = doc.devices.get(&c).map(|x| &x.properties);
-        let text = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let device = doc.devices.get(&c);
+        let text = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         if let RackRef::Rack(x) | RackRef::Missing(x) = r {
             self.naming.entry(x).or_default().insert(c);
             groups.insert(x);
@@ -161,7 +161,7 @@ impl Plc {
                     out.extend(self.naming.get(id).into_iter().flatten().copied());
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY || key == "part_number" || key == "maker" {
+                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
                         if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
                             out.insert(*c);
                         }

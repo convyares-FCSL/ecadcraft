@@ -87,7 +87,7 @@ fn every_op_ledger() -> Ledger {
     };
     let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
-    comp_v.properties.insert("maker".into(), "K1".into());
+    comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::TerminalId = ids.fresh();
     let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
     let sym: ecad_model::ItemId = ids.fresh();
@@ -172,7 +172,7 @@ fn every_op_ledger() -> Ledger {
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
         Op::AddCableMember { cable, index: 1, member: CableMember { conductor: wire2, core: Some("2".into()) } },
         Op::RemoveCableMember { cable, index: 0, member: CableMember { conductor: wire, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(comp), key: "maker".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(comp), key: "note".into(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },
         Op::SetProjectSettings {

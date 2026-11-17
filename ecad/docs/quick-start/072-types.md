@@ -100,6 +100,21 @@ What changed for someone using the app:
    project's devices: the coil's device shows `"device_type": {"switching": {}}`, the MCB's
    `{"protection": {}}`.
 
+### Lane B, step 2: a device's text values are its own fields
+
+A device's tag, description, part number, maker, article number and type text are fields of the
+device, no longer entries in its list of properties. Commands and panels take the same keys as
+before (`setprop {"key": "maker"}`); what changes:
+
+- A part number, maker, article number or type text is at most 64 characters (was 200); a
+  description at most 256. A longer value is refused with its limit.
+- Each change records one `ModifyDevice` (the inspector shows the device before and after).
+- A file whose device holds one of these keys in its properties opens read-only.
+
+To try it: select a device, type a maker and a part number in the Properties panel, then undo
+and redo: both come back as one step each. The headless tests below cover it; nobody has tried
+it by hand yet.
+
 The headless tests (automated, not tried by hand):
 
 ```sh

@@ -207,7 +207,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     if let Some((caption, true)) = super::caption(doc, c) {
         out.push((caption, TextKind::PartNumber));
     }
-    let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.properties.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     for k in ["maker", "part_number"] {
         if let Some(v) = prop(k) {
             out.push((v, TextKind::PartNumber));
@@ -220,7 +220,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
 pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let Some(ty) = super::card_type_of(doc, c) else { return String::new() };
     let builtin = crate::symbols::by_key(ty.body()).map(|s| s.name);
-    let desc = doc.devices.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let desc = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c, ty)),

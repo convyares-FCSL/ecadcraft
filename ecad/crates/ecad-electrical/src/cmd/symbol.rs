@@ -1140,7 +1140,6 @@ pub fn plan_place(
             let c: DeviceId = ids.fresh();
             let mut properties = ecad_model::Properties::new();
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
-            properties.insert("description".into(), description);
             if let Some(r) = field_value(doc, &key, def, Field::Rating) {
                 properties.insert(symbols::RATING_KEY.into(), r);
             }
@@ -1148,10 +1147,11 @@ pub fn plan_place(
                 id: c,
                 device: Device {
                     tag: Some(crate::devices::stored_tag(&tag)?),
+                    description: crate::devices::description_of(&description),
                     properties,
-                    tag_fixed: false,
                     definition: Some(def_id),
                     device_type: def.device_type.clone(),
+                    ..Device::default()
                 },
             });
             for td in &def.terminals {

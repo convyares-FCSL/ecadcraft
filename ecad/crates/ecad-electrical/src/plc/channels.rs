@@ -303,17 +303,15 @@ pub fn new_card_ops(
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
     };
     let c: DeviceId = ids.fresh();
-    let mut properties = ecad_model::Properties::new();
     let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
-    properties.insert("description".into(), name.into());
     ops.push(Op::CreateDevice {
         id: c,
         device: ecad_model::Device {
             tag: Some(crate::devices::stored_tag(&tag)?),
-            properties,
-            tag_fixed: false,
+            description: crate::devices::description_of(name),
             definition: Some(def),
             device_type: s.device_type(),
+            ..ecad_model::Device::default()
         },
     });
     Ok((c, tag))

@@ -56,7 +56,7 @@ pub mod words;
 
 pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetId, Node};
-pub use device::{DeviceGroup, DeviceType};
+pub use device::{DeviceGroup, DeviceType, TextField};
 pub use doc::{
     Cable, CableMember, Color, Conductor, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End, Folder, Form, Item,
     ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,

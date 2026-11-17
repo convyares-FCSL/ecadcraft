@@ -377,6 +377,8 @@ impl Touch {
                     }
                     self.box_pages(doc, *id);
                 }
+                // Lane 072 B: a device's description, part or type text is read by no rating row.
+                Op::ModifyDevice { before, after, .. } if before.only_text_differs(after) => {}
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
                     for (t, _) in doc.terminals_of(*id) {

@@ -205,7 +205,7 @@ pub fn fixture() -> Fixture {
         ],
     );
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).
-    for (key, value) in [("maker", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
+    for (key, value) in [("note", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
         f.commit("Set property", vec![Op::SetProperty { object: ObjectRef::Device(c1), key: key.into(), before: None, after: Some(value.into()) }]);
     }
     let at = f.ledger.head();

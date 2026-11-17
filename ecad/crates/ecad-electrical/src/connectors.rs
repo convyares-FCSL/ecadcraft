@@ -729,7 +729,7 @@ pub fn create_ops(
     };
     let c: DeviceId = ids.fresh();
     let mut properties = ecad_model::Properties::new();
-    properties.insert("description".into(), defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text());
+    let description = defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
     if let Some(n) = pins {
         properties.insert(PINS_KEY.into(), n.to_string());
     }
@@ -740,10 +740,11 @@ pub fn create_ops(
         id: c,
         device: Device {
             tag: Some(crate::devices::stored_tag(&tag)?),
+            description: crate::devices::description_of(&description),
             properties,
-            tag_fixed: false,
             definition: Some(def),
             device_type: starter.device_type(),
+            ..Device::default()
         },
     });
     Ok((c, tag))
@@ -1297,7 +1298,7 @@ impl Index {
                         subject(r, &mut out);
                     }
                 }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     out.insert(*id);
                 }
                 Op::SetProperty { object: ecad_model::ObjectRef::Device(c), .. } => {
