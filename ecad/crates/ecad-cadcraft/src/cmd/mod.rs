@@ -295,6 +295,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::terminal::TYPED,
         crate::cmd::plc::TYPED,
         crate::cmd::numbering::TYPED,
+        crate::cmd::rating::TYPED,
         crate::cmd::cable::TYPED,
     ]
     .concat()

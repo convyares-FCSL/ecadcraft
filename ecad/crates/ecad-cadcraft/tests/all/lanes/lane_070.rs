@@ -75,9 +75,6 @@ const UNTYPED: &[&str] = &[
     "titleblocks",
     "titleblock",
     "titleblockimport",
-    "rating",
-    "ratingtable",
-    "ratings",
 ];
 
 #[test]
@@ -995,4 +992,70 @@ fn the_typed_cable_manager_commands_still_work() {
     assert_eq!(cable.get("maker").map(String::as_str), Some("Lapp"), "{cable:?}");
     let gone = h.run("cableremove", json!({"cable": k})).unwrap_or_else(|e| json!(e));
     assert_eq!(gone["removed"], json!(true), "{gone}");
+}
+
+/// Input refusals of the rating commands: one wording.
+#[test]
+fn the_rating_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("rating", json!({"wire": 5}), "`wire` must be text, or null"),
+        ("rating", json!({"cable": "W1", "ambient": true}), "`ambient` must be text, or null"),
+        ("rating", json!({"many": 1}), "`many` must be a list of objects, or null"),
+        ("rating", json!({"colour": 1}), "`colour` is not a parameter of this command; it takes "),
+        ("ratings", json!({"from": "x"}), "`from` must be a whole number, or null"),
+        ("ratingtable", json!({"csv": 5}), "`csv` must be text, or null"),
+    ];
+    let mut h = H::new(7039);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// Rule refusals of the rating commands keep their words.
+#[test]
+fn the_rating_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("rating", json!({}), "Give `wire` (a wire number or conductor ID) or `cable` (a tag or ID)."),
+        ("rating", json!({"wire": "1", "cable": "2"}), "Give `wire` or `cable`, not both."),
+        ("rating", json!({"wire": "W99"}), "No panel wire \"W99\" (give a wire number or a conductor ID;"),
+        ("rating", json!({"cable": "-W9"}), "No cable \"-W9\"."),
+        ("rating", json!({"many": [{"wire": "W99"}]}), "No panel wire \"W99\""),
+        ("rating", json!({"temperature": 30}), "temperature is not a rating key; the keys are basis, manual,"),
+        ("rating", json!({"location": " "}), "`location` names a location, such as +CAB1."),
+        ("rating", json!({"location": "+CAB1", "basis": "table"}), "basis is not a location rating key; give `temperature`."),
+        ("rating", json!({"location": "+CAB1"}), "Give `temperature` (\u{b0}C), or null to clear it."),
+        ("rating", json!({"location": "+CAB1", "temperature": 200}), "temperature is \u{2212}40 to 90 \u{b0}C."),
+        ("rating", json!({"location": "+CAB1", "temperature": 30}), "No location box is +CAB1; draw one with Location Box first."),
+        ("ratings", json!({"wire": "1", "cable": "2"}), "Give `wire` or `cable`, not both."),
+        ("ratingtable", json!({}), "Give `csv` (the rows), `import` (a CSV file) or `export` (a CSV file)."),
+        ("ratingtable", json!({"csv": "", "import": "x.csv"}), "Give `csv` or `import`, not both."),
+        ("ratingtable", json!({"export": "never-written.csv"}), "No rating table chosen; give `name`."),
+        ("ratingtable", json!({"name": "", "csv": "kind,a,b,c,d,value\n"}), "A rating table needs a name"),
+        ("ratingtable", json!({"name": "T", "csv": "kind,a,b,c,d,value\n", "layer": "x"}), "layer is project or standard."),
+        ("ratingtable", json!({"name": "T", "csv": "kind,a,b,c,d,value\n", "layer": "standard"}), "This project uses IEC (built in)."),
+    ];
+    let mut h = H::new(7040);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed rating commands still work, and answer as before.
+#[test]
+fn the_typed_rating_commands_still_work() {
+    let mut h = H::new(7041);
+    let csv = "kind,a,b,c,d,value\ncapacity,E,pvc,3,1.5,20\n";
+    let t = h.run("ratingtable", json!({"name": " Test ", "source": "made up", "csv": csv})).unwrap_or_else(|e| json!(e));
+    assert_eq!((t["name"].clone(), t["rows"].clone(), t["changed"].clone()), (json!("Test"), json!(1), json!(true)), "{t}");
+    let again = h.run("ratingtable", json!({"name": "test", "csv": csv})).unwrap_or_else(|e| json!(e));
+    assert_eq!((again["id"].clone(), again["changed"].clone()), (t["id"].clone(), json!(false)), "{again}");
+    let all = h.run("ratings", json!({"from": 0})).unwrap_or_else(|e| json!(e));
+    assert!(all["ratings"].is_array() && all["total"].is_number(), "{all}");
+    assert!(h.run("locationbox", json!({"location": "+CAB1", "corners": [[0, -30], [200, 130]]})).is_ok());
+    let r = h.run("rating", json!({"location": "+CAB1", "temperature": "44"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((r["boxes"].clone(), r["temperature"].clone(), r["changed"].clone()), (json!(1), json!("44"), json!(true)), "{r}");
+    let r = h.run("rating", json!({"location": "+CAB1", "temperature": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!((r["temperature"].clone(), r["changed"].clone()), (Value::Null, json!(true)), "{r}");
 }
