@@ -852,21 +852,27 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     }
 }
 
-/// AC15 (054b): 1 MB of stored notes read cut at 40 with a `cover-notes-cut` row.
+/// AC15 (054b): more stored notes than the cover holds read cut at 40 with a `cover-notes-cut`
+/// row (design 072 §5.3: a stored text longer than the notes' bound is a read error instead).
 #[test]
 fn ac15_hostile_notes_read_cut_with_a_checks_row() {
-    use ecad_model::{ObjectRef, Op};
+    use ecad_model::Op;
     let (mut h, cover, _) = with_cover(0x54_1503);
-    let notes: String = (0..5000)
+    let notes: String = (0..200)
         .map(|i| {
             format!(
                 "note {i} {}
 ",
-                "x".repeat(200)
+                "x".repeat(40)
             )
         })
         .collect();
-    inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Project, key: "cover.notes".into(), before: None, after: Some(notes) }]);
+    let before = h.doc().project.clone();
+    let after = ecad_model::Project {
+        info: ecad_model::ProjectInfo { notes: Some(ecad_model::project::Notes::new(&notes).unwrap()), ..before.info.clone() },
+        ..before.clone()
+    };
+    inject(&mut h, vec![Op::ModifyProject { before, after }]);
     let t = gen_texts(&mut h, cover);
     assert!(t.iter().filter(|x| x.starts_with(|c: char| c.is_ascii_digit()) && x.contains(". note")).count() <= 40, "notes read cut at 40");
     assert!(!checks_of(&mut h, "cover-notes-cut").is_empty());

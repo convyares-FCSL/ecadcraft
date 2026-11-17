@@ -270,6 +270,13 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Page, FUNCTION),
     (Holder::Project, LOCATION),
     (Holder::Project, FUNCTION),
+    // Design 072 §5.3: the project's info.
+    (Holder::Project, PropKey("title")),
+    (Holder::Project, PropKey("drawing_number")),
+    (Holder::Project, PropKey("customer")),
+    (Holder::Project, PropKey("site")),
+    (Holder::Project, PropKey("status")),
+    (Holder::Project, PropKey("cover.notes")),
 ];
 
 /// Key prefixes that became struct fields on one holder: the project's location and function

@@ -311,7 +311,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
     let head = h.head();
     h.run("projectprops", json!({"props": {"cover.notes": "a\n\n b \n"}})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert_eq!(h.doc().properties.get("cover.notes").map(String::as_str), Some("a\nb"));
+    assert_eq!(ecad_cadcraft::frames::project_text(&h.doc(), "cover.notes").as_deref(), Some("a\nb"));
     let many: Vec<String> = (0..41).map(|i| format!("note {i}")).collect();
     let e = h.run("projectprops", json!({"props": {"cover.notes": many.join("\n")}})).unwrap_err();
     assert!(e.contains("The cover takes up to 40 notes of 400 characters."), "{e}");

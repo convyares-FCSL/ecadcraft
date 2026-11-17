@@ -247,3 +247,24 @@ fn revision_rows_are_ordered_and_kept_by_restore() {
     let all = ecad_model::diff::ops_between(&live, &past, &|_| true);
     assert!(all.iter().any(|o| matches!(o, Op::ModifyProject { after, .. } if after.revisions.is_empty())), "{all:?}");
 }
+
+// ---------------------------------------------------------------- step 2c: project info
+
+/// A3, A4: the info keys are fields of the project now; an info record with an unknown field, a
+/// line break in a one-line field or a hidden character does not read; notes keep their lines.
+#[test]
+fn the_project_info_is_reserved_and_strict() {
+    let (mut ledger, _, _) = one_page();
+    for key in ["title", "drawing_number", "customer", "site", "status", "cover.notes"] {
+        let op = Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: None, after: Some("x".into()) };
+        assert!(matches!(ledger.commit(Author::User, key, vec![op]).unwrap_err(), ModelError::Precondition(_)), "{key}");
+        assert!(<ecad_model::InfoField as Word>::parse(key).is_some(), "{key} names an info field");
+    }
+    for text in [r#"{"title":"P","company":"X"}"#, r#"{"title":"a\nb"}"#, "{\"customer\":\"a\u{202E}b\"}"] {
+        assert!(serde_json::from_str::<ecad_model::ProjectInfo>(text).is_err(), "{text}");
+    }
+    let text = r#"{"title":"Plant","drawing_number":"D-1","notes":"one\ntwo"}"#;
+    let info: ecad_model::ProjectInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(info.get(ecad_model::InfoField::Notes), Some("one\ntwo"));
+    assert_eq!(serde_json::to_string(&info).unwrap(), text);
+}

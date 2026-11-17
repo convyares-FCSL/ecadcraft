@@ -789,7 +789,15 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             (None, _) => value(doc, k, v.as_deref())?,
         };
         let Some(a) = aspect else {
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+            // Design 072 §5.3: the title, drawing number, customer and status are the project's info.
+            let f =
+                <ecad_model::InfoField as ecad_model::Word>::parse(k).ok_or_else(|| CmdError::refused(format!("\"{k}\" is not a project field.")))?;
+            let before = pending.project(doc).clone();
+            let now = crate::frames::with_info(&before, f, after.as_deref())?;
+            if now != before {
+                ops.push(Op::ModifyProject { before, after: now.clone() });
+                pending.set_project(now);
+            }
             continue;
         };
         // Design 072 §5.3: the project's own function and location are fields of the project.
@@ -816,6 +824,16 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         }
         check_free_key(doc, k)?;
         let v = free_value(doc, k, v.as_deref())?;
+        // Design 072 §5.3: the site and the cover's notes are the project's info.
+        if let Some(f) = <ecad_model::InfoField as ecad_model::Word>::parse(k) {
+            let before = pending.project(doc).clone();
+            let now = crate::frames::with_info(&before, f, v.as_deref())?;
+            if now != before {
+                ops.push(Op::ModifyProject { before, after: now.clone() });
+                pending.set_project(now);
+            }
+            continue;
+        }
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.

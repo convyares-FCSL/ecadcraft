@@ -467,6 +467,7 @@ fn project(d: &Document) -> Value {
     let functions = list(d.project.functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     json!({
         "properties": props,
+        "info": d.project.info,
         "locations": locations,
         "functions": functions,
         "location": d.project.location.map(|l| location_code(d, l)),

@@ -313,9 +313,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 /// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`] characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
-    let raw = doc
-        .properties
-        .get(crate::frame::DRAWING_NUMBER)
+    let raw = crate::frames::project_text(doc, crate::frame::DRAWING_NUMBER)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .or_else(|| p.path.as_deref().and_then(|x| Path::new(x).file_stem()).map(|s| s.to_string_lossy().into_owned()))
@@ -845,7 +843,7 @@ pub struct Issued {
 pub fn manifest(
     doc: &Document, row: &revisions::Revision, issued: &Issued, b: &Build<'_>, st: &Staged, rows: &[Check], fan_tags: &[String],
 ) -> Value {
-    let prop = |k: &str| doc.properties.get(k).cloned().unwrap_or_default();
+    let prop = |k: &str| crate::frames::project_text(doc, k).unwrap_or_default();
     let (e, w, i) = counts(rows);
     let mut iss = json!({"branch": issued.branch, "transaction": issued.transaction, "point": issued.point});
     if let Some(c) = &issued.chain {
