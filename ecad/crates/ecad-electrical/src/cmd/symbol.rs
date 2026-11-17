@@ -803,6 +803,7 @@ pub fn plan_edit(
         let gone = superseded(doc, e.lineage, id, &ops);
         ops.extend(gone);
     }
+    ops.extend(symbols::prefix_follow(doc, &ops));
     let (updated, left) = (chosen.len(), rows.len().saturating_sub(chosen.len()));
     Ok(SymbolPlan { ops, label: format!("Edit symbol {}", content.name), id, updated, left })
 }
@@ -853,6 +854,7 @@ pub fn plan_update(
     let mut ops = update_ops(doc, ids, &chosen, target.id, target.def)?;
     let gone = superseded(doc, lin, versions.last().map_or(target.id, |v| v.id), &ops);
     ops.extend(gone.into_iter().filter(|o| !matches!(o, Op::RemoveDefinition { id, .. } if *id == target.id)));
+    ops.extend(symbols::prefix_follow(doc, &ops));
     Ok(SymbolPlan { ops, label: format!("Update symbol {}", target.def.name), id: target.id, updated: chosen.len(), left: 0 })
 }
 

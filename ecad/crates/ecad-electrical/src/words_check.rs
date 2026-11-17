@@ -50,11 +50,13 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
         flags(&c.properties, WordPlace::Cable(*id), &mut out);
     }
     // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
-    // strictly with the file); a project symbol's key is its own and is not looked up.
+    // strictly with the file); a project symbol's prefix names a project symbol the project holds.
     for key in doc.settings.tag_prefixes.keys() {
-        if let ecad_model::prefix::PrefixOf::Starter(w) = key
-            && crate::symbols::by_key(w).is_none()
-        {
+        let known = match key {
+            ecad_model::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).is_some(),
+            ecad_model::prefix::PrefixOf::Project(k) => crate::symbols::has_project_key(doc, k),
+        };
+        if !known {
             out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.to_string(), allowed: Vec::new() });
         }
     }
@@ -194,11 +196,12 @@ mod tests {
         let mut d = doc();
         let q = ecad_model::prefix::TagPrefix::typed("Q").unwrap();
         d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
-        // A project symbol's own prefix is not a word to check (it opens writable).
+        // A project symbol's prefix names a project symbol the project holds: none here.
         d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Project("valve-x".into()), q);
         let found = check(&d);
-        assert_eq!(found.len(), 1);
-        assert!(found[0].to_string().contains("tag_prefixes") && found[0].to_string().contains("starter:nosuch"));
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().any(|f| f.to_string().contains("tag_prefixes") && f.to_string().contains("starter:nosuch")));
+        assert!(found.iter().any(|f| f.to_string().contains("project:valve-x")));
     }
 
     #[test]
