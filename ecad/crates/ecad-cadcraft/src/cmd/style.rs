@@ -233,7 +233,7 @@ impl Command for StandardParams {
         }
         // Copying reads the other project before this one is locked; that file is never changed.
         let from = match self.from.as_deref().map(str::trim) {
-            Some(path) => Some(read_standard(path).map_err(err)?),
+            Some(path) => Some(read_standard(path).map_err(|e| err(e.to_string()))?),
             None => None,
         };
         let change = match (self.new, self.name, from) {
@@ -257,11 +257,11 @@ impl Command for StandardParams {
 ///
 /// # Errors
 /// The file cannot be opened, or uses IEC (built in), in words.
-pub fn read_standard(path: &str) -> Result<ecad_model::Standard, String> {
-    let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
-    let opened = crate::file::Binding::open_read_only(&path, 0x050a, "ecad standard copy").map_err(|e| e.to_string())?;
+pub fn read_standard(path: &str) -> Result<ecad_model::Standard, CmdError> {
+    let path = crate::file::normalize(path)?;
+    let opened = crate::file::Binding::open_read_only(&path, 0x050a, "ecad standard copy")?;
     let doc = opened.ledger.document();
-    doc.standard.clone().ok_or_else(|| NOTHING_TO_COPY.to_string())
+    doc.standard.clone().ok_or(CmdError::refused(NOTHING_TO_COPY))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -397,8 +397,7 @@ impl Command for PromoteParams {
                     return Err(CmdError::refused(crate::cmd::default::level_refused(entry, defaults::Level::Standard)));
                 }
                 let (mut ops, text) = rules::promote_value(doc, entry)?;
-                let reset = crate::cmd::default::ops(doc, entry, defaults::Level::Project, crate::cmd::default::Target::Project, None);
-                ops.extend(reset.map_err(CmdError::refused)?);
+                ops.extend(crate::cmd::default::ops(doc, entry, defaults::Level::Project, crate::cmd::default::Target::Project, None)?);
                 p.apply_edit(pg, "promote", &format!("Promote {}", entry.label), ops)?;
                 Ok(json!({"changed": true, "key": entry.key, "value": text}))
             });

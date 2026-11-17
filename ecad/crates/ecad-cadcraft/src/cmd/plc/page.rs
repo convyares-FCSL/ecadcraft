@@ -16,6 +16,7 @@
 //! Excludes: placing anything on an existing page (that is `plcchannels`).
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
 use ecad_electrical::cmd::plc as rules;
 pub use ecad_electrical::cmd::plc::{LEFT_MM, ROW_PITCH_MM, title};
 use ecad_model::book::{self, Book, FOLDER_KEY, NUMBER_KEY};
@@ -99,7 +100,7 @@ impl Command for PlcpageParams {
 ///
 /// # Errors
 /// The new page's own refusals (none expected: its number is the next one).
-pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::Op]) -> Result<(Option<PageId>, Vec<ecad_model::Op>), String> {
+pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::Op]) -> Result<(Option<PageId>, Vec<ecad_model::Op>), CmdError> {
     use ecad_model::{ItemKind, Op};
     let doc = p.ledger.document();
     let is_rack_def = |d: ecad_model::DefinitionId| {

@@ -6,12 +6,13 @@
 //! (`serde_json::to_value`) and hands them over, and the release's own refusals keep their words.
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, with_any_page, with_project};
+use crate::cmd::{err, on_any_page, on_project};
 use crate::release::{prerelease, release_issued, release_pending};
 
 /// The commands of this module with a typed input.
@@ -57,7 +58,7 @@ pub(crate) struct PrereleaseParams {
 impl Command for PrereleaseParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let params = as_json(&self)?;
-        with_any_page(s, |p, _| prerelease(p, &params))
+        on_any_page(s, |p, _| prerelease(p, &params).map_err(CmdError::refused))
     }
 }
 
@@ -98,13 +99,13 @@ impl Command for ReleaseParams {
         let params = as_json(&self)?;
         match self.rev {
             Some(r) => {
-                let v = with_any_page(s, |p, _| release_issued(p, &params, &r, &mut |_, _| true))?;
+                let v = on_any_page(s, |p, _| release_issued(p, &params, &r, &mut |_, _| true).map_err(CmdError::refused))?;
                 if let Some(m) = v.get("message").and_then(Value::as_str) {
                     s.echo(m.to_string());
                 }
                 Ok(v)
             }
-            None => with_project(s, |p, pg, _| release_pending(p, pg, &params, &mut |_, _| true)),
+            None => on_project(s, |p, pg, _| release_pending(p, pg, &params, &mut |_, _| true).map_err(CmdError::refused)),
         }
     }
 }

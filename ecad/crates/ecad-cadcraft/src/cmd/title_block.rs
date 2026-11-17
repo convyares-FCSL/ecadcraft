@@ -61,9 +61,9 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 /// The frame a JSON call names (`id` or `name`): `titleblockimport` still reads its JSON by hand.
-pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, String> {
+pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, CmdError> {
     let text = |k: &str| params.get(k).and_then(Value::as_str);
-    rules::frame(doc, text("id"), text("name")).map_err(String::from)
+    rules::frame(doc, text("id"), text("name"))
 }
 
 /// The pages whose frame is `id`, or whose title block is borrowed from it.
@@ -141,13 +141,13 @@ impl Command for TitleblocksParams {
 }
 
 /// The JSON `titleblock {id}` returns.
-fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec) -> Result<Value, String> {
+fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec) -> Result<Value, CmdError> {
     let cat = &crate::styles::frame::CATALOGUE;
-    let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(NOT_A_FRAME)?;
+    let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
     let mut v = crate::cmd::style::style_json(doc, cat, &row, false);
     let layout = layout_of(doc, id, spec);
     v["builtin"] = json!(row.layer == Layer::Builtin);
-    v["body"] = serde_json::to_value(&layout).map_err(|e| e.to_string())?;
+    v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;
     v["users"] = json!({"pages": pages_using(doc, id).len()});
     v["keys"] = json!(own_keys(&layout).into_iter().collect::<Vec<_>>());
     Ok(v)
@@ -157,9 +157,10 @@ fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec) -> Result<Value, 
 ///
 /// # Errors
 /// The body does not read, or breaks a bound, in words.
-pub fn body_param(v: &Value) -> Result<TitleBlockLayout, String> {
-    let l: TitleBlockLayout = serde_json::from_value(v.clone()).map_err(|e| format!("The body does not read as a title block: {e}."))?;
-    rules::check_body(l).map_err(String::from)
+pub fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
+    let l: TitleBlockLayout =
+        serde_json::from_value(v.clone()).map_err(|e| CmdError::input(format!("The body does not read as a title block: {e}.")))?;
+    rules::check_body(l)
 }
 
 /// A new own frame (design 055 §4.6).
@@ -229,11 +230,11 @@ impl Command for TitleblockParams {
             let id = rules::frame(doc, id_text.as_deref(), frame_name.as_deref())?;
             if !writes {
                 let spec = rules::sheet(doc, sheet_text.as_deref())?;
-                return block_json(doc, &id, &spec).map_err(CmdError::refused);
+                return block_json(doc, &id, &spec);
             }
             // The body is read when the frame is known to be an own one, as before.
             let body = match body {
-                Some(b) if !id.is_builtin() && rules::layer_of(doc, &id).is_some() => Some(body_param(&b).map_err(CmdError::refused)?),
+                Some(b) if !id.is_builtin() && rules::layer_of(doc, &id).is_some() => Some(body_param(&b)?),
                 _ => None,
             };
             let edit = FrameEdit { rename: rename.map(|n| n.trim().to_string()), fields: field_inputs(fields), body };
@@ -244,7 +245,7 @@ impl Command for TitleblockParams {
             }
             let doc = p.ledger.document();
             let spec = rules::sheet(doc, sheet_text.as_deref())?;
-            let mut v = block_json(doc, &id, &spec).map_err(CmdError::refused)?;
+            let mut v = block_json(doc, &id, &spec)?;
             v["changed"] = json!(changed);
             Ok(v)
         })
