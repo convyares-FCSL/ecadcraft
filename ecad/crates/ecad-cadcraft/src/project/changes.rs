@@ -2,6 +2,9 @@
 
 use super::*;
 
+use ecad_electrical::derived::Changes;
+use ecad_model::view::PageSet;
+
 /// How many recent changes [`Project::changes_since`] can answer for.
 const CHANGE_LOG: usize = 64;
 
@@ -338,6 +341,7 @@ impl Project {
         self.note_frame_ops(&ops);
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
+        let pending = self.derived.begin(self.ledger.document(), &ops);
         let committed = match kind {
             Some(k) => self.ledger.commit_merge(self.author.clone(), label, k, ops, now_ms()),
             None => self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass),
@@ -358,12 +362,58 @@ impl Project {
         let generated = self.update_outputs(outputs);
         let generated = Some(self.generated_touched(generated));
         let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
-        self.record_change(pages.clone(), devices, props, tree);
-        self.redraw_touched(pg, Some(command), pages.as_ref());
-        if let Some(line) = refs.orphaned {
+        let mut changes = self.finish_derived(pending);
+        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), devices, props, tree, echo: refs.orphaned.into_iter().collect() });
+        self.apply_changes(pg, command, changes, Path::Command);
+        Ok(tx)
+    }
+
+    /// The After phase and the views' updates on the transaction just committed (design 064 §5).
+    pub(super) fn finish_derived(&mut self, pending: ecad_electrical::derived::Pending) -> Changes {
+        let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
+        self.derived.finish(self.ledger.document(), ops, pending)
+    }
+
+    /// What follows every commit, on all three paths (design 064 §5): the change log entry, the
+    /// redraw the path calls for, and the lines for the command line.
+    pub(super) fn apply_changes(&mut self, pg: &mut Pages<'_>, command: &str, changes: Changes, path: Path<'_>) {
+        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems: _ } = changes;
+        if let Path::Interactive { page } = path {
+            // The edited page was drawn by the commit itself.
+            pages.insert(page);
+        }
+        if frame_stale {
+            self.frame_stale = true;
+        }
+        let pages = pages.into_option();
+        // Which page an undo or redo brings to the front is read before the change is recorded.
+        let front = match path {
+            Path::History { order_before } => {
+                let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
+                let target = front_after_history(order_before, &self.ledger.document().page_order, Some(&named), self.active_page());
+                Some((was_active, target))
+            }
+            Path::Command | Path::Interactive { .. } => None,
+        };
+        self.record_change(pages.clone(), devices, props, list);
+        match (path, front) {
+            (Path::Command, _) => self.redraw_touched(pg, Some(command), pages.as_ref()),
+            (Path::Interactive { .. }, _) => {}
+            (Path::History { .. }, Some((was_active, Some(page)))) if self.open_page(pg, page).is_ok() => {
+                // The page the undo or redo changed comes to the front, so the change is seen
+                // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
+                // A page already in the window was only brought to the front: draw it.
+                if was_active == Some(page) {
+                    self.redraw_window(pg, Some(command));
+                }
+                let words = crate::references::page_words(self.ledger.document(), page);
+                pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
+            }
+            (Path::History { .. }, _) => self.redraw_touched(pg, Some(command), pages.as_ref()),
+        }
+        for line in echo {
             pg.echo(line);
         }
-        Ok(tx)
     }
 
     /// Finish a commit's [`crate::xref::Watch`] with the last transaction: the reference index is
@@ -437,6 +487,47 @@ impl Project {
         }
         Some(out)
     }
+}
+
+/// Which commit path a change came from: what [`Project::apply_changes`] redraws.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Path<'a> {
+    /// A command's transaction, a merge or a Restore: the touched pages on screen are drawn.
+    Command,
+    /// A drawing commit on `page`, which the commit drew itself.
+    Interactive { page: PageId },
+    /// An undo or redo: a page it changed may come to the front. `order_before` is the page order
+    /// before it.
+    History { order_before: &'a [PageId] },
+}
+
+/// What the functions not yet moved into a view worked out (design 064 §9: each view step deletes
+/// one of them and its field here).
+pub(super) struct Old {
+    pub pages: Option<BTreeSet<PageId>>,
+    pub named: BTreeSet<PageId>,
+    pub devices: crate::device_list::DeviceTouch,
+    pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
+    pub tree: bool,
+    pub echo: Vec<String>,
+}
+
+/// Add `old` to the views' `changes`.
+pub(super) fn pass_through(changes: &mut Changes, old: Old) {
+    changes.pages.union(PageSet::from_option(old.pages));
+    changes.named.extend(old.named);
+    changes.devices.components.extend(old.devices.components);
+    changes.devices.pages |= old.devices.pages;
+    changes.devices.settings |= old.devices.settings;
+    changes.props = match (changes.props.take(), old.props) {
+        (Some(mut a), Some(b)) => {
+            a.extend(b);
+            Some(a)
+        }
+        (None, _) | (_, None) => None,
+    };
+    changes.list |= old.tree;
+    changes.echo.extend(old.echo);
 }
 
 /// Handles whose entity differs between the engine's committed drawing and the projection, other

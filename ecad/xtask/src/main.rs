@@ -38,6 +38,7 @@ use serde_json::Value;
 
 mod clean;
 mod types_guards;
+mod views_guards;
 
 /// The layer of an ECAD crate (design 065 §1 and §4): a crate uses only crates in layers above it
 /// (and in its own layer where §4 says so). Engine and UI kit are siblings: neither uses the other.
@@ -1148,6 +1149,7 @@ fn layers() -> Result<(), String> {
     v.extend(string_error_violations(&meta)?);
     v.extend(drawn_text_violations(&meta)?);
     v.extend(types_guards::violations(&meta)?);
+    v.extend(views_guards::violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())

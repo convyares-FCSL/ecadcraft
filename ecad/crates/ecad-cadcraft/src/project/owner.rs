@@ -123,6 +123,7 @@ impl DocumentOwner for Project {
         let n = t.ops.len();
         // Brief 052d (design 052 §5.4): the moved device symbols' contexts before the move.
         let moved = crate::proposals::before_move(self.ledger.document(), &t.ops);
+        let pending = self.derived.begin(self.ledger.document(), &t.ops);
         // The numbering pass (brief 022) extends the same transaction.
         if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign) {
             self.restore(pg, c.uid, page);
@@ -148,18 +149,12 @@ impl DocumentOwner for Project {
         self.update_checks(checks);
         let generated = self.update_outputs(outputs);
         let generated = Some(self.generated_touched(generated));
-        let changed = touched(touched(refs.pages, self.numbered_pages(n)), generated).map(|mut c| {
-            c.insert(page);
-            c
-        });
+        let changed = touched(touched(refs.pages, self.numbered_pages(n)), generated);
         let props = self.with_numbered(props, n);
-        self.record_change(changed, devices, props, tree);
-        if let Some(line) = refs.orphaned {
-            pg.echo(line);
-        }
-        for note in &t.notes {
-            pg.echo(note.clone());
-        }
+        let mut changes = self.finish_derived(pending);
+        let echo = refs.orphaned.into_iter().chain(t.notes.iter().cloned()).collect();
+        pass_through(&mut changes, Old { pages: changed, named: BTreeSet::new(), devices, props, tree, echo });
+        self.apply_changes(pg, c.command, changes, Path::Interactive { page });
         self.move_follow_up(pg, &moved, &label);
         self.sync_saved(pg);
         Verdict::Accept
@@ -362,6 +357,7 @@ impl Project {
         }
         self.merge_undo_question = None;
         self.note_frame_ops(&ops);
+        let pending = self.derived.begin(self.ledger.document(), &ops);
         let r = if undo { self.ledger.undo_at(self.author.clone(), now_ms()) } else { self.ledger.redo_at(self.author.clone(), now_ms()) };
         match r {
             Ok(_) => {
@@ -372,26 +368,10 @@ impl Project {
                 self.update_checks(checks);
                 let generated = self.update_outputs(outputs);
                 let generated = Some(self.generated_touched(generated));
-                let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
-                let target = front_after_history(&order_before, &self.ledger.document().page_order, Some(&drawn), self.active_page());
                 let pages = touched(touched(pages, refs.pages), generated);
-                self.record_change(pages.clone(), devices, props, tree);
-                match target {
-                    // The page the undo or redo changed comes to the front, so the change is seen
-                    // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
-                    Some(page) if self.open_page(pg, page).is_ok() => {
-                        // A page already in the window was only brought to the front: draw it.
-                        if was_active == Some(page) {
-                            self.redraw_window(pg, Some(command));
-                        }
-                        let words = crate::references::page_words(self.ledger.document(), page);
-                        pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
-                    }
-                    _ => self.redraw_touched(pg, Some(command), pages.as_ref()),
-                }
-                if let Some(line) = refs.orphaned {
-                    pg.echo(line);
-                }
+                let mut changes = self.finish_derived(pending);
+                pass_through(&mut changes, Old { pages, named: drawn, devices, props, tree, echo: refs.orphaned.into_iter().collect() });
+                self.apply_changes(pg, command, changes, Path::History { order_before: &order_before });
                 Ok(Some(label))
             }
             Err(ecad_model::ModelError::NothingTo(_)) => Ok(None),

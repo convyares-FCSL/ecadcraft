@@ -35,7 +35,7 @@ mod page_tree;
 mod persistence;
 
 pub use changes::Change;
-pub(crate) use changes::front_after_history;
+use changes::{Old, Path, pass_through};
 pub use handle_map::{HandleMap, Mapped};
 pub use owner::{LISP_REFUSED, REFUSED_COMMANDS};
 pub use page_tree::{PageRow, PageView, TreeRow, tree_rows, tree_touched};
@@ -188,6 +188,16 @@ pub struct Project {
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
+    /// Every derived view, updated by the one commit pipeline (design 064 §5).
+    derived: ecad_electrical::derived::Views,
+}
+
+/// The derived views of `doc`, built with this engine's inputs (design 064 §5.2).
+pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
+    let inputs = ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) };
+    let mut views = ecad_electrical::derived::Views::new(inputs);
+    views.rebuild(doc);
+    views
 }
 
 /// A new project's first page: titled and numbered `1`.

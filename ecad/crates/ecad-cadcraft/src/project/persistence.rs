@@ -166,6 +166,7 @@ impl Project {
         self.xref = crate::xref::RefIndex::build(self.ledger.document());
         self.xref_shown = None;
         self.connectors = crate::connectors::Index::build(self.ledger.document());
+        self.derived.rebuild(self.ledger.document());
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.designation_uses.reset();

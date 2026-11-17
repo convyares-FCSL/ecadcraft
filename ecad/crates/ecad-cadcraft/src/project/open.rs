@@ -42,6 +42,7 @@ impl Project {
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
         let connectors = crate::connectors::Index::build(ledger.document());
+        let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -105,6 +106,7 @@ impl Project {
             merge_undo_question: None,
             merge_cache: None,
             xref_shown: None,
+            derived,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -143,6 +145,7 @@ impl Project {
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
         let connectors = crate::connectors::Index::build(ledger.document());
+        let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
             path: None,
@@ -206,6 +209,7 @@ impl Project {
             merge_undo_question: None,
             merge_cache: None,
             xref_shown: None,
+            derived,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
@@ -283,6 +287,7 @@ impl Project {
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
         let connectors = crate::connectors::Index::build(ledger.document());
+        let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
             path: Some(path.clone()),
@@ -346,6 +351,7 @@ impl Project {
             merge_undo_question: None,
             merge_cache: None,
             xref_shown: None,
+            derived,
             branch_gen: 0,
         }));
         let mut p = crate::access::try_lock(&project)?;
