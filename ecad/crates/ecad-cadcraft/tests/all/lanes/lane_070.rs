@@ -1845,3 +1845,30 @@ fn the_typed_device_commands_still_work() {
     let gone = h.run("ecaddelete", json!({"component": b})).unwrap_or_else(|e| json!(e));
     assert_eq!(gone, json!({"deleted": true}), "{gone}");
 }
+
+/// `setdefault` of a symbol's family entry (brief 048, FP6) keeps its rule words and still writes.
+#[test]
+fn setdefault_of_a_family_entry_keeps_its_rule_words() {
+    let mut h = H::new(7081);
+    let made = h.run("symbolnew", float_switch(json!({}))).unwrap_or(Value::Null);
+    assert_eq!(made["key"], json!("float1"), "{made}");
+    let rules: &[(Value, &str)] = &[
+        (json!({"key": "symbol.float1.prefix"}), ecad_cadcraft::default_cmds::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_cadcraft::default_cmds::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix", "value": "KA", "reset": true}), "Give either `value` or `reset: true`, not both."),
+        (
+            json!({"key": "symbol.float1.prefix", "value": "KA", "level": "page"}),
+            "symbol.float1.prefix is set for the project; a symbol's own value is edited in the symbol.",
+        ),
+        (json!({"key": "symbol.nope.prefix", "value": "KA"}), "No default \"symbol.nope.prefix\"."),
+    ];
+    for (params, says) in rules {
+        assert_eq!(h.run("setdefault", params.clone()).err().as_deref(), Some(*says), "{params}");
+    }
+    let v = h.run("setdefault", json!({"key": "symbol.float1.prefix", "value": "KA"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((v["changed"].clone(), v["key"].clone()), (json!(true), json!("symbol.float1.prefix")), "{v}");
+    let again = h.run("setdefault", json!({"key": "symbol.float1.prefix", "value": "KA"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(again["changed"], json!(false), "{again}");
+    let reset = h.run("setdefault", json!({"key": "symbol.float1.prefix", "reset": true})).unwrap_or_else(|e| json!(e));
+    assert_eq!(reset["changed"], json!(true), "{reset}");
+}

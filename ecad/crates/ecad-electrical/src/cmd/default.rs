@@ -13,8 +13,10 @@
 //! `ObjectRef::Standard`); it is refused while the project uses IEC (built in). A style choice
 //! ([`defaults::Kind::Style`]) takes a style's ID or name and stores the ID.
 //!
-//! Excluded: any entry's levels, which only the registry sets; a symbol's family entry
-//! (`symbol.<key>.<field>`, [`crate::defaults::symbols::family`]), which the engine crate writes.
+//! A symbol's family entry (`symbol.<key>.<field>`, [`crate::defaults::symbols::family`]) is
+//! written at the project level only ([`plan_family`]).
+//!
+//! Excluded: any entry's levels, which only the registry sets.
 
 use ecad_model::{ComponentId, ConductorId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
 
@@ -284,4 +286,67 @@ pub fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chos
         crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg)).map_err(CmdError::refused)?;
     }
     ops(doc, entry, level, target, value)
+}
+
+// ---------------------------------------------------------------- symbol family entries (brief 048)
+
+/// A symbol family entry's change ([`plan_family`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FamilySet {
+    /// The symbol's key.
+    pub symbol: String,
+    pub field: crate::defaults::symbols::Field,
+    /// The ops; none when nothing changes.
+    pub ops: Vec<Op>,
+}
+
+/// `setdefault {key: symbol.<key>.<field>, level?: project, value | reset: true}` for a symbol's
+/// family entry (design 048 §7): the project level only. A prefix is written to the project's
+/// `tag_prefixes`, a description or rating to the project property of the entry's key. `None` when
+/// `key` names no family entry.
+///
+/// # Errors
+/// Neither or both of a text value and `reset`; another level; a field the symbol keeps as its
+/// own; a value the field does not take.
+pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option<Given>, reset: bool) -> Result<Option<FamilySet>, CmdError> {
+    use crate::defaults::symbols::{self as family, Field};
+    // Only `symbol.<key>.<field>` keys: any other key is "No default" for the caller to say.
+    if !key.trim().starts_with("symbol.") {
+        return Ok(None);
+    }
+    let Some((symbol, field)) = family::family(doc, key) else { return Ok(None) };
+    let value = match (value, reset) {
+        (Some(Given::Text(v)), false) => Some(v.trim().to_string()),
+        (None, true) => None,
+        (Some(_), true) => return Err(CmdError::refused(NOT_BOTH)),
+        _ => return Err(CmdError::refused(NEEDS_VALUE)),
+    };
+    if !level.unwrap_or("project").trim().eq_ignore_ascii_case("project") {
+        return Err(CmdError::refused(format!("{key} is set for the project; a symbol's own value is edited in the symbol.")));
+    }
+    if !field.overridable() {
+        return Err(CmdError::refused(format!("{key} is the symbol's own: edit the symbol to change it.")));
+    }
+    if let Some(v) = &value
+        && !field.accepts(v)
+    {
+        return Err(CmdError::refused(format!("{v} is not a {} ({} characters at most).", field.label().to_lowercase(), field.max_chars())));
+    }
+    let ops = match field {
+        Field::Prefix => {
+            let before = doc.settings.clone();
+            let mut after = before.clone();
+            match value.as_deref().and_then(crate::devices::valid_prefix) {
+                Some(px) => after.tag_prefixes.insert(symbol.clone(), px),
+                None => after.tag_prefixes.remove(&symbol),
+            };
+            if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] }
+        }
+        _ => {
+            let k = family::family_property(&symbol, field).unwrap_or_default();
+            let before = doc.properties.get(&k).cloned();
+            if before == value { Vec::new() } else { vec![Op::SetProperty { object: ObjectRef::Project, key: k, before, after: value }] }
+        }
+    };
+    Ok(Some(FamilySet { symbol, field, ops }))
 }

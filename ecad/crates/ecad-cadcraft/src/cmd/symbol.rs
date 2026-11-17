@@ -20,14 +20,13 @@ use ecad_electrical::cmd::symbol::{self as rules, ContentInput, MakeAt, PointInp
 pub use ecad_electrical::cmd::symbol::{
     Content, MAX_COPIES, MAX_EXTENT, MAX_NAME, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, Rules, grid_origin, not_plain, problems, shifted,
 };
-use ecad_model::{ComponentId, DefinitionId, Document, Op, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
+use ecad_model::{ComponentId, DefinitionId, Document, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::cmd::input::{Bounded, Command, Point, Typed};
-use crate::cmd::{MAX_HANDLES, err, on_project, plain_style, with_project};
-use crate::defaults::symbols::Field;
+use crate::cmd::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
 use crate::symbols;
 pub use crate::symbols::POINT_GRID_MM;
@@ -589,72 +588,6 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
             "tag": plan.tag, "joined": device.is_some(), "terminals": terminals,
         });
         crate::draw::proposals::finish_place(p, pg, plan.component, device.is_some(), &proposed, &mut v);
-        Ok(Some(v))
-    })
-}
-
-// ---------------------------------------------------------------- family entries (FP6)
-
-/// `setdefault {key: symbol.<key>.<field>, level?: project, value | reset: true}` for a symbol's
-/// family entry (design 048 §7): the project level only. A prefix is written to the project's
-/// `tag_prefixes`, a description or rating to the project property of the entry's key. `None`
-/// when `key` names no family entry.
-pub(crate) fn run_set_family(s: &mut Session, params: &Value, key: &str) -> cadcraft_engine::Result<Option<Value>> {
-    // Only `symbol.<key>.<field>` keys: any other key is "No default" for the caller to say.
-    if !key.trim().starts_with("symbol.") {
-        return Ok(None);
-    }
-    let level = params.get("level").and_then(Value::as_str).unwrap_or("project").trim().to_ascii_lowercase();
-    let reset = params.get("reset").and_then(Value::as_bool).unwrap_or(false);
-    let value_param = params.get("value").cloned();
-    let key = key.to_string();
-    with_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let Some((symbol, field)) = crate::defaults::symbols::family(doc, &key) else { return Ok(None) };
-        let value = match (value_param, reset) {
-            (Some(Value::String(v)), false) => Some(v.trim().to_string()),
-            (None | Some(Value::Null), true) => None,
-            (Some(_), true) => return Err("Give either `value` or `reset: true`, not both.".into()),
-            _ => return Err(crate::cmd::default::NEEDS_VALUE.into()),
-        };
-        if level != "project" {
-            return Err(format!("{key} is set for the project; a symbol's own value is edited in the symbol."));
-        }
-        if !field.overridable() {
-            return Err(format!("{key} is the symbol's own: edit the symbol to change it."));
-        }
-        if let Some(v) = &value
-            && !field.accepts(v)
-        {
-            return Err(format!("{v} is not a {} ({} characters at most).", field.label().to_lowercase(), field.max_chars()));
-        }
-        let ops = match field {
-            Field::Prefix => {
-                let before = doc.settings.clone();
-                let mut after = before.clone();
-                let px = value.as_deref().and_then(crate::devices::valid_prefix);
-                match px {
-                    Some(px) => after.tag_prefixes.insert(symbol.clone(), px),
-                    None => after.tag_prefixes.remove(&symbol),
-                };
-                if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] }
-            }
-            _ => {
-                let k = crate::defaults::symbols::family_property(&symbol, field).unwrap_or_default();
-                let before = doc.properties.get(&k).cloned();
-                if before == value {
-                    Vec::new()
-                } else {
-                    vec![Op::SetProperty { object: ecad_model::ObjectRef::Project, key: k, before, after: value.clone() }]
-                }
-            }
-        };
-        let changed = !ops.is_empty();
-        if changed {
-            p.apply_edit(pg, "setdefault", &format!("Default {}: {symbol}", field.label()), ops)?;
-        }
-        let mut v = crate::defaults::symbols::family_json(p.ledger.document(), &symbol, field);
-        v["changed"] = json!(changed);
         Ok(Some(v))
     })
 }

@@ -125,14 +125,20 @@ impl Command for SetdefaultParams {
             TextOrNumber::Number(n) => Given::Number(n.to_string()),
         });
         let Some(entry) = defaults::find(key) else {
-            // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>` (read as JSON there).
-            let value = match &given {
-                Some(Given::Text(t)) => json!(t),
-                Some(Given::Number(n)) => serde_json::from_str(n).unwrap_or(Value::Null),
-                None => Value::Null,
-            };
-            let params = json!({"level": self.level, "reset": reset, "value": value});
-            return crate::cmd::symbol::run_set_family(s, &params, key)?.ok_or_else(|| err(format!("No default \"{key}\".")));
+            // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>`.
+            let level = self.level;
+            let key = key.to_string();
+            let v = on_project(s, |p, pg, _| {
+                let Some(done) = rules::plan_family(p.ledger.document(), &key, level.as_deref(), given, reset)? else { return Ok(None) };
+                let changed = !done.ops.is_empty();
+                if changed {
+                    p.apply_edit(pg, "setdefault", &format!("Default {}: {}", done.field.label(), done.symbol), done.ops)?;
+                }
+                let mut v = crate::defaults::symbols::family_json(p.ledger.document(), &done.symbol, done.field);
+                v["changed"] = json!(changed);
+                Ok(Some(v))
+            })?;
+            return v.ok_or_else(|| err(format!("No default \"{key}\".")));
         };
         let level = match self.level.as_deref() {
             Some(w) => rules::level_of(w).map_err(|e| err(e.to_string()))?,
