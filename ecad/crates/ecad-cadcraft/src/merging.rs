@@ -374,7 +374,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
         let ids = std::cell::RefCell::new(&mut p.ids);
         let join = |d: &Document, from: ecad_model::ComponentId, into: ecad_model::ComponentId| {
             let mut ids = ids.borrow_mut();
-            crate::devices::plan_merge(d, &mut ids, from, into)
+            crate::devices::plan_merge(d, &mut ids, from, into).map_err(String::from)
         };
         let inp = Inputs {
             ancestor: &prep.ancestor_doc,

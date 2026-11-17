@@ -284,7 +284,7 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
     match strip_key {
         PER_CARD_KEY => whole(strip_key, v, 1, MAX_PER_CARD, "a card size").map(Some),
         BAR_KEY => whole(strip_key, v, MIN_BAR, MAX_BAR, "a bar size").map(Some),
-        _ => crate::devices::property_value(doc, "part_number", Some(v)),
+        _ => crate::devices::property_value(doc, "part_number", Some(v)).map_err(String::from),
     }
 }
 
@@ -407,7 +407,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         if is_article_key(key) {
             return crate::bom::article_value(value).map(Some).map_err(String::from);
         }
-        return crate::devices::property_value(doc, "part_number", value).map(Some);
+        return crate::devices::property_value(doc, "part_number", value).map(Some).map_err(String::from);
     }
     if strip && is_part_key(key) {
         return part_value(doc, key, value).map(Some);

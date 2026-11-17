@@ -231,7 +231,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 let Some(v) = fields.get(key) else { continue };
                 let after = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
                     // Brief 052: an item's location is an entry key of the project's list.
-                    ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops).map_err(CmdError::refused)?),
+                    ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops)?),
                     _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
                 };
                 let before = props.get(key).cloned();
@@ -268,7 +268,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 }
                 let Some(v) = fields.get(key) else { continue };
                 let x = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
-                    ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops).map_err(CmdError::refused)?),
+                    ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops)?),
                     _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
                 };
                 if let Some(x) = x {

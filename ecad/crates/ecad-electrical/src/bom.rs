@@ -684,7 +684,7 @@ fn unit_value(qty: Option<&str>, value: Option<&str>) -> Result<Option<String>, 
 fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
     let key = f.word();
     match f {
-        Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value).map_err(CmdError::refused),
+        Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value),
         Field::ArticleNumber => plain(key, value, MAX_ARTICLE_CHARS),
         Field::Kit => plain(key, value, MAX_KIT_CHARS),
         Field::Qty => match value.map(str::trim).filter(|v| !v.is_empty()) {
@@ -752,7 +752,7 @@ pub fn line_ops(doc: &Document, c: ComponentId, n: u8, fields: &[(Field, Option<
 /// An item property's value, checked (with the item's unit `metres` and stored `qty`).
 pub fn item_value(doc: &Document, key: &str, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
     match key {
-        "description" => match crate::devices::property_value(doc, key, value).map_err(CmdError::refused)? {
+        "description" => match crate::devices::property_value(doc, key, value)? {
             None => Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION)),
             v => Ok(v),
         },
@@ -762,7 +762,7 @@ pub fn item_value(doc: &Document, key: &str, value: Option<&str>, metres: bool, 
             Some(v) => parse_qty(v, metres).map(|_| Some(v.to_string())),
         },
         ARTICLE_KEY => plain(key, value, MAX_ARTICLE_CHARS),
-        _ => crate::devices::property_value(doc, key, value).map_err(CmdError::refused),
+        _ => crate::devices::property_value(doc, key, value),
     }
 }
 

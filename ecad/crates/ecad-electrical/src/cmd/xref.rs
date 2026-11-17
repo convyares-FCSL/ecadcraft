@@ -79,7 +79,7 @@ pub fn mirror_for(doc: &Document, c: ComponentId, at: Option<Pt>, placement: Opt
     let placement = match (at, placement) {
         (Some(_), Some(_)) => return Err(CmdError::input("give `at` or `placement`, not both")),
         (None, None) => return Err(CmdError::input("`at` ([x, y]) or `placement` (auto, below, right, off) is required")),
-        (None, Some(w)) => match xref::parse_mirror(w).map_err(CmdError::refused)? {
+        (None, Some(w)) => match xref::parse_mirror(w)? {
             Placement::At(_) => return Err(CmdError::refused("`placement` must be auto, below, right or off; use `at` for a point")),
             p => p,
         },

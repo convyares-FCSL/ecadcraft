@@ -177,7 +177,7 @@ fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result
 }
 
 fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    devices::property_value(doc, key, value).map_err(refused)
+    devices::property_value(doc, key, value)
 }
 
 fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -185,11 +185,11 @@ fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> R
 }
 
 fn contacts_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::xref::offer_value(value).map_err(refused)
+    crate::xref::offer_value(value)
 }
 
 fn mirror_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::xref::mirror_value(value).map_err(refused)
+    crate::xref::mirror_value(value)
 }
 
 fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -197,7 +197,7 @@ fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Resu
 }
 
 fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    devices::property_value(doc, key, value).map_err(refused)
+    devices::property_value(doc, key, value)
 }
 
 fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -233,7 +233,7 @@ fn plc_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Re
 }
 
 fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::symbols::setprop_rule(doc, o, key, value).map_err(refused)
+    crate::symbols::setprop_rule(doc, o, key, value)
 }
 
 fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -423,7 +423,7 @@ pub fn plan_device(
             };
             return Err(CmdError::refused(devices::duplicate_words(doc, t, holder, &way)));
         }
-        let ops = devices::plan_merge(doc, ids, c, holder).map_err(refused)?;
+        let ops = devices::plan_merge(doc, ids, c, holder)?;
         return Ok(DeviceSet::Merged { ops, holder, into: devices::tag_words(doc, holder), before });
     }
     if before == value {
@@ -606,7 +606,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
         }
         Some(Conflict::Next) => {
             let px = tag::prefix_of(&t).ok_or_else(|| CmdError::refused(format!("{t} has no number to follow; type another tag.")))?;
-            let next = if tag::is_provisional(&t) { tag_high.next_provisional_in(doc, &px) } else { tag_high.next_in(doc, &px).map_err(refused)? };
+            let next = if tag::is_provisional(&t) { tag_high.next_provisional_in(doc, &px) } else { tag_high.next_in(doc, &px)? };
             let fixed = !tag::is_provisional(&next);
             let ops = tag_ops(doc, o, Some(next.clone()), fixed);
             let line = format!("{} is now {next}.", before.unwrap_or_else(|| format!("The {}", noun(o))));

@@ -201,7 +201,7 @@ pub fn tagless(starter: &Starter, joins: bool, name: Option<&str>, caption: Opti
     let caption = match caption {
         None => None,
         Some(_) if starter.key != CONTINUATION => return Err(CmdError::refused("Only continuation arrows have a caption; that is a junction.")),
-        Some(t) => crate::continuations::caption_text(Some(t)).map_err(CmdError::refused)?,
+        Some(t) => crate::continuations::caption_text(Some(t))?,
     };
     Ok((name, caption))
 }
