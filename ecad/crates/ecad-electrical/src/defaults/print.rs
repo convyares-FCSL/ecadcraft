@@ -5,6 +5,7 @@
 //! `ecad-model`'s numbering and merge read without the registry; these entries name them.
 
 use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::CmdError;
 
 const GROUP: &str = "Print";
 const BRIEF: &str = "033";
@@ -132,14 +133,29 @@ pub fn mono(doc: &ecad_model::Document) -> bool {
 ///
 /// # Errors
 /// Any other value, in words.
-pub fn mono_param(doc: &ecad_model::Document, params: &serde_json::Value) -> Result<bool, String> {
+pub fn mono_param(doc: &ecad_model::Document, params: &serde_json::Value) -> Result<bool, CmdError> {
     match params.get("colour") {
         None | Some(serde_json::Value::Null) => Ok(mono(doc)),
-        Some(v) => match v.as_str().map(str::trim) {
-            Some("mono") => Ok(true),
-            Some("colour" | "color" | "screen") => Ok(false),
-            _ => Err("`colour` is \"mono\" (black, the colour code in the wire label) or \"colour\" (wire colours)".into()),
+        Some(v) => match v.as_str() {
+            Some(w) => mono_word(doc, Some(w)),
+            None => Err(CmdError::input(COLOUR_WORDS)),
         },
+    }
+}
+
+/// The refusal of a `colour` that is not a print colour.
+pub const COLOUR_WORDS: &str = "`colour` is \"mono\" (black, the colour code in the wire label) or \"colour\" (wire colours)";
+
+/// [`mono_param`] with the `colour` word read: `None` is the project's [`COLOUR`].
+///
+/// # Errors
+/// A word that is not a print colour.
+pub fn mono_word(doc: &ecad_model::Document, word: Option<&str>) -> Result<bool, CmdError> {
+    match word.map(str::trim) {
+        None => Ok(mono(doc)),
+        Some("mono") => Ok(true),
+        Some("colour" | "color" | "screen") => Ok(false),
+        Some(_) => Err(CmdError::input(COLOUR_WORDS)),
     }
 }
 

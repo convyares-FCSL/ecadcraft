@@ -417,7 +417,7 @@ fn contact_cross_references_follow_the_reference_style() {
     let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
     let k1 = crate::common::hex(&coil, "component");
     let p2: ecad_model::PageId = crate::common::id(&h.run("newpage", json!({"title": "Contacts"})).unwrap(), "page");
-    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1, "page": p2.hex()})).unwrap();
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1})).unwrap();
     let heights = |h: &mut H| -> Vec<f64> {
         let doc = h.doc();
         ecad_cadcraft::xref::parts_on_page(&doc, p2)

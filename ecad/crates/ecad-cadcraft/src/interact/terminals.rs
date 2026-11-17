@@ -119,7 +119,7 @@ impl PlaceTerminals {
     }
 
     fn choose_level(&mut self, s: &Session, text: &str) -> R<Step> {
-        let level = read(s, |p, _| terminal::level_word(p.ledger.document(), self.strip, self.ty, text)).map_err(other)?;
+        let level = read(s, |p, _| terminal::level_word(p.ledger.document(), self.strip, self.ty, text).map_err(String::from)).map_err(other)?;
         self.level = level;
         self.stage = if level.is_some() { Stage::Position } else { Stage::Line };
         Ok(Step::Continue)

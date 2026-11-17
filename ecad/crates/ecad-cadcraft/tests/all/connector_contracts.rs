@@ -214,7 +214,7 @@ fn typed_names_resolve_and_ambiguous_ones_are_refused() {
     assert_eq!(connectors::resolve(&d, &format!("{tag}.P:3")), Some(Ok((c, Some(Side::Plug), Some(p3)))));
     assert_eq!(connectors::resolve(&d, &format!("{tag}.s")), Some(Ok((c, Some(Side::Socket), None))));
     let e = connectors::resolve(&d, &format!("{tag}:3")).unwrap().unwrap_err();
-    assert_eq!(e, format!("{tag} has pin 3 on both halves. Type {tag}.S:3 or {tag}.P:3."));
+    assert_eq!(e.to_string(), format!("{tag} has pin 3 on both halves. Type {tag}.S:3 or {tag}.P:3."));
     assert_eq!(connectors::resolve(&d, "-K99"), None);
     // Another device cannot take a half's tag (design 044 §5.1).
     let k: ComponentId = id(&h.run("place", json!({"symbol": "coil", "at": [200, 200]})).unwrap(), "component");

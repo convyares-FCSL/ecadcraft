@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::links::{self, Positions};
 use ecad_model::{ComponentId, Document, ObjectRef, Op, Properties};
 
+use crate::CmdError;
 use crate::strips::TermRow;
 
 /// What every placement key starts with.
@@ -174,9 +175,12 @@ fn shown(text: &str) -> String {
 ///
 /// # Errors
 /// Empty, longer than [`MAX_LABEL_CHARS`], or with spaces, control characters, `,` or `-`.
-pub fn check_label(l: &str) -> Result<(), String> {
+pub fn check_label(l: &str) -> Result<(), CmdError> {
     if l.is_empty() || l.chars().count() > MAX_LABEL_CHARS || l.chars().any(|c| c.is_whitespace() || c.is_control() || c == ',') {
-        return Err(format!("\"{}\" is not a position label. A label has 1 to {MAX_LABEL_CHARS} characters, no spaces or commas.", shown(l)));
+        return Err(CmdError::refused(format!(
+            "\"{}\" is not a position label. A label has 1 to {MAX_LABEL_CHARS} characters, no spaces or commas.",
+            shown(l)
+        )));
     }
     Ok(())
 }
@@ -185,25 +189,29 @@ pub fn check_label(l: &str) -> Result<(), String> {
 ///
 /// # Errors
 /// More than [`MAX_ITEMS`], or a word not allowed at that place, in words with the way forward.
-pub fn parse_items(text: &str, on: bool) -> Result<Vec<Acc>, String> {
+pub fn parse_items(text: &str, on: bool) -> Result<Vec<Acc>, CmdError> {
     if text.chars().count() > MAX_ITEMS * 16 {
-        return Err(format!("A place holds at most {MAX_ITEMS} accessories."));
+        return Err(CmdError::refused(format!("A place holds at most {MAX_ITEMS} accessories.")));
     }
     let mut out = Vec::new();
     for w in text.split(',').map(str::trim).filter(|w| !w.is_empty()) {
         if out.len() >= MAX_ITEMS {
-            return Err(format!("A place holds at most {MAX_ITEMS} accessories."));
+            return Err(CmdError::refused(format!("A place holds at most {MAX_ITEMS} accessories.")));
         }
         let a = Acc::parse(w);
         match (a, on) {
             (Some(Acc::Marker), true) => out.push(Acc::Marker),
             (Some(Acc::Marker), false) => {
-                return Err("A marker goes on a position, not in a gap. Write end_stop, end_plate, partition or strip_label.".into());
+                return Err(CmdError::refused("A marker goes on a position, not in a gap. Write end_stop, end_plate, partition or strip_label."));
             }
-            (Some(a), true) => return Err(format!("{} goes in a gap, not on a position. Only marker goes on a position.", a.description())),
+            (Some(a), true) => {
+                return Err(CmdError::refused(format!("{} goes in a gap, not on a position. Only marker goes on a position.", a.description())));
+            }
             (Some(a), false) => out.push(a),
-            (None, false) => return Err(format!("\"{}\" is not an accessory. Write end_stop, end_plate, partition or strip_label.", shown(w))),
-            (None, true) => return Err(format!("\"{}\" is not an accessory. Only marker goes on a position.", shown(w))),
+            (None, false) => {
+                return Err(CmdError::refused(format!("\"{}\" is not an accessory. Write end_stop, end_plate, partition or strip_label.", shown(w))));
+            }
+            (None, true) => return Err(CmdError::refused(format!("\"{}\" is not an accessory. Only marker goes on a position.", shown(w)))),
         }
     }
     Ok(out)
@@ -218,7 +226,7 @@ pub fn items_text(items: &[Acc]) -> String {
 ///
 /// # Errors
 /// [`parse_items`]'s.
-pub fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let items = parse_items(v, spot.is_on())?;
     Ok((!items.is_empty()).then(|| items_text(&items)))
@@ -265,10 +273,10 @@ pub fn strip_key_of_project(key: &str) -> Option<String> {
     part_keys().into_iter().find(|k| project_key(k) == key)
 }
 
-fn whole(key: &str, value: &str, lo: u32, hi: u32, what: &str) -> Result<String, String> {
+fn whole(key: &str, value: &str, lo: u32, hi: u32, what: &str) -> Result<String, CmdError> {
     match value.trim().parse::<u32>() {
         Ok(n) if (lo..=hi).contains(&n) => Ok(n.to_string()),
-        _ => Err(format!("\"{}\" is not {what}. Write {lo} to {hi}. ({key})", shown(value))),
+        _ => Err(CmdError::refused(format!("\"{}\" is not {what}. Write {lo} to {hi}. ({key})", shown(value)))),
     }
 }
 
@@ -276,7 +284,7 @@ fn whole(key: &str, value: &str, lo: u32, hi: u32, what: &str) -> Result<String,
 ///
 /// # Errors
 /// A card size outside 1…100, a bar size outside 2…50, or text that is too long.
-pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if is_article_key(strip_key) {
         return crate::bom::article_value(Some(v));
@@ -289,7 +297,7 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
 }
 
 /// The rule for a project property `strip_*` (FP3, FP6): `None` when `key` is not one.
-pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
     if is_type_article_project_key(key) {
         return Some(crate::bom::article_value(value));
@@ -326,7 +334,7 @@ pub fn positions(doc: &Document, c: ComponentId) -> Vec<String> {
 ///
 /// # Errors
 /// Unreadable text, or fewer than 2 positions.
-pub fn link_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn link_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let p = links::parse(v)?;
     let order = positions(doc, c);
@@ -337,7 +345,7 @@ pub fn link_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result
 ///
 /// # Errors
 /// Fewer than 2 positions.
-pub fn link_text(p: &Positions, order: &[String]) -> Result<String, String> {
+pub fn link_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
     // Brief 036: a cross-level link joins levels of one position (`1.1-1.3`).
     if p.crosses_levels() {
         return Ok(p.text());
@@ -345,7 +353,7 @@ pub fn link_text(p: &Positions, order: &[String]) -> Result<String, String> {
     let sel = p.select(order);
     let missing = p.missing(order);
     if sel.len() + missing.len() < 2 {
-        return Err("A link joins at least 2 positions. Write positions like 1-4 or 7, 9, 11.".into());
+        return Err(CmdError::refused("A link joins at least 2 positions. Write positions like 1-4 or 7, 9, 11."));
     }
     // Brief 036: a link on one level keeps its level (`1.2-8.2`); a cross-level link, or one
     // whose items name different levels, stays as written.
@@ -375,15 +383,16 @@ pub fn drop_items(text: &str, drop: &[String]) -> String {
 ///
 /// # Errors
 /// A placement or link key on a device that is not a strip, and every refusal of the value.
-pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, String> {
+pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     let strip = crate::strips::is_strip(doc, c);
-    let not_strip = || format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c));
+    let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
     if key.starts_with(ACC_PREFIX) {
         if !strip {
             return Err(not_strip());
         }
-        let spot = spot_of(key)
-            .ok_or_else(|| format!("\"{}\" is not a place. Write acc.start, acc.end, acc.after.<label> or acc.on.<label>.", shown(key)))?;
+        let spot = spot_of(key).ok_or_else(|| {
+            CmdError::refused(format!("\"{}\" is not a place. Write acc.start, acc.end, acc.after.<label> or acc.on.<label>.", shown(key)))
+        })?;
         if let Some(l) = spot.label() {
             check_label(l)?;
         }
@@ -402,7 +411,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
             return Err(not_strip());
         }
         if link_part_key(key).is_none() {
-            return Err(format!("\"{}\" is not a link key. Write link.<n> (1 to 999) or link.<n>.part_number.", shown(key)));
+            return Err(CmdError::refused(format!("\"{}\" is not a link key. Write link.<n> (1 to 999) or link.<n>.part_number.", shown(key))));
         }
         if is_article_key(key) {
             return crate::bom::article_value(value).map(Some);
@@ -1046,8 +1055,8 @@ mod tests {
         assert_eq!(spot_of("acc.middle"), None);
         assert_eq!(acc_value(&Spot::End, Some(" End plate , end-stop ")), Ok(Some("end_plate,end_stop".into())));
         assert_eq!(acc_value(&Spot::Start, Some(" ")), Ok(None));
-        assert!(acc_value(&Spot::Start, Some("plate")).unwrap_err().contains("Write end_stop, end_plate, partition or strip_label"));
-        assert!(acc_value(&Spot::On("4".into()), Some("partition")).unwrap_err().contains("Only marker goes on a position"));
+        assert!(acc_value(&Spot::Start, Some("plate")).unwrap_err().to_string().contains("Write end_stop, end_plate, partition or strip_label"));
+        assert!(acc_value(&Spot::On("4".into()), Some("partition")).unwrap_err().to_string().contains("Only marker goes on a position"));
         assert!(acc_value(&Spot::Start, Some("marker")).is_err());
         assert!(acc_value(&Spot::Start, Some(&"end_stop,".repeat(9))).is_err());
         assert!(acc_value(&Spot::Start, Some(&"end_stop,".repeat(1000))).is_err());

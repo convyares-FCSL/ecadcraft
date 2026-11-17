@@ -21,6 +21,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::{DefinitionId, Document, ItemKind, ObjectRef, Op, StyleRef};
 
+use crate::CmdError;
 use crate::frames::FrameInput;
 use crate::text_style::TextKind;
 
@@ -69,10 +70,10 @@ pub fn notes(doc: &Document) -> (Vec<String>, bool) {
 ///
 /// # Errors
 /// [`NOTES_TOO_LONG`] past the bounds.
-pub fn check_notes(text: &str) -> Result<(), String> {
+pub fn check_notes(text: &str) -> Result<(), CmdError> {
     let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     if lines.len() > MAX_NOTES || lines.iter().any(|l| l.chars().count() > MAX_NOTE_CHARS) {
-        return Err(NOTES_TOO_LONG.into());
+        return Err(CmdError::refused(NOTES_TOO_LONG));
     }
     Ok(())
 }
@@ -125,10 +126,10 @@ pub fn parse_overrides(text: &str) -> Vec<RowOverride> {
 ///
 /// # Errors
 /// [`ROWS_TOO_LONG`] past the bounds or for a malformed row.
-pub fn check_overrides(text: &str) -> Result<(), String> {
+pub fn check_overrides(text: &str) -> Result<(), CmdError> {
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.len() > MAX_ROWS {
-        return Err(ROWS_TOO_LONG.into());
+        return Err(CmdError::refused(ROWS_TOO_LONG));
     }
     for l in lines {
         let parts: Vec<&str> = l.splitn(3, '\t').collect();
@@ -143,7 +144,7 @@ pub fn check_overrides(text: &str) -> Result<(), String> {
             _ => false,
         };
         if !ok {
-            return Err(ROWS_TOO_LONG.into());
+            return Err(CmdError::refused(ROWS_TOO_LONG));
         }
     }
     Ok(())

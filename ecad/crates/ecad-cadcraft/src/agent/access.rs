@@ -18,9 +18,13 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::{err, opt_typed, with_any_page};
+use crate::cmd::input::{Command, Typed, typed};
+use crate::cmd::{err, on_any_page};
 use crate::project::Project;
 use crate::views::Settings;
 
@@ -172,9 +176,12 @@ pub struct Status {
     pub this_run: bool,
 }
 
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[Typed::of::<AgentaccessParams>("agentaccess")];
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("agentaccess", "Agent Access", run_agentaccess)
+        CommandSpec::new("agentaccess", "Agent Access", typed::<AgentaccessParams>)
             .params("{mode?: \"off\"|\"read\"|\"write\", port?: 1024–65535} (no fields: reads; set by the person only)")
             .noundo(),
     ]
@@ -190,22 +197,39 @@ fn reply(st: Option<&Status>, pref: Preference) -> Value {
     })
 }
 
-fn run_agentaccess(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let mode = opt_typed(params, "mode", "off, read or write", |v| v.as_str().and_then(Mode::parse)).map_err(err)?;
-    let port = opt_typed(params, "port", "a port from 1024 to 65535", |v| v.as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p >= MIN_PORT))
-        .map_err(err)?;
-    with_any_page(s, |p: &mut Project, _| {
-        let current = p.agent_access_status.as_ref().map_or_else(|| load(&Settings::from_env()).preference, |s| s.preference);
-        if mode.is_none() && port.is_none() {
-            return Ok(reply(p.agent_access_status.as_ref(), current));
-        }
-        if p.agent_access_status.as_ref().is_some_and(|s| s.this_run) {
-            return Err("Agent access is set by --control for this run; restart ECAD without it to change the preference.".into());
-        }
-        let want = Preference { mode: mode.unwrap_or(current.mode), port: port.unwrap_or(current.port) };
-        p.agent_access_request = Some(want);
-        Ok(reply(p.agent_access_status.as_ref(), want))
-    })
+/// `agentaccess {mode?, port?}`: the window's agent access; no fields reads it. Set by the person
+/// only (agents are refused by the policy).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AgentaccessParams {
+    /// "off", "read" or "write".
+    #[serde(default)]
+    mode: Option<String>,
+    /// The port, from 1024 to 65535.
+    #[serde(default)]
+    port: Option<u64>,
+}
+
+impl Command for AgentaccessParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let mode = self.mode.map(|m| Mode::parse(&m).ok_or_else(|| err("`mode` must be off, read or write"))).transpose()?;
+        let port = self
+            .port
+            .map(|p| u16::try_from(p).ok().filter(|p| *p >= MIN_PORT).ok_or_else(|| err("`port` must be a port from 1024 to 65535")))
+            .transpose()?;
+        on_any_page(s, |p: &mut Project, _| {
+            let current = p.agent_access_status.as_ref().map_or_else(|| load(&Settings::from_env()).preference, |s| s.preference);
+            if mode.is_none() && port.is_none() {
+                return Ok(reply(p.agent_access_status.as_ref(), current));
+            }
+            if p.agent_access_status.as_ref().is_some_and(|s| s.this_run) {
+                return Err(CmdError::refused("Agent access is set by --control for this run; restart ECAD without it to change the preference."));
+            }
+            let want = Preference { mode: mode.unwrap_or(current.mode), port: port.unwrap_or(current.port) };
+            p.agent_access_request = Some(want);
+            Ok(reply(p.agent_access_status.as_ref(), want))
+        })
+    }
 }
 
 #[cfg(test)]

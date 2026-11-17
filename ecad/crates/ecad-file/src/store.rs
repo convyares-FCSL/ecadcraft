@@ -68,7 +68,7 @@ impl From<DbError> for StoreError {
         match e {
             DbError::Engine(e) => StoreError::Engine(e),
             DbError::Busy => StoreError::Busy,
-            DbError::Exists(p) => StoreError::Refused(format!("{p} already exists; it is never overwritten")),
+            e @ DbError::Exists(_) => StoreError::Refused(e.to_string()),
             DbError::PreviousIo => StoreError::PreviousIo,
             DbError::ReadOnly => StoreError::ReadOnly,
         }
@@ -267,7 +267,7 @@ impl Reader {
     pub fn tx(&self, branch: BranchId, seq: u64) -> Result<Option<(u8, Hash, Vec<u8>)>, StoreError> {
         let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
         let Some(v) = t.get(tx_key(branch, seq)).map_err(engine)? else { return Ok(None) };
-        let (flag, chain, body) = split_tx_value(v.value()).map_err(StoreError::Damaged)?;
+        let (flag, chain, body) = split_tx_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
         Ok(Some((flag, chain, body.to_vec())))
     }
 
@@ -283,7 +283,7 @@ impl Reader {
         }
         for row in t.range(tx_key(branch, *seqs.start())..=tx_key(branch, *seqs.end())).map_err(engine)? {
             let (k, v) = row.map_err(engine)?;
-            let (flag, chain, body) = split_tx_value(v.value()).map_err(StoreError::Damaged)?;
+            let (flag, chain, body) = split_tx_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
             out.push((key_seq(&k.value()), flag, chain, body.to_vec()));
         }
         Ok(out)
@@ -376,7 +376,7 @@ impl Reader {
     /// Missing, damaged, or not matching its hash.
     pub fn chunk_body(&self, hash: &Hash) -> Result<Vec<u8>, StoreError> {
         let (flag, body) = self.chunk(hash)?.ok_or_else(|| StoreError::Damaged(format!("chunk {} is missing", crate::chain::hex(hash))))?;
-        let body = pack::unpack(flag, &body).map_err(StoreError::Damaged)?;
+        let body = pack::unpack(flag, &body).map_err(|e| StoreError::Damaged(e.to_string()))?;
         if super::schema::chunk_hash(&body) != *hash {
             return Err(StoreError::Damaged(format!("chunk {} does not match its hash", crate::chain::hex(hash))));
         }
@@ -405,7 +405,7 @@ impl Reader {
     pub fn asset(&self, hash: &Hash) -> Result<Option<(String, Vec<u8>)>, StoreError> {
         let t = self.txn.open_table(ASSETS).map_err(engine)?;
         let Some(v) = t.get(*hash).map_err(engine)? else { return Ok(None) };
-        let (media, bytes) = super::schema::split_asset_value(v.value()).map_err(StoreError::Damaged)?;
+        let (media, bytes) = super::schema::split_asset_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
         Ok(Some((media, bytes.to_vec())))
     }
 
@@ -428,13 +428,12 @@ impl Reader {
     ///
     /// # Errors
     /// The engine failed.
-    pub fn raw_rows(&self, mut each: impl FnMut(&'static str, &[u8], &[u8]) -> Result<(), String>) -> Result<(), StoreError> {
-        let err = StoreError::Engine;
+    pub fn raw_rows(&self, mut each: impl FnMut(&'static str, &[u8], &[u8]) -> Result<(), StoreError>) -> Result<(), StoreError> {
         {
             let t = self.txn.open_table(META).map_err(engine)?;
             for row in t.iter().map_err(engine)? {
                 let (k, v) = row.map_err(engine)?;
-                each("meta", k.value().as_bytes(), v.value()).map_err(err)?;
+                each("meta", k.value().as_bytes(), v.value())?;
             }
         }
         macro_rules! fixed {
@@ -442,7 +441,7 @@ impl Reader {
                 let t = self.txn.open_table($def).map_err(engine)?;
                 for row in t.iter().map_err(engine)? {
                     let (k, v) = row.map_err(engine)?;
-                    each($name, &k.value(), v.value()).map_err(err)?;
+                    each($name, &k.value(), v.value())?;
                 }
             }};
         }
@@ -452,7 +451,7 @@ impl Reader {
             let t = self.txn.open_table(VERSIONS).map_err(engine)?;
             for row in t.iter().map_err(engine)? {
                 let (k, v) = row.map_err(engine)?;
-                each("versions", k.value(), v.value()).map_err(err)?;
+                each("versions", k.value(), v.value())?;
             }
         }
         fixed!(CHUNKS, "chunks");
@@ -555,7 +554,7 @@ impl Writer {
         let hash = asset_hash(bytes);
         let mut t = self.txn.open_table(ASSETS).map_err(engine)?;
         if t.get(hash).map_err(engine)?.is_none() {
-            let value = asset_value(media, bytes).map_err(StoreError::Refused)?;
+            let value = asset_value(media, bytes).map_err(|e| StoreError::Refused(e.to_string()))?;
             t.insert(hash, value.as_slice()).map_err(engine)?;
         }
         Ok(hash)
@@ -640,15 +639,15 @@ impl Writer {
         let mut versions = self.txn.open_table(VERSIONS).map_err(engine)?;
         let mut chunks = self.txn.open_table(CHUNKS).map_err(engine)?;
         let mut assets = self.txn.open_table(ASSETS).map_err(engine)?;
-        let fixed = |k: &[u8], n: usize| -> Result<Vec<u8>, String> {
-            if k.len() == n { Ok(k.to_vec()) } else { Err(format!("a key of {} bytes where {n} were expected", k.len())) }
+        let fixed = |k: &[u8], n: usize| -> Result<Vec<u8>, StoreError> {
+            if k.len() == n { Ok(k.to_vec()) } else { Err(StoreError::Engine(format!("a key of {} bytes where {n} were expected", k.len()))) }
         };
         from.raw_rows(|table, k, v| {
             bytes += (k.len() + v.len()) as u64;
-            let e = |e: redb::StorageError| e.to_string();
+            let e = |e: redb::StorageError| StoreError::Engine(e.to_string());
             match table {
                 "meta" => {
-                    let name = std::str::from_utf8(k).map_err(|e| e.to_string())?;
+                    let name = std::str::from_utf8(k).map_err(|e| StoreError::Engine(e.to_string()))?;
                     meta.insert(name, v).map_err(e)?;
                 }
                 "branches" => {
@@ -671,7 +670,7 @@ impl Writer {
                         return Ok(());
                     }
                     if seq != expected {
-                        return Err(format!("transaction {seq} follows {} on its branch", expected - 1));
+                        return Err(StoreError::Engine(format!("transaction {seq} follows {} on its branch", expected - 1)));
                     }
                     last = Some((b, seq));
                     txs.insert(key, v).map_err(e)?;
@@ -689,7 +688,7 @@ impl Writer {
                     key.copy_from_slice(&fixed(k, 32)?);
                     assets.insert(key, v).map_err(e)?;
                 }
-                other => return Err(format!("unknown table {other}")),
+                other => return Err(StoreError::Engine(format!("unknown table {other}"))),
             }
             Ok(())
         })

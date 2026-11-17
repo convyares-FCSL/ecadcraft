@@ -209,7 +209,7 @@ fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: &Paging, what: &st
     let flagged = t.flagged();
     if let Some(path) = &pg.path {
         let text = outputs::csv(t, pg.excel_safe);
-        printbook::write_file(path, text.as_bytes())?;
+        printbook::write_file(path, text.as_bytes()).map_err(CmdError::refused)?;
         let marked = if flagged == 1 { "1 cell marked ?".to_string() } else { format!("{flagged} cells marked ?") };
         let message = format!("Wrote {} {what} rows to {path} ({marked}).", t.rows.len());
         return Ok(json!({ "path": path, "rows": t.rows.len(), "flagged": flagged, "message": message }));
@@ -457,7 +457,7 @@ fn scope_of(v: Option<ScopeParam>) -> Result<Scope, CmdError> {
 /// No page matches, or a projection, plot or write failure (nothing written).
 pub fn print_project(
     p: &mut Project, scope: &Scope, o: Options, path: Option<&str>, progress: &mut dyn FnMut(usize, usize) -> bool,
-) -> Result<Value, String> {
+) -> Result<Value, CmdError> {
     if crate::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
@@ -465,8 +465,8 @@ pub fn print_project(
     p.refresh_pending();
     let o = Options { pending: p.pending, ..o };
     let doc = p.ledger.document();
-    let resolved = printbook::resolve_with(doc, scope, p.outputs.as_ref())?;
-    let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.outputs.as_ref(), o, path, progress)?;
+    let resolved = printbook::resolve_with(doc, scope, p.outputs.as_ref()).map_err(CmdError::refused)?;
+    let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.outputs.as_ref(), o, path, progress).map_err(CmdError::refused)?;
     let files: Vec<Value> = done
         .files
         .iter()
@@ -521,10 +521,10 @@ impl Command for PrintbookParams {
         let path = self.path;
         // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by
         // default).
-        let colour = json!({"colour": self.colour});
+        let colour = self.colour;
         let v = on_any_page(s, |p, _| {
-            let mono = crate::defaults::print::mono_param(p.ledger.document(), &colour)?;
-            Ok(print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)?)
+            let mono = crate::defaults::print::mono_word(p.ledger.document(), colour.as_deref())?;
+            print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)
         })?;
         if let Some(m) = v.get("message").and_then(Value::as_str) {
             s.echo(m.to_string());

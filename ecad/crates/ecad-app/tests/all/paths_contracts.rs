@@ -109,7 +109,7 @@ fn typed_paths_are_expanded_completed_or_refused() {
                 assert_eq!(normalize_with(&want, known.then_some(profile)).as_deref(), Ok(want.as_str()), "{typed:?}");
             }
             Refused(why) => {
-                let e = got.expect_err(typed);
+                let e = got.expect_err(typed).to_string();
                 assert!(e.contains(why), "{typed:?}: {e}");
             }
         }

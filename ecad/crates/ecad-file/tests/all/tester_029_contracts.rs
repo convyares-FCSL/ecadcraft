@@ -198,7 +198,7 @@ fn reference(p: &Path) -> Vec<String> {
                 broken = true;
                 break;
             }
-            let decoded = ecad_file::pack::unpack(flag, &body).and_then(|rec| {
+            let decoded = ecad_file::pack::unpack(flag, &body).map_err(|e| e.to_string()).and_then(|rec| {
                 if chain::tx_hash(&rec) != stored {
                     return Err("the record does not match its chain value".to_string());
                 }

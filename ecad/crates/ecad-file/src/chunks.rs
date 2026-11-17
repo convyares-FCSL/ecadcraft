@@ -25,6 +25,7 @@ use ecad_model::{
 use serde::{Deserialize, Serialize};
 
 use super::schema::chunk_hash;
+use crate::FileError;
 use crate::chain::{self, Hash};
 
 /// Objects per model chunk, before bucketing (overseer, 2026-11-08).
@@ -92,6 +93,9 @@ macro_rules! raw_id {
 }
 raw_id!(LayerId, ComponentId, TerminalId, ConductorId, CableId, DefinitionId);
 
+/// A version row's `chunks`: key → hex hash.
+pub type ChunkHashes = BTreeMap<String, String>;
+
 /// A snapshot's chunk set: key → hash, and the bucket count of each model kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChunkSet {
@@ -104,27 +108,27 @@ impl ChunkSet {
     ///
     /// # Errors
     /// A malformed key or hash.
-    pub fn from_record(chunks: &BTreeMap<String, String>) -> Result<Self, String> {
+    pub fn from_record(chunks: &ChunkHashes) -> Result<Self, FileError> {
         let mut set = ChunkSet::default();
         for (k, h) in chunks {
-            let hash = chain::parse_hex(h).ok_or_else(|| format!("chunk {k}: {h:?} is not a hash"))?;
+            let hash = chain::parse_hex(h).ok_or_else(|| FileError::ChunkHash { key: k.clone(), hash: h.clone() })?;
             if let Some(rest) = k.strip_prefix("model:")
                 && let Some((kind, b)) = rest.split_once(':')
             {
-                let b: u32 = b.parse().map_err(|_| format!("chunk key {k:?} has no bucket number"))?;
+                let b: u32 = b.parse().map_err(|_| FileError::ChunkBucket(k.clone()))?;
                 if !KINDS.contains(&kind) || b >= MAX_BUCKETS {
-                    return Err(format!("chunk key {k:?} is not a model chunk"));
+                    return Err(FileError::NotModelChunk(k.clone()));
                 }
                 let n = set.buckets.entry(kind.to_string()).or_insert(0);
                 *n = (*n).max(b + 1);
             } else if k != PROJECT_KEY && k != META_KEY && !k.starts_with("page:") {
-                return Err(format!("unknown chunk key {k:?}"));
+                return Err(FileError::ChunkKey(k.clone()));
             }
             set.chunks.insert(k.clone(), hash);
         }
         for (kind, n) in &mut set.buckets {
             if !n.is_power_of_two() {
-                return Err(format!("{kind} has {n} chunks, not a power of two"));
+                return Err(FileError::NotPowerOfTwo { kind: kind.clone(), count: *n });
             }
         }
         Ok(set)
@@ -234,13 +238,13 @@ pub struct NewChunk {
     pub body: Vec<u8>,
 }
 
-fn encode<T: Serialize>(v: &T) -> Result<NewChunk, String> {
-    let body = serde_json::to_vec(v).map_err(|e| e.to_string())?;
+fn encode<T: Serialize>(v: &T) -> Result<NewChunk, FileError> {
+    let body = serde_json::to_vec(v).map_err(|e| FileError::json(&e))?;
     Ok(NewChunk { hash: chunk_hash(&body), body })
 }
 
 /// The model kind `kind`'s objects in bucket `b` (of `count`) as a chunk.
-fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChunk, String> {
+fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChunk, FileError> {
     fn pick<'a, K: RawId + 'a, V>(map: &'a BTreeMap<K, V>, b: u32, count: u32) -> BTreeMap<&'a K, &'a V> {
         map.iter().filter(|(k, _)| bucket(k.raw(), count) == b).collect()
     }
@@ -251,7 +255,7 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
         "conductor" => encode(&pick(&doc.conductors, b, count)),
         "cable" => encode(&pick(&doc.cables, b, count)),
         "definition" => encode(&pick(&doc.definitions, b, count)),
-        other => Err(format!("unknown model kind {other}")),
+        other => Err(FileError::ModelKind(other.to_string())),
     }
 }
 
@@ -269,7 +273,7 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
 
 /// The chunks of the pages in `pages` that exist in `doc` (one pass over items and
 /// representations).
-fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, NewChunk)>, String> {
+fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, NewChunk)>, FileError> {
     let mut items: BTreeMap<PageId, BTreeMap<&ItemId, &Item>> = BTreeMap::new();
     let mut reps: BTreeMap<PageId, BTreeMap<&RepresentationId, &Representation>> = BTreeMap::new();
     let all = pages.len() == doc.pages.len();
@@ -292,7 +296,7 @@ fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, 
     Ok(out)
 }
 
-fn project_chunk(doc: &Document) -> Result<NewChunk, String> {
+fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
     encode(&ProjectChunkRef {
         page_order: &doc.page_order,
         settings: &doc.settings,
@@ -309,7 +313,7 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, String> {
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), String> {
+pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), FileError> {
     let mut dirty = Dirty { pages: doc.pages.keys().copied().collect(), objects: BTreeMap::new() };
     for kind in KINDS {
         dirty.objects.insert(kind, BTreeSet::new());
@@ -323,11 +327,11 @@ pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<New
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_incremental(doc: &Document, prev: &ChunkSet, dirty: &Dirty, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), String> {
+pub fn build_incremental(doc: &Document, prev: &ChunkSet, dirty: &Dirty, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), FileError> {
     build(doc, prev, dirty, false, meta)
 }
 
-fn build(doc: &Document, prev: &ChunkSet, dirty: &Dirty, full: bool, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), String> {
+fn build(doc: &Document, prev: &ChunkSet, dirty: &Dirty, full: bool, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), FileError> {
     let mut set = prev.clone();
     let mut new = Vec::new();
     let mut put = |set: &mut ChunkSet, key: String, chunk: NewChunk| {
@@ -368,19 +372,19 @@ fn build(doc: &Document, prev: &ChunkSet, dirty: &Dirty, full: bool, meta: &Mode
 }
 
 /// Insert `from` into `into`, refusing an ID already present.
-fn merge<K: Ord + Copy + std::fmt::Display, V>(into: &mut BTreeMap<K, V>, from: BTreeMap<K, V>, what: &str) -> Result<(), String> {
+fn merge<K: Ord + Copy + std::fmt::Display, V>(into: &mut BTreeMap<K, V>, from: BTreeMap<K, V>, what: &'static str) -> Result<(), FileError> {
     for (k, v) in from {
         if into.insert(k, v).is_some() {
-            return Err(format!("{what} {k} is in two chunks"));
+            return Err(FileError::InTwoChunks { what, id: k.to_string() });
         }
     }
     Ok(())
 }
 
 /// Check that every ID of a chunk belongs in it.
-fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32) -> Result<(), String> {
+fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32) -> Result<(), FileError> {
     match map.keys().find(|k| bucket(k.raw(), count) != b) {
-        Some(k) => Err(format!("{k} does not belong in chunk {key}")),
+        Some(k) => Err(FileError::WrongBucket { id: k.to_string(), key: key.to_string() }),
         None => Ok(()),
     }
 }
@@ -402,8 +406,8 @@ enum Parsed {
 /// A model chunk's objects, checked to belong in bucket `b` of `count`.
 fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>(
     body: &[u8], key: &str, b: u32, count: u32,
-) -> Result<BTreeMap<K, V>, String> {
-    let m: BTreeMap<K, V> = serde_json::from_slice(body).map_err(|e| format!("chunk {key}: {e}"))?;
+) -> Result<BTreeMap<K, V>, FileError> {
+    let m: BTreeMap<K, V> = serde_json::from_slice(body).map_err(|e| FileError::ChunkJson { key: key.to_string(), error: e.to_string() })?;
     check_bucket(&m, key, b, count)?;
     Ok(m)
 }
@@ -413,15 +417,15 @@ fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>
 ///
 /// # Errors
 /// Not a component chunk of `set`, or its JSON does not decode.
-pub fn components_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<ComponentId, Component>, String> {
+pub fn components_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<ComponentId, Component>, FileError> {
     match parse_chunk(set, key, body)? {
         Parsed::Component(m) => Ok(m),
-        _ => Err(format!("{key} is not a component chunk")),
+        _ => Err(FileError::NotComponentChunk(key.to_string())),
     }
 }
 
-fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String> {
-    let json = |e: serde_json::Error| format!("chunk {key}: {e}");
+fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileError> {
+    let json = |e: serde_json::Error| FileError::ChunkJson { key: key.to_string(), error: e.to_string() };
     if key == META_KEY {
         return serde_json::from_slice(body).map(Parsed::Meta).map_err(json);
     }
@@ -429,21 +433,21 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String>
         return serde_json::from_slice::<ProjectChunk>(body).map(|p| Parsed::Project(Box::new(p))).map_err(json);
     }
     if let Some(hex) = key.strip_prefix("page:") {
-        let id = PageId::parse(hex).ok_or_else(|| format!("chunk key {key:?} names no page"))?;
+        let id = PageId::parse(hex).ok_or_else(|| FileError::ChunkPage(key.to_string()))?;
         let p: PageChunk = serde_json::from_slice(body).map_err(json)?;
         if let Some((i, _)) = p.items.iter().find(|(_, it)| it.page != id) {
-            return Err(format!("item {i} is in the chunk of page {id} but on another page"));
+            return Err(FileError::OnAnotherPage { what: "item", id: i.to_string(), page: id.to_string() });
         }
         if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
-            return Err(format!("representation {r} is in the chunk of page {id} but on another page"));
+            return Err(FileError::OnAnotherPage { what: "representation", id: r.to_string(), page: id.to_string() });
         }
         return Ok(Parsed::Page(id, p));
     }
     let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) else {
-        return Err(format!("unknown chunk key {key:?}"));
+        return Err(FileError::ChunkKey(key.to_string()));
     };
-    let b: u32 = b.parse().map_err(|_| format!("chunk key {key:?} has no bucket number"))?;
-    let count = set.buckets.get(kind).copied().ok_or_else(|| format!("chunk {key}: unknown kind"))?;
+    let b: u32 = b.parse().map_err(|_| FileError::ChunkBucket(key.to_string()))?;
+    let count = set.buckets.get(kind).copied().ok_or_else(|| FileError::ChunkKindUnknown(key.to_string()))?;
     Ok(match kind {
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
         "component" => Parsed::Component(typed(body, key, b, count)?),
@@ -451,7 +455,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, String>
         "conductor" => Parsed::Conductor(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
-        other => return Err(format!("chunk {key}: unknown kind {other}")),
+        other => return Err(FileError::ChunkKind { key: key.to_string(), kind: other.to_string() }),
     })
 }
 
@@ -492,17 +496,17 @@ pub(crate) fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync
 /// # Errors
 /// As [`assemble`], a chunk that does not decompress or match its hash, or a chunk that could
 /// not be read (a worker thread could not start).
-pub fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
+pub fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), FileError> {
     let n = stored.len();
     let parsed = par_map(stored, |(key, hash, flag, body)| {
         let body = super::pack::unpack(flag, &body)?;
         if chunk_hash(&body) != hash {
-            return Err(format!("chunk {key} does not match its hash"));
+            return Err(FileError::ChunkMismatch(key));
         }
         parse_chunk(set, &key, &body)
     });
     if parsed.len() != n {
-        return Err("a chunk could not be read: a worker thread did not start; open the project again".into());
+        return Err(FileError::ChunkThread);
     }
     merge_parsed(parsed)
 }
@@ -516,11 +520,11 @@ pub fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>)
 /// # Errors
 /// A chunk that does not parse, an object in the wrong chunk or in two chunks, or a missing
 /// project chunk.
-pub fn assemble(set: &ChunkSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), String> {
+pub fn assemble(set: &ChunkSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), FileError> {
     merge_parsed(bodies.iter().map(|(k, b)| parse_chunk(set, k, b)).collect())
 }
 
-fn merge_parsed(parsed: Vec<Result<Parsed, String>>) -> Result<(Document, Option<ModelMeta>), String> {
+fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Option<ModelMeta>), FileError> {
     let mut doc = Document::default();
     let mut project = false;
     let mut meta = None;
@@ -540,7 +544,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, String>>) -> Result<(Document, Option
             }
             Parsed::Page(id, p) => {
                 if doc.pages.insert(id, p.page).is_some() {
-                    return Err(format!("page {id} is in two chunks"));
+                    return Err(FileError::InTwoChunks { what: "page", id: id.to_string() });
                 }
                 merge(&mut doc.items, p.items, "item")?;
                 merge(&mut doc.representations, p.representations, "representation")?;
@@ -554,13 +558,13 @@ fn merge_parsed(parsed: Vec<Result<Parsed, String>>) -> Result<(Document, Option
         }
     }
     if !project {
-        return Err("the snapshot has no project chunk".into());
+        return Err(FileError::NoProjectChunk);
     }
     // Every page in the order has its chunk, and every chunk's page is in the order.
     let ordered: BTreeSet<PageId> = doc.page_order.iter().copied().collect();
     let chunked: BTreeSet<PageId> = doc.pages.keys().copied().collect();
     if ordered != chunked || ordered.len() != doc.page_order.len() {
-        return Err("the snapshot's page order does not match its page chunks".into());
+        return Err(FileError::PageOrder);
     }
     Ok((doc, meta))
 }

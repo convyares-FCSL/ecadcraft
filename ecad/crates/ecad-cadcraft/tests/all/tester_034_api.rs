@@ -163,7 +163,7 @@ fn changeover_rule() {
     assert_eq!(symbols::changeover_labels(&set(&["A1", "A2"]), "-K01"), Ok(used(&["11", "12", "14"])));
     assert_eq!(symbols::changeover_labels(&set(&["A1", "A2", "13", "14"]), "-K01"), Ok(used(&["21", "22", "24"])));
     assert_eq!(symbols::changeover_labels(&set(&["81", "82", "84"]), "-K01"), Ok(used(&["91", "92", "94"])));
-    assert_eq!(symbols::changeover_labels(&set(&["93", "94"]), "-K01"), Err("-K01 already has 9 contacts.".to_string()));
+    assert_eq!(symbols::changeover_labels(&set(&["93", "94"]), "-K01").map_err(|e| e.to_string()), Err("-K01 already has 9 contacts.".to_string()));
     // Only `[1-9][1-4]` counts: odd labels never overflow or count.
     assert_eq!(symbols::changeover_labels(&set(&["99", "15", "0", "1234", "I0.0", "\u{1F642}"]), "-K01"), Ok(used(&["11", "12", "14"])));
 }

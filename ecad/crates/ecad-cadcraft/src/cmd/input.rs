@@ -3,8 +3,8 @@
 //! Each command has a `#[derive(Deserialize, JsonSchema)] #[serde(deny_unknown_fields)]` struct
 //! that implements [`Command`]; [`typed`] is its run function. Fields are ordinary types: typed IDs
 //! read their hex form themselves, [`Point`] reads `[x, y]`, [`Bounded`] a list of bounded length,
-//! [`nullable`] tells `null` from absent and [`lenient`] keeps the few legacy switches that ignored
-//! a wrong type.
+//! and [`nullable`] tells `null` from absent. Input is strict: a value of the wrong kind is
+//! refused, never ignored.
 //!
 //! A parameter that does not read is refused in one uniform wording, built from its name and the
 //! kind its schema gives ([`parse`]): "`conductor` (hex id) is required", "`at` must be a point
@@ -40,18 +40,29 @@ pub(crate) fn typed<P: Command>(s: &mut Session, params: &Value) -> cadcraft_eng
     p.run(s)
 }
 
-/// Read `params` as `P`. Anything but an object reads as no parameters.
+/// The refusal of parameters that are not an object (strict input: parse or fail).
+pub const NOT_AN_OBJECT: &str = "The parameters must be an object: {name: value, …}.";
+
+/// Read `params` as `P`. `null` (or absent) reads as no parameters; anything else that is not
+/// an object is refused.
 ///
 /// # Errors
-/// [`CmdError::Input`] naming the parameter and the kind it must be.
+/// [`CmdError::Input`] naming the parameter and the kind it must be, or [`NOT_AN_OBJECT`].
 pub(crate) fn parse<P: Command>(params: &Value) -> Result<P, CmdError> {
     let empty = Map::new();
-    let obj = params.as_object().unwrap_or(&empty);
+    let obj = match params {
+        Value::Object(o) => o,
+        Value::Null => &empty,
+        _ => return Err(CmdError::input(NOT_AN_OBJECT)),
+    };
     P::deserialize(&Value::Object(obj.clone())).map_err(|e| CmdError::input(explain::<P>(obj, &e.to_string())))
 }
 
 /// The marker a reader puts where the parameter's name goes ([`Bounded`]'s refusals).
 const FIELD: &str = "{field}";
+
+/// Most characters of an unknown parameter's name a refusal echoes.
+const MAX_NAME_SHOWN: usize = 64;
 
 /// The uniform wording of serde's refusal `text` of `obj` as `P`.
 fn explain<P: Command>(obj: &Map<String, Value>, text: &str) -> String {
@@ -60,6 +71,11 @@ fn explain<P: Command>(obj: &Map<String, Value>, text: &str) -> String {
         return format!("`{f}` ({}) is required", kind(&schema, f).0);
     }
     if let Some(f) = quoted_after(text, "unknown field `") {
+        // The name is echoed, so a very long one is cut (it may be any length).
+        let f = match f.char_indices().nth(MAX_NAME_SHOWN) {
+            Some((i, _)) => format!("{}\u{2026}", &f[..i]),
+            None => f.to_string(),
+        };
         let takes: Vec<String> = schema["properties"].as_object().into_iter().flatten().map(|(k, _)| format!("`{k}`")).collect();
         return format!("`{f}` is not a parameter of this command; it takes {}", if takes.is_empty() { "none".into() } else { takes.join(", ") });
     }
@@ -90,7 +106,7 @@ fn kind(schema: &Value, name: &str) -> (String, String) {
     let field = resolve(schema, &schema["properties"][name]);
     let (k, nullable) = describe(schema, field);
     match nullable {
-        true => (k.0, format!("{}, or null", k.1)),
+        true => (format!("{}, or null", k.0), format!("{}, or null", k.1)),
         false => k,
     }
 }
@@ -230,6 +246,47 @@ impl<T: JsonSchema, const MIN: usize, const MAX: usize> JsonSchema for Bounded<T
     }
 }
 
+/// A parameter written as text or as a number (a slot, a channel, a page number, a byte): the
+/// rules read it as text, a number written as JSON writes it (`3` reads as `"3"`).
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TextOrNumber {
+    /// Text.
+    Text(String),
+    /// A number.
+    Number(serde_json::Number),
+}
+
+impl TextOrNumber {
+    /// The value as text: the text itself, or the number as JSON writes it.
+    pub fn text(&self) -> String {
+        match self {
+            TextOrNumber::Text(t) => t.clone(),
+            TextOrNumber::Number(n) => n.to_string(),
+        }
+    }
+}
+
+/// The schema of a parameter that must be given and may be `null`: `T`, or null. Use it as
+/// `#[schemars(required, with = "OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
+/// a required `Option`).
+pub struct OrNull<T>(std::marker::PhantomData<T>);
+
+impl<T: JsonSchema> JsonSchema for OrNull<T> {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("OrNull_{}", T::schema_name()).into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let inner = generator.subschema_for::<T>();
+        schemars::json_schema!({"anyOf": [inner, {"type": "null"}]})
+    }
+}
+
 /// `deserialize_with` for a parameter whose `null` means something (clear, release): the field
 /// is `Option<Option<T>>` with `#[serde(default)]`, so absent is `None` and `null` is
 /// `Some(None)`.
@@ -238,14 +295,6 @@ impl<T: JsonSchema, const MIN: usize, const MAX: usize> JsonSchema for Bounded<T
 /// A value that is not a `T`.
 pub(crate) fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<Option<T>>, D::Error> {
     Option::<T>::deserialize(d).map(Some)
-}
-
-/// `deserialize_with` for a legacy switch that ignored anything but `true` or `false`.
-///
-/// # Errors
-/// None: anything else reads as not given.
-pub(crate) fn lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
-    Ok(Value::deserialize(d)?.as_bool())
 }
 
 #[cfg(test)]
@@ -284,6 +333,9 @@ mod tests {
         let rows = [
             (json!({}), "`conductor` (hex id) is required"),
             (Value::Null, "`conductor` (hex id) is required"),
+            (json!([1, 2, 3]), NOT_AN_OBJECT),
+            (json!("x"), NOT_AN_OBJECT),
+            (json!(5), NOT_AN_OBJECT),
             (json!({"conductor": 5}), "`conductor` must be a hex id"),
             (json!({"conductor": "zz"}), "`conductor` must be a hex id"),
             (json!({"conductor": "1", "at": "here"}), "`at` must be a point [x, y], or null"),
@@ -299,6 +351,37 @@ mod tests {
         for (v, want) in rows {
             assert_eq!(says(v.clone()).as_deref(), Some(want), "{v}");
         }
+    }
+
+    #[test]
+    fn a_long_unknown_name_is_cut() {
+        let mut o = Map::new();
+        o.insert("conductor".into(), json!("1"));
+        o.insert("y".repeat(10_000), json!(1));
+        let e = says(Value::Object(o)).unwrap_or_default();
+        assert!(e.starts_with(&format!("`{}\u{2026}` is not a parameter", "y".repeat(MAX_NAME_SHOWN))), "{e}");
+        assert!(e.chars().count() < 200, "{e}");
+    }
+
+    #[test]
+    fn text_or_number_reads_both_as_text() {
+        #[derive(Deserialize, JsonSchema)]
+        #[serde(deny_unknown_fields)]
+        struct Q {
+            #[serde(default)]
+            slot: Option<TextOrNumber>,
+        }
+        impl Command for Q {
+            fn run(self, _: &mut Session) -> cadcraft_engine::Result<Value> {
+                Ok(Value::Null)
+            }
+        }
+        let read = |v: Value| parse::<Q>(&v).map(|q| q.slot.map(|s| s.text())).map_err(|e| e.to_string());
+        assert_eq!(read(json!({"slot": 3})), Ok(Some("3".into())));
+        assert_eq!(read(json!({"slot": "03"})), Ok(Some("03".into())));
+        assert_eq!(read(json!({"slot": 2.5})), Ok(Some("2.5".into())));
+        assert_eq!(read(json!({"slot": null})), Ok(None));
+        assert_eq!(read(json!({"slot": true})), Err("`slot` must be text, or null".into()));
     }
 
     #[test]

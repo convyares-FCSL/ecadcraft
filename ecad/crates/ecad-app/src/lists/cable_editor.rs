@@ -381,12 +381,11 @@ impl crate::App {
                     r.cables.edit.refused = None;
                 }
                 let Some(p) = self.project.clone() else { return };
-                let check = p.read(&mut self.cad.session, |p, _| cable_cmds::check_remove(p.ledger.document(), k));
+                let check = p.read(&mut self.cad.session, |p, _| cable_cmds::drawn(p.ledger.document(), k));
                 match check {
-                    Ok(Err(e)) if matches!(e, cable_cmds::CableError::Drawn { .. }) => {
-                        let pages = if let cable_cmds::CableError::Drawn { pages, .. } = &e { pages.clone() } else { Vec::new() };
+                    Ok(Some(d)) => {
                         if let Some(r) = self.reports.as_mut() {
-                            r.cables.edit.refused = Some((e.to_string(), pages));
+                            r.cables.edit.refused = Some((d.words(), d.pages));
                         }
                     }
                     _ => {

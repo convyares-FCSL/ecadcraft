@@ -112,7 +112,7 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             let base = defaults::resolve(&doc, e, scope);
             let ops = default_cmds::ops(&doc, e, level, target, Some(stored.clone()));
             if !e.allows(level) {
-                let m = ops.expect_err(&format!("{} at {level:?}", e.key));
+                let m = ops.expect_err(&format!("{} at {level:?}", e.key)).to_string();
                 assert!(m.contains("cannot be set at") && m.contains(default_cmds::level_word(level)), "{}: {m}", e.key);
                 continue;
             }

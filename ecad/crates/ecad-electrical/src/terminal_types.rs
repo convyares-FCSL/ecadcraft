@@ -22,6 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::links::{level_of_key, natural_key};
 use ecad_model::{ComponentId, Document, Primitive, Pt, Subject, TerminalDef, TerminalId};
 
+use crate::CmdError;
+
 /// The strip property prefix of a level's own label (FP4): `term_label.<p>.<n>`.
 pub const LABEL_PREFIX: &str = "term_label.";
 /// The strip property prefix of a fuse position's rating (FP5): `rating.<p>`.
@@ -481,7 +483,7 @@ impl Chooser {
     /// A named position of another type, or whose level is drawn, in words with the way out.
     pub fn choose(
         &mut self, doc: &Document, c: Option<ComponentId>, t: &'static TermType, n: Option<u32>, named: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, CmdError> {
         let ps = c.map(|c| positions(doc, c)).unwrap_or_default();
         let tag = c.map(|c| crate::devices::tag_words(doc, c)).unwrap_or_default();
         let new = |me: &mut Chooser| {
@@ -498,7 +500,9 @@ impl Chooser {
             if let Some(name) = named {
                 let name = name.trim();
                 if ps.iter().any(|p| p.label == name) || self.made.contains_key(name) {
-                    return Err(format!("{tag}:{name} is already drawn. A whole terminal makes a new position; press Enter for the next one."));
+                    return Err(CmdError::refused(format!(
+                        "{tag}:{name} is already drawn. A whole terminal makes a new position; press Enter for the next one."
+                    )));
                 }
                 self.made.insert(name.to_string(), t);
                 return Ok(name.to_string());
@@ -510,11 +514,11 @@ impl Chooser {
             Some(name) => {
                 if let Some(p) = ps.iter().find(|p| p.label == name) {
                     if !std::ptr::eq(p.ty, t) {
-                        return Err(format!(
+                        return Err(CmdError::refused(format!(
                             "{tag}:{name} is a {} and this is a {}. Pick another position, or Enter for the next free one.",
                             p.ty.name.to_lowercase(),
                             t.name.to_lowercase()
-                        ));
+                        )));
                     }
                     if p.has(n) || self.taken.contains(&(name.to_string(), n)) {
                         let lvl = c.map_or_else(|| n.to_string(), |c| level_name(doc, c, t, n));
@@ -524,20 +528,22 @@ impl Chooser {
                             .and_then(|v| v.first())
                             .and_then(|x| doc.representations_showing(*x).next())
                             .map_or_else(String::new, |(_, r)| format!(" on {}", crate::references::page_words(doc, r.page)));
-                        return Err(format!(
+                        return Err(CmdError::refused(format!(
                             "{tag}:{name} is a {} and its level {lvl} is drawn{where_}. Pick another position, or Enter for the next free one.",
                             t.name.to_lowercase()
-                        ));
+                        )));
                     }
                     name.to_string()
                 } else if let Some(ty) = self.made.get(name) {
                     if !std::ptr::eq(*ty, t) || self.taken.contains(&(name.to_string(), n)) {
-                        return Err(format!("{tag}:{name} is taken in this placement. Pick another position, or Enter for the next free one."));
+                        return Err(CmdError::refused(format!(
+                            "{tag}:{name} is taken in this placement. Pick another position, or Enter for the next free one."
+                        )));
                     }
                     name.to_string()
                 } else {
                     if name.chars().count() > MAX_POSITION_CHARS || name.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
-                        return Err(format!("A position label is 1 to {MAX_POSITION_CHARS} characters, without spaces."));
+                        return Err(CmdError::refused(format!("A position label is 1 to {MAX_POSITION_CHARS} characters, without spaces.")));
                     }
                     self.made.insert(name.to_string(), t);
                     if let Ok(x) = name.parse::<u64>() {
@@ -573,10 +579,12 @@ impl Chooser {
 /// Counts per type, in [`TYPES`] order.
 pub type Counts = [u32; TYPE_COUNT];
 
-fn offer_refusal(text: &str) -> String {
+fn offer_refusal(text: &str) -> CmdError {
     let shown: String = text.chars().take(24).collect();
     let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    format!("\"{shown}{more}\" is not a terminal count. Write 12, 12+2PE or 12+4x3 (types: PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE).")
+    CmdError::refused(format!(
+        "\"{shown}{more}\" is not a terminal count. Write 12, 12+2PE or 12+4x3 (types: PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE)."
+    ))
 }
 
 /// Read an offer: `+`-separated `<count><code>` items, codes case-insensitive, no code =
@@ -584,7 +592,7 @@ fn offer_refusal(text: &str) -> String {
 ///
 /// # Errors
 /// Unreadable text, an unknown code, no positions, more than [`crate::strips::MAX_POSITIONS`].
-pub fn parse_counts(text: &str) -> Result<Counts, String> {
+pub fn parse_counts(text: &str) -> Result<Counts, CmdError> {
     if text.chars().count() > MAX_OFFER_CHARS {
         return Err(offer_refusal(text));
     }
@@ -605,10 +613,10 @@ pub fn parse_counts(text: &str) -> Result<Counts, String> {
     }
     let total: u32 = counts.iter().fold(0u32, |a, b| a.saturating_add(*b));
     if total == 0 {
-        return Err("A strip offers at least 1 position. Write 12, 12+2PE or 12+4x3; empty clears it.".into());
+        return Err(CmdError::refused("A strip offers at least 1 position. Write 12, 12+2PE or 12+4x3; empty clears it."));
     }
     if total > crate::strips::MAX_POSITIONS {
-        return Err(format!("A strip offers at most {} positions, of every type together.", crate::strips::MAX_POSITIONS));
+        return Err(CmdError::refused(format!("A strip offers at most {} positions, of every type together.", crate::strips::MAX_POSITIONS)));
     }
     Ok(counts)
 }
@@ -869,7 +877,7 @@ mod tests {
         assert_eq!(c.iter().sum::<u32>(), 18);
         assert_eq!(parse_counts("12 + 2pe").map(|c| counts_text(&c)), Ok("12+2PE".into()));
         assert_eq!(parse_counts("0+2PE").map(|c| counts_text(&c)), Ok("2PE".into()));
-        assert!(parse_counts("6Q3").unwrap_err().contains("types: PE, x2"));
+        assert!(parse_counts("6Q3").unwrap_err().to_string().contains("types: PE, x2"));
         assert!(parse_counts("999x3").is_ok());
         assert!(parse_counts("1000x2").is_err());
         assert!(parse_counts("990+10PE").is_err());

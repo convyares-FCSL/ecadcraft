@@ -28,6 +28,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CmdError;
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME, continuation_key, name_key};
 use ecad_model::{ComponentId, Document, Form, ObjectRef, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
@@ -577,14 +578,14 @@ pub fn is_wide_style(doc: &Document, catalogue: &str, id: &ecad_model::StyleRef)
 ///
 /// # Errors
 /// `c` is not a continuation arrow, or the caption breaks [`CAPTION_RULE`].
-pub fn caption_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn caption_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Result<Option<String>, CmdError> {
     if !is_continuation(doc, c) {
         let what = match crate::devices::tag_of(doc, c) {
             Some(t) => format!("{t} is a device"),
             None if doc.components.contains_key(&c) => "that is not one".to_string(),
-            None => return Err("no such component".into()),
+            None => return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT)),
         };
-        return Err(format!("Only continuation arrows have a caption; {what}."));
+        return Err(CmdError::refused(format!("Only continuation arrows have a caption; {what}.")));
     }
     caption_text(value)
 }
@@ -593,17 +594,17 @@ pub fn caption_value(doc: &Document, c: ComponentId, value: Option<&str>) -> Res
 ///
 /// # Errors
 /// [`CAPTION_RULE`]: a control character (a line break included), or more than 80 characters.
-pub fn caption_text(value: Option<&str>) -> Result<Option<String>, String> {
+pub fn caption_text(value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value else { return Ok(None) };
     if v.chars().any(char::is_control) {
-        return Err(CAPTION_RULE.into());
+        return Err(CmdError::refused(CAPTION_RULE));
     }
     let t = v.trim();
     if t.is_empty() {
         return Ok(None);
     }
     if t.chars().count() > MAX_CAPTION_CHARS {
-        return Err(CAPTION_RULE.into());
+        return Err(CmdError::refused(CAPTION_RULE));
     }
     Ok(Some(t.to_string()))
 }
@@ -669,8 +670,8 @@ mod tests {
         assert_eq!(caption_text(Some("  TO CONTROL SUPPLY ")).unwrap().as_deref(), Some("TO CONTROL SUPPLY"));
         assert_eq!(caption_text(Some("   ")).unwrap(), None);
         assert_eq!(caption_text(None).unwrap(), None);
-        assert_eq!(caption_text(Some("A\nB")).unwrap_err(), CAPTION_RULE);
-        assert_eq!(caption_text(Some(&"x".repeat(81))).unwrap_err(), CAPTION_RULE);
+        assert_eq!(caption_text(Some("A\nB")).unwrap_err().to_string(), CAPTION_RULE);
+        assert_eq!(caption_text(Some(&"x".repeat(81))).unwrap_err().to_string(), CAPTION_RULE);
         assert!(caption_text(Some(&"x".repeat(80))).is_ok());
         assert!(caption_text(Some(&"x".repeat(10_000))).is_err());
     }

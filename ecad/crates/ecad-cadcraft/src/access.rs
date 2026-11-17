@@ -113,7 +113,7 @@ impl ProjectHandle {
     #[cfg(feature = "test-ops")]
     #[doc(hidden)]
     pub fn apply_ops(&self, s: &mut Session, label: &str, ops: Vec<ecad_model::Op>) -> Result<ecad_model::TxId, String> {
-        self.lock(s)?.apply_edit(&mut Pages(s), "apply_ops", label, ops)
+        self.lock(s)?.apply_edit(&mut Pages(s), "apply_ops", label, ops).map_err(String::from)
     }
 
     /// Whether the project is still attached to `s`: open there, with or without its page window

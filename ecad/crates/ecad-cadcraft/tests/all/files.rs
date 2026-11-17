@@ -136,7 +136,7 @@ fn a_second_session_opens_read_only_and_can_save_a_copy() {
 #[test]
 fn file_names_are_checked_and_completed() {
     assert!(normalize("  ").is_err());
-    assert!(normalize("plan.dxf").unwrap_err().contains(".ecad"));
+    assert!(normalize("plan.dxf").unwrap_err().to_string().contains(".ecad"));
     assert_eq!(normalize("a/b").unwrap(), "a/b.ecad");
     assert_eq!(normalize("a/B.ECAD").unwrap(), "a/B.ECAD");
     // `~` is the home folder from the user profile, not `HOME` (see `crates/ecad-app/tests/all/paths_contracts.rs`).
@@ -177,7 +177,7 @@ fn opening_a_non_project_read_only_reports_why() {
 ",
     )
     .unwrap();
-    let e = ecad_cadcraft::file::Binding::open_read_only(&p, 1, "test").err().unwrap();
+    let e = ecad_cadcraft::file::Binding::open_read_only(&p, 1, "test").err().unwrap().to_string();
     assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
 }
 

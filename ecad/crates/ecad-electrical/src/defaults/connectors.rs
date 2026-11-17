@@ -16,6 +16,8 @@
 
 use super::{Entry, Kind, Level, ProjectSource, Slot};
 
+use crate::CmdError;
+
 const GROUP: &str = "Connectors";
 const BRIEF: &str = "044";
 /// A standard (reserved), the project and the connector may override.
@@ -204,16 +206,16 @@ pub fn is_naming_key(key: &str) -> bool {
 ///
 /// # Errors
 /// A value the entry does not accept, in words.
-pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let e = ENTRIES.iter().find(|e| e.key == key && e.allows(Level::Object))?;
     Some(match value.map(str::trim) {
         None | Some("") => Ok(None),
         Some(v) => match e.parse(v) {
             Some(_) => Ok(Some(v.to_string())),
             None if e.key == SEPARATOR.key => {
-                Err("A half separator is 1 to 3 characters that are not letters, digits, spaces, commas or colons (. or -).".into())
+                Err(CmdError::refused("A half separator is 1 to 3 characters that are not letters, digits, spaces, commas or colons (. or -)."))
             }
-            None => Err(format!("`{key}` is 1 to 4 letters or digits (S, P, F, M).")),
+            None => Err(CmdError::refused(format!("`{key}` is 1 to 4 letters or digits (S, P, F, M)."))),
         },
     })
 }
