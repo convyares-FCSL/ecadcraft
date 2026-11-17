@@ -18,7 +18,7 @@ pub struct Change {
     pub devices: crate::device_list::DeviceTouch,
     /// The objects whose Properties rows it could change ([`crate::props::touched`]); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
-    /// Whether it could change the Pages tree ([`tree_touched`]).
+    /// Whether it could change the Pages tree (the tree feed, `ecad_electrical::derived::TreeFeed`).
     pub tree: bool,
 }
 
@@ -333,7 +333,6 @@ impl Project {
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
-        let tree = tree_touched(&ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
         let n = ops.len();
@@ -363,7 +362,7 @@ impl Project {
         let generated = Some(self.generated_touched(generated));
         let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
         let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), devices, props, tree, echo: refs.orphaned.into_iter().collect() });
+        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), devices, props, echo: refs.orphaned.into_iter().collect() });
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -508,7 +507,6 @@ pub(super) struct Old {
     pub named: BTreeSet<PageId>,
     pub devices: crate::device_list::DeviceTouch,
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
-    pub tree: bool,
     pub echo: Vec<String>,
 }
 
@@ -526,7 +524,6 @@ pub(super) fn pass_through(changes: &mut Changes, old: Old) {
         }
         (None, _) | (_, None) => None,
     };
-    changes.list |= old.tree;
     changes.echo.extend(old.echo);
 }
 

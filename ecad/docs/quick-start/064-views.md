@@ -14,3 +14,7 @@ Progress (automated checks only, not owner-tried):
   all three paths; `Document: Sync` holds (asserted at compile time), so the `parallel` feature of
   step 12 is possible. The views themselves arrive one per step as the type lanes they read land
   (design 072 §12.3).
+- Step 3, first feed: the Pages tree feed (`TreeFeed`) decides when the Pages panel reads its list
+  again. To try it: rename a page, move one into a folder, and undo; the Pages panel follows each
+  change. Changing only a page's display settings leaves it alone. The Devices and Properties
+  feeds follow once lane 072 B has moved device data into fields.

@@ -38,7 +38,7 @@ pub use changes::Change;
 use changes::{Old, Path, pass_through};
 pub use handle_map::{HandleMap, Mapped};
 pub use owner::{LISP_REFUSED, REFUSED_COMMANDS};
-pub use page_tree::{PageRow, PageView, TreeRow, tree_rows, tree_touched};
+pub use page_tree::{PageRow, PageView, TreeRow, tree_rows};
 pub use persistence::{ClipSnapshot, Faults, MemoryStore, Persistence, SAVE_UNAVAILABLE};
 
 /// An ECAD project attached to a CADCraft session.
