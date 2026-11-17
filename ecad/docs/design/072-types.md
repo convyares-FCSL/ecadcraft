@@ -2,9 +2,9 @@
 
 Status: **Draft** (designer, 2026-11-16, widened by the owner the same day; revised 2026-11-17 with
 the owner's answers). The owner's spec is decided; this design turns it into types, lanes and
-steps. Waiting for: the owner's calls in §17, and the overseer's approval of the format and op
-changes beyond F1–F30 (§11: F31–F37, and the revisions of F15, F19, F25, F27). F1–F30 approved
-2026-11-16/17 (F12 superseded by F13; F30 approved with the owner's answer on styles). Brief:
+steps. Waiting for: the owner's calls in §17, and the overseer's approval of the revisions F15′,
+F19′, F25′, F27′, F28′ (§11). F1–F37 approved by the overseer, 2026-11-16/17 (F12 superseded by
+F13; F30 approved with the owner's answer on styles). Brief:
 `docs/briefs/072-types.md`.
 
 **Goal (one sentence).** What every stored object is, and how it relates to other objects, is held
@@ -605,7 +605,13 @@ field: the inspector's Raw and Readable views show it (A15).
 | F27′ | boxes write location and `placed_in` | boxes write location and function only on devices with `fixed = false`; no box id stored (F33) |
 | F28′ | loose parts "per the owner's call" | `Project.loose_parts`, implementing `Bom` (§6.4) |
 
-**New (for approval):**
+**New: approved (overseer, 2026-11-17): F31–F37 as written**: routes as their own object with
+`AddRoute`/`RemoveRoute`/`ModifyRoute`; ordered wires with `AttachEnd` removed; the location and
+function lists with the fixed flags; `Text<N>`/`LongText<N>` validated on read; `ConductorColour`
+with its forms in `ecad-model/defaults/colours.toml`; wire types; the default core colour schemes
+as our own data. Condition (A15, hard rule): the inspector's Raw and Readable views show every new
+op and record (`AddRoute`, `RemoveRoute`, `ModifyRoute`, the route, wire, location, function,
+colour and wire-type records), on a normal project and on one opened read-only.
 
 | # | Change | Op or on disk | Lane |
 | --- | --- | --- | --- |

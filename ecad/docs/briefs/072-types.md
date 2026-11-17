@@ -1,8 +1,9 @@
 # Brief 072: The typed object model
 
 Status: **Draft** (designer, 2026-11-16; widened by the owner the same day; revised 2026-11-17 with
-the owner's answers). Needs the owner's calls in design 072 §17 and the overseer's approval of
-F15′, F19′, F25′, F27′, F28′ and F31–F37 (design §11) before it is approved. F1–F30 approved.
+the owner's answers). Needs the owner's calls in design 072 §17 and the overseer's approval of the
+revisions F15′, F19′, F25′, F27′, F28′ (design §11) before it is approved. F1–F37 approved by the
+overseer (2026-11-16/17); A15 applies to every new op and record.
 Phase: 0.2.3 tidy-up; no PRs: the overseer merges each lane into `refactor/0.2.3` when it is green.
 Designer: **yes** (`docs/design/072-types.md`, the spec; read Part I and the sections your lane
 names) · Size: XL, as eight lanes.
