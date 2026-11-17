@@ -533,7 +533,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             out.insert(k);
         }
         Subject::Wire(w) => out.extend(doc.cables_of(w)),
-        Subject::Device(_) => {}
+        Subject::Device(_) | Subject::Route(_) => {}
     };
     for op in ops {
         // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice

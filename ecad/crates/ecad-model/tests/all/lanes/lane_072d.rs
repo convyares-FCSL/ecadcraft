@@ -141,3 +141,82 @@ fn modify_wire_changes_values_undoes_and_keeps_the_ends() {
     l.undo(Author::User).unwrap();
     assert_eq!(l.document().wires.get(&w), Some(&created));
 }
+
+/// A page with a device of two connection points: the page, and the two points.
+fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, TerminalId, TerminalId) {
+    use ecad_model::{Device, DeviceId, Page, PageId, Terminal};
+    let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let t = |label: &str| Terminal { component: d, label: Some(label.into()), key: Some(label.into()) };
+    l.commit(
+        Author::User,
+        "setup",
+        vec![
+            Op::AddPage { id: p, page: Page::new("1"), index: 0 },
+            Op::CreateDevice { id: d, device: Device::default() },
+            Op::AddTerminal { id: a, terminal: t("1") },
+            Op::AddTerminal { id: b, terminal: t("2") },
+        ],
+    )
+    .unwrap();
+    (p, a, b)
+}
+
+#[test]
+fn routes_are_added_modified_removed_and_undone() {
+    use ecad_model::{Pt, Route, RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(31);
+    let mut l = Ledger::new(31);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (r1, r2): (RouteId, RouteId) = (ids.fresh(), ids.fresh());
+    let ab = Route::new(p, vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0)], [RouteEnd::Point(a), RouteEnd::Point(b)]);
+    // A T: a second route landing on the middle of the first.
+    let tee = Route::new(p, vec![Pt::new(5.0, 10.0), Pt::new(5.0, 0.0)], [RouteEnd::Free, RouteEnd::On { route: r1, at: Pt::new(5.0, 0.0) }]);
+    l.commit(Author::User, "draw", vec![Op::AddRoute { id: r1, route: ab.clone() }, Op::AddRoute { id: r2, route: tee.clone() }]).unwrap();
+    assert_eq!(l.document().routes.len(), 2);
+    l.document().check_index().unwrap();
+    let mut moved = ab.clone();
+    moved.points.insert(1, Pt::new(5.0, -5.0));
+    l.commit(Author::User, "move", vec![Op::ModifyRoute { id: r1, before: ab.clone(), after: moved.clone() }]).unwrap();
+    assert_eq!(l.document().routes.get(&r1), Some(&moved));
+    // A stale `before` is refused.
+    assert!(l.commit(Author::User, "stale", vec![Op::ModifyRoute { id: r1, before: ab.clone(), after: ab.clone() }]).is_err());
+    l.undo(Author::User).unwrap();
+    assert_eq!(l.document().routes.get(&r1), Some(&ab));
+    // Removing the route a T lands on leaves the T dangling: refused by the invariant check.
+    let e = l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r1, route: ab.clone() }]).unwrap_err();
+    assert!(e.to_string().contains("not on its page"), "{e}");
+    l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r2, route: tee }, Op::RemoveRoute { id: r1, route: ab }]).unwrap();
+    assert!(l.document().routes.is_empty());
+    l.document().check_index().unwrap();
+}
+
+#[test]
+fn a_route_is_well_formed_and_lands_on_what_exists() {
+    use ecad_model::{Pt, Route, RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(32);
+    let mut l = Ledger::new(32);
+    let (p, a, _) = page_with_points(&mut l, &mut ids);
+    let r: RouteId = ids.fresh();
+    let two = vec![Pt::new(0.0, 0.0), Pt::new(1.0, 0.0)];
+    let cases: [(&str, Route); 5] = [
+        ("one point", Route::new(p, vec![Pt::new(0.0, 0.0)], [RouteEnd::Free, RouteEnd::Free])),
+        ("not finite", Route::new(p, vec![Pt::new(0.0, 0.0), Pt::new(f64::NAN, 0.0)], [RouteEnd::Free, RouteEnd::Free])),
+        ("on itself", Route::new(p, two.clone(), [RouteEnd::On { route: r, at: Pt::new(0.0, 0.0) }, RouteEnd::Free])),
+        ("missing point", Route::new(p, two.clone(), [RouteEnd::Point(TerminalId(12345)), RouteEnd::Free])),
+        ("missing page", Route::new(ecad_model::PageId(999), two.clone(), [RouteEnd::Point(a), RouteEnd::Free])),
+    ];
+    for (what, route) in cases {
+        assert!(l.commit(Author::User, what, vec![Op::AddRoute { id: r, route }]).is_err(), "{what} is refused");
+    }
+    let ok = Route::new(p, two, [RouteEnd::Point(a), RouteEnd::Free]);
+    let text = serde_json::to_string(&ok).unwrap();
+    assert_eq!(serde_json::from_str::<Route>(&text).unwrap(), ok);
+    let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    v["layer"] = serde_json::json!("0");
+    assert!(serde_json::from_value::<Route>(v).is_err(), "an unknown field is a read error");
+    // Removing the connection point a route lands on is refused while the route lands there.
+    l.commit(Author::User, "draw", vec![Op::AddRoute { id: r, route: ok }]).unwrap();
+    let term = l.document().terminals.get(&a).cloned().unwrap();
+    let e = l.commit(Author::User, "rm", vec![Op::RemoveTerminal { id: a, terminal: term }]).unwrap_err();
+    assert!(e.to_string().contains("route"), "{e}");
+}

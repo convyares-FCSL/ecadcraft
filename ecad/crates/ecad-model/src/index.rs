@@ -22,7 +22,7 @@ use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use crate::doc::{Cable, CableMember, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -102,6 +102,12 @@ pub(crate) struct Index {
     /// 050 §2.5: the explicit users of a style), for the keys [`crate::style::is_choice_key`]
     /// names.
     pub(crate) style_users: Multi<(String, String), ObjectRef>,
+    /// Page → routes drawn on it (design 072 F31).
+    pub(crate) page_routes: Multi<PageId, RouteId>,
+    /// Terminal → routes landing on it.
+    pub(crate) terminal_routes: Multi<TerminalId, RouteId>,
+    /// Route → routes landing on its middle (a T).
+    pub(crate) route_tees: Multi<RouteId, RouteId>,
 }
 
 impl Index {
@@ -178,6 +184,20 @@ impl Index {
         }
         for (id, f) in &doc.folders {
             rest.folder(*id, f, Delta::Add);
+        }
+        for (id, r) in &doc.routes {
+            rest.route(*id, r, Delta::Add);
+        }
+    }
+
+    pub(crate) fn route(&mut self, id: RouteId, r: &crate::route::Route, delta: Delta) {
+        bump(&mut self.page_routes, r.page, id, delta);
+        for e in r.ends {
+            match e {
+                crate::route::RouteEnd::Point(t) => bump(&mut self.terminal_routes, t, id, delta),
+                crate::route::RouteEnd::On { route, .. } => bump(&mut self.route_tees, route, id, delta),
+                crate::route::RouteEnd::Free => {}
+            }
         }
     }
 

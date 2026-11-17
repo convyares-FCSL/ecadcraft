@@ -497,6 +497,7 @@ impl Scope {
             Subject::Cable(k) => {
                 self.cables.insert(k);
             }
+            Subject::Route(_) => {}
         }
     }
 
@@ -617,6 +618,8 @@ impl Scope {
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                     self.cables.insert(*id);
                 }
+                // Design 072 F31: routes draw nothing outputs read until wires run along them (lane D F2).
+                Op::AddRoute { .. } | Op::RemoveRoute { .. } | Op::ModifyRoute { .. } => {}
                 Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
                     self.cables.insert(*cable);
                     self.wires.insert(member.conductor);

@@ -120,6 +120,15 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             (None, None) => {}
         }
     }
+    // Routes change in place (design 072 F31).
+    for id in ids(&from.routes, &to.routes, scope.map(|s| &s.routes)) {
+        match (from.routes.get(&id), to.routes.get(&id)) {
+            (Some(a), Some(b)) if a != b => changes.push(Op::ModifyRoute { id, before: a.clone(), after: b.clone() }),
+            (Some(_), Some(_)) | (None, None) => {}
+            (Some(a), None) => removes.push(Op::RemoveRoute { id, route: a.clone() }),
+            (None, Some(b)) => adds.push(Op::AddRoute { id, route: b.clone() }),
+        }
+    }
     // Representations change in place.
     for id in ids(&from.representations, &to.representations, scope.map(|s| &s.representations)) {
         match (from.representations.get(&id), to.representations.get(&id)) {
@@ -328,6 +337,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } | Op::AttachEnd { conductor: id, .. } => ("wire", id.0),
+            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => ("route", id.0),
             Op::CreateCable { id, .. }
             | Op::DeleteCable { id, .. }
             | Op::AddCableMember { cable: id, .. }

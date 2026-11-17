@@ -1501,6 +1501,8 @@ impl Scope {
                     self.rep(doc, before);
                     self.rep(doc, after);
                 }
+                // Design 072 F31: routes draw nothing checks read until wires run along them (lane D F2).
+                Op::AddRoute { .. } | Op::RemoveRoute { .. } | Op::ModifyRoute { .. } => {}
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     for c in doc.components_using(*id) {
                         self.devices.insert(c);
@@ -1642,6 +1644,7 @@ impl Scope {
                 self.wires.insert(c);
                 self.routes.insert(c);
             }
+            Subject::Route(_) => {}
             Subject::Device(c) => {
                 // Brief 052: a box drawn, moved or erased changes the contexts on its page.
                 if crate::locations::is_box(doc, c) {

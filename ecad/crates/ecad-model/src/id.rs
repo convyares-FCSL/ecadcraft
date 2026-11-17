@@ -102,6 +102,8 @@ typed_id!(/// A conductor.
     WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");
+typed_id!(/// A route: a line drawn on a page (design 072 F31).
+    RouteId, "rte");
 typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.

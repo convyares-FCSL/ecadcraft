@@ -62,6 +62,8 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Subject::Device(c) => ObjectRef::Device(c),
             Subject::Wire(c) => ObjectRef::Wire(c),
             Subject::Cable(c) => ObjectRef::Cable(c),
+            // A route has no properties (design 072 F31).
+            Subject::Route(_) => return,
         });
     };
     for op in ops {
@@ -95,6 +97,14 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(ObjectRef::Cable(*id));
+            }
+            // A route has no properties (design 072 F31); the devices it lands on show its net.
+            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+            }
+            Op::ModifyRoute { before, after, .. } => {
+                let landed = before.points_landed().chain(after.points_landed());
+                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
             }
             Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
                 out.insert(ObjectRef::Cable(*cable));
@@ -221,6 +231,8 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Subject::Cable(k) => {
                 out.cables.insert(k);
             }
+            // Design 072 F31: routes are picked from lane D F2.
+            Subject::Route(_) => out.plain += 1,
         }
     }
     out

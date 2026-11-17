@@ -203,6 +203,8 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                     t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Wire(w));
                 }
                 Subject::Cable(k) => return cable(p, page, t, k),
+                // Design 072 F31: routes are not drawn yet (lane D F2).
+                Subject::Route(_) => {}
             },
             None => {}
         },
@@ -272,7 +274,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
         match rep.subject {
             Subject::Cable(k) => t.cable = Some(k),
             Subject::Device(c) => t.component = Some(c),
-            Subject::Wire(_) => {}
+            Subject::Wire(_) | Subject::Route(_) => {}
         }
         if rep.page == page {
             t.handles = rep.items.iter().filter_map(|i| map.item(*i)).collect();

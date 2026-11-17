@@ -1040,6 +1040,8 @@ impl<'a> PageIndex<'a> {
         let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), wires: BTreeMap::new(), cables: BTreeMap::new() };
         for (id, r) in doc.representations_on(page) {
             match r.subject {
+                // Design 072 F31: routes are drawn from lane D F2.
+                Subject::Route(_) => {}
                 Subject::Wire(w) => {
                     idx.wires.entry(w).or_default().push(r);
                     let prim = |i: &ItemId| match doc.items.get(i).map(|x| &x.kind) {

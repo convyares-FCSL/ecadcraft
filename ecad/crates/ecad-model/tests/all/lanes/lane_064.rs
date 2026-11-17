@@ -17,6 +17,7 @@ fn expected(op: &Op) -> EffectKind {
         "LinkRepresentation" | "ModifyRepresentation" | "UnlinkRepresentation" => EffectKind::Rep,
         "CreateWire" | "DeleteWire" | "ModifyWire" => EffectKind::Wire,
         "AttachEnd" => EffectKind::End,
+        "AddRoute" | "RemoveRoute" | "ModifyRoute" => EffectKind::Route,
         "CreateCable" | "DeleteCable" => EffectKind::Cable,
         "AddCableMember" | "RemoveCableMember" => EffectKind::Member,
         "SetProperty" => EffectKind::Prop,
@@ -127,6 +128,9 @@ fn old_touched(ops: &[Op]) -> Touched {
             }
             Op::AttachEnd { conductor, .. } => {
                 t.wires.insert(*conductor);
+            }
+            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
+                t.routes.insert(*id);
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 t.cables.insert(*id);
