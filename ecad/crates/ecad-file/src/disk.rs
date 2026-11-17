@@ -37,7 +37,13 @@ pub enum ReadOnly {
     /// The file itself cannot be opened for writing (a read-only file, or one this user may not
     /// change).
     NotWritable(String),
+    /// The file holds words this build does not know in values that stay text (design 072 §9.5,
+    /// F11): each names the word, the setting and where it is. The file is kept as it is.
+    UnknownWords(Vec<ecad_model::strict::UnknownWord>),
 }
+
+/// Most unknown words a read-only message names; the rest are counted.
+pub const MAX_WORDS_SHOWN: usize = 3;
 
 /// Added wherever another session is said to be editing a file: the lock of a session that has
 /// just ended (or was killed) can take a moment to be released, notably on Windows.
@@ -52,6 +58,15 @@ impl std::fmt::Display for ReadOnly {
             }
             ReadOnly::NoLock(e) => write!(f, "no writer lock could be taken ({e}), so it cannot be saved safely"),
             ReadOnly::NotWritable(e) => write!(f, "the file cannot be written ({e})"),
+            ReadOnly::UnknownWords(words) => {
+                f.write_str("it holds words this version does not know, and is kept exactly as it is: ")?;
+                let shown: Vec<String> = words.iter().take(MAX_WORDS_SHOWN).map(ToString::to_string).collect();
+                f.write_str(&shown.join("; "))?;
+                match words.len().saturating_sub(MAX_WORDS_SHOWN) {
+                    0 => Ok(()),
+                    more => write!(f, "; and {more} more"),
+                }
+            }
         }
     }
 }
@@ -349,6 +364,17 @@ impl DiskProjectV2 {
     /// Why the project cannot be saved to its own file, if it cannot.
     pub fn read_only(&self) -> Option<&ReadOnly> {
         self.read_only.as_ref()
+    }
+
+    /// Open the project read-only for the unknown words the words check found on open (design 072
+    /// §9.5), unless it is already read-only for another reason. Nothing when `words` is empty.
+    pub fn refuse_unknown_words(&mut self, words: Vec<ecad_model::strict::UnknownWord>) {
+        if words.is_empty() || self.read_only.is_some() {
+            return;
+        }
+        let r = ReadOnly::UnknownWords(words);
+        self.project.set_read_only(r.to_string());
+        self.read_only = Some(r);
     }
 
     /// The lock file, while this project holds the lock.
