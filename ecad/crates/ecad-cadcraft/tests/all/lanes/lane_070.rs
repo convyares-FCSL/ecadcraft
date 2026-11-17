@@ -51,8 +51,6 @@ const UNTYPED: &[&str] = &[
     "reopenbranch",
     "merge",
     "undomerge",
-    "prerelease",
-    "release",
     "agentaccess",
     "termlabel",
     "toposition",
@@ -1418,4 +1416,51 @@ fn the_typed_accessory_commands_still_work() {
     assert_eq!(e["positions"], json!("1-2"), "{e}");
     let d = h.run("jumper", json!({"link": {"strip": strip, "n": 1}, "delete": true})).unwrap_or_else(|e| json!(e));
     assert_eq!((d["positions"].clone(), d["changed"].clone()), (Value::Null, json!(true)), "{d}");
+}
+
+/// Input refusals of the release commands: one wording.
+#[test]
+fn the_release_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("prerelease", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("prerelease", json!({"rev": 1}), "`rev` must be text, or null"),
+        ("release", json!({"rev": 1}), "`rev` must be text, or null"),
+        ("release", json!({"outputs": "bom"}), "`outputs` must be a list of texts, or null"),
+        ("release", json!({"lineweights": "x"}), "`lineweights` must be true or false, or null"),
+        ("release", json!({"colour": true}), "`colour` must be text, or null"),
+        (
+            "release",
+            json!({"x": 1}),
+            "`x` is not a parameter of this command; it takes `accept`, `colour`, `existing`, `folder`, `lineweights`, `outputs`, `provisional`, `rev`",
+        ),
+    ];
+    let mut h = H::new(7060);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the release commands keep their words.
+#[test]
+fn the_release_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("release", json!({"outputs": ["nope"]}), "`outputs` names \"nope\"; the slots are "),
+        ("release", json!({"existing": "x"}), "`existing` is \"add-missing\", \"replace\" or \"keep-both\", not \"x\""),
+        ("release", json!({"colour": "x"}), "`colour` is \"mono\""),
+    ];
+    let mut h = H::new(7061);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed release commands still work, and answer as before.
+#[test]
+fn the_typed_release_commands_still_work() {
+    let mut h = H::new(7062);
+    let v = h.run("prerelease", json!({"limit": 5})).unwrap_or_else(|e| json!(e));
+    assert!(v.is_object(), "{v}");
+    let same = h.run("prerelease", json!({})).unwrap_or_else(|e| json!(e));
+    assert_eq!(v, same);
 }
