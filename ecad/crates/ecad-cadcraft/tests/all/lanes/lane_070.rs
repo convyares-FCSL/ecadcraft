@@ -63,9 +63,6 @@ const UNTYPED: &[&str] = &[
     "connector",
     "pinlabel",
     "contcaption",
-    "folderprops",
-    "renumberpages",
-    "deletepage",
     "titleblockimport",
 ];
 
@@ -1251,4 +1248,63 @@ fn the_typed_title_block_commands_still_work() {
     assert_eq!(same["changed"], json!(false), "{same}");
     let second = h.run("titleblock", json!({"new": {"from": "blank", "sheet": "A3"}})).unwrap_or_else(|e| json!(e));
     assert_eq!(second["name"], json!("A3 title block"), "{second}");
+}
+
+/// Input refusals of the page type commands: one wording.
+#[test]
+fn the_page_type_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("folderprops", json!({}), "`folder` (hex id) is required"),
+        ("folderprops", json!({"folder": "1", "start": 100}), "`start` must be text, or null"),
+        ("renumberpages", json!({"folder": "zz"}), "`folder` must be a hex id, or null"),
+        ("deletepage", json!({"pages": "1"}), "`pages` must be a list of hex ids, or null"),
+        ("deletepage", json!({"page": "1", "all": true}), "`all` is not a parameter of this command; it takes `page`, `pages`"),
+    ];
+    let mut h = H::new(7051);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// Rule refusals of the page type commands keep their words.
+#[test]
+fn the_page_type_commands_keep_their_rule_words() {
+    let mut h = H::new(7052);
+    let f = h.run("newfolder", json!({"name": "Schematic"})).unwrap_or_else(|e| json!(e))["folder"].clone();
+    let first = h.first_page().hex();
+    let rows: &[(&str, Value, &str)] = &[
+        ("folderprops", json!({"folder": f, "start": "1234567"}), "A start number is 1 to 6 digits."),
+        ("folderprops", json!({"folder": "ab"}), "no such folder"),
+        ("renumberpages", json!({"folder": "ab"}), "no such folder"),
+        ("deletepage", json!({}), "`page` (hex id) is required"),
+        ("deletepage", json!({"pages": []}), "Give the page to delete."),
+        ("deletepage", json!({"page": "ab"}), "no such page"),
+        ("deletepage", json!({"page": first}), "Deleting a drawn page comes later; move its content first."),
+    ];
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed page type commands still work, and answer as before.
+#[test]
+fn the_typed_page_type_commands_still_work() {
+    let mut h = H::new(7053);
+    let f = h.run("newfolder", json!({"name": "Schematic"})).unwrap_or_else(|e| json!(e))["folder"].clone();
+    let set = h.run("folderprops", json!({"folder": f, "start": " 100 "})).unwrap_or_else(|e| json!(e));
+    assert_eq!((set["start"].clone(), set["changed"].clone()), (json!("100"), json!(true)), "{set}");
+    let read = h.run("folderprops", json!({"folder": f})).unwrap_or_else(|e| json!(e));
+    assert_eq!((read["start"].clone(), read["name"].clone()), (json!("100"), json!("Schematic")), "{read}");
+    let same = h.run("folderprops", json!({"folder": f, "start": "100"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(same["changed"], json!(false), "{same}");
+    let clear = h.run("folderprops", json!({"folder": f, "start": ""})).unwrap_or_else(|e| json!(e));
+    assert_eq!((clear["start"].clone(), clear["changed"].clone()), (Value::Null, json!(true)), "{clear}");
+    let r = h.run("renumberpages", json!({})).unwrap_or_else(|e| json!(e));
+    assert!(r["renumbered"].is_number() && r["message"].is_string(), "{r}");
+    let cover = h.run("newpage", json!({"generated": "cover"})).unwrap_or_else(|e| json!(e))["page"].clone();
+    let gone = h.run("deletepage", json!({"pages": [cover]})).unwrap_or_else(|e| json!(e));
+    assert_eq!(gone["deleted"], json!([cover]), "{gone}");
+    assert!(gone["message"].as_str().is_some_and(|m| m.starts_with("Removed ")), "{gone}");
 }

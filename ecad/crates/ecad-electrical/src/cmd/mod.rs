@@ -9,6 +9,7 @@ pub mod designation;
 pub mod location;
 pub mod numbering;
 pub mod output;
+pub mod page_type;
 pub mod plc;
 pub mod rating;
 pub mod sheet;
