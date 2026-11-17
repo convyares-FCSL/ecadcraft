@@ -566,7 +566,7 @@ pub fn tag_settings(
                 CmdError::refused(format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS))
             })?),
         };
-        changes.push((symbol.key, prefix));
+        changes.push((ecad_model::Word::word(symbol.key), prefix));
     }
     if let Some(n) = padding {
         settings.tag_padding = Some(n);

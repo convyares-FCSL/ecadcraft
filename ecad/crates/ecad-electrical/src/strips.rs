@@ -65,7 +65,7 @@ pub const MAX_CORES: usize = 100;
 /// The green-yellow core of an IEC `G` cable.
 pub const GNYE: &str = "GNYE";
 /// The PE starter's key.
-pub const PE_KEY: &str = "terminalpe";
+pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Terminalpe;
 
 // ---------------------------------------------------------------- strips and terminals
 
@@ -1778,7 +1778,7 @@ pub fn is_fuse_device(doc: &Document, c: ComponentId) -> bool {
 }
 
 /// The starter key of a fuse terminal device (brief 034).
-pub const FUSE_DEVICE: &str = "fuseterm";
+pub const FUSE_DEVICE: crate::symbols::StarterKey = crate::symbols::StarterKey::Fuseterm;
 
 #[cfg(test)]
 mod tests {

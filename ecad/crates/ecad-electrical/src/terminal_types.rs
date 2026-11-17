@@ -94,7 +94,7 @@ impl TermType {
 
     /// Whether it is 028's feed-through or PE terminal (one level, old keys).
     pub fn legacy(&self) -> bool {
-        self.key == "terminal" || self.key == crate::strips::PE_KEY
+        self.key == "terminal" || self.key == ecad_model::Word::word(crate::strips::PE_KEY)
     }
 }
 
@@ -249,8 +249,8 @@ pub fn of_starter(key: &str) -> Option<(&'static TermType, Option<u32>)> {
 }
 
 /// Whether `key` is one of this brief's new starters (a level, a whole terminal, disconnect, fuse).
-pub fn is_level_starter(key: &str) -> bool {
-    of_starter(key).is_some_and(|(t, _)| !t.legacy())
+pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
+    of_starter(ecad_model::Word::word(key)).is_some_and(|(t, _)| !t.legacy())
 }
 
 /// Every new starter key, in catalogue order: per multi-level type its levels then its whole
@@ -277,7 +277,7 @@ pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
         let d = doc.components.get(&c)?.definition?;
         crate::symbols::of_definition(doc.definitions.get(&d)?)
     });
-    starter.and_then(|s| of_starter(s.key)).map_or_else(feedthrough, |(t, _)| t)
+    starter.and_then(|s| of_starter(ecad_model::Word::word(s.key))).map_or_else(feedthrough, |(t, _)| t)
 }
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
@@ -765,7 +765,7 @@ fn ticks(n: u32) -> Vec<Primitive> {
 pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     Some(match (t.key, n) {
-        ("termfuse", _) => crate::symbols::graphics_of("fuseterm"),
+        ("termfuse", _) => crate::symbols::graphics_of(crate::symbols::StarterKey::Fuseterm),
         ("termdisc", _) => {
             vec![rect((-3.5, -7.5), (3.5, 7.5)), line((0.0, 10.0), (0.0, 3.0)), line((0.0, 3.0), (2.5, -3.0)), line((0.0, -3.0), (0.0, -10.0))]
         }
@@ -821,7 +821,7 @@ pub fn bridges(key: &str) -> Vec<Vec<String>> {
 /// whole terminal: every level).
 pub fn rep_type(doc: &Document, r: &ecad_model::Representation) -> Option<(&'static TermType, Option<u32>)> {
     let Subject::Component(_) = r.subject else { return None };
-    of_starter(crate::devices::rep_starter(doc, r)?.key)
+    of_starter(ecad_model::Word::word(crate::devices::rep_starter(doc, r)?.key))
 }
 
 pub fn short(hex: &str) -> &str {
@@ -857,7 +857,7 @@ mod tests {
         assert_eq!(of_starter("termlnpe.4"), None);
         assert_eq!(of_starter("termfuse").map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
         assert_eq!(starter_keys().len(), 20);
-        assert!(is_level_starter("term2b.1") && !is_level_starter("terminal"));
+        assert!(is_level_starter(crate::symbols::StarterKey::Term2bL1) && !is_level_starter(crate::symbols::StarterKey::Terminal));
         assert_eq!(by_word("x2b").map(|t| t.key), Some("term2b"));
         assert_eq!(by_word("Feedthrough").map(|t| t.key), Some("terminal"));
     }

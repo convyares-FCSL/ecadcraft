@@ -35,7 +35,7 @@ pub const MAX_ROWS: usize = 10;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pick {
     /// Place Symbol with this starter symbol.
-    Symbol(&'static str),
+    Symbol(ecad_cadcraft::symbols::StarterKey),
     /// Place Symbol adding a symbol to the device with this tag.
     Device(String),
     /// Brief 041: show this page.
@@ -128,7 +128,7 @@ fn clip(t: &str, n: usize) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
     pub text: String,
-    pub symbol: &'static str,
+    pub symbol: ecad_cadcraft::symbols::StarterKey,
     pub device: Option<String>,
 }
 
@@ -144,7 +144,7 @@ pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
     let none = std::collections::BTreeSet::new();
     match pick {
         Pick::Symbol(key) => {
-            let Some(s) = symbols::by_key(key) else { return Vec::new() };
+            let s = symbols::starter(*key);
             let next = devices::next_tag_preview(p, s).unwrap_or_else(|| "new tag".into());
             let mut out = vec![Choice { text: format!("New device ({next})"), symbol: s.key, device: None }];
             let prefix = devices::prefix_for(doc, s);
@@ -298,7 +298,7 @@ impl SymbolSearch {
         crate::shell::hosted(window, self.host).show(ctx, |ui| {
             if let Some(p) = &self.picked {
                 let what = match p {
-                    Pick::Symbol(k) => format!("Place {} as:", symbols::by_key(k).map_or(*k, |s| s.name)),
+                    Pick::Symbol(k) => format!("Place {} as:", symbols::starter(*k).name),
                     Pick::Device(t) => format!("Add to {t}:"),
                     Pick::Page(_) | Pick::Action(_) | Pick::Project(_) => String::new(),
                 };
@@ -384,6 +384,7 @@ impl SymbolSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecad_cadcraft::symbols::StarterKey as K;
 
     #[test]
     fn rows_without_a_project_list_symbols() {
@@ -394,7 +395,7 @@ mod tests {
         let (r, _, _) = rows(None, "-Q");
         assert_eq!(
             r.iter().map(|x| x.pick.clone()).collect::<Vec<_>>(),
-            [Pick::Symbol("mcb1"), Pick::Symbol("mcb2"), Pick::Symbol("rcbo2"), Pick::Symbol("rcd2"), Pick::Symbol("rcd4")]
+            [Pick::Symbol(K::Mcb1), Pick::Symbol(K::Mcb2), Pick::Symbol(K::Rcbo2), Pick::Symbol(K::Rcd2), Pick::Symbol(K::Rcd4)]
         );
         let (r, _, nothing) = rows(None, "xyz");
         assert!(r.is_empty());

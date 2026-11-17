@@ -30,7 +30,7 @@ use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
 use crate::strips::{self, terminal_words};
-use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter};
+use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
 use crate::wires::{ON_WIRE, OnWire};
 
 /// Most pins a connector has (design 044 §2.3): a guard, not a preference.
@@ -59,7 +59,7 @@ pub fn ignores(doc: &Document, c: ComponentId, kind: CheckKind) -> bool {
 }
 
 /// The keys of the pin starters.
-pub const PIN_KEYS: [&str; 3] = ["pinpair", "pins", "pinp"];
+pub const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, StarterKey::Pinp];
 
 // ---------------------------------------------------------------- families (design 044 §1)
 
@@ -182,18 +182,14 @@ pub fn family_of(s: &Starter) -> Option<Family> {
     if PIN_KEYS.contains(&k) || s.family != symbols::Family::Connectors {
         return None;
     }
-    Some(if k.starts_with("dsub") {
-        Family::Dsub
-    } else if k.starts_with("m12") {
-        Family::M12
-    } else if k == "rj45" {
-        Family::Rj45
-    } else if k == "usba" {
-        Family::Usba
-    } else if k == "usbb" {
-        Family::Usbb
-    } else {
-        Family::Plain
+    use StarterKey as K;
+    Some(match k {
+        K::Dsub9s | K::Dsub15s | K::Dsub25s | K::Dsub9p | K::Dsub15p | K::Dsub25p => Family::Dsub,
+        K::M12s4 | K::M12s5 | K::M12s8 | K::M12p4 | K::M12p5 | K::M12p8 => Family::M12,
+        K::Rj45 => Family::Rj45,
+        K::Usba => Family::Usba,
+        K::Usbb => Family::Usbb,
+        _ => Family::Plain,
     })
 }
 
@@ -289,7 +285,7 @@ pub fn rep_tag(doc: &Document, c: ComponentId, r: &Representation) -> Option<Str
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
 pub fn hides_label(doc: &Document, r: &Representation, t: TerminalId) -> bool {
-    rep_half(doc, r).is_some_and(|s| s.key == "pinpair") && doc.terminals.get(&t).and_then(|x| x.key.as_deref()) == Some(PLUG_KEY)
+    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.terminals.get(&t).and_then(|x| x.key.as_deref()) == Some(PLUG_KEY)
 }
 
 /// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
@@ -704,7 +700,7 @@ pub fn symbol_ops(
             subject: Subject::Component(c),
             page,
             form: Form::Symbol,
-            role: starter.key.into(),
+            role: starter.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },

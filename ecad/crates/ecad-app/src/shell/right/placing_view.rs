@@ -82,7 +82,7 @@ pub fn of(t: &App) -> Option<Placing> {
         return None;
     }
     let prompt = t.cad.session.current_prompt().map(|p| p.message.clone()).unwrap_or_default();
-    let symbol = t.shell.tools.placing.symbol.and_then(symbols::by_key);
+    let symbol = t.shell.tools.placing.symbol.map(symbols::starter);
     Some(Placing { tag: tag_in(&prompt), joins: prompt.contains("joins "), symbol })
 }
 

@@ -111,8 +111,8 @@ impl CardType {
     }
 
     /// The type whose body is starter `key`.
-    pub fn of_body(key: &str) -> Option<CardType> {
-        CardType::ALL.into_iter().find(|t| t.body() == key)
+    pub fn of_body(key: crate::symbols::StarterKey) -> Option<CardType> {
+        CardType::ALL.into_iter().find(|t| t.body() == ecad_model::Word::word(key))
     }
 
     /// Whether a device of this type is a rack (a CPU or a head module).

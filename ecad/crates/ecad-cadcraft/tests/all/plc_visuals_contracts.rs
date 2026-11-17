@@ -338,7 +338,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     let d = h.doc();
     let body = d
         .representations_of(ecad_model::Subject::Component(di))
-        .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == "plcdi"))
+        .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Plcdi))
         .map(|(_, r)| r.items[0])
         .unwrap();
     // Cells' points are at y 200; the body's at its origin + 25; cell 15 ends at x 100 + 15·20 + 10.

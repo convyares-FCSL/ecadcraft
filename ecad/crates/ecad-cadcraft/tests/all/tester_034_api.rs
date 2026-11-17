@@ -4,6 +4,7 @@
 //! takes a set, and the prefix is `Starter::prefix()`, read from the defaults registry.
 
 use ecad_cadcraft::symbols::{self, Anchor, Family, HAlign, Kind, STARTERS, TextRole, VAlign};
+use ecad_model::Word;
 
 use crate::tester_034_library::catalogue;
 
@@ -102,15 +103,15 @@ fn kinds() {
 fn quiet_lists() {
     let cat = catalogue();
     // Brief 044's pins are quiet like 034's connector bodies (design 044 §3.2).
-    for st in STARTERS.iter().filter(|s| !matches!(s.key, "pinpair" | "pins" | "pinp")) {
+    for st in STARTERS.iter().filter(|s| !matches!(s.key.word(), "pinpair" | "pins" | "pinp")) {
         // Brief 045's starters are design 045's.
-        if crate::tester_034_library::BRIEF_045.contains(&st.key) {
+        if crate::tester_034_library::BRIEF_045.contains(&st.key.word()) {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let mut got: Vec<String> = d.terminals.iter().filter(|t| symbols::is_quiet(st, &t.key)).map(|t| t.key.clone()).collect();
         got.sort();
-        let mut want: Vec<String> = cat.iter().find(|e| e.key == st.key).map(|e| e.quiet.clone()).unwrap_or_default();
+        let mut want: Vec<String> = cat.iter().find(|e| e.key == st.key.word()).map(|e| e.quiet.clone()).unwrap_or_default();
         want.sort();
         assert_eq!(got, want, "{}", st.key);
     }
@@ -174,22 +175,24 @@ fn changeover_rule() {
 fn anchors() {
     for st in STARTERS {
         let v = symbols::anchors(st);
-        if matches!(st.key, "junction" | "continuation") {
+        if matches!(st.key.word(), "junction" | "continuation") {
             assert!(v.is_empty(), "{}", st.key);
             continue;
         }
         // Brief 044's pins (design 044 §3.2) show their half's tag only; brief 045's channel cells
         // have design 045 §7.1's anchors (`plc_contracts`).
-        if matches!(st.key, "pinpair" | "pins" | "pinp") || (crate::tester_034_library::BRIEF_045.contains(&st.key) && st.key.starts_with("ch")) {
+        if matches!(st.key.word(), "pinpair" | "pins" | "pinp")
+            || (crate::tester_034_library::BRIEF_045.contains(&st.key.word()) && st.key.word().starts_with("ch"))
+        {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let (lo, hi) = symbols::bounds(d);
         let mid = (lo.y + hi.y) / 2.0;
-        let tag = one(&v, |r| matches!(r, TextRole::Tag), "Tag", st.key);
-        let desc = one(&v, |r| matches!(r, TextRole::Description), "Description", st.key);
+        let tag = one(&v, |r| matches!(r, TextRole::Tag), "Tag", st.key.word());
+        let desc = one(&v, |r| matches!(r, TextRole::Description), "Description", st.key.word());
         let fam = st.family;
-        let key = st.key;
+        let key = st.key.word();
         let breaker = matches!(key, "rcbo2" | "rcd2" | "rcd4");
         let card = matches!(fam, Family::Plc);
         let connector = matches!(fam, Family::Connectors);

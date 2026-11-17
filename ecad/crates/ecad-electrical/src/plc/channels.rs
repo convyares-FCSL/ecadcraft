@@ -284,7 +284,7 @@ pub fn plan_cell(
             subject: Subject::Component(card),
             page,
             form: Form::Symbol,
-            role: s.key.into(),
+            role: s.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },

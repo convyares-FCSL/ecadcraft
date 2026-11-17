@@ -288,7 +288,7 @@ pub fn sub_items(doc: &Document, c: ComponentId) -> Subs {
 
 /// Whether `c` is a fuse terminal device (034's `fuseterm`): covered by a part line with no `for`.
 pub fn is_fuse_terminal(doc: &Document, c: ComponentId) -> bool {
-    head(doc, c).is_some_and(|s| s.key == "fuseterm")
+    head(doc, c).is_some_and(|s| s.key == crate::symbols::StarterKey::Fuseterm)
 }
 
 /// The names a `for` value lists, ranges of whole numbers expanded (`1-4, 7`), in order, each

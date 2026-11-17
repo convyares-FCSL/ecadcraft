@@ -274,7 +274,7 @@ pub fn plan_fence_typed(
         let on = on_wire_of(doc, page, m.conductor, m.at).ok_or("A crossed wire has no route here.")?;
         if legacy {
             let label = next.to_string();
-            let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, starter.key, &mut ops);
+            let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, ecad_model::Word::word(starter.key), &mut ops);
             first_main = false;
             let land = plan_land(doc, ids, page, on, t).map_err(|e| format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor)))?;
             ops.extend(land.ops);
@@ -325,7 +325,7 @@ pub fn level_symbol(
             subject: Subject::Component(strip),
             page,
             form: Form::Symbol,
-            role: starter.key.into(),
+            role: starter.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },
@@ -537,7 +537,7 @@ fn wire_words(doc: &Document, w: ConductorId) -> String {
 pub(crate) fn run_place_level(
     s: &mut Session, params: &Value, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
-    let (ty, level) = tt::of_starter(starter.key).ok_or_else(|| err("That symbol is not a terminal level."))?;
+    let (ty, level) = tt::of_starter(ecad_model::Word::word(starter.key)).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device: Option<ComponentId> = opt_id(params, "device").map_err(err)?;
     let tag = opt_typed(params, "tag", "a tag", Value::as_str).map_err(err)?.map(str::to_string);
     let position = opt_typed(params, "position", "a position label", Value::as_str).map_err(err)?.map(str::to_string);

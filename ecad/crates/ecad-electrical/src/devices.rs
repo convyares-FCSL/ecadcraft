@@ -19,6 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use ecad_model::Word;
 use ecad_model::derive::terminal_positions;
 use ecad_model::tag::{self, TAG_KEY};
 use ecad_model::{
@@ -28,7 +29,7 @@ use ecad_model::{
 use ecad_model::{TextHAlign as HAlign, TextVAlign as VAlign};
 use serde_json::{Value, json};
 
-use crate::symbols::{self, Kind, STARTERS, Starter};
+use crate::symbols::{self, Kind, STARTERS, Starter, StarterKey as K};
 use crate::text_style::fonts::TextMetrics;
 
 /// Reserved layer of tag texts and terminal labels (design 018 §2.4).
@@ -72,7 +73,7 @@ pub fn valid_prefix(text: &str) -> Option<String> {
 /// project's own (`tag_prefixes`), else the built-in IEC 81346 default. A value a hostile file
 /// stored that is not a valid prefix is ignored.
 pub fn prefix_for(doc: &Document, s: &Starter) -> String {
-    crate::defaults::symbols::prefix(doc, s.key)
+    crate::defaults::symbols::prefix(doc, s.key.word())
 }
 
 // ---------------------------------------------------------------- numbering
@@ -351,13 +352,13 @@ pub fn duplicate_words(doc: &Document, t: &str, holder: ComponentId, way: &str) 
 /// The noun of an exclusive kind, for "already has a …".
 fn noun(s: &Starter) -> &'static str {
     match s.key {
-        "coil" => "coil",
-        "mcb1" | "mcb2" => "MCB",
-        "fuse" => "fuse",
-        "psu" => "power supply",
-        "lamp" => "lamp",
-        "motor3" | "motor1" => "motor",
-        "trafo" => "transformer",
+        K::Coil => "coil",
+        K::Mcb1 | K::Mcb2 => "MCB",
+        K::Fuse => "fuse",
+        K::Psu => "power supply",
+        K::Lamp => "lamp",
+        K::Motor3 | K::Motor1 => "motor",
+        K::Trafo => "transformer",
         _ => "head symbol",
     }
 }
@@ -512,7 +513,7 @@ pub fn plan_place(
                     subject: Subject::Component(c),
                     page,
                     form: Form::Symbol,
-                    role: s.key.into(),
+                    role: s.key.to_string(),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
@@ -538,7 +539,7 @@ pub fn plan_place(
                     subject: Subject::Component(c),
                     page,
                     form: Form::Symbol,
-                    role: s.key.into(),
+                    role: s.key.to_string(),
                     items: vec![item],
                     connection_points: cps,
                 },
@@ -1458,7 +1459,7 @@ pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<
 
 /// Every starter symbol's key, for "List".
 pub fn symbol_keys() -> Vec<&'static str> {
-    STARTERS.iter().map(|s| s.key).collect()
+    STARTERS.iter().map(|s| s.key.word()).collect()
 }
 
 // ---------------------------------------------------------------- hover (§6.4)
@@ -1466,7 +1467,7 @@ pub fn symbol_keys() -> Vec<&'static str> {
 /// A symbol's short name in the lens: `coil`, `NO contact`…
 fn short_name(s: &Starter) -> &'static str {
     match s.key {
-        "coil" => "coil",
+        K::Coil => "coil",
         _ => s.name,
     }
 }

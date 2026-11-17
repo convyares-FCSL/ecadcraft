@@ -936,8 +936,8 @@ pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<Re
             RunRule::Plc => 2,
             RunRule::None => {
                 // Other symbols: their starter (a definition ID otherwise), so only like with like.
-                let key =
-                    crate::devices::rep_starter(doc, r).map_or(0, |s| s.key.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
+                let key = crate::devices::rep_starter(doc, r)
+                    .map_or(0, |s| ecad_model::Word::word(s.key).bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
                 3 + key
             }
         };

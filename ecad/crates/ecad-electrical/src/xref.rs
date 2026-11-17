@@ -52,7 +52,7 @@ use ecad_model::{
 };
 use serde_json::{Value, json};
 
-use crate::symbols::{Kind, Starter};
+use crate::symbols::{Kind, Starter, StarterKey as K};
 use crate::text_style::fonts::TextMetrics;
 
 /// The text style of a contact's or a connector member's reference (brief 066d).
@@ -350,9 +350,9 @@ pub fn is_head(s: &Starter) -> bool {
 /// The poles a starter symbol carries (code, not format: design 025 §2).
 pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
     match (s.key, s.kind) {
-        ("power3", _) => vec![(PoleKind::No, true); 3],
+        (K::Power3, _) => vec![(PoleKind::No, true); 3],
         // Pack re-run, bug 11: the 4-pole set is a contactor's power contacts too.
-        ("power4", _) => vec![(PoleKind::No, true); 4],
+        (K::Power4, _) => vec![(PoleKind::No, true); 4],
         (_, Kind::Contact { make }) => vec![(if make { PoleKind::No } else { PoleKind::Nc }, false)],
         _ => Vec::new(),
     }
@@ -2161,8 +2161,8 @@ pub fn contact_lines(doc: &Document, c: ComponentId, rep: RepresentationId) -> V
     }
     let noun = |doc: &Document, h: RepresentationId| {
         doc.representations.get(&h).and_then(|r| starter_of(doc, r)).map_or("Head", |s| match s.key {
-            "coil" => "Coil",
-            "mcb1" | "mcb2" => "MCB",
+            K::Coil => "Coil",
+            K::Mcb1 | K::Mcb2 => "MCB",
             _ => "Head",
         })
     };

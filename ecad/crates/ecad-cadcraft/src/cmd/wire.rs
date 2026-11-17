@@ -11,7 +11,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::wire::{
     self as rules, CategoryName, Conflict, Junctioned, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires,
 };
-use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
+use ecad_model::connectivity::{KIND, NAME};
 use ecad_model::wiring;
 use ecad_model::{ConductorId, Document, PageId, Placement, Pt, TerminalId};
 use schemars::JsonSchema;
@@ -690,13 +690,15 @@ pub(crate) fn place_tagless(
         Some(n) => Some(wires::valid_name(n).map_err(err)?),
         None => None,
     };
-    if starter.key == CONTINUATION && name.is_none() {
+    if starter.key == crate::symbols::StarterKey::Continuation && name.is_none() {
         return Err(err("`name` is required for a continuation (the potential or signal it carries, e.g. 24V)"));
     }
     // Brief 049 (design 049 §5.1): a continuation may be placed with its caption.
     let caption = match params.get(crate::continuations::CAPTION_KEY) {
         None | Some(Value::Null) => None,
-        Some(_) if starter.key != CONTINUATION => return Err(err("Only continuation arrows have a caption; that is a junction.")),
+        Some(_) if starter.key != crate::symbols::StarterKey::Continuation => {
+            return Err(err("Only continuation arrows have a caption; that is a junction."));
+        }
         Some(Value::String(t)) => crate::continuations::caption_text(Some(t)).map_err(err)?,
         Some(_) => return Err(err("`caption` must be text")),
     };
@@ -704,7 +706,7 @@ pub(crate) fn place_tagless(
         let style = plain_style(p);
         let doc = p.ledger.document();
         let mut props = ecad_model::Properties::new();
-        props.insert(KIND.into(), starter.key.into());
+        props.insert(KIND.into(), starter.key.to_string());
         if let Some(n) = &name {
             props.insert(NAME.into(), n.clone());
         }
@@ -713,7 +715,7 @@ pub(crate) fn place_tagless(
         }
         let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
-        let label = if starter.key == CONTINUATION { "Continuation" } else { "Junction" };
+        let label = if starter.key == crate::symbols::StarterKey::Continuation { "Continuation" } else { "Junction" };
         p.apply_edit(pg, "place", label, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());

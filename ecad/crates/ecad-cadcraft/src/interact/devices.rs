@@ -271,7 +271,7 @@ impl Place {
                 None => Err(other(format!("No symbol \"{t}\". Type List to see them."))),
             },
             many => {
-                let keys: Vec<&str> = many.iter().map(|s| s.key).collect();
+                let keys: Vec<&str> = many.iter().map(|s| ecad_model::Word::word(s.key)).collect();
                 s.echo(format!("\"{t}\" matches {} symbols: {}.", many.len(), keys.join(", ")));
                 Ok(Step::Continue)
             }
@@ -289,7 +289,7 @@ impl Place {
             return Err(other(OUT_OF_RANGE));
         }
         let sym = self.symbol();
-        let key = self.project.as_ref().map_or(sym.key, |p| p.key.as_str());
+        let key = self.project.as_ref().map_or(ecad_model::Word::word(sym.key), |p| p.key.as_str());
         let name = self.project.as_ref().map_or(sym.name, |p| p.name.as_str()).to_string();
         let mut params = json!({
             "symbol": key, "at": [at.x, at.y], "rotation": f64::from(self.rotation), "mirror": self.mirror,
@@ -576,10 +576,10 @@ impl Interactive for Place {
     }
     fn prompt(&self, s: &Session) -> Prompt {
         match &self.stage {
-            Stage::Symbol => prompt("Enter symbol", TEXT_OR_POINT, &["List", "Rotate", "Mirror"], Some(self.default.key.into())),
+            Stage::Symbol => prompt("Enter symbol", TEXT_OR_POINT, &["List", "Rotate", "Mirror"], Some(self.default.key.to_string())),
             Stage::DeviceSymbol(c) => {
                 let t = read(s, |p, _| Ok(devices::tag_words(p.ledger.document(), *c))).unwrap_or_default();
-                prompt(format!("Enter symbol to add to {t}"), Accept::TEXT, &["List"], Some(self.default.key.into()))
+                prompt(format!("Enter symbol to add to {t}"), Accept::TEXT, &["List"], Some(self.default.key.to_string()))
             }
             Stage::Point => {
                 let rot = format!("rotation {}{}", self.rotation, if self.mirror { ", mirrored" } else { "" });
