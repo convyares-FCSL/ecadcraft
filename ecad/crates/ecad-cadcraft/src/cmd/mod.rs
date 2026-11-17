@@ -310,6 +310,10 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::reference::TYPED,
         crate::cmd::page::TYPED,
         crate::history::TYPED,
+        crate::merging::TYPED,
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::agent_access::TYPED,
+        crate::look::TYPED,
     ]
     .concat()
 }

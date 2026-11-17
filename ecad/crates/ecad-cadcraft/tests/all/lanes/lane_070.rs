@@ -9,7 +9,7 @@ use crate::common::H;
 
 /// Registered commands still reading their JSON by hand. Brief 070 converts them module by
 /// module: remove ids as they are typed, never add one.
-const UNTYPED: &[&str] = &["merge", "undomerge", "agentaccess", "canvassheet"];
+const UNTYPED: &[&str] = &[];
 
 #[test]
 fn every_command_is_typed_with_a_schema_or_still_listed() {
