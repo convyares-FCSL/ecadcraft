@@ -89,12 +89,8 @@ pub fn ambient(text: &str) -> Option<f64> {
 }
 
 /// A bundling input (design 057 §2.1): a factor 0.30–1.00, or a circuit count 1–20 written
-/// `3 bunched` (or `3 circuits`).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Bundling {
-    Factor(f64),
-    Circuits(u32),
-}
+/// `3 bunched` (or `3 circuits`); the stored type is the model's.
+pub use ecad_model::wire::Bundling;
 
 /// Read a bundling input.
 pub fn bundling(text: &str) -> Option<Bundling> {
@@ -102,7 +98,7 @@ pub fn bundling(text: &str) -> Option<Bundling> {
     let lower = t.to_ascii_lowercase();
     for word in ["bunched", "circuits", "circuit"] {
         if let Some(head) = lower.strip_suffix(word) {
-            return count(head).map(Bundling::Circuits);
+            return count(head).and_then(|n| u8::try_from(n).ok()).map(Bundling::Circuits);
         }
     }
     decimal(t).filter(|x| (0.30..=1.00).contains(x)).map(Bundling::Factor)

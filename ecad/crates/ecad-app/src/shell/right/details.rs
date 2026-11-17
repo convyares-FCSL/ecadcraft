@@ -179,10 +179,10 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             d.connections.push(ConnRow { pin, wire: "not connected".into(), others: String::new() });
             continue;
         };
-        deps.extend(net.conductors.iter().take(MAX_ROWS).map(|w| ObjectRef::Conductor(*w)));
+        deps.extend(net.wires.iter().take(MAX_ROWS).map(|w| ObjectRef::Wire(*w)));
         let wire = match ecad_model::wiring::net_number(doc, net) {
             Some(n) => format!("wire {n}"),
-            None if net.conductors.is_empty() => "not connected".into(),
+            None if net.wires.is_empty() => "not connected".into(),
             None => "wire".into(),
         };
         let mut others = Vec::new();
@@ -210,6 +210,6 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
 /// The page a symbol is on (for the header of a page).
 pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
     let number = ecad_model::book::page_number(doc, page);
-    let title = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+    let title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)
 }

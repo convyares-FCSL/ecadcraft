@@ -30,7 +30,7 @@ use common::{H, id};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::views::{self, FAN_REFUSED, Settings};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
-use ecad_model::{CableId, ConductorId, ItemId, PageId, Pt, Transaction};
+use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 0x5005_7e57;
@@ -88,7 +88,7 @@ struct G {
     page: PageId,
     c1: CableId,
     slash: ItemId,
-    wires: Vec<ConductorId>,
+    wires: Vec<WireId>,
 }
 
 /// Design §9 fixture G on `h`.
@@ -790,7 +790,7 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
     assert_eq!(tails(&mut h, page, twenty).len(), 40);
     // A fan cable left with one wire is drawn traditional on the page (design 009 §4.1): its
     // route is drawn, no panic.
-    let members: Vec<ConductorId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
+    let members: Vec<WireId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
     h.run("ecaddelete", json!({"conductor": members[1].hex()})).unwrap();
     h.check();
     assert_eq!(view_of(&mut h, two), "fan");
@@ -927,7 +927,7 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
         eprintln!("the slash does not take the overflowing wire: {r}; the fallback is not reachable from outside");
         return;
     }
-    assert_eq!(h.doc().cables[&k].members[1].conductor, id::<ConductorId>(&huge, "conductor"), "the reference");
+    assert_eq!(h.doc().cables[&k].members[1].conductor, id::<WireId>(&huge, "conductor"), "the reference");
     let r = h.run("cableview", json!({"cable": k.hex(), "view": "fan"})).unwrap();
     assert_eq!(r["view"], "fan", "{r}");
     h.check();

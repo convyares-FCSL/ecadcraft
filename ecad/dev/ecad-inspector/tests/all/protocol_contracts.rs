@@ -91,7 +91,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             let w = o["rows"].as_array().unwrap().iter().find(|r| r["cable"] == "-W1").unwrap();
             assert_eq!(w["ends"], json!(["-K1:A1", "-X1:3"]));
             assert_eq!(w["core"], "1");
-            assert_eq!(w["cross_section"], "1.5");
+            assert_eq!(w["size"], "1.5");
         }),
         (json!({"op": "cables"}), |o| {
             assert_eq!(o["total"], 1);

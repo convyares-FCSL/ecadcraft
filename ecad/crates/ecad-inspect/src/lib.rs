@@ -161,7 +161,7 @@ fn label_of(doc: &Document, s: Subject) -> String {
     let tag = |p: &ecad_model::Properties| p.get("tag").cloned();
     match s {
         Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| "untagged device".into()),
-        Subject::Conductor(c) => doc.conductors.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged conductor".into()),
+        Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into()),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
     }
 }
@@ -173,7 +173,7 @@ fn index(doc: &Document) -> Vec<Value> {
         out.push(json!({"kind": kind, "id": id, "short": short, "label": label}));
     };
     for (id, p) in &doc.pages {
-        push("page", format!("{:032x}", id.0), id.short(), p.title.clone());
+        push("page", format!("{:032x}", id.0), id.short(), p.title.to_string());
     }
     for id in doc.devices.keys() {
         push("device", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Device(*id)));
@@ -183,8 +183,8 @@ fn index(doc: &Document) -> Vec<Value> {
         let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| id.short());
         push("terminal", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }
-    for id in doc.conductors.keys() {
-        push("conductor", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Conductor(*id)));
+    for id in doc.wires.keys() {
+        push("wire", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Wire(*id)));
     }
     for id in doc.cables.keys() {
         push("cable", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Cable(*id)));
@@ -242,7 +242,7 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
             json!({
                 "id": format!("{:032x}", id.0),
                 "short": id.short(),
-                "title": doc.pages.get(id).map(|p| p.title.clone()).unwrap_or_default(),
+                "title": doc.pages.get(id).map(|p| p.title.to_string()).unwrap_or_default(),
                 "open": fact.map(|f| f.open),
                 "projection_matches": fact.and_then(|f| f.projection_matches),
                 "mapped_handles": fact.and_then(|f| f.mapped_handles),
@@ -305,7 +305,7 @@ pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
                     "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.properties.get("tag")),
                     "page": r.page.hex(),
                     "page_number": r.page_number,
-                    "page_title": doc.pages.get(&r.page).map(|p| p.title.clone()).unwrap_or_default(),
+                    "page_title": doc.pages.get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),
                     "at": r.at.map(|p| json!([p.x, p.y])),
                     "column": r.column,
                     // Brief 019: the frame's row and labels, and this end's own place.

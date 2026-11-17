@@ -883,7 +883,7 @@ fn contents_follow_pages_and_overflow() {
     h.run("movepage", json!({"page": p.hex(), "index": 1})).unwrap();
     let doc = h.doc();
     let t = texts(&doc, c);
-    let order: Vec<String> = ecad_model::book::Book::of(&doc).order.iter().map(|x| doc.pages[x].title.clone()).collect();
+    let order: Vec<String> = ecad_model::book::Book::of(&doc).order.iter().map(|x| doc.pages[x].title.to_string()).collect();
     let table = t.iter().position(|x| x == "Folder").map_or(&t[..], |i| &t[i..]);
     let shown: Vec<String> = table.iter().filter(|x| order.contains(x)).cloned().collect();
     assert_eq!(shown, order, "contents order vs book order");

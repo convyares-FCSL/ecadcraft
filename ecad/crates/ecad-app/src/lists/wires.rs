@@ -100,7 +100,7 @@ pub struct WiresSource {
     cols: Vec<Column>,
     pub rows: ReportRows,
     /// Brief 057: each row's conductor, and the rating results.
-    pub ids: Vec<ecad_model::ConductorId>,
+    pub ids: Vec<ecad_model::WireId>,
     pub rating: RatingCopy,
 }
 
@@ -123,7 +123,7 @@ impl WiresSource {
 
     /// Brief 057: row `k`'s rating result.
     pub fn rating(&self, k: usize) -> Option<&ecad_cadcraft::rating::Rating> {
-        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_cadcraft::rating::RatedSubject::Conductor(*c)))
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_cadcraft::rating::RatedSubject::Wire(*c)))
     }
 }
 
@@ -237,7 +237,7 @@ impl WiresView {
                     .ids
                     .iter()
                     .enumerate()
-                    .filter(|(_, c)| v.contains(&ecad_cadcraft::rating::RatedSubject::Conductor(**c)))
+                    .filter(|(_, c)| v.contains(&ecad_cadcraft::rating::RatedSubject::Wire(**c)))
                     .map(|(k, _)| k)
                     .collect();
                 if !rows.is_empty() {

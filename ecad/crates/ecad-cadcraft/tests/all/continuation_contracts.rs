@@ -443,7 +443,7 @@ fn xrefs_on_a_name_of(m: usize) {
     let pages: Vec<PageId> = (0..100u128).map(|i| PageId(0x100 + i)).collect();
     let mut setup = vec![Op::AddLayer { id: LayerId(1), layer: ecad_model::Layer { name: "0".into() } }];
     for (i, p) in pages.iter().enumerate() {
-        setup.push(Op::AddPage { id: *p, page: ecad_model::Page::new(format!("{}", 100 + i)), index: i });
+        setup.push(Op::AddPage { id: *p, page: ecad_model::Page::titled(format!("{}", 100 + i)).unwrap(), index: i });
     }
     ledger.commit(ecad_model::Author::User, "pages", setup).unwrap();
     let mut ids = IdAllocator::seeded(0x49_15);

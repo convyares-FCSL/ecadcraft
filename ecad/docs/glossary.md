@@ -15,8 +15,10 @@ Code, file and command names may differ, as noted.
 **In code and files** the connection point is still `Terminal` / `TerminalId`, the op is
 `AddTerminal`, the command `addterminal`, and JSON parameters say `terminal`. A device is `Device` /
 `DeviceId`, with the ops `CreateDevice`, `DeleteDevice`, `SetDeviceDefinition` and `ModifyDevice`
-(design 072, F13, F14; it was `Component` before 0.2.3); what it is lives in its `DeviceType`. MCP
-command names stay as they are.
+(design 072, F13, F14; it was `Component` before 0.2.3); what it is lives in its `DeviceType`. A
+conductor is a `Wire` / `WireId` in code (design 072, F20), its ops `CreateWire`, `DeleteWire` and
+`ModifyWire`, its record kind `wire`; command parameters still say `conductor`. MCP command names
+stay as they are.
 
 ## Devices and what draws them
 

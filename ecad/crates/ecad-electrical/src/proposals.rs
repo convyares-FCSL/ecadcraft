@@ -258,7 +258,7 @@ pub fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot> {
 /// Every device symbol whose context for aspect `a` falls back to the project (no box carrying
 /// `a`, no page value): what the project's value proposes for. The one project-wide case.
 pub fn spots_of_project(doc: &Document, a: Aspect) -> Vec<Spot> {
-    doc.pages.iter().filter(|(_, pg)| !pg.properties.contains_key(a.property())).flat_map(|(p, _)| spots_on_page(doc, a, *p)).collect()
+    doc.pages.iter().filter(|(_, pg)| crate::designations::page_key(pg, a).is_none()).flat_map(|(p, _)| spots_on_page(doc, a, *p)).collect()
 }
 
 /// A device symbol a CADCraft edit moves, with its contexts before the edit (function, location).

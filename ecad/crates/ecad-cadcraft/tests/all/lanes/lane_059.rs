@@ -4,7 +4,7 @@
 
 use ecad_cadcraft::cable_cmds::{self, Side};
 use ecad_cadcraft::checks::{self, Severity};
-use ecad_model::{CableId, ConductorId, Op};
+use ecad_model::{CableId, Op, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -21,7 +21,7 @@ fn last_tx(h: &mut H) -> (String, Vec<Op>) {
 }
 
 /// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, with no ends attached.
-fn wires(h: &mut H, n: usize) -> Vec<ConductorId> {
+fn wires(h: &mut H, n: usize) -> Vec<WireId> {
     (0..n)
         .map(|i| {
             let x = 10.0 * i as f64;
@@ -190,7 +190,7 @@ fn slashing_onto_a_cable_not_drawn_assigns_its_cores_in_order() {
     let (label, _) = last_tx(&mut h);
     assert_eq!(label, "Cable slash");
     let doc = h.doc();
-    let members: Vec<(ConductorId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into())), (ws[2], Some("3".into()))]);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
     let open = checks_of(&mut h, "core-open");
@@ -210,7 +210,7 @@ fn slashing_more_wires_than_free_cores_is_refused() {
     assert!(e.contains("-W01 has 3 free cores (1, 2, GNYE); the slash crosses 5 wires"), "{e}");
     assert_eq!(h.head(), head);
     // cableadd onto it takes the same rule.
-    let ws: Vec<String> = h.doc().conductors.keys().map(|c| c.hex()).collect();
+    let ws: Vec<String> = h.doc().wires.keys().map(|c| c.hex()).collect();
     let e = h.run("cableadd", json!({"conductors": ws, "cable": k.hex()})).unwrap_err();
     assert!(e.contains("free cores"), "{e}");
     assert_eq!(h.head(), head);
@@ -333,7 +333,7 @@ fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
     h.cmdline("-5,25");
     h.cmdline("500,25");
     let doc = h.doc();
-    let members: Vec<(ConductorId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into()))]);
     assert_eq!(doc.cables.len(), 1, "no new cable");
     // `New` (the default) makes a new cable with the next free tag.

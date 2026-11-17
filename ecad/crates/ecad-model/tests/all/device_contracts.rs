@@ -47,7 +47,7 @@ fn fixture() -> Fx {
         Author::User,
         "setup",
         vec![
-            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::EmbedDefinition { id: coil, definition: def("coil", ["A1", "A2"]) },
             Op::EmbedDefinition { id: contact, definition: def("no", ["13", "14"]) },

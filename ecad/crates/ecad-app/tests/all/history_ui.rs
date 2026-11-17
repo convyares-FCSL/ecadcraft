@@ -111,9 +111,9 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     save(&h, &deltas, "020-branchbar.png");
 
     // An edit on the branch; Save and switch back to main: main is unchanged.
-    let wires = doc(&mut h).conductors.len();
+    let wires = doc(&mut h).wires.len();
     ok(&mut h, r#"wire {"points":[[0,150],[30,150]]}"#);
-    assert_eq!(doc(&mut h).conductors.len(), wires + 1);
+    assert_eq!(doc(&mut h).wires.len(), wires + 1);
     // M: Revisions on the branch: Issue is disabled with its reason.
     h.state_mut().open_revisions();
     h.run_steps(2);
@@ -126,7 +126,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     // Revisions, still open, now allows issuing.
     assert_eq!(h.state().revisions.as_ref().map(|r| r.off_main.clone()), Some(None));
     h.state_mut().revisions = None;
-    assert_eq!(doc(&mut h).conductors.len(), wires, "main is as it was");
+    assert_eq!(doc(&mut h).wires.len(), wires, "main is as it was");
     // C: Restore the version after an edit on main: one step, undone by u.
     ok(&mut h, r#"wire {"points":[[0,160],[30,160]]}"#);
     h.state_mut().history_action(Do::AskRestore(json!({"version": "Before change"})));
@@ -134,9 +134,9 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     assert!(matches!(&h.state().panel.history.dialog, Some(Dialog::Restore { question, .. }) if question.contains("as it was at")));
     click(&mut h, "ecad.restore.ok");
     assert_eq!(last_label(&mut h), "Restore \"Before change\"");
-    assert_eq!(doc(&mut h).conductors.len(), wires);
+    assert_eq!(doc(&mut h).wires.len(), wires);
     ok(&mut h, "u");
-    assert_eq!(doc(&mut h).conductors.len(), wires + 1);
+    assert_eq!(doc(&mut h).wires.len(), wires + 1);
     // A typed switch refreshes the title, bar and History as a click does (reviewer finding 1).
     ok(&mut h, r#"switchbranch {"branch":"Option B","save":true}"#);
     h.run_steps(3);

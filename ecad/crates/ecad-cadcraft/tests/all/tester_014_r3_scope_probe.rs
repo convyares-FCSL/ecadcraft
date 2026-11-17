@@ -24,7 +24,7 @@ use cadcraft_engine::doc::Handle;
 use common::{H, id};
 use ecad_cadcraft::references::markers_on_page;
 use ecad_model::derive::{cable_references, terminal_positions};
-use ecad_model::{CableId, ConductorId, End, PageId, Pt, TerminalId};
+use ecad_model::{CableId, End, PageId, Pt, TerminalId, WireId};
 use serde_json::json;
 
 struct Rng(u64);
@@ -57,7 +57,7 @@ struct R {
     supply: PageId,
     field: PageId,
     c1: CableId,
-    w: [ConductorId; 3],
+    w: [WireId; 3],
     k1: [TerminalId; 3],
     k2: [TerminalId; 3],
 }
@@ -71,8 +71,8 @@ fn connected(seed: u64) -> R {
     let k1 = component(&mut h, supply, "line -10,-5 0,-5 0,15 -10,15 c", [(0.0, 0.0), (0.0, 5.0), (0.0, 10.0)], "K1");
     let mut w = Vec::new();
     for y in [0.0, 5.0, 10.0] {
-        let c: ConductorId = id(&h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap(), "conductor");
-        h.run("setprop", json!({"conductor": c.hex(), "key": "tag", "value": format!("W{y}")})).unwrap();
+        let c: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap(), "conductor");
+        h.run("wirenumber", json!({"conductor": c.hex(), "value": format!("W{y}")})).unwrap();
         w.push(c);
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
@@ -89,7 +89,7 @@ fn connected(seed: u64) -> R {
     R { h, supply, field, c1, w: [w[0], w[1], w[2]], k1, k2 }
 }
 
-fn route(h: &mut H, page: PageId, c: ConductorId) -> Option<(Handle, Vec<Pt>)> {
+fn route(h: &mut H, page: PageId, c: WireId) -> Option<(Handle, Vec<Pt>)> {
     let doc = h.doc();
     let (item, prim) = ecad_model::derive::route_on_page(&doc, c, page)?;
     let pts = match &prim {
@@ -145,10 +145,10 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
         // Ends attached to a terminal not shown on this page before the edit.
         let doc0 = r.h.doc();
         let here: std::collections::BTreeSet<TerminalId> = terminal_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
-        let elsewhere: Vec<(ConductorId, End, TerminalId)> =
+        let elsewhere: Vec<(WireId, End, TerminalId)> =
             r.w.iter()
                 .flat_map(|c| [End::A, End::B].map(|e| (*c, e)))
-                .filter_map(|(c, e)| doc0.conductors[&c].end(e).map(|t| (c, e, t)))
+                .filter_map(|(c, e)| doc0.wires[&c].end(e).map(|t| (c, e, t)))
                 .filter(|(_, _, t)| !here.contains(t))
                 .collect();
         let kind: &str = match rng.below(9) {
@@ -237,7 +237,7 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
         let doc = r.h.doc();
         if kind != "undo" {
             for (c, e, t) in &elsewhere {
-                let now = doc.conductors[c].end(*e);
+                let now = doc.wires[c].end(*e);
                 assert_eq!(now, Some(*t), "step {step} ({kind}): end {e:?} of {c:?} attached elsewhere changed");
                 *counts.entry("checked ends elsewhere").or_default() += 1;
             }

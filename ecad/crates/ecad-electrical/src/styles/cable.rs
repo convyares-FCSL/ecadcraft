@@ -263,7 +263,7 @@ pub struct OpenCore {
     /// No wire at all (an offered core nobody uses).
     pub unwired: bool,
     /// The open end: the conductor and which of its ends is attached to nothing.
-    pub end: Option<(ecad_model::ConductorId, ecad_model::End)>,
+    pub end: Option<(ecad_model::WireId, ecad_model::End)>,
 }
 
 /// The open cores of cable `k` (owner rule): offered cores no member uses, and core chains with an
@@ -288,7 +288,7 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
     }
     for (i, ch) in chains.iter().enumerate() {
         let end = ch.iter().find_map(|w| {
-            let [a, b] = doc.conductors.get(w)?.ends;
+            let [a, b] = doc.wires.get(w)?.ends;
             if a.is_none() {
                 Some((*w, ecad_model::End::A))
             } else if b.is_none() {

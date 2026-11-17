@@ -114,7 +114,7 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     assert_eq!(t.aci, Some(PROVISIONAL_ACI));
     // A new net with a potential reads 24V-?, provisional.
     let w = f.h.run("wire", json!({"points": [[400, 20], [440, 20]], "potential": "24V"})).unwrap();
-    let w: ecad_model::ConductorId = id(&w, "conductor");
+    let w: ecad_model::WireId = id(&w, "conductor");
     let label = f.h.p(|p| ecad_model::wiring::label(p.ledger.document(), w)).unwrap();
     assert!(label.text.starts_with("24V-?") && label.provisional, "{label:?}");
     // Checks: the provisional row, kept from the ops (equal to a fresh build).

@@ -191,7 +191,7 @@ fn screenshots_of_the_canvas() {
     for (y, code) in [(130.0, "GNYE"), (120.0, "BU"), (110.0, "PURPLISH")] {
         let w = exec(&mut h, "wire", json!({"points": [[120.0, y], [200.0, y]]}));
         let c = w["conductor"].as_str().unwrap().to_string();
-        exec(&mut h, "setprop", json!({"conductor": c, "key": "colour", "value": code}));
+        exec(&mut h, "setprop", json!({"conductor": c, "key": "colours", "value": code}));
     }
     exec(&mut h, "wire", json!({"points": [[160.0, 145.0], [160.0, 130.0]], "join": false}));
     h.state_mut().zoom_to_drawing();

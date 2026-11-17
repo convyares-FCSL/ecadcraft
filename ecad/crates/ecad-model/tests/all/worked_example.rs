@@ -2,8 +2,8 @@
 
 use ecad_model::derive::{mismatches, nets};
 use ecad_model::{
-    Author, CableMember, Color, Conductor, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation,
-    Style, Subject, Terminal,
+    Author, CableMember, Color, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation, Style,
+    Subject, Terminal, Wire,
 };
 
 fn style(layer: ecad_model::LayerId) -> Style {
@@ -18,7 +18,7 @@ fn worked_example_replays_and_undoes() {
     l.commit(
         Author::User,
         "New project",
-        vec![Op::AddPage { id: p1, page: Page::new("1"), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
+        vec![Op::AddPage { id: p1, page: Page::titled("1").unwrap(), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
     )
     .unwrap();
     let line = |a: (f64, f64), b: (f64, f64)| Item {
@@ -68,12 +68,12 @@ fn worked_example_replays_and_undoes() {
         let (w, i, r) = (ids.fresh(), ids.fresh(), ids.fresh());
         let x_end = if k == 0 { 55.0 } else { 40.0 };
         let mut ops = vec![
-            Op::CreateConductor { id: w, conductor: Conductor::default() },
+            Op::CreateWire { id: w, conductor: Wire::default() },
             Op::AddItem { id: i, item: poly(&[(90.0, y), (x_end, y)]) },
             Op::LinkRepresentation {
                 id: r,
                 rep: Representation {
-                    subject: Subject::Conductor(w),
+                    subject: Subject::Wire(w),
                     page: p1,
                     form: Form::Drawn,
                     role: "route".into(),
@@ -107,7 +107,7 @@ fn worked_example_replays_and_undoes() {
         ops.push(Op::AddCableMember { cable: k1, index: n, member: CableMember { conductor: *w, core: None } });
     }
     l.commit(Author::User, "Group as cable", ops).unwrap();
-    let conductors_before: Vec<_> = l.document().conductors.clone().into_iter().collect();
+    let conductors_before: Vec<_> = l.document().wires.clone().into_iter().collect();
 
     // 5. Reroute w2.
     let i6 = wires[1].1;
@@ -146,7 +146,7 @@ fn worked_example_replays_and_undoes() {
     l.undo(Author::User).unwrap();
     l.undo(Author::User).unwrap();
     assert!(l.document().cables.is_empty());
-    assert_eq!(l.document().conductors.clone().into_iter().collect::<Vec<_>>(), conductors_before, "conductor identities untouched");
+    assert_eq!(l.document().wires.clone().into_iter().collect::<Vec<_>>(), conductors_before, "conductor identities untouched");
     l.redo(Author::User).unwrap();
     assert!(l.document().cables.contains_key(&k1), "redo recreates the cable with the same ID");
     l.redo(Author::User).unwrap();

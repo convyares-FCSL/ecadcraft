@@ -45,7 +45,7 @@ pub mod pages;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::derive::Place;
-use ecad_model::{CableId, CableMember, ConductorId, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId};
+use ecad_model::{CableId, CableMember, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
 
 use crate::CmdError;
 use crate::outputs::PageCx;
@@ -134,8 +134,8 @@ pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<DeviceId> {
 }
 
 /// The strip a conductor bridges, when its two ends are on two terminals of one strip.
-pub fn bridge_of(doc: &Document, w: ConductorId) -> Option<DeviceId> {
-    let cond = doc.conductors.get(&w)?;
+pub fn bridge_of(doc: &Document, w: WireId) -> Option<DeviceId> {
+    let cond = doc.wires.get(&w)?;
     let (a, b) = (cond.end(End::A)?, cond.end(End::B)?);
     if a == b {
         return None;
@@ -624,7 +624,7 @@ pub fn next_free_label(doc: &Document, k: CableId) -> Option<String> {
 /// One conductor on one side of a terminal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SideCell {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     /// The far end as shown (`-K01:A1`, `junction 105-C-4`, `24V >`); `None` for a loose end.
     pub target: Option<String>,
     pub wire: Option<String>,
@@ -774,7 +774,7 @@ pub struct StripData {
     /// Brief 030: the accessories placed and the links (design 030 §7, §11.1).
     pub acc: crate::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
-    conductors: BTreeSet<ConductorId>,
+    wires: BTreeSet<WireId>,
     far: BTreeSet<DeviceId>,
     pages: BTreeSet<PageId>,
     cables: BTreeSet<CableId>,
@@ -914,7 +914,7 @@ pub enum PlanItem<'a> {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Strips {
     pub strips: BTreeMap<DeviceId, StripData>,
-    by_conductor: BTreeMap<ConductorId, BTreeSet<DeviceId>>,
+    by_conductor: BTreeMap<WireId, BTreeSet<DeviceId>>,
     by_far: BTreeMap<DeviceId, BTreeSet<DeviceId>>,
     by_page: BTreeMap<PageId, BTreeSet<DeviceId>>,
     by_cable: BTreeMap<CableId, BTreeSet<DeviceId>>,
@@ -963,7 +963,7 @@ fn remove_from<K: Ord + Clone>(map: &mut BTreeMap<K, BTreeSet<DeviceId>>, keys: 
 /// What a recompute of the strips needs to know beyond the document.
 pub struct StripScope<'a> {
     pub devices: &'a BTreeSet<DeviceId>,
-    pub conductors: &'a BTreeSet<ConductorId>,
+    pub wires: &'a BTreeSet<WireId>,
     pub cables: &'a BTreeSet<CableId>,
     pub pages: &'a BTreeSet<PageId>,
     /// Brief 030: project `strip_*` keys that changed.
@@ -1009,7 +1009,7 @@ impl Strips {
             }
             out.extend(self.by_far.get(c).into_iter().flatten().copied());
         }
-        let mut wires: BTreeSet<ConductorId> = scope.conductors.clone();
+        let mut wires: BTreeSet<WireId> = scope.wires.clone();
         for k in scope.cables {
             out.extend(self.by_cable.get(k).into_iter().flatten().copied());
             if let Some(cab) = doc.cables.get(k) {
@@ -1018,7 +1018,7 @@ impl Strips {
         }
         for w in &wires {
             out.extend(self.by_conductor.get(w).into_iter().flatten().copied());
-            if let Some(cond) = doc.conductors.get(w) {
+            if let Some(cond) = doc.wires.get(w) {
                 out.extend(cond.ends.iter().flatten().filter_map(|t| strip_of_terminal(doc, *t)));
             }
         }
@@ -1101,7 +1101,7 @@ impl Strips {
                 self.bom_rows.remove(&old.location);
             }
         }
-        remove_from(&mut self.by_conductor, &old.conductors, c);
+        remove_from(&mut self.by_conductor, &old.wires, c);
         remove_from(&mut self.by_far, &old.far, c);
         remove_from(&mut self.by_page, &old.pages, c);
         remove_from(&mut self.by_cable, &old.cables, c);
@@ -1119,7 +1119,7 @@ impl Strips {
     }
 
     fn insert(&mut self, c: DeviceId, d: StripData) {
-        add_to(&mut self.by_conductor, &d.conductors, c);
+        add_to(&mut self.by_conductor, &d.wires, c);
         add_to(&mut self.by_far, &d.far, c);
         add_to(&mut self.by_page, &d.pages, c);
         add_to(&mut self.by_cable, &d.cables, c);
@@ -1190,7 +1190,7 @@ fn leaves_inward(from: Pt, next: Pt) -> bool {
 
 /// The route direction of conductor `w` at its end `end` on `page`: inside (`true`) or not;
 /// `None` when it has no route there.
-fn geometric_inside(doc: &Document, w: ConductorId, end: End, page: PageId) -> Option<bool> {
+fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId) -> Option<bool> {
     let (_, _, v) = crate::wires::route_vertices(doc, w, page)?;
     let (a, b) = match end {
         End::A => (*v.first()?, *v.get(1)?),
@@ -1200,8 +1200,8 @@ fn geometric_inside(doc: &Document, w: ConductorId, end: End, page: PageId) -> O
 }
 
 /// The cell of a terminal's conductor's far end, worked out like the wire report's.
-fn far_cell(doc: &Document, o: &Outputs, w: ConductorId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
-    let Some(cond) = doc.conductors.get(&w) else { return (None, None) };
+fn far_cell(doc: &Document, o: &Outputs, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
+    let Some(cond) = doc.wires.get(&w) else { return (None, None) };
     let t = cond.end(far);
     let comp = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component);
     // Only a junction's cell needs where the end is drawn (its place); the rest are named.
@@ -1258,7 +1258,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         sheets: 1,
         bom_rows: 0,
         acc: crate::accessories::StripAcc::default(),
-        conductors: BTreeSet::new(),
+        wires: BTreeSet::new(),
         far: BTreeSet::new(),
         pages: BTreeSet::new(),
         cables: BTreeSet::new(),
@@ -1290,8 +1290,8 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
     // by their point, Q6).
     let mut cells = |t: TerminalId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
         for (w, end) in doc.ends_at(t) {
-            d.conductors.insert(w);
-            let Some(cond) = doc.conductors.get(&w) else { continue };
+            d.wires.insert(w);
+            let Some(cond) = doc.wires.get(&w) else { continue };
             let far_end = match end {
                 End::A => End::B,
                 End::B => End::A,
@@ -1634,12 +1634,12 @@ impl StripData {
 // ---------------------------------------------------------------- hover (§7.1)
 
 /// The far end of `w` from end `mine`, in words (`-K01:A1`, `junction`, `24V >`, `loose`).
-fn far_words(doc: &Document, w: ConductorId, mine: End) -> (String, Option<DeviceId>) {
+fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>) {
     let far = match mine {
         End::A => End::B,
         End::B => End::A,
     };
-    let Some(t) = doc.conductors.get(&w).and_then(|c| c.end(far)) else { return ("loose".into(), None) };
+    let Some(t) = doc.wires.get(&w).and_then(|c| c.end(far)) else { return ("loose".into(), None) };
     let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return ("loose".into(), None) };
     match crate::wires::kind_of(doc, c) {
         Some(ecad_model::connectivity::JUNCTION) => ("junction".into(), Some(c)),
@@ -1660,7 +1660,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
     let pe = rep_is_pe(doc, r);
     let location = crate::locations::resolve(doc, c).value;
     let conn = doc.connectivity();
-    let number = |w: ConductorId| {
+    let number = |w: WireId| {
         conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_else(|| "?".into())
     };
     let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
@@ -1677,7 +1677,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
         lines.push(format!("{}  {kind}  {}", crate::strips::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
-            let far_t = doc.conductors.get(&w).and_then(|x| {
+            let far_t = doc.wires.get(&w).and_then(|x| {
                 x.end(match end {
                     End::A => End::B,
                     End::B => End::A,
@@ -1853,7 +1853,7 @@ mod tests {
 
     #[test]
     fn members_meet_the_offer_by_label_then_in_order() {
-        let m = |core: Option<&str>| CableMember { conductor: ConductorId(1), core: core.map(str::to_string) };
+        let m = |core: Option<&str>| CableMember { conductor: WireId(1), core: core.map(str::to_string) };
         let offer = |t: &str| Some((parse_cores(t).unwrap(), OfferSource::Cores, t.to_string()));
         let c = count_cores(offer("7G"), &[m(None), m(None), m(Some("3")), m(None), m(None)]);
         assert_eq!(c.used(), 5);

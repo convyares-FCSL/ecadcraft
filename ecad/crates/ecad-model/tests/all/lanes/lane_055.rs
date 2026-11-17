@@ -100,7 +100,7 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
 fn doc_with_page() -> (Document, PageId) {
     let mut l = Ledger::new(55);
     let page = PageId(0x55);
-    l.commit(Author::User, "page", vec![Op::AddPage { id: page, page: Default::default(), index: 0 }]).unwrap();
+    l.commit(Author::User, "page", vec![Op::AddPage { id: page, page: ecad_model::Page::titled("p").unwrap(), index: 0 }]).unwrap();
     (l.document().clone(), page)
 }
 
@@ -127,8 +127,8 @@ fn the_frame_decides_sheet_margins_and_keep_out() {
     assert_eq!((g.frame_left(), g.frame_bottom()), (15.0, 12.0));
     // A choice naming no frame falls through to the next level.
     if let Some(p) = doc.pages.get_mut(&page) {
-        p.properties.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(99).text());
-        p.properties.insert(sheet::SHEET_KEY.into(), "A1".into());
+        p.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(99).text());
+        p.sheet = ecad_model::SheetSpec::parse("A1").ok();
     }
     assert_eq!(sheet::sheet_of(&doc, page).width, 594, "the project's frame wins over the page's sheet");
     assert_eq!(sheet::own_sheet(&doc, page).width, 841);
@@ -216,7 +216,7 @@ fn a_page_borrows_a_title_block_and_the_page_type_steps_wait_for_054() {
     doc.properties.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7), "the frame's own block");
     if let Some(p) = doc.pages.get_mut(&page) {
-        p.properties.insert(sheet::TITLE_BLOCK_KEY.into(), StyleRef::Own(8).text());
+        p.title_block = Some(StyleRef::Own(8));
     }
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(8), "borrowed");
     assert_eq!(sheet::frame_style(&doc, page), StyleRef::Own(7), "the border stays the frame's");
@@ -224,7 +224,7 @@ fn a_page_borrows_a_title_block_and_the_page_type_steps_wait_for_054() {
     assert_eq!(sheet::keep_out(&doc, page), 30.0, "the borrowed block's height");
     // A name that is no frame falls back to the frame's own block.
     if let Some(p) = doc.pages.get_mut(&page) {
-        p.properties.insert(sheet::TITLE_BLOCK_KEY.into(), StyleRef::Own(99).text());
+        p.title_block = Some(StyleRef::Own(99));
     }
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7));
 }

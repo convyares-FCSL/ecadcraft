@@ -18,7 +18,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::rating::{self as rules, RatingItem, TableWrite};
-use ecad_model::Document;
+use ecad_model::{Document, Word};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -388,7 +388,7 @@ impl Command for RatingsParams {
 /// One result as `ratings` returns it (design 057 §8.2): the object the panel shows.
 pub fn rating_json(doc: &Document, r: &Rating) -> Value {
     let subject = match r.subject {
-        RatedSubject::Conductor(c) => json!({"wire": r.subject.words(doc), "conductor": c.hex()}),
+        RatedSubject::Wire(c) => json!({"wire": r.subject.words(doc), "conductor": c.hex()}),
         RatedSubject::Cable(k) => json!({"cable": r.subject.words(doc), "id": k.hex()}),
     };
     let factors: Vec<Value> = r.factors.iter().map(|f| json!({"name": f.name, "factor": f.factor, "input": f.input, "from": f.from})).collect();

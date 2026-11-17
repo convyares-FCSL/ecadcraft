@@ -11,7 +11,7 @@ use ecad_cadcraft::interact::overlay_marks;
 use ecad_cadcraft::look::{self, Painted};
 use ecad_cadcraft::printbook;
 use ecad_drawing_style::sheet::PAPER;
-use ecad_model::{ConductorId, Pt};
+use ecad_model::{Pt, WireId};
 use serde_json::json;
 
 use crate::common::{H, id, pts, small_project};
@@ -84,10 +84,10 @@ fn marks_take_the_token_colours_and_sizes() {
 
 /// A page with a GNYE wire, a loose wire, a terminal and an end that looks connected (a painted
 /// warning): every marker kind this page can show.
-fn colour_page(seed: u64, code: &str) -> (H, ConductorId) {
+fn colour_page(seed: u64, code: &str) -> (H, WireId) {
     let (mut h, ..) = small_project(seed);
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(0.0, 60.0), (60.0, 60.0)])})).unwrap(), "conductor");
-    h.run("setprop", json!({"conductor": w.hex(), "key": "colour", "value": code})).unwrap();
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 60.0), (60.0, 60.0)])})).unwrap(), "conductor");
+    h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": code})).unwrap();
     // An open end lying on the GNYE wire's middle, not joined: looks connected.
     h.run("wire", json!({"points": pts(&[(30.0, 90.0), (30.0, 60.0)]), "join": false})).unwrap();
     (h, w)
@@ -135,8 +135,8 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     let (mono, _) = printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
     assert!(mono.model.iter().all(|e| e.common.layer != ecad_cadcraft::wires::DASH_LAYER), "no dashes in mono");
     assert!(mono.model.iter().all(|e| e.common.color != green), "the route prints in ink");
-    let label = mono.model.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value.contains("GNYE")));
-    assert!(label, "the mono print's wire label says GNYE");
+    let label = mono.model.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value.contains("GN/YE")));
+    assert!(label, "the mono print's wire label says GN/YE");
     assert!(ecad_cadcraft::defaults::print::mono(&doc), "print.colour is mono by default");
     assert_eq!(ecad_cadcraft::defaults::print::mono_param(&doc, &json!({"colour": "colour"})), Ok(false));
     assert!(ecad_cadcraft::defaults::print::mono_param(&doc, &json!({"colour": "sepia"})).is_err());
@@ -146,7 +146,14 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
 
 #[test]
 fn an_unknown_code_draws_in_ink_and_raises_one_information_check() {
-    let (mut h, w) = colour_page(0x40_0003, "PURPLISH");
+    // Design 072 §4.6: a wire's own colours are IEC 60757 colours; anything else is refused.
+    let (mut h, w) = colour_page(0x40_0003, "BU");
+    let e = h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "PURPLISH"})).unwrap_err();
+    assert!(e.contains("not a colour list"), "{e}");
+    h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": null})).unwrap();
+    // A wire category's colour is still text (lane G types it): an unknown one draws in ink.
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "PURPLISH"}})).unwrap();
+    h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
     let page = h.first_page();
     let doc = h.doc();
     let routes = h.p(|p| look::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
@@ -236,7 +243,7 @@ fn a_tag_is_its_height_from_baseline_to_cap_in_the_sheet_font() {
 fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
     let mut h = H::new(0x40_0006);
     let page = h.first_page();
-    let mut wires: Vec<ConductorId> = Vec::new();
+    let mut wires: Vec<WireId> = Vec::new();
     // 6 wires of 15 m: about 3 750 dashes each, so the page budget takes five.
     for k in 0..6 {
         let y = 1000.0 + 10.0 * f64::from(k);
@@ -245,7 +252,7 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
     // One of 1e8 mm (100 km): 25 million dashes asked for, within the command's coordinate range.
     wires.push(id(&h.run("wire", json!({"points": pts(&[(0.0, 2000.0), (1e8, 2000.0)])})).unwrap(), "conductor"));
     for w in &wires {
-        h.run("setprop", json!({"conductor": w.hex(), "key": "colour", "value": "GNYE"})).unwrap();
+        h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "GNYE"})).unwrap();
     }
     let doc = h.doc();
     let budget = look::dash_budget(&doc, page);
@@ -265,7 +272,7 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
     assert_eq!((full[0].page, full[0].which.as_str()), (Some(page), "2 wires"));
     assert_eq!(h.cfg(|p| p.checks().rows().filter(|r| r.kind == Kind::DashesLeftOut).count()), 1, "the live Checks has it");
     for w in &wires[5..] {
-        h.run("setprop", json!({"conductor": w.hex(), "key": "colour", "value": null})).unwrap();
+        h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": null})).unwrap();
     }
     let doc = h.doc();
     assert!(ecad_cadcraft::checks::all(&doc, 0.01).iter().all(|c| c.kind != Kind::DashesLeftOut), "the row goes");

@@ -9,32 +9,123 @@ use crate::index::{Index, referrers};
 
 use serde::{Deserialize, Serialize};
 
+use crate::book::PageNo;
 use crate::device::DeviceType;
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
+use crate::page::{PageKind, PageTitle};
+use crate::sheet::SheetSpec;
+use crate::style::StyleRef;
+pub use crate::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
 pub type Properties = BTreeMap<String, String>;
 
-/// A page of the project.
+/// A page of the project (design 072 §5.1).
 ///
-/// Its `properties` (brief 019, decision FP1) hold the page number (`number`), the `=`/`+`
-/// overrides (`function`, `location`), its own sheet (`sheet`) and its folder (`folder`); see
-/// [`crate::book`] and [`crate::sheet`]. Left out of records while empty.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// What the page is ([`PageKind`]), its place in the book (`number`, `folder`) and its look
+/// (`page_type`, `sheet`, `title_block`) are fields; `display` holds only presentation choices and
+/// the defaults registry's page-level values. Every optional field is left out of records while
+/// unset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Page {
-    pub title: String,
+    pub title: PageTitle,
+    /// The designer's page number (`100`, `105a`); `None` shows the book position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<PageNo>,
+    /// The folder it is in; `None` at the top level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<FolderId>,
+    /// What the page is; set when it is made.
+    #[serde(default, skip_serializing_if = "PageKind::is_schematic")]
+    pub kind: PageKind,
+    /// Its page type (a style of catalogue `page`, brief 054); `None` takes the type its kind
+    /// implies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_type: Option<StyleRef>,
+    /// Its own sheet (brief 019); `None` takes its page type's, else the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    /// The frame style whose title block it borrows (brief 055); `None` takes its page type's,
+    /// else its frame's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<StyleRef>,
+    /// Its location (an entry of the project's list); `None` takes the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<crate::id::LocationId>,
+    /// Its function (an entry of the project's list); `None` takes the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<crate::id::FunctionId>,
+    /// Presentation choices and registry values at page level.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: Properties,
+    pub display: Properties,
 }
 
 impl Page {
-    /// A page titled `title`, with no properties.
-    pub fn new(title: impl Into<String>) -> Self {
-        Page { title: title.into(), properties: Properties::new() }
+    /// A schematic page titled `title`, with nothing else set.
+    pub fn new(title: PageTitle) -> Self {
+        Page {
+            title,
+            number: None,
+            folder: None,
+            kind: PageKind::Schematic,
+            page_type: None,
+            sheet: None,
+            title_block: None,
+            location: None,
+            function: None,
+            display: Properties::new(),
+        }
     }
+
+    /// What differs between `self` (before) and `after`: the fields one by one, and the display
+    /// keys whose value differs. The update maps read a `ModifyPage` through it.
+    pub fn change<'a>(&'a self, after: &'a Page) -> PageChange<'a> {
+        let display = self
+            .display
+            .keys()
+            .chain(after.display.keys().filter(|k| !self.display.contains_key(*k)))
+            .filter(|k| self.display.get(*k) != after.display.get(*k))
+            .map(String::as_str)
+            .collect();
+        PageChange {
+            title: self.title != after.title,
+            number: self.number != after.number,
+            folder: self.folder != after.folder,
+            page_type: self.page_type != after.page_type,
+            sheet: self.sheet != after.sheet,
+            title_block: self.title_block != after.title_block,
+            location: self.location != after.location,
+            function: self.function != after.function,
+            display,
+        }
+    }
+
+    /// A schematic page titled `title`, if it is a valid title.
+    ///
+    /// # Errors
+    /// Why the title was refused.
+    pub fn titled(title: impl AsRef<str>) -> std::result::Result<Self, crate::text::TextError> {
+        PageTitle::new(title.as_ref()).map(Page::new)
+    }
+}
+
+/// What a `ModifyPage` changed ([`Page::change`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageChange<'a> {
+    pub title: bool,
+    pub number: bool,
+    pub folder: bool,
+    pub page_type: bool,
+    pub sheet: bool,
+    pub title_block: bool,
+    pub location: bool,
+    pub function: bool,
+    /// The display keys whose value changed.
+    pub display: Vec<&'a str>,
 }
 
 /// A folder of pages (brief 019, decision FP3): a name and a place in the tree. Pages name their
@@ -362,7 +453,7 @@ pub struct Terminal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Subject {
     Device(DeviceId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Cable(CableId),
 }
 
@@ -391,45 +482,10 @@ pub struct Representation {
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
-/// One end of a conductor. End A is the first route vertex, end B the last.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum End {
-    A,
-    B,
-}
-
-impl End {
-    pub const BOTH: [End; 2] = [End::A, End::B];
-    fn index(self) -> usize {
-        match self {
-            End::A => 0,
-            End::B => 1,
-        }
-    }
-}
-
-/// A conductor (stored intent). Attachments are references (DOC-03).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct Conductor {
-    pub properties: Properties,
-    pub ends: [Option<TerminalId>; 2],
-}
-
-impl Conductor {
-    pub fn end(&self, end: End) -> Option<TerminalId> {
-        self.ends.get(end.index()).copied().flatten()
-    }
-    pub fn set_end(&mut self, end: End, t: Option<TerminalId>) {
-        if let Some(slot) = self.ends.get_mut(end.index()) {
-            *slot = t;
-        }
-    }
-}
-
 /// A conductor's membership of a cable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CableMember {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub core: Option<String>,
 }
 
@@ -744,7 +800,7 @@ pub struct Document {
     pub devices: BTreeMap<DeviceId, Device>,
     pub terminals: BTreeMap<TerminalId, Terminal>,
     pub representations: BTreeMap<RepresentationId, Representation>,
-    pub conductors: BTreeMap<ConductorId, Conductor>,
+    pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
@@ -754,6 +810,9 @@ pub struct Document {
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: Properties,
+    /// The project's own data: the location and function lists (design 072 §5.3).
+    #[serde(skip_serializing_if = "crate::project::Project::is_empty")]
+    pub project: crate::project::Project,
     /// Folders of pages (brief 019, decision FP3).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub folders: BTreeMap<FolderId, Folder>,
@@ -784,13 +843,15 @@ struct DocumentData {
     devices: BTreeMap<DeviceId, Device>,
     terminals: BTreeMap<TerminalId, Terminal>,
     representations: BTreeMap<RepresentationId, Representation>,
-    conductors: BTreeMap<ConductorId, Conductor>,
+    wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
     #[serde(default)]
     properties: Properties,
+    #[serde(default)]
+    project: crate::project::Project,
     #[serde(default)]
     folders: BTreeMap<FolderId, Folder>,
     #[serde(default)]
@@ -811,12 +872,13 @@ impl From<DocumentData> for Document {
             devices,
             terminals,
             representations,
-            conductors,
+            wires,
             cables,
             definitions,
             settings,
             versions,
             properties,
+            project,
             folders,
             folder_order,
             standard,
@@ -830,12 +892,13 @@ impl From<DocumentData> for Document {
             devices,
             terminals,
             representations,
-            conductors,
+            wires,
             cables,
             definitions,
             settings,
             versions,
             properties,
+            project,
             folders,
             folder_order,
             standard,
@@ -859,12 +922,13 @@ impl PartialEq for Document {
             devices,
             terminals,
             representations,
-            conductors,
+            wires,
             cables,
             definitions,
             settings,
             versions,
             properties,
+            project,
             folders,
             folder_order,
             standard,
@@ -879,12 +943,13 @@ impl PartialEq for Document {
             && *devices == other.devices
             && *terminals == other.terminals
             && *representations == other.representations
-            && *conductors == other.conductors
+            && *wires == other.wires
             && *cables == other.cables
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions
             && *properties == other.properties
+            && *project == other.project
             && *folders == other.folders
             && *folder_order == other.folder_order
             && *standard == other.standard
@@ -997,8 +1062,8 @@ impl Document {
         self.index.terminal_ends.get(&terminal).is_some_and(|m| !m.is_empty())
     }
 
-    /// Conductor ends attached to `terminal`, in conductor ID order, end A before end B.
-    pub fn ends_at(&self, terminal: TerminalId) -> Vec<(ConductorId, End)> {
+    /// Wire ends attached to `terminal`, in conductor ID order, end A before end B.
+    pub fn ends_at(&self, terminal: TerminalId) -> Vec<(WireId, End)> {
         referrers(&self.index.terminal_ends, &terminal).collect()
     }
 
@@ -1075,7 +1140,7 @@ impl Document {
     }
 
     /// Cables `conductor` is a member of, in ID order.
-    pub fn cables_of(&self, conductor: ConductorId) -> Vec<CableId> {
+    pub fn cables_of(&self, conductor: WireId) -> Vec<CableId> {
         referrers(&self.index.conductor_cables, &conductor).collect()
     }
 }

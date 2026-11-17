@@ -253,7 +253,7 @@ pub(super) fn has_own(props: &ecad_model::Properties) -> bool {
 }
 
 /// Whether conductor `c` is a panel wire (not a cable core).
-pub fn is_panel_wire(doc: &Document, c: ConductorId) -> bool {
+pub fn is_panel_wire(doc: &Document, c: WireId) -> bool {
     doc.cables_of(c).is_empty()
 }
 
@@ -277,12 +277,12 @@ pub(super) fn sheet(doc: &Document, catalogue: &str, id: Option<&StyleRef>) -> S
 }
 
 /// Whether conductor `c` is a rated subject (design 057 §7).
-pub fn wire_is_rated(doc: &Document, ctx: &Context, c: ConductorId) -> bool {
+pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     if !is_panel_wire(doc, c) {
         return false;
     }
-    let Some(x) = doc.conductors.get(&c) else { return false };
-    if has_own(&x.properties) {
+    let Some(x) = doc.wires.get(&c) else { return false };
+    if !x.rating.is_empty() || x.load.is_some() || x.display.contains_key(PROTECTED_BY) {
         return true;
     }
     let (cat, _) = ctx.looks.category(doc, c);
@@ -300,16 +300,16 @@ pub fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
 
 /// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
 /// the project's; with where it came from.
-pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: ConductorId) -> (f64, String) {
+pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, String) {
     let (t, from, _) = panel_temperature_at(doc, ctx, c);
     (t, from)
 }
 
 /// [`panel_temperature`], and the locations of the wire's ends (the one used first).
-pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: ConductorId) -> (f64, String, Vec<String>) {
+pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, String, Vec<String>) {
     let mut best: Option<(f64, String)> = None;
     let mut locations: Vec<String> = Vec::new();
-    if let Some(x) = doc.conductors.get(&c) {
+    if let Some(x) = doc.wires.get(&c) {
         for t in x.ends.iter().flatten() {
             let Some(comp) = doc.terminals.get(t).map(|t| t.component) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
@@ -359,13 +359,14 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let mut factors = Vec::new();
     let is_cable = matches!(s, RatedSubject::Cable(_));
     // Basis.
-    let own_basis = own(props, BASIS, Basis::parse, &mut issues);
+    let (inp, _) = s.inputs(doc, &mut issues);
+    let own_basis = inp.basis;
     let default_basis = Basis::parse(project_word(doc, if is_cable { &defaults::rating::CABLE_BASIS } else { &defaults::rating::WIRE_BASIS }))
         .unwrap_or(if is_cable { Basis::Table } else { Basis::Datasheet });
     let basis = own_basis.unwrap_or(default_basis);
     // Datasheet values, size.
     let (sh, size, assumed) = match s {
-        RatedSubject::Conductor(c) => {
+        RatedSubject::Wire(c) => {
             let look = ctx.looks.look(doc, c);
             let sh = sheet(doc, "wire", look.category.as_ref());
             (sh, look.cross_section.as_ref().and_then(|(t, _)| parse::cross_section(t)), false)
@@ -395,13 +396,13 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     // The temperature the conductor sits in.
     let mut locations = Vec::new();
     let (theta, theta_from, place) = match s {
-        RatedSubject::Conductor(c) => {
+        RatedSubject::Wire(c) => {
             let (t, from, at) = panel_temperature_at(doc, ctx, c);
             locations = at;
             let place = from.strip_prefix("location ").map_or_else(|| "The panel".to_string(), str::to_string);
             (t, from, place)
         }
-        RatedSubject::Cable(_) => match own(props, AMBIENT, parse::ambient, &mut issues) {
+        RatedSubject::Cable(_) => match inp.ambient.map(|c| c.0) {
             Some(t) => (t, "set here".to_string(), s.words(doc)),
             None => (project_number(doc, &defaults::rating::AMBIENT), default_from(doc, &defaults::rating::AMBIENT).to_string(), s.words(doc)),
         },
@@ -412,9 +413,9 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let mut rated = None;
     // Grouping input: a wire's bundling, a cable's grouped count.
     let bundling = if is_cable {
-        own(props, GROUPED, parse::count, &mut issues).map(|n| (parse::Bundling::Circuits(n), "set here".to_string()))
+        inp.grouped.map(|n| (parse::Bundling::Circuits(n), "set here".to_string()))
     } else {
-        match own(props, BUNDLING, parse::bundling, &mut issues) {
+        match inp.bundling {
             Some(b) => Some((b, "set here".to_string())),
             None => {
                 let r = defaults::resolve(doc, &defaults::rating::BUNDLING, Scope::project());
@@ -422,13 +423,9 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
             }
         }
     };
-    let method: &'static str = if is_cable {
-        own(props, METHOD, dataset::method, &mut issues).unwrap_or_else(|| project_word(doc, &defaults::rating::METHOD))
-    } else {
-        "B1"
-    };
-    let system = own(props, SYSTEM, |v| ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v.trim())), &mut issues)
-        .unwrap_or_else(|| project_word(doc, &defaults::rating::SYSTEM));
+    let method: &'static str =
+        if is_cable { inp.method.map(|m| m.word()).unwrap_or_else(|| project_word(doc, &defaults::rating::METHOD)) } else { "B1" };
+    let system = inp.system.map(|s| s.word()).unwrap_or_else(|| project_word(doc, &defaults::rating::SYSTEM));
     let loaded: u8 = if system == "ac3" { 3 } else { 2 };
     let grouping_factor = |data: Option<&Dataset>, issues: &mut Vec<Issue>, factors: &mut Vec<Factor>| -> Option<f64> {
         match &bundling {
@@ -442,7 +439,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                     issues.push(Issue::NoTable(format!("{n} circuits need a rating table's grouping factor; no rating table chosen")));
                     return None;
                 };
-                match d.grouping(method, *n) {
+                match d.grouping(method, u32::from(*n)) {
                     Some((f, _)) => {
                         let k = round2(f);
                         let input =
@@ -465,7 +462,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         }
     };
     let iz = match basis {
-        Basis::Manual => match own(props, MANUAL, parse::current, &mut issues) {
+        Basis::Manual => match inp.manual.map(|a| a.0) {
             Some(x) => Some(x),
             None => {
                 issues.push(Issue::NoData("no Manual value set".into()));
@@ -475,7 +472,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         Basis::Datasheet => match sh.rated {
             None => {
                 let why = match s {
-                    RatedSubject::Conductor(c) => match ctx.looks.category(doc, c).0 {
+                    RatedSubject::Wire(c) => match ctx.looks.category(doc, c).0 {
                         Some(id) => format!("category {} has no rated current", styles::name(doc, "wire", &id)),
                         None => "no wire category".into(),
                     },
@@ -598,7 +595,8 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         issues.push(Issue::LoadOver);
     }
     // Volt drop (cables only, §3.5).
-    let voltdrop = if is_cable { volt_drop_of(doc, ctx, s, props, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
+    let voltdrop =
+        if is_cable { volt_drop_of(doc, ctx, s, props, &inp, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
     Rating {
         subject: s,
         basis,
@@ -629,8 +627,8 @@ pub(super) fn larger_size(ctx: &Context, size: Option<f64>, method: &str, max: f
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn volt_drop_of(
-    doc: &Document, ctx: &Context, s: RatedSubject, props: Option<&ecad_model::Properties>, sh: &Sheet, size: Option<f64>, system: &str,
-    load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
+    doc: &Document, ctx: &Context, s: RatedSubject, props: Option<&ecad_model::Properties>, inp: &CircuitInputs, sh: &Sheet, size: Option<f64>,
+    system: &str, load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
 ) -> Option<VoltDrop> {
     let metres = props.and_then(|p| p.get("length")).and_then(|v| parse::length_m(v))?;
     let (amps, why) = match (load, device.and_then(|d| d.amps.map(|a| (a, d.tag.clone())))) {
@@ -656,16 +654,14 @@ pub(super) fn volt_drop_of(
         )));
         return None;
     };
-    let mut scratch = Vec::new();
-    let (volts, vfrom) = match own(props, VOLTAGE, parse::voltage, &mut scratch) {
+    let (volts, vfrom) = match inp.voltage.map(|v| v.0) {
         Some(v) => (v, "set here"),
         None => (project_number(doc, &defaults::rating::VOLTAGE), default_from(doc, &defaults::rating::VOLTAGE)),
     };
-    let (limit, limit_from) = match own(props, VD_LIMIT, parse::percent, &mut scratch) {
+    let (limit, limit_from) = match inp.vd_limit.map(|p| p.0) {
         Some(v) => (v, "set here"),
         None => (project_number(doc, &defaults::rating::VD_LIMIT), default_from(doc, &defaults::rating::VD_LIMIT)),
     };
-    issues.extend(scratch);
     let _ = vfrom;
     let three = system == "ac3";
     let (du, pc) = volt_drop(r20, sh.max, three, amps, metres, volts)?;
@@ -686,7 +682,7 @@ pub(super) fn volt_drop_of(
 
 /// Every rated subject of `doc`.
 pub fn subjects(doc: &Document, ctx: &Context) -> Vec<RatedSubject> {
-    let mut v: Vec<RatedSubject> = doc.conductors.keys().filter(|c| wire_is_rated(doc, ctx, **c)).map(|c| RatedSubject::Conductor(*c)).collect();
+    let mut v: Vec<RatedSubject> = doc.wires.keys().filter(|c| wire_is_rated(doc, ctx, **c)).map(|c| RatedSubject::Wire(*c)).collect();
     v.extend(doc.cables.keys().filter(|k| cable_is_rated(doc, ctx, **k)).map(|k| RatedSubject::Cable(*k)));
     v
 }

@@ -15,7 +15,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{ConductorId, Document, StyleRef};
+use ecad_model::{Document, StyleRef, WireId};
 
 use super::{Builtin, Catalogue, Field};
 use crate::defaults::{Kind, Resolved, Scope, Slot, Source};
@@ -60,8 +60,8 @@ static FIELDS: [Field; 16] = [
     // Design 050 §5.3: potential and the BOM texts are empty by default (only colour and
     // cross-section default to `none`), so a potential named "none" is a name like any other.
     Field { key: "potential", label: "Potential", kind: TEXT24, slot: Slot::new(), over: None },
-    Field { key: "colour", label: "Colour", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::COLOUR) },
-    Field { key: "cross_section", label: "Cross-section", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::CROSS_SECTION) },
+    Field { key: "colour", label: "Colour", kind: TEXT24, slot: Slot::new(), over: None },
+    Field { key: "cross_section", label: "Cross-section", kind: TEXT24, slot: Slot::new(), over: None },
     Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: is_line_colour }, slot: Slot::new(), over: None },
     Field { key: "line_type", label: "Line type", kind: Kind::Choice(<LineType as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
@@ -203,9 +203,9 @@ impl WireLooks {
     }
 
     /// The category of conductor `c` and where it came from (design 050 §5.3).
-    pub fn category(&self, doc: &Document, c: ConductorId) -> (Option<StyleRef>, CategoryFrom) {
+    pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
-        let own = doc.conductors.get(&c).and_then(|x| x.properties.get(e.key)).and_then(|v| StyleRef::parse(v));
+        let own = doc.wires.get(&c).and_then(|x| x.display.get(e.key)).and_then(|v| StyleRef::parse(v));
         if let Some(id) = own.filter(|id| super::exists(doc, "wire", id)) {
             return (Some(id), CategoryFrom::Own);
         }
@@ -231,15 +231,16 @@ impl WireLooks {
     }
 
     /// The look of conductor `c` (design 050 §5.3).
-    pub fn look(&self, doc: &Document, c: ConductorId) -> WireLook {
+    pub fn look(&self, doc: &Document, c: WireId) -> WireLook {
         let (category, from) = self.category(doc, c);
-        let props = doc.conductors.get(&c).map(|x| &x.properties);
+        let wire = doc.wires.get(&c);
         let core = !doc.cables_of(c).is_empty();
         let f = |key: &str| category.as_ref().and_then(|id| super::field_of(doc, "wire", id, key, None));
-        let own = |key: &str| props.and_then(|p| p.get(key)).filter(|v| !v.trim().is_empty()).map(|v| (v.clone(), Source::Object));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
-        let colour = own(ecad_model::wiring::COLOUR).or_else(|| if core { None } else { from_cat("colour") });
-        let cross_section = own(ecad_model::wiring::CROSS_SECTION).or_else(|| if core { None } else { from_cat("cross_section") });
+        let own_colours = wire.and_then(|w| w.colours.as_ref()).map(|c| (c.to_string(), Source::Object));
+        let own_size = wire.and_then(|w| w.size).map(|s| (s.to_string(), Source::Object));
+        let colour = own_colours.or_else(|| if core { None } else { from_cat("colour") });
+        let cross_section = own_size.or_else(|| if core { None } else { from_cat("cross_section") });
         let line_colour = f("line_colour").map_or_else(|| "wire".to_string(), |r| r.text().to_ascii_lowercase());
         let line_type = match f("line_type").map(|r| r.word()) {
             Some("dashed") => "dashed",
@@ -257,7 +258,7 @@ impl WireLooks {
 }
 
 /// [`WireLooks::look`] for one conductor (reads the categories once).
-pub fn wire_look(doc: &Document, c: ConductorId) -> WireLook {
+pub fn wire_look(doc: &Document, c: WireId) -> WireLook {
     WireLooks::new(doc).look(doc, c)
 }
 

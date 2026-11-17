@@ -111,7 +111,7 @@ pub struct Transaction {
 /// use ecad_model::{Author, Ledger, Op, Page, PageId};
 /// let mut ledger = Ledger::new(1);
 /// let page = PageId(7);
-/// ledger.commit(Author::User, "New page", vec![Op::AddPage { id: page, page: Page::new("1"), index: 0 }]).unwrap();
+/// ledger.commit(Author::User, "New page", vec![Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }]).unwrap();
 /// assert!(ledger.is_unsaved());
 /// ledger.undo(Author::User).unwrap();
 /// assert!(ledger.document().pages.is_empty());
@@ -643,7 +643,7 @@ impl Document {
     /// ```rust
     /// use ecad_model::{Document, Op, Page, PageId};
     /// let mut doc = Document::default();
-    /// let add = vec![Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }];
+    /// let add = vec![Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }];
     /// let pages = doc.with_applied(&add, |d| d.pages.len()).unwrap();
     /// assert_eq!(pages, 1);
     /// assert!(doc.pages.is_empty()); // reverted
@@ -1371,8 +1371,8 @@ mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
     use super::*;
-    use crate::doc::{Cable, CableMember, Conductor, Device, End, Layer, Page, Terminal};
-    use crate::id::{CableId, ConductorId, DeviceId, LayerId, PageId, TerminalId};
+    use crate::doc::{Cable, CableMember, Device, End, Layer, Page, Terminal, Wire};
+    use crate::id::{CableId, DeviceId, LayerId, PageId, TerminalId, WireId};
 
     fn json(doc: &Document) -> String {
         serde_json::to_string(doc).unwrap()
@@ -1381,17 +1381,17 @@ mod tests {
     /// A ledger with a component, two terminals, a conductor on the first and a cable holding it.
     fn ledger() -> Ledger {
         let mut l = Ledger::new(3);
-        let (c, w) = (DeviceId(3), ConductorId(6));
+        let (c, w) = (DeviceId(3), WireId(6));
         l.commit(
             Author::User,
             "setup",
             vec![
-                Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 },
+                Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 },
                 Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
                 Op::CreateDevice { id: c, device: Device::default() },
                 Op::AddTerminal { id: TerminalId(4), terminal: Terminal { component: c, label: None, key: None } },
                 Op::AddTerminal { id: TerminalId(5), terminal: Terminal { component: c, label: None, key: None } },
-                Op::CreateConductor { id: w, conductor: Conductor::default() },
+                Op::CreateWire { id: w, conductor: Wire::default() },
                 Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(TerminalId(4)) },
                 Op::CreateCable { id: CableId(7), cable: Cable::default() },
                 Op::AddCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: w, core: None } },
@@ -1404,9 +1404,9 @@ mod tests {
     /// A valid three-op transaction touching indexes.
     fn three_ops() -> Vec<Op> {
         vec![
-            Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(5)) },
-            Op::RemoveCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: ConductorId(6), core: None } },
-            Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
+            Op::AttachEnd { conductor: WireId(6), end: End::B, before: None, after: Some(TerminalId(5)) },
+            Op::RemoveCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: WireId(6), core: None } },
+            Op::AddPage { id: PageId(8), page: Page::titled("2").unwrap(), index: 1 },
         ]
     }
 
@@ -1415,9 +1415,9 @@ mod tests {
         l.document().check_index().unwrap();
         assert_eq!(l.head(), head);
         assert_eq!(l.state_at(head).unwrap(), *l.document());
-        assert_eq!(l.document().ends_at(TerminalId(4)), vec![(ConductorId(6), End::A)]);
+        assert_eq!(l.document().ends_at(TerminalId(4)), vec![(WireId(6), End::A)]);
         assert!(l.document().ends_at(TerminalId(5)).is_empty());
-        assert_eq!(l.document().cables_of(ConductorId(6)), vec![CableId(7)]);
+        assert_eq!(l.document().cables_of(WireId(6)), vec![CableId(7)]);
     }
 
     #[test]
@@ -1461,8 +1461,8 @@ mod tests {
         let (doc, head) = (json(l.document()), l.head());
         // Ops that apply, then an end state that fails: a conductor end on a missing terminal.
         let ops = vec![
-            Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
-            Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
+            Op::AddPage { id: PageId(8), page: Page::titled("2").unwrap(), index: 1 },
+            Op::AttachEnd { conductor: WireId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
         ];
         hooks::FAIL_REVERT.with(|c| c.set(true));
         // The debug assertion fires only after the document has been rebuilt.
@@ -1524,9 +1524,8 @@ mod tests {
     fn with_applied_shows_the_changed_document_and_reverts_it() {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
-        let seen =
-            l.with_applied(&three_ops(), |d| (d.ends_at(TerminalId(5)), d.cables_of(ConductorId(6)), d.pages.len(), d.check().is_ok())).unwrap();
-        assert_eq!(seen, (vec![(ConductorId(6), End::B)], vec![], 2, true));
+        let seen = l.with_applied(&three_ops(), |d| (d.ends_at(TerminalId(5)), d.cables_of(WireId(6)), d.pages.len(), d.check().is_ok())).unwrap();
+        assert_eq!(seen, (vec![(WireId(6), End::B)], vec![], 2, true));
         assert_unchanged(&l, &doc, head);
         // The plain document form does the same.
         let mut d = l.document().clone();
@@ -1540,10 +1539,10 @@ mod tests {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
         let bad_end = vec![
-            Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
-            Op::AttachEnd { conductor: ConductorId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
+            Op::AddPage { id: PageId(8), page: Page::titled("2").unwrap(), index: 1 },
+            Op::AttachEnd { conductor: WireId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
         ];
-        let bad_before = vec![Op::AttachEnd { conductor: ConductorId(6), end: End::A, before: Some(TerminalId(5)), after: None }];
+        let bad_before = vec![Op::AttachEnd { conductor: WireId(6), end: End::A, before: Some(TerminalId(5)), after: None }];
         for ops in [bad_end, bad_before] {
             let mut ran = false;
             let previewed = l.with_applied(&ops, |_| ran = true).map_err(|e| e.to_string());
