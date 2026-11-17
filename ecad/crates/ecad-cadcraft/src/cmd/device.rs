@@ -4,8 +4,7 @@
 //! The interactive forms ([`crate::interact`]) commit through exactly these.
 
 use cadcraft_engine::{EngineError, Session};
-use ecad_model::tag::TAG_KEY;
-use ecad_model::{Color, ComponentId, ObjectRef, Op, Placement, Pt, Style};
+use ecad_model::{Color, ComponentId, Op, Placement, Pt, Style};
 use serde_json::{Value, json};
 
 use crate::cmd::{with_any_page, with_project};
@@ -186,64 +185,7 @@ pub(crate) fn run_place(s: &mut Session, params: &Value) -> cadcraft_engine::Res
     })
 }
 
-/// Whether `setprop` on `object` and `key` follows design 018 §6.1's rules.
-pub(crate) fn is_device_property(object: ObjectRef, key: &str) -> bool {
-    matches!(object, ObjectRef::Component(_)) && devices::PROPERTIES.iter().any(|(k, _)| *k == key)
-}
-
-/// `setprop {component, key, value, merge?}` for a device property (design 018 §6, owner decisions
-/// 2026-11-08): the value rules of §6.1; a tag another device holds is refused with the ways
-/// forward, unless `merge` is true, which makes this device part of that one (one transaction).
-pub(crate) fn run_setprop(s: &mut Session, params: &Value, c: ComponentId, key: String) -> cadcraft_engine::Result<Value> {
-    let value = match params.get("value") {
-        Some(Value::Null) => None,
-        Some(Value::String(v)) => Some(v.clone()),
-        Some(_) => return Err(err("`value` must be a string, or null to clear the property")),
-        None => return Err(err("`value` is required (a string, or null to clear the property)")),
-    };
-    let merge = match params.get("merge") {
-        None | Some(Value::Null) => false,
-        Some(v) => v.as_bool().ok_or_else(|| err("`merge` must be true or false"))?,
-    };
-    with_project(s, |p, pg, _page| {
-        let doc = p.ledger.document();
-        let component = doc.components.get(&c).ok_or("no such object")?;
-        let value = crate::cmd::component_value(doc, c, &key, value)?;
-        let before = component.properties.get(&key).cloned();
-        if key == TAG_KEY
-            && let Some(t) = &value
-            && let Some(holder) = devices::holder_of(doc, t, Some(c))
-        {
-            if !merge {
-                let next = devices::tag_of(doc, c)
-                    .and_then(ecad_model::tag::parse)
-                    .or_else(|| ecad_model::tag::parse(t))
-                    .and_then(|(prefix, _)| p.tag_high.peek(doc, &prefix).ok());
-                let way = match next {
-                    Some(n) => format!("Set `merge` to true to make this the same device, or choose another tag (the next free one is {n})."),
-                    None => "Set `merge` to true to make this the same device, or choose another tag.".into(),
-                };
-                return Err(devices::duplicate_words(doc, t, holder, &way));
-            }
-            let ops = devices::plan_merge(doc, &mut p.ids, c, holder)?;
-            let into = devices::tag_words(doc, holder);
-            p.apply_edit(pg, "setprop", &format!("Merge into {into}"), ops)?;
-            let doc = p.ledger.document();
-            return Ok(json!({
-                "changed": true, "merged": true, "component": holder.hex(), "tag": into,
-                "message": format!("{} is now part of {into} ({} symbols on {}).", before.unwrap_or_else(|| "The device".into()),
-                    doc.representations_of(ecad_model::Subject::Component(holder)).count(), devices::pages_words(doc, holder)),
-            }));
-        }
-        if before == value {
-            return Ok(json!({"changed": false, "value": value}));
-        }
-        let label = if key == TAG_KEY { "Set tag" } else { "Set property" };
-        let op = Op::SetProperty { object: ObjectRef::Component(c), key: key.clone(), before, after: value.clone() };
-        p.apply_edit(pg, "setprop", label, vec![op])?;
-        Ok(json!({"changed": true, "value": value, "component": c.hex()}))
-    })
-}
+pub(crate) use ecad_electrical::cmd::prop::is_device_property;
 
 /// `symbols {query?}` (design 018 §8): read only.
 pub(crate) fn run_symbols(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {

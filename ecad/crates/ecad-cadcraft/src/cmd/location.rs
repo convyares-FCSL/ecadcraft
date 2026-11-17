@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::input::{Bounded, Command, OrNull, Typed, nullable};
-use crate::cmd::{MAX_HANDLES, err, id_list, on_any_page, on_project, opt_id};
+use crate::cmd::{MAX_HANDLES, err, on_any_page, on_project};
 use crate::designations::Aspect;
 
 pub use rules::aspect_property;
@@ -54,7 +54,7 @@ fn own_specs() -> Vec<CommandSpec> {
 }
 
 /// Run a set on the project and answer in JSON.
-fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
+pub(crate) fn apply(s: &mut Session, objects: Vec<ComponentId>, prop: String, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
     let a = rules::aspect_of(&prop).map_err(|e| err(e.to_string()))?;
     let v = on_project(s, |p, pg, _| {
         let doc = p.ledger.document();
@@ -208,22 +208,4 @@ impl Command for ConflictsParams {
         }
         Ok(v)
     }
-}
-
-/// `setprop` of an aspect property (`prop` from [`aspect_property`]) on one component or several:
-/// `setprop` still reads its JSON by hand (brief 070 types it later), so this reads the same
-/// parameters into the rules' input.
-pub(crate) fn run_setprop(s: &mut Session, params: &Value, prop: String) -> cadcraft_engine::Result<Value> {
-    let objects = match params.get("components") {
-        Some(_) => rules::objects(None, Some(id_list::<ComponentId>(params, "components", MAX_DEVICES).map_err(err)?)),
-        None => rules::objects(opt_id::<ComponentId>(params, "component").map_err(err)?, None),
-    };
-    let objects = objects.map_err(|e| err(e.to_string()))?;
-    let text = match params.get("value") {
-        Some(Value::Null) => None,
-        Some(Value::String(v)) => Some(v.clone()),
-        Some(_) => return Err(err("`value` must be a code such as +CP1, or null to clear it")),
-        None => return Err(err("`value` is required (a code such as +CP1, or null to clear it)")),
-    };
-    apply(s, objects, prop, text, "setprop")
 }

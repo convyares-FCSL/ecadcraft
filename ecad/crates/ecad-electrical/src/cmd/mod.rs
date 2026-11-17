@@ -16,6 +16,7 @@ pub mod numbering;
 pub mod output;
 pub mod page_type;
 pub mod plc;
+pub mod prop;
 pub mod rating;
 pub mod sheet;
 pub mod style;

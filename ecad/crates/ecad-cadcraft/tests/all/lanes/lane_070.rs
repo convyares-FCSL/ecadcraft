@@ -23,7 +23,6 @@ const UNTYPED: &[&str] = &[
     "cablegoto",
     "cablerefs",
     "ecaddelete",
-    "setprop",
     "cableadd",
     "place",
     "symbols",
@@ -1599,4 +1598,118 @@ fn titleblockimport_refuses_input_uniformly_and_keeps_its_rule_words() {
     assert_eq!(e, "Give `path` or `dxf` (the file's text).");
     let schema = schema_of("titleblockimport").unwrap_or(Value::Null);
     assert_eq!(schema["properties"]["item"]["type"], json!(["integer", "null"]), "{schema}");
+}
+
+/// Input refusals of `setprop`: one wording.
+#[test]
+fn setprop_refuses_input_uniformly() {
+    let rows: &[(Value, &str)] = &[
+        (json!({"component": "1", "value": "x"}), "`key` (text) is required"),
+        (json!({"component": "1", "key": "description"}), "`value` (text, or null) is required"),
+        (json!({"component": "1", "key": "description", "value": 3}), "`value` must be text, or null"),
+        (json!({"component": "zz", "key": "description", "value": "x"}), "`component` must be a hex id, or null"),
+        (json!({"components": ["zz"], "key": "description", "value": "x"}), "`components` must be a list of hex ids, or null"),
+        (json!({"component": "1", "key": "tag", "value": "-K1", "merge": "yes"}), "`merge` must be true or false, or null"),
+        (json!({"component": "1", "key": "tag", "value": "-K1", "conflict": 1}), "`conflict` must be text, or null"),
+        (json!({"key": "description", "value": "x"}), "`component`, `conductor` or `cable` (hex id) is required"),
+    ];
+    let mut h = H::new(7071);
+    for (params, says) in rows {
+        assert_eq!(h.run("setprop", params.clone()).err().as_deref(), Some(*says), "{params}");
+    }
+}
+
+/// Rule refusals of `setprop` keep their words.
+#[test]
+fn setprop_keeps_its_rule_words() {
+    let mut h = H::new(7072);
+    let a = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
+    let b = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
+    let tag_b = h.run("deviceprops", json!({"component": b})).unwrap_or_default()["tag"].clone();
+    let rows: &[(Value, &str)] = &[
+        (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_electrical::text_style::RESERVED_KEY),
+        (json!({"components": [a, b], "key": "tag", "value": "-K9"}), "Tags are one per device."),
+        (json!({"component": a, "key": "tag_fixed", "value": "maybe"}), "`tag_fixed` is \"yes\" or null, not \"maybe\""),
+        (
+            json!({"component": a, "key": "tag", "value": tag_b, "conflict": "sideways"}),
+            "`conflict` must be \"swap\", \"merge\" or \"next\", not \"sideways\"",
+        ),
+        (json!({"component": a, "key": "tag", "value": tag_b}), "is used by"),
+        (json!({"component": "ab", "key": "description", "value": "x"}), "no such object"),
+    ];
+    for (params, says) in rows {
+        let e = h.run("setprop", params.clone()).err().unwrap_or_default();
+        assert!(e.contains(says), "{params}: {e}");
+    }
+}
+
+/// `setprop` still writes, swaps and answers as before.
+#[test]
+fn the_typed_setprop_still_works() {
+    let mut h = H::new(7073);
+    let a = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
+    let b = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
+    let v = h.run("setprop", json!({"component": a, "key": "description", "value": "Pump"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(v, json!({"changed": true, "value": "Pump", "component": a}), "{v}");
+    let same = h.run("setprop", json!({"component": a, "key": "description", "value": "Pump"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(same, json!({"changed": false, "value": "Pump"}), "{same}");
+    let free = h.run("setprop", json!({"component": a, "key": "note", "value": "x"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(free, json!({"changed": true}), "{free}");
+    let many = h.run("setprop", json!({"components": [a, b], "key": "note", "value": "y"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(many, json!({"changed": true, "devices": 2}), "{many}");
+    let tag = h.run("setprop", json!({"component": a, "key": "tag", "value": "-K07"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(tag, json!({"changed": true, "value": "-K07", "fixed": true}), "{tag}");
+    let swap = h.run("setprop", json!({"component": b, "key": "tag", "value": "-K07", "conflict": "swap"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((swap["swapped"].clone(), swap["other"].clone()), (json!(true), json!({"component": a})), "{swap}");
+    let release = h.run("setprop", json!({"component": b, "key": "tag_fixed", "value": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(release, json!({"changed": true, "fixed": false}), "{release}");
+    let loc = h.run("setprop", json!({"component": a, "key": "location", "value": "+CP1"})).unwrap_or_else(|e| json!(e));
+    assert_eq!(loc["location"], json!("+CP1"), "{loc}");
+}
+
+/// PROP_RULES (brief 070 item 3): for each row that decides a device's key, `setprop` on one
+/// device and on several walks the same row, so both give the same refusal.
+#[test]
+fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
+    use ecad_electrical::cmd::prop::{PROP_RULES, rule_for};
+    use ecad_model::{ComponentId, ObjectRef};
+    let mut h = H::new(7074);
+    let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
+    let coil2 = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
+    let strip = crate::common::place(&mut h, "terminal", (100.0, 200.0))["component"].clone();
+    let strip2 = crate::common::place(&mut h, "terminal", (100.0, 300.0))["component"].clone();
+    let socket = crate::common::place(&mut h, "socket4", (300.0, 200.0))["component"].clone();
+    let socket2 = crate::common::place(&mut h, "socket4", (300.0, 300.0))["component"].clone();
+    let card = crate::common::place(&mut h, "plcdi", (400.0, 200.0))["component"].clone();
+    let card2 = crate::common::place(&mut h, "plcdi", (400.0, 400.0))["component"].clone();
+    let long = "x".repeat(400);
+    // (row, the two devices, key, a value its rule refuses)
+    let rows: &[(&str, [&Value; 2], &str, &str)] = &[
+        ("tag fixed (design 026)", [&coil, &coil2], "tag_fixed", "maybe"),
+        ("device property (design 018)", [&coil, &coil2], "description", &long),
+        ("wire, junction or continuation (briefs 022, 049)", [&coil, &coil2], "caption", "Up"),
+        ("contacts (brief 025)", [&coil, &coil2], "contacts", "??"),
+        ("contact table mirror (brief 025)", [&coil, &coil2], "mirror", "maybe"),
+        ("strip offer (brief 028)", [&strip, &strip2], "terminals", "lots"),
+        ("PE row part (brief 028)", [&coil, &coil2], "part_number.pe", &long),
+        ("connector (brief 044)", [&socket, &socket2], "pins", "99"),
+        ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal.level.separator", "abcd"),
+        ("level label (brief 036)", [&strip, &strip2], "term_label.1", &long),
+        ("PLC card (brief 045)", [&card, &card2], "plc.addr.start", "x"),
+        ("rating (brief 034)", [&coil, &coil2], "rating.1", "10A"),
+        ("parts and items (brief 047)", [&coil, &coil2], "part.1.qty", "lots"),
+        ("strip accessories, or free text (brief 030)", [&strip, &strip2], "link.1", "zz"),
+    ];
+    let doc = h.doc();
+    for (what, [one, two], key, value) in rows {
+        let c = u128::from_str_radix(one.as_str().unwrap_or_default(), 16).map(ComponentId).unwrap_or(ComponentId(0));
+        assert_eq!(rule_for(&doc, ObjectRef::Component(c), key).what, *what, "{key}");
+        let single = h.run("setprop", json!({"component": one, "key": key, "value": value})).err();
+        let many = h.run("setprop", json!({"components": [one, two], "key": key, "value": value})).err();
+        assert!(single.is_some(), "{what}: {key} {value} is refused");
+        assert_eq!(single, many, "{what}: one and several differ");
+    }
+    for (what, ..) in rows {
+        assert!(PROP_RULES.iter().any(|r| r.what == *what), "{what}");
+    }
 }
