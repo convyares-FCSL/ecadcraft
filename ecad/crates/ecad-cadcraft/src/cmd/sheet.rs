@@ -832,9 +832,8 @@ fn plan_issue_of(p: &Project, f: &RevisionFields) -> Result<IssuePlan, CmdError>
 ///
 /// # Errors
 /// As `issuerevision`, in words.
-pub fn plan_issue(p: &Project, params: &Value) -> Result<IssuePlan, String> {
-    let f = crate::cmd::input::parse::<RevisionParams>(params)?.fields();
-    Ok(plan_issue_of(p, &f)?)
+pub fn plan_issue(p: &Project) -> Result<IssuePlan, CmdError> {
+    plan_issue_of(p, &revision_fields([None, None, None, None, None, None], None, None))
 }
 
 /// `issuerevision {rev?, date?, description?, drawn?, checked?, approved?, provisional?}`: issues
@@ -869,14 +868,13 @@ pub(crate) struct IssuerevisionParams {
 impl Command for IssuerevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let f = revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], None, None);
-        let way = json!({"provisional": self.provisional});
         on_project(s, |p, pg, _| {
             // Checked before anything is written.
             plan_issue_of(p, &f)?;
             // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their
             // own transaction), or issued as they are, as asked; without an answer the ways forward
             // are named.
-            let note = crate::cmd::numbering::before_issue(p, pg, &way)?;
+            let note = crate::cmd::numbering::before_issue(p, pg, self.provisional.as_deref())?;
             let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &f)?;
             p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
             let tx = p.ledger.head();

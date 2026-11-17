@@ -502,26 +502,35 @@ pub enum BeforeIssue {
 /// # Errors
 /// Provisional items present and no `provisional` given (the ways forward), or a bad value.
 pub fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, String> {
-    let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?.map(|w| w.trim().to_ascii_lowercase());
+    let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?;
+    Ok(plan_before(p, way)?)
+}
+
+/// [`plan_before_issue`] with the `provisional` word `way` read.
+///
+/// # Errors
+/// Provisional items present and no `way` given (the ways forward), or a word that is neither.
+pub fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, CmdError> {
+    let way = way.map(|w| w.trim().to_ascii_lowercase());
     let items = provisional_items(p.ledger.document());
     if items.is_empty() {
         return Ok(BeforeIssue::Go(None));
     }
     match way.as_deref() {
-        None => Err(format!(
+        None => Err(CmdError::refused(format!(
             "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
             items.words()
-        )),
+        ))),
         Some("issue") => Ok(BeforeIssue::Go(Some(if items.tags.is_empty() {
             format!("({} issued)", plural(items.nets, "provisional wire number", "provisional wire numbers"))
         } else {
             format!("({} issued)", plural(items.tags.len(), "provisional tag", "provisional tags"))
         }))),
         Some("finalise" | "finalize") => {
-            let plan = plan_for(p, &rules::finalise_request())?;
+            let plan = plan_for(p, &rules::finalise_request()).map_err(CmdError::refused)?;
             Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
         }
-        Some(other) => Err(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}")),
+        Some(other) => Err(CmdError::input(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}"))),
     }
 }
 
@@ -540,9 +549,9 @@ pub(crate) fn commit_finalise(p: &mut Project, pg: &mut crate::access::Pages<'_>
 ///
 /// # Errors
 /// Provisional items present and no `provisional` given (the ways forward), or a bad value.
-pub(crate) fn before_issue(p: &mut Project, pg: &mut crate::access::Pages<'_>, params: &Value) -> Result<Option<String>, String> {
-    match plan_before_issue(p, params)? {
+pub(crate) fn before_issue(p: &mut Project, pg: &mut crate::access::Pages<'_>, way: Option<&str>) -> Result<Option<String>, CmdError> {
+    match plan_before(p, way)? {
         BeforeIssue::Go(note) => Ok(note),
-        BeforeIssue::Finalise(plan) => commit_finalise(p, pg, &plan).map(|()| None),
+        BeforeIssue::Finalise(plan) => commit_finalise(p, pg, &plan).map(|()| None).map_err(CmdError::refused),
     }
 }
