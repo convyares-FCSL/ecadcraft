@@ -114,8 +114,8 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> FrameLook {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
         inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),
         colour: f("line_colour").map_or_else(|| "none".to_string(), |r| r.text()),
-        grid_labels: f("grid_labels").is_none_or(|r| r.word() != "off"),
-        centre_marks: f("centre_marks").is_none_or(|r| r.word() != "off"),
+        grid_labels: f("grid_labels").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false)),
+        centre_marks: f("centre_marks").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false)),
         // Own frames are drawn for one sheet, as made (design 055 §1.4).
         block: if id.is_builtin() && f("block").is_none_or(|r| r.word() != "bottom_right") { BlockAt::BottomFull } else { BlockAt::BottomRight },
         margins: f("margins").and_then(|r| parse_margins(&r.text())).unwrap_or_default(),

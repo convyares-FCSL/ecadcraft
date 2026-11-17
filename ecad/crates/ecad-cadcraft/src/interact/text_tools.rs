@@ -143,7 +143,7 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         (Some(t), TextKind::Tag) => format!("{what} {t}"),
         _ => what,
     };
-    let done = if show == "off" { "hidden" } else { "shown" };
+    let done = if crate::text_style::Shown::from_word(show) == crate::text_style::Shown::Off { "hidden" } else { "shown" };
     let level = v.get("level").and_then(|l| l.as_str()).unwrap_or_default();
     let place = match level {
         "symbol" => "on this symbol".to_string(),

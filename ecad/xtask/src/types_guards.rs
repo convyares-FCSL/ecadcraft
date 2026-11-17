@@ -36,7 +36,7 @@ pub enum Scan {
 /// and the end of lane F sets each to 0.
 #[rustfmt::skip]
 pub const GUARDS: &[Guard] = &[
-    Guard { name: "G2", what: "boolean words compared or matched", allowed: 34, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
+    Guard { name: "G2", what: "boolean words compared or matched", allowed: 20, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
     Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 17, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
     Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 31, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
     Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 9, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },

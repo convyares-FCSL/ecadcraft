@@ -973,11 +973,7 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    match w {
-        "off" => "Hidden",
-        "first" => "Once per run",
-        _ => "Shown",
-    }
+    crate::text_style::Shown::from_word(w).label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
@@ -1034,12 +1030,7 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         _ => (None, rest),
     };
     crate::text_style::TextKind::from_word(kind)?;
-    let show = match value.map(|v| v.trim().to_ascii_lowercase()) {
-        Some(v) if v == "shown" || v == "on" => serde_json::json!("on"),
-        Some(v) if v == "hidden" || v == "off" => serde_json::json!("off"),
-        Some(v) if v == "once per run" || v == "first" => serde_json::json!("first"),
-        _ => serde_json::Value::Null,
-    };
+    let show = value.and_then(crate::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {
         (Some(r), _) => j["representation"] = r.hex().into(),
@@ -1100,7 +1091,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         // Brief 022: the number and the potential belong to the whole net.
         Target::Conductor(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
         Target::Conductor(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
-            let fixed = value.is_some_and(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "yes" | "y" | "true"));
+            let fixed = value.and_then(ecad_model::words::flag) == Some(true);
             ("wirenumber", serde_json::json!({"conductor": w.hex(), "fixed": fixed}))
         }
         Target::Conductor(w) if key == ecad_model::wiring::POTENTIAL_KEY => {

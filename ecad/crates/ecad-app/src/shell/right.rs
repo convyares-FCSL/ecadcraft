@@ -610,10 +610,11 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 /// A value as the inspector shows it: a show word in words (spec §3), else as the Standards table.
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
-        return match r.word() {
-            "off" => "Hidden".into(),
-            "first" => "Shown on the first of each run".into(),
-            _ => "Shown on the page".into(),
+        use ecad_cadcraft::text_style::Shown;
+        return match Shown::from_word(r.word()) {
+            Shown::Off => "Hidden".into(),
+            Shown::First => "Shown on the first of each run".into(),
+            Shown::On => "Shown on the page".into(),
         };
     }
     crate::lists::standards::value_text(e, r)

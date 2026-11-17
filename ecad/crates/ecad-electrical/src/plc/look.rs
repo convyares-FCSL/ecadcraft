@@ -199,7 +199,9 @@ fn make_run(card: ComponentId, dir: f64, pieces: &[Piece]) -> Run {
 fn name_block(doc: &Document, c: ComponentId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    if crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word() != "off" {
+    if crate::text_style::Shown::from_word(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+        != crate::text_style::Shown::Off
+    {
         out.push((crate::devices::tag_words(doc, c), TextKind::Tag));
     }
     if let Some((caption, true)) = super::caption(doc, c) {

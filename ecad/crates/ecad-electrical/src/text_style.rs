@@ -83,7 +83,9 @@ impl Weight {
     }
 }
 
-/// A kind of text: one row of the style table (design 031 §3.1).
+ecad_model::word_enum! {
+/// A kind of text: one row of the style table (design 031 §3.1). Its word is the key word in
+/// `text.<word>.height` and the commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TextKind {
     /// A device tag beside a symbol.
@@ -105,6 +107,7 @@ pub enum TextKind {
     /// Cable look: core labels, wire numbers at the slash, label box lines.
     CableText,
     /// A location box's `+A1`.
+    #[strum(serialize = "location")]
     LocationLabel,
     /// Title block values.
     TitleValue,
@@ -132,6 +135,7 @@ pub enum TextKind {
     ChannelText,
     /// Brief 051 (FP1): a PLC channel's address inside its cell (`I0.3`).
     Address,
+}
 }
 
 impl TextKind {
@@ -164,36 +168,12 @@ impl TextKind {
 
     /// The key word (`tag`, `point_label`…), as in `text.<word>.height` and the commands.
     pub fn word(self) -> &'static str {
-        match self {
-            TextKind::Tag => "tag",
-            TextKind::PointLabel => "point_label",
-            TextKind::Description => "description",
-            TextKind::PartNumber => "part_number",
-            TextKind::ContinuationName => "continuation_name",
-            TextKind::Reference => "reference",
-            TextKind::ContinuationCaption => "continuation_caption",
-            TextKind::WireLabel => "wire_label",
-            TextKind::CableText => "cable_text",
-            TextKind::LocationLabel => "location",
-            TextKind::TitleValue => "title_value",
-            TextKind::TitleCaption => "title_caption",
-            TextKind::TitleMain => "title_main",
-            TextKind::Grid => "grid",
-            TextKind::Table => "table",
-            TextKind::TableHeader => "table_header",
-            TextKind::Free => "free",
-            TextKind::TitlePage => "title_page",
-            TextKind::TitleRev => "title_rev",
-            TextKind::TableHeading => "table_heading",
-            TextKind::Cover => "cover",
-            TextKind::ChannelText => "channel_text",
-            TextKind::Address => "address",
-        }
+        <Self as ecad_model::Word>::word(self)
     }
 
-    /// The kind with this key word (exact, lower case).
+    /// The kind with this key word.
     pub fn from_word(word: &str) -> Option<TextKind> {
-        TextKind::ALL.into_iter().find(|k| k.word() == word)
+        <Self as ecad_model::Word>::parse(word)
     }
 
     /// The registry entry choosing this kind's text style (`text.<kind>.style`, brief 050a).
@@ -401,30 +381,44 @@ pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     (!f.eq_ignore_ascii_case(project)).then_some(f)
 }
 
-/// Whether a text is shown (design 031 §5.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shown {
-    On,
-    Off,
-    /// Once per run (§5.3): on the first symbol of each run, hidden on the others. Tags only.
-    First,
+ecad_model::word_enum! {
+    /// Whether a text is shown (design 031 §5.2).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum Shown {
+        #[default]
+        On,
+        Off,
+        /// Once per run (§5.3): on the first symbol of each run, hidden on the others. Tags only.
+        First,
+    }
 }
 
 impl Shown {
     /// The stored word: `on`, `off` or `first`.
     pub fn word(self) -> &'static str {
-        match self {
-            Shown::On => "on",
-            Shown::Off => "off",
-            Shown::First => "first",
-        }
+        <Self as ecad_model::Word>::word(self)
     }
 
-    fn from_word(w: &str) -> Shown {
-        match w {
-            "off" => Shown::Off,
-            "first" => Shown::First,
-            _ => Shown::On,
+    /// The value a stored word names; anything else is shown ([`Shown::On`]).
+    pub fn from_word(w: &str) -> Shown {
+        <Self as ecad_model::Word>::parse(w).unwrap_or_default()
+    }
+
+    /// The value typed in a box: a stored word, or its words in the panels (`Shown`, `Hidden`,
+    /// `Once per run`), in any case.
+    pub fn from_input(text: &str) -> Option<Shown> {
+        let t = text.trim();
+        <Self as ecad_model::Word>::parse(t).or_else(|| Shown::ALL_LABELS.into_iter().find(|s| s.label().eq_ignore_ascii_case(t)))
+    }
+
+    const ALL_LABELS: [Shown; 3] = [Shown::On, Shown::Off, Shown::First];
+
+    /// Its words in the panels.
+    pub fn label(self) -> &'static str {
+        match self {
+            Shown::On => "Shown",
+            Shown::Off => "Hidden",
+            Shown::First => "Once per run",
         }
     }
 }

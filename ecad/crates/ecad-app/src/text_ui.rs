@@ -5,7 +5,7 @@
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
-use ecad_cadcraft::text_style::TextKind;
+use ecad_cadcraft::text_style::{Shown, TextKind};
 
 /// The section's element name.
 pub const SECTION_ID: &str = "ecad.projectsettings.text";
@@ -80,11 +80,7 @@ fn label_of(k: TextKind) -> &'static str {
 
 /// The visibility words a Shown drop-down shows.
 fn show_words(w: &str) -> &'static str {
-    match w {
-        "off" => "Hidden",
-        "first" => "Once per run",
-        _ => "Shown",
-    }
+    Shown::from_word(w).label()
 }
 
 /// A number as a field shows it.
@@ -258,7 +254,7 @@ impl TextSection {
                     ui.add(egui::TextEdit::singleline(&mut r.height).desired_width(36.0))
                         .accessible_name(format!("ecad.projectsettings.text.{}.height", r.kind));
                     ui.checkbox(&mut r.bold, "").accessible_name(format!("ecad.projectsettings.text.{}.bold", r.kind));
-                    let current = r.show.clone().unwrap_or_else(|| "on".into());
+                    let current = r.show.clone().unwrap_or_else(|| Shown::On.word().into());
                     ui.add_enabled_ui(!r.show_fixed, |ui| {
                         egui::ComboBox::from_id_salt(format!("ecad.projectsettings.text.{}.show", r.kind))
                             .selected_text(show_words(&current))
