@@ -20,7 +20,7 @@
 use std::fmt;
 
 use crate::doc::Properties;
-use crate::words;
+use crate::words::{self, Word};
 
 /// A property key the program reads or writes, named once in [`KEYS`] (or built by a
 /// [`Family`]).
@@ -40,48 +40,49 @@ impl fmt::Display for PropKey {
     }
 }
 
-/// What part of the project a key belongs to: the one place a key's prefix is read (design 064
-/// §3.3). Views route property writes by it.
-///
-/// The first seventeen are the defaults registry's areas, in its order and with its words (a
-/// registry key starts with `<word>.`); the rest classify the stored keys outside the registry.
-/// Lanes B–F remove the transitional areas as their keys become struct fields, leaving the registry
-/// areas and [`Area::Free`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::IntoStaticStr, strum::VariantArray)]
-#[strum(serialize_all = "snake_case")]
-pub enum Area {
-    Text,
-    Wiring,
-    Wire,
-    Tags,
-    Revisions,
-    Print,
-    Symbol,
-    Terminal,
-    Connector,
-    #[strum(serialize = "strippage")]
-    StripPage,
-    Bom,
-    Location,
-    Continuation,
-    Plc,
-    Page,
-    Front,
-    Rating,
-    /// A device's or cable's identity: its tag and whether the tag is fixed.
-    Identity,
-    /// Tag numbering's project state: provisional tags, high-water resets.
-    Numbering,
-    /// A page's place in the book: its number and folder.
-    Book,
-    /// The `=` function and `+` location codes stored on a page or the project.
-    Designation,
-    /// A generated page's kind.
-    Generated,
-    /// A terminal strip's jumpers (`link.<n>`).
-    Link,
-    /// Anything else: a person's own property.
-    Free,
+crate::word_enum! {
+    /// What part of the project a key belongs to: the one place a key's prefix is read (design 064
+    /// §3.3). Views route property writes by it.
+    ///
+    /// The first seventeen are the defaults registry's areas, in its order and with its words (a
+    /// registry key starts with `<word>.`); the rest classify the stored keys outside the registry.
+    /// Lanes B–F remove the transitional areas as their keys become struct fields, leaving the registry
+    /// areas and [`Area::Free`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum Area {
+        Text,
+        Wiring,
+        Wire,
+        Tags,
+        Revisions,
+        Print,
+        Symbol,
+        Terminal,
+        Connector,
+        #[strum(serialize = "strippage")]
+        StripPage,
+        Bom,
+        Location,
+        Continuation,
+        Plc,
+        Page,
+        Front,
+        Rating,
+        /// A device's or cable's identity: its tag and whether the tag is fixed.
+        Identity,
+        /// Tag numbering's project state: provisional tags, high-water resets.
+        Numbering,
+        /// A page's place in the book: its number and folder.
+        Book,
+        /// The `=` function and `+` location codes stored on a page or the project.
+        Designation,
+        /// A generated page's kind.
+        Generated,
+        /// A terminal strip's jumpers (`link.<n>`).
+        Link,
+        /// Anything else: a person's own property.
+        Free,
+    }
 }
 
 impl Area {
@@ -105,11 +106,6 @@ impl Area {
         Area::Front,
         Area::Rating,
     ];
-
-    /// The area's word: a registry key's first word (`strippage`), or the area's name.
-    pub fn word(self) -> &'static str {
-        self.into()
-    }
 
     /// Whether this is one of the registry's areas.
     pub fn is_registry(self) -> bool {
@@ -295,6 +291,11 @@ pub trait PropsExt {
     /// The whole number of at most `max` stored under `key` ([`words::uint`]).
     fn uint(&self, key: PropKey, max: u32) -> Option<u32> {
         self.text(key).and_then(|t| words::uint(t, max))
+    }
+
+    /// The word of `E` stored under `key` ([`Word::parse`]).
+    fn word<E: Word>(&self, key: PropKey) -> Option<E> {
+        self.text(key).and_then(E::parse)
     }
 }
 

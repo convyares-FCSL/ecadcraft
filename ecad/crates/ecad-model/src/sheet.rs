@@ -724,3 +724,18 @@ mod tests {
         assert_eq!((br.column_of(130.0), br.row_of(120.0)), (Some(6), Some(3)));
     }
 }
+
+// ---------------------------------------------------------------- page places (design 072 §9.3)
+
+/// A column of a page's grid, numbered as the frame numbers it (1 is the first column counted from
+/// the grid's start corner, [`Grid::column_number`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(transparent)]
+pub struct PageColumn(pub u32);
+
+/// A row of a page's grid, numbered as the frame numbers it ([`Grid::row_number`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(transparent)]
+pub struct PageRow(pub u32);

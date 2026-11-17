@@ -2,6 +2,9 @@
 //! a whole number. Every copy of these rules goes through here, so a file reads the same in every
 //! crate.
 //!
+//! It also holds [`Word`] and [`crate::word_enum!`], through which every enum stored as a word
+//! gets its `word()`, `parse()` and serde forms from one attribute (strum).
+//!
 //! This module holds only the readers. What a word means for one setting (its choice list, its
 //! default) lives with that setting.
 #![deny(clippy::wildcard_enum_match_arm)]
@@ -89,4 +92,162 @@ fn digits_value(t: &str) -> Option<u32> {
         return None;
     }
     t.parse::<u32>().ok()
+}
+
+crate::word_enum! {
+    /// A connector half (brief 044, design 072 §2.2, §2.6): the socket (female contacts) or the
+    /// plug (male contacts).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum Side {
+        Socket,
+        Plug,
+    }
+}
+
+impl Side {
+    /// The other half.
+    pub fn other(self) -> Side {
+        match self {
+            Side::Socket => Side::Plug,
+            Side::Plug => Side::Socket,
+        }
+    }
+}
+
+/// An enum whose values are stored as words (design 072 §9.1): `word()` writes one, `parse()`
+/// reads one or fails. Declared with [`crate::word_enum!`], never by hand, so a variant's word is
+/// written in exactly one place (its strum attribute, or its name in snake case).
+///
+/// # Semantics
+/// [`Word::parse`] ignores surrounding whitespace and ASCII case and returns `None` for any other
+/// text: there is no fallback variant. Serde writes [`Word::word`] and refuses an unknown word with
+/// an error naming it and the allowed words.
+pub trait Word: Copy + Sized + 'static {
+    /// Every value, in declaration order.
+    const ALL: &'static [Self];
+    /// Every value's word, in the order of [`Word::ALL`].
+    const WORDS: &'static [&'static str];
+
+    /// The value's word.
+    fn word(self) -> &'static str;
+
+    /// The value a word names.
+    fn parse(text: &str) -> Option<Self>;
+}
+
+/// The message of an unknown word: the word and the words allowed.
+pub fn unknown_word_message(word: &str, what: &str, allowed: &[&str]) -> String {
+    format!("unknown {what} word `{word}` (allowed: {})", allowed.join(", "))
+}
+
+#[doc(hidden)]
+#[cfg(feature = "schema")]
+pub use schemars as __schemars;
+#[doc(hidden)]
+pub use serde as __serde;
+
+/// Declares an enum whose values are stored as words, and implements [`Word`], `Serialize`,
+/// `Deserialize` and (with ecad-model's `schema` feature) `JsonSchema` for it.
+///
+/// The words are snake case of the variant names unless a variant says otherwise with
+/// `#[strum(serialize = "…")]`. The crate using it depends on `strum`.
+///
+/// # Example
+/// ```
+/// use ecad_model::words::Word;
+/// ecad_model::word_enum! {
+///     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///     pub enum Corner {
+///         TopLeft,
+///         #[strum(serialize = "br")]
+///         BottomRight,
+///     }
+/// }
+/// assert_eq!(Corner::TopLeft.word(), "top_left");
+/// assert_eq!(Corner::parse(" BR "), Some(Corner::BottomRight));
+/// assert_eq!(Corner::parse("bottom_right"), None);
+/// assert_eq!(Corner::WORDS, &["top_left", "br"]);
+/// ```
+#[macro_export]
+macro_rules! word_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $( $(#[$vmeta:meta])* $variant:ident ),* $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(::strum::IntoStaticStr, ::strum::EnumString, ::strum::VariantArray, ::strum::VariantNames)]
+        #[strum(serialize_all = "snake_case", ascii_case_insensitive)]
+        $vis enum $name {
+            $( $(#[$vmeta])* $variant ),*
+        }
+
+        impl $crate::words::Word for $name {
+            const ALL: &'static [Self] = <Self as ::strum::VariantArray>::VARIANTS;
+            const WORDS: &'static [&'static str] = <Self as ::strum::VariantNames>::VARIANTS;
+
+            fn word(self) -> &'static str {
+                self.into()
+            }
+
+            fn parse(text: &str) -> Option<Self> {
+                <Self as ::core::str::FromStr>::from_str(text.trim()).ok()
+            }
+        }
+
+        impl $crate::words::__serde::Serialize for $name {
+            fn serialize<S: $crate::words::__serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                s.serialize_str($crate::words::Word::word(*self))
+            }
+        }
+
+        impl<'de> $crate::words::__serde::Deserialize<'de> for $name {
+            fn deserialize<D: $crate::words::__serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                let text = <::std::string::String as $crate::words::__serde::Deserialize>::deserialize(d)?;
+                <Self as $crate::words::Word>::parse(&text).ok_or_else(|| {
+                    <D::Error as $crate::words::__serde::de::Error>::custom($crate::words::unknown_word_message(
+                        &text,
+                        stringify!($name),
+                        <Self as $crate::words::Word>::WORDS,
+                    ))
+                })
+            }
+        }
+
+        $crate::__word_schema!($name);
+    };
+}
+
+/// The JSON Schema of a [`Word`] enum: a string, one of its words.
+#[doc(hidden)]
+#[cfg(feature = "schema")]
+#[macro_export]
+macro_rules! __word_schema {
+    ($name:ident) => {
+        impl $crate::words::__schemars::JsonSchema for $name {
+            fn inline_schema() -> bool {
+                true
+            }
+
+            fn schema_name() -> ::std::borrow::Cow<'static, str> {
+                stringify!($name).into()
+            }
+
+            fn json_schema(_: &mut $crate::words::__schemars::SchemaGenerator) -> $crate::words::__schemars::Schema {
+                $crate::words::__schemars::json_schema!({
+                    "type": "string",
+                    "enum": <$name as $crate::words::Word>::WORDS,
+                })
+            }
+        }
+    };
+}
+
+/// Without ecad-model's `schema` feature a [`Word`] enum has no schema.
+#[doc(hidden)]
+#[cfg(not(feature = "schema"))]
+#[macro_export]
+macro_rules! __word_schema {
+    ($name:ident) => {};
 }

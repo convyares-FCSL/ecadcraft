@@ -13,6 +13,9 @@
 //! Building a [`Book`] costs one pass over the pages and folders, never over their items.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::doc::Document;
 use crate::id::{FolderId, PageId};
@@ -254,4 +257,54 @@ pub fn folder_depth(doc: &Document, folder: FolderId) -> Option<usize> {
         at = doc.folders.get(&parent)?;
     }
     Some(depth)
+}
+
+/// Most characters of a page number.
+pub const MAX_PAGE_NO_CHARS: usize = 12;
+
+/// The number a page is shown with (`100`, `105a`, `A_01`): 1 to [`MAX_PAGE_NO_CHARS`] ASCII
+/// letters, digits or `_` (design 072 §9.3).
+///
+/// # Semantics
+/// Built only through [`PageNo::parse`] or deserialisation, which refuse any other text, so a
+/// held `PageNo` is always well formed. Case is kept as written.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(transparent)]
+pub struct PageNo(String);
+
+impl PageNo {
+    /// The page number `text` is, if it is well formed. Surrounding whitespace is ignored.
+    ///
+    /// # Example
+    /// ```
+    /// use ecad_model::book::PageNo;
+    /// assert_eq!(PageNo::parse(" 105a ").map(|n| n.to_string()), Some("105a".into()));
+    /// assert!(PageNo::parse("1.5").is_none());
+    /// ```
+    pub fn parse(text: &str) -> Option<PageNo> {
+        let t = text.trim();
+        let n = t.chars().count();
+        ((1..=MAX_PAGE_NO_CHARS).contains(&n) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')).then(|| PageNo(t.to_string()))
+    }
+
+    /// The number's text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for PageNo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for PageNo {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        PageNo::parse(&text)
+            .filter(|n| n.0 == text)
+            .ok_or_else(|| serde::de::Error::custom(format!("`{text}` is not a page number (1-{MAX_PAGE_NO_CHARS} letters, digits or _)")))
+    }
 }

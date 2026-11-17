@@ -46,6 +46,7 @@ pub mod units;
 pub mod wiring;
 pub mod words;
 
+pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
     Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form,
@@ -61,8 +62,9 @@ pub use id::{
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
-pub use sheet::{GridLabels, SheetSpec};
-pub use style::{Standard, StandardHeader, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
+pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+pub use words::{Side, Word};
 
 /// Version of the op and document schema. Independent of the product version (proposal §8.1):
 /// it changes only when the meaning or shape of recorded ops changes.

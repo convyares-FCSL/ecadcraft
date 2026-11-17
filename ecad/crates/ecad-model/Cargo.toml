@@ -20,7 +20,8 @@ toml = { version = "1.1.8", default-features = false, features = ["std", "parse"
 [dev-dependencies]
 serde_json = { workspace = true }
 # Turns on this crate's verify mode for its own tests (see the `verify-invariants` feature).
-ecad-model = { path = ".", features = ["verify-invariants"] }
+# `schema`: the words round-trip test checks each word enum's schema (design 072 §14, A2).
+ecad-model = { path = ".", features = ["verify-invariants", "schema"] }
 
 [features]
 # Verify mode: after every transaction, also run the full invariant check and the index check and
