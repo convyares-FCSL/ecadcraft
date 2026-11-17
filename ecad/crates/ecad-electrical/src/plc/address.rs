@@ -253,7 +253,7 @@ pub trait Addressed {
 
 impl Addressed for ecad_model::plc::PlcModule {
     fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block> {
-        let r = self.rack.filter(|r| rack::is_rack(doc, *r))?;
+        let r = self.rack.filter(|r| super::edit::station_of(doc, *r).is_some())?;
         self.slot?;
         blocks(doc, r, &members_of(doc, r)).get(&id).copied()
     }

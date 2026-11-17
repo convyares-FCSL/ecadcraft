@@ -828,7 +828,8 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         }
         if remaining.is_empty() {
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
-            let (released, n) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            let (released, n) =
+                if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             if n > 0 {

@@ -76,7 +76,7 @@ pub fn all_blocks(doc: &Document) -> BTreeMap<DeviceId, address::Block> {
             ecad_model::DeviceType::PlcModule(m) => m.rack,
             _ => None,
         })
-        .filter(|r| rack::is_rack(doc, *r))
+        .filter(|r| edit::station_of(doc, *r).is_some())
         .collect();
     racks.into_iter().flat_map(|r| address::snapshot(doc, r)).collect()
 }
@@ -206,7 +206,7 @@ pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key:
         };
         cards.into_iter().flat_map(|card| doc.representations_of(Subject::Device(card)).map(|(_, x)| x.page).collect::<Vec<_>>()).collect()
     };
-    if rack::is_rack(doc, c) {
+    if edit::station_of(doc, c).is_some() {
         return pages_of(c);
     }
     // A card's own text or typed address shows on its own cells only.
@@ -218,7 +218,7 @@ pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key:
         out.extend(pages_of(r));
     }
     if key == rack::RACK_KEY
-        && let Some(r) = after.and_then(|v| DeviceId::parse(v.trim())).filter(|r| rack::is_rack(doc, *r))
+        && let Some(r) = after.and_then(|v| DeviceId::parse(v.trim())).filter(|r| edit::station_of(doc, *r).is_some())
     {
         out.extend(pages_of(r));
     }
@@ -282,7 +282,7 @@ pub fn caption_text(
     doc: &Document, c: DeviceId, rep: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
 ) -> Option<crate::devices::PageText> {
     let s = crate::devices::rep_starter(doc, r)?;
-    let ty = CardType::of_body(s.key)?;
+    let ty = CardType::of_symbol(s)?;
     if ty.is_rack() {
         return None;
     }

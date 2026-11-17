@@ -201,7 +201,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             _ => None,
         };
         // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
-        let card_slot = match crate::plc::rack::CardType::of_body(starter.key) {
+        let card_slot = match crate::plc::rack::CardType::of_symbol(starter) {
             Some(t) if !t.is_rack() && !plan.joined => {
                 let last = p.last_placed.as_ref().map(|(_, c)| *c);
                 let at = crate::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;

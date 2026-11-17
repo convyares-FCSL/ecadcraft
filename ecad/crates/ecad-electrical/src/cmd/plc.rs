@@ -136,7 +136,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
     let mut old_defs = BTreeSet::new();
     for (_, r) in doc.representations_of(Subject::Device(c)) {
         let Some(st) = crate::devices::rep_starter(doc, r) else { continue };
-        if CardType::of_body(st.key) != Some(from) {
+        if CardType::of_symbol(st) != Some(from) {
             continue;
         }
         for item in &r.items {
@@ -688,7 +688,7 @@ pub fn title(doc: &Document, card: DeviceId, ty: CardType) -> String {
 
 /// Whether `c` has a card body drawn anywhere.
 fn body_drawn(doc: &Document, c: DeviceId) -> bool {
-    doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()))
+    doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()))
 }
 
 /// What a card's page shows (design 051 §3.6).

@@ -100,7 +100,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
         let i = crate::devices::shown_terminals(doc, c, r).iter().find_map(|(t, _)| super::channels::point_of(doc, *t)).map(|x| x.0);
         (-w / 2.0, w / 2.0, CELL_TOP, Some(i?))
     } else {
-        let ty = CardType::of_body(s.key)?;
+        let ty = CardType::of_symbol(s)?;
         if ty.is_rack() {
             return None;
         }
@@ -251,7 +251,7 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Par
     let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
     let has_body = doc
         .representations_of(Subject::Device(c))
-        .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()));
+        .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()));
     let lines = name_block(doc, c);
     let ttext = type_text(doc, c);
     let band = name_band(doc, &lines);
@@ -341,7 +341,7 @@ pub const FRAME_DERIVED: &str = "The card's frame is derived; move the card's ce
 /// card frame's: a cell or body has no cross-reference parts of its own).
 pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
     let Some(s) = doc.representations.get(&rid).and_then(|r| crate::devices::rep_starter(doc, r)) else { return false };
-    crate::symbols::cell_shape(s.key).is_some() || CardType::of_body(s.key).is_some_and(|t| !t.is_rack())
+    crate::symbols::cell_shape(s.key).is_some() || CardType::of_symbol(s).is_some_and(|t| !t.is_rack())
 }
 
 /// Whether representation `r` (id `rid`) of `c` is in a framed run that is drawn: its own tag

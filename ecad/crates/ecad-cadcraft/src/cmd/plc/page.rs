@@ -111,7 +111,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
             })
         });
         def.and_then(crate::symbols::of_definition)
-            .and_then(|s| crate::plc::rack::CardType::of_body(s.key))
+            .and_then(crate::plc::rack::CardType::of_symbol)
             .is_some_and(crate::plc::rack::CardType::is_rack)
     };
     let places_rack = ops.iter().any(|op| match op {
@@ -122,7 +122,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
         return Ok((None, Vec::new()));
     }
     let has_page = doc.page_order.iter().any(|pg| crate::generated::kind_of(doc, *pg) == Some(crate::generated::GenKind::PlcRack));
-    let other_rack = doc.devices.keys().any(|c| crate::plc::rack::is_rack(doc, *c));
+    let other_rack = doc.devices.keys().any(|c| crate::plc::edit::station_of(doc, *c).is_some());
     if has_page || other_rack {
         return Ok((None, Vec::new()));
     }

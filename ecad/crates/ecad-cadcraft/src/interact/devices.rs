@@ -143,7 +143,7 @@ impl Place {
     /// Brief 045 (design 045 §2.4): whether the next placement is a new card that still needs its
     /// rack answered (the project has a rack).
     fn needs_rack(&self, s: &Session) -> bool {
-        let card = crate::plc::rack::CardType::of_body(self.symbol().key).is_some_and(|t| !t.is_rack());
+        let card = crate::plc::rack::CardType::of_symbol(self.symbol()).is_some_and(|t| !t.is_rack());
         card && self.join.is_none()
             && self.tag.is_none()
             && self.rack.is_none()
@@ -152,7 +152,7 @@ impl Place {
 
     /// Whether the next placement is a new card (a card body, not a rack, joining no device).
     fn is_card(&self) -> bool {
-        crate::plc::rack::CardType::of_body(self.symbol().key).is_some_and(|t| !t.is_rack()) && self.join.is_none()
+        crate::plc::rack::CardType::of_symbol(self.symbol()).is_some_and(|t| !t.is_rack()) && self.join.is_none()
     }
 
     /// ` in -A01 slot 2` (or ` in no rack`) for a new card whose rack was answered.

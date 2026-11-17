@@ -16,7 +16,7 @@
 use crate::CmdError;
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, Op, Subject};
+use ecad_model::{DeviceId, Document, Op};
 
 use super::edit;
 
@@ -118,9 +118,13 @@ impl CardType {
         }
     }
 
-    /// The type whose body is starter `key`.
-    pub fn of_body(key: crate::symbols::StarterKey) -> Option<CardType> {
-        CardType::ALL.into_iter().find(|t| t.body() == ecad_model::Word::word(key))
+    /// The card type a card body symbol `s` draws, from the type it declares (design 072 §2.3);
+    /// `None` for a channel symbol or a symbol that is not a PLC card's.
+    pub fn of_symbol(s: &crate::symbols::Starter) -> Option<CardType> {
+        match s.kind {
+            crate::symbols::Kind::Channel(_) => None,
+            _ => CardType::of_type(&s.device_type()),
+        }
     }
 
     /// Whether a device of this type is a rack (a CPU or a head module).
@@ -193,16 +197,6 @@ impl CardType {
     }
 }
 
-/// The type of device `c` from its card body (its head), if it has one.
-pub fn body_type(doc: &Document, c: DeviceId) -> Option<CardType> {
-    doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).find_map(|s| CardType::of_body(s.key))
-}
-
-/// Whether device `c` is a rack (a station).
-pub fn is_rack(doc: &Document, c: DeviceId) -> bool {
-    edit::station_of(doc, c).is_some()
-}
-
 /// A slot number as stored: digits only, 0–[`MAX_SLOT`].
 pub fn parse_slot(text: &str) -> Option<u32> {
     let t = text.trim();
@@ -230,7 +224,7 @@ pub enum RackRef {
 pub fn rack_ref(doc: &Document, c: DeviceId) -> RackRef {
     match edit::module_of(doc, c).and_then(|m| m.rack) {
         None => RackRef::None,
-        Some(r) if r != c && is_rack(doc, r) => RackRef::Rack(r),
+        Some(r) if r != c && edit::station_of(doc, r).is_some() => RackRef::Rack(r),
         Some(r) => RackRef::Missing(r),
     }
 }
@@ -259,7 +253,7 @@ pub fn channel_count(doc: &Document, c: DeviceId) -> u32 {
 /// for prompts and commands, not per frame.
 pub fn racks(doc: &Document) -> Vec<DeviceId> {
     let mut v: Vec<(String, DeviceId)> =
-        doc.tagged().map(|(_, c)| c).filter(|c| is_rack(doc, *c)).map(|c| (crate::devices::tag_words(doc, c), c)).collect();
+        doc.tagged().map(|(_, c)| c).filter(|c| edit::station_of(doc, *c).is_some()).map(|c| (crate::devices::tag_words(doc, c), c)).collect();
     v.sort();
     v.dedup_by_key(|x| x.1);
     v.into_iter().map(|(_, c)| c).collect()
@@ -356,7 +350,7 @@ fn device_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
 /// Nothing of that name, or it is not a rack.
 pub fn rack_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let c = device_named(doc, t)?;
-    if !is_rack(doc, c) {
+    if !edit::station_of(doc, c).is_some() {
         return Err(CmdError::refused(format!("{} is not a rack; a rack is a CPU or a head module.", crate::devices::tag_words(doc, c))));
     }
     Ok(c)
@@ -512,7 +506,7 @@ pub fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into: Devic
     let Some(station) = edit::station_of(doc, from).cloned() else { return };
     // `from`'s representations, its rack body among them, move to `into`, which so becomes the rack
     // (a merge that would give `into` two heads is refused before this).
-    if !is_rack(doc, into) {
+    if !edit::station_of(doc, into).is_some() {
         edit::modify(doc, ops, into, |t| *t = ecad_model::DeviceType::PlcRack(station));
     }
     for (c, _) in cards_naming(doc, from) {
