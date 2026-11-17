@@ -285,6 +285,14 @@ impl Binding {
         self.disk.is_some()
     }
 
+    /// Make the opened project read-only for the unknown words found on open
+    /// ([`crate::disk::DiskProjectV2::refuse_unknown_words`]).
+    pub fn refuse_unknown_words(&mut self, words: Vec<ecad_model::strict::UnknownWord>) {
+        if let Some(d) = self.disk.as_mut() {
+            d.refuse_unknown_words(words);
+        }
+    }
+
     /// Where the file stands.
     pub fn status(&self) -> FileStatus {
         let Some(d) = &self.disk else { return FileStatus::default() };
@@ -381,6 +389,9 @@ impl Binding {
     pub fn bound(&self) -> bool {
         false
     }
+
+    /// No file to refuse.
+    pub fn refuse_unknown_words(&mut self, _words: Vec<ecad_model::strict::UnknownWord>) {}
 
     /// No lock file.
     pub fn lock_file(&self) -> Option<String> {

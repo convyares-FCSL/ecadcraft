@@ -1406,6 +1406,8 @@ impl Project {
             if reading { crate::file::Binding::open_read_only(&path, seed, &writer()) } else { crate::file::Binding::open(&path, seed, &writer()) }
                 .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
+        // Words in values that stay text (design 072 §9.5): read once on open, never per commit.
+        o.binding.refuse_unknown_words(ecad_electrical::words_check::check(ledger.document()));
         let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
         // A fresh ID stream for this session, never reissuing the file's IDs.

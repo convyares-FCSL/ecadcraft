@@ -53,6 +53,22 @@ impl StyleLayer {
     }
 }
 
+crate::word_enum! {
+    /// A style catalogue (design 050 §2, design 072 F1, F2): which kind of style a record or a
+    /// reference is. One variant per catalogue; a later catalogue adds one.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum StyleCatalogue {
+        Text,
+        Location,
+        Frame,
+        Wire,
+        Page,
+        Cable,
+        #[strum(serialize = "ratingtable")]
+        RatingTable,
+    }
+}
+
 /// Whether `w` is a well-formed catalogue word or built-in style word: 1–32 characters of
 /// `a-z 0-9 _`.
 pub fn is_word(w: &str) -> bool {

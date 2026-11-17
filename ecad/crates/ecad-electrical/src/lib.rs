@@ -55,4 +55,5 @@ pub mod text_style;
 pub mod title_block;
 pub mod wires;
 pub mod words;
+pub mod words_check;
 pub mod xref;

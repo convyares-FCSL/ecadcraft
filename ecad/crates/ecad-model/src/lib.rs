@@ -16,10 +16,13 @@
 //! - [`derive`]: results recomputed from the document (terminal positions, connection mismatches).
 //! - [`connectivity`]: nets, kept incrementally by every op (brief 022).
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
+//! - [`words`], [`units`] and [`keys`]: the shared word readers, the unit types and the property
+//!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod book;
 pub mod builtins;
+pub mod colour;
 pub mod connectivity;
 pub mod derive;
 mod dev;
@@ -30,17 +33,23 @@ pub mod geom;
 pub mod id;
 mod index;
 pub mod invariant;
+pub mod keys;
 pub mod ledger;
 pub mod links;
 pub mod merge;
 pub mod numbering;
 pub mod op;
 pub mod sheet;
+pub mod strict;
 pub mod style;
 pub mod tag;
+pub mod text;
 pub mod title_block;
+pub mod units;
 pub mod wiring;
+pub mod words;
 
+pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use doc::{
     Cable, CableMember, Color, Component, Conductor, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Document, End, Folder, Form,
@@ -56,8 +65,9 @@ pub use id::{
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
-pub use sheet::{GridLabels, SheetSpec};
-pub use style::{Standard, StandardHeader, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
+pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+pub use words::{Side, Word};
 
 /// Version of the op and document schema. Independent of the product version (proposal §8.1):
 /// it changes only when the meaning or shape of recorded ops changes.
