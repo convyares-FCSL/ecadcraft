@@ -128,7 +128,9 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-cadcraft/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-cadcraft/src/interact/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-cadcraft/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/project.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-cadcraft/src/project/persistence.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-cadcraft/src/translate.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
