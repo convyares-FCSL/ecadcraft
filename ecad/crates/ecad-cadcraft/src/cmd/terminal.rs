@@ -237,11 +237,16 @@ pub(crate) fn place_level(
                     None => p.tag_high.next_auto(&p.ledger, &crate::devices::prefix_for(doc, starter))?,
                 };
                 let mut properties = ecad_model::Properties::new();
-                properties.insert(ecad_model::tag::TAG_KEY.into(), t.clone());
                 properties.insert("description".into(), "Terminal".into());
                 ops.push(Op::CreateDevice {
                     id: c,
-                    device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+                    device: ecad_model::Device {
+                        tag: Some(crate::devices::stored_tag(&t)?),
+                        tag_fixed: false,
+                        properties,
+                        definition: Some(def),
+                        device_type: starter.device_type(),
+                    },
                 });
                 (c, t)
             }

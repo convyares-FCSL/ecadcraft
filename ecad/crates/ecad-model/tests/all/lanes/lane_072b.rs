@@ -90,3 +90,25 @@ fn modify_device_changes_the_type_and_undoes() {
     let wrong = Op::ModifyDevice { id: c, before: after.clone(), after: before };
     assert!(matches!(l.commit(Author::User, "stale", vec![wrong]), Err(ModelError::Precondition(_))));
 }
+
+/// Design 072 §2.1 (step 2a): the tag and its fixed flag are fields; a device's bag never holds
+/// them, `SetProperty` refuses them on a device, and a file's tag is validated text.
+#[test]
+fn the_tag_is_a_field_not_a_property() {
+    let mut ids = IdAllocator::seeded(11);
+    let mut l = Ledger::new(11);
+    let c: DeviceId = ids.fresh();
+    let mut bagged = Device::default();
+    bagged.properties.insert("tag".into(), "-K01".into());
+    assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "a bag holding tag is refused");
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default().with_tag(Some("-K01")) }]).unwrap();
+    assert_eq!(l.document().components_tagged("K1"), vec![c], "the field is indexed");
+    let set = ecad_model::ObjectRef::Device(c);
+    for key in ["tag", "tag_fixed"] {
+        let op = Op::SetProperty { object: set, key: key.into(), before: None, after: Some("yes".into()) };
+        assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{key}");
+    }
+    let hidden = format!(r#"{{"tag":"-K{}01","tag_fixed":false,"properties":{{}},"definition":null,"device_type":"general"}}"#, '\u{202e}');
+    assert!(serde_json::from_str::<Device>(&hidden).is_err(), "a bidi character in a tag does not read");
+    assert_eq!(Device::default().with_tag(Some("-K02")).value("tag").as_deref(), Some("-K02"));
+}

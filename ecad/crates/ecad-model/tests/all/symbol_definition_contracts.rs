@@ -55,11 +55,11 @@ fn set_component_definition_keeps_properties() {
     l.commit(
         Author::User,
         "prop",
-        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "tag".into(), before: None, after: Some("-K01".into()) }],
+        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "maker".into(), before: None, after: Some("-K01".into()) }],
     )
     .expect("tag");
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().devices[&K].properties.get("tag").map(String::as_str), Some("-K01"));
+    assert_eq!(l.document().devices[&K].properties.get("maker").map(String::as_str), Some("-K01"));
 }
 
 #[test]

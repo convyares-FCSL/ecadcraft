@@ -29,6 +29,15 @@ use ecad_model::{
 };
 use ecad_model::{DeviceType, Noun, TextHAlign as HAlign, TextVAlign as VAlign};
 
+/// `t` as a device's stored tag (design 072 §2.1): refused when it is not 1 to 40 printable
+/// characters.
+///
+/// # Errors
+/// [`tag::BAD_TAG`]'s words.
+pub fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
+    tag::Tag::new(t).map_err(|_| CmdError::refused(tag::BAD_TAG))
+}
+
 /// After device `c`'s symbol is swapped for `definition` (a `SetDeviceDefinition` already in the
 /// plan), the op giving it the type that symbol declares (design 072 §2.3): `None` while the group
 /// stays, so the data the device has is kept.
@@ -242,7 +251,7 @@ impl TagHigh {
 
 /// A component's tag as stored.
 pub fn tag_of(doc: &Document, c: DeviceId) -> Option<&str> {
-    doc.devices.get(&c)?.properties.get(TAG_KEY).map(String::as_str)
+    doc.devices.get(&c)?.tag()
 }
 
 /// A component's tag, or `(no tag)`.
@@ -531,9 +540,17 @@ pub fn plan_place(
             };
             let c: DeviceId = ids.fresh();
             let mut properties = ecad_model::Properties::new();
-            properties.insert(TAG_KEY.into(), t.clone());
             properties.insert("description".into(), s.name.into());
-            ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(definition), device_type: s.device_type() } });
+            ops.push(Op::CreateDevice {
+                id: c,
+                device: Device {
+                    tag: Some(crate::devices::stored_tag(&t)?),
+                    properties,
+                    tag_fixed: false,
+                    definition: Some(definition),
+                    device_type: s.device_type(),
+                },
+            });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
@@ -870,7 +887,7 @@ fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
 /// The tag a copy of device `c` gets (design 018 §3.3): the next automatic number of its prefix;
 /// `None` when its tag is not of the usual form (the copy then has no tag).
 pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<String> {
-    let t = c.properties.get(TAG_KEY)?;
+    let t = c.tag()?;
     let (prefix, _) = tag::parse(t).or_else(|| tag::provisional(t))?;
     high.next_auto_in(doc, &prefix).ok()
 }
@@ -1350,12 +1367,12 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
     let mut v: Vec<(String, u64, String, DeviceId)> = doc
         .tagged()
         .filter_map(|(_, id)| {
-            let t = doc.devices.get(&id)?.properties.get(TAG_KEY)?;
+            let t = doc.devices.get(&id)?.tag()?;
             if query.is_some_and(|q| !tag_matches(t, q)) {
                 return None;
             }
             let (p, n) = tag::parse(t).unwrap_or_else(|| (tag::key(t), 0));
-            Some((p, n, t.clone(), id))
+            Some((p, n, t.to_string(), id))
         })
         .collect();
     v.sort();
@@ -1416,7 +1433,7 @@ pub fn devices_json(doc: &Document, query: Option<&str>) -> Value {
 
 /// One device in JSON.
 pub fn device_json(doc: &Document, c: DeviceId) -> Value {
-    let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+    let comp = doc.devices.get(&c).cloned().unwrap_or_default();
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut reps: Vec<(usize, RepresentationId, Value)> = doc
         .representations_of(Subject::Device(c))
@@ -1437,9 +1454,10 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
     let mut v = json!({ "component": c.hex() });
     for (key, _) in PROPERTIES {
         // Brief 052: a function or location shows its code; its stored key is `<key>_key`.
-        v[key] = props.get(key).map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
+        let stored = comp.value(key);
+        v[key] = stored.as_ref().map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
         if crate::designations::Aspect::of_property(key).is_some() {
-            v[format!("{key}_key")] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
+            v[format!("{key}_key")] = stored.map_or(Value::Null, Value::String);
         }
     }
     // Brief 052 (design 052 §5.1): the location stored (never derived), and each symbol's own
@@ -1457,8 +1475,8 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
     // Brief 026.
-    v["tag_fixed"] = Value::Bool(ecad_model::numbering::is_fixed(&props));
-    v["provisional"] = Value::Bool(props.get(TAG_KEY).is_some_and(|t| tag::is_provisional(t)));
+    v["tag_fixed"] = Value::Bool(comp.is_fixed());
+    v["provisional"] = Value::Bool(comp.tag().is_some_and(tag::is_provisional));
     v
 }
 
@@ -1519,12 +1537,13 @@ pub const MAX_ALSO: usize = 4;
 ///
 /// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
 pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
-    let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
-    let get = |k: &str| props.get(k).cloned().unwrap_or_else(|| "?".into());
-    let head = match props.get(TAG_KEY) {
+    let device = doc.devices.get(&c).cloned().unwrap_or_default();
+    let props = device.properties.clone();
+    let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
+    let head = match device.tag() {
         // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
         Some(t) if tag::is_provisional(t) => format!("Device {t} (provisional)   {}", description(doc, c)),
-        Some(t) if ecad_model::numbering::is_fixed(&props) => format!("Device {t} (fixed)   {}", description(doc, c)),
+        Some(t) if device.is_fixed() => format!("Device {t} (fixed)   {}", description(doc, c)),
         Some(t) => format!("Device {t}   {}", description(doc, c)),
         None => format!("Device (no tag)   {}", description(doc, c)),
     };

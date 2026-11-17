@@ -443,13 +443,13 @@ fn device_section(
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
-        let values: BTreeSet<Option<&String>> = devices.iter().map(|c| doc.devices.get(c).and_then(|x| x.properties.get(key))).collect();
+        let values: BTreeSet<Option<String>> = devices.iter().map(|c| doc.devices.get(c).and_then(|x| x.value(key))).collect();
         let varies = values.len() > 1;
         let value = if varies {
             "*varies*".into()
         } else {
             // Brief 052: a function or location shows its code (`?` for a key with no entry).
-            values.into_iter().next().flatten().map(|v| crate::designations::display(doc, key, v)).unwrap_or_default()
+            values.into_iter().next().flatten().map(|v| crate::designations::display(doc, key, &v)).unwrap_or_default()
         };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
@@ -472,9 +472,8 @@ fn device_section(
         }
         // Brief 026 (design §4, §9): Fixed beside Tag; greyed for a provisional tag.
         if key == "tag" && one {
-            let c = devices.iter().next().copied();
-            let props = c.and_then(|c| doc.devices.get(&c)).map(|x| &x.properties);
-            rows.push(fixed_row(props));
+            let d = devices.iter().next().and_then(|c| doc.devices.get(c));
+            rows.push(fixed_row(d.and_then(|d| d.tag()), d.is_some_and(ecad_model::Device::is_fixed)));
         }
     }
     let title = if one {
@@ -886,7 +885,7 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
     let props = cable.map(|c| &c.properties);
     let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::keys::TAG)).unwrap_or_default().to_string())];
     // Brief 026: Fixed beside Tag.
-    rows.push(fixed_row(props));
+    rows.push(fixed_row(props.and_then(|p| p.get(ecad_model::tag::TAG_KEY)).map(String::as_str), props.is_some_and(ecad_model::numbering::is_fixed)));
     rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY, crate::strips::CORES_KEY]));
     // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
@@ -918,9 +917,7 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
 
 /// The Fixed row of a device or cable (brief 026): `yes` or `no`, read-only for a provisional tag
 /// or none.
-fn fixed_row(props: Option<&ecad_model::Properties>) -> Row {
-    let t = props.and_then(|p| p.get(ecad_model::tag::TAG_KEY));
-    let fixed = props.is_some_and(ecad_model::numbering::is_fixed);
+fn fixed_row(t: Option<&str>, fixed: bool) -> Row {
     let value = if fixed { "yes" } else { "no" }.to_string();
     let mut r = if t.is_some_and(|t| !ecad_model::tag::is_provisional(t)) {
         Row::rw(ecad_model::tag::FIXED_KEY, "Fixed", value)

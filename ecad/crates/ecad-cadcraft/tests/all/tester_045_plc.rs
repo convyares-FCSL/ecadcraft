@@ -40,16 +40,16 @@ pub(crate) fn num(v: &Value) -> Option<u64> {
 }
 
 pub(crate) fn prop(d: &Document, c: DeviceId, k: &str) -> Option<String> {
-    d.devices.get(&c).and_then(|x| x.properties.get(k).cloned())
+    d.devices.get(&c).and_then(|x| x.value(k))
 }
 
 pub(crate) fn tag(d: &Document, c: DeviceId) -> String {
-    prop(d, c, "tag").unwrap_or_default()
+    d.devices.get(&c).and_then(|x| x.tag()).unwrap_or_default().to_string()
 }
 
 /// The component whose tag is `t`.
 pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
-    d.devices.iter().find(|(_, c)| c.properties.get("tag").map(String::as_str) == Some(t)).map(|(id, _)| *id).unwrap_or_else(|| panic!("no {t}"))
+    d.devices.iter().find(|(_, c)| c.tag() == Some(t)).map(|(id, _)| *id).unwrap_or_else(|| panic!("no {t}"))
 }
 
 /// A card's channel points: key (`.3.in`) to (label, terminal).

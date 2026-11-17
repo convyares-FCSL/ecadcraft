@@ -565,7 +565,7 @@ fn plan_tags(
         if c.properties.contains_key(connectivity::KIND) {
             continue;
         }
-        let tag = c.properties.get(TAG_KEY).cloned();
+        let tag = c.tag().map(str::to_string);
         let has_reps = doc.representations_of(Subject::Device(*id)).next().is_some();
         if tag.is_none() && !has_reps {
             continue;
@@ -574,8 +574,8 @@ fn plan_tags(
             object: ObjectRef::Device(*id),
             kind: Kind::Devices,
             tag,
-            fixed: is_fixed(&c.properties),
-            stale_flag: stale_flag(&c.properties),
+            fixed: c.is_fixed(),
+            stale_flag: (c.tag_fixed && !c.is_fixed()).then(|| crate::words::flag_word(true).to_string()),
             anchor: None,
             id: id.0,
         });
@@ -705,9 +705,19 @@ fn plan_tags(
             } else {
                 changed_prefixes.insert(p.clone());
                 let before = it.tag.clone();
-                ops.push(Op::SetProperty { object: it.object, key: TAG_KEY.into(), before, after: Some(new.clone()) });
-                if let Some(f) = &it.stale_flag {
-                    ops.push(Op::SetProperty { object: it.object, key: FIXED_KEY.into(), before: Some(f.clone()), after: None });
+                match it.object {
+                    ObjectRef::Device(c) => {
+                        if let Some(d) = doc.devices.get(&c) {
+                            let after = crate::Device { tag_fixed: d.tag_fixed && it.stale_flag.is_none(), ..d.with_tag(Some(&new)) };
+                            ops.push(Op::ModifyDevice { id: c, before: d.clone(), after });
+                        }
+                    }
+                    object => {
+                        ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before, after: Some(new.clone()) });
+                        if let Some(f) = &it.stale_flag {
+                            ops.push(Op::SetProperty { object, key: FIXED_KEY.into(), before: Some(f.clone()), after: None });
+                        }
+                    }
                 }
                 rows.push(row_of(places, it, old, new, Mark::Change));
             }
@@ -733,7 +743,7 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
     let start = req.start.unwrap_or(1);
     for strip in &req.strips {
         let Some(comp) = doc.devices.get(strip) else { continue };
-        let tag = comp.properties.get(TAG_KEY).cloned().unwrap_or_else(|| "?".into());
+        let tag = comp.tag().unwrap_or("?").to_string();
         // Each terminal once, anchored at the symbol that shows it.
         let mut seen: BTreeSet<TerminalId> = BTreeSet::new();
         let mut list: Vec<(TerminalId, PageId, Pt, Order)> = Vec::new();
@@ -982,11 +992,8 @@ mod tests {
         }
         let style = Style { layer: LayerId(1), color: crate::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         for (id, t, page, x, y, fixed) in devs {
-            let mut c = Device::default();
-            c.properties.insert(TAG_KEY.into(), (*t).into());
-            if *fixed {
-                c.properties.insert(FIXED_KEY.into(), "yes".into());
-            }
+            let mut c = Device::default().with_tag(Some(t));
+            c.tag_fixed = *fixed;
             d.devices.insert(DeviceId(*id), c);
             let item = ItemId(5000 + id);
             let pg = d.page_order[*page];
@@ -1033,7 +1040,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut x).unwrap();
         }
-        x.devices.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (id.0, t.clone()))).collect()
+        x.devices.iter().filter_map(|(id, c)| c.tag().map(|t| (id.0, t.to_string()))).collect()
     }
 
     #[test]
@@ -1116,6 +1123,6 @@ mod tests {
         let p = plan(&d, &req(Scope::All), &HighWater::new()).unwrap();
         let t = after(&d, &p);
         assert_eq!((t[&1].as_str(), t[&2].as_str()), ("-K01", "-K02"));
-        assert_eq!(p.ops.iter().filter(|o| matches!(o, Op::SetProperty { key, .. } if key == TAG_KEY)).count(), 2);
+        assert_eq!(p.ops.iter().filter(|o| matches!(o, Op::ModifyDevice { .. })).count(), 2);
     }
 }

@@ -209,6 +209,10 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
+    /// Its tag (`-K01`), if it has one (design 026; the identity of the device).
+    pub tag: Option<crate::tag::Tag>,
+    /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
+    pub tag_fixed: bool,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
@@ -219,7 +223,41 @@ pub struct Device {
 impl Device {
     /// A new device drawn by `definition` (`id`), with the type the symbol declares.
     pub fn of_definition(id: DefinitionId, definition: &Definition, properties: Properties) -> Device {
-        Device { properties, definition: Some(id), device_type: definition.device_type.clone() }
+        Device { properties, definition: Some(id), device_type: definition.device_type.clone(), ..Device::default() }
+    }
+
+    /// Whether its tag is fixed (FP1): flagged, and not provisional (a provisional tag never
+    /// counts as fixed, overseer ruling, tester 026 bug 2).
+    pub fn is_fixed(&self) -> bool {
+        self.tag_fixed && !self.tag().is_some_and(crate::tag::is_provisional)
+    }
+
+    /// Whether `other` differs in a typed field (anything but the property bag and the
+    /// definition, which have ops of their own).
+    pub fn fields_differ(&self, other: &Device) -> bool {
+        let typed = |d: &Device| Device { properties: Properties::new(), definition: None, ..d.clone() };
+        typed(self) != typed(other)
+    }
+
+    /// The value `setprop`'s key `key` names on this device (design 072 §10: the key stays a
+    /// string and routes to the field): a typed field as its stored text, else the property.
+    pub fn value(&self, key: &str) -> Option<String> {
+        match key {
+            crate::tag::TAG_KEY => self.tag().map(str::to_string),
+            crate::tag::FIXED_KEY => self.tag_fixed.then(|| crate::words::flag_word(true).to_string()),
+            _ => self.properties.get(key).cloned(),
+        }
+    }
+
+    /// Its tag as text.
+    pub fn tag(&self) -> Option<&str> {
+        self.tag.as_ref().map(|t| t.as_str())
+    }
+
+    /// This device with tag `tag` (`None` clears it; text that is not a valid tag clears it too,
+    /// which callers rule out with [`crate::tag::Tag::new`] first).
+    pub fn with_tag(&self, tag: Option<&str>) -> Device {
+        Device { tag: tag.and_then(|t| crate::tag::Tag::new(t).ok()), ..self.clone() }
     }
 }
 

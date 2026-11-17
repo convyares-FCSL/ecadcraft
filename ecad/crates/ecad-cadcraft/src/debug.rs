@@ -1174,7 +1174,7 @@ fn tag(p: &ecad_model::Properties) -> Option<String> {
 
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
     };

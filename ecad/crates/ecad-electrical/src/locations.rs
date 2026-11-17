@@ -93,7 +93,7 @@ pub fn is_box_component(c: &Device) -> bool {
 /// A device in the sense of locations and the BOM (design 024 §6.1): a component with a tag and
 /// no `kind`.
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.properties.contains_key(ecad_model::tag::TAG_KEY) && !x.properties.contains_key(KIND))
+    doc.devices.get(&c).is_some_and(|x| x.tag.is_some() && !x.properties.contains_key(KIND))
 }
 
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
@@ -644,10 +644,7 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
     let item: ItemId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
     let style = box_style_for(layer, &props);
-    ops.push(Op::CreateDevice {
-        id: component,
-        device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
-    });
+    ops.push(Op::CreateDevice { id: component, device: Device { properties: props, ..Device::default() } });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) } });
     ops.push(Op::LinkRepresentation {
         id: rep,
@@ -700,10 +697,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     let component: DeviceId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
     let after = Item { style: box_style_for(layer, &props), ..it.clone() };
-    ops.push(Op::CreateDevice {
-        id: component,
-        device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
-    });
+    ops.push(Op::CreateDevice { id: component, device: Device { properties: props, ..Device::default() } });
     if after != *it {
         ops.push(Op::ModifyItem { id: item, before: it.clone(), after });
     }
