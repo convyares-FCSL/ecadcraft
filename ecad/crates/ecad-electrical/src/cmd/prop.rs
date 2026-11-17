@@ -227,7 +227,7 @@ fn level_label_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -
 
 fn plc_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o).and_then(|c| crate::plc::setprop_rule(doc, c, key, value)) {
-        Some(r) => r.map_err(refused),
+        Some(r) => r,
         None => Ok(None),
     }
 }
@@ -238,7 +238,7 @@ fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) ->
 
 fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o) {
-        Some(c) => crate::bom::setprop_rule(doc, c, key, value).map_err(refused),
+        Some(c) => crate::bom::setprop_rule(doc, c, key, value),
         None => Ok(value.map(str::to_string)),
     }
 }
@@ -314,7 +314,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         Build::Fixed | Build::Aspect => return Err(CmdError::input("that property is set through its own rule")),
     };
     if let ObjectRef::Component(c) = object {
-        crate::bom::refuse_on_item(doc, c, key, value).map_err(refused)?;
+        crate::bom::refuse_on_item(doc, c, key, value)?;
     }
     check(doc, object, key, value)
 }

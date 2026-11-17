@@ -17,6 +17,7 @@
 //!   pass-through is shown.
 //! - [`TestState`] is defined here for the Tests brief (0.2.3); 056 produces only `None`.
 
+use crate::CmdError;
 use std::collections::BTreeSet;
 
 use ecad_model::{ComponentId, Document, ObjectRef, Op};
@@ -46,10 +47,10 @@ pub const MAX_MADE: usize = 20_000;
 ///
 /// # Errors
 /// Too long, or a control character.
-pub fn tag_value(value: Option<&str>) -> Result<Option<String>, String> {
+pub fn tag_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if v.chars().count() > MAX_TAG || v.chars().any(char::is_control) {
-        return Err(format!("A PLC tag is 1 to {MAX_TAG} characters, with no control characters."));
+        return Err(CmdError::refused(format!("A PLC tag is 1 to {MAX_TAG} characters, with no control characters.")));
     }
     Ok(Some(v.to_string()))
 }
@@ -74,12 +75,12 @@ pub fn safe_entry(t: CardType) -> Option<&'static defaults::Entry> {
 ///
 /// # Errors
 /// An input card, a word the type does not take, too long, or a control character.
-pub fn safe_value(t: Option<CardType>, value: Option<&str>) -> Result<Option<String>, String> {
+pub fn safe_value(t: Option<CardType>, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if let Some(t) = t
         && !has_safe(t)
     {
-        return Err(format!("A {} has no safe state; only outputs have one.", t.noun()));
+        return Err(CmdError::refused(format!("A {} has no safe state; only outputs have one.", t.noun())));
     }
     let lower = v.to_lowercase();
     if t == Some(CardType::Dq) {
@@ -87,22 +88,22 @@ pub fn safe_value(t: Option<CardType>, value: Option<&str>) -> Result<Option<Str
             .iter()
             .find(|w| **w == lower)
             .map(|w| Some((*w).to_string()))
-            .ok_or_else(|| "A digital output's safe state is Off, On or Hold.".to_string());
+            .ok_or_else(|| CmdError::refused("A digital output's safe state is Off, On or Hold."));
     }
     if let Some(w) = DQ_SAFE.iter().chain(AO_SAFE.iter()).find(|w| **w == lower) {
         // `on` and `off` are a digital output's words; an analogue output takes a value instead.
         if matches!(t, Some(CardType::Ao)) && (*w == "on" || *w == "off") {
-            return Err("An analogue output's safe state is Hold, Min, Max or a value (`4 mA`).".into());
+            return Err(CmdError::refused("An analogue output's safe state is Hold, Min, Max or a value (`4 mA`)."));
         }
         return Ok(Some((*w).to_string()));
     }
     if v.chars().count() > MAX_SAFE || v.chars().any(char::is_control) {
-        return Err(format!("A safe value is 1 to {MAX_SAFE} characters, with no control characters."));
+        return Err(CmdError::refused(format!("A safe value is 1 to {MAX_SAFE} characters, with no control characters.")));
     }
     if t.is_none() || matches!(t, Some(CardType::Ao | CardType::Iol)) {
         return Ok(Some(v.to_string()));
     }
-    Err("A digital output's safe state is Off, On or Hold.".into())
+    Err(CmdError::refused("A digital output's safe state is Off, On or Hold."))
 }
 
 /// The safe state channels of card `c` (type `t`) take when they have none: the registry's at the

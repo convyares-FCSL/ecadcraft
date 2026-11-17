@@ -401,7 +401,7 @@ pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet
             Ok(vec![(highest + 1).to_string()])
         }
         // Brief 045 (FP7): a channel joins a card as its next free channel; its labels are pins.
-        Kind::Channel(_) => crate::plc::channels::join_labels(doc, c, s, extra),
+        Kind::Channel(_) => crate::plc::channels::join_labels(doc, c, s, extra).map_err(String::from),
         Kind::Tagless => Err(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase())),
         // Brief 034: the label rule lives in the catalogue.
         Kind::ChangeOver => symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), &['1', '2', '4'], &who),

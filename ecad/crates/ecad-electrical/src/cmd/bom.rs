@@ -81,7 +81,7 @@ pub fn plan_partline(doc: &Document, cs: &[ComponentId], change: PartlineChange)
         PartlineChange::Add { lines, kit } => {
             let kit = match kit {
                 None => None,
-                Some(k) => plain("kit", Some(&k), MAX_KIT_CHARS).map_err(CmdError::refused)?,
+                Some(k) => plain("kit", Some(&k), MAX_KIT_CHARS)?,
             };
             if lines.is_empty() {
                 return Err(CmdError::input("`add` names no line"));
@@ -109,7 +109,7 @@ pub fn plan_partline(doc: &Document, cs: &[ComponentId], change: PartlineChange)
                     if fields.iter().all(|(_, v)| v.as_deref().is_none_or(|t| t.trim().is_empty())) {
                         return Err(CmdError::refused("A part line needs at least one field: part_number, maker or description."));
                     }
-                    ops.extend(line_ops(doc, *c, n, &fields).map_err(CmdError::refused)?);
+                    ops.extend(line_ops(doc, *c, n, &fields)?);
                     ns.push(n);
                 }
                 rows.push((*c, ns));
@@ -140,7 +140,7 @@ pub fn plan_partline(doc: &Document, cs: &[ComponentId], change: PartlineChange)
                         ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: k.clone(), before: Some(v.clone()), after: None });
                     }
                 } else if let Some(fields) = &set {
-                    ops.extend(line_ops(doc, *c, n, fields).map_err(CmdError::refused)?);
+                    ops.extend(line_ops(doc, *c, n, fields)?);
                 } else {
                     return Err(CmdError::input("Give `add`, `set` or `remove: true`."));
                 }
@@ -218,7 +218,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
             let fields = set.ok_or(CmdError::input("Give `set: {field: value}` or `delete: true` with `item`."))?;
             let props = &comp.properties;
             let metres = match fields.get(UNIT_KEY) {
-                Some(u) => parse_unit(u.as_deref().unwrap_or("")).map_err(CmdError::refused)?,
+                Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
                 None => props.get(UNIT_KEY).is_some_and(|u| parse_unit(u).unwrap_or(false)),
             };
             let qty = match fields.get(QTY_KEY) {
@@ -232,7 +232,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 let after = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
                     // Brief 052: an item's location is an entry key of the project's list.
                     ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops).map_err(CmdError::refused)?),
-                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref()).map_err(CmdError::refused)?,
+                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
                 };
                 let before = props.get(key).cloned();
                 if before != after {
@@ -251,7 +251,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 return Err(CmdError::refused(format!("This project has {items} items, the most a project holds.")));
             }
             let metres = match fields.get(UNIT_KEY) {
-                Some(u) => parse_unit(u.as_deref().unwrap_or("")).map_err(CmdError::refused)?,
+                Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
                 None => item_unit_metres(doc),
             };
             let qty = fields.get(QTY_KEY).cloned().flatten();
@@ -269,7 +269,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 let Some(v) = fields.get(key) else { continue };
                 let x = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
                     ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops).map_err(CmdError::refused)?),
-                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref()).map_err(CmdError::refused)?,
+                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
                 };
                 if let Some(x) = x {
                     props.insert(key.to_string(), x);
@@ -304,7 +304,7 @@ pub struct ArticlePlan {
 pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, article_number: Option<&str>) -> Result<ArticlePlan, CmdError> {
     let pn = Some(part_number.trim()).filter(|t| !t.is_empty()).ok_or(CmdError::input("`part_number` is required"))?;
     let maker = maker.map(str::trim).filter(|m| !m.is_empty());
-    let after = plain(ARTICLE_KEY, article_number, MAX_ARTICLE_CHARS).map_err(CmdError::refused)?;
+    let after = plain(ARTICLE_KEY, article_number, MAX_ARTICLE_CHARS)?;
     let targets = article_targets(doc, pn, maker);
     if targets.is_empty() {
         return Err(CmdError::refused(format!("No part {pn} in this project.")));

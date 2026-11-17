@@ -12,12 +12,12 @@
 //!
 //! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
+use crate::CmdError;
 use std::collections::BTreeSet;
 
 use ecad_model::{ComponentId, Document, ObjectRef, Op, Subject};
 
 use crate::defaults::{self, Scope};
-use crate::error::CmdError;
 
 /// The card property naming the card's rack (its component ID, 32 hex digits; FP1).
 pub const RACK_KEY: &str = "plc.rack";
@@ -406,18 +406,18 @@ pub fn card_named(doc: &Document, t: &str) -> Result<ComponentId, CmdError> {
 ///
 /// # Errors
 /// No rack, or several and none named.
-pub fn default_rack(doc: &Document, card: Option<ComponentId>) -> Result<ComponentId, String> {
+pub fn default_rack(doc: &Document, card: Option<ComponentId>) -> Result<ComponentId, CmdError> {
     if let Some(RackRef::Rack(r)) = card.map(|c| rack_ref(doc, c)) {
         return Ok(r);
     }
     let all = racks(doc);
     match all.as_slice() {
-        [] => Err("The project has no rack: place a CPU (plccpu) or a head module (plcim) first.".into()),
+        [] => Err(CmdError::refused("The project has no rack: place a CPU (plccpu) or a head module (plcim) first.")),
         [only] => Ok(*only),
         many => {
             let tags: Vec<String> = many.iter().take(8).map(|c| crate::devices::tag_words(doc, *c)).collect();
             let more = if many.len() > 8 { ", …" } else { "" };
-            Err(format!("Name a rack: the project has {} ({}{more}).", many.len(), tags.join(", ")))
+            Err(CmdError::refused(format!("Name a rack: the project has {} ({}{more}).", many.len(), tags.join(", "))))
         }
     }
 }
@@ -434,7 +434,7 @@ pub fn slot_number(text: &str) -> Result<u32, CmdError> {
 ///
 /// # Errors
 /// The refusals of §2.4: no rack, a taken slot (unless `swap`), a slot outside the rack.
-pub fn plan_slot(doc: &Document, card: ComponentId, rack: Option<ComponentId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, String> {
+pub fn plan_slot(doc: &Document, card: ComponentId, rack: Option<ComponentId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, CmdError> {
     let rack = match rack {
         Some(r) => r,
         None => default_rack(doc, Some(card))?,
@@ -446,16 +446,19 @@ pub fn plan_slot(doc: &Document, card: ComponentId, rack: Option<ComponentId>, s
         Some(s) => s,
         // Design 045 §2.5 (tester 045a): `slot` absent is the next free slot; the card's own slot
         // counts as taken, so a card already in the rack moves.
-        None => next_free_slot(doc, rack, None)
-            .ok_or_else(|| format!("{rack_words}'s {n} slots are all taken. Raise its slot count (plc.slots), or pick another rack."))?,
+        None => next_free_slot(doc, rack, None).ok_or_else(|| {
+            CmdError::refused(format!("{rack_words}'s {n} slots are all taken. Raise its slot count (plc.slots), or pick another rack."))
+        })?,
     };
     if !(first..=last).contains(&slot) {
-        return Err(format!("{rack_words} has slots {first}–{last}. Pick a slot in that range, or raise its slot count (plc.slots)."));
+        return Err(CmdError::refused(format!(
+            "{rack_words} has slots {first}–{last}. Pick a slot in that range, or raise its slot count (plc.slots)."
+        )));
     }
     let mut ops = slot_ops(doc, card, Some((rack, slot)));
     if let Some(other) = holder_of_slot(doc, rack, slot, Some(card)) {
         if !swap {
-            return Err(taken_words(doc, rack, slot, other));
+            return Err(CmdError::refused(taken_words(doc, rack, slot, other)));
         }
         // The other card takes this card's place: its old slot in a rack, else no rack.
         let back = match (rack_ref(doc, card), slot_of(doc, card)) {
@@ -533,24 +536,28 @@ pub fn new_card_ops(card: ComponentId, rack: ComponentId, slot: u32) -> Vec<Op> 
 ///
 /// # Errors
 /// A value that is not of the key's form; `plc.rack` naming something that is not a rack.
-pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
+pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     Some(match key {
         RACK_KEY => match v {
             None => Ok(None),
             Some(t) => match rack_named(doc, t) {
-                Ok(r) if r == c => Err("A card cannot be its own rack.".into()),
+                Ok(r) if r == c => Err(CmdError::refused("A card cannot be its own rack.")),
                 Ok(r) => Ok(Some(r.hex())),
-                Err(e) => Err(e.to_string()),
+                Err(e) => Err(e),
             },
         },
         SLOT_KEY => match v {
             None => Ok(None),
-            Some(t) => parse_slot(t).map(|s| Some(s.to_string())).ok_or_else(|| format!("A slot is a whole number from 0 to {MAX_SLOT}.")),
+            Some(t) => {
+                parse_slot(t).map(|s| Some(s.to_string())).ok_or_else(|| CmdError::refused(format!("A slot is a whole number from 0 to {MAX_SLOT}.")))
+            }
         },
         CHANNELS_KEY => match v {
             None => Ok(None),
-            Some(t) => parse_channels(t).map(|n| Some(n.to_string())).ok_or_else(|| format!("A card has 0 to {MAX_CHANNELS} channels.")),
+            Some(t) => {
+                parse_channels(t).map(|n| Some(n.to_string())).ok_or_else(|| CmdError::refused(format!("A card has 0 to {MAX_CHANNELS} channels.")))
+            }
         },
         _ => return None,
     })

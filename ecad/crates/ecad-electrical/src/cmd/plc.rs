@@ -58,10 +58,10 @@ pub fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: Option<
     let card = card_named(doc, card)?;
     let ops = match rack {
         RackChoice::Out => rack::slot_ops(doc, card, None),
-        RackChoice::Default => rack::plan_slot(doc, card, None, slot, swap).map_err(CmdError::refused)?,
+        RackChoice::Default => rack::plan_slot(doc, card, None, slot, swap)?,
         RackChoice::Named(t) => {
             let r = rack_named(doc, t)?;
-            rack::plan_slot(doc, card, Some(r), slot, swap).map_err(CmdError::refused)?
+            rack::plan_slot(doc, card, Some(r), slot, swap)?
         }
     };
     Ok((card, ops))
@@ -389,7 +389,7 @@ pub fn plan_channels(
     }
     let starter = crate::symbols::by_key(t.cell()).ok_or(CmdError::refused("No channel symbol for that type."))?;
     let point_role = match &input.point {
-        Some(w) => Some(role_named(starter, w).map_err(CmdError::refused)?),
+        Some(w) => Some(role_named(starter, w)?),
         None => None,
     };
     let landings = landings(doc, page, starter, &found.members, point_role);
@@ -403,7 +403,7 @@ pub fn plan_channels(
     let (card, tag, new) = match card {
         Some((c, _)) => (c, crate::devices::tag_words(doc, c), false),
         None => {
-            let (c, tag) = new_card_ops(ledger, ids, high, starter, def, t, None, &mut ops).map_err(CmdError::refused)?;
+            let (c, tag) = new_card_ops(ledger, ids, high, starter, def, t, None, &mut ops)?;
             (c, tag, true)
         }
     };
@@ -435,7 +435,7 @@ pub fn plan_channels(
         let local = role_at(def_terms, role0).ok_or(CmdError::refused(NO_ROLE))?;
         let turn = Placement { origin: Pt::new(0.0, 0.0), rotation: l.rotation, mirror: false, scale: 1.0 }.apply(local);
         let pl = Placement { origin: Pt::new(m0.at.x - turn.x, m0.at.y - turn.y), rotation: l.rotation, mirror: false, scale: 1.0 };
-        let cell = plan_cell(ids, page, style.clone(), def, starter, card, &j, pl, &mut ops).map_err(CmdError::refused)?;
+        let cell = plan_cell(ids, page, style.clone(), def, starter, card, &j, pl, &mut ops)?;
         for (role, m) in &l.points {
             let at = role_at(def_terms, role).map(|q| pl.apply(q)).ok_or(CmdError::refused(NO_ROLE))?;
             let on = crate::cmd::terminal::on_wire_of(doc, page, m.conductor, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
@@ -498,7 +498,7 @@ pub fn plan_rest(
         let j = Join { index: *i, pins: roles.iter().copied().zip(pins).collect() };
         let dx = width * k as f64;
         let pl = Placement { origin: Pt::new(start.x + dx, start.y), rotation: 0.0, mirror: false, scale: 1.0 };
-        plan_cell(ids, page, style.clone(), def, starter, c, &j, pl, &mut ops).map_err(CmdError::refused)?;
+        plan_cell(ids, page, style.clone(), def, starter, c, &j, pl, &mut ops)?;
     }
     Ok(ChannelsPlan { ops, card: c, tag, ty: t, starter: starter.key, placed: missing, first, pins: Vec::new() })
 }
@@ -558,8 +558,8 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
         let value = match given {
             None => None,
             // Brief 056 (design 056 §4.4): the safe state by the card's type.
-            Some(x) if *what == signals::SAFE => signals::safe_value(Some(t), Some(x)).map_err(CmdError::refused)?,
-            Some(x) => ch_value(what, Some(x)).map_err(CmdError::refused)?,
+            Some(x) if *what == signals::SAFE => signals::safe_value(Some(t), Some(x))?,
+            Some(x) => ch_value(what, Some(x))?,
         };
         // Brief 056 (design 056 §4.3): a tag is unique in its PLC, compared without case.
         if *what == signals::TAG
@@ -787,7 +787,7 @@ pub fn plan_page_contents(
             let pins = pins_for(doc, Some(card), ty, pc.n, *i, &roles, &mut used);
             let join = Join { index: *i, pins: roles.iter().copied().zip(pins).collect() };
             let pl = Placement { origin: Pt::new(x * k, y * k), rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
-            plan_cell(ids, id, style.clone(), def, starter, card, &join, pl, ops).map_err(CmdError::refused)?;
+            plan_cell(ids, id, style.clone(), def, starter, card, &join, pl, ops)?;
             x_next = x + w / 2.0;
             cell_point = Some(pl.apply(local));
         }

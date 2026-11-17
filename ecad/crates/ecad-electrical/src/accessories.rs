@@ -279,7 +279,7 @@ fn whole(key: &str, value: &str, lo: u32, hi: u32, what: &str) -> Result<String,
 pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Result<Option<String>, String> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if is_article_key(strip_key) {
-        return crate::bom::article_value(Some(v));
+        return crate::bom::article_value(Some(v)).map_err(String::from);
     }
     match strip_key {
         PER_CARD_KEY => whole(strip_key, v, 1, MAX_PER_CARD, "a card size").map(Some),
@@ -292,7 +292,7 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
 pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, String>> {
     // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
     if is_type_article_project_key(key) {
-        return Some(crate::bom::article_value(value));
+        return Some(crate::bom::article_value(value).map_err(String::from));
     }
     let sk = strip_key_of_project(key)?;
     Some(part_value(doc, &sk, value))
@@ -405,7 +405,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
             return Err(format!("\"{}\" is not a link key. Write link.<n> (1 to 999) or link.<n>.part_number.", shown(key)));
         }
         if is_article_key(key) {
-            return crate::bom::article_value(value).map(Some);
+            return crate::bom::article_value(value).map(Some).map_err(String::from);
         }
         return crate::devices::property_value(doc, "part_number", value).map(Some);
     }
@@ -413,7 +413,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         return part_value(doc, key, value).map(Some);
     }
     if strip && is_type_article_key(key) {
-        return crate::bom::article_value(value).map(Some);
+        return crate::bom::article_value(value).map(Some).map_err(String::from);
     }
     Ok(None)
 }
