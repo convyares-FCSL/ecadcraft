@@ -18,6 +18,7 @@
 pub mod accessory;
 pub mod bom;
 pub mod cable;
+pub(crate) mod connect;
 pub mod connector;
 pub mod continuation;
 pub mod default;
@@ -48,7 +49,7 @@ use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
 use ecad_model::{
     CableId, CableMember, Color, ComponentId, ConductorId, Definition, End, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, TerminalDef, TerminalId,
+    RepresentationId, Style, Subject, TerminalDef,
 };
 use serde_json::{Value, json};
 
@@ -107,11 +108,11 @@ fn base_specs() -> Vec<CommandSpec> {
             )
             .interactive(interact::wire)
             .noundo(),
-        CommandSpec::new("connect", "Connect", run_connect)
+        CommandSpec::new("connect", "Connect", crate::cmd::input::typed::<crate::cmd::connect::ConnectParams>)
             .params("{conductor: id, end: \"A\"|\"B\", terminal: id}")
             .interactive(interact::connect)
             .noundo(),
-        CommandSpec::new("disconnect", "Disconnect", run_disconnect)
+        CommandSpec::new("disconnect", "Disconnect", crate::cmd::input::typed::<crate::cmd::connect::DisconnectParams>)
             .params("{conductor: id, end: \"A\"|\"B\"}")
             .interactive(interact::disconnect)
             .noundo(),
@@ -308,6 +309,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::default::TYPED,
         crate::cmd::prop::TYPED,
         crate::cmd::device::TYPED,
+        crate::cmd::connect::TYPED,
     ]
     .concat()
 }
@@ -371,68 +373,10 @@ pub(crate) fn point(v: &Value) -> Option<Pt> {
     (x.is_finite() && y.is_finite()).then_some(Pt::new(x, y))
 }
 
-fn end_param(p: &Value) -> Result<End, String> {
-    match p.get("end").and_then(Value::as_str) {
-        Some("A" | "a") => Ok(End::A),
-        Some("B" | "b") => Ok(End::B),
-        _ => Err("`end` must be \"A\" or \"B\"".into()),
-    }
-}
-
 pub(crate) use crate::words::MAX_HANDLES;
 
 pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
-}
-
-fn route_and_end(p: &Project, page: PageId, c: ConductorId, end: End) -> Result<(ItemId, Item, Pt), String> {
-    let doc = p.ledger.document();
-    let (id, _) = ecad_model::derive::route_on_page(doc, c, page).ok_or("the conductor has no route on this page")?;
-    let item = doc.items.get(&id).cloned().ok_or("route missing")?;
-    let ItemKind::Primitive(prim) = &item.kind else { return Err("route is not a path".into()) };
-    let (a, b) = prim.path_ends().ok_or("route is not a path")?;
-    Ok((id, item, if end == End::A { a } else { b }))
-}
-
-fn run_connect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let c: ConductorId = id(params, "conductor").map_err(err)?;
-    let t: TerminalId = id(params, "terminal").map_err(err)?;
-    let end = end_param(params).map_err(err)?;
-    with_project(s, |p, pg, page| {
-        let doc = p.ledger.document();
-        let conductor = doc.conductors.get(&c).ok_or("no such conductor")?;
-        if !doc.terminals.contains_key(&t) {
-            return Err("no such connection point".into());
-        }
-        let at = ecad_model::derive::terminal_positions(doc, page)
-            .into_iter()
-            .find(|(x, _, _)| *x == t)
-            .map(|(_, _, p)| p)
-            .ok_or("the connection point is not shown on this page")?;
-        let (route, item, current) = route_and_end(p, page, c, end)?;
-        let mut ops = Vec::new();
-        if !current.near(at, 1e-12) {
-            let ItemKind::Primitive(prim) = &item.kind else { return Err("route is not a path".into()) };
-            let moved = prim.with_path_end(end, at).ok_or("route is not a path")?;
-            ops.push(Op::ModifyItem { id: route, before: item.clone(), after: Item { kind: ItemKind::Primitive(moved), ..item.clone() } });
-        }
-        ops.push(Op::AttachEnd { conductor: c, end, before: conductor.end(end), after: Some(t) });
-        p.apply_edit(pg, "connect", "Connect", ops)?;
-        Ok(json!({"connected": true}))
-    })
-}
-
-fn run_disconnect(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let c: ConductorId = id(params, "conductor").map_err(err)?;
-    let end = end_param(params).map_err(err)?;
-    with_project(s, |p, pg, _page| {
-        let before = p.ledger.document().conductors.get(&c).ok_or("no such conductor")?.end(end);
-        if before.is_none() {
-            return Err("that end is not connected".into());
-        }
-        p.apply_edit(pg, "disconnect", "Disconnect", vec![Op::AttachEnd { conductor: c, end, before, after: None }])?;
-        Ok(json!({"disconnected": true}))
-    })
 }
 
 /// The `core` of one entry: a string or `null`.

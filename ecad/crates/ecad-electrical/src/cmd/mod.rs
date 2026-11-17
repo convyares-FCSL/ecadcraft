@@ -6,6 +6,7 @@
 pub mod accessory;
 pub mod bom;
 pub mod cable;
+pub mod connect;
 pub mod connector;
 pub mod continuation;
 pub mod default;
