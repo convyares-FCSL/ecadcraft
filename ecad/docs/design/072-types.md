@@ -2,9 +2,9 @@
 
 Status: **Draft** (designer, 2026-11-16, widened by the owner the same day; revised 2026-11-17 with
 the owner's answers). The owner's spec is decided; this design turns it into types, lanes and
-steps. Waiting for: the owner's calls in §17, and the overseer's approval of the revisions F15′,
-F19′, F25′, F27′, F28′ (§11). F1–F37 approved by the overseer, 2026-11-16/17 (F12 superseded by
-F13; F30 approved with the owner's answer on styles). Brief:
+steps. Waiting for the owner's four calls in §17. Every format and op change is approved by the
+overseer (§11): F1–F37 and the revisions F15′, F19′, F25′, F27′, F28′, 2026-11-16/17 (F12
+superseded by F13; F30 approved with the owner's answer on styles). Brief:
 `docs/briefs/072-types.md`.
 
 **Goal (one sentence).** What every stored object is, and how it relates to other objects, is held
@@ -595,7 +595,9 @@ including the `Device`/`Wire` renames, the whole-struct `Modify*` ops, the remov
 records, with the owner's answer on styles). F12 superseded by F13. Condition on every new op and
 field: the inspector's Raw and Readable views show it (A15).
 
-**Revised by the owner's answers (for re-approval):**
+**Revised by the owner's answers: approved (overseer, 2026-11-17): F15′, F19′, F25′, F27′, F28′**,
+carrying out the owner's answers (the twelve groups, the PLC station with a CPU or Coupler head,
+ordered wires instead of junctions, the boxes' fixed flag, the loose parts list).
 
 | # | Was | Now |
 | --- | --- | --- |
