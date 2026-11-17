@@ -372,7 +372,7 @@ pub fn edit_ops(
     if set.tag.is_some() {
         let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::tag::is_provisional(t));
         let before = cab.properties.get(ecad_model::tag::FIXED_KEY).cloned();
-        let a = fixed.then(|| "yes".to_string());
+        let a = fixed.then(|| ecad_model::words::flag_word(true).to_string());
         if before != a {
             ops.push(Op::SetProperty { object, key: ecad_model::tag::FIXED_KEY.into(), before, after: a });
         }

@@ -44,6 +44,9 @@ pub const UNREADABLE: &str = "Agent access settings could not be read; agent acc
 /// Said when a port is out of range.
 pub const PORT_RANGE: &str = "1024–65535";
 
+/// Also read as Read only when typed.
+const READONLY: &str = "readonly";
+
 /// Off, Read only, or Read and change.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Mode {
@@ -74,12 +77,18 @@ impl Mode {
 
     /// A stored or typed word (`off`, `read`, `write`, also the labels), without case.
     pub fn parse(s: &str) -> Option<Mode> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "off" => Some(Mode::Off),
-            "read" | "read only" | "readonly" => Some(Mode::Read),
-            "write" | "read and change" => Some(Mode::Write),
-            _ => None,
-        }
+        let t = s.trim();
+        Mode::stored(&t.to_ascii_lowercase())
+            .or_else(|| Mode::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(t)))
+            .or_else(|| t.eq_ignore_ascii_case(READONLY).then_some(Mode::Read))
+    }
+
+    /// Every mode, in order.
+    pub const ALL: [Mode; 3] = [Mode::Off, Mode::Read, Mode::Write];
+
+    /// The mode a stored word names, exactly.
+    pub fn stored(word: &str) -> Option<Mode> {
+        Mode::ALL.into_iter().find(|m| m.word() == word)
     }
 }
 
@@ -131,12 +140,7 @@ pub fn load(settings: &Settings) -> Loaded {
     if top.get("format").and_then(Value::as_str) != Some(FORMAT) {
         return bad;
     }
-    let mode = top.get("mode").and_then(Value::as_str).and_then(|m| match m {
-        "off" => Some(Mode::Off),
-        "read" => Some(Mode::Read),
-        "write" => Some(Mode::Write),
-        _ => None,
-    });
+    let mode = top.get("mode").and_then(Value::as_str).and_then(Mode::stored);
     let port = match top.get("port") {
         None | Some(Value::Null) => Some(DEFAULT_PORT),
         Some(v) => v.as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p >= MIN_PORT),

@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use super::channels::{CH_PREFIX, ch_key, first_number};
 use super::iolist::Target;
 use super::rack::{self, CardType, RackRef};
+use crate::defaults::plc::SafeState;
 use crate::defaults::{self, Scope};
 
 /// The field names of a channel's tag and safe state (`plc.ch.<i>.tag`, `plc.ch.<i>.safe`).
@@ -36,7 +37,7 @@ pub const MAX_TAG: usize = 128;
 /// Longest safe value (design 056 §4.4).
 pub const MAX_SAFE: usize = 16;
 /// The safe words of a digital output.
-pub const DQ_SAFE: [&str; 3] = ["off", "on", "hold"];
+pub const DQ_SAFE: &[&str] = <SafeState as ecad_model::Word>::WORDS;
 /// The safe words of an analogue output (besides a value).
 pub const AO_SAFE: [&str; 3] = ["hold", "min", "max"];
 /// Most channels **Make tags** fills in one call (bounded by the cards' channel counts anyway).
@@ -92,7 +93,8 @@ pub fn safe_value(t: Option<CardType>, value: Option<&str>) -> Result<Option<Str
     }
     if let Some(w) = DQ_SAFE.iter().chain(AO_SAFE.iter()).find(|w| **w == lower) {
         // `on` and `off` are a digital output's words; an analogue output takes a value instead.
-        if matches!(t, Some(CardType::Ao)) && (*w == "on" || *w == "off") {
+        let digital_only = <SafeState as ecad_model::Word>::parse(w).is_some_and(|s| s != SafeState::Hold);
+        if matches!(t, Some(CardType::Ao)) && digital_only {
             return Err(CmdError::refused("An analogue output's safe state is Hold, Min, Max or a value (`4 mA`)."));
         }
         return Ok(Some((*w).to_string()));
@@ -116,10 +118,13 @@ pub fn safe_default(doc: &Document, c: ComponentId, t: CardType) -> Option<Strin
 
 /// A safe value in words: `Off`, `On`, `Hold`, `Min`, `Max`, or the value as stored.
 pub fn safe_words(v: &str) -> String {
+    match <SafeState as ecad_model::Word>::parse(v) {
+        Some(SafeState::Off) => return "Off".into(),
+        Some(SafeState::On) => return "On".into(),
+        Some(SafeState::Hold) => return "Hold".into(),
+        None => {}
+    }
     match v {
-        "off" => "Off".into(),
-        "on" => "On".into(),
-        "hold" => "Hold".into(),
         "min" => "Min".into(),
         "max" => "Max".into(),
         other => other.to_string(),

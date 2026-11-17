@@ -719,7 +719,7 @@ pub fn lines_nested(doc: &Document) -> bool {
 
 /// Whether a new item's unit is metres (`bom.item.unit = m`).
 pub fn item_unit_metres(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).word() == METRES
+    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).choice::<defaults::bom::ItemUnit>() == Some(defaults::bom::ItemUnit::Metres)
 }
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.

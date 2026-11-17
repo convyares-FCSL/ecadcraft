@@ -831,7 +831,12 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), tag::PROVISIONAL_SETTING, on.then(|| "yes".to_string())));
+        ops.extend(set(
+            ObjectRef::Project,
+            Some(&doc.properties),
+            tag::PROVISIONAL_SETTING,
+            on.then(|| ecad_model::words::flag_word(true).to_string()),
+        ));
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {

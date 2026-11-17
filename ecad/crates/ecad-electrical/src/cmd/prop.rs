@@ -483,7 +483,7 @@ fn tag_ops(doc: &Document, o: ObjectRef, tag_value: Option<String>, fixed: bool)
     let fixed = fixed && tag_value.as_deref().is_some_and(|t| !tag::is_provisional(t));
     let mut ops = Vec::new();
     ops.extend(set(o, TAG_KEY, props.get(TAG_KEY), tag_value));
-    ops.extend(set(o, FIXED_KEY, props.get(FIXED_KEY), fixed.then(|| "yes".to_string())));
+    ops.extend(set(o, FIXED_KEY, props.get(FIXED_KEY), fixed.then(|| ecad_model::words::flag_word(true).to_string())));
     ops
 }
 
@@ -632,13 +632,10 @@ pub struct FixedSet {
 /// A value other than yes or no; [`NO_SUCH_OBJECT`]; fixing no tag, or a provisional one
 /// ([`PROVISIONAL_FIXED`]).
 pub fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<FixedSet, CmdError> {
-    let on = match typed.map(|v| v.trim().to_ascii_lowercase()) {
+    let on = match typed.map(str::trim) {
         None => false,
-        Some(v) => match v.as_str() {
-            "yes" | "true" => true,
-            "" | "no" | "false" => false,
-            other => return Err(CmdError::refused(format!("`tag_fixed` is \"yes\" or null, not {other:?}"))),
-        },
+        Some("") => false,
+        Some(v) => ecad_model::words::flag(v).ok_or_else(|| CmdError::refused(format!("`tag_fixed` is \"yes\" or null, not {v:?}")))?,
     };
     let props = tag_props(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     if on {
@@ -648,5 +645,5 @@ pub fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<F
             Some(_) => {}
         }
     }
-    Ok(FixedSet { on, op: set(o, FIXED_KEY, props.get(FIXED_KEY), on.then(|| "yes".to_string())) })
+    Ok(FixedSet { on, op: set(o, FIXED_KEY, props.get(FIXED_KEY), on.then(|| ecad_model::words::flag_word(true).to_string())) })
 }
