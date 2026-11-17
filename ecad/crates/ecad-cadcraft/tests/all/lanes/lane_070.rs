@@ -78,9 +78,6 @@ const UNTYPED: &[&str] = &[
     "rating",
     "ratingtable",
     "ratings",
-    "cablenew",
-    "cableedit",
-    "cableremove",
 ];
 
 #[test]
@@ -936,4 +933,66 @@ fn the_typed_numbering_commands_still_work() {
     assert_eq!(on["provisional"], json!(true), "{on}");
     let fin = h.run("finalise", json!({"preview": true})).unwrap_or_else(|e| json!(e));
     assert!(fin["rows"].is_array(), "{fin}");
+}
+
+/// Input refusals of the cable manager's commands: one wording.
+#[test]
+fn the_cable_manager_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        (
+            "cablenew",
+            json!({"colour": 1}),
+            "`colour` is not a parameter of this command; it takes `cable_type`, `cores`, `description`, `from`, `length`, `maker`, `part_number`, `shield`, `tag`, `to`, `type`",
+        ),
+        ("cablenew", json!({"length": true}), "`length` must be text, or null"),
+        ("cablenew", json!({"from": "+CAB1"}), "`from` must be an object, or null"),
+        ("cableedit", json!({"set": {}}), "`cable` (text) is required"),
+        ("cableedit", json!({"cable": "-W01"}), "`set` (object) is required"),
+        ("cableremove", json!({}), "`cable` (text) is required"),
+    ];
+    let mut h = H::new(7036);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the cable manager's commands keep their words.
+#[test]
+fn the_cable_manager_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("cablenew", json!({"length": "x"}), "Length must be a number of metres from"),
+        ("cablenew", json!({"shield": "lead"}), "Shield is none, overall, pairs or overall+pairs."),
+        ("cablenew", json!({"maker": "x".repeat(65)}), "Maker is at most 64 characters."),
+        ("cablenew", json!({"cable_type": "H07X"}), "No cable type \"H07X\" in this project's standards."),
+        ("cablenew", json!({"tag": "-W01"}), "-W01 is already the tag of -W01 (cable). Choose another tag."),
+        ("cableedit", json!({"cable": "-W09", "set": {}}), "No cable \"-W09\"."),
+        (
+            "cableedit",
+            json!({"cable": "-W01", "set": {"tag": null}}),
+            "A cable always has a tag. Type a new tag (such as -W05) instead of clearing it.",
+        ),
+        ("cableremove", json!({"cable": "-W09"}), "No cable \"-W09\"."),
+    ];
+    let mut h = H::new(7037);
+    assert!(h.run("cablenew", json!({})).is_ok());
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed cable manager's commands still work, and answer as before.
+#[test]
+fn the_typed_cable_manager_commands_still_work() {
+    let mut h = H::new(7038);
+    let made = h.run("cablenew", json!({"cores": "4G", "length": 12, "from": {"gland": "M20"}})).unwrap_or_else(|e| json!(e));
+    assert_eq!(made["tag"], json!("-W01"), "{made}");
+    let k = made["cable"].clone();
+    let edit = h.run("cableedit", json!({"cable": "-W01", "set": {"maker": "Lapp", "length": null}})).unwrap_or_else(|e| json!(e));
+    assert_eq!((&edit["cable"], &edit["written"], &edit["changed"]), (&k, &json!(true), &json!(["maker", "length"])), "{edit}");
+    let doc = h.doc();
+    let cable = doc.cables.values().next().map(|c| c.properties.clone()).unwrap_or_default();
+    assert_eq!(cable.get("maker").map(String::as_str), Some("Lapp"), "{cable:?}");
+    let gone = h.run("cableremove", json!({"cable": k})).unwrap_or_else(|e| json!(e));
+    assert_eq!(gone["removed"], json!(true), "{gone}");
 }

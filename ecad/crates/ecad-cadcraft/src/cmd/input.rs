@@ -53,6 +53,9 @@ pub(crate) fn parse<P: Command>(params: &Value) -> Result<P, CmdError> {
 /// The marker a reader puts where the parameter's name goes ([`Bounded`]'s refusals).
 const FIELD: &str = "{field}";
 
+/// Most characters of an unknown parameter's name a refusal echoes.
+const MAX_NAME_SHOWN: usize = 64;
+
 /// The uniform wording of serde's refusal `text` of `obj` as `P`.
 fn explain<P: Command>(obj: &Map<String, Value>, text: &str) -> String {
     let schema = schema::<P>();
@@ -60,6 +63,11 @@ fn explain<P: Command>(obj: &Map<String, Value>, text: &str) -> String {
         return format!("`{f}` ({}) is required", kind(&schema, f).0);
     }
     if let Some(f) = quoted_after(text, "unknown field `") {
+        // The name is echoed, so a very long one is cut (it may be any length).
+        let f = match f.char_indices().nth(MAX_NAME_SHOWN) {
+            Some((i, _)) => format!("{}\u{2026}", &f[..i]),
+            None => f.to_string(),
+        };
         let takes: Vec<String> = schema["properties"].as_object().into_iter().flatten().map(|(k, _)| format!("`{k}`")).collect();
         return format!("`{f}` is not a parameter of this command; it takes {}", if takes.is_empty() { "none".into() } else { takes.join(", ") });
     }
@@ -340,6 +348,16 @@ mod tests {
         for (v, want) in rows {
             assert_eq!(says(v.clone()).as_deref(), Some(want), "{v}");
         }
+    }
+
+    #[test]
+    fn a_long_unknown_name_is_cut() {
+        let mut o = Map::new();
+        o.insert("conductor".into(), json!("1"));
+        o.insert("y".repeat(10_000), json!(1));
+        let e = says(Value::Object(o)).unwrap_or_default();
+        assert!(e.starts_with(&format!("`{}\u{2026}` is not a parameter", "y".repeat(MAX_NAME_SHOWN))), "{e}");
+        assert!(e.chars().count() < 200, "{e}");
     }
 
     #[test]
