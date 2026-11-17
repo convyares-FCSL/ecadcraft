@@ -30,7 +30,8 @@
 //! - Per net, the counted wire numbers, fixed numbers and potentials of its conductors are kept
 //!   ([`NetData`]), and project-wide, which nets carry each number ([`Connectivity::nets_numbered`])
 //!   and the highest sequence used per number prefix ([`Connectivity::next_in`]).
-//! - Net IDs ([`NetId`]) are not stable across a rebuild: compare nets by their members.
+//! - Net keys ([`NetKey`]) are not stable across a rebuild: compare nets by their members. A
+//!   wire stores its net's stable [`crate::id::NetId`] (design 072 F39).
 //!
 //! This module reads the document and its indexes; it holds no I/O.
 
@@ -90,9 +91,10 @@ pub enum Node {
     Name(String),
 }
 
-/// A net's identity in one [`Connectivity`] (not stable across rebuilds).
+/// A net's key in one [`Connectivity`] (not stable across rebuilds; the stored, stable id is
+/// [`crate::id::NetId`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NetId(pub u64);
+pub struct NetKey(pub u64);
 
 /// What one conductor contributes to its net's counted values.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -169,16 +171,16 @@ fn count_down(map: &mut BTreeMap<String, u32>, key: &str) {
 /// index), so two kept states holding the same nets print alike whatever their net IDs.
 #[derive(Clone, Default)]
 pub struct Connectivity {
-    node_net: HashMap<Node, NetId>,
-    nets: HashMap<NetId, NetData>,
+    node_net: HashMap<Node, NetKey>,
+    nets: HashMap<NetKey, NetData>,
     next: u64,
     /// Wire number → nets carrying it → how many of their conductors carry it.
-    by_number: BTreeMap<String, BTreeMap<NetId, u32>>,
+    by_number: BTreeMap<String, BTreeMap<NetKey, u32>>,
     /// Number prefix ([`split_number`]) → sequence → how many conductors carry it.
     seqs: BTreeMap<String, BTreeMap<u64, u32>>,
     /// Nets a cut may have split, with the nodes on either side of each cut, to be searched by
     /// [`Connectivity::settle`].
-    suspect: BTreeMap<NetId, Vec<Node>>,
+    suspect: BTreeMap<NetKey, Vec<Node>>,
 }
 
 impl std::fmt::Debug for Connectivity {
@@ -344,13 +346,13 @@ impl Connectivity {
         c
     }
 
-    fn fresh(&mut self) -> NetId {
+    fn fresh(&mut self) -> NetKey {
         self.next = self.next.saturating_add(1);
-        NetId(self.next)
+        NetKey(self.next)
     }
 
     /// Put `node` (not in any net) into net `id` with its contributions.
-    fn attach(&mut self, doc: &Document, node: Node, id: NetId) {
+    fn attach(&mut self, doc: &Document, node: Node, id: NetKey) {
         let contribution = match &node {
             Node::Wire(c) => doc.wires.get(c).map(Contribution::of),
             _ => None,
@@ -376,7 +378,7 @@ impl Connectivity {
     }
 
     /// Add (`up`) or remove one conductor's values to net `id`'s counts and the number index.
-    fn contribute(&mut self, id: NetId, con: &Contribution, up: bool) {
+    fn contribute(&mut self, id: NetKey, con: &Contribution, up: bool) {
         let Some(net) = self.nets.get_mut(&id) else { return };
         let step = if up { count_up } else { count_down };
         if let Some(n) = &con.number {
@@ -422,7 +424,7 @@ impl Connectivity {
     }
 
     /// Move `node` from its net to net `to` (both exist).
-    fn relabel(&mut self, doc: &Document, node: &Node, to: NetId) {
+    fn relabel(&mut self, doc: &Document, node: &Node, to: NetKey) {
         let Some(from) = self.node_net.get(node).copied() else { return };
         if from == to {
             return;
@@ -764,7 +766,7 @@ impl Connectivity {
     /// The interleaved searches of [`Connectivity::settle`] in net `id` from `frontier` (two or
     /// more of its nodes). Returns `false` when they could not decide (never expected), so the
     /// caller walks the whole net.
-    fn split_from(&mut self, doc: &Document, id: NetId, frontier: Vec<Node>) -> bool {
+    fn split_from(&mut self, doc: &Document, id: NetKey, frontier: Vec<Node>) -> bool {
         let k = frontier.len();
         let mut parent: Vec<usize> = (0..k).collect();
         fn find(parent: &mut [usize], mut x: usize) -> usize {
@@ -879,7 +881,7 @@ impl Connectivity {
 
     /// Walk the whole of net `id` and split it into its parts (the fallback of
     /// [`Connectivity::settle`]).
-    fn walk_all(&mut self, doc: &Document, id: NetId) {
+    fn walk_all(&mut self, doc: &Document, id: NetKey) {
         {
             let Some(net) = self.nets.get(&id) else { return };
             let members = net.nodes();
@@ -938,27 +940,27 @@ impl Connectivity {
     }
 
     /// The net of `node`.
-    pub fn net_of(&self, node: &Node) -> Option<NetId> {
+    pub fn net_of(&self, node: &Node) -> Option<NetKey> {
         self.node_net.get(node).copied()
     }
 
     /// The net of conductor `c`.
-    pub fn net_of_conductor(&self, c: WireId) -> Option<NetId> {
+    pub fn net_of_conductor(&self, c: WireId) -> Option<NetKey> {
         self.net_of(&Node::Wire(c))
     }
 
     /// The net of terminal `t`.
-    pub fn net_of_terminal(&self, t: TerminalId) -> Option<NetId> {
+    pub fn net_of_terminal(&self, t: TerminalId) -> Option<NetKey> {
         self.net_of(&Node::Terminal(t))
     }
 
     /// Net `id`'s members and counts.
-    pub fn net(&self, id: NetId) -> Option<&NetData> {
+    pub fn net(&self, id: NetKey) -> Option<&NetData> {
         self.nets.get(&id)
     }
 
     /// Every net, in no particular order.
-    pub fn nets(&self) -> impl Iterator<Item = (NetId, &NetData)> {
+    pub fn nets(&self) -> impl Iterator<Item = (NetKey, &NetData)> {
         self.nets.iter().map(|(k, v)| (*k, v))
     }
 
@@ -973,12 +975,12 @@ impl Connectivity {
     }
 
     /// The nets whose conductors carry wire number `number`, with how many of them carry it.
-    pub fn nets_numbered(&self, number: &str) -> impl Iterator<Item = (NetId, u32)> + '_ {
+    pub fn nets_numbered(&self, number: &str) -> impl Iterator<Item = (NetKey, u32)> + '_ {
         self.by_number.get(number).into_iter().flat_map(|m| m.iter().map(|(k, v)| (*k, *v)))
     }
 
     /// Every wire number in use, in order, with the nets carrying it.
-    pub fn numbers(&self) -> impl Iterator<Item = (&str, &BTreeMap<NetId, u32>)> {
+    pub fn numbers(&self) -> impl Iterator<Item = (&str, &BTreeMap<NetKey, u32>)> {
         self.by_number.iter().map(|(k, v)| (k.as_str(), v))
     }
 

@@ -41,7 +41,7 @@ fn conductors(doc: &Document) -> Vec<WireId> {
     doc.wires.keys().copied().collect()
 }
 
-fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetId> {
+fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetKey> {
     doc.connectivity().net_of_conductor(c)
 }
 

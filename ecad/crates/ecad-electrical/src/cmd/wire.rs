@@ -8,7 +8,7 @@ use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
 use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    DeviceId, Document, End, IdAllocator, Ledger, NetData, NetId, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style, StyleRef,
+    DeviceId, Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style, StyleRef,
     Subject, TerminalId, Wire, WireId,
 };
 
@@ -127,7 +127,7 @@ fn sort_key(net: &NetData) -> (u8, u128) {
 ///
 /// # Errors
 /// No such wire or connection point, no net with that number, or nothing given.
-pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetId, CmdError> {
+pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError> {
     let conn = doc.connectivity();
     if let Some(c) = choice.conductor {
         return conn.net_of_conductor(c).ok_or(CmdError::NotFound(Noun::Wire));
@@ -137,7 +137,7 @@ pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetId, CmdError>
     }
     if let Some(n) = &choice.number {
         let n = n.trim();
-        let mut nets: Vec<NetId> = conn.nets_numbered(n).map(|(id, _)| id).collect();
+        let mut nets: Vec<NetKey> = conn.nets_numbered(n).map(|(id, _)| id).collect();
         nets.sort_by_key(|id| conn.net(*id).map(sort_key));
         return nets.first().copied().ok_or_else(|| CmdError::refused(format!("no net has number {n}")));
     }
@@ -183,7 +183,7 @@ pub struct NetsPage {
 /// As [`chosen_net`]; a page that does not exist; an unreadable cursor.
 pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
     let conn = doc.connectivity();
-    let mut ids: Vec<NetId> = if q.choice.is_given() {
+    let mut ids: Vec<NetKey> = if q.choice.is_given() {
         if let Some(n) = &q.choice.number { conn.nets_numbered(n.trim()).map(|(id, _)| id).collect() } else { vec![chosen_net(doc, &q.choice)?] }
     } else if let Some(pg) = q.page {
         if !doc.pages.contains_key(&pg) {
@@ -202,7 +202,7 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
         conn.nets().map(|(id, _)| id).collect()
     };
     ids.retain(|id| conn.net(*id).is_some_and(|n| q.all || !n.wires.is_empty()));
-    let mut keyed: Vec<((u8, u128), NetId)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
+    let mut keyed: Vec<((u8, u128), NetKey)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
     keyed.sort();
     if let Some(a) = &q.after {
         let cursor = u128::from_str_radix(a.trim(), 16).map_err(|_| CmdError::input("`after` must be a cursor from `next`"))?;
@@ -374,7 +374,7 @@ pub fn wirenumber(
     let v = v.to_string();
     let conn = doc.connectivity();
     let exempt = doc.settings.wiring.potentials.iter().any(|x| !x.numbered && x.prefix == v);
-    let others: Vec<NetId> = if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
+    let others: Vec<NetKey> = if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
     let Some(other_id) = others.first().copied() else {
         let ops = wiring::write_ops(doc, &net, &v, true);
         return Ok(Numbered::Fixed { ops, number: v, conductors });
@@ -644,7 +644,7 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
 /// change), and how many nets they renumber.
 pub fn renumber(doc: &Document, all: bool) -> (Vec<Op>, usize) {
     let ops = wiring::renumber(doc, all);
-    let nets: BTreeSet<NetId> = ops
+    let nets: BTreeSet<NetKey> = ops
         .iter()
         .filter_map(|op| match op {
             Op::ModifyWire { id, .. } => doc.connectivity().net_of_conductor(*id),

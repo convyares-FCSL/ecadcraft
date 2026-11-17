@@ -33,7 +33,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{CableId, DeviceId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -591,7 +591,7 @@ impl Check {
 /// What a check belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
-    Net(NetId),
+    Net(NetKey),
     Wire(WireId),
     Terminal(TerminalId),
     Device(DeviceId),
@@ -863,7 +863,7 @@ fn conductor_words(doc: &Document, c: WireId) -> String {
 }
 
 /// The net checks of net `id`.
-pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
+pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
     let mut out = Vec::new();
     let first = net.first_conductor();
     let (page, at) = first.map_or((None, None), |c| conductor_place(doc, c, None));
@@ -1330,7 +1330,7 @@ pub struct Scope {
     /// rows are taken again.
     relocate: bool,
     nodes: BTreeSet<ecad_model::Node>,
-    old_nets: BTreeSet<NetId>,
+    old_nets: BTreeSet<NetKey>,
     numbers: BTreeSet<String>,
     wires: BTreeSet<WireId>,
     routes: BTreeSet<WireId>,

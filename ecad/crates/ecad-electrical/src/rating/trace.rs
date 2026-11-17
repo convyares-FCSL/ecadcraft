@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, NetId, Node, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, NetKey, Node, Subject, TerminalId};
 
 use super::RatedSubject;
 use crate::symbols::{Kind, StarterKey, StarterKey as K};
@@ -46,7 +46,7 @@ impl How {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
     pub devices: Vec<(DeviceId, Option<String>)>,
-    pub path: BTreeSet<NetId>,
+    pub path: BTreeSet<NetKey>,
     pub bounded: bool,
 }
 
@@ -166,10 +166,10 @@ fn step(doc: &Document, t: TerminalId) -> Step {
 }
 
 /// Trace from `start` nets (design 057 §4.2).
-pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetId>) -> Found {
+pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Found {
     let conn = doc.connectivity();
     let mut found = Found::default();
-    let mut level: Vec<NetId> = Vec::new();
+    let mut level: Vec<NetKey> = Vec::new();
     for n in start {
         if found.path.insert(n) {
             level.push(n);

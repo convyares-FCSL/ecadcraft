@@ -1541,7 +1541,7 @@ pub struct LabelCandidate {
     pub rep: RepresentationId,
     pub conductor: WireId,
     /// The route's net, if it has one.
-    pub net: Option<ecad_model::NetId>,
+    pub net: Option<ecad_model::NetKey>,
     pub text: String,
     /// Length of its longest segment.
     pub longest: f64,
@@ -1559,7 +1559,7 @@ pub fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<usize> {
     let mut chosen = vec![false; candidates.len()];
     match rule {
         LabelRule::Net => {
-            let mut best: BTreeMap<(Option<ecad_model::NetId>, Option<WireId>, &str), usize> = BTreeMap::new();
+            let mut best: BTreeMap<(Option<ecad_model::NetKey>, Option<WireId>, &str), usize> = BTreeMap::new();
             for (i, c) in candidates.iter().enumerate() {
                 // A wire without a net is its own group.
                 let key = (c.net, if c.net.is_none() { Some(c.conductor) } else { None }, c.text.as_str());
@@ -1587,7 +1587,7 @@ pub fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<usize> {
         }
     }
     // Every net drawn on the page is labelled at least once: on its best route.
-    let mut nets: BTreeMap<(Option<ecad_model::NetId>, Option<WireId>), (bool, usize)> = BTreeMap::new();
+    let mut nets: BTreeMap<(Option<ecad_model::NetKey>, Option<WireId>), (bool, usize)> = BTreeMap::new();
     for (i, c) in candidates.iter().enumerate() {
         let key = (c.net, if c.net.is_none() { Some(c.conductor) } else { None });
         let on = chosen.get(i).copied().unwrap_or(false);

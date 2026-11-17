@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::numbering::Places;
-use ecad_model::{Document, NetId, Op, PageId, Subject};
+use ecad_model::{Document, NetKey, Op, PageId, Subject};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
@@ -16,7 +16,7 @@ pub struct Checks {
     by_key: BTreeMap<Key, Vec<Check>>,
     grid: Grid,
     /// Nets with conductors and no number (for the one Unnumbered row).
-    unnumbered: BTreeSet<NetId>,
+    unnumbered: BTreeSet<NetKey>,
     /// Provisional tags are on (brief 026): the Unnumbered row is a warning, `… provisional`.
     provisional: bool,
     /// Bumped on every change, for views that copy the rows.
@@ -192,7 +192,7 @@ impl Checks {
         }
         let conn = doc.connectivity();
         // Nets: those named, and those sharing their numbers.
-        let mut nets: BTreeSet<NetId> = BTreeSet::new();
+        let mut nets: BTreeSet<NetKey> = BTreeSet::new();
         let mut numbers = std::mem::take(&mut scope.numbers);
         for n in &scope.nodes {
             if let Some(id) = conn.net_of(n) {

@@ -21,7 +21,7 @@ fn pin(d: &Document, c: DeviceId, key: &str, name: &str) -> TerminalId {
     pins(d, c).into_iter().find(|(k, n, _)| k == key && n == name).map(|(_, _, t)| t).unwrap_or_else(|| panic!("no {key} {name}"))
 }
 
-fn net(d: &Document, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(d: &Document, t: TerminalId) -> Option<ecad_model::NetKey> {
     d.connectivity().net_of_terminal(t)
 }
 

@@ -54,11 +54,12 @@ pub mod title_block;
 pub mod units;
 pub mod view;
 pub mod wire;
+pub mod wire_order;
 pub mod wiring;
 pub mod words;
 
 pub use book::PageNo;
-pub use connectivity::{Connectivity, NetData, NetId, Node};
+pub use connectivity::{Connectivity, NetData, NetKey, Node};
 pub use device::{DeviceGroup, DeviceType};
 pub use doc::{
     Cable, CableMember, Color, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End, Folder, Form, Item, ItemKind,
@@ -68,8 +69,8 @@ pub use doc::{
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, DefinitionId, DeviceId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, PageId, ProjectId, RepresentationId, RouteId, StandardId,
-    TerminalId, TxId, WireId,
+    CableId, ConductorId, DefinitionId, DeviceId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, NetId, PageId, ProjectId, RepresentationId,
+    RouteId, StandardId, TerminalId, TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};

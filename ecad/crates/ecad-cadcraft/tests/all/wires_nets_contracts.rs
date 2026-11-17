@@ -22,7 +22,7 @@ fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> Value {
     wire_r(h, points, extra).unwrap()
 }
 
-fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetId> {
+fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetKey> {
     doc.connectivity().net_of_conductor(c)
 }
 

@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::colour::ColourWords;
-use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetId, Node, name_key, split_number};
+use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetKey, Node, name_key, split_number};
 use crate::doc::{Document, Subject};
 use crate::id::{PageId, WireId};
 use crate::op::{ObjectRef, Op};
@@ -421,7 +421,7 @@ pub(crate) fn scope_of(doc: &Document, net: &NetData, pot: &NetPotential) -> Str
 
 /// The number net `id` keeps when numbering only nets without one: its most carried number, if
 /// no other net has a better claim to it.
-pub(crate) fn kept_number(doc: &Document, id: NetId, net: &NetData) -> Option<String> {
+pub(crate) fn kept_number(doc: &Document, id: NetKey, net: &NetData) -> Option<String> {
     best_number(&net.numbers).filter(|w| keeps(doc, id, w))
 }
 
@@ -473,11 +473,11 @@ fn carries(net: &NetData, number: &str, fixed: bool) -> bool {
 }
 
 /// The nets a transaction's ops touched, in the state after them (design 022 §11).
-pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<NetId>) {
+pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<NetKey>) {
     let conn = doc.connectivity();
     let mut nets = BTreeSet::new();
     let mut potential = BTreeSet::new();
-    let add = |n: Node, nets: &mut BTreeSet<NetId>| {
+    let add = |n: Node, nets: &mut BTreeSet<NetKey>| {
         if let Some(id) = conn.net_of(&n) {
             nets.insert(id);
         }
@@ -578,7 +578,7 @@ fn net_rank(net: &NetData, number: &str) -> (bool, usize, std::cmp::Reverse<Opti
 }
 
 /// Whether `id` keeps `number` among every net carrying it.
-fn keeps(doc: &Document, id: NetId, number: &str) -> bool {
+fn keeps(doc: &Document, id: NetKey, number: &str) -> bool {
     let conn = doc.connectivity();
     let Some(me) = conn.net(id) else { return true };
     let mine = net_rank(me, number);
@@ -593,9 +593,10 @@ pub fn assign(doc: &Document, ops: &[Op]) -> Vec<Op> {
 }
 
 /// [`assign`] for the nets `touched`.
-pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed: &BTreeSet<NetId>) -> Vec<Op> {
+pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed: &BTreeSet<NetKey>) -> Vec<Op> {
     let conn = doc.connectivity();
-    let mut order: Vec<(WireId, NetId)> = touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
+    let mut order: Vec<(WireId, NetKey)> =
+        touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
     order.sort();
     let mut alloc = Allocator::default();
     let mut out = Vec::new();
@@ -630,7 +631,7 @@ fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<cra
 }
 
 /// The number net `id` should carry, and whether fixed; `None` to leave it as it is.
-fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, alloc: &mut Allocator) -> Option<(String, bool)> {
+fn decide(doc: &Document, id: NetKey, net: &NetData, potential_changed: bool, alloc: &mut Allocator) -> Option<(String, bool)> {
     if net.wires.is_empty() {
         return None;
     }
@@ -773,7 +774,7 @@ pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colo
 
 /// Whether net `id` (showing `number`) is in a number error: two different fixed numbers, or
 /// another net carrying the same number (unless it is an unnumbered potential's shared prefix).
-pub fn number_error(doc: &Document, id: NetId, net: &NetData, number: &str) -> bool {
+pub fn number_error(doc: &Document, id: NetKey, net: &NetData, number: &str) -> bool {
     if net.fixed.len() > 1 {
         return true;
     }
@@ -782,12 +783,12 @@ pub fn number_error(doc: &Document, id: NetId, net: &NetData, number: &str) -> b
 }
 
 /// The nets that share `number` with another net (for Checks), when it is not exempt.
-pub fn sharing(doc: &Document, number: &str) -> Vec<NetId> {
+pub fn sharing(doc: &Document, number: &str) -> Vec<NetKey> {
     let exempt = doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == number);
     if exempt {
         return Vec::new();
     }
-    let nets: Vec<NetId> = doc.connectivity().nets_numbered(number).map(|(n, _)| n).collect();
+    let nets: Vec<NetKey> = doc.connectivity().nets_numbered(number).map(|(n, _)| n).collect();
     if nets.len() > 1 { nets } else { Vec::new() }
 }
 
