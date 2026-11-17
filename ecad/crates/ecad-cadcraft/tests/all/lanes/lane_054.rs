@@ -285,7 +285,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
                 "hostile",
                 vec![ecad_model::Op::SetStyle {
                     layer: ecad_model::StyleLayer::Project,
-                    catalogue: "page".into(),
+                    catalogue: ecad_model::StyleCatalogue::Page,
                     id: StyleRef::Builtin("schematic".into()),
                     before: None,
                     after: Some(r),

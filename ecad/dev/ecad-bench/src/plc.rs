@@ -92,8 +92,12 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         for r in 0..RACKS {
             let page = pages[(r * 3) % pages.len()];
             let mut ops = Vec::new();
-            let at =
-                |i: usize| Placement { origin: Pt::new(600.0 + 40.0 * i as f64, 600.0 + 60.0 * r as f64), rotation: 0.0, mirror: false, scale: 1.0 };
+            let at = |i: usize| Placement {
+                origin: Pt::new(600.0 + 40.0 * i as f64, 600.0 + 60.0 * r as f64),
+                rotation: ecad_model::units::Radians(0.0),
+                mirror: false,
+                scale: 1.0,
+            };
             let plan = ecad_cadcraft::devices::plan_place(
                 &p.ledger,
                 &mut p.ids,

@@ -15,7 +15,7 @@ fn rec(fields: &[(&str, &str)]) -> StyleRecord {
 }
 
 fn set_type(layer: StyleLayer, id: StyleRef, before: Option<StyleRecord>, after: Option<StyleRecord>) -> Op {
-    Op::SetStyle { layer, catalogue: "page".into(), id, before, after }
+    Op::SetStyle { layer, catalogue: ecad_model::StyleCatalogue::Page, id, before, after }
 }
 
 fn b(w: &str) -> StyleRef {

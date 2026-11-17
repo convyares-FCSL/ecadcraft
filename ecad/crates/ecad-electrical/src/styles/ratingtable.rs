@@ -17,8 +17,6 @@ use super::{Catalogue, Field};
 use crate::defaults::{Kind, Scope, Slot};
 use crate::rating::dataset::{self, Dataset};
 
-/// The catalogue word.
-pub const WORD: &str = "ratingtable";
 /// The field holding the CSV rows.
 pub const ROWS: &str = "rows";
 /// The field holding the source.
@@ -41,19 +39,26 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The rating table catalogue: no built-in entries.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Rating tables", one: "Rating table", fields: &FIELDS, builtins: &[], choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::RatingTable,
+    plural: "Rating tables",
+    one: "Rating table",
+    fields: &FIELDS,
+    builtins: &[],
+    choices,
+    project_field: None,
+};
 
 /// The project's chosen rating table, when it names one that exists.
 pub fn chosen(doc: &Document) -> Option<StyleRef> {
     let r = crate::defaults::resolve(doc, &crate::defaults::rating::TABLE, Scope::project());
-    StyleRef::parse(&r.text()).filter(|id| super::exists(doc, WORD, id))
+    StyleRef::parse(&r.text()).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::RatingTable, id))
 }
 
 /// The stored rows of table `id`: the project's record, else the standard's; within the cap.
 pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
-        if let Some(v) = super::record(doc, layer, WORD, id).and_then(|r| r.fields.get(ROWS))
+        if let Some(v) = super::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| r.fields.get(ROWS))
             && v.len() <= dataset::MAX_BYTES
         {
             return v.as_str();
@@ -64,7 +69,7 @@ pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
 
 /// The source text of table `id` (empty when none was given).
 pub fn source(doc: &Document, id: &StyleRef) -> String {
-    super::field_of(doc, WORD, id, SOURCE, None).map(|r| r.text()).unwrap_or_default()
+    super::field_of(doc, ecad_model::StyleCatalogue::RatingTable, id, SOURCE, None).map(|r| r.text()).unwrap_or_default()
 }
 
 /// A rating table read: its ID, name, source and rows.
@@ -78,7 +83,12 @@ pub struct Table {
 
 /// Read table `id`.
 pub fn read(doc: &Document, id: &StyleRef) -> Table {
-    Table { id: id.clone(), name: super::name(doc, WORD, id), source: source(doc, id), data: dataset::parse(rows_text(doc, id)) }
+    Table {
+        id: id.clone(),
+        name: super::name(doc, ecad_model::StyleCatalogue::RatingTable, id),
+        source: source(doc, id),
+        data: dataset::parse(rows_text(doc, id)),
+    }
 }
 
 /// The project's chosen table, read.

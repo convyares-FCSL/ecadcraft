@@ -16,6 +16,7 @@
 //!
 //! Excludes: the cells' own graphics ([`crate::symbols`]) and texts ([`super::channel_texts`]).
 
+use ecad_model::units::Degrees;
 use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
@@ -87,7 +88,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
     if !pl.origin.is_finite() || !pl.rotation.is_finite() {
         return None;
     }
-    let deg = pl.rotation.to_degrees().rem_euclid(360.0);
+    let deg = Degrees::from(pl.rotation).0.rem_euclid(360.0);
     let up = if deg.abs() < 0.5 || (deg - 360.0).abs() < 0.5 {
         false
     } else if (deg - 180.0).abs() < 0.5 {

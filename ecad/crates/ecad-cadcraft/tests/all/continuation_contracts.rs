@@ -452,7 +452,7 @@ fn xrefs_on_a_name_of(m: usize) {
     let mut props = ecad_model::Properties::new();
     props.insert("kind".into(), "continuation".into());
     props.insert("name".into(), "BIG".into());
-    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: 0.0, mirror: false, scale: 1.0 };
+    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
     let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, props).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction

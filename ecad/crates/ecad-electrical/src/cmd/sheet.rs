@@ -388,7 +388,7 @@ pub fn new_page_type(
     let page_type = crate::page_types::newpage_type(doc, ty, kind.generated)?;
     // A page with no kind is titled after its type (design 054 §4.2).
     let title = match (&page_type, kind.generated) {
-        (Some(t), None) => Some(crate::styles::name(doc, crate::styles::page::WORD, t)),
+        (Some(t), None) => Some(crate::styles::name(doc, ecad_model::StyleCatalogue::Page, t)),
         _ => None,
     };
     Ok((page_type, title))

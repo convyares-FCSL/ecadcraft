@@ -11,7 +11,7 @@ use crate::doc::{Cable, CableMember, Definition, Device, Document, End, Folder, 
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::Delta;
-use crate::style::{Standard, StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use crate::style::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -233,7 +233,7 @@ pub enum Op {
     /// write is refused while the project has no standard.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: StyleCatalogue,
         id: StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -690,7 +690,7 @@ impl Op {
                 if checked && current != before.as_ref() {
                     return Err(pre(format!("style {catalogue}/{id} ({}) differs from the recorded value", layer.word())));
                 }
-                crate::style::put(cats, catalogue, id, after.as_ref());
+                crate::style::put(cats, *catalogue, id, after.as_ref());
             }
             Op::SetStandard { before, after } => {
                 let current = doc.standard.as_ref().map(|s| &s.header);

@@ -165,7 +165,7 @@ fn look_check_screenshots() {
     save(&h, "050-standards-text.png");
     click(&mut h, "ecad.standards.catalogue.wire");
     let v = &h.state().settings.standards;
-    let wire = standards::CATALOGUES.iter().position(|c| c.0 == "wire").unwrap();
+    let wire = standards::CATALOGUES.iter().position(|c| c.0 == ecad_model::StyleCatalogue::Wire).unwrap();
     let dc24 = v.cats[wire].0.key_of(&StyleRef::Builtin("dc24".into())).unwrap();
     h.state_mut().settings.standards.style_focus = Some(dc24);
     h.run_steps(4);

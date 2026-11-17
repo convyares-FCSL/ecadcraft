@@ -28,6 +28,7 @@
 
 use crate::CmdError;
 use ecad_model::Noun;
+use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
@@ -567,7 +568,7 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
     let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
-    let placement = Placement { origin: on.at, rotation: 0.0, mirror: false, scale: 1.0 };
+    let placement = Placement { origin: on.at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     let mut tagless = plan_tagless(doc, ids, page, style, starter, placement, props)?;
     let j = tagless.terminal;
     // Split: C keeps its vertices up to the point; C2 runs from the point to C's old end B.
@@ -682,7 +683,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     // Brief 050b: the wire's own values, else its category's (named).
     let look = crate::styles::wire::wire_look(doc, w);
     let w = &doc.settings.wiring;
-    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {
@@ -941,7 +942,7 @@ fn junction_here(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Sty
     let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
-    plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 }, props)
+    plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 }, props)
 }
 
 /// The point of end `e` of `c`'s route on `page`.
