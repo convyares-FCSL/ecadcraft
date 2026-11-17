@@ -12,6 +12,7 @@
 //!
 //! This module draws nothing and stores nothing.
 
+use ecad_model::Word;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign, WireId};
 
 use crate::defaults::{self, Entry, Scope, text as d};
@@ -167,16 +168,6 @@ impl TextKind {
         TextKind::ChannelText,
         TextKind::Address,
     ];
-
-    /// The key word (`tag`, `point_label`…), as in `text.<word>.height` and the commands.
-    pub fn word(self) -> &'static str {
-        <Self as ecad_model::Word>::word(self)
-    }
-
-    /// The kind with this key word.
-    pub fn from_word(word: &str) -> Option<TextKind> {
-        <Self as ecad_model::Word>::parse(word)
-    }
 
     /// The registry entry choosing this kind's text style (`text.<kind>.style`, brief 050a).
     pub fn style_entry(self) -> &'static Entry {
@@ -398,16 +389,6 @@ ecad_model::word_enum! {
 }
 
 impl Shown {
-    /// The stored word: `yes`, `no` or `first` (design 072 F4).
-    pub fn word(self) -> &'static str {
-        <Self as ecad_model::Word>::word(self)
-    }
-
-    /// The value a stored word names; anything else is shown ([`Shown::On`]).
-    pub fn from_word(w: &str) -> Shown {
-        <Self as ecad_model::Word>::parse(w).unwrap_or_default()
-    }
-
     /// The value typed in a box: a stored word, any yes/no word ([`ecad_model::words::flag`]), or
     /// its words in the panels (`Shown`, `Hidden`, `Once per run`), in any case.
     pub fn from_input(text: &str) -> Option<Shown> {
@@ -495,10 +476,10 @@ pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
             RunRule::Plc => Some(&d::TAG_SHOW_PLC),
         };
         if let Some(rule) = rule {
-            return Shown::from_word(defaults::resolve(doc, rule, Scope::project()).word());
+            return <Shown as ecad_model::Word>::parse(defaults::resolve(doc, rule, Scope::project()).word()).unwrap_or_default();
         }
     }
-    Shown::from_word(r.word())
+    <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- Fonts (§2)
@@ -1101,7 +1082,7 @@ mod tests {
             // Brief 050a: the kind's built-in text style carries exactly these values.
             let b = crate::styles::text::CATALOGUE.builtin(&kind.builtin_style());
             assert_eq!(b.and_then(|b| b.value("height")), Some(Value::Length(h)), "{kind:?}");
-            assert_eq!(TextKind::from_word(kind.word()), Some(kind));
+            assert_eq!(<TextKind as ecad_model::Word>::parse(kind.word()), Some(kind));
             assert_eq!(kind.style_entry().key, format!("text.{}.style", kind.word()));
         }
     }
