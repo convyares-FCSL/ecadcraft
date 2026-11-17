@@ -199,7 +199,7 @@ pub mod numbering_seam {
     /// # Errors
     /// 026's refusal or a bad `provisional`.
     pub fn plan(p: &mut Project, params: &Value) -> Result<crate::cmd::numbering::BeforeIssue, String> {
-        crate::cmd::numbering::plan_before_issue(p, params)
+        crate::cmd::numbering::plan_before_issue(p, params).map_err(String::from)
     }
 
     /// Record a planned Finalise numbering.
@@ -207,7 +207,7 @@ pub mod numbering_seam {
     /// # Errors
     /// The commit was refused.
     pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::numbering::Plan) -> Result<(), String> {
-        crate::cmd::numbering::commit_finalise(p, pg, plan)
+        crate::cmd::numbering::commit_finalise(p, pg, plan).map_err(String::from)
     }
 }
 
@@ -1300,7 +1300,8 @@ pub(crate) fn release_pending(
         }
         finalise_tx = Some(p.ledger.head());
     }
-    let issued = injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()));
+    let issued =
+        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()).map_err(String::from));
     if let Err(e) = issued {
         clear_staging(&staging);
         if finalise_tx.is_some() {

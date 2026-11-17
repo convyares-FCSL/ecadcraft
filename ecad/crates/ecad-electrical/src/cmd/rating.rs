@@ -126,7 +126,7 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
             ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v)).map(str::to_string).ok_or_else(|| no("system is ac1, ac3 or dc."))
         }
         "vd_limit" => parse::percent(v).map(|_| v.to_string()).ok_or_else(|| no("vd_limit is 0.5 to 20 %.")),
-        "cable_type" => styles::find(doc, cable::WORD, v).map(|id| id.text()).map_err(CmdError::refused),
+        "cable_type" => styles::find(doc, cable::WORD, v).map(|id| id.text()),
         _ => Err(CmdError::refused(format!("{key} is not a rating key."))),
     }
 }
@@ -268,7 +268,7 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
 /// No such table, or none chosen and no name.
 pub fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::Table, CmdError> {
     let id = match name {
-        Some(n) => styles::find(doc, ratingtable::WORD, n).map_err(CmdError::refused)?,
+        Some(n) => styles::find(doc, ratingtable::WORD, n)?,
         None => ratingtable::chosen(doc).ok_or(CmdError::refused("No rating table chosen; give `name`."))?,
     };
     Ok(ratingtable::read(doc, &id))
@@ -317,7 +317,7 @@ pub struct TablePlan {
 /// # Errors
 /// A bad row (the whole import is refused), a name or source that does not read.
 pub fn check_table(w: &TableWrite) -> Result<dataset::Dataset, CmdError> {
-    let data = dataset::parse_strict(&w.csv).map_err(CmdError::refused)?;
+    let data = dataset::parse_strict(&w.csv)?;
     if !is_name(&w.name) {
         return Err(CmdError::refused("A rating table needs a name (1 to 64 characters, no control characters)."));
     }
@@ -350,7 +350,7 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
     if let Some(src) = &w.source {
         rec.fields.insert(ratingtable::SOURCE.into(), src.clone());
     }
-    styles::check_record(doc, cat, &id, w.layer, &rec).map_err(CmdError::refused)?;
+    styles::check_record(doc, cat, &id, w.layer, &rec)?;
     let rows = data.rows.len();
     let label = format!("Rating table {}: {rows} row{}", w.name, if rows == 1 { "" } else { "s" });
     let ops = if before.as_ref() == Some(&rec) {

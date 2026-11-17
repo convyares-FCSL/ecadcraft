@@ -49,7 +49,7 @@ pub(crate) fn place_channel(
             let n = channel_count(doc, card, t);
             let roles = roles_of(starter);
             let index = match named {
-                Some(x) => x.checked_sub(first_number(doc, card)).ok_or("Channels start at 0.")?,
+                Some(x) => x.checked_sub(first_number(doc, card)).ok_or(CmdError::refused("Channels start at 0."))?,
                 None => 0,
             };
             let mut used = BTreeSet::new();

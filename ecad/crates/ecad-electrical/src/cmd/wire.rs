@@ -242,17 +242,35 @@ fn next_like(doc: &Document, value: &str, net: &NetData) -> String {
     }
 }
 
+/// Why two nets cannot be merged; its text completes "The nets can't be merged: …".
+#[derive(Debug)]
+enum Unmergeable {
+    /// They carry these two different potentials.
+    Potentials(String, String),
+    /// Both have fixed numbers of their own.
+    BothFixed,
+}
+
+impl std::fmt::Display for Unmergeable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unmergeable::Potentials(x, y) => write!(f, "they carry different potentials ({x} and {y}), so joining them would short them"),
+            Unmergeable::BothFixed => f.write_str("both nets have fixed numbers of their own"),
+        }
+    }
+}
+
 /// Whether merging nets `a` and `b` is electrically sensible: `Err` with the reason when not.
-fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), String> {
+fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), Unmergeable> {
     let (pa, pb) = (wiring::net_potential(doc, a), wiring::net_potential(doc, b));
     if let (Some(x), Some(y)) = (&pa.name, &pb.name)
         && !x.eq_ignore_ascii_case(y)
     {
-        return Err(format!("they carry different potentials ({x} and {y}), so joining them would short them"));
+        return Err(Unmergeable::Potentials(x.clone(), y.clone()));
     }
     let fixed: BTreeSet<&String> = a.fixed.keys().chain(b.fixed.keys()).collect();
     if fixed.len() > 1 {
-        return Err("both nets have fixed numbers of their own".into());
+        return Err(Unmergeable::BothFixed);
     }
     Ok(())
 }
@@ -392,7 +410,7 @@ pub fn wirenumber(
             sense.map_err(|why| CmdError::refused(format!("The nets can't be merged: {why}.")))?;
             let name = wires::valid_name(&v)
                 .map_err(|_| CmdError::refused(format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)))?;
-            let starter = wires::continuation_starter().ok_or("the continuation symbol is missing")?;
+            let starter = wires::continuation_starter().ok_or(CmdError::refused("the continuation symbol is missing"))?;
             let mut ops = wiring::write_ops(doc, &net, &v, true);
             let mut continuations = Vec::new();
             for n in [&net, &other] {
@@ -572,18 +590,21 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
     let mut after = before.clone();
     let w = &mut after.wiring;
     if let Some(sc) = &change.scheme {
-        w.scheme = Scheme::parse(sc).ok_or("`scheme` must be \"potential\", \"page\" or \"page-column\"")?;
+        w.scheme = Scheme::parse(sc).ok_or(CmdError::input("`scheme` must be \"potential\", \"page\" or \"page-column\""))?;
     }
     if let Some(d) = change.digits {
-        let d = Some(d).filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d)).ok_or("`digits` must be 1 to 6")?;
+        let d = Some(d).filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d)).ok_or(CmdError::input("`digits` must be 1 to 6"))?;
         w.digits = Some(d as u8);
     }
     if let Some(c) = &change.colour_style {
-        w.colour_style =
-            Some(wiring::ColourStyle::parse(c).ok_or("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)")?);
+        w.colour_style = Some(
+            wiring::ColourStyle::parse(c)
+                .ok_or(CmdError::input("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?,
+        );
     }
     if let Some(hv) = change.label_height {
-        w.label_height = Some(Some(hv).filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or("`label_height` must be 0.5 to 10 (millimetres)")?);
+        w.label_height =
+            Some(Some(hv).filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or(CmdError::input("`label_height` must be 0.5 to 10 (millimetres)"))?);
     }
     // Brief 032 §4: the label rule and the shortest labelled wire.
     if let Some(r) = &change.label_rule {
@@ -594,10 +615,11 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
         w.label_rule = Some(r);
     }
     if let Some(lv) = change.label_min_length {
-        w.label_min_length = Some(Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or("Shortest labelled wire is 0 to 100 mm.")?);
+        w.label_min_length =
+            Some(Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or(CmdError::input("Shortest labelled wire is 0 to 100 mm."))?);
     }
     if let Some(u) = &change.unclassified_prefix {
-        w.unclassified_prefix = wiring::valid_text("prefix", Some(u))?.unwrap_or_default();
+        w.unclassified_prefix = wiring::valid_text("prefix", Some(u)).map_err(CmdError::refused)?.unwrap_or_default();
     }
     if let Some(table) = &change.potentials {
         if table.len() > MAX_POTENTIALS {
@@ -610,12 +632,14 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
             if r.colours {
                 return Err(CmdError::refused(msg::CATEGORY_COLOURS));
             }
-            let name = wiring::valid_text("potential", Some(r.name.trim()))?.ok_or("every potential needs a `name`")?;
+            let name = wiring::valid_text("potential", Some(r.name.trim()))
+                .map_err(CmdError::refused)?
+                .ok_or(CmdError::input("every potential needs a `name`"))?;
             if !names.insert(name.to_uppercase()) {
                 return Err(CmdError::refused(format!("potential {name} is listed twice")));
             }
             rows.push(wiring::PotentialDef {
-                prefix: wiring::valid_text("prefix", Some(r.prefix.trim()))?.unwrap_or_default(),
+                prefix: wiring::valid_text("prefix", Some(r.prefix.trim())).map_err(CmdError::refused)?.unwrap_or_default(),
                 numbered: r.numbered.unwrap_or(true),
                 // Writing the table clears an older build's colours (Checks' row goes).
                 legacy_colour: None,
@@ -665,7 +689,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
     let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
     let through = wires::interior_wire_at(doc, page, at);
     if through.is_none() && loose.len() >= 2 {
-        let starter = wires::junction_starter().ok_or("the junction symbol is missing")?;
+        let starter = wires::junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
         let mut props = ecad_model::Properties::new();
         props.insert(KIND.into(), JUNCTION.into());
         let snapped = loose
@@ -679,7 +703,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
         let done = Junctioned { junction: t.component, terminal: t.terminal, conductor: None, at: snapped, attached: Some(t.attached.len()) };
         return Ok((t.ops, done));
     }
-    let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or("There is no wire there: click on a wire.")?;
+    let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or(CmdError::refused("There is no wire there: click on a wire."))?;
     let j = wires::plan_junction(doc, ids, page, style, on)?;
     let done = Junctioned { junction: j.tagless.component, terminal: j.tagless.terminal, conductor: Some(j.second), at: j.at, attached: None };
     Ok((j.tagless.ops, done))
@@ -750,8 +774,8 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         ObjectRef::Conductor(_) => match key {
             k if k == wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED => Err(CmdError::refused(msg::USE_WIRENUMBER)),
             k if k == wiring::POTENTIAL_KEY => Err(CmdError::refused(msg::USE_POTENTIAL)),
-            k if k == wiring::CROSS_SECTION => Ok(Some(wiring::valid_text("cross-section", value)?)),
-            k if k == wiring::COLOUR => Ok(Some(wiring::valid_text("colour", value)?)),
+            k if k == wiring::CROSS_SECTION => Ok(Some(wiring::valid_text("cross-section", value).map_err(CmdError::refused)?)),
+            k if k == wiring::COLOUR => Ok(Some(wiring::valid_text("colour", value).map_err(CmdError::refused)?)),
             _ => Ok(None),
         },
         // Brief 049 (design 049 §3.1): a caption only on a continuation, checked.
@@ -759,7 +783,7 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         ObjectRef::Component(c) if wires::kind_of(doc, c).is_some() => match key {
             k if k == KIND => Err(CmdError::refused("A junction or continuation keeps its kind; erase it and place another.")),
             k if k == NAME && wires::kind_of(doc, c) == Some(CONTINUATION) => {
-                let v = value.ok_or("A continuation needs a name.")?;
+                let v = value.ok_or(CmdError::refused("A continuation needs a name."))?;
                 Ok(Some(Some(wires::valid_name(v)?)))
             }
             _ => Ok(None),

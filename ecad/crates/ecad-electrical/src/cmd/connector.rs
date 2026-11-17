@@ -68,14 +68,14 @@ pub fn names(doc: &Document, names: Option<&NamesInput>) -> Result<Names, CmdErr
         Some(NamesInput::Word(w)) => match w.trim().to_ascii_lowercase().as_str() {
             "numbers" => Ok(Names::Numbers),
             "letters" => Ok(Names::Letters),
-            _ => cn::parse_list(w).map(Names::List).map_err(CmdError::refused),
+            _ => cn::parse_list(w).map(Names::List),
         },
         Some(NamesInput::List(a)) => {
             if a.len() > cn::MAX_PINS {
                 return Err(CmdError::refused(format!("A connector has at most {} pins; got {}.", cn::MAX_PINS, a.len())));
             }
             let v: Vec<String> = a.iter().map(|s| s.trim().to_string()).collect();
-            cn::check_list(&v).map_err(CmdError::refused)?;
+            cn::check_list(&v)?;
             Ok(Names::List(v))
         }
     }
@@ -317,10 +317,9 @@ fn wire_point(doc: &Document, page: PageId, w: ConductorId) -> Option<Pt> {
 fn place_bulkhead(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: f64,
 ) -> Result<Made, CmdError> {
-    let starter = crate::devices::starter(key).map_err(CmdError::refused)?;
+    let starter = crate::devices::starter(key)?;
     let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
-    let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))
-        .map_err(CmdError::refused)?;
+    let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
     Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), dropped: Vec::new(), ops: plan.ops })
 }
 
@@ -375,12 +374,12 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
     let taken = BTreeSet::new();
     if let Some(c) = device {
         for side in &sides {
-            cn::check_whole_half(doc, c, *side, &taken).map_err(CmdError::refused)?;
+            cn::check_whole_half(doc, c, *side, &taken)?;
         }
     }
     let pin_names = match device {
         Some(c) if !matches!(names, Names::List(_)) => join_names(doc, c, n),
-        _ => cn::names_for(names, n).map_err(CmdError::refused)?,
+        _ => cn::names_for(names, n)?,
     };
     let rot = r.degrees.to_radians();
     let (sin, cos) = rot.sin_cos();
@@ -390,7 +389,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
     let mut made: Option<(ComponentId, String, bool)> = device.map(|c| (c, crate::devices::tag_words(doc, c), false));
     for side in sides {
         let key = family.half_key(side, n).ok_or_else(|| CmdError::refused(family.size_refusal()))?;
-        let starter = crate::devices::starter(&key).map_err(CmdError::refused)?;
+        let starter = crate::devices::starter(&key)?;
         let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
         let origin = if side == Side::Socket && halves == Side::Both { Pt::new(at.x - sin * up, at.y + cos * up) } else { at };
         let placement = if swap {
@@ -402,12 +401,12 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
             Some((c, _, _)) => *c,
             None => {
                 let list = matches!(names, Names::List(_)).then_some(pin_names.as_slice());
-                let (c, tag) = cn::create_ops(ledger, ids, high, starter, def, None, Some(n), list, &mut ops).map_err(CmdError::refused)?;
+                let (c, tag) = cn::create_ops(ledger, ids, high, starter, def, None, Some(n), list, &mut ops)?;
                 made = Some((c, tag, true));
                 c
             }
         };
-        let (_, _, sh) = cn::symbol_ops(ids, page, style.clone(), def, starter, c, &pin_names, placement, &mut ops).map_err(CmdError::refused)?;
+        let (_, _, sh) = cn::symbol_ops(ids, page, style.clone(), def, starter, c, &pin_names, placement, &mut ops)?;
         shown.extend(sh);
     }
     let (component, tag, new) = made.ok_or(CmdError::refused("Nothing to place."))?;
@@ -466,7 +465,7 @@ fn place_pins(
         Side::Socket => "pins",
         Side::Plug => "pinp",
     };
-    let starter: &Starter = crate::devices::starter(key).map_err(CmdError::refused)?;
+    let starter: &Starter = crate::devices::starter(key)?;
     let mut ops = Vec::new();
     let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
     // A new connector: its names first, then numbers past them (Numbers only).
@@ -478,9 +477,9 @@ fn place_pins(
                 (None, Names::List(v)) => v.len(),
                 (None, _) => maker_pins(doc).max(crossings.len().min(cn::MAX_PINS)),
             };
-            let list = cn::names_for(names, n).map_err(CmdError::refused)?;
+            let list = cn::names_for(names, n)?;
             let typed = matches!(names, Names::List(_)).then_some(list.as_slice());
-            let (c, t) = cn::create_ops(ledger, ids, high, starter, def, None, Some(n), typed, &mut ops).map_err(CmdError::refused)?;
+            let (c, t) = cn::create_ops(ledger, ids, high, starter, def, None, Some(n), typed, &mut ops)?;
             (c, t, true, list)
         }
     };
@@ -502,9 +501,9 @@ fn place_pins(
         let name = match named.take() {
             Some(n) => {
                 if !new {
-                    cn::check_named_pin(doc, component, halves, &n, &taken).map_err(CmdError::refused)?;
+                    cn::check_named_pin(doc, component, halves, &n, &taken)?;
                 } else {
-                    cn::check_name(&n).map_err(CmdError::refused)?;
+                    cn::check_name(&n)?;
                 }
                 n
             }
@@ -525,7 +524,7 @@ fn place_pins(
                     )));
                 }
             },
-            None => cn::next_pin(doc, component, halves, &taken).map_err(CmdError::refused)?,
+            None => cn::next_pin(doc, component, halves, &taken)?,
         };
         if new && taken.iter().any(|(_, n)| *n == name) {
             return Err(CmdError::refused(format!("{tag}:{name} is already being drawn. Pick another pin.")));
@@ -533,8 +532,7 @@ fn place_pins(
         take(halves, &name, &mut taken);
         let rotation = along_wire(doc, page, &on);
         let placement = Placement { origin: on.at, rotation, mirror: false, scale: 1.0 };
-        let (_, _, shown) = cn::symbol_ops(ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)
-            .map_err(CmdError::refused)?;
+        let (_, _, shown) = cn::symbol_ops(ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)?;
         let land = cn::land_pin(doc, ids, page, on, &shown, placement)
             .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, on.conductor))))?;
         if let Some((n, _)) = &land.dropped_number {
@@ -601,14 +599,14 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         let side = cn::side_of(doc, t).ok_or(CmdError::refused("That is not a connector pin."))?;
         let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::Terminal))?.clone();
         // The pin itself is not free for itself: drawn once more on this side.
-        let next = cn::next_pin(doc, c, side, &BTreeSet::new()).map_err(CmdError::refused)?;
+        let next = cn::next_pin(doc, c, side, &BTreeSet::new())?;
         let after = Terminal { label: Some(next.clone()), ..x.clone() };
         let ops = vec![Op::RemoveTerminal { id: t, terminal: x }, Op::AddTerminal { id: t, terminal: after }];
         let half = cn::half_tag(doc, c, side);
         let message = format!("{half}:{old} is now {half}:{next}.");
         return Ok(Pinlabel::Moved { component: c, label: format!("Move pin {half}:{old}"), from: old, to: next, ops, message });
     }
-    cn::check_name(&to).map_err(CmdError::refused)?;
+    cn::check_name(&to)?;
     let targets: Vec<(TerminalId, Terminal)> =
         doc.terminals_of(c).filter(|(_, x)| x.label.as_deref() == Some(old.as_str())).map(|(t, x)| (t, x.clone())).collect();
     if targets.is_empty() {

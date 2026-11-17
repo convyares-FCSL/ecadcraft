@@ -241,9 +241,10 @@ pub(crate) fn err(m: impl Into<String>) -> EngineError {
 
 /// Run `f` with the project owning the active document. The closure gets [`Pages`], not the
 /// session, so it cannot call an owner-aware session method while the project is locked; the lock
-/// is taken with `try_lock`, so a re-entrant command is refused instead of deadlocking.
-pub(crate) fn with_project<R>(
-    s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, String>,
+/// is taken with `try_lock`, so a re-entrant command is refused instead of deadlocking. The
+/// closure refuses with a [`CmdError`], which becomes text here, at the edge (brief 070).
+pub(crate) fn on_project<R>(
+    s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, CmdError>,
 ) -> cadcraft_engine::Result<R> {
     let owner = owner_of_active(s).map_err(err)?;
     let uid = s.state()?.uid;
@@ -253,28 +254,15 @@ pub(crate) fn with_project<R>(
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
         return Err(err(UNAVAILABLE));
     }
-    f(p, &mut Pages(s), page).map_err(EngineError::Other)
+    f(p, &mut Pages(s), page).map_err(|e| err(e.to_string()))
 }
 
-/// Like [`with_project`] for commands that also work on an unavailable page (open, inspect).
-pub(crate) fn with_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, String>) -> cadcraft_engine::Result<R> {
+/// Like [`on_project`] for commands that also work on an unavailable page (open, inspect).
+pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, CmdError>) -> cadcraft_engine::Result<R> {
     let owner = owner_of_active(s).map_err(err)?;
     let mut guard = try_lock(&owner).map_err(err)?;
     let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
-    f(p, &mut Pages(s)).map_err(EngineError::Other)
-}
-
-/// [`with_project`] for a typed command (brief 070): the closure refuses with a [`CmdError`],
-/// which becomes text here, at the edge.
-pub(crate) fn on_project<R>(
-    s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, CmdError>,
-) -> cadcraft_engine::Result<R> {
-    with_project(s, |p, pg, page| f(p, pg, page).map_err(String::from))
-}
-
-/// [`with_any_page`] for a typed command (brief 070).
-pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>) -> Result<R, CmdError>) -> cadcraft_engine::Result<R> {
-    with_any_page(s, |p, pg| f(p, pg).map_err(String::from))
+    f(p, &mut Pages(s)).map_err(|e| err(e.to_string()))
 }
 
 /// Every command with a typed input (brief 070): its id, run function and parameter schema.
@@ -327,10 +315,10 @@ pub fn schema_of(id: &str) -> Option<Value> {
 pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not be rebuilt); close and reopen it";
 
 /// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
-pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, String> {
+pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, CmdError> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => get(v).map(Some).ok_or_else(|| format!("`{key}` must be {what}")),
+        Some(v) => get(v).map(Some).ok_or_else(|| CmdError::input(format!("`{key}` must be {what}"))),
     }
 }
 

@@ -589,7 +589,7 @@ impl ProjectProps {
             if !t.is_empty()
                 && let Err(e) = ecad_cadcraft::revisions::parse_columns(t)
             {
-                prim::note(ui, &e, Tone::Error);
+                prim::note(ui, &e.to_string(), Tone::Error);
             }
         });
         // Brief 026 (design §5.1): numbering.

@@ -96,7 +96,7 @@ pub fn slash_new(
     let (cable, item, rep): (CableId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let mut c = ecad_model::Cable::default();
     // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
-    let t = crate::devices::new_cable_tag(ledger, high, tag).map_err(CmdError::refused)?;
+    let t = crate::devices::new_cable_tag(ledger, high, tag)?;
     c.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
     let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
     for (index, m) in found.members.iter().enumerate() {
@@ -153,7 +153,7 @@ pub fn add_to_cable(
             let c: CableId = ids.fresh();
             let mut cable = ecad_model::Cable::default();
             // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
-            let t = crate::devices::new_cable_tag(ledger, high, tag).map_err(CmdError::refused)?;
+            let t = crate::devices::new_cable_tag(ledger, high, tag)?;
             cable.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
             ops.push(Op::CreateCable { id: c, cable });
             (c, 0)
@@ -179,7 +179,7 @@ pub fn add_to_cable(
 /// # Errors
 /// A label with a control character, or too long.
 fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::core_label(text).map_err(CmdError::refused)
+    crate::strips::core_label(text)
 }
 
 /// The ops changing member `index` of `cable` from `old` to `new` (design 009 §5.3).

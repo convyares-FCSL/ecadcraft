@@ -44,7 +44,7 @@ pub fn plan_contcaption(doc: &Document, arrows: &[ComponentId], caption: Option<
     if arrows.is_empty() {
         return Err(CmdError::refused("Name at least one continuation arrow in `continuations`."));
     }
-    let caption = k::caption_text(caption).map_err(CmdError::refused)?;
+    let caption = k::caption_text(caption)?;
     let mut ops = Vec::new();
     let mut seen = BTreeSet::new();
     for c in arrows {
@@ -52,7 +52,7 @@ pub fn plan_contcaption(doc: &Document, arrows: &[ComponentId], caption: Option<
             continue;
         }
         // Refuses anything that is not a continuation arrow, naming it.
-        k::caption_value(doc, *c, caption.as_deref()).map_err(CmdError::refused)?;
+        k::caption_value(doc, *c, caption.as_deref())?;
         let before = doc.components.get(c).and_then(|x| x.properties.get(CAPTION_KEY)).cloned();
         if before != caption {
             ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: CAPTION_KEY.into(), before, after: caption.clone() });

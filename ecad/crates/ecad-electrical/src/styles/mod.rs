@@ -28,6 +28,7 @@ use std::collections::BTreeSet;
 use ecad_model::style::{self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject};
 
+use crate::CmdError;
 use crate::defaults::{self, Kind, Resolved, Scope, Slot, Source, Value};
 
 pub mod cable;
@@ -318,17 +319,17 @@ pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
 ///
 /// # Errors
 /// In words: no such style, or the name is shared and the ID is needed.
-pub fn find(doc: &Document, catalogue: &str, text: &str) -> Result<StyleRef, String> {
+pub fn find(doc: &Document, catalogue: &str, text: &str) -> Result<StyleRef, CmdError> {
     let t = text.trim();
     if let Some(id) = StyleRef::parse(t).filter(|id| exists(doc, catalogue, id)) {
         return Ok(id);
     }
-    let cat = self::catalogue(catalogue).ok_or_else(|| format!("No catalogue {catalogue:?}; the catalogues are {}.", words()))?;
+    let cat = self::catalogue(catalogue).ok_or_else(|| CmdError::refused(format!("No catalogue {catalogue:?}; the catalogues are {}.", words())))?;
     let hits: Vec<Row> = rows(doc, cat).into_iter().filter(|r| r.name.eq_ignore_ascii_case(t)).collect();
     match hits.as_slice() {
         [one] => Ok(one.id.clone()),
-        [] => Err(format!("No {} is called {t:?}.", cat.one.to_lowercase())),
-        _ => Err(format!("{} {} are called {t:?}; give the ID ({}).", hits.len(), cat.plural.to_lowercase(), ids(&hits))),
+        [] => Err(CmdError::refused(format!("No {} is called {t:?}.", cat.one.to_lowercase()))),
+        _ => Err(CmdError::refused(format!("{} {} are called {t:?}; give the ID ({}).", hits.len(), cat.plural.to_lowercase(), ids(&hits)))),
     }
 }
 
@@ -467,31 +468,31 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
 ///
 /// # Errors
 /// The bound it breaks, in words.
-pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: StyleLayer, r: &StyleRecord) -> Result<(), String> {
+pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: StyleLayer, r: &StyleRecord) -> Result<(), CmdError> {
     if !r.name.is_empty() && !ms::is_name(&r.name) {
-        return Err("A style needs a name (1 to 64 characters, no control characters).".into());
+        return Err(CmdError::refused("A style needs a name (1 to 64 characters, no control characters)."));
     }
     if r.fields.len() > MAX_FIELDS_PER_STYLE {
-        return Err(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields."));
+        return Err(CmdError::refused(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields.")));
     }
     if let Some((k, _)) = r.fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.word, k)).is_some()) {
-        return Err(format!("{k} is at most {} characters.", field_cap(cat.word, k)));
+        return Err(CmdError::refused(format!("{k} is at most {} characters.", field_cap(cat.word, k))));
     }
     // Brief 057 (design 057 §3.1): a rating's reference temperature is below the conductor's
     // maximum.
     if let Some(why) = crate::rating::check_style(cat.word, r) {
-        return Err(why);
+        return Err(CmdError::refused(why));
     }
     // 050b (design 050 §5.4): one category per potential.
     if cat.word == "wire"
         && let Some(p) = r.fields.get("potential").map(|p| p.trim()).filter(|p| !p.is_empty())
         && let Some(other) = wire::WireLooks::new(doc).for_potential(p).filter(|o| *o != id)
     {
-        return Err(format!("{} is already the default for {p}; clear it there first.", name(doc, "wire", other)));
+        return Err(CmdError::refused(format!("{} is already the default for {p}; clear it there first.", name(doc, "wire", other))));
     }
     let held = ms::layer_of(doc, layer).and_then(|c| c.get(cat.word));
     if held.is_some_and(|m| !m.contains_key(id) && m.len() >= MAX_STYLES_PER_CATALOGUE) {
-        return Err(format!("{} holds at most {MAX_STYLES_PER_CATALOGUE} styles per layer.", cat.plural));
+        return Err(CmdError::refused(format!("{} holds at most {MAX_STYLES_PER_CATALOGUE} styles per layer.", cat.plural)));
     }
     Ok(())
 }

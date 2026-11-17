@@ -32,7 +32,7 @@ fn catalogue() -> &'static styles::Catalogue {
 /// Neither given, or no such frame.
 pub fn frame(doc: &Document, id: Option<&str>, name: Option<&str>) -> Result<StyleRef, CmdError> {
     let t = id.or(name).map(str::trim).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    styles::find(doc, FRAME_CATALOGUE, t).map_err(CmdError::refused)
+    styles::find(doc, FRAME_CATALOGUE, t)
 }
 
 /// The sheet `text` names, else the project's.
@@ -112,7 +112,7 @@ pub fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditP
     if let Some(b) = edit.body {
         after.body = Some(StyleBody::title_block(b));
     }
-    styles::check_record(doc, cat, id, layer, &after).map_err(CmdError::refused)?;
+    styles::check_record(doc, cat, id, layer, &after)?;
     let name = rename.map_or(current, str::to_string);
     let ops = if before.as_ref() == Some(&after) {
         Vec::new()
@@ -146,7 +146,7 @@ pub fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<StyleRef>
     if from.eq_ignore_ascii_case("blank") {
         return Ok(None);
     }
-    styles::find(doc, FRAME_CATALOGUE, from).map(Some).map_err(CmdError::refused)
+    styles::find(doc, FRAME_CATALOGUE, from).map(Some)
 }
 
 /// A new frame's name: the one given, else a unique one from the sheet's size (`A3 title block`,
@@ -208,7 +208,7 @@ pub fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Res
     rec.fields.insert("block".into(), "bottom_right".into());
     rec.body = Some(StyleBody::title_block(new.layout));
     let id = StyleRef::Own(ids.fresh::<u128>());
-    styles::check_record(doc, cat, &id, new.layer, &rec).map_err(CmdError::refused)?;
+    styles::check_record(doc, cat, &id, new.layer, &rec)?;
     let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before: None, after: Some(rec) }];
     Ok((ops, id))
 }

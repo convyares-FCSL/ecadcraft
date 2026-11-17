@@ -20,6 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CmdError;
 use ecad_model::book::{self, Book, FOLDER_KEY, MAX_FOLDER_DEPTH, NUMBER_KEY};
 use ecad_model::style::StyleLayer;
 use ecad_model::{Document, FolderId, ObjectRef, Op, PageId, StyleRef};
@@ -238,14 +239,14 @@ pub fn renumber(doc: &Document, outputs: Option<&Outputs>, scope: Option<FolderI
 ///
 /// # Errors
 /// In words: no such type, a generated-only type with no kind, a kind the type does not hold.
-pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> Result<Option<StyleRef>, String> {
+pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> Result<Option<StyleRef>, CmdError> {
     let Some(t) = ty.map(str::trim).filter(|t| !t.is_empty()) else {
         return Ok(kind.map(|k| ptype::derived(Some(k))));
     };
     let id = crate::styles::find(doc, ptype::WORD, t)?;
     match kind {
-        None if ptype::generated_only(&id) => Err(ptype::generated_refusal(doc, &id)),
-        Some(k) if ptype::look_of(doc, &id).holds != ptype::Holds::of_kind(k) => Err(ptype::kind_refusal(k)),
+        None if ptype::generated_only(&id) => Err(CmdError::refused(ptype::generated_refusal(doc, &id))),
+        Some(k) if ptype::look_of(doc, &id).holds != ptype::Holds::of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
         _ => Ok(Some(id)),
     }
 }

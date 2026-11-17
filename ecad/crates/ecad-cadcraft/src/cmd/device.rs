@@ -191,11 +191,10 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             }
             _ => false,
         };
-        let mut plan =
-            devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target).map_err(CmdError::refused)?;
+        let mut plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
         let land = match (landing, plan.terminals.first()) {
             (Some(on), Some((_, _, t))) => {
-                let land = crate::connectors::plan_land(p.ledger.document(), &mut p.ids, page, on, *t).map_err(CmdError::refused)?;
+                let land = crate::connectors::plan_land(p.ledger.document(), &mut p.ids, page, on, *t)?;
                 plan.ops.extend(land.ops.clone());
                 Some((*t, land))
             }

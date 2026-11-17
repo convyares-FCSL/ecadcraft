@@ -188,7 +188,7 @@ fn checked(
             }
             Ok(Some(t))
         }
-        CableField::Cores => crate::strips::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e))),
+        CableField::Cores => crate::strips::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
         CableField::CableType => styles::find(doc, cable::WORD, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry)),
         CableField::EndLocation(_) => pending.store(doc, ids, Aspect::Location, &t, ops).map(Some).map_err(|_| bad(BadReason::UnknownEntry)),
         CableField::EndFunction(_) => pending.store(doc, ids, Aspect::Function, &t, ops).map(Some).map_err(|_| bad(BadReason::UnknownEntry)),
@@ -301,7 +301,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
     if let Some(t) = typed_tag.as_deref() {
         refuse_taken(doc, t, None)?;
     }
-    let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref()).map_err(CmdError::refused)?;
+    let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref())?;
     props.insert(CableField::Tag.key().to_string(), tag.clone());
     let id: CableId = ids.fresh();
     ops.push(Op::CreateCable { id, cable: ecad_model::Cable { properties: props, members: Vec::new() } });

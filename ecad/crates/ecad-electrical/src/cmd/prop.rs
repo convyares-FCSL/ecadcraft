@@ -167,17 +167,12 @@ pub fn is_device_property(object: ObjectRef, key: &str) -> bool {
     is_component(object) && devices::PROPERTIES.iter().any(|(k, _)| *k == key)
 }
 
-/// A refusal in words.
-fn refused(why: String) -> CmdError {
-    CmdError::refused(why)
-}
-
 fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     Ok(value.map(str::to_string))
 }
 
 fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    devices::property_value(doc, key, value).map_err(refused)
+    devices::property_value(doc, key, value)
 }
 
 fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -185,31 +180,31 @@ fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> R
 }
 
 fn contacts_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::xref::offer_value(value).map_err(refused)
+    crate::xref::offer_value(value)
 }
 
 fn mirror_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::xref::mirror_value(value).map_err(refused)
+    crate::xref::mirror_value(value)
 }
 
 fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::offer_value(value).map_err(refused)
+    crate::strips::offer_value(value)
 }
 
 fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    devices::property_value(doc, key, value).map_err(refused)
+    devices::property_value(doc, key, value)
 }
 
 fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o).and_then(|c| crate::connectors::setprop_value(doc, c, key, value)) {
-        Some(r) => r.map_err(refused),
+        Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
 }
 
 fn terminal_default_value(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match crate::defaults::terminals::setprop_value(key, value) {
-        Some(r) => r.map_err(refused),
+        Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
 }
@@ -227,37 +222,37 @@ fn level_label_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -
 
 fn plc_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o).and_then(|c| crate::plc::setprop_rule(doc, c, key, value)) {
-        Some(r) => r.map_err(refused),
+        Some(r) => r,
         None => Ok(None),
     }
 }
 
 fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::symbols::setprop_rule(doc, o, key, value).map_err(refused)
+    crate::symbols::setprop_rule(doc, o, key, value)
 }
 
 fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o) {
-        Some(c) => crate::bom::setprop_rule(doc, c, key, value).map_err(refused),
+        Some(c) => crate::bom::setprop_rule(doc, c, key, value),
         None => Ok(value.map(str::to_string)),
     }
 }
 
 fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let rule = match component(o) {
-        Some(c) => crate::accessories::setprop_rule(doc, c, key, value).map_err(refused)?,
+        Some(c) => crate::accessories::setprop_rule(doc, c, key, value)?,
         None => None,
     };
     Ok(rule.unwrap_or_else(|| value.map(str::to_string)))
 }
 
 fn cores_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::cores_value(value).map_err(refused)
+    crate::strips::cores_value(value)
 }
 
 fn unused_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match o {
-        ObjectRef::Cable(k) => crate::styles::cable::unused_value(doc, k, key, value).map_err(refused),
+        ObjectRef::Cable(k) => crate::styles::cable::unused_value(doc, k, key, value),
         _ => Ok(value.map(str::to_string)),
     }
 }
@@ -314,7 +309,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         Build::Fixed | Build::Aspect => return Err(CmdError::input("that property is set through its own rule")),
     };
     if let ObjectRef::Component(c) = object {
-        crate::bom::refuse_on_item(doc, c, key, value).map_err(refused)?;
+        crate::bom::refuse_on_item(doc, c, key, value)?;
     }
     check(doc, object, key, value)
 }
@@ -423,7 +418,7 @@ pub fn plan_device(
             };
             return Err(CmdError::refused(devices::duplicate_words(doc, t, holder, &way)));
         }
-        let ops = devices::plan_merge(doc, ids, c, holder).map_err(refused)?;
+        let ops = devices::plan_merge(doc, ids, c, holder)?;
         return Ok(DeviceSet::Merged { ops, holder, into: devices::tag_words(doc, holder), before });
     }
     if before == value {
@@ -606,7 +601,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
         }
         Some(Conflict::Next) => {
             let px = tag::prefix_of(&t).ok_or_else(|| CmdError::refused(format!("{t} has no number to follow; type another tag.")))?;
-            let next = if tag::is_provisional(&t) { tag_high.next_provisional_in(doc, &px) } else { tag_high.next_in(doc, &px).map_err(refused)? };
+            let next = if tag::is_provisional(&t) { tag_high.next_provisional_in(doc, &px) } else { tag_high.next_in(doc, &px)? };
             let fixed = !tag::is_provisional(&next);
             let ops = tag_ops(doc, o, Some(next.clone()), fixed);
             let line = format!("{} is now {next}.", before.unwrap_or_else(|| format!("The {}", noun(o))));

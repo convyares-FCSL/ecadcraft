@@ -340,7 +340,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
         doc.terminals.get_mut(&t).unwrap().key = Some(format!("old-{}", t.short()));
     }
     let mut ids = ecad_model::IdAllocator::seeded(5);
-    let e = devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err();
+    let e = devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
     assert!(e.starts_with("Cannot merge -K02: its symbol on page"), "{e}");
     assert!(e.contains("not linked to any of its connection points"), "{e}");
 }
